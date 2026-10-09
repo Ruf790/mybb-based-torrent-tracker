@@ -57,7 +57,7 @@ echo $transparentGif;
 flush();
 
 // Load language and execute cron jobs
-$lang->load('cronjobs');
+$lang->load('cron');
 
 // Get pending cron jobs
 $cronQuery = $db->sql_query_prepared(

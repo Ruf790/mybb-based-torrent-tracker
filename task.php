@@ -9,8 +9,26 @@ define('THIS_SCRIPT', 'task.php');
 define('SCRIPTNAME', 'task.php');
 
 require_once 'global.php';
+
+$lang->load('task');
+
+
 require_once INC_PATH . '/functions_exam.php';
 require_once INC_PATH . '/functions_exam_header.php';
+
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
 
 if (empty($CURUSER['id'])) {
     if (function_exists('loggedinorreturn')) {
@@ -37,7 +55,7 @@ function task_redirect(string $type, string $msg): never
 // ── Claim a task (claimTask) ─────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
-        task_redirect('danger', 'Security token expired. Reload the page and try again.');
+        task_redirect('danger', $lang->task['flash_token_expired']);
     }
     // ── Abandon own task (our addition) ──
     if (($_POST['action'] ?? '') === 'abandon') {
@@ -46,7 +64,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if (function_exists('write_log')) {
                 write_log("[Tasks] {$CURUSER['username']} abandoned task attempt #" . (int)$_POST['euid'] . ", penalty {$deduct}");
             }
-            task_redirect('success', 'Task abandoned' . ($deduct > 0 ? ', ' . exam_num($deduct) . ' bonus points deducted' : '') . '. You can claim another task now.');
+            task_redirect('success', $deduct > 0
+                ? ags_fmt($lang->task['flash_abandoned_penalty'], exam_num($deduct))
+                : $lang->task['flash_abandoned']);
         } catch (ExamException $ex) {
             task_redirect('danger', $ex->getMessage());
         }
@@ -57,7 +77,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         if (function_exists('write_log')) {
             write_log("[Tasks] {$CURUSER['username']} claimed task #" . (int)$_POST['exam_id']);
         }
-        task_redirect('success', 'Task claimed. Your progress is shown at the top of every page.');
+        task_redirect('success', $lang->task['flash_claimed']);
     } catch (ExamException $ex) {
         task_redirect('danger', $ex->getMessage());
     }
@@ -120,8 +140,16 @@ if (!empty($_COOKIE['task_flash'])) {
 }
 $postKey = function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? '');
 
+// JS strings: every 'js_*' key of the language file, prefix stripped
+$agsLang = [];
+foreach ($lang->task as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $agsLang[substr((string)$k, 3)] = $v;
+    }
+}
+
 // ── Output ───────────────────────────────────────────────
-stdhead('Tasks');
+stdhead($lang->task['pg_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/exam.css?ver=122">
@@ -132,8 +160,10 @@ stdhead('Tasks');
   <div class="tk-head">
     <i class="fa-solid fa-list-check"></i>
     <div>
-      <h1>Tasks</h1>
-      <p>Meet the requirements before the time runs out to earn bonus points. If you don't make it, the penalty is deducted. Changed your mind? Abandon the task for <?= EXAM_TASK_ABANDON_PENALTY_PERCENT >= 100 ? 'the full' : EXAM_TASK_ABANDON_PENALTY_PERCENT . '% of the' ?> penalty and claim another one. You can only have one task or exam in progress at a time.</p>
+      <h1><?= $e($lang->task['pane_tasks']) ?></h1>
+      <p><?= $e(EXAM_TASK_ABANDON_PENALTY_PERCENT >= 100
+          ? $lang->task['hint_intro_full']
+          : ags_fmt($lang->task['hint_intro_pct'], EXAM_TASK_ABANDON_PENALTY_PERCENT)) ?></p>
     </div>
   </div>
 
@@ -147,7 +177,7 @@ stdhead('Tasks');
   <?php endif; ?>
 
   <?php if (!$tasks): ?>
-    <div class="tk-empty"><i class="fa-solid fa-mug-hot"></i><p>There are no tasks right now. Check back later.</p></div>
+    <div class="tk-empty"><i class="fa-solid fa-mug-hot"></i><p><?= $e($lang->task['msg_no_tasks']) ?></p></div>
   <?php else: ?>
     <div class="tk-list">
     <?php foreach ($tasks as $t):
@@ -165,8 +195,8 @@ stdhead('Tasks');
             $who[] = implode(', ', array_map(static fn($g) => $groupNames[(int)$g] ?? "#{$g}", $t['filters'][EXAM_FILTER_USER_CLASS]));
         }
         $d = $t['filters'][EXAM_FILTER_USER_REGISTER_DAYS_RANGE] ?? [];
-        if (isset($d[0]) && $d[0] !== null) $who[] = "on the tracker for at least {$d[0]} days";
-        if (isset($d[1]) && $d[1] !== null) $who[] = "on the tracker for at most {$d[1]} days";
+        if (isset($d[0]) && $d[0] !== null) $who[] = ags_fmt($lang->task['lbl_reg_min'], (string)$d[0]);
+        if (isset($d[1]) && $d[1] !== null) $who[] = ags_fmt($lang->task['lbl_reg_max'], (string)$d[1]);
     ?>
       <article class="tk-card<?= $claimed ? ' is-claimed' : '' ?>">
         <div class="tk-card__main">
@@ -182,7 +212,7 @@ stdhead('Tasks');
           <div class="tk-meta">
             <span><i class="fa-regular fa-clock"></i><?= $e($range) ?></span>
             <?php if ($who): ?><span><i class="fa-solid fa-user-check"></i><?= $e(implode(', ', $who)) ?></span><?php endif; ?>
-            <span><i class="fa-solid fa-users"></i>Claimed: <?= exam_num((int)$t['ongoing']) ?> / <?= $max ? exam_num($max) : '∞' ?></span>
+            <span><i class="fa-solid fa-users"></i><?= $e(ags_fmt($lang->task['lbl_claimed_count'], exam_num((int)$t['ongoing']), $max ? exam_num($max) : '∞')) ?></span>
           </div>
         </div>
         <div class="tk-card__side">
@@ -190,23 +220,23 @@ stdhead('Tasks');
           <div class="tk-bonus tk-bonus--minus"><i class="fa-solid fa-circle-minus"></i>−<?= exam_num((int)$t['fail_deduct_bonus']) ?></div>
           <?php if ($claimed):
               $abPenalty = exam_task_abandon_penalty($t, (int)$mine[$id]['is_done'] === 1); ?>
-            <button class="tk-btn" disabled><i class="fa-solid fa-check"></i>Claimed</button>
+            <button class="tk-btn" disabled><i class="fa-solid fa-check"></i><?= $e($lang->task['btn_claimed']) ?></button>
             <form method="post" action="<?= $BASEURL ?>/task.php" data-tk-abandon="<?= $e((string)$t['name']) ?>"
                   data-tk-abandon-penalty="<?= $e(exam_num($abPenalty)) ?>" data-tk-abandon-done="<?= (int)$mine[$id]['is_done'] ?>">
               <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
               <input type="hidden" name="action" value="abandon">
               <input type="hidden" name="euid" value="<?= (int)$mine[$id]['id'] ?>">
-              <button class="tk-btn tk-btn--abandon"><i class="fa-solid fa-person-walking-arrow-right"></i>Abandon</button>
+              <button class="tk-btn tk-btn--abandon"><i class="fa-solid fa-person-walking-arrow-right"></i><?= $e($lang->task['btn_abandon']) ?></button>
             </form>
-            <small class="tk-abandon-note"><?= $abPenalty > 0 ? 'Abandon penalty: −' . exam_num($abPenalty) : 'No penalty to abandon' ?></small>
+            <small class="tk-abandon-note"><?= $e($abPenalty > 0 ? ags_fmt($lang->task['lbl_abandon_penalty'], exam_num($abPenalty)) : $lang->task['lbl_abandon_free']) ?></small>
           <?php elseif ($full): ?>
-            <button class="tk-btn" disabled>Full</button>
+            <button class="tk-btn" disabled><?= $e($lang->task['btn_full']) ?></button>
           <?php else: ?>
             <form method="post" action="<?= $BASEURL ?>/task.php" data-tk-claim="<?= $e((string)$t['name']) ?>"
                   data-tk-penalty="<?= (int)$t['fail_deduct_bonus'] ?>">
               <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
               <input type="hidden" name="exam_id" value="<?= $id ?>">
-              <button class="tk-btn tk-btn--primary"><i class="fa-solid fa-hand"></i>Claim task</button>
+              <button class="tk-btn tk-btn--primary"><i class="fa-solid fa-hand"></i><?= $e($lang->task['btn_claim']) ?></button>
             </form>
           <?php endif; ?>
         </div>
@@ -240,20 +270,20 @@ stdhead('Tasks');
 <div class="tl">
   <div class="tl-card">
     <div class="tl-head">
-      <h2><i class="fa-solid fa-ranking-star"></i>Leaderboard</h2>
+      <h2><i class="fa-solid fa-ranking-star"></i><?= $e($lang->task['sec_leaderboard']) ?></h2>
       <nav class="tl-tabs">
-        <a class="<?= $lbLast ? '' : 'is-active' ?>" href="<?= $BASEURL ?>/task.php">This month</a>
-        <a class="<?= $lbLast ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/task.php?lb=last">Last month</a>
+        <a class="<?= $lbLast ? '' : 'is-active' ?>" href="<?= $BASEURL ?>/task.php"><?= $e($lang->task['tab_this_month']) ?></a>
+        <a class="<?= $lbLast ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/task.php?lb=last"><?= $e($lang->task['tab_last_month']) ?></a>
       </nav>
     </div>
-    <p class="tl-sub">Most tasks completed in <?= $e(date('F Y', $lbFrom)) ?>.</p>
+    <p class="tl-sub"><?= $e(ags_fmt($lang->task['lbl_lb_sub'], $lang->task['mon_' . (int)date('n', $lbFrom)], date('Y', $lbFrom))) ?></p>
 
     <?php if (!$lbTop): ?>
-      <div class="tl-empty"><i class="fa-solid fa-flag-checkered"></i>No completed tasks yet<?= $lbLast ? '' : ' this month. Be the first!' ?></div>
+      <div class="tl-empty"><i class="fa-solid fa-flag-checkered"></i><?= $e($lbLast ? $lang->task['msg_lb_empty_last'] : $lang->task['msg_lb_empty_this']) ?></div>
     <?php else: ?>
       <div class="tl-wrap">
         <table class="tl-table">
-          <thead><tr><th>#</th><th>User</th><th class="tl-num">Tasks</th><th class="tl-num">Bonus</th></tr></thead>
+          <thead><tr><th><?= $e($lang->task['th_rank']) ?></th><th><?= $e($lang->task['th_user']) ?></th><th class="tl-num"><?= $e($lang->task['th_tasks']) ?></th><th class="tl-num"><?= $e($lang->task['th_bonus']) ?></th></tr></thead>
           <tbody>
             <?php foreach ($lbTop as $r) echo $lbRow($r, $r['uid'] === $uid); ?>
             <?php if ($lbMine !== null && !$lbInTop): ?>
@@ -264,33 +294,15 @@ stdhead('Tasks');
         </table>
       </div>
       <?php if ($lbMine === null && !$lbLast): ?>
-        <p class="tl-sub">You haven't completed any tasks this month yet.</p>
+        <p class="tl-sub"><?= $e($lang->task['msg_lb_you_none']) ?></p>
       <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
 
-<script src="<?= $BASEURL ?>/scripts/task.js?ver=22"></script>
 <script>
-// Confirm "Abandon" (SweetAlert2 if loaded, otherwise the browser dialog)
-document.addEventListener('submit', function (e) {
-  var form = e.target;
-  if (!form.matches('form[data-tk-abandon]') || form.dataset.ok === '1') return;
-  e.preventDefault();
-  var pen  = form.dataset.tkAbandonPenalty || '0';
-  var text = 'Abandon the task "' + form.dataset.tkAbandon + '"? '
-           + (pen !== '0' ? pen + ' bonus points will be deducted. ' : 'No bonus points will be deducted. ')
-           + (form.dataset.tkAbandonDone === '1' ? 'All requirements are already met - you will lose the reward. ' : '')
-           + 'You can claim another task right after.';
-  var go = function () { form.dataset.ok = '1'; form.querySelector('button').disabled = true; form.submit(); };
-  if (window.Swal) {
-    window.Swal.fire({ icon: 'warning', text: text, showCancelButton: true, confirmButtonText: 'Abandon',
-      cancelButtonText: 'Cancel', confirmButtonColor: '#dc3545', reverseButtons: true, focusCancel: true })
-      .then(function (r) { if (r.isConfirmed) go(); });
-  } else if (window.confirm(text)) {
-    go();
-  }
-});
+const AGS_LANG = <?= json_encode($agsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
+<script src="<?= $BASEURL ?>/scripts/task.js?ver=23"></script>
 <?php
 stdfoot();

@@ -670,13 +670,7 @@ if ($canQuickReply) {
         $moderation_notice = '<div class="red_alert">' . $lang->showthread['moderation_user_posts'] . '</div>';
     }
 
-    //$collapse = $collapsed = [];
-    //if (!empty($mybb->cookies['collapsed'])) {
-    //    $collapse = explode("|", $mybb->cookies['collapsed']);
-    //    foreach ($collapse as $val) {
-    //        $collapsed[$val . "_e"] = "display: none;";
-    //    }
-    //}
+  
 
     $quickreply = render_quick_reply($tid, $reply_subject, (int)$last_pid, $posthash, $page, $CURUSER, $mybb->post_code, $closeoption, $moderation_notice, $lang, $BASEURL, $smilies ?? []);
 }
@@ -698,7 +692,7 @@ foreach ($gids as $gid) {
 
 
 
-$inlinemoddelete  = '<option value="multideleteposts">Delete Posts Permanently</option>';
+$inlinemoddelete  = '<option value="multideleteposts">'.$lang->showthread['inline_delete_posts'].'</option>';
 $inlinemodmanage  = '<option value="multimergeposts">' . $lang->showthread["mergeposts"] . '</option>'
     . '<option value="multisplitposts">' . $lang->showthread['inline_split_posts'] . '</option>'
     . '<option value="multimoveposts">' . $lang->showthread['inline_move_posts'] . '</option>';
@@ -707,10 +701,10 @@ $inlinemodapprove = '<option value="multiapproveposts">' . $lang->showthread['in
 
 $standardposttools = '<optgroup label="Standard Tools">' . $inlinemoddelete . $inlinemodmanage . $inlinemodapprove . '</optgroup>';
 
-$openclosethread        = '<option class="option_mirage" value="openclosethread">Open/Close Thread</option>';
-$stickunstickthread     = '<option class="option_mirage" value="stick">Stick/Unstick Thread</option>';
-$deletethread           = '<option value="deletethread">Delete Thread Permanently</option>';
-$managethread           = '<option class="option_mirage" value="move">Move / Copy Thread</option><option class="option_mirage" value="merge">Merge Threads</option><option class="option_mirage" value="split">Split Thread</option>';
+$openclosethread        = '<option class="option_mirage" value="openclosethread">'.$lang->showthread['open_close_thread'].'</option>';
+$stickunstickthread     = '<option class="option_mirage" value="stick">'.$lang->showthread['stick_unstick_thread'].'</option>';
+$deletethread           = '<option value="deletethread">'.$lang->showthread['delete_thread'].'</option>';
+$managethread           = '<option class="option_mirage" value="move">'.$lang->showthread['move_thread'].'</option><option class="option_mirage" value="merge">'.$lang->showthread['merge_threads'].'</option><option class="option_mirage" value="split">'.$lang->showthread['split_thread'].'</option>';
 $adminpolloptions       = '';
 $approveunapprovethread = '';
 $softdeletethread       = '';
@@ -1178,6 +1172,8 @@ HTML;
 
 
 
+
+
 function render_moderation_options(int $tid, string $standardthreadtools, string $customthreadtools, string $inlinemod, string $post_code, object $lang, array $thread, string $forumjump, string $sitename): string
 {
     $subject  = htmlspecialchars_uni($thread['subject']);
@@ -1199,7 +1195,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         </select>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-primary rounded"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>
+                        <button type="submit" class="btn btn-sm btn-primary rounded"><i class="fa-solid fa-shuffle"></i> &nbsp;{$lang->showthread['mod_go']}</button>
                     </div>
                 </div>
             </form>
@@ -1215,8 +1211,8 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                     <div class="d-flex align-items-center gap-2">
                         <i class="fas fa-exclamation-triangle fa-lg"></i>
                         <div>
-                            <h5 class="modal-title mb-0">Delete Posts Permanently</h5>
-                            <small class="opacity-75">Irreversible Action</small>
+                            <h5 class="modal-title mb-0">{$lang->showthread['mod_dp_title']}</h5>
+                            <small class="opacity-75">{$lang->showthread['mod_dp_subtitle']}</small>
                         </div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -1227,23 +1223,23 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                             <div class="d-flex gap-3 align-items-center">
                                 <i class="fas fa-radiation-alt fa-lg text-danger"></i>
                                 <div>
-                                    <p class="mb-2 small">You are about to <strong>permanently delete</strong> selected posts. This <strong>cannot be undone</strong>.</p>
+                                    <p class="mb-2 small">{$lang->showthread['mod_dp_warning']}</p>
                                     <div class="d-flex flex-wrap gap-2">
-                                        <span class="badge bg-secondary">Thread ID: <strong>{$tid}</strong></span>
-                                        <span class="badge bg-danger">Posts: <strong id="modal_post_count">0</strong></span>
+                                        <span class="badge bg-secondary">{$lang->showthread['mod_thread_id']} <strong>{$tid}</strong></span>
+                                        <span class="badge bg-danger">{$lang->showthread['mod_dp_posts']} <strong id="modal_post_count">0</strong></span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="px-4 pb-3">
-                        <h6 class="text-muted mb-2"><i class="fas fa-eye me-1"></i>Posts to be deleted:</h6>
+                        <h6 class="text-muted mb-2"><i class="fas fa-eye me-1"></i>{$lang->showthread['mod_dp_preview']}</h6>
                         <div id="modal_posts_preview" style="max-height:380px;overflow-y:auto;"></div>
                     </div>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal"><i class="fas fa-times me-1"></i>Cancel</button>
-                    <button type="button" class="btn btn-danger btn-sm px-4" id="confirmDeleteBtn"><i class="fas fa-trash-alt me-1"></i>Delete Permanently</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal"><i class="fas fa-times me-1"></i>{$lang->showthread['mod_cancel']}</button>
+                    <button type="button" class="btn btn-danger btn-sm px-4" id="confirmDeleteBtn"><i class="fas fa-trash-alt me-1"></i>{$lang->showthread['mod_delete_permanently']}</button>
                 </div>
             </div>
         </div>
@@ -1254,7 +1250,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header border-0 py-4 text-white" style="background:linear-gradient(135deg,#f56565,#e53e3e)">
-                    <h4 class="modal-title w-100 text-center mb-0"><i class="fas fa-trash-alt me-2"></i>Delete Thread</h4>
+                    <h4 class="modal-title w-100 text-center mb-0"><i class="fas fa-trash-alt me-2"></i>{$lang->showthread['mod_dt_title']}</h4>
                     <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -1263,28 +1259,28 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                             <i class="fas fa-file-alt text-danger fs-4 mt-1 me-3"></i>
                             <div>
                                 <h5 class="mb-1" style="overflow-wrap:break-word">{$subject}</h5>
-                                <div class="text-muted small">TID: <strong>{$tid}</strong> &nbsp;&nbsp; <i class="fas fa-user me-1"></i>{$username}</div>
+                                <div class="text-muted small">{$lang->showthread['mod_tid']} <strong>{$tid}</strong> &nbsp;&nbsp; <i class="fas fa-user me-1"></i>{$username}</div>
                             </div>
                         </div>
                     </div>
                     <div class="alert alert-danger border-danger mb-4">
-                        <h5 class="alert-heading mb-2">Permanent Deletion Warning</h5>
-                        <p class="mb-0 small">All posts, attachments, and poll data will be permanently deleted. This cannot be undone.</p>
+                        <h5 class="alert-heading mb-2">{$lang->showthread['mod_dt_warning_title']}</h5>
+                        <p class="mb-0 small">{$lang->showthread['mod_dt_warning_text']}</p>
                     </div>
                     <div class="p-3 bg-light rounded mb-3">
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" id="dt_confirm1">
-                            <label class="form-check-label fw-bold text-danger" for="dt_confirm1">I understand this is permanent and cannot be undone</label>
+                            <label class="form-check-label fw-bold text-danger" for="dt_confirm1">{$lang->showthread['mod_dt_confirm1']}</label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="dt_confirm2">
-                            <label class="form-check-label text-muted" for="dt_confirm2">I have ensured all important content is backed up</label>
+                            <label class="form-check-label text-muted" for="dt_confirm2">{$lang->showthread['mod_dt_confirm2']}</label>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="fas fa-arrow-left me-1"></i>Cancel</button>
-                    <button type="button" class="btn btn-danger" id="confirmDeleteThreadBtn" disabled><i class="fas fa-trash-alt me-2"></i>Delete Permanently</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="fas fa-arrow-left me-1"></i>{$lang->showthread['mod_cancel']}</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteThreadBtn" disabled><i class="fas fa-trash-alt me-2"></i>{$lang->showthread['mod_delete_permanently']}</button>
                 </div>
             </div>
         </div>
@@ -1297,7 +1293,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                 <div class="modal-header bg-primary text-white py-3">
                     <div class="d-flex align-items-center gap-2">
                         <i class="fas fa-code-branch fa-lg"></i>
-                        <div><h5 class="modal-title mb-0">Merge Threads</h5><small class="opacity-75">Combine multiple threads into one</small></div>
+                        <div><h5 class="modal-title mb-0">{$lang->showthread['mod_mg_title']}</h5><small class="opacity-75">{$lang->showthread['mod_mg_subtitle']}</small></div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -1307,26 +1303,26 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         <input type="hidden" name="action"      value="do_merge" />
                         <input type="hidden" name="tid"         value="{$tid}" />
                         <div class="p-3 bg-light rounded mb-4 border-start border-primary border-4">
-                            <small class="text-muted d-block mb-1">Current Thread</small>
+                            <small class="text-muted d-block mb-1">{$lang->showthread['mod_mg_current']}</small>
                             <strong>{$subject}</strong>
-                            <small class="text-muted d-block mt-1">Thread ID: {$tid}</small>
+                            <small class="text-muted d-block mt-1">{$lang->showthread['mod_thread_id']} {$tid}</small>
                         </div>
                         <div class="mb-4">
-                            <label class="form-label fw-bold">New Subject</label>
+                            <label class="form-label fw-bold">{$lang->showthread['mod_mg_new_subject']}</label>
                             <input type="text" class="form-control" name="subject" value="{$subject}" required>
                         </div>
                         <div class="mb-4">
-                            <label class="form-label fw-bold">Thread URL to Merge</label>
+                            <label class="form-label fw-bold">{$lang->showthread['mod_mg_url']}</label>
                             <input type="text" class="form-control" name="threadurl" placeholder="https://example.com/thread-123" required>
                             <div class="mt-3 p-3 bg-light rounded small">
-                                The specified thread will be <strong>deleted</strong> and its posts merged into this one.
+                                {$lang->showthread['mod_mg_note']}
                             </div>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" form="mergeThreadForm" class="btn btn-primary btn-sm px-4"><i class="fas fa-code-branch me-1"></i>Merge Threads</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">{$lang->showthread['mod_cancel']}</button>
+                    <button type="submit" form="mergeThreadForm" class="btn btn-primary btn-sm px-4"><i class="fas fa-code-branch me-1"></i>{$lang->showthread['mod_mg_button']}</button>
                 </div>
             </div>
         </div>
@@ -1339,7 +1335,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                 <div class="modal-header bg-primary text-white py-3">
                     <div class="d-flex align-items-center gap-2">
                         <i class="fas fa-exchange-alt fa-lg"></i>
-                        <div><h5 class="modal-title mb-0">Move / Copy Thread</h5><small class="opacity-75">Transfer to another forum</small></div>
+                        <div><h5 class="modal-title mb-0">{$lang->showthread['mod_mv_title']}</h5><small class="opacity-75">{$lang->showthread['mod_mv_subtitle']}</small></div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -1349,30 +1345,30 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         <input type="hidden" name="action"      value="do_move" />
                         <input type="hidden" name="tid"         value="{$tid}" />
                         <div class="mb-4">
-                            <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>Destination Forum</label>
+                            <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>{$lang->showthread['mod_mv_destination']}</label>
                             {$forumjump}
                         </div>
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Transfer Method</label>
+                            <label class="form-label fw-bold">{$lang->showthread['mod_mv_method']}</label>
                             <div class="mt-method-option selected" onclick="mtSelectMethod('redirect', this)">
                                 <div class="d-flex align-items-center">
                                     <i class="fas fa-link fa-lg me-3 text-primary"></i>
-                                    <div class="flex-grow-1"><div class="fw-bold small">Move with Redirect</div><small class="text-muted">Leave redirect in original forum</small></div>
+                                    <div class="flex-grow-1"><div class="fw-bold small">{$lang->showthread['mod_mv_redirect']}</div><small class="text-muted">{$lang->showthread['mod_mv_redirect_desc']}</small></div>
                                 </div>
-                                <input type="number" name="redirect_expire" class="form-control form-control-sm mt-2" placeholder="Redirect days (blank = infinite)" min="1" max="365" />
+                                <input type="number" name="redirect_expire" class="form-control form-control-sm mt-2" placeholder="{$lang->showthread['mod_mv_redirect_days']}" min="1" max="365" />
                                 <input type="radio" name="method" value="redirect" checked class="d-none" />
                             </div>
                             <div class="mt-method-option" onclick="mtSelectMethod('move', this)">
                                 <div class="d-flex align-items-center">
                                     <i class="fas fa-arrow-right fa-lg me-3 text-primary"></i>
-                                    <div class="flex-grow-1"><div class="fw-bold small">Move Thread</div><small class="text-muted">Remove from original forum</small></div>
+                                    <div class="flex-grow-1"><div class="fw-bold small">{$lang->showthread['mod_mv_move']}</div><small class="text-muted">{$lang->showthread['mod_mv_move_desc']}</small></div>
                                 </div>
                                 <input type="radio" name="method" value="move" class="d-none" />
                             </div>
                             <div class="mt-method-option" onclick="mtSelectMethod('copy', this)">
                                 <div class="d-flex align-items-center">
                                     <i class="fas fa-copy fa-lg me-3 text-primary"></i>
-                                    <div class="flex-grow-1"><div class="fw-bold small">Copy Thread</div><small class="text-muted">Keep original, create copy</small></div>
+                                    <div class="flex-grow-1"><div class="fw-bold small">{$lang->showthread['mod_mv_copy']}</div><small class="text-muted">{$lang->showthread['mod_mv_copy_desc']}</small></div>
                                 </div>
                                 <input type="radio" name="method" value="copy" class="d-none" />
                             </div>
@@ -1380,14 +1376,28 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                     </form>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" form="moveThreadForm" class="btn btn-primary btn-sm px-4"><i class="fas fa-exchange-alt me-1"></i>Process Thread</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">{$lang->showthread['mod_cancel']}</button>
+                    <button type="submit" form="moveThreadForm" class="btn btn-primary btn-sm px-4"><i class="fas fa-exchange-alt me-1"></i>{$lang->showthread['mod_mv_process']}</button>
                 </div>
             </div>
         </div>
     </div>
     HTML;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function render_showthread(array $thread, string $multipage, string $addremovesubscription, string $newreply, string $pollbox, string $rating_html, string $posts, string $quickreply, string $search_thread, string $next_oldest_link, string $next_newest_link, string $addpoll, string $printthread, string $sendthread, string $moderationoptions, string $usersbrowsing, object $lang, string $baseurl, int $tid, int $thread_deleted): string
 {
@@ -1452,9 +1462,11 @@ function render_showthread(array $thread, string $multipage, string $addremovesu
 
 
 
+
+
 function render_report_modal(int $user_id): string
 {
-    global $mybb;
+    global $mybb, $lang;
     $postKey = htmlspecialchars($mybb->post_code);
 
     return <<<HTML
@@ -1463,9 +1475,9 @@ function render_report_modal(int $user_id): string
             <div class="modal-content shadow-lg border-0">
                 <div class="modal-header bg-gradient bg-success text-white">
                     <h5 class="modal-title fw-semibold" id="reportForumPostModalLabel">
-                        <i class="bi bi-flag-fill me-2"></i>Report Forum Post
+                        <i class="bi bi-flag-fill me-2"></i>{$lang->showthread['report_title']}
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$lang->showthread['report_close']}"></button>
                 </div>
                 <form id="reportForumPostForm" action="takereport.php" method="POST">
                     <div class="modal-body">
@@ -1479,12 +1491,12 @@ function render_report_modal(int $user_id): string
 
                         <div class="alert alert-info mb-3">
                             <i class="bi bi-info-circle me-2"></i>
-                            Reporting: <strong id="reportingForumPost">Forum Post</strong>
+                            {$lang->showthread['report_reporting']} <strong id="reportingForumPost">{$lang->showthread['report_forum_post']}</strong>
                         </div>
 
                         <div class="card border mb-4">
                             <div class="card-header bg-light py-2">
-                                <small class="text-muted fw-medium"><i class="bi bi-chat-left-text me-1"></i>Post Preview</small>
+                                <small class="text-muted fw-medium"><i class="bi bi-chat-left-text me-1"></i>{$lang->showthread['report_post_preview']}</small>
                             </div>
                             <div class="card-body py-3">
                                 <div class="d-flex align-items-start">
@@ -1496,17 +1508,17 @@ function render_report_modal(int $user_id): string
                                     <div class="flex-grow-1 ms-3">
                                         <div class="d-flex justify-content-between align-items-start mb-1">
                                             <div>
-                                                <span class="fw-medium" id="forumPostAuthorPreview">User</span>
+                                                <span class="fw-medium" id="forumPostAuthorPreview">{$lang->showthread['report_user']}</span>
                                                 <span class="text-muted small ms-2" id="forumPostDatePreview"></span>
                                             </div>
-                                            <span class="badge bg-success">Forum Post</span>
+                                            <span class="badge bg-success">{$lang->showthread['report_forum_post']}</span>
                                         </div>
-                                        <h6 class="text-primary mb-2" id="forumPostSubjectPreview">Post Subject</h6>
+                                        <h6 class="text-primary mb-2" id="forumPostSubjectPreview">{$lang->showthread['report_post_subject']}</h6>
                                         <div class="mb-2">
-                                            <span class="badge bg-light text-dark me-2"><i class="bi bi-grid me-1"></i>Forum: <span id="forumPostForumPreview">General</span></span>
-                                            <span class="badge bg-light text-dark"><i class="bi bi-chat-dots me-1"></i>Thread: <span id="forumPostThreadPreview">Discussion</span></span>
+                                            <span class="badge bg-light text-dark me-2"><i class="bi bi-grid me-1"></i>{$lang->showthread['report_forum']} <span id="forumPostForumPreview">{$lang->showthread['report_forum_default']}</span></span>
+                                            <span class="badge bg-light text-dark"><i class="bi bi-chat-dots me-1"></i>{$lang->showthread['report_thread']} <span id="forumPostThreadPreview">{$lang->showthread['report_thread_default']}</span></span>
                                         </div>
-                                        <p class="mb-0 text-muted" id="forumPostPreviewText">Post content will appear here...</p>
+                                        <p class="mb-0 text-muted" id="forumPostPreviewText">{$lang->showthread['report_content_default']}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1514,76 +1526,76 @@ function render_report_modal(int $user_id): string
 
                         <div class="mb-4">
                             <label for="forumPostReportReason" class="form-label fw-medium">
-                                <i class="bi bi-exclamation-triangle me-1"></i>Reason for Report
+                                <i class="bi bi-exclamation-triangle me-1"></i>{$lang->showthread['report_reason']}
                             </label>
                             <select class="form-select form-select-lg" id="forumPostReportReason" name="reason" required>
-                                <option value="" selected disabled>Select a reason...</option>
-                                <optgroup label="Content Violations">
-                                    <option value="spam">Spam / Advertising</option>
-                                    <option value="offensive">Offensive / Abusive Language</option>
-                                    <option value="harassment">Harassment / Bullying</option>
-                                    <option value="hate_speech">Hate Speech / Discrimination</option>
-                                    <option value="explicit">Explicit / Adult Content</option>
-                                    <option value="illegal">Illegal Content / Warez</option>
+                                <option value="" selected disabled>{$lang->showthread['report_select_reason']}</option>
+                                <optgroup label="{$lang->showthread['report_group_content']}">
+                                    <option value="spam">{$lang->showthread['report_r_spam']}</option>
+                                    <option value="offensive">{$lang->showthread['report_r_offensive']}</option>
+                                    <option value="harassment">{$lang->showthread['report_r_harassment']}</option>
+                                    <option value="hate_speech">{$lang->showthread['report_r_hate_speech']}</option>
+                                    <option value="explicit">{$lang->showthread['report_r_explicit']}</option>
+                                    <option value="illegal">{$lang->showthread['report_r_illegal']}</option>
                                 </optgroup>
-                                <optgroup label="Forum Rules">
-                                    <option value="off_topic">Off Topic / Wrong Forum</option>
-                                    <option value="double_post">Double Post / Cross-Posting</option>
-                                    <option value="flame">Flaming / Trolling</option>
-                                    <option value="personal_attack">Personal Attack</option>
-                                    <option value="spoiler">Unmarked Spoilers</option>
+                                <optgroup label="{$lang->showthread['report_group_rules']}">
+                                    <option value="off_topic">{$lang->showthread['report_r_off_topic']}</option>
+                                    <option value="double_post">{$lang->showthread['report_r_double_post']}</option>
+                                    <option value="flame">{$lang->showthread['report_r_flame']}</option>
+                                    <option value="personal_attack">{$lang->showthread['report_r_personal_attack']}</option>
+                                    <option value="spoiler">{$lang->showthread['report_r_spoiler']}</option>
                                 </optgroup>
-                                <optgroup label="Other Issues">
-                                    <option value="copyright">Copyright Infringement</option>
-                                    <option value="personal_info">Personal Information</option>
-                                    <option value="malware">Malware Link</option>
-                                    <option value="scam">Scam / Fraud</option>
-                                    <option value="other">Other Reason</option>
+                                <optgroup label="{$lang->showthread['report_group_other']}">
+                                    <option value="copyright">{$lang->showthread['report_r_copyright']}</option>
+                                    <option value="personal_info">{$lang->showthread['report_r_personal_info']}</option>
+                                    <option value="malware">{$lang->showthread['report_r_malware']}</option>
+                                    <option value="scam">{$lang->showthread['report_r_scam']}</option>
+                                    <option value="other">{$lang->showthread['report_r_other']}</option>
                                 </optgroup>
                             </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="forumPostReportDetails" class="form-label fw-medium">
-                                <i class="bi bi-chat-text me-1"></i>Additional Details
+                                <i class="bi bi-chat-text me-1"></i>{$lang->showthread['report_details']}
                             </label>
                             <textarea class="form-control" id="forumPostReportDetails" name="description"
-                                      rows="4" placeholder="Please provide more details..." maxlength="2000"></textarea>
+                                      rows="4" placeholder="{$lang->showthread['report_details_placeholder']}" maxlength="2000"></textarea>
                             <div class="form-text d-flex justify-content-between mt-1">
-                                <span>Optional but very helpful for moderators</span>
+                                <span>{$lang->showthread['report_details_hint']}</span>
                                 <span id="forumPostCharCount">0/2000</span>
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <label for="forumPostRuleViolation" class="form-label fw-medium">
-                                <i class="bi bi-journal-text me-1"></i>Specific Rule Violation (Optional)
+                                <i class="bi bi-journal-text me-1"></i>{$lang->showthread['report_rule_violation']}
                             </label>
                             <select class="form-select" id="forumPostRuleViolation" name="rule_violation">
-                                <option value="" selected>Not specified</option>
-                                <option value="rule_1">Rule 1: No spamming or advertising</option>
-                                <option value="rule_2">Rule 2: No offensive language</option>
-                                <option value="rule_3">Rule 3: No harassment or bullying</option>
-                                <option value="rule_4">Rule 4: Stay on topic</option>
-                                <option value="rule_5">Rule 5: No warez or illegal content</option>
-                                <option value="rule_6">Rule 6: Respect other members</option>
-                                <option value="rule_7">Rule 7: No double posting</option>
-                                <option value="rule_8">Rule 8: Use appropriate language</option>
+                                <option value="" selected>{$lang->showthread['report_rule_none']}</option>
+                                <option value="rule_1">{$lang->showthread['report_rule_1']}</option>
+                                <option value="rule_2">{$lang->showthread['report_rule_2']}</option>
+                                <option value="rule_3">{$lang->showthread['report_rule_3']}</option>
+                                <option value="rule_4">{$lang->showthread['report_rule_4']}</option>
+                                <option value="rule_5">{$lang->showthread['report_rule_5']}</option>
+                                <option value="rule_6">{$lang->showthread['report_rule_6']}</option>
+                                <option value="rule_7">{$lang->showthread['report_rule_7']}</option>
+                                <option value="rule_8">{$lang->showthread['report_rule_8']}</option>
                             </select>
                         </div>
 
                         <div class="mb-3">
                             <label for="forumPostReportEmail" class="form-label fw-medium">
-                                <i class="bi bi-envelope me-1"></i>Contact Email (Optional)
+                                <i class="bi bi-envelope me-1"></i>{$lang->showthread['report_email']}
                             </label>
                             <input type="email" class="form-control" id="forumPostReportEmail"
-                                   name="email" placeholder="your@email.com">
+                                   name="email" placeholder="{$lang->showthread['report_email_placeholder']}">
                         </div>
 
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-2">
                                 <label class="form-label fw-medium mb-0">
-                                    <i class="bi bi-shield-check me-1"></i>Security Check
+                                    <i class="bi bi-shield-check me-1"></i>{$lang->showthread['report_security']}
                                 </label>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
                                         id="forumPostRefreshCaptcha">
@@ -1592,13 +1604,13 @@ function render_report_modal(int $user_id): string
                             </div>
                             <div class="row g-2 align-items-center">
                                 <div class="col-6">
-                                    <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                    <img src="report_captcha.php" alt="{$lang->showthread['report_captcha_alt']}" class="border rounded"
                                          id="forumPostCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
-                                         title="Click to refresh">
+                                         title="{$lang->showthread['report_captcha_title']}">
                                 </div>
                                 <div class="col-6">
                                     <input type="text" class="form-control"
-                                           id="forumPostCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                           id="forumPostCaptchaInput" name="captcha_response" placeholder="{$lang->showthread['report_captcha_placeholder']}" autocomplete="off">
                                 </div>
                             </div>
                         </div>
@@ -1607,19 +1619,19 @@ function render_report_modal(int $user_id): string
                             <div class="d-flex">
                                 <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
                                 <div>
-                                    <strong>Important:</strong> Please only report posts that violate our
-                                    <a href="/forum/rules.php" class="alert-link">forum rules</a>.
-                                    False reports may result in penalties.
+                                    <strong>{$lang->showthread['report_important']}</strong> {$lang->showthread['report_rules_pre']}
+                                    <a href="/forum/rules.php" class="alert-link">{$lang->showthread['report_rules_link']}</a>.
+                                    {$lang->showthread['report_rules_post']}
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                            <i class="bi bi-x-lg me-1"></i>Cancel
+                            <i class="bi bi-x-lg me-1"></i>{$lang->showthread['report_cancel']}
                         </button>
                         <button type="submit" class="btn btn-success px-4" id="submitForumPostReport">
-                            <i class="bi bi-send me-1"></i>Submit Report
+                            <i class="bi bi-send me-1"></i>{$lang->showthread['report_submit']}
                         </button>
                     </div>
                 </form>

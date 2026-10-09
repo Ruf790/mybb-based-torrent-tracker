@@ -19,7 +19,7 @@ function show_error(
     string $title = 'An error has occurred!', 
     string $errorTitle = 'An error has occurred!'
 ): void {
-    global $rootpath;
+    global $rootpath, $BASEURL;
     
     // Escape output for security
     $escapedTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');

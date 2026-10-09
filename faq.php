@@ -8,16 +8,75 @@ gzip();
 // Загружаем языковой файл
 $lang->load('faq');
 
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… (и %1$s — так их переписывает $lang->load()).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * Lang strings escaped for HTML output (lang values are plain text)
+ */
+$L = array_map(
+    static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'),
+    $lang->faq
+);
+
+/**
+ * Count with the right plural form: picks <base>_one / _few / _many.
+ * Russian: 1 вопрос, 2 вопроса, 5 вопросов; English: 1 question, 2 questions.
+ * $extra are extra placeholder values ({2}, {3}…) and must be HTML-safe already.
+ */
+function faq_plural(int $n, string $base, string ...$extra): string
+{
+    global $L;
+
+    if (($L['lang_code'] ?? 'en') === 'ru') {
+        $mod10  = $n % 10;
+        $mod100 = $n % 100;
+        $form = ($mod10 === 1 && $mod100 !== 11) ? 'one'
+              : (($mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14)) ? 'few' : 'many');
+    } else {
+        $form = $n === 1 ? 'one' : 'many';
+    }
+
+    return ags_fmt($L[$base . '_' . $form], number_format($n), ...$extra);
+}
+
 /**
  * Класс FAQ системы с использованием существующего $db класса
  */
 class FAQSystem
 {
     private $db;
+    private bool $ru;
     
-    public function __construct($db)
+    public function __construct($db, bool $ru = false)
     {
         $this->db = $db;
+        $this->ru = $ru;
+    }
+
+    /**
+     * Localized column: name_ru / description_ru when Russian and filled in, English otherwise.
+     * $table is the table alias ('' or 'f.' / 'c.'), $col is 'name' or 'description'.
+     */
+    private function col(string $table, string $col, string $alias = ''): string
+    {
+        $alias = $alias !== '' ? $alias : $col;
+        return $this->ru
+            ? "COALESCE(NULLIF(TRIM({$table}{$col}_ru), ''), {$table}{$col}) AS {$alias}"
+            : "{$table}{$col} AS {$alias}";
     }
     
     /**
@@ -26,7 +85,7 @@ class FAQSystem
     public function getCategories(): array
     {
         $result = $this->db->sql_query_prepared("
-            SELECT id, name, description, icon_class 
+            SELECT id, " . $this->col('', 'name') . ", " . $this->col('', 'description') . ", icon_class 
             FROM faq 
             WHERE type = 'category' AND is_active = 1 
             ORDER BY disporder ASC
@@ -47,8 +106,8 @@ class FAQSystem
     public function getCategoryItems(int $categoryId): array
     {
         $result = $this->db->sql_query_prepared("
-            SELECT f.id, f.name, f.description, f.icon_class, f.views_count, 
-                   c.name as category_name 
+            SELECT f.id, " . $this->col('f.', 'name') . ", " . $this->col('f.', 'description') . ", f.icon_class, f.views_count, 
+                   " . $this->col('c.', 'name', 'category_name') . " 
             FROM faq f 
             LEFT JOIN faq c ON (c.id = f.pid)
             WHERE f.type = 'item' AND f.pid = ?
@@ -72,21 +131,24 @@ class FAQSystem
     {
         $likeValue = '%' . $query . '%';
 
+        // Output in the current language; match in both English and Russian columns
+        $cols = "id, " . $this->col('', 'name') . ", " . $this->col('', 'description');
+
         if ($searchType === 'titles') {
-            $sql = "SELECT id, name, description 
+            $sql = "SELECT {$cols} 
                     FROM faq 
                     WHERE type = 'item' AND is_active = 1 
-                    AND name LIKE ?
-                    ORDER BY disporder ASC";
-            $params = [$likeValue];
-        } else {
-            $sql = "SELECT id, name, description 
-                    FROM faq 
-                    WHERE type = 'item' AND is_active = 1 
-                    AND (name LIKE ?
-                    OR description LIKE ?) 
+                    AND (name LIKE ? OR name_ru LIKE ?)
                     ORDER BY disporder ASC";
             $params = [$likeValue, $likeValue];
+        } else {
+            $sql = "SELECT {$cols} 
+                    FROM faq 
+                    WHERE type = 'item' AND is_active = 1 
+                    AND (name LIKE ? OR name_ru LIKE ?
+                    OR description LIKE ? OR description_ru LIKE ?) 
+                    ORDER BY disporder ASC";
+            $params = [$likeValue, $likeValue, $likeValue, $likeValue];
         }
         
         $result = $this->db->sql_query_prepared($sql, $params);
@@ -106,7 +168,7 @@ class FAQSystem
     public function getPopularFAQ(int $limit = 5): array
     {
         $result = $this->db->sql_query_prepared("
-            SELECT id, name, views_count 
+            SELECT id, " . $this->col('', 'name') . ", views_count 
             FROM faq 
             WHERE type = 'item' AND is_active = 1 
             ORDER BY views_count DESC 
@@ -176,7 +238,7 @@ class FAQSystem
 }
 
 // Инициализация FAQ системы
-$faqSystem = new FAQSystem($db);
+$faqSystem = new FAQSystem($db, ($lang->faq['lang_code'] ?? 'en') === 'ru');
 
 // Получаем параметры
 $do = isset($_GET['do']) ? (string)$_GET['do'] : '';
@@ -185,8 +247,16 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $words = isset($_GET['words']) ? (string)$_GET['words'] : '';
 $searchtype = isset($_GET['searchtype']) ? (string)$_GET['searchtype'] : 'all';
 
+// JS strings: js_* keys without the prefix
+$jsLang = [];
+foreach ($lang->faq as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
 // Начинаем вывод
-stdhead($lang->faq['faqtitle']);
+stdhead($lang->faq['pane_title']);
 
 // Добавляем стили и скрипты
 echo '
@@ -303,11 +373,11 @@ echo '
 <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom mb-4">
     <div class="container">
         <a class="navbar-brand fw-bold gradient-text" href="' . $_SERVER['SCRIPT_NAME'] . '">
-            <i class="bi bi-question-circle me-2"></i>' . $lang->faq['faqtitle'] . '
+            <i class="bi bi-question-circle me-2"></i>' . $L['pane_title'] . '
         </a>
         <div class="navbar-nav">
             <a class="nav-link" href="/">
-                <i class="bi bi-arrow-left me-1"></i>' . ($lang->global['back'] ?? 'Back') . '
+                <i class="bi bi-arrow-left me-1"></i>' . $L['lbl_back'] . '
             </a>
         </div>
     </div>
@@ -320,10 +390,10 @@ echo '
     <!-- Заголовок и поиск -->
     <div class="text-center mb-5">
         <h1 class="display-5 fw-bold gradient-text mb-3">
-            <i class="bi bi-question-octagon me-2"></i>' . $lang->faq['faqtitle'] . '
+            <i class="bi bi-question-octagon me-2"></i>' . $L['pane_title'] . '
         </h1>
         <p class="lead text-muted mb-4">
-            ' . $lang->faq['faqdesc'] . '
+            ' . $L['pane_subtitle'] . '
         </p>
         
         <!-- Форма поиска -->
@@ -333,11 +403,11 @@ echo '
                 <input type="text" 
                        name="words" 
                        class="form-control" 
-                       placeholder="' . $lang->faq['searchplaceholder'] . '" 
+                       placeholder="' . $L['ph_search'] . '" 
                        value="' . htmlspecialchars($words, ENT_QUOTES, 'UTF-8') . '"
                        required>
                 <button class="btn btn-primary" type="submit">
-                    <i class="bi bi-search me-1"></i>' . $lang->faq['dosearch'] . '
+                    <i class="bi bi-search me-1"></i>' . $L['btn_search'] . '
                 </button>
             </form>
         </div>
@@ -350,11 +420,11 @@ echo '
 
 // Обработка действий
 if ($do === 'search' && !empty($words)) {
-    if (strlen($words) < 3) {
+    if (mb_strlen(trim($words), 'UTF-8') < 3) {
         echo '
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle me-2"></i>
-            ' . $lang->faq['searcherror'] . '
+            ' . $L['err_search_short'] . '
         </div>';
     } else {
         $results = $faqSystem->searchFAQ($words, $searchtype);
@@ -363,17 +433,17 @@ if ($do === 'search' && !empty($words)) {
             echo '
             <div class="text-center py-5">
                 <i class="bi bi-search display-1 text-muted mb-4"></i>
-                <h3 class="h4 fw-bold mb-3">' . $lang->faq['noresults'] . '</h3>
-                <p class="text-muted">' . sprintf($lang->faq['noresultsfor'], htmlspecialchars($words, ENT_QUOTES, 'UTF-8')) . '</p>
+                <h3 class="h4 fw-bold mb-3">' . $L['sec_no_results'] . '</h3>
+                <p class="text-muted">' . ags_fmt($L['msg_no_results_for'], htmlspecialchars($words, ENT_QUOTES, 'UTF-8')) . '</p>
                 <a href="' . $_SERVER['SCRIPT_NAME'] . '" class="btn btn-primary">
-                    <i class="bi bi-arrow-left me-2"></i>' . $lang->faq['backtofaq'] . '
+                    <i class="bi bi-arrow-left me-2"></i>' . $L['btn_back_to_faq'] . '
                 </a>
             </div>';
         } else {
             // Подсветка результатов поиска
             function highlightSearchTerms($text, $query) {
                 return preg_replace(
-                    '/(' . preg_quote($query, '/') . ')/i',
+                    '/(' . preg_quote($query, '/') . ')/iu',
                     '<span class="highlight">$1</span>',
                     $text
                 );
@@ -381,15 +451,15 @@ if ($do === 'search' && !empty($words)) {
             
             echo '
             <div class="mb-4">
-                <h3 class="h4 fw-bold mb-3">' . $lang->faq['searchresults'] . '</h3>
-                <p class="text-muted">' . sprintf($lang->faq['foundresults'], count($results), htmlspecialchars($words, ENT_QUOTES, 'UTF-8')) . '</p>
+                <h3 class="h4 fw-bold mb-3">' . $L['sec_search_results'] . '</h3>
+                <p class="text-muted">' . faq_plural(count($results), 'msg_found', htmlspecialchars($words, ENT_QUOTES, 'UTF-8')) . '</p>
             </div>
             
             <div class="row g-4">';
             
             foreach ($results as $item) {
                 $preview = strip_tags($item['description']);
-                $preview = strlen($preview) > 150 ? substr($preview, 0, 150) . '...' : $preview;
+                $preview = mb_strlen($preview, 'UTF-8') > 150 ? mb_substr($preview, 0, 150, 'UTF-8') . '…' : $preview;
                 
                 echo '
                 <div class="col-md-6">
@@ -398,7 +468,7 @@ if ($do === 'search' && !empty($words)) {
                             <h5 class="card-title fw-bold">' . highlightSearchTerms($item['name'], $words) . '</h5>
                             <p class="card-text text-muted small">' . highlightSearchTerms($preview, $words) . '</p>
                             <a href="javascript:void(0)" onclick="showFaqAnswer(' . $item['id'] . ')" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-eye me-1"></i>' . $lang->faq['viewanswer'] . '
+                                <i class="bi bi-eye me-1"></i>' . $L['btn_view_answer'] . '
                             </a>
                         </div>
                     </div>
@@ -415,16 +485,16 @@ if ($do === 'search' && !empty($words)) {
         echo '
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle me-2"></i>
-            ' . $lang->faq['noquestions'] . '
+            ' . $L['msg_no_questions'] . '
         </div>';
     } else {
-        $categoryName = $items[0]['category_name'] ?? $lang->faq['category'];
+        $categoryName = $items[0]['category_name'] ?? $lang->faq['lbl_category'];
         
         echo '
         <!-- Хлебные крошки -->
-        <nav aria-label="breadcrumb" class="mb-4">
+        <nav aria-label="' . $L['aria_breadcrumb'] . '" class="mb-4">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="' . $_SERVER['SCRIPT_NAME'] . '"><i class="bi bi-house-door me-1"></i>' . $lang->faq['faqtitle'] . '</a></li>
+                <li class="breadcrumb-item"><a href="' . $_SERVER['SCRIPT_NAME'] . '"><i class="bi bi-house-door me-1"></i>' . $L['pane_title'] . '</a></li>
                 <li class="breadcrumb-item active" aria-current="page">' . htmlspecialchars($categoryName, ENT_QUOTES, 'UTF-8') . '</li>
             </ol>
         </nav>
@@ -433,7 +503,7 @@ if ($do === 'search' && !empty($words)) {
             <h2 class="h3 fw-bold gradient-text">
                 <i class="bi bi-folder me-2"></i>' . htmlspecialchars($categoryName, ENT_QUOTES, 'UTF-8') . '
             </h2>
-            <span class="stat-badge">' . count($items) . ' ' . $lang->faq['questions'] . '</span>
+            <span class="stat-badge">' . faq_plural(count($items), 'lbl_questions') . '</span>
         </div>
         
         <div class="accordion" id="faqAccordion">';
@@ -463,11 +533,11 @@ if ($do === 'search' && !empty($words)) {
                         <div class="mt-4 pt-3 border-top">
                             <div class="d-flex justify-content-between align-items-center">
                                 <small class="text-muted">
-                                    <i class="bi bi-eye me-1"></i> ' . ($item['views_count'] ?? 0) . ' ' . $lang->faq['views'] . '
+                                    <i class="bi bi-eye me-1"></i> ' . faq_plural((int)($item['views_count'] ?? 0), 'lbl_views') . '
                                 </small>
                                 <div>
                                     <button class="btn btn-sm btn-outline-primary" onclick="copyFaqLink(' . $item['id'] . ')">
-                                        <i class="bi bi-link-45deg me-1"></i>' . $lang->faq['copylink'] . '
+                                        <i class="bi bi-link-45deg me-1"></i>' . $L['btn_copy_link'] . '
                                     </button>
                                 </div>
                             </div>
@@ -490,7 +560,7 @@ if ($do === 'search' && !empty($words)) {
         echo '
         <div class="alert alert-info">
             <i class="bi bi-info-circle me-2"></i>
-            ' . $lang->faq['nocategories'] . '
+            ' . $L['msg_no_categories'] . '
         </div>';
     } else {
         echo '<div class="row g-4">';
@@ -532,10 +602,10 @@ if ($do === 'search' && !empty($words)) {
                         </div>
                         <div class="d-flex justify-content-between align-items-center mt-4">
                             <span class="badge bg-primary bg-opacity-10 text-primary">
-                                ' . $count . ' ' . $lang->faq['questions'] . '
+                                ' . faq_plural((int)$count, 'lbl_questions') . '
                             </span>
                             <a href="?view=category&id=' . $category['id'] . '" class="btn btn-outline-primary btn-sm">
-                                ' . $lang->faq['browse'] . ' <i class="bi bi-arrow-right ms-1"></i>
+                                ' . $L['btn_browse'] . ' <i class="bi bi-arrow-right ms-1"></i>
                             </a>
                         </div>
                     </div>
@@ -556,7 +626,7 @@ echo '
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-light">
                     <h5 class="mb-0 fw-bold">
-                        <i class="bi bi-fire text-warning me-2"></i>' . $lang->faq['popular'] . '
+                        <i class="bi bi-fire text-warning me-2"></i>' . $L['sec_popular'] . '
                     </h5>
                 </div>
                 <div class="card-body p-0">
@@ -584,7 +654,7 @@ echo '
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-light">
                     <h5 class="mb-0 fw-bold">
-                        <i class="bi bi-bar-chart me-2"></i>' . $lang->faq['stats'] . '
+                        <i class="bi bi-bar-chart me-2"></i>' . $L['sec_stats'] . '
                     </h5>
                 </div>
                 <div class="card-body">';
@@ -592,15 +662,15 @@ echo '
 $stats = $faqSystem->getStats();
 echo '
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">' . $lang->faq['totalquestions'] . '</span>
+                        <span class="text-muted">' . $L['lbl_total_questions'] . '</span>
                         <span class="fw-bold text-primary">' . $stats['total_questions'] . '</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">' . $lang->faq['totalcategories'] . '</span>
+                        <span class="text-muted">' . $L['lbl_total_categories'] . '</span>
                         <span class="fw-bold text-success">' . $stats['total_categories'] . '</span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-muted">' . $lang->faq['totalviews'] . '</span>
+                        <span class="text-muted">' . $L['lbl_total_views'] . '</span>
                         <span class="fw-bold text-warning">' . ts_nf($stats['total_views']) . '</span>
                     </div>';
 
@@ -612,24 +682,24 @@ echo '
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-light">
                     <h5 class="mb-0 fw-bold">
-                        <i class="bi bi-lightning me-2"></i>' . $lang->faq['quicklinks'] . '
+                        <i class="bi bi-lightning me-2"></i>' . $L['sec_quick_links'] . '
                     </h5>
                 </div>
                 <div class="card-body p-0">
                     <ul class="list-group list-group-flush">
                         <li class="list-group-item">
                             <a href="/contact.php" class="text-decoration-none text-dark">
-                                <i class="bi bi-envelope me-2 text-primary"></i>' . $lang->faq['contactsupport'] . '
+                                <i class="bi bi-envelope me-2 text-primary"></i>' . $L['lnk_contact'] . '
                             </a>
                         </li>
                         <li class="list-group-item">
                             <a href="/forum.php" class="text-decoration-none text-dark">
-                                <i class="bi bi-chat-dots me-2 text-success"></i>' . $lang->faq['communityforum'] . '
+                                <i class="bi bi-chat-dots me-2 text-success"></i>' . $L['lnk_forum'] . '
                             </a>
                         </li>
                         <li class="list-group-item">
                             <a href="/help.php" class="text-decoration-none text-dark">
-                                <i class="bi bi-life-preserver me-2 text-info"></i>' . $lang->faq['helpcenter'] . '
+                                <i class="bi bi-life-preserver me-2 text-info"></i>' . $L['lnk_help'] . '
                             </a>
                         </li>
                     </ul>
@@ -640,12 +710,24 @@ echo '
 </div>
 
 
+<script>const AGS_LANG = ' . json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>
+
 <!-- Кастомные скрипты -->
 <script>
+/* i18n: t(key, fallback, ...args) — substitutes {1} and %1$s */
+function t(key, fallback) {
+    var s = (typeof AGS_LANG === \'object\' && AGS_LANG && typeof AGS_LANG[key] === \'string\') ? AGS_LANG[key] : fallback;
+    for (var i = 2; i < arguments.length; i++) {
+        var n = i - 1, a = String(arguments[i]);
+        s = s.split(\'{\' + n + \'}\').join(a).split(\'%\' + n + \'$s\').join(a);
+    }
+    return s;
+}
+
 function copyFaqLink(faqId) {
     const link = window.location.origin + window.location.pathname + \'?view=item&id=\' + faqId;
     navigator.clipboard.writeText(link).then(() => {
-        alert(\'' . $lang->faq['linkcopied'] . '\');
+        alert(t(\'link_copied\', \'Link copied to clipboard\'));
     });
 }
 
@@ -677,7 +759,7 @@ document.addEventListener(\'DOMContentLoaded\', function() {
             const input = this.querySelector(\'input[name="words"]\');
             if (input.value.trim().length < 3) {
                 e.preventDefault();
-                alert(\'' . $lang->faq['searchminchars'] . '\');
+                alert(t(\'search_min\', \'Please enter at least 3 characters.\'));
                 input.focus();
             }
         });

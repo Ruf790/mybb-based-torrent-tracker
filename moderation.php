@@ -2,7 +2,11 @@
 declare(strict_types=1);
 
 define('IN_FORUM', true);
+
 require_once 'global.php';
+
+$lang->load('moderation');
+
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_parent_list.php';
@@ -11,7 +15,21 @@ require_once INC_PATH . '/functions_forum_jump.php';
 
 $moderation = new Moderation();
 
-$lang->load('moderation');
+// ── Helper: {1}, {2}… placeholders for lang strings ─────────────────────────
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
+
 $plugins->run_hooks('moderation_start');
 
 $tid  = $mybb->get_input('tid',  MyBB::INPUT_INT);
@@ -27,7 +45,7 @@ if ($CURUSER['id'] === 0) {
 if ($pid) {
     $post = get_post($pid);
     if (!$post) {
-        error('error_invalidpost', $lang->error);
+        error($lang->moderation['error_invalidpost'], $lang->moderation['error']);
     }
     $tid = $post['tid'];
 }
@@ -35,7 +53,7 @@ if ($pid) {
 if ($tid) {
     $thread = get_thread($tid);
     if (!$thread) {
-        error('error_invalidthread', $lang->error);
+        error($lang->moderation['error_invalidthread'], $lang->moderation['error']);
     }
     $fid = $thread['fid'];
 }
@@ -50,7 +68,7 @@ if ($pmid > 0) {
     $query = $db->sql_query_prepared("SELECT uid, subject, ipaddress, fromid FROM privatemessages WHERE pmid = ?", [$pmid]);
     $pm = $query ? $db->fetch_array($query) : null;
     if (!$pm) {
-        error($lang->error_invalidpm, $lang->error);
+        error($lang->moderation['error_invalidpm'], $lang->moderation['error']);
     }
 }
 
@@ -58,8 +76,8 @@ $action = $mybb->get_input('action');
 $mybb->input['action'] = $action;
 
 match ($action) {
-    'reports'    => add_breadcrumb($lang->reported_posts),
-    'allreports' => add_breadcrumb($lang->all_reported_posts),
+    'reports'    => add_breadcrumb($lang->moderation['reported_posts']),
+    'allreports' => add_breadcrumb($lang->moderation['all_reported_posts']),
     default      => null,
 };
 
@@ -128,10 +146,11 @@ function build_month_options(int $selected, array $lang_months): string {
 
 
 // ── Moderation assets (SweetAlert2, toast, moderation JS) ───────────────────
-$_mod_assets = '<link rel="stylesheet" href="' . htmlspecialchars($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">' . PHP_EOL
+$_mod_assets = '<script>const AGS_LANG = ' . mod_js_lang() . ';</script>' . PHP_EOL
+    . '<link rel="stylesheet" href="' . htmlspecialchars($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">' . PHP_EOL
     . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/sweetalert2.min.js"></script>' . PHP_EOL
     . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/toast.js"></script>' . PHP_EOL
-    . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/moderation.js"></script>';
+    . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/moderation.js?ver=21"></script>';
 
 // ── Begin switch ─────────────────────────────────────────────────────────────
 switch ($action) {
@@ -213,7 +232,7 @@ switch ($action) {
                 $newfid   = (int)($delmod['new_forum'] ?? 0);
                 $newforum = get_forum($newfid);
                 if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') {
-                    $errors[] = 'Invalid forum';
+                    $errors[] = $lang->moderation['error_invalidforum'];
                 }
                 if (($delmod['method'] ?? '') !== 'copy' && $fid === $newfid) {
                     $errors[] = $lang->moderation['error_movetosameforum'];
@@ -268,17 +287,17 @@ switch ($action) {
                 if (!empty($mybb->input['tid'])) {
                     moderation_redirect(
                         get_thread_link($thread['tid']),
-                        sprintf($lang->moderation['redirect_delayed_moderation_thread'], $rundate_format)
+                        ags_fmt($lang->moderation['redirect_delayed_moderation_thread'], $rundate_format)
                     );
                 } elseif ($mybb->get_input('inlinetype') === 'search') {
                     moderation_redirect(
                         get_forum_link($fid),
-                        sprintf($lang->moderation['redirect_delayed_moderation_search'], $rundate_format)
+                        ags_fmt($lang->moderation['redirect_delayed_moderation_search'], $rundate_format)
                     );
                 } else {
                     moderation_redirect(
                         get_forum_link($fid),
-                        sprintf($lang->moderation['redirect_delayed_moderation_forum'], $rundate_format)
+                        ags_fmt($lang->moderation['redirect_delayed_moderation_forum'], $rundate_format)
                     );
                 }
             }
@@ -375,7 +394,7 @@ switch ($action) {
                 $delayed_thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($delayed_thread['subject']));
                 $info .= '<strong>' . $lang->moderation['thread'] . '</strong> <a href="' . $delayed_thread['link'] . '">' . $delayed_thread['subject'] . '</a><br />';
             } else {
-                $info .= '<strong>' . $lang->moderation['thread'] . '</strong> multiple_threads<br />';
+                $info .= '<strong>' . $lang->moderation['thread'] . '</strong> ' . $lang->moderation['multiple_threads'] . '<br />';
             }
 
             if ($delayedmod['fname']) {
@@ -399,19 +418,18 @@ switch ($action) {
     <div class="col-lg align-self-center">' . $delayedmod['dateline'] . '</div>
     <div class="col-lg align-self-center">' . $delayedmod['action'] . '</div>
     <div class="col-lg align-self-center">' . $info . '</div>
-    <div class="col-lg align-self-center"><a href="moderation.php?action=cancel_delayedmoderation&amp;tid=' . $tid . '&amp;fid=' . $fid . '&amp;did=' . $delayedmod['did'] . '&amp;my_post_key=' . $mybb->post_code . '">Cancel</a></div>
+    <div class="col-lg align-self-center"><a href="moderation.php?action=cancel_delayedmoderation&amp;tid=' . $tid . '&amp;fid=' . $fid . '&amp;did=' . $delayedmod['did'] . '&amp;my_post_key=' . $mybb->post_code . '">' . $lang->moderation['cancel'] . '</a></div>
 </div>';
             $trow = alt_trow();
         }
 
         if (!$delayedmods) {
-            $delayedmods = '<div class="py-2 border-top">no_delayed_mods</div>';
+            $delayedmods = '<div class="py-2 border-top">' . $lang->moderation['no_delayed_mods'] . '</div>';
         }
 
         // ── Build thread/inline vars ─────────────────────────────────────────
         $url = '';
         if ($mybb->get_input('tid', MyBB::INPUT_INT)) {
-            $lang->threads = $lang->thread;
             $thread['link'] = get_thread_link($tid);
             $threads = '<div class="p-3 mt-3 mb-3 border rounded bg-light"><a href="' . $thread['link'] . '">' . $thread['subject'] . '</a></div>';
             $moderation_delayedmoderation_merge = '<input type="radio" name="type" class="form-check-input" value="merge" ' . $type_selected['merge'] . ' id="type_merge" onclick="toggleType();" />
@@ -433,7 +451,7 @@ switch ($action) {
             if (count($tids) < 1) {
                 stderr($lang->moderation['error_inline_nothreadsselected']);
             }
-            $threads = sprintf($lang->moderation['threads_selected'], count($tids));
+            $threads = ags_fmt($lang->moderation['threads_selected'], count($tids));
             $moderation_delayedmoderation_merge = '';
         }
 
@@ -489,7 +507,7 @@ switch ($action) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>{$SITENAME} - {$lang->moderation['delayed_moderation']} | Moderation Center</title>
+    <title>{$SITENAME} - {$lang->moderation['delayed_moderation']} | {$lang->moderation['mod_center']}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/mod2.css">
 </head>
@@ -499,7 +517,7 @@ switch ($action) {
     <div class="glass-card mb-4 overflow-hidden">
         <div class="premium-header">
             <i class="fas fa-clock fa-fw"></i>
-            <div><h3>{$lang->moderation['delayed_mod_queue']}</h3><p>Scheduled actions * Pending approval</p></div>
+            <div><h3>{$lang->moderation['delayed_mod_queue']}</h3><p>{$lang->moderation['sub_delayed_queue']}</p></div>
             <i class="fas fa-calendar-week ms-auto opacity-50"></i>
         </div>
         <div class="p-3 p-md-4">
@@ -524,7 +542,7 @@ switch ($action) {
         <div class="glass-card mb-4">
             <div class="premium-header">
                 <i class="fas fa-calendar-alt fa-fw"></i>
-                <div><h3>{$lang->moderation['delayed_moderation']}</h3><p>Set a precise date &amp; time for automation</p></div>
+                <div><h3>{$lang->moderation['delayed_moderation']}</h3><p>{$lang->moderation['sub_delayed_form']}</p></div>
             </div>
             <div class="p-4">
                 <div class="mb-4" style="background:#eef3fa;border-radius:24px;padding:12px 20px;">
@@ -586,13 +604,13 @@ switch ($action) {
         </div>
     </form>
 </div>
-<script type="text/javascript" src="{$BASEURL}/scripts/form-validation2.js"></script>
+<script type="text/javascript" src="{$BASEURL}/scripts/form-validation2.js?ver=21"></script>
 <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/mod.css">
 </body>
 </html>
 HTML;
 
-        stdhead('Delayed Moderation');
+        stdhead($lang->moderation['delayed_moderation']);
         echo $delayedmoderation;
 echo $_mod_assets;
 stdfoot();
@@ -602,19 +620,19 @@ stdfoot();
     case 'openclosethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         if ($thread['closed'] == 1) {
             $openclose = 'opened';
-            $redirect  = 'redirect_openthread';
+            $redirect  = $lang->moderation['redirect_openthread'];
             $moderation->open_threads($tid);
         } else {
             $openclose = 'closed';
-            $redirect  = 'redirect_closethread';
+            $redirect  = $lang->moderation['redirect_closethread'];
             $moderation->close_threads($tid);
         }
 
-        log_moderator_action($modlogdata, sprintf($lang->moderation['mod_process'], $openclose));
+        log_moderator_action($modlogdata, 'Thread ' . $openclose);
         redirect(get_thread_link($thread['tid']), $redirect);
         break;
 
@@ -622,21 +640,21 @@ stdfoot();
     case 'stick':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_stick');
 
         if ($thread['sticky'] == 1) {
             $stuckunstuck = 'unstuck';
-            $redirect     = 'redirect_unstickthread';
+            $redirect     = $lang->moderation['redirect_unstickthread'];
             $moderation->unstick_threads($tid);
         } else {
             $stuckunstuck = 'stuck';
-            $redirect     = 'redirect_stickthread';
+            $redirect     = $lang->moderation['redirect_stickthread'];
             $moderation->stick_threads($tid);
         }
 
-        log_moderator_action($modlogdata, sprintf($lang->moderation['mod_process'], $stuckunstuck));
+        log_moderator_action($modlogdata, 'Thread ' . $stuckunstuck);
         redirect(get_thread_link($thread['tid']), $redirect);
         break;
 
@@ -644,12 +662,12 @@ stdfoot();
     case 'removeredirects':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
+        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $plugins->run_hooks('moderation_removeredirects');
         $moderation->remove_redirects($tid);
-        log_moderator_action($modlogdata, $lang->redirects_removed);
-        moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_redirectsremoved);
+        log_moderator_action($modlogdata, 'Thread Redirects Removed');
+        moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_redirectsremoved']);
         break;
 
     // ── Delete thread ────────────────────────────────────────────────────────
@@ -659,19 +677,19 @@ stdfoot();
         $plugins->run_hooks('moderation_do_deletethread');
 
         $modlogdata['thread_subject'] = $thread['subject'];
-        log_moderator_action($modlogdata, sprintf($lang->moderation['thread_deleted'], $thread['subject']));
+        log_moderator_action($modlogdata, 'Thread Deleted Permanently: ' . $thread['subject']);
         $moderation->delete_thread($tid);
         moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_threaddeleted']);
         break;
 
     // ── Delete poll (confirmation) ───────────────────────────────────────────
     case 'deletepoll':
-        add_breadcrumb('nav_deletepoll');
+        add_breadcrumb($lang->moderation['nav_deletepoll']);
         $plugins->run_hooks('moderation_deletepoll');
 
         $q = $db->sql_query_prepared("SELECT pid FROM polls WHERE tid = ?", [$tid]);
         $poll = $q ? $db->fetch_array($q) : null;
-        if (!$poll) stderr('error_invalidpoll');
+        if (!$poll) stderr($lang->moderation['error_invalidpoll']);
 
         $deletepoll = <<<HTML
 <!DOCTYPE html>
@@ -695,7 +713,7 @@ stdfoot();
             <div class="poll-header">
                 <div style="font-size:48px"><i class="fas fa-chart-bar"></i></div>
                 <h4 class="mb-2">{$lang->moderation['delete_poll']}</h4>
-                <p class="mb-0 opacity-75">This action cannot be undone</p>
+                <p class="mb-0 opacity-75">{$lang->moderation['tip_cannot_undo']}</p>
             </div>
             <form action="moderation.php" method="post">
                 <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
@@ -704,16 +722,16 @@ stdfoot();
                 <input type="hidden" name="delete" value="1" />
                 <div class="card-body p-4">
                     <div class="alert alert-danger mb-4">
-                        <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Warning</h5>
-                        <p class="mb-0">{$lang->moderation['delete_poll']}. Once deleted, poll cannot be restored.</p>
+                        <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>{$lang->moderation['lbl_warning']}</h5>
+                        <p class="mb-0">{$lang->moderation['warn_poll_delete']}</p>
                     </div>
                     <div class="security-box">
-                        <h6><i class="fas fa-shield-alt me-2"></i>Security Verification</h6>
+                        <h6><i class="fas fa-shield-alt me-2"></i>{$lang->moderation['sec_security']}</h6>
                         <div class="mt-2">{$loginbox}</div>
                     </div>
                 </div>
                 <div class="card-footer bg-white py-3 text-end">
-                    <a href="showthread.php?tid={$tid}" class="btn btn-outline-secondary me-2"><i class="fas fa-times me-1"></i> Cancel</a>
+                    <a href="showthread.php?tid={$tid}" class="btn btn-outline-secondary me-2"><i class="fas fa-times me-1"></i> {$lang->moderation['cancel']}</a>
                     <button type="submit" class="btn btn-delete text-white" name="submit" value="{$lang->moderation['delete_poll']}">
                         <i class="fas fa-trash-alt me-1"></i> {$lang->moderation['delete_poll']}
                     </button>
@@ -724,7 +742,7 @@ stdfoot();
 </body>
 </html>
 HTML;
-        stdhead('Delete Poll');
+        stdhead($lang->moderation['delete_poll']);
         echo $deletepoll;
 echo $_mod_assets;
 stdfoot();
@@ -733,15 +751,15 @@ stdfoot();
     // ── Do delete poll ───────────────────────────────────────────────────────
     case 'do_deletepoll':
         verify_post_check($mybb->get_input('my_post_key'));
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
-        if (!isset($mybb->input['delete'])) stderr('redirect_pollnotdeleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
+        if (!isset($mybb->input['delete'])) stderr($lang->moderation['redirect_pollnotdeleted']);
 
         $q = $db->sql_query_prepared("SELECT pid FROM polls WHERE tid = ?", [$tid]);
         $poll = $q ? $db->fetch_array($q) : null;
-        if (!$poll) stderr('error_invalidpoll');
+        if (!$poll) stderr($lang->moderation['error_invalidpoll']);
 
         $plugins->run_hooks('moderation_do_deletepoll');
-        log_moderator_action($modlogdata, sprintf($lang->moderation['poll_deleted'], $thread['subject']));
+        log_moderator_action($modlogdata, 'Poll Deleted: ' . $thread['subject']);
         $moderation->delete_poll($poll['pid']);
         redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_polldeleted']);
         break;
@@ -750,11 +768,11 @@ stdfoot();
     case 'approvethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
+        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $thread = get_thread($tid);
         $plugins->run_hooks('moderation_approvethread');
-        log_moderator_action($modlogdata, sprintf($lang->moderation['thread_approved'], $thread['subject']));
+        log_moderator_action($modlogdata, 'Thread Approved: ' . $thread['subject']);
         $moderation->approve_threads($tid, $fid);
         moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_threadapproved']);
         break;
@@ -763,11 +781,11 @@ stdfoot();
     case 'unapprovethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
+        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $thread = get_thread($tid);
         $plugins->run_hooks('moderation_unapprovethread');
-        log_moderator_action($modlogdata, sprintf($lang->moderation['thread_unapproved'], $thread['subject']));
+        log_moderator_action($modlogdata, 'Thread Unapproved: ' . $thread['subject']);
         $moderation->unapprove_threads($tid);
         moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_threadunapproved']);
         break;
@@ -780,11 +798,11 @@ stdfoot();
         $moveto = $mybb->get_input('moveto', MyBB::INPUT_INT);
         $method = $mybb->get_input('method');
 
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $newforum = get_forum($moveto);
         if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') {
-            stderr('error_invalidforum');
+            stderr($lang->moderation['error_invalidforum']);
         }
         if ($method !== 'copy' && $thread['fid'] === $moveto) {
             stderr($lang->moderation['error_movetosameforum']);
@@ -800,8 +818,8 @@ stdfoot();
         $newtid = $moderation->move_thread($tid, $moveto, $method, $expire);
 
         $log_msg = match ($method) {
-            'copy'  => $lang->moderation['thread_copied'],
-            default => $lang->moderation['thread_moved'],
+            'copy'  => 'Thread Copied',
+            default => 'Thread Moved',
         };
         log_moderator_action($modlogdata, $log_msg);
         redirect(get_thread_link($newtid), $lang->moderation['redirect_threadmoved']);
@@ -811,7 +829,7 @@ stdfoot();
     case 'do_merge':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_do_merge');
 
@@ -840,20 +858,20 @@ stdfoot();
         }
 
         $mergethread = get_thread($mergetid);
-        if (!$mergethread)        stderr('error_badmergeurl');
-        if ($mergetid === $tid)   stderr('error_mergewithself');
+        if (!$mergethread)        stderr($lang->moderation['error_badmergeurl']);
+        if ($mergetid === $tid)   stderr($lang->moderation['error_mergewithself']);
 
         $subject = $mybb->get_input('subject') ?: $thread['subject'];
         $moderation->merge_threads($mergetid, $tid, $subject);
-        log_moderator_action($modlogdata, $lang->moderation['thread_merged']);
+        log_moderator_action($modlogdata, 'Threads Merged');
         redirect(get_thread_link($tid), $lang->moderation['redirect_threadsmerged']);
         break;
 
     // ── Split thread ─────────────────────────────────────────────────────────
     case 'split':
-        add_breadcrumb('nav_split');
+        add_breadcrumb($lang->moderation['nav_split']);
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $query = $db->sql_query_prepared("
             SELECT p.*, u.*
@@ -863,7 +881,7 @@ stdfoot();
             ORDER BY dateline ASC, pid ASC
         ", [$tid]);
 
-        if ($db->num_rows($query) <= 1) stderr('error_cantsplitonepost');
+        if ($db->num_rows($query) <= 1) stderr($lang->moderation['error_cantsplitonepost']);
 
         $posts = '';
         while ($post = $db->fetch_array($query)) {
@@ -871,7 +889,7 @@ stdfoot();
             $post['username'] = htmlspecialchars_uni($post['username']);
             $message          = $parser->parse_message($post['message'], $parser_options_default);
             $posts .= '<div class="mt-4 mb-4 border border-5 p-3 rounded">
-                Posted by ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
+                ' . $lang->moderation['posted_by'] . ' ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
                 <input type="checkbox" class="form-check-input" name="splitpost[' . $post['pid'] . ']" value="1" />
                 <br /><br />' . $message . '
             </div>';
@@ -881,19 +899,19 @@ stdfoot();
         $forumselect = build_forum_jump('', $fid, 1, '', 0, true, '', 'moveto');
         $plugins->run_hooks('moderation_split');
 
-        stdhead('Split Thread');
+        stdhead($lang->moderation['split_thread']);
         echo '<form action="moderation.php" method="post">
             <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
             <div class="container-md"><div class="card"><div class="card-body">
-                <div class="legend mb-4">Split Thread</div>
+                <div class="legend mb-4">' . $lang->moderation['split_thread'] . '</div>
                 <div class="ps-3 pe-3">' . $loginbox . '</div>
-                <div class="ps-3 pe-3 mt-3">New Subject:
-                    <input type="text" class="form-control border form-control-sm mb-3" name="newsubject" value="[split] ' . $thread['subject'] . '" size="50" />
-                    New Forum: ' . $forumselect . '
+                <div class="ps-3 pe-3 mt-3">' . $lang->moderation['new_subject'] . '
+                    <input type="text" class="form-control border form-control-sm mb-3" name="newsubject" value="' . $lang->moderation['split_thread_subject'] . ' ' . $thread['subject'] . '" size="50" />
+                    ' . $lang->moderation['new_forum'] . ' ' . $forumselect . '
                 </div>
-                <div class="legend mt-4 mb-4">Posts to Split</div>
+                <div class="legend mt-4 mb-4">' . $lang->moderation['posts_to_split'] . '</div>
                 <div class="ps-3 pe-3">' . $posts . '
-                    <div class="mt-3 text-end"><input type="submit" class="btn btn-primary" name="submit" value="Split Thread" /></div>
+                    <div class="mt-3 text-end"><input type="submit" class="btn btn-primary" name="submit" value="' . $lang->moderation['split_thread'] . '" /></div>
                     <input type="hidden" name="action" value="do_split" />
                     <input type="hidden" name="tid" value="' . $tid . '" />
                 </div>
@@ -907,21 +925,21 @@ stdfoot();
     case 'do_split':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr('error_thread_deleted');
+        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_do_split');
 
         $splitpost = $mybb->get_input('splitpost', MyBB::INPUT_ARRAY);
-        if (empty($splitpost)) stderr('error_nosplitposts');
+        if (empty($splitpost)) stderr($lang->moderation['error_nosplitposts']);
 
         $count_q = $db->sql_query_prepared("SELECT COUNT(*) AS totalposts FROM posts WHERE tid = ?", [$tid]);
         $count = $count_q ? $db->fetch_array($count_q) : null;
-        if ($count['totalposts'] == 1)                           stderr('error_cantsplitonepost');
-        if ($count['totalposts'] == count($splitpost))           stderr('error_cantsplitall');
+        if ($count['totalposts'] == 1)                           stderr($lang->moderation['error_cantsplitonepost']);
+        if ($count['totalposts'] == count($splitpost))           stderr($lang->moderation['error_cantsplitall']);
 
         $moveto   = !empty($mybb->input['moveto']) ? $mybb->get_input('moveto', MyBB::INPUT_INT) : $fid;
         $newforum = get_forum($moveto);
-        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr('error_invalidforum');
+        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr($lang->moderation['error_invalidforum']);
 
         $pids  = [];
         $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ?", [$tid]);
@@ -932,19 +950,19 @@ stdfoot();
         }
 
         $newtid = $moderation->split_posts($pids, $tid, $moveto, $mybb->get_input('newsubject'));
-        moderation_redirect(get_thread_link($newtid), 'The thread has been split successfully.<br />You will now be taken to the new thread');
+        moderation_redirect(get_thread_link($newtid), $lang->moderation['redirect_threadsplit']);
         break;
 
     // ── Remove subscriptions ─────────────────────────────────────────────────
     case 'removesubscriptions':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
+        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $plugins->run_hooks('moderation_removesubscriptions');
         $moderation->remove_thread_subscriptions($tid, true);
-        log_moderator_action($modlogdata, $lang->removed_subscriptions);
-        moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_removed_subscriptions);
+        log_moderator_action($modlogdata, 'Removed All Subscriptions');
+        moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_removed_subscriptions']);
         break;
 
     // ── Helper: get inline threads ───────────────────────────────────────────
@@ -965,12 +983,12 @@ stdfoot();
             $moderation->delete_thread($t);
         }
 
-        log_moderator_action($modlogdata, $lang->moderation['multi_deleted_threads']);
+        log_moderator_action($modlogdata, 'Threads Deleted Permanently');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
 
-        redirect(get_forum_link($fid), 'The selected threads have been deleted permanently.<br />You will now be returned to your previous location');
+        redirect(get_forum_link($fid), $lang->moderation['redirect_inline_threadsdeleted']);
         break;
 
     // ── Helper closure for inline thread operations ──────────────────────────
@@ -982,11 +1000,11 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->open_threads($threads);
-        log_moderator_action($modlogdata, $lang->moderation['multi_opened_threads']);
+        log_moderator_action($modlogdata, 'Threads Opened');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1001,11 +1019,11 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->close_threads($threads);
-        log_moderator_action($modlogdata, $lang->moderation['multi_closed_threads']);
+        log_moderator_action($modlogdata, 'Threads Closed');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1020,11 +1038,11 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->approve_threads($threads, $fid);
-        log_moderator_action($modlogdata, $lang->moderation['multi_approved_threads']);
+        log_moderator_action($modlogdata, 'Threads Approved');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1040,11 +1058,11 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error('error_inline_nothreadsselected', $lang->error);
+        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_threads($threads, $fid);
-        log_moderator_action($modlogdata, $lang->moderation['multi_unapproved_threads']);
+        log_moderator_action($modlogdata, 'Threads Unapproved');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1064,7 +1082,7 @@ stdfoot();
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->stick_threads($threads);
-        log_moderator_action($modlogdata, $lang->moderation['multi_stuck_threads']);
+        log_moderator_action($modlogdata, 'Threads Stuck');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1083,7 +1101,7 @@ stdfoot();
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unstick_threads($threads);
-        log_moderator_action($modlogdata, $lang->moderation['multi_unstuck_threads']);
+        log_moderator_action($modlogdata, 'Threads Unstuck');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');
@@ -1092,7 +1110,7 @@ stdfoot();
 
     // ── Move threads (inline) — show form ────────────────────────────────────
     case 'multimovethreads':
-        add_breadcrumb('nav_multi_movethreads');
+        add_breadcrumb($lang->moderation['nav_multi_movethreads']);
 
         $threads = !empty($mybb->input['searchid'])
             ? getids($mybb->get_input('searchid'), 'search')
@@ -1109,6 +1127,8 @@ stdfoot();
 
         $forumselect = build_forum_jump('', '', 1, '', 0, true, '', 'moveto');
         $return_url  = htmlspecialchars_uni($mybb->get_input('url'));
+
+        $bulk_threads_hint = ags_fmt($lang->moderation['hint_bulk_threads'], $thread_count);
 
         $movethreads = <<<HTML
 <!DOCTYPE html>
@@ -1135,10 +1155,10 @@ stdfoot();
         <div class="card-header text-center bg-primary bg-opacity-10">
             <i class="fas fa-exchange-alt fa-2x text-primary"></i>
             <h2 class="h4 mt-2">{$lang->moderation['move_threads']}</h2>
-            <p class="mb-0 text-muted">Transfer multiple threads to another forum</p>
+            <p class="mb-0 text-muted">{$lang->moderation['sub_move_threads']}</p>
             <div class="mt-3">
                 <div class="threads-badge"><i class="fas fa-layer-group"></i> {$thread_count}</div>
-                <p class="text-muted small mb-0">Threads Selected</p>
+                <p class="text-muted small mb-0">{$lang->moderation['lbl_threads_selected']}</p>
             </div>
         </div>
         <form action="moderation.php" method="post" id="multiMoveForm">
@@ -1151,14 +1171,14 @@ stdfoot();
                 <div class="mb-4">
                     <div class="card bg-light border-0">
                         <div class="card-body">
-                            <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                            <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
                             {$loginbox}
                         </div>
                     </div>
                 </div>
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle me-2"></i>
-                    Bulk operation on <strong>{$thread_count}</strong> thread(s).
+                    {$bulk_threads_hint}
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>{$lang->moderation['new_forum']}</label>
@@ -1181,7 +1201,7 @@ stdfoot();
                             <div class="radio-circle"><div class="radio-circle-inner"></div></div>
                         </div>
                         <div class="mt-2">
-                            <input type="number" name="redirect_expire" class="form-control redirect-input" placeholder="Days" min="1" max="365">
+                            <input type="number" name="redirect_expire" class="form-control redirect-input" placeholder="{$lang->moderation['ph_days']}" min="1" max="365">
                             <small class="text-muted ms-2">{$lang->moderation['redirect_expire_note']}</small>
                         </div>
                         <input type="radio" name="method" value="redirect" checked class="d-none">
@@ -1197,7 +1217,7 @@ stdfoot();
                 </div>
             </div>
             <div class="card-footer bg-light text-end">
-                <a href="{$return_url}" class="btn btn-outline-secondary me-2"><i class="fas fa-arrow-left me-1"></i> Cancel</a>
+                <a href="{$return_url}" class="btn btn-outline-secondary me-2"><i class="fas fa-arrow-left me-1"></i> {$lang->moderation['cancel']}</a>
                 <button type="submit" name="submit" class="btn btn-primary">
                     <i class="fas fa-exchange-alt me-1"></i> {$lang->moderation['move_threads']}
                 </button>
@@ -1236,7 +1256,7 @@ stdfoot();
         $tids = array_map('intval', $threadlist);
 
         $newforum = get_forum($moveto);
-        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr('error_invalidforum');
+        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr($lang->moderation['error_invalidforum']);
 
         $plugins->run_hooks('moderation_do_multimovethreads');
         log_moderator_action($modlogdata, 'Threads Moved / Copied');
@@ -1249,7 +1269,7 @@ stdfoot();
             $moderation->move_thread($t, $moveto, $method, $expire);
         }
 
-        moderation_redirect(get_forum_link($moveto), 'The selected threads have been moved or copied.<br />You will now be taken to the new forum.');
+        moderation_redirect(get_forum_link($moveto), $lang->moderation['redirect_inline_threadsmoved']);
         break;
 
     // ── Delete posts (inline) ────────────────────────────────────────────────
@@ -1290,8 +1310,8 @@ stdfoot();
             }
         }
 
-        log_moderator_action($modlogdata, sprintf($lang->moderation['deleted_selective_posts'], $deletecount));
-        redirect($url, 'redirect_postsdeleted');
+        log_moderator_action($modlogdata, 'Deleted Selective Posts (' . $deletecount . ')');
+        redirect($url, $lang->moderation['redirect_postsdeleted']);
         break;
 
     // ── Merge posts (inline) — show form ─────────────────────────────────────
@@ -1314,7 +1334,7 @@ stdfoot();
         }
 
         if (empty($posts)) {
-            stderr('Sorry, but you did not select any posts to perform inline moderation on, or your previous moderation session has expired. Please select some posts and try again.');
+            stderr($lang->moderation['error_inline_nopostsselected']);
         }
 
         $postlist = '';
@@ -1331,7 +1351,7 @@ stdfoot();
             $postdate = my_datee('relative', $post['dateline']);
             $message  = $parser->parse_message($post['message'], $parser_options_default);
             $postlist .= '<div class="mt-4 mb-4 border border-5 p-3 rounded">
-                Posted by ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
+                ' . $lang->moderation['posted_by'] . ' ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
                 <input type="checkbox" class="form-check-input" checked="checked" name="mergepost[' . $post['pid'] . ']" value="1" />
                 <br /><br />' . $message . '
             </div>';
@@ -1346,14 +1366,16 @@ stdfoot();
 
         $return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
-        stdhead('Merge Posts');
-               echo <<<HTML
+        $posts_selected_text = ags_fmt($lang->moderation['lbl_posts_selected'], $post_count);
+
+        stdhead($lang->moderation['merge_posts']);
+        echo <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - Merge Posts</title>
+    <title>{$SITENAME} - {$lang->moderation['merge_posts']}</title>
     <style>
         .merge-header { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%) !important; color:white; border-radius:10px 10px 0 0; position:relative; overflow:hidden; }
         .merge-header::after { content:''; position:absolute; inset:0; background:radial-gradient(circle at 85% -20%, rgba(255,255,255,.18), transparent 60%); }
@@ -1391,8 +1413,8 @@ stdfoot();
         <div class="merge-header p-5">
             <div class="text-center position-relative">
                 <div class="merge-icon"><i class="fas fa-shuffle fa-2x"></i></div>
-                <h1 class="h3 mb-2 fw-bold">Merge Posts</h1>
-                <p class="mb-0 opacity-75">Combine selected posts into a single message</p>
+                <h1 class="h3 mb-2 fw-bold">{$lang->moderation['merge_posts']}</h1>
+                <p class="mb-0 opacity-75">{$lang->moderation['sub_merge_posts']}</p>
             </div>
         </div>
         <form action="moderation.php" method="post">
@@ -1404,21 +1426,21 @@ stdfoot();
                 <div class="mb-5">
                     <div class="card border-0 bg-light">
                         <div class="card-body">
-                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
                             {$loginbox}
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-5">
-                    <h5 class="h6 mb-4 step-title"><span class="step-badge">1</span>Select Post Separator</h5>
+                    <h5 class="h6 mb-4 step-title"><span class="step-badge">1</span>{$lang->moderation['step_select_separator']}</h5>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="option-card hr-option selected p-4" onclick="selectOption('hr')">
                                 <div class="option-check"><i class="fas fa-check"></i></div>
                                 <div class="d-flex align-items-center">
                                     <div class="option-icon"><i class="fas fa-minus fa-lg"></i></div>
-                                    <div><h6 class="mb-1 fw-bold">Horizontal Rule</h6><p class="mb-0 text-muted small">Posts separated by a visible line</p></div>
+                                    <div><h6 class="mb-1 fw-bold">{$lang->moderation['horizontal_rule']}</h6><p class="mb-0 text-muted small">{$lang->moderation['tip_sep_hr']}</p></div>
                                 </div>
                                 <input type="radio" name="sep" value="hr" checked style="display:none;" />
                             </div>
@@ -1428,7 +1450,7 @@ stdfoot();
                                 <div class="option-check"><i class="fas fa-check"></i></div>
                                 <div class="d-flex align-items-center">
                                     <div class="option-icon"><i class="fas fa-arrow-down fa-lg"></i></div>
-                                    <div><h6 class="mb-1 fw-bold">New Line</h6><p class="mb-0 text-muted small">Posts separated by line breaks</p></div>
+                                    <div><h6 class="mb-1 fw-bold">{$lang->moderation['new_line']}</h6><p class="mb-0 text-muted small">{$lang->moderation['tip_sep_newline']}</p></div>
                                 </div>
                                 <input type="radio" name="sep" value="new_line" style="display:none;" />
                             </div>
@@ -1436,36 +1458,36 @@ stdfoot();
                     </div>
 
                     <div class="preview-area">
-                        <div class="preview-label">Preview</div>
+                        <div class="preview-label">{$lang->moderation['lbl_preview']}</div>
                         <div class="preview-post">
                             <div class="preview-avatar"></div>
-                            <div class="preview-bubble">First post content...</div>
+                            <div class="preview-bubble">{$lang->moderation['lbl_preview_first']}</div>
                         </div>
                         <div class="separator-preview" id="hrPreview"></div>
-                        <div class="newline-preview d-none" id="newlinePreview"><i class="fas fa-arrow-down me-1"></i>Merged as new paragraph</div>
+                        <div class="newline-preview d-none" id="newlinePreview"><i class="fas fa-arrow-down me-1"></i>{$lang->moderation['lbl_preview_newparagraph']}</div>
                         <div class="preview-post">
                             <div class="preview-avatar"></div>
-                            <div class="preview-bubble">Second post content...</div>
+                            <div class="preview-bubble">{$lang->moderation['lbl_preview_second']}</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-3">
                     <h5 class="h6 mb-4 step-title">
-                        <span class="step-badge">2</span>Posts to Merge
-                        <span class="badge bg-primary posts-count-pill ms-2">{$post_count} posts selected</span>
+                        <span class="step-badge">2</span>{$lang->moderation['step_posts_to_merge']}
+                        <span class="badge bg-primary posts-count-pill ms-2">{$posts_selected_text}</span>
                     </h5>
                     {$postlist}
                     <div class="alert alert-info mt-3 mb-0">
-                        <i class="fas fa-info-circle me-2"></i>Posts will be merged in chronological order.
+                        <i class="fas fa-info-circle me-2"></i>{$lang->moderation['tip_merge_chrono']}
                     </div>
                 </div>
             </div>
             <div class="card-footer bg-light py-4">
                 <div class="d-flex justify-content-between align-items-center">
-                    <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Cancel &amp; Return</a>
-                    <button type="submit" class="btn btn-merge text-white" name="submit" value="Merge Posts">
-                        <i class="fas fa-shuffle me-2"></i>Merge Posts
+                    <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
+                    <button type="submit" class="btn btn-merge text-white" name="submit" value="{$lang->moderation['merge_posts']}">
+                        <i class="fas fa-shuffle me-2"></i>{$lang->moderation['merge_posts']}
                     </button>
                 </div>
             </div>
@@ -1497,13 +1519,13 @@ HTML;
         verify_post_check($mybb->get_input('my_post_key'));
 
         $mergepost = $mybb->get_input('mergepost', MyBB::INPUT_ARRAY);
-        if (count($mergepost) <= 1) stderr('error_nomergeposts');
+        if (count($mergepost) <= 1) stderr($lang->moderation['error_nomergeposts']);
 
         $postlist = array_map('intval', array_keys($mergepost));
 
         $masterpid = $moderation->merge_posts($postlist, (int)$tid, $mybb->input['sep'] ?? 'hr');
-        log_moderator_action($modlogdata, $lang->moderation['merged_selective_posts']);
-        redirect(get_post_link($masterpid) . "#pid{$masterpid}", 'redirect_inline_postsmerged');
+        log_moderator_action($modlogdata, 'Merged Selective Posts');
+        redirect(get_post_link($masterpid) . "#pid{$masterpid}", $lang->moderation['redirect_inline_postsmerged']);
         break;
 
     // ── Split posts (inline) — show form ─────────────────────────────────────
@@ -1552,9 +1574,10 @@ HTML;
         $forumselect = build_forum_jump('', $fid, 1, '', 0, true, '', 'moveto');
         $return_url  = htmlspecialchars_uni($mybb->get_input('url'));
 
-        $post_count  = count($posts);  // ← добавь здесь
-		
-		stdhead('Split Thread');
+        $post_count  = count($posts);
+        $split_warning = ags_fmt($lang->moderation['warn_split_posts'], $post_count);
+
+        stdhead($lang->moderation['split_thread']);
         echo <<<HTML
 <!DOCTYPE html>
 <html lang="en">
@@ -1570,10 +1593,10 @@ HTML;
         <div class="split-header">
             <div class="split-icon"><i class="fas fa-arrows-split-up-and-left"></i></div>
             <h1 class="h3 mb-2">{$lang->moderation['split_thread']}</h1>
-            <p class="mb-0 opacity-75">Create a new thread from selected posts</p>
+            <p class="mb-0 opacity-75">{$lang->moderation['sub_split_posts']}</p>
             <div class="mt-4">
                 <div class="post-count"><i class="fas fa-comments"></i> <span id="postsCount">{$post_count}</span></div>
-                <p class="text-white opacity-75 mb-0">Posts Selected for Split</p>
+                <p class="text-white opacity-75 mb-0">{$lang->moderation['lbl_posts_selected_split']}</p>
             </div>
         </div>
         <form action="moderation.php" method="post" id="splitThreadForm">
@@ -1584,23 +1607,23 @@ HTML;
             <input type="hidden" name="url" value="{$return_url}" />
             <div class="card-body p-4">
                 <div class="security-box">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                    <h5 class="fw-bold mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
                     {$loginbox}
                 </div>
                 <div class="info-box">
                     <div class="d-flex">
                         <i class="fas fa-info-circle fa-2x me-3 mt-1 text-primary"></i>
                         <div>
-                            <h6 class="mb-2">Split Operation Information</h6>
-                            <p class="mb-0 small">Selected posts will be moved from the current thread to create a new separate thread.</p>
+                            <h6 class="mb-2">{$lang->moderation['sec_split_info']}</h6>
+                            <p class="mb-0 small">{$lang->moderation['tip_split_info']}</p>
                         </div>
                     </div>
                 </div>
                 <div class="original-thread">
-                    <h6 class="fw-bold mb-2"><i class="fas fa-file-alt me-2 text-primary"></i>Original Thread</h6>
+                    <h6 class="fw-bold mb-2"><i class="fas fa-file-alt me-2 text-primary"></i>{$lang->moderation['sec_original_thread']}</h6>
                     <div class="info-item">
                         <div class="info-icon"><i class="fas fa-hashtag"></i></div>
-                        <div><div class="small text-muted">Thread ID</div><div class="fw-bold">#{$tid}</div></div>
+                        <div><div class="small text-muted">{$lang->moderation['lbl_thread_id']}</div><div class="fw-bold">#{$tid}</div></div>
                     </div>
                 </div>
                 <div class="mb-4">
@@ -1617,12 +1640,12 @@ HTML;
                 </div>
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    This operation affects <strong>{$post_count}</strong> post(s). Posts will be moved and original thread will retain remaining posts.
+                    {$split_warning}
                 </div>
             </div>
             <div class="card-footer bg-light py-4">
                 <div class="d-flex justify-content-between align-items-center">
-                    <a href="{$return_url}" class="btn btn-cancel text-white"><i class="fas fa-arrow-left me-2"></i>Cancel &amp; Return</a>
+                    <a href="{$return_url}" class="btn btn-cancel text-white"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
                     <button type="submit" class="btn btn-split text-white" name="submit" value="{$lang->moderation['split_thread']}">
                         <i class="fas fa-arrows-split-up-and-left me-2"></i>{$lang->moderation['split_thread']}
                     </button>
@@ -1631,7 +1654,7 @@ HTML;
         </form>
     </div>
 </div>
-<script src="{$BASEURL}/scripts/split-thread.js"></script>
+<script src="{$BASEURL}/scripts/split-thread.js?ver=22"></script>
 </body>
 </html>
 HTML;
@@ -1652,14 +1675,14 @@ stdfoot();
             $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$ph})", $plist);
             while ($query && ($p = $db->fetch_field($query, 'pid'))) $posts[] = $p;
         }
-        if (empty($posts)) error($lang->error_inline_nopostsselected, $lang->error);
+        if (empty($posts)) error($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
 
         $placeholders = implode(',', array_fill(0, count($posts), '?'));
 
         $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
-            if ((int)$tcheck['count'] <= 1) error($lang->error_cantsplitonepost, $lang->error);
+            if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
             $pcheck[] = $tcheck['tid'];
         }
 
@@ -1668,14 +1691,14 @@ stdfoot();
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
         }
-        if (count($pcheck2) !== count($pcheck)) error($lang->error_cantsplitall, $lang->error);
+        if (count($pcheck2) !== count($pcheck)) error($lang->moderation['error_cantsplitall'], $lang->moderation['error']);
 
         $moveto   = isset($mybb->input['moveto']) ? $mybb->get_input('moveto', MyBB::INPUT_INT) : $fid;
         $newforum = get_forum($moveto);
-        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') error($lang->error_invalidforum, $lang->error);
+        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') error($lang->moderation['error_invalidforum'], $lang->moderation['error']);
 
         $newtid = $moderation->split_posts($posts, $tid, $moveto, $mybb->get_input('newsubject'));
-        log_moderator_action($modlogdata, sprintf($lang->moderation['split_selective_posts'], implode(', ', $posts), $newtid));
+        log_moderator_action($modlogdata, 'Split posts (PIDs: ' . implode(', ', $posts) . ') to thread (TID: ' . $newtid . ')');
         moderation_redirect(get_thread_link($newtid), $lang->moderation['redirect_threadsplit']);
         break;
 
@@ -1696,7 +1719,7 @@ stdfoot();
         $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
-            if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->error);
+            if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
             $pcheck[] = $tcheck['tid'];
         }
 
@@ -1705,7 +1728,7 @@ stdfoot();
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
         }
-        if (count($pcheck2) !== count($pcheck)) error($lang->moderation['error_cantmoveall'], $lang->error);
+        if (count($pcheck2) !== count($pcheck)) error($lang->moderation['error_cantmoveall'], $lang->moderation['error']);
 
         $inlineids  = implode('|', $posts);
         $post_count = count($posts);
@@ -1716,6 +1739,9 @@ stdfoot();
 
         $return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
+        $posts_selected_text = ags_fmt($lang->moderation['lbl_posts_selected'], $post_count);
+        $move_posts_count    = ags_fmt($lang->moderation['lbl_posts_count'], $post_count);
+
         stdhead();
         build_breadcrumb();
         echo <<<HTML
@@ -1724,7 +1750,7 @@ stdfoot();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - Move Posts</title>
+    <title>{$SITENAME} - {$lang->moderation['move_posts']}</title>
     <style>
         .move-header { background: linear-gradient(135deg, var(--bs-primary) 0%, #0b5ed7 100%); color: white; border-radius: 10px 10px 0 0; }
         .move-icon { width:80px; height:80px; background:rgba(255,255,255,.2); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; }
@@ -1756,8 +1782,8 @@ stdfoot();
         <div class="move-header p-5">
             <div class="text-center">
                 <div class="move-icon"><i class="fas fa-arrow-right fa-2x"></i></div>
-                <h1 class="h3 mb-2">Move Posts</h1>
-                <p class="mb-0 opacity-75">Transfer selected posts to another thread</p>
+                <h1 class="h3 mb-2">{$lang->moderation['move_posts']}</h1>
+                <p class="mb-0 opacity-75">{$lang->moderation['sub_move_posts']}</p>
             </div>
         </div>
         <form action="moderation.php" method="post" id="moveForm">
@@ -1770,7 +1796,7 @@ stdfoot();
                 <div class="mb-5">
                     <div class="card border-0 bg-light">
                         <div class="card-body">
-                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
                             {$loginbox}
                         </div>
                     </div>
@@ -1779,53 +1805,53 @@ stdfoot();
                     <div class="d-flex align-items-start">
                         <div class="info-icon"><i class="fas fa-info-circle fa-lg"></i></div>
                         <div>
-                            <h5 class="h6 mb-2">How to move posts</h5>
-                            <p class="mb-0 text-muted small">Copy the full URL of the destination thread and paste it below. Posts will be moved while preserving content, authors, and timestamps.</p>
+                            <h5 class="h6 mb-2">{$lang->moderation['sec_how_to_move']}</h5>
+                            <p class="mb-0 text-muted small">{$lang->moderation['tip_move_posts']}</p>
                         </div>
                     </div>
                 </div>
                 <div class="stats-box mb-4">
                     <div class="stat-item">
                         <div class="stat-icon"><i class="fas fa-comments"></i></div>
-                        <div><div class="stat-label">Posts to move</div><div class="stat-value">{$post_count} posts</div></div>
+                        <div><div class="stat-label">{$lang->moderation['lbl_posts_to_move']}</div><div class="stat-value">{$move_posts_count}</div></div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-icon"><i class="fas fa-hashtag"></i></div>
-                        <div><div class="stat-label">Current thread ID</div><div class="stat-value">#{$tid}</div></div>
+                        <div><div class="stat-label">{$lang->moderation['lbl_current_tid']}</div><div class="stat-value">#{$tid}</div></div>
                     </div>
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-bold mb-3">
-                        <i class="fas fa-link me-2 text-primary"></i>Destination Thread URL
-                        <span class="post-count-badge">{$post_count} posts selected</span>
+                        <i class="fas fa-link me-2 text-primary"></i>{$lang->moderation['lbl_dest_url']}
+                        <span class="post-count-badge">{$posts_selected_text}</span>
                     </label>
                     <div class="url-input-container">
                         <i class="fas fa-link url-icon"></i>
                         <input type="text" class="form-control url-input" name="threadurl" id="threadUrl"
-                               placeholder="https://yourforum.com/showthread.php?tid=123" autocomplete="off" required>
+                               placeholder="{$lang->moderation['ph_thread_url']}" autocomplete="off" required>
                         <i class="fas fa-times url-clear" id="clearUrl" onclick="document.getElementById('threadUrl').value='';document.getElementById('threadPreview').classList.remove('show');"></i>
                     </div>
                     <div class="thread-example">
                         <i class="fas fa-lightbulb me-2 text-warning"></i>
-                        <strong>Example:</strong> https://example.com/forum/showthread.php?tid=456
+                        <strong>{$lang->moderation['lbl_example']}</strong> https://example.com/forum/showthread.php?tid=456
                     </div>
                     <div class="thread-preview" id="threadPreview">
                         <div class="preview-title d-flex align-items-center fw-bold mb-2">
-                            <i class="fas fa-eye me-2 text-primary"></i>Thread Preview
+                            <i class="fas fa-eye me-2 text-primary"></i>{$lang->moderation['lbl_thread_preview']}
                         </div>
-                        <div class="preview-content text-muted" id="previewContent">Enter a valid thread URL to see preview...</div>
+                        <div class="preview-content text-muted" id="previewContent">{$lang->moderation['lbl_preview_empty']}</div>
                     </div>
                 </div>
                 <div class="alert alert-warning">
                     <div class="d-flex">
                         <i class="fas fa-exclamation-triangle fa-lg me-3 mt-1 text-warning"></i>
                         <div>
-                            <h6 class="alert-heading mb-2">Important Notes</h6>
+                            <h6 class="alert-heading mb-2">{$lang->moderation['sec_important_notes']}</h6>
                             <ul class="mb-0 small">
-                                <li>Posts will be removed from the current thread and added to the destination thread</li>
-                                <li>The operation cannot be undone automatically</li>
-                                <li>Make sure you have permission to move posts to the destination thread</li>
-                                <li>All post metadata will be preserved</li>
+                                <li>{$lang->moderation['hint_move_note_1']}</li>
+                                <li>{$lang->moderation['hint_move_note_2']}</li>
+                                <li>{$lang->moderation['hint_move_note_3']}</li>
+                                <li>{$lang->moderation['hint_move_note_4']}</li>
                             </ul>
                         </div>
                     </div>
@@ -1834,14 +1860,14 @@ stdfoot();
             <div class="card-footer bg-light py-4">
                 <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
                     <div class="mb-3 mb-md-0">
-                        <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Cancel &amp; Return</a>
+                        <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
                     </div>
                     <div class="d-flex gap-3">
                         <button type="button" class="btn btn-outline-primary" id="validateBtn">
-                            <i class="fas fa-check-circle me-2"></i>Validate URL
+                            <i class="fas fa-check-circle me-2"></i>{$lang->moderation['btn_validate_url']}
                         </button>
-                        <button type="submit" class="btn btn-move text-white" name="submit" value="Move Posts">
-                            <i class="fas fa-arrow-right me-2"></i>Move Posts
+                        <button type="submit" class="btn btn-move text-white" name="submit" value="{$lang->moderation['move_posts']}">
+                            <i class="fas fa-arrow-right me-2"></i>{$lang->moderation['move_posts']}
                         </button>
                     </div>
                 </div>
@@ -1850,18 +1876,37 @@ stdfoot();
     </div>
 </div>
 <script>
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach(function (a, i) { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+    return s;
+}
 document.getElementById('validateBtn')?.addEventListener('click', function() {
     const url = document.getElementById('threadUrl').value.trim();
     const preview = document.getElementById('threadPreview');
     const content = document.getElementById('previewContent');
-    if (!url) { alert('Please enter a thread URL first.'); return; }
+    if (!url) { alert(t('enter_url', 'Please enter a thread URL first.')); return; }
     const tidMatch = url.match(/[?&]tid=(\d+)/) || url.match(/thread-(\d+)/);
+    preview.classList.add('show');
+    content.textContent = '';
     if (tidMatch) {
-        preview.classList.add('show');
-        content.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading thread info... Thread ID: <strong>' + tidMatch[1] + '</strong>';
+        const spinner = document.createElement('i');
+        spinner.className = 'fas fa-spinner fa-spin me-2';
+        const idEl = document.createElement('strong');
+        idEl.textContent = tidMatch[1];
+        const parts = t('loading_thread', 'Loading thread info... Thread ID: {1}').split('{1}');
+        content.appendChild(spinner);
+        content.appendChild(document.createTextNode(parts[0]));
+        content.appendChild(idEl);
+        if (parts.length > 1) content.appendChild(document.createTextNode(parts.slice(1).join('')));
     } else {
-        preview.classList.add('show');
-        content.innerHTML = '<span class="text-danger"><i class="fas fa-times me-1"></i>Could not find thread ID in URL. Please check the URL format.</span>';
+        const wrap = document.createElement('span');
+        wrap.className = 'text-danger';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-times me-1';
+        wrap.appendChild(icon);
+        wrap.appendChild(document.createTextNode(t('bad_url', 'Could not find thread ID in URL. Please check the URL format.')));
+        content.appendChild(wrap);
     }
 });
 document.getElementById('clearUrl')?.addEventListener('click', function() {
@@ -1935,7 +1980,7 @@ stdfoot();
         if (count($pcheck2) !== count($pcheck)) stderr($lang->moderation['error_cantmoveall']);
 
        $newtid = $moderation->split_posts($posts, $tid, (int)$newthread['fid'], $newthread['subject'], $newtid);
-        log_moderator_action($modlogdata, sprintf($lang->moderation['move_selective_posts'], implode(', ', $posts), $newtid));
+        log_moderator_action($modlogdata, 'Moved posts (PIDs: ' . implode(', ', $posts) . ') to thread (TID: ' . $newtid . ')');
         moderation_redirect(get_thread_link($newtid), $lang->moderation['redirect_moveposts']);
         break;
 
@@ -1951,7 +1996,7 @@ stdfoot();
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->approve_posts(array_map('intval', $posts));
-        log_moderator_action($modlogdata, $lang->moderation['multi_approve_posts']);
+        log_moderator_action($modlogdata, 'Selected Posts Approved');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($tid, 'thread');
@@ -1966,11 +2011,11 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($tid, 'thread');
 
-        if (count($posts) < 1) error($lang->moderation['error_inline_nopostsselected'], 'error');
+        if (count($posts) < 1) error($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_posts(array_map('intval', $posts));
-        log_moderator_action($modlogdata, $lang->moderation['multi_unapprove_posts']);
+        log_moderator_action($modlogdata, 'Selected Posts Unapproved');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($tid, 'thread');
@@ -2047,6 +2092,24 @@ function extendinline(string|int $id, string $type): void
 {
     my_setcookie("inlinemod_{$type}{$id}",         '', TIMENOW + 3600);
     my_setcookie("inlinemod_{$type}{$id}_removed", '', TIMENOW + 3600);
+}
+
+/**
+ * Collect lang keys with the js_ prefix (prefix stripped) and return them as JSON
+ * for `const AGS_LANG = ...;` printed before the page script.
+ */
+function mod_js_lang(): string
+{
+    global $lang;
+
+    $arr = [];
+    foreach ($lang->moderation as $key => $value) {
+        if (str_starts_with((string)$key, 'js_')) {
+            $arr[substr((string)$key, 3)] = $value;
+        }
+    }
+
+    return json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}';
 }
 
 function moderation_redirect(string $url, string $message = '', string $title = ''): void

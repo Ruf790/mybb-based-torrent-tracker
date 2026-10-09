@@ -4,17 +4,34 @@ declare(strict_types=1);
 define('IN_MYBB', 1);
 
 require_once 'global.php';
+
+// Языковой файл страницы: languages/<lang>/mybonus.lang.php
+$lang->load('mybonus');
+
 require_once INC_PATH . '/functions_pm.php';
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_bonuslog.php';
+
+
+// Подстановка {1}, {2}… (а также %1$s, %2$s…) в строки ланга
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
 
 // ── Авторизация ───────────────────────────────────────────
 if (!$CURUSER || ($CURUSER['id'] ?? 0) == 0) {
     print_no_permission();
 }
-
-$lang->load('mybonus');
-
 
 $is_mod = is_mod($usergroups);
 
@@ -66,7 +83,7 @@ $messages = [];
 
 // Показываем тост после редиректа (PRG паттерн)
 if (isset($_GET['purchased'])) {
-    $messages[] = $lang->mybonus['message1_success'] ?? 'Purchase successful!';
+    $messages[] = $lang->mybonus['message1_success'];
 }
 
 // ── Вспомогательные функции ───────────────────────────────
@@ -130,7 +147,7 @@ function purchase(int $uid, string $field, array $b, bool &$used): void
 {
     global $db;
     // $field валидируется в вызывающем коде через whitelist
-    global $errors;
+    global $errors, $lang;
     // AND seedbonus >= ?: проверка и списание в одном запросе. Раньше баланс
     // проверялся в PHP, и два одновременных клика уводили его в минус.
     $db->sql_query_prepared(
@@ -141,7 +158,7 @@ function purchase(int $uid, string $field, array $b, bool &$used): void
         logBonus($uid, $b);
         $used = true;
     } else {
-        $errors[] = 'Not enough points.';
+        $errors[] = $lang->mybonus['flash_not_enough_points'];
     }
 }
 
@@ -161,16 +178,16 @@ function spendPoints(int $uid, int $cost): bool
 
 function handleTitle(int $uid, array $b, bool &$used): void
 {
-    global $db, $errors;
+    global $db, $errors, $lang;
     $title = trim((string)($_POST['title'] ?? ''));
-    if (mb_strlen($title) < 2)  { $errors[] = 'Title too short!'; return; }
-    if (mb_strlen($title) > 50) { $errors[] = 'Title is too long (max 50 characters).'; return; }
+    if (mb_strlen($title) < 2)  { $errors[] = $lang->mybonus['flash_title_short']; return; }
+    if (mb_strlen($title) > 50) { $errors[] = ags_fmt($lang->mybonus['flash_title_long'], 50); return; }
     $db->sql_query_prepared(
         'UPDATE users SET usertitle = ?, seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?',
         [htmlspecialchars_uni($title), (int)$b['points'], $uid, (int)$b['points']]
     );
     if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
-    else { $errors[] = 'Not enough points.'; }
+    else { $errors[] = $lang->mybonus['flash_not_enough_points']; }
 }
 
 function handleGift(int $uid, array $b, bool &$used): void
@@ -180,21 +197,21 @@ function handleGift(int $uid, array $b, bool &$used): void
     $gift = (int)($_POST['gift'] ?? 0);
     $to   = trim($_POST['username'] ?? '');
 
-    if ($gift < 1) { $errors[] = 'Invalid gift amount!'; return; }
+    if ($gift < 1) { $errors[] = $lang->mybonus['flash_gift_invalid']; return; }
 
     $res    = $db->sql_query_prepared("SELECT id, seedbonus, username FROM users WHERE username = ? AND enabled = 'yes'", [$to]);
     $target = $db->fetch_array($res);
-    if (!$target)                          { $errors[] = 'User not found!';          return; }
+    if (!$target)                          { $errors[] = $lang->mybonus['flash_user_not_found'];          return; }
     // По ID, а не по нику: сравнение ников зависело от регистра
-    if ((int)$target['id'] === $uid)       { $errors[] = 'Cannot gift to yourself!'; return; }
+    if ((int)$target['id'] === $uid)       { $errors[] = $lang->mybonus['flash_gift_self']; return; }
 
     $total = (int)$b['points'] + $gift;
-    if ($points < $total) { $errors[] = "Not enough points! Need {$total}, have {$points}"; return; }
+    if ($points < $total) { $errors[] = ags_fmt($lang->mybonus['flash_gift_need'], $total, $points); return; }
 
     // Сначала списание (с проверкой баланса), и только потом начисление.
     // Раньше было наоборот: получатель получал очки, даже если списать
     // у отправителя не удалось, - очки появлялись из воздуха.
-    if (!spendPoints($uid, $total)) { $errors[] = 'Not enough points.'; return; }
+    if (!spendPoints($uid, $total)) { $errors[] = $lang->mybonus['flash_not_enough_points']; return; }
     $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$gift, (int)$target['id']]);
 
     {
@@ -215,7 +232,7 @@ function handleGift(int $uid, array $b, bool &$used): void
         $profilelink = $BASEURL . '/' . get_profile_link($uid);
         send_pm([
             'subject' => $lang->mybonus['giftsubject'],
-            'message' => sprintf(
+            'message' => ags_fmt(
                 $lang->mybonus['giftmsg'],
                 '[b]' . $target['username'] . '[/b]',
                 '[URL=' . $profilelink . '][b]' . $CURUSER['username'] . '[/b][/URL]',
@@ -229,19 +246,19 @@ function handleGift(int $uid, array $b, bool &$used): void
 
 function handleRatioFix(int $uid, array $b, bool &$used): void
 {
-    global $db, $errors;
+    global $db, $errors, $lang;
     $tid = (int)($_POST['torrentid'] ?? 0);
-    if ($tid <= 0) { $errors[] = 'Invalid torrent ID!'; return; }
+    if ($tid <= 0) { $errors[] = $lang->mybonus['flash_torrent_invalid']; return; }
 
     $res   = $db->sql_query_prepared(
         "SELECT uploaded FROM snatched WHERE torrentid = ? AND userid = ? AND finished = 'yes'",
         [(int)$tid, (int)$uid]
     );
     $snatch = $db->fetch_array($res);
-    if (!$snatch) { $errors[] = 'Torrent not found!'; return; }
+    if (!$snatch) { $errors[] = $lang->mybonus['flash_torrent_not_found']; return; }
 
     // Сначала списание - раньше рейтинг исправлялся, даже если очков не хватило
-    if (!spendPoints($uid, (int)$b['points'])) { $errors[] = 'Not enough points.'; return; }
+    if (!spendPoints($uid, (int)$b['points'])) { $errors[] = $lang->mybonus['flash_not_enough_points']; return; }
     $db->sql_query_prepared(
         // GREATEST: если на раздаче уже отдано больше, чем скачано, "исправление"
         // раньше УМЕНЬШАЛО отданное до скачанного - пользователь платил за убыток
@@ -260,7 +277,7 @@ function handleVip(int $uid, array $b, bool &$used): void
     $vip_until = TIMENOW + 28 * 86400;
     $old_gid   = (int)$CURUSER['usergroup'];
 
-    global $errors;
+    global $errors, $lang;
 
     // Сначала списание вместе со сменой группы; раньше VIP записывался в
     // auto_vip до списания и оставался, если очков не хватило.
@@ -268,7 +285,7 @@ function handleVip(int $uid, array $b, bool &$used): void
         'UPDATE users SET usergroup = ?, seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?',
         [UC_VIP, (int)$b['points'], $uid, (int)$b['points']]
     );
-    if (!$db->affected_rows()) { $errors[] = 'Not enough points.'; return; }
+    if (!$db->affected_rows()) { $errors[] = $lang->mybonus['flash_not_enough_points']; return; }
 
     $db->sql_query_prepared(
         'REPLACE INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)',
@@ -304,53 +321,64 @@ HTML;
 
 function showTitleForm(array $b): never
 {
-    global $CURUSER;
+    global $CURUSER, $lang;
     $currentTitle = htmlspecialchars_uni($CURUSER['title'] ?? '');
-    showForm('Buy title', 'update_title', 'yes', <<<HTML
+    $lblNew       = $lang->mybonus['lbl_new_title'];
+    $btnBuy       = ags_fmt($lang->mybonus['btn_buy_for'], (int)$b['points']);
+    $btnCancel    = $lang->mybonus['btn_cancel'];
+    showForm($lang->mybonus['sec_buy_title'], 'update_title', 'yes', <<<HTML
 <input type="hidden" name="id" value="{$b['id']}">
 <div class="mb-3">
-    <label class="form-label fw-bold">New title:</label>
+    <label class="form-label fw-bold">{$lblNew}</label>
     <input type="text" name="title" class="form-control" value="{$currentTitle}" required>
 </div>
-<button type="submit" class="btn btn-success">Buy for {$b['points']} points</button>
-<a href="mybonus.php" class="btn btn-secondary ms-2">Cancel</a>
+<button type="submit" class="btn btn-success">{$btnBuy}</button>
+<a href="mybonus.php" class="btn btn-secondary ms-2">{$btnCancel}</a>
 HTML);
 }
 
 function showGiftForm(array $b): never
 {
-    global $points;
-    $maxGift = $points - (int)$b['points'];
-    showForm('Gift points', 'send_gift', 'yes', <<<HTML
+    global $points, $lang;
+    $maxGift   = $points - (int)$b['points'];
+    $info      = ags_fmt($lang->mybonus['hint_gift_info'], $points, (int)$b['points'], $maxGift);
+    $lblTo     = $lang->mybonus['lbl_gift_to'];
+    $phUser    = htmlspecialchars($lang->mybonus['ph_username'], ENT_QUOTES, 'UTF-8');
+    $lblAmount = $lang->mybonus['lbl_gift_amount'];
+    $btnGift   = $lang->mybonus['btn_gift'];
+    $btnCancel = $lang->mybonus['btn_cancel'];
+    showForm($lang->mybonus['sec_gift'], 'send_gift', 'yes', <<<HTML
 <input type="hidden" name="id" value="{$b['id']}">
 <div class="alert alert-info">
-    You have <strong>{$points}</strong> pts &bull;
-    Fee: <strong>{$b['points']}</strong> pts &bull;
-    Max gift: <strong>{$maxGift}</strong> pts
+    {$info}
 </div>
 <div class="mb-3">
-    <label class="form-label">To (username):</label>
-    <input type="text" name="username" class="form-control" placeholder="Enter username" required>
+    <label class="form-label">{$lblTo}</label>
+    <input type="text" name="username" class="form-control" placeholder="{$phUser}" required>
 </div>
 <div class="mb-3">
-    <label class="form-label">How many points:</label>
+    <label class="form-label">{$lblAmount}</label>
     <input type="number" name="gift" class="form-control" min="1" max="{$maxGift}" required>
 </div>
-<button type="submit" class="btn btn-success">Gift points</button>
-<a href="mybonus.php" class="btn btn-secondary ms-2">Cancel</a>
+<button type="submit" class="btn btn-success">{$btnGift}</button>
+<a href="mybonus.php" class="btn btn-secondary ms-2">{$btnCancel}</a>
 HTML);
 }
 
 function showRatioFixForm(array $b): never
 {
-    showForm('Fix ratio', 'ratiofix', 'yes', <<<HTML
+    global $lang;
+    $lblTid    = $lang->mybonus['lbl_torrent_id'];
+    $btnFix    = ags_fmt($lang->mybonus['btn_fix_ratio'], (int)$b['points']);
+    $btnCancel = $lang->mybonus['btn_cancel'];
+    showForm($lang->mybonus['sec_fix_ratio'], 'ratiofix', 'yes', <<<HTML
 <input type="hidden" name="id" value="{$b['id']}">
 <div class="mb-3">
-    <label class="form-label">Torrent ID:</label>
+    <label class="form-label">{$lblTid}</label>
     <input type="number" name="torrentid" class="form-control" required>
 </div>
-<button type="submit" class="btn btn-warning">Fix ratio for {$b['points']} points</button>
-<a href="mybonus.php" class="btn btn-secondary ms-2">Cancel</a>
+<button type="submit" class="btn btn-warning">{$btnFix}</button>
+<a href="mybonus.php" class="btn btn-secondary ms-2">{$btnCancel}</a>
 HTML);
 }
 
@@ -360,7 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Формы передавали my_post_key, но он нигде не проверялся: чужой сайт мог
     // отправить от имени пользователя, например, подарок очков на свой ник.
     if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
-        stderr($lang->global['error'] ?? 'Error', 'Security token expired. Reload the page and try again.');
+        stderr($lang->global['error'] ?? 'Error', $lang->mybonus['flash_token_expired']);
     }
 
     $id    = (int)($_POST['id'] ?? 0);
@@ -368,9 +396,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $bonus = $db->fetch_array($res);
 
     if (!$bonus) {
-        $errors[] = $lang->mybonus['error1'] ?? 'Bonus not found';
+        $errors[] = $lang->mybonus['error1'];
     } elseif ($points < $bonus['points']) {
-        $errors[] = sprintf($lang->mybonus['error2'] ?? 'Not enough points: %d of %d', $points, $bonus['points']);
+        $errors[] = ags_fmt($lang->mybonus['error2'], $points, (int)$bonus['points']);
     } else {
         $used = false;
 
@@ -380,58 +408,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'invite':
                 if (($kpsinvite ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } else {
                     purchase($userid, 'invites = invites + ' . (int)$bonus['menge'], $bonus, $used);
                 }
                 break;
             case 'title':
                 if (($kpstitle ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } else {
                     isset($_POST['update_title']) ? handleTitle($userid, $bonus, $used) : showTitleForm($bonus);
                 }
                 break;
             case 'gift_1':
                 if (($kpsgift ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } else {
                     isset($_POST['send_gift']) ? handleGift($userid, $bonus, $used) : showGiftForm($bonus);
                 }
                 break;
             case 'warning':
                 if (($kpswarning ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } elseif (($CURUSER['timeswarned'] ?? 0) > 0) {
                     $menge = (int)$bonus['menge'];
                     purchase($userid, "timeswarned = IF(timeswarned >= {$menge}, timeswarned - {$menge}, 0)", $bonus, $used);
                 } else {
                     // Раньше в этом случае страница просто перезагружалась без объяснений
-                    $errors[] = 'You have no warnings to remove.';
+                    $errors[] = $lang->mybonus['flash_no_warnings'];
                 }
                 break;
             case 'ratiofix':
                 if (($kpsratiofix ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } else {
                     isset($_POST['ratiofix']) ? handleRatioFix($userid, $bonus, $used) : showRatioFixForm($bonus);
                 }
                 break;
             case 'class':
                 if (($kpsvip ?? 'no') !== 'yes') {
-                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                    $errors[] = $lang->mybonus['error3'];
                 } elseif ($is_mod || ($usergroups['isvipgroup'] ?? 'no') === 'yes') {
-                    $errors[] = $lang->mybonus['error11'] ?? 'You are already staff or VIP!';
+                    $errors[] = $lang->mybonus['error11'];
                 } else {
                     handleVip($userid, $bonus, $used);
                 }
                 break;
             default:
-                $errors[] = 'Unknown bonus type';
+                $errors[] = $lang->mybonus['flash_unknown_type'];
         }
 
         if ($used && empty($errors)) {
-            $messages[] = sprintf($lang->mybonus['message1'] ?? 'Purchased: %s', htmlspecialchars_uni($bonus['bonusname']));
+            $messages[] = ags_fmt($lang->mybonus['message1'], htmlspecialchars_uni((string)$bonus['bonusname']));
             $points -= (int)$bonus['points'];
             $CURUSER['seedbonus'] = $points;
             // PRG паттерн — редирект чтобы повторный F5 не отправлял POST
@@ -565,7 +593,7 @@ $ub        = calcUserBonus($userStats, $cfg);  // $ub = userBonus
 
 function renderBonusCard(array $b, int $points): string
 {
-    global $mybb;
+    global $mybb, $lang;
     $disabled = $points < $b['points'];
     $bg = match($b['art']) {
         'traffic'  => 'success',
@@ -576,10 +604,12 @@ function renderBonusCard(array $b, int $points): string
         'ratiofix' => 'dark',
         default    => 'primary',
     };
-    $name    = htmlspecialchars_uni($b['bonusname']);
-    $desc    = nl2br(htmlspecialchars_uni($b['description']));
-    $opClass = $disabled ? 'opacity-75' : '';
-    $dis     = $disabled ? 'disabled' : '';
+    $name     = htmlspecialchars_uni($b['bonusname']);
+    $desc     = nl2br(htmlspecialchars_uni($b['description']));
+    $opClass  = $disabled ? 'opacity-75' : '';
+    $dis      = $disabled ? 'disabled' : '';
+    $ptsLabel = ags_fmt($lang->mybonus['val_pts'], (int)$b['points']);
+    $btnBuy   = $lang->mybonus['btn_buy'];
 
     return <<<HTML
 <div class="col-md-6 col-xl-4 mb-4">
@@ -590,11 +620,11 @@ function renderBonusCard(array $b, int $points): string
         <div class="card-body d-flex flex-column">
             <p class="text-muted small flex-grow-1">{$desc}</p>
             <div class="mt-auto d-flex justify-content-between align-items-center">
-                <span class="badge bg-dark fs-6 px-3 py-2">{$b['points']} pts</span>
+                <span class="badge bg-dark fs-6 px-3 py-2">{$ptsLabel}</span>
                 <form method="post" class="d-inline">
                     <input type="hidden" name="id" value="{$b['id']}">
                     <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-                    <button type="submit" class="btn btn-outline-{$bg} btn-sm" {$dis}>Buy</button>
+                    <button type="submit" class="btn btn-outline-{$bg} btn-sm" {$dis}>{$btnBuy}</button>
                 </form>
             </div>
         </div>
@@ -627,6 +657,7 @@ HTML;
 
 function renderTorrentMultiplierTable(string $type, int $userTorrents, float $flatMul): string
 {
+    global $lang;
     $ranges = match($type) {
         'penalty' => [
             ['1–20',   '1.0', 'success', $userTorrents >= 1  && $userTorrents <= 20],
@@ -649,17 +680,18 @@ function renderTorrentMultiplierTable(string $type, int $userTorrents, float $fl
     };
 
     if ($type === 'flat') {
-        return '<div class="alert alert-info mt-2">Fixed multiplier: ×' . number_format($flatMul, 1) . '</div>';
+        return '<div class="alert alert-info mt-2">' . ags_fmt($lang->mybonus['lbl_fixed_multiplier'], number_format($flatMul, 1)) . '</div>';
     }
 
     $cols = '';
     $colW = (int)(12 / max(1, count($ranges)));
     foreach ($ranges as [$range, $mul, $color, $isUser]) {
-        $badge = $isUser ? "<div class='mt-1'><span class='badge bg-{$color}'>Your range</span></div>" : '';
+        $badge      = $isUser ? "<div class='mt-1'><span class='badge bg-{$color}'>" . $lang->mybonus['lbl_your_range'] . "</span></div>" : '';
+        $rangeLabel = ags_fmt($lang->mybonus['lbl_range_torrents'], $range);
         $cols .= <<<HTML
 <div class="col-sm-{$colW}">
     <div class="text-center p-2 border rounded bg-light">
-        <div class="small text-muted">{$range} torrents</div>
+        <div class="small text-muted">{$rangeLabel}</div>
         <div class="fs-5 text-{$color}">×{$mul}</div>
         {$badge}
     </div>
@@ -668,14 +700,27 @@ HTML;
     }
 
     $desc = match($type) {
-        'penalty' => 'More torrents = lower multiplier. Controls bonus inflation.',
-        'reward'  => 'More torrents = higher multiplier. Encourages seeding many.',
-        'neutral' => 'Simple penalty only for very high torrent counts.',
+        'penalty' => $lang->mybonus['tip_mulinfo_penalty'],
+        'reward'  => $lang->mybonus['tip_mulinfo_reward'],
+        'neutral' => $lang->mybonus['tip_mulinfo_neutral'],
         default   => '',
     };
 
     return '<div class="row mt-2">' . $cols . '</div>'
          . '<div class="text-muted small mt-2"><i class="fas fa-info-circle me-1"></i>' . $desc . '</div>';
+}
+
+/** Подпись типа множителя раздач для вывода (неизвестный тип - как есть, с заглавной). */
+function mulTypeLabel(string $type): string
+{
+    global $lang;
+    return match($type) {
+        'penalty' => $lang->mybonus['opt_mul_penalty'],
+        'reward'  => $lang->mybonus['opt_mul_reward'],
+        'neutral' => $lang->mybonus['opt_mul_neutral'],
+        'flat'    => $lang->mybonus['opt_mul_flat'],
+        default   => ucfirst($type),
+    };
 }
 
 // ── Сборка карточек ───────────────────────────────────────
@@ -712,7 +757,18 @@ $cronMin        = (int)($cfg['cron_interval'] ?? 15);
 $examplePerCron = round($exampleHourly * ($cronMin / 60), 1);
 
 // ── HTML ──────────────────────────────────────────────────
-stdhead("My Bonuses — {$points} points");
+stdhead(ags_fmt($lang->mybonus['sec_page_title'], $points));
+
+// Подпись типа множителя (обычный текст - экранируем при выводе)
+$mulTypeText = mulTypeLabel($TORRENT_MUL_TYPE);
+
+// Строки для JS: ключи js_* из ланга → массив без префикса (AGS_LANG)
+$jsLang = [];
+foreach ((array)$lang->mybonus as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/mybonus.css" type="text/css" media="screen" />
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bonuslog.css?ver=1111">
@@ -722,23 +778,21 @@ stdhead("My Bonuses — {$points} points");
     <!-- Заголовок -->
     <div class="text-center mb-5">
         <h1 class="display-5 fw-bold text-primary">
-            <i class="fas fa-coins me-3"></i>My Bonuses
+            <i class="fas fa-coins me-3"></i><?= $lang->mybonus['sec_my_bonuses'] ?>
         </h1>
-        <p class="lead">You have: <strong class="text-success fs-3"><?= $points ?> points</strong></p>
+        <p class="lead"><?= $lang->mybonus['lbl_you_have'] ?> <strong class="text-success fs-3"><?= ags_fmt($lang->mybonus['val_total_points'], $points) ?></strong></p>
         <p class="text-muted small">
-            Base: <?= $BASE_BONUS ?>/h &bull;
-            Cap: <?= $HOUR_CAP ?>/h &bull;
-            Multiplier type: <?= htmlspecialchars($TORRENT_MUL_TYPE) ?>
+            <?= ags_fmt($lang->mybonus['hint_header_stats'], $BASE_BONUS, $HOUR_CAP, htmlspecialchars($mulTypeText)) ?>
         </p>
-        <a class="bl-btn" href="<?= $BASEURL ?>/bonuslog.php"><i class="fa-solid fa-clock-rotate-left"></i>Bonus history</a>
+        <a class="bl-btn" href="<?= $BASEURL ?>/bonuslog.php"><i class="fa-solid fa-clock-rotate-left"></i><?= $lang->mybonus['btn_bonus_history'] ?></a>
     </div>
 
     <?php $recent = bonus_log_fetch((int)$CURUSER['id'], null, 5); if ($recent): ?>
     <!-- Recent activity (bonus log) -->
     <div class="bl-card bl-recent">
         <div class="bl-recent__head">
-            <h4><i class="fa-solid fa-clock-rotate-left me-2"></i>Recent activity</h4>
-            <a href="<?= $BASEURL ?>/bonuslog.php">View all</a>
+            <h4><i class="fa-solid fa-clock-rotate-left me-2"></i><?= $lang->mybonus['sec_recent_activity'] ?></h4>
+            <a href="<?= $BASEURL ?>/bonuslog.php"><?= $lang->mybonus['lbl_view_all'] ?></a>
         </div>
         <?php foreach ($recent as $r): $a = (float)$r['amount']; [, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other']; ?>
         <div class="bl-recent__row">
@@ -757,42 +811,41 @@ stdhead("My Bonuses — {$points} points");
             <div class="card shadow-sm formula-box">
                 <div class="card-header bg-transparent border-0">
                     <h4 class="mb-0 text-primary">
-                        <i class="fas fa-calculator me-2"></i>How bonus points are calculated
+                        <i class="fas fa-calculator me-2"></i><?= $lang->mybonus['sec_how_calculated'] ?>
                     </h4>
-                    <small class="text-muted">Active seeding formula explained</small>
+                    <small class="text-muted"><?= $lang->mybonus['hint_formula_sub'] ?></small>
                 </div>
                 <div class="card-body">
 
                     <!-- Статистика пользователя -->
                     <div class="card border-info mb-4">
                         <div class="card-header bg-info text-white">
-                            <h5 class="mb-0"><i class="fas fa-user me-2"></i>Your current bonus calculation</h5>
+                            <h5 class="mb-0"><i class="fas fa-user me-2"></i><?= $lang->mybonus['sec_your_calc'] ?></h5>
                         </div>
                         <div class="card-body">
                             <?php if ($ub['torrents'] > 0): ?>
                             <div class="row">
                                 <div class="col-md-4">
                                     <div class="text-center p-3 border rounded bg-light mb-3 stats-card">
-                                        <div class="small text-muted">Active torrents</div>
+                                        <div class="small text-muted"><?= $lang->mybonus['lbl_active_torrents'] ?></div>
                                         <div class="display-6 text-primary fw-bold"><?= $ub['torrents'] ?></div>
                                         <div class="small text-muted">
-                                            Multiplier: ×<?= number_format($ub['capMul'], 1) ?>
-                                            (<?= htmlspecialchars($TORRENT_MUL_TYPE) ?>)
+                                            <?= ags_fmt($lang->mybonus['lbl_multiplier_line'], number_format($ub['capMul'], 1), htmlspecialchars($mulTypeText)) ?>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
                                     <div class="text-center p-3 border rounded bg-light mb-3 stats-card">
-                                        <div class="small text-muted">Raw bonus sum</div>
+                                        <div class="small text-muted"><?= $lang->mybonus['lbl_raw_bonus_sum'] ?></div>
                                         <div class="display-6 text-success fw-bold"><?= number_format($ub['rawBonus'], 1) ?></div>
-                                        <div class="small text-muted">Total of all multipliers</div>
+                                        <div class="small text-muted"><?= $lang->mybonus['hint_total_multipliers'] ?></div>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
                                     <div class="text-center p-3 border rounded bg-light mb-3 stats-card">
-                                        <div class="small text-muted">Avg seeding time</div>
-                                        <div class="display-6 text-warning fw-bold"><?= number_format($ub['avgHours'] * 60, 1) ?> min</div>
-                                        <div class="small text-muted">per calculation</div>
+                                        <div class="small text-muted"><?= $lang->mybonus['lbl_avg_seed_time'] ?></div>
+                                        <div class="display-6 text-warning fw-bold"><?= ags_fmt($lang->mybonus['val_minutes'], number_format($ub['avgHours'] * 60, 1)) ?></div>
+                                        <div class="small text-muted"><?= $lang->mybonus['hint_per_calculation'] ?></div>
                                     </div>
                                 </div>
                             </div>
@@ -802,50 +855,50 @@ stdhead("My Bonuses — {$points} points");
                                 <div class="col-md-6">
                                     <div class="card h-100">
                                         <div class="card-header bg-light">
-                                            <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Hourly bonus calculation</h6>
+                                            <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i><?= $lang->mybonus['sec_hourly_calc'] ?></h6>
                                         </div>
                                         <div class="card-body">
                                             <div class="d-flex justify-content-between align-items-center mb-3">
                                                 <div>
-                                                    <div class="small text-muted">Theoretical max</div>
-                                                    <div class="fs-4 fw-bold text-primary"><?= number_format($ub['hourlyTheoretical'], 0) ?> pts/h</div>
+                                                    <div class="small text-muted"><?= $lang->mybonus['lbl_theoretical_max'] ?></div>
+                                                    <div class="fs-4 fw-bold text-primary"><?= ags_fmt($lang->mybonus['val_pts_h'], number_format($ub['hourlyTheoretical'], 0)) ?></div>
                                                 </div>
                                                 <div class="text-end">
-                                                    <div class="small text-muted">System cap</div>
-                                                    <div class="fs-4 fw-bold text-warning"><?= number_format($HOUR_CAP, 0) ?> pts/h</div>
+                                                    <div class="small text-muted"><?= $lang->mybonus['lbl_system_cap'] ?></div>
+                                                    <div class="fs-4 fw-bold text-warning"><?= ags_fmt($lang->mybonus['val_pts_h'], number_format($HOUR_CAP, 0)) ?></div>
                                                 </div>
                                             </div>
 
                                             <div class="border rounded p-3 bg-light mb-3">
                                                 <?php
                                                 $rows = [
-                                                    ['Raw bonus sum', number_format($ub['rawBonus'], 1)],
-                                                    ['× Base rate (' . $BASE_BONUS . ')', number_format($ub['rawBonus'] * $BASE_BONUS, 1)],
-                                                    ['× Torrents factor (×' . number_format($ub['capMul'], 1) . ')', number_format($ub['hourlyTheoretical'], 1)],
+                                                    [$lang->mybonus['lbl_raw_bonus_sum'], number_format($ub['rawBonus'], 1)],
+                                                    [ags_fmt($lang->mybonus['lbl_row_base_rate'], $BASE_BONUS), number_format($ub['rawBonus'] * $BASE_BONUS, 1)],
+                                                    [ags_fmt($lang->mybonus['lbl_row_torrents_factor'], number_format($ub['capMul'], 1)), number_format($ub['hourlyTheoretical'], 1)],
                                                 ];
                                                 foreach ($rows as [$label, $val]):
                                                 ?>
                                                 <div class="d-flex justify-content-between mb-2">
-                                                    <span class="small"><?= $label ?></span>
+                                                    <span class="small"><?= htmlspecialchars($label) ?></span>
                                                     <span><?= $val ?></span>
                                                 </div>
                                                 <?php endforeach; ?>
                                                 <hr class="my-2">
                                                 <div class="d-flex justify-content-between">
-                                                    <span class="small text-muted">Theoretical hourly</span>
-                                                    <span class="fw-bold text-primary"><?= number_format($ub['hourlyTheoretical'], 1) ?> pts/h</span>
+                                                    <span class="small text-muted"><?= $lang->mybonus['lbl_theoretical_hourly'] ?></span>
+                                                    <span class="fw-bold text-primary"><?= ags_fmt($lang->mybonus['val_pts_h'], number_format($ub['hourlyTheoretical'], 1)) ?></span>
                                                 </div>
                                             </div>
 
                                             <div class="text-center p-3 border rounded bg-success bg-opacity-10 mb-3">
-                                                <div class="small text-muted">Hourly bonus (after cap)</div>
+                                                <div class="small text-muted"><?= $lang->mybonus['lbl_hourly_after_cap'] ?></div>
                                                 <div class="display-6 fw-bold text-success mb-1">
-                                                    <?= number_format($ub['hourlyCapped'], 0) ?> pts/h
+                                                    <?= ags_fmt($lang->mybonus['val_pts_h'], number_format($ub['hourlyCapped'], 0)) ?>
                                                 </div>
                                                 <?php if ($ub['isCapped']): ?>
-                                                <span class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i>Capped at system limit</span>
+                                                <span class="text-warning small"><i class="fas fa-exclamation-triangle me-1"></i><?= $lang->mybonus['lbl_capped'] ?></span>
                                                 <?php else: ?>
-                                                <span class="text-success small"><i class="fas fa-check-circle me-1"></i>Not capped</span>
+                                                <span class="text-success small"><i class="fas fa-check-circle me-1"></i><?= $lang->mybonus['lbl_not_capped'] ?></span>
                                                 <?php endif; ?>
                                             </div>
 
@@ -854,7 +907,7 @@ stdhead("My Bonuses — {$points} points");
                                             $pColor = progressColor($pct);
                                             ?>
                                             <div class="d-flex justify-content-between mb-1">
-                                                <small>Theoretical vs cap (<?= $HOUR_CAP ?>/h)</small>
+                                                <small><?= ags_fmt($lang->mybonus['lbl_theory_vs_cap'], $HOUR_CAP) ?></small>
                                                 <small><?= number_format($pct, 1) ?>%</small>
                                             </div>
                                             <div class="progress" style="height:20px">
@@ -871,24 +924,24 @@ stdhead("My Bonuses — {$points} points");
                                 <div class="col-md-6">
                                     <div class="card h-100">
                                         <div class="card-header bg-light">
-                                            <h6 class="mb-0"><i class="fas fa-coins me-2"></i>Your estimated earnings</h6>
+                                            <h6 class="mb-0"><i class="fas fa-coins me-2"></i><?= $lang->mybonus['sec_est_earnings'] ?></h6>
                                         </div>
                                         <div class="card-body">
                                             <div class="text-center mb-4">
                                                 <div class="display-3 text-success fw-bold"><?= number_format($ub['realHourly'], 0) ?></div>
-                                                <div class="text-muted fs-5">points per hour</div>
+                                                <div class="text-muted fs-5"><?= $lang->mybonus['lbl_points_per_hour'] ?></div>
                                                 <div class="small text-warning mt-1">
                                                     <i class="fas fa-clock me-1"></i>
-                                                    Based on <?= number_format($ub['avgHours'] * 60, 0) ?> min avg seeding time
+                                                    <?= ags_fmt($lang->mybonus['hint_based_on'], number_format($ub['avgHours'] * 60, 0)) ?>
                                                 </div>
                                             </div>
 
                                             <?php
                                             $earnCards = [
-                                                ['primary', 'Per cron run',  number_format($ub['perRun'], 1),      'every ' . $cronMin . ' min'],
-                                                ['success', 'Per hour',      number_format($ub['realHourly'], 0),  '4 × per run'],
-                                                ['success', 'Per day (24h)', number_format($ub['daily'], 0),        'if active 24/7'],
-                                                ['danger',  'Per week',      number_format($ub['daily'] * 7, 0),   '7 days constant'],
+                                                ['primary', $lang->mybonus['lbl_per_run'],  number_format($ub['perRun'], 1),      ags_fmt($lang->mybonus['hint_per_run'], $cronMin)],
+                                                ['success', $lang->mybonus['lbl_per_hour'], number_format($ub['realHourly'], 0),  $lang->mybonus['hint_per_hour']],
+                                                ['success', $lang->mybonus['lbl_per_day'],  number_format($ub['daily'], 0),        $lang->mybonus['hint_per_day']],
+                                                ['danger',  $lang->mybonus['lbl_per_week'], number_format($ub['daily'] * 7, 0),   $lang->mybonus['hint_per_week']],
                                             ];
                                             ?>
                                             <div class="row g-2 mb-3">
@@ -910,7 +963,7 @@ stdhead("My Bonuses — {$points} points");
                                             $actColor = progressColor($actPct);
                                             ?>
                                             <div class="d-flex justify-content-between mb-1">
-                                                <small class="text-muted">Activity level</small>
+                                                <small class="text-muted"><?= $lang->mybonus['lbl_activity_level'] ?></small>
                                                 <small><?= number_format($actPct, 0) ?>%</small>
                                             </div>
                                             <div class="progress mb-1" style="height:8px">
@@ -918,16 +971,14 @@ stdhead("My Bonuses — {$points} points");
                                                      style="width:<?= $actPct ?>%"></div>
                                             </div>
                                             <div class="small text-center text-muted">
-                                                <?= number_format($ub['avgHours'] * 60, 0) ?> min / <?= $cronMin ?> min interval
+                                                <?= ags_fmt($lang->mybonus['hint_activity'], number_format($ub['avgHours'] * 60, 0), $cronMin) ?>
                                             </div>
 
                                             <div class="alert alert-dark mt-3 small">
                                                 <i class="fas fa-lightbulb text-warning me-2"></i>
-                                                <strong>Tip:</strong> Seed torrents with leechers, large files (&gt;20 GB),
-                                                and old torrents (&gt;180 days) for max earnings.
+                                                <?= $lang->mybonus['hint_tip_html'] ?>
                                                 <span class="text-info d-block mt-1">
-                                                    Current rate: <?= number_format($ub['realHourly'], 0) ?>/h,
-                                                    <?= number_format($ub['daily'], 0) ?>/day
+                                                    <?= ags_fmt($lang->mybonus['lbl_current_rate'], number_format($ub['realHourly'], 0), number_format($ub['daily'], 0)) ?>
                                                 </span>
                                             </div>
                                         </div>
@@ -938,7 +989,7 @@ stdhead("My Bonuses — {$points} points");
                             <?php else: ?>
                             <div class="alert alert-warning text-center">
                                 <i class="fas fa-exclamation-triangle me-2"></i>
-                                You don't have any active torrents. Start seeding to earn bonus points!
+                                <?= $lang->mybonus['hint_no_torrents'] ?>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -947,16 +998,16 @@ stdhead("My Bonuses — {$points} points");
                     <!-- Системные настройки -->
                     <div class="card bg-light border mb-4">
                         <div class="card-header py-2">
-                            <h6 class="mb-0"><i class="fas fa-cogs me-2"></i>Current System Settings</h6>
+                            <h6 class="mb-0"><i class="fas fa-cogs me-2"></i><?= $lang->mybonus['sec_system_settings'] ?></h6>
                         </div>
                         <div class="card-body py-2">
                             <div class="row">
                                 <?php
                                 $sysSettings = [
-                                    ['primary', 'Base bonus',       'Points per hour', $BASE_BONUS, 'success'],
-                                    ['primary', 'Hour cap',         'Max per hour',    $HOUR_CAP,   'warning'],
-                                    ['primary', 'Cron interval',    'Calculation',     $cronMin . ' min', 'info'],
-                                    ['primary', 'Torrent multiplier','Type',           ucfirst($TORRENT_MUL_TYPE), 'danger'],
+                                    ['primary', $lang->mybonus['lbl_set_base'], $lang->mybonus['hint_set_base'], $BASE_BONUS, 'success'],
+                                    ['primary', $lang->mybonus['lbl_set_cap'],  $lang->mybonus['hint_set_cap'],  $HOUR_CAP,   'warning'],
+                                    ['primary', $lang->mybonus['lbl_set_cron'], $lang->mybonus['hint_set_cron'], ags_fmt($lang->mybonus['val_minutes'], $cronMin), 'info'],
+                                    ['primary', $lang->mybonus['lbl_set_mul'],  $lang->mybonus['hint_set_mul'],  htmlspecialchars($mulTypeText), 'danger'],
                                 ];
                                 foreach ($sysSettings as [$bc, $label, $sub, $val, $vc]):
                                 ?>
@@ -973,58 +1024,58 @@ stdhead("My Bonuses — {$points} points");
                     </div>
 
                     <!-- Множители -->
-                    <h6 class="mt-3 mb-2">Multipliers per torrent:</h6>
+                    <h6 class="mt-3 mb-2"><?= $lang->mybonus['sec_multipliers'] ?></h6>
                     <div class="row g-2">
                         <?php
                         $multiplierGroups = [
-                            ['info',      'Leechers', [
-                                ['0 leechers',   '×' . ($cfg['leech_none'] ?? 1.2), 'success'],
-                                ['1-2 leechers', '×' . ($cfg['leech_few']  ?? 1.5), 'warning'],
-                                ['3+ leechers',  '×' . ($cfg['leech_many'] ?? 1.8), 'danger', true],
+                            ['info',      $lang->mybonus['grp_leechers'], [
+                                [$lang->mybonus['rng_leech_0'],    '×' . ($cfg['leech_none'] ?? 1.2), 'success'],
+                                [$lang->mybonus['rng_leech_few'],  '×' . ($cfg['leech_few']  ?? 1.5), 'warning'],
+                                [$lang->mybonus['rng_leech_many'], '×' . ($cfg['leech_many'] ?? 1.8), 'danger', true],
                             ]],
-                            ['success',   'Size', [
-                                ['< 0.5 GB', '×' . ($cfg['size_small']  ?? 1.0), ''],
-                                ['0.5-2 GB', '×' . ($cfg['size_medium'] ?? 1.2), 'success'],
-                                ['2-8 GB',   '×' . ($cfg['size_large']  ?? 1.5), 'warning'],
-                                ['8-20 GB',  '×' . ($cfg['size_xlarge'] ?? 1.8), 'danger'],
-                                ['> 20 GB',  '×' . ($cfg['size_huge']   ?? 2.0), 'danger', true],
+                            ['success',   $lang->mybonus['grp_size'], [
+                                [$lang->mybonus['rng_size_small'],  '×' . ($cfg['size_small']  ?? 1.0), ''],
+                                [$lang->mybonus['rng_size_medium'], '×' . ($cfg['size_medium'] ?? 1.2), 'success'],
+                                [$lang->mybonus['rng_size_large'],  '×' . ($cfg['size_large']  ?? 1.5), 'warning'],
+                                [$lang->mybonus['rng_size_xlarge'], '×' . ($cfg['size_xlarge'] ?? 1.8), 'danger'],
+                                [$lang->mybonus['rng_size_huge'],   '×' . ($cfg['size_huge']   ?? 2.0), 'danger', true],
                             ]],
-                            ['warning',   'Seeders', [
+                            ['warning',   $lang->mybonus['grp_seeders'], [
                                 ['≤ 50',    '×1.0', 'success'],
                                 ['51-100',  '×' . ($cfg['seeders_medium'] ?? 0.95), ''],
                                 ['> 100',   '×' . ($cfg['seeders_many']   ?? 0.9),  'muted'],
                             ]],
-                            ['secondary', 'Age', [
-                                ['< 60 days',   '×1.0', ''],
-                                ['60-180 days', '×' . ($cfg['age_medium'] ?? 1.3), 'warning'],
-                                ['> 180 days',  '×' . ($cfg['age_old']    ?? 1.5), 'danger', true],
+                            ['secondary', $lang->mybonus['grp_age'], [
+                                [$lang->mybonus['rng_age_new'],    '×1.0', ''],
+                                [$lang->mybonus['rng_age_medium'], '×' . ($cfg['age_medium'] ?? 1.3), 'warning'],
+                                [$lang->mybonus['rng_age_old'],    '×' . ($cfg['age_old']    ?? 1.5), 'danger', true],
                             ]],
                         ];
                         // Редкость и верность - показываем, только если включены (не 1.0)
                         $rareOn  = max((float)($cfg['rare_1'] ?? 1), (float)($cfg['rare_3'] ?? 1), (float)($cfg['rare_5'] ?? 1)) > 1.0;
                         $loyalOn = max((float)($cfg['loyal_30'] ?? 1), (float)($cfg['loyal_90'] ?? 1), (float)($cfg['loyal_180'] ?? 1)) > 1.0;
-                        if ($rareOn) $multiplierGroups[] = ['primary', 'Rarity (seeders incl. you)', [
-                                ['Only you',    '×' . ($cfg['rare_1'] ?? 1.0), 'danger', true],
-                                ['2-3 seeders', '×' . ($cfg['rare_3'] ?? 1.0), 'warning'],
-                                ['4-5 seeders', '×' . ($cfg['rare_5'] ?? 1.0), 'success'],
+                        if ($rareOn) $multiplierGroups[] = ['primary', $lang->mybonus['grp_rarity'], [
+                                [$lang->mybonus['rng_rare_1'], '×' . ($cfg['rare_1'] ?? 1.0), 'danger', true],
+                                [$lang->mybonus['rng_rare_3'], '×' . ($cfg['rare_3'] ?? 1.0), 'warning'],
+                                [$lang->mybonus['rng_rare_5'], '×' . ($cfg['rare_5'] ?? 1.0), 'success'],
                             ]];
-                        if ($loyalOn) $multiplierGroups[] = ['success', 'Loyalty (your seed time)', [
-                                ['30+ days',  '×' . ($cfg['loyal_30']  ?? 1.0), 'success'],
-                                ['90+ days',  '×' . ($cfg['loyal_90']  ?? 1.0), 'warning'],
-                                ['180+ days', '×' . ($cfg['loyal_180'] ?? 1.0), 'danger', true],
+                        if ($loyalOn) $multiplierGroups[] = ['success', $lang->mybonus['grp_loyalty'], [
+                                [$lang->mybonus['rng_loyal_30'],  '×' . ($cfg['loyal_30']  ?? 1.0), 'success'],
+                                [$lang->mybonus['rng_loyal_90'],  '×' . ($cfg['loyal_90']  ?? 1.0), 'warning'],
+                                [$lang->mybonus['rng_loyal_180'], '×' . ($cfg['loyal_180'] ?? 1.0), 'danger', true],
                             ]];
                         foreach ($multiplierGroups as [$color, $label, $rows]):
                         ?>
                         <div class="col-sm-6">
                             <div class="formula-item">
-                                <span class="badge bg-<?= $color ?> badge-small me-2"><?= $label ?></span>
+                                <span class="badge bg-<?= $color ?> badge-small me-2"><?= htmlspecialchars($label) ?></span>
                                 <?php foreach ($rows as $row):
                                     [$rLabel, $rVal, $rColor] = $row;
                                     $fw = !empty($row[3]) ? ' fw-bold' : '';
                                     $tc = $rColor ? ' text-' . $rColor : '';
                                 ?>
                                 <div class="d-flex justify-content-between">
-                                    <span><?= $rLabel ?>:</span>
+                                    <span><?= htmlspecialchars($rLabel) ?>:</span>
                                     <span class="<?= $tc . $fw ?>"><?= $rVal ?></span>
                                 </div>
                                 <?php endforeach; ?>
@@ -1035,13 +1086,13 @@ stdhead("My Bonuses — {$points} points");
 
                     <!-- Промо-бонусы -->
                     <div class="formula-item mt-3 p-3 bg-warning bg-opacity-10 rounded">
-                        <span class="badge bg-danger badge-small me-2">Promo bonuses</span>
+                        <span class="badge bg-danger badge-small me-2"><?= $lang->mybonus['sec_promo'] ?></span>
                         <div class="row mt-2">
                             <?php
                             $promos = [
-                                ['Freeleech',      $cfg['promo_free']   ?? 0.7],
-                                ['Silver',         $cfg['promo_silver'] ?? 0.5],
-                                ['Double Upload',  $cfg['promo_double'] ?? 0.5],
+                                [$lang->mybonus['lbl_promo_free'],   $cfg['promo_free']   ?? 0.7],
+                                [$lang->mybonus['lbl_promo_silver'], $cfg['promo_silver'] ?? 0.5],
+                                [$lang->mybonus['lbl_promo_double'], $cfg['promo_double'] ?? 0.5],
                             ];
                             foreach ($promos as [$pl, $pv]):
                             ?>
@@ -1053,20 +1104,20 @@ stdhead("My Bonuses — {$points} points");
                             </div>
                             <?php endforeach; ?>
                         </div>
-                        <div class="small text-muted mt-1">These values are added to 1.0 base</div>
+                        <div class="small text-muted mt-1"><?= $lang->mybonus['hint_promo_base'] ?></div>
                     </div>
 
                     <!-- Базовая формула + пример + советы -->
                     <div class="row mt-4">
                         <div class="col-md-8">
-                            <h5 class="mb-3">Basic formula:</h5>
+                            <h5 class="mb-3"><?= $lang->mybonus['sec_basic_formula'] ?></h5>
                             <div class="alert alert-success py-2 mb-3">
                                 <div class="row">
                                     <div class="col-sm-6">
-                                        <strong>Hourly bonus =</strong> Base × Multipliers × Torrents factor
+                                        <strong><?= $lang->mybonus['lbl_formula_hourly'] ?></strong> <?= $lang->mybonus['txt_formula_hourly'] ?>
                                     </div>
                                     <div class="col-sm-6">
-                                        <strong>Final bonus =</strong> Hourly bonus × Seeding time
+                                        <strong><?= $lang->mybonus['lbl_formula_final'] ?></strong> <?= $lang->mybonus['txt_formula_final'] ?>
                                     </div>
                                 </div>
                             </div>
@@ -1076,16 +1127,16 @@ stdhead("My Bonuses — {$points} points");
                             <!-- Период расчёта -->
                             <div class="card border-primary mb-3">
                                 <div class="card-header bg-primary text-white py-2">
-                                    <h6 class="mb-0"><i class="fas fa-clock me-2"></i>Calculation period</h6>
+                                    <h6 class="mb-0"><i class="fas fa-clock me-2"></i><?= $lang->mybonus['sec_calc_period'] ?></h6>
                                 </div>
                                 <div class="card-body py-2">
                                     <?php
                                     $announceMin = (int)($cfg['announce_interval'] ?? 15);
                                     $periodRows  = [
-                                        ['Tracker announce', $announceMin . ' min', null],
-                                        ['Bonus cron',       $cronMin . ' min',     null],
-                                        ['Min counted',      $announceMin . ' min', round($announceMin / 60, 2) . ' hours minimum'],
-                                        ['Max per run',      ($cronMin * 2) . ' min', round(($cronMin * 2) / 60, 2) . ' hours maximum'],
+                                        [$lang->mybonus['lbl_period_announce'], ags_fmt($lang->mybonus['val_minutes'], $announceMin), null],
+                                        [$lang->mybonus['lbl_period_cron'],     ags_fmt($lang->mybonus['val_minutes'], $cronMin),     null],
+                                        [$lang->mybonus['lbl_period_min'],      ags_fmt($lang->mybonus['val_minutes'], $announceMin), ags_fmt($lang->mybonus['hint_hours_min'], round($announceMin / 60, 2))],
+                                        [$lang->mybonus['lbl_period_max'],      ags_fmt($lang->mybonus['val_minutes'], $cronMin * 2), ags_fmt($lang->mybonus['hint_hours_max'], round(($cronMin * 2) / 60, 2))],
                                     ];
                                     foreach ($periodRows as [$label, $val, $note]):
                                     ?>
@@ -1102,7 +1153,7 @@ stdhead("My Bonuses — {$points} points");
                                     <hr class="my-2">
                                     <div class="text-center">
                                         <small class="text-muted">
-                                            Seed at least <strong><?= $announceMin ?> minutes</strong> to earn points
+                                            <?= ags_fmt($lang->mybonus['hint_seed_at_least'], $announceMin) ?>
                                         </small>
                                     </div>
                                 </div>
@@ -1111,46 +1162,46 @@ stdhead("My Bonuses — {$points} points");
                             <!-- Пример расчёта -->
                             <div class="card bg-success bg-opacity-10 border-success mb-3">
                                 <div class="card-header border-success py-2">
-                                    <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Example calculation</h6>
+                                    <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i><?= $lang->mybonus['sec_example'] ?></h6>
                                 </div>
                                 <div class="card-body py-2">
                                     <div class="small mb-2">
-                                        <strong>Torrent:</strong> 15 GB, 4 leechers, Freeleech, 200 days old, 30 seeders
+                                        <strong><?= $lang->mybonus['lbl_ex_torrent'] ?></strong> <?= $lang->mybonus['txt_ex_torrent'] ?>
                                     </div>
                                     <div class="bg-white p-2 rounded mb-2">
                                         <?php
                                         $exRows = [
-                                            ['Leechers (4)',    '×' . ($cfg['leech_many']   ?? 1.8) . ' (3+ leechers)'],
-                                            ['Size (15 GB)',    '×' . ($cfg['size_xlarge']  ?? 1.8) . ' (8-20 GB)'],
-                                            ['Seeders (30)',    '×1.0 (≤ 50 seeders)'],
-                                            ['Age (200 days)',  '×' . ($cfg['age_old']      ?? 1.5) . ' (>180 days)'],
-                                            ['Promo (Free)',    '×' . number_format(1.0 + (float)($cfg['promo_free'] ?? 0.7), 1) . ' (+' . ($cfg['promo_free'] ?? 0.7) . ')'],
+                                            [$lang->mybonus['lbl_ex_leechers'], ags_fmt($lang->mybonus['txt_ex_leechers'], (string)($cfg['leech_many']  ?? 1.8))],
+                                            [$lang->mybonus['lbl_ex_size'],     ags_fmt($lang->mybonus['txt_ex_size'],     (string)($cfg['size_xlarge'] ?? 1.8))],
+                                            [$lang->mybonus['lbl_ex_seeders'],  ags_fmt($lang->mybonus['txt_ex_seeders'],  '1.0')],
+                                            [$lang->mybonus['lbl_ex_age'],      ags_fmt($lang->mybonus['txt_ex_age'],      (string)($cfg['age_old']     ?? 1.5))],
+                                            [$lang->mybonus['lbl_ex_promo'],    '×' . number_format(1.0 + (float)($cfg['promo_free'] ?? 0.7), 1) . ' (+' . ($cfg['promo_free'] ?? 0.7) . ')'],
                                         ];
                                         foreach ($exRows as [$el, $ev]):
                                         ?>
                                         <div class="d-flex justify-content-between">
-                                            <span><?= $el ?>:</span>
-                                            <span><?= $ev ?></span>
+                                            <span><?= htmlspecialchars($el) ?>:</span>
+                                            <span><?= htmlspecialchars($ev) ?></span>
                                         </div>
                                         <?php endforeach; ?>
                                         <hr class="my-1">
                                         <div class="d-flex justify-content-between fw-bold">
-                                            <span>Total multiplier:</span>
+                                            <span><?= $lang->mybonus['lbl_ex_total'] ?></span>
                                             <span>×<?= number_format($exampleMul, 2) ?></span>
                                         </div>
                                     </div>
                                     <div class="bg-light p-2 rounded">
                                         <div class="d-flex justify-content-between">
-                                            <span>Base (<?= $BASE_BONUS ?>):</span>
+                                            <span><?= ags_fmt($lang->mybonus['lbl_ex_base'], $BASE_BONUS) ?></span>
                                             <span>×<?= $BASE_BONUS ?></span>
                                         </div>
                                         <div class="d-flex justify-content-between">
-                                            <span>Hourly bonus:</span>
-                                            <span class="fw-bold"><?= number_format($exampleHourly, 1) ?>/h</span>
+                                            <span><?= $lang->mybonus['lbl_ex_hourly'] ?></span>
+                                            <span class="fw-bold"><?= ags_fmt($lang->mybonus['val_per_h'], number_format($exampleHourly, 1)) ?></span>
                                         </div>
                                         <div class="d-flex justify-content-between">
-                                            <span>For <?= $cronMin ?> min:</span>
-                                            <span class="text-success fw-bold"><?= number_format($examplePerCron, 1) ?> pts</span>
+                                            <span><?= ags_fmt($lang->mybonus['lbl_ex_for_period'], $cronMin) ?></span>
+                                            <span class="text-success fw-bold"><?= ags_fmt($lang->mybonus['val_pts'], number_format($examplePerCron, 1)) ?></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1159,45 +1210,46 @@ stdhead("My Bonuses — {$points} points");
                             <!-- Советы -->
                             <div class="card border-warning">
                                 <div class="card-header bg-warning text-dark py-2">
-                                    <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Maximization tips</h6>
+                                    <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i><?= $lang->mybonus['sec_tips'] ?></h6>
                                 </div>
                                 <div class="card-body py-2">
                                     <ul class="mb-0 small">
                                         <?php
                                         $tips = [
-                                            ['fa-fire text-danger',      'Seed torrents with leechers',  '×' . ($cfg['leech_many'] ?? 1.8) . ' for 3+ leechers'],
-                                            ['fa-hdd text-success',      'Large files (>20 GB)',          '×' . ($cfg['size_huge']  ?? 2.0)],
-                                            ['fa-history text-secondary','Old torrents (>180 days)',       '×' . ($cfg['age_old']    ?? 1.5)],
-                                            ['fa-tag text-primary',      'Promo torrents',
-                                                'Free +' . ($cfg['promo_free'] ?? 0.7) .
-                                                ', Silver +' . ($cfg['promo_silver'] ?? 0.5) .
-                                                ', Double +' . ($cfg['promo_double'] ?? 0.5)],
-                                            ['fa-bell text-info',        'Send announce every ' . $announceMin . ' min', ''],
+                                            ['fa-fire text-danger',      $lang->mybonus['tip_leechers'], ags_fmt($lang->mybonus['tip_leechers_note'], (string)($cfg['leech_many'] ?? 1.8))],
+                                            ['fa-hdd text-success',      $lang->mybonus['tip_large'],    '×' . ($cfg['size_huge']  ?? 2.0)],
+                                            ['fa-history text-secondary',$lang->mybonus['tip_old'],      '×' . ($cfg['age_old']    ?? 1.5)],
+                                            ['fa-tag text-primary',      $lang->mybonus['tip_promo'],
+                                                ags_fmt($lang->mybonus['tip_promo_note'],
+                                                    (string)($cfg['promo_free']   ?? 0.7),
+                                                    (string)($cfg['promo_silver'] ?? 0.5),
+                                                    (string)($cfg['promo_double'] ?? 0.5))],
+                                            ['fa-bell text-info',        ags_fmt($lang->mybonus['tip_announce'], $announceMin), ''],
                                         ];
                                         if ((float)($cfg['rare_1'] ?? 1) > 1.0) {
-                                            $tips[] = ['fa-gem text-primary', 'Keep rare torrents alive', '×' . $cfg['rare_1'] . ' when you are the only seeder'];
+                                            $tips[] = ['fa-gem text-primary', $lang->mybonus['tip_rare'], ags_fmt($lang->mybonus['tip_rare_note'], (string)$cfg['rare_1'])];
                                         }
                                         if ((float)($cfg['loyal_180'] ?? 1) > 1.0) {
-                                            $tips[] = ['fa-heart text-danger', 'Keep seeding what you have', 'up to ×' . $cfg['loyal_180'] . ' after 180 days on one torrent'];
+                                            $tips[] = ['fa-heart text-danger', $lang->mybonus['tip_loyal'], ags_fmt($lang->mybonus['tip_loyal_note'], (string)$cfg['loyal_180'])];
                                         }
                                         foreach ($tips as [$ic, $text, $note]):
                                         ?>
                                         <li class="mb-1">
                                             <i class="fas <?= $ic ?> me-1"></i>
-                                            <strong><?= $text ?></strong>
+                                            <strong><?= htmlspecialchars($text) ?></strong>
                                             <?php if ($note): ?>
-                                            <span class="text-success">(<?= $note ?>)</span>
+                                            <span class="text-success">(<?= htmlspecialchars($note) ?>)</span>
                                             <?php endif; ?>
                                         </li>
                                         <?php endforeach; ?>
                                         <li>
                                             <i class="fas fa-chart-pie text-warning me-1"></i>
                                             <?= match($TORRENT_MUL_TYPE) {
-                                                'penalty' => '<strong>1-20 torrents</strong> optimal (×1.0)',
-                                                'reward'  => '<strong>50+ torrents</strong> optimal (×1.1+)',
-                                                'neutral' => '<strong>1-100 torrents</strong> optimal (×1.0)',
-                                                'flat'    => '<strong>Any amount</strong> (always ×' . $FLAT_MULTIPLIER . ')',
-                                                default   => '<strong>Keep seeding</strong> for max points',
+                                                'penalty' => $lang->mybonus['tip_opt_penalty'],
+                                                'reward'  => $lang->mybonus['tip_opt_reward'],
+                                                'neutral' => $lang->mybonus['tip_opt_neutral'],
+                                                'flat'    => ags_fmt($lang->mybonus['tip_opt_flat'], (string)$FLAT_MULTIPLIER),
+                                                default   => $lang->mybonus['tip_opt_default'],
                                             } ?>
                                         </li>
                                     </ul>
@@ -1208,8 +1260,8 @@ stdhead("My Bonuses — {$points} points");
 
                     <!-- Торрент-множитель -->
                     <div class="formula-item mt-3">
-                        <span class="badge bg-dark badge-small me-2">Torrents factor</span>
-                        <span class="badge bg-info badge-small">Type: <?= htmlspecialchars(ucfirst($TORRENT_MUL_TYPE)) ?></span>
+                        <span class="badge bg-dark badge-small me-2"><?= $lang->mybonus['lbl_torrents_factor'] ?></span>
+                        <span class="badge bg-info badge-small"><?= ags_fmt($lang->mybonus['lbl_type'], htmlspecialchars($mulTypeText)) ?></span>
                         <?= renderTorrentMultiplierTable($TORRENT_MUL_TYPE, $ub['torrents'], $FLAT_MULTIPLIER) ?>
 
                         <?php if ($ub['torrents'] > 0): ?>
@@ -1217,20 +1269,20 @@ stdhead("My Bonuses — {$points} points");
                             <div class="row align-items-center">
                                 <div class="col-md-6">
                                     <i class="fas fa-user me-2"></i>
-                                    <strong>Your multiplier:</strong>
+                                    <strong><?= $lang->mybonus['lbl_your_multiplier'] ?></strong>
                                     <span class="fs-4 ms-2">×<?= number_format($ub['capMul'], 1) ?></span>
                                     <div class="small text-muted">
-                                        <?= $ub['torrents'] ?> torrents → <?= number_format($ub['capMul'] * 100, 0) ?>%
+                                        <?= ags_fmt($lang->mybonus['hint_torrents_to_pct'], $ub['torrents'], number_format($ub['capMul'] * 100, 0)) ?>
                                     </div>
                                 </div>
                                 <div class="col-md-6 small text-muted">
                                     <?= match(true) {
                                         $TORRENT_MUL_TYPE === 'penalty' && $ub['capMul'] < 1.0 =>
-                                            '<i class="fas fa-arrow-down text-warning me-1"></i>Penalty for many torrents',
+                                            '<i class="fas fa-arrow-down text-warning me-1"></i>' . $lang->mybonus['txt_mul_penalty'],
                                         $TORRENT_MUL_TYPE === 'reward'  && $ub['capMul'] > 1.0 =>
-                                            '<i class="fas fa-arrow-up text-success me-1"></i>Bonus for many torrents',
+                                            '<i class="fas fa-arrow-up text-success me-1"></i>' . $lang->mybonus['txt_mul_reward'],
                                         default =>
-                                            '<i class="fas fa-equals text-info me-1"></i>Standard multiplier',
+                                            '<i class="fas fa-equals text-info me-1"></i>' . $lang->mybonus['txt_mul_standard'],
                                     } ?>
                                 </div>
                             </div>
@@ -1258,12 +1310,11 @@ stdhead("My Bonuses — {$points} points");
                         <div class="alert alert-secondary small mt-2">
                             <?php if ($nextInfo): [$nt, $nm, $need] = $nextInfo; ?>
                             <i class="fas fa-bullseye me-1"></i>
-                            <strong>Next threshold:</strong>
-                            Reach <?= $nt ?> torrents for ×<?= number_format($nm, 1) ?>
-                            (need <?= $need ?> more)
+                            <strong><?= $lang->mybonus['lbl_next_threshold'] ?></strong>
+                            <?= ags_fmt($lang->mybonus['txt_next_threshold'], $nt, number_format($nm, 1), $need) ?>
                             <?php else: ?>
                             <i class="fas fa-trophy me-1"></i>
-                            <strong>Maximum multiplier reached!</strong>
+                            <strong><?= $lang->mybonus['txt_max_multiplier'] ?></strong>
                             <?php endif; ?>
                         </div>
                         <?php endif; ?>
@@ -1288,8 +1339,8 @@ stdhead("My Bonuses — {$points} points");
 
 </div>
 
+<script>
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
-<script src="<?= $BASEURL ?>/scripts/mybonus.js"></script>
-
-
-<?php stdfoot(); ?>
+<script src="<?= $BASEURL ?>/scripts/mybonus.js?ver=2"></script>

@@ -10,7 +10,7 @@ define('IN_FORUM', true);
 require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
 
-$lang->load('announcements');
+$lang->load('announcements2');
 
 $aid = $mybb->get_input('aid', MyBB::INPUT_INT);
 

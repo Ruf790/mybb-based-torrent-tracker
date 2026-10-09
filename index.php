@@ -4,7 +4,26 @@ declare(strict_types=1);
 
 define("SCRIPTNAME", "index.php");
 require_once 'global.php';
+
+$lang->load('indexmain');
+
 require_once INC_PATH . '/functions_icons.php';
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitutes {1}, {2}… placeholders (and %1$s, %2$s… produced by $lang->load()).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 
 
@@ -29,7 +48,7 @@ $parser_options = [
     "filter_badwords" => 1
 ];
 
-stdhead('Dashboard with Online Users and News');
+stdhead($lang->indexmain['page_title']);
 
 $is_mod = is_mod($usergroups);
 
@@ -218,16 +237,16 @@ if ($db->num_rows($Query) > 0) {
     <div class="card mt-3 shadow-sm seedersneeded-card">
       <div class="card-header d-flex align-items-center">
         <i class="fa-solid fa-circle-exclamation me-2 fs-5"></i>
-        <span class="fs-6 fw-semibold">Recently Uploaded Torrents Needing Seeders</span>
+        <span class="fs-6 fw-semibold">' . htmlspecialchars($lang->indexmain['sec_seeders_needed']) . '</span>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0">
             <thead>
               <tr>
-                <th scope="col"><i class="fa-solid fa-film me-1"></i> Torrent</th>
-                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-up"></i> Seeders</th>
-                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-down"></i> Leechers</th>
+                <th scope="col"><i class="fa-solid fa-film me-1"></i> ' . htmlspecialchars($lang->indexmain['col_torrent']) . '</th>
+                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-up"></i> ' . htmlspecialchars($lang->indexmain['col_seeders']) . '</th>
+                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-down"></i> ' . htmlspecialchars($lang->indexmain['col_leechers']) . '</th>
               </tr>
             </thead>
             <tbody>';
@@ -243,7 +262,7 @@ if ($db->num_rows($Query) > 0) {
               <tr>
                 <td>
                   <div class="d-flex align-items-center">
-                    <img src="' . htmlspecialchars($Torrent['t_image']) . '" alt="Poster" class="me-2 rounded torrent-thumb" style="width: 40px; height: 60px; object-fit: cover;">
+                    <img src="' . htmlspecialchars($Torrent['t_image']) . '" alt="' . htmlspecialchars($lang->indexmain['alt_poster']) . '" class="me-2 rounded torrent-thumb" style="width: 40px; height: 60px; object-fit: cover;">
                     <div>
                       <a href="#" class="torrent-preview text-decoration-none fw-semibold" data-id="' . $torrentId . '" data-bs-toggle="modal" data-bs-target="#torrentModal">
                         ' . $torrentName . '
@@ -283,13 +302,13 @@ if ($db->num_rows($Query) > 0) {
       <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-sm">
           <div class="modal-header">
-            <h5 class="modal-title" id="torrentModalLabel"><i class="fa-solid fa-circle-info me-1"></i> Torrent Details</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <h5 class="modal-title" id="torrentModalLabel"><i class="fa-solid fa-circle-info me-1"></i> ' . htmlspecialchars($lang->indexmain['pane_torrent_details']) . '</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->indexmain['aria_close']) . '"></button>
           </div>
           <div class="modal-body" id="torrentModalContent">
             <div class="text-center text-muted">
               <div class="spinner-border text-danger" role="status"></div>
-              <p class="mt-2">Loading torrent details...</p>
+              <p class="mt-2">' . htmlspecialchars($lang->indexmain['msg_loading_details']) . '</p>
             </div>
           </div>
         </div>
@@ -299,11 +318,11 @@ if ($db->num_rows($Query) > 0) {
     $seedersneeded .= '
     <div class="card mt-4 border-success">
             <div class="card-header bg-success text-white">
-                <i class="fas fa-check-circle me-2"></i>All Torrents Have Seeders
+                <i class="fas fa-check-circle me-2"></i>' . htmlspecialchars($lang->indexmain['sec_all_seeded']) . '
             </div>
             <div class="card-body text-center text-success">
                 <i class="fas fa-smile-beam fa-2x mb-2"></i>
-                <p class="mb-0">Great job! All torrents are currently seeded.</p>
+                <p class="mb-0">' . htmlspecialchars($lang->indexmain['msg_all_seeded']) . '</p>
             </div>
         </div>';
 }
@@ -314,6 +333,26 @@ if ($db->num_rows($Query) > 0) {
 <script type="text/javascript" src="<?= $BASEURL ?>/scripts/exporting.js"></script>
 <script type="text/javascript" src="<?= $BASEURL ?>/scripts/accessibility.js"></script>
 
+<?php
+$agsJsLang = [];
+foreach ($lang->indexmain as $agsKey => $agsVal) {
+    if (str_starts_with((string)$agsKey, 'js_')) {
+        $agsJsLang[substr((string)$agsKey, 3)] = $agsVal;
+    }
+}
+?>
+<script>
+const AGS_LANG = <?= json_encode($agsJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+function t(key, fallback, ...args) {
+  let s = (AGS_LANG && typeof AGS_LANG[key] === "string") ? AGS_LANG[key] : fallback;
+  args.forEach((a, i) => {
+    const n = i + 1;
+    s = s.split("{" + n + "}").join(String(a)).split("%" + n + "$s").join(String(a));
+  });
+  return s;
+}
+</script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".torrent-preview").forEach(el => {
@@ -321,18 +360,26 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
       const torrentId = this.dataset.id;
       const modalContent = document.getElementById("torrentModalContent");
-      modalContent.innerHTML = `
-        <div class="text-center text-muted">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p class="mt-2">Loading torrent details...</p>
-        </div>`;
+      const loadingWrap = document.createElement("div");
+      loadingWrap.className = "text-center text-muted";
+      const spinner = document.createElement("div");
+      spinner.className = "spinner-border text-primary";
+      spinner.setAttribute("role", "status");
+      const loadingText = document.createElement("p");
+      loadingText.className = "mt-2";
+      loadingText.textContent = t("preview_loading", "Loading torrent details...");
+      loadingWrap.append(spinner, loadingText);
+      modalContent.replaceChildren(loadingWrap);
       fetch("torrent_preview.php?id=" + torrentId)
         .then(response => response.text())
         .then(html => {
           modalContent.innerHTML = html;
         })
         .catch(err => {
-          modalContent.innerHTML = "<p class='text-danger'>Failed to load torrent preview.</p>";
+          const errText = document.createElement("p");
+          errText.className = "text-danger";
+          errText.textContent = t("preview_failed", "Failed to load torrent preview.");
+          modalContent.replaceChildren(errText);
         });
     });
   });
@@ -372,7 +419,7 @@ document.addEventListener("DOMContentLoaded", function () {
     <div class="col-md-12">
       <div class="card shadow-sm">
         <div class="card-header">
-          <h4 class="mb-0"><i class="fa-solid fa-newspaper me-2"></i>Latest News</h4>
+          <h4 class="mb-0"><i class="fa-solid fa-newspaper me-2"></i><?= htmlspecialchars($lang->indexmain['sec_news']) ?></h4>
         </div>
         <div class="card-body p-3">
           <?php if (!empty($newsArticles)): ?>
@@ -381,8 +428,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 <li class="news-item border-bottom pb-3 mb-3">
                   <h5 class="mb-1"><?= htmlspecialchars($news['title'] ?? '') ?></h5>
                   <small class="text-muted d-block mb-2">
-                    Posted by <strong><?= htmlspecialchars($news['username'] ?? 'System') ?></strong> on 
-                    <?= my_datee($dateformat, $news['added'] ?? 0) . my_datee($timeformat, $news['added'] ?? 0) ?>
+                    <?= ags_fmt(
+                        htmlspecialchars($lang->indexmain['lbl_posted_by']),
+                        '<strong>' . htmlspecialchars($news['username'] ?? $lang->indexmain['lbl_system']) . '</strong>',
+                        my_datee($dateformat, $news['added'] ?? 0) . my_datee($timeformat, $news['added'] ?? 0)
+                    ) ?>
                   </small>
                   <div class="news-body" style="line-height: 1.5;">
                     <?= $parser->parse_message($news['body'] ?? '', $parser_options) ?>
@@ -391,7 +441,7 @@ document.addEventListener("DOMContentLoaded", function () {
               <?php endforeach; ?>
             </ul>
           <?php else: ?>
-            <p class="text-center text-muted">No news found.</p>
+            <p class="text-center text-muted"><?= htmlspecialchars($lang->indexmain['msg_no_news']) ?></p>
           <?php endif; ?>
         </div>
       </div>
@@ -408,7 +458,7 @@ document.addEventListener("DOMContentLoaded", function () {
 <!-- Latest Torrents Section -->
 <div class="row mb-5">
   <div class="col-md-12">
-   <h3 class="mb-4"><i class="fa-solid fa-cloud-download-alt me-2"></i>Latest Torrents</h3>
+   <h3 class="mb-4"><i class="fa-solid fa-cloud-download-alt me-2"></i><?= htmlspecialchars($lang->indexmain['sec_latest_torrents']) ?></h3>
     <div class="d-flex flex-wrap gap-4 justify-content-start">
 
       <?php foreach ($torrents as $torrent): ?>
@@ -462,13 +512,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
             <!-- Badges -->
            <?php if (($torrent['free'] ?? '') === 'yes'): ?>
-  <span class="badge bg-success" title="Free Torrent">Free</span>
+  <span class="badge bg-success" title="<?= htmlspecialchars($lang->indexmain['tip_free']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_free']) ?></span>
 <?php endif; ?>
 <?php if (($torrent['silver'] ?? '') === 'yes'): ?>
-  <span class="badge bg-secondary" title="Silver Torrent">Silver</span>
+  <span class="badge bg-secondary" title="<?= htmlspecialchars($lang->indexmain['tip_silver']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_silver']) ?></span>
 <?php endif; ?>
 <?php if (($torrent['doubleupload'] ?? '') === 'yes'): ?>
-  <span class="badge bg-warning text-dark" title="Double Upload">2x Upload</span>
+  <span class="badge bg-warning text-dark" title="<?= htmlspecialchars($lang->indexmain['tip_double_upload']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_double_upload']) ?></span>
 <?php endif; ?>
 			
 		
@@ -477,7 +527,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             
 			
-			<small class="text-muted d-block">Added: <?= date('Y-m-d', (int)$torrent['added'] ?? time()) ?></small>
+			<small class="text-muted d-block"><?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_added']), date('Y-m-d', (int)$torrent['added'] ?? time())) ?></small>
 
 			
           </div>
@@ -498,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function () {
   <div class="row mb-5">
     <div class="col-md-6">
       <div class="card">
-        <div class="card-header">Most Popular Torrents</div>
+        <div class="card-header"><?= htmlspecialchars($lang->indexmain['sec_popular']) ?></div>
         <div class="card-body">
           <div id="popularTorrentsChart" style="height: 400px;"></div>
         </div>
@@ -506,7 +556,7 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>
     <div class="col-md-6">
       <div class="card">
-        <div class="card-header">Most Active Torrents</div>
+        <div class="card-header"><?= htmlspecialchars($lang->indexmain['sec_active']) ?></div>
         <div class="card-body">
           <div id="activeTorrentsChart" style="height: 400px;"></div>
         </div>
@@ -516,11 +566,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   <!-- Online Users Section -->
   <section class="mb-5">
-    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-users me-2"></i>Online Users</h2>
+    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-users me-2"></i><?= htmlspecialchars($lang->indexmain['sec_online']) ?></h2>
     <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
-      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> Visible Members: <?= $_active_members ?></span>
-      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> Hidden Members: <?= $_hidden_members ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> Total Online: <?= $_active_members + $_hidden_members ?></span>
+      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_visible']), $_active_members) ?></span>
+      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_hidden']), $_hidden_members) ?></span>
+      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_online']), $_active_members + $_hidden_members) ?></span>
     </div>
     <div class="user-list d-flex flex-wrap gap-3">
       <?php foreach ($_usernames as $user_html): ?>
@@ -531,12 +581,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
   <!-- Last 24 Hours Active Users Section -->
   <section>
-    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-clock-rotate-left me-2"></i>Last 24 Hours Active Users</h2>
+    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-clock-rotate-left me-2"></i><?= htmlspecialchars($lang->indexmain['sec_last24']) ?></h2>
     <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
-      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> Visible Members: <?= $_active_members2 ?></span>
-      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> Hidden Members: <?= $_hidden_members2 ?></span>
-      <span class="badge bg-warning text-dark fs-6"><i class="fa-solid fa-users me-1"></i> Guests: <?= $_guests ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> Total Users: <?= (int)$_active_members2 + (int)$_hidden_members2 + (int)$_guests ?></span>
+      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_visible']), $_active_members2) ?></span>
+      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_hidden']), $_hidden_members2) ?></span>
+      <span class="badge bg-warning text-dark fs-6"><i class="fa-solid fa-users me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_guests']), $_guests) ?></span>
+      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_users']), (int)$_active_members2 + (int)$_hidden_members2 + (int)$_guests) ?></span>
     </div>
     <div class="user-list d-flex flex-wrap gap-3">
       <?php foreach ($_usernames2 as $user_html2): ?>
@@ -549,42 +599,42 @@ document.addEventListener("DOMContentLoaded", function () {
 <script>
 Highcharts.chart('popularTorrentsChart', {
   chart: { type: 'column' },
-  title: { text: 'Most Popular Torrents' },
+  title: { text: t('chart_popular', 'Most Popular Torrents') },
   xAxis: { 
     categories: <?= json_encode($popularTorrentNames) ?>,
     crosshair: true,
-    title: { text: 'Torrent' }
+    title: { text: t('axis_torrent', 'Torrent') }
   },
   yAxis: {
     min: 0,
-    title: { text: 'Hits' }
+    title: { text: t('axis_hits', 'Hits') }
   },
   series: [{
-    name: 'Hits',
+    name: t('series_hits', 'Hits'),
     data: <?= json_encode($popularTorrentHits) ?>,
     color: 'rgba(220, 53, 69, 0.7)'
   }],
-  tooltip: { valueSuffix: ' hits' }
+  tooltip: { valueSuffix: ' ' + t('suffix_hits', 'hits') }
 });
 
 Highcharts.chart('activeTorrentsChart', {
   chart: { type: 'column' },
-  title: { text: 'Most Active Torrents' },
+  title: { text: t('chart_active', 'Most Active Torrents') },
   xAxis: { 
     categories: <?= json_encode($activeTorrentNames) ?>,
     crosshair: true,
-    title: { text: 'Torrent' }
+    title: { text: t('axis_torrent', 'Torrent') }
   },
   yAxis: {
     min: 0,
-    title: { text: 'Completed Times' }
+    title: { text: t('axis_completed', 'Completed Times') }
   },
   series: [{
-    name: 'Completed',
+    name: t('series_completed', 'Completed'),
     data: <?= json_encode($activeTorrentCompletions) ?>,
     color: 'rgba(23, 162, 184, 0.7)'
   }],
-  tooltip: { valueSuffix: ' completions' }
+  tooltip: { valueSuffix: ' ' + t('suffix_completed', 'completions') }
 });
 </script>
 

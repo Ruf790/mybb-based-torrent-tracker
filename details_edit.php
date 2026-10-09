@@ -1,6 +1,11 @@
 <?php
 if (!isset($Torrent) || !is_array($Torrent)) return;
 
+global $lang;
+if (empty($lang->details)) {
+    $lang->load('details');
+}
+
 $t_link = $Torrent['t_link'] ?? '';
 if ($t_link && preg_match('@https:\/\/www\.imdb\.com\/title\/(.*)\/@isU', $t_link, $result)) {
     $t_link = $result[0];
@@ -79,9 +84,9 @@ $is_mod   = $is_mod ?? false;
 
       <div class="modal-header">
         <h5 class="modal-title">
-            <i class="bi bi-pencil-square me-2"></i>Edit: <?= htmlspecialchars(mb_substr($Torrent['name'] ?? '', 0, 50)) ?>
+            <i class="bi bi-pencil-square me-2"></i><?= ags_fmt(htmlspecialchars($lang->details['et_title'], ENT_QUOTES), htmlspecialchars(mb_substr($Torrent['name'] ?? '', 0, 50))) ?>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
       </div>
 
       <div class="modal-body">
@@ -89,10 +94,10 @@ $is_mod   = $is_mod ?? false;
 
           <!-- Basic info -->
           <div class="et-section">
-            <div class="et-section-title"><i class="bi bi-info-circle me-1"></i>Basic information</div>
+            <div class="et-section-title"><i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($lang->details['et_sec_basic'], ENT_QUOTES) ?></div>
 
             <div class="et-field">
-              <label for="name">Torrent name</label>
+              <label for="name"><?= htmlspecialchars($lang->details['et_lbl_name'], ENT_QUOTES) ?></label>
               <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-type"></i></span>
                 <input type="text" name="name" id="name" class="form-control"
@@ -102,11 +107,11 @@ $is_mod   = $is_mod ?? false;
 
             <div class="row g-3">
               <div class="col-md-6 et-field">
-                <label for="category">Category</label>
-                <?= $caats ?? '<select name="category" class="form-select"><option>Select...</option></select>' ?>
+                <label for="category"><?= htmlspecialchars($lang->details['lbl_category'], ENT_QUOTES) ?></label>
+                <?= $caats ?? '<select name="category" class="form-select"><option>' . htmlspecialchars($lang->details['et_opt_select'], ENT_QUOTES) . '</option></select>' ?>
               </div>
               <div class="col-md-6 et-field">
-                <label for="t_link">IMDB link</label>
+                <label for="t_link"><?= htmlspecialchars($lang->details['et_lbl_imdb'], ENT_QUOTES) ?></label>
                 <div class="input-group">
                   <span class="input-group-text"><i class="fab fa-imdb"></i></span>
                   <input type="text" name="t_link" id="t_link" class="form-control"
@@ -116,7 +121,7 @@ $is_mod   = $is_mod ?? false;
             </div>
 
             <div class="et-field mb-0">
-              <label for="descr">Description</label>
+              <label for="descr"><?= htmlspecialchars($lang->details['description'], ENT_QUOTES) ?></label>
               <textarea name="descr" id="descr" class="form-control" rows="7"
                         style="resize:vertical;font-size:.875rem;border-radius:8px" required><?= htmlspecialchars($Torrent['descr'] ?? '') ?></textarea>
             </div>
@@ -124,15 +129,15 @@ $is_mod   = $is_mod ?? false;
 
           <!-- Images -->
           <div class="et-section">
-            <div class="et-section-title"><i class="bi bi-images me-1"></i>Cover images</div>
+            <div class="et-section-title"><i class="bi bi-images me-1"></i><?= htmlspecialchars($lang->details['et_sec_images'], ENT_QUOTES) ?></div>
 
             <div class="row g-3">
               <!-- Image 1 -->
               <div class="col-md-6">
-                <div class="fw-semibold mb-2" style="font-size:.85rem">Cover image 1</div>
+                <div class="fw-semibold mb-2" style="font-size:.85rem"><?= ags_fmt(htmlspecialchars($lang->details['et_lbl_cover'], ENT_QUOTES), 1) ?></div>
                 <div class="et-img-tabs">
-                  <span class="et-img-tab active" onclick="etImgTab(1,'url',this)">URL</span>
-                  <span class="et-img-tab" onclick="etImgTab(1,'file',this)">Upload</span>
+                  <span class="et-img-tab active" onclick="etImgTab(1,'url',this)"><?= htmlspecialchars($lang->details['et_tab_url'], ENT_QUOTES) ?></span>
+                  <span class="et-img-tab" onclick="etImgTab(1,'file',this)"><?= htmlspecialchars($lang->details['et_tab_upload'], ENT_QUOTES) ?></span>
                 </div>
                 <div id="et-img1-url" class="et-img-panel active">
                   <input type="text" name="t_image_url" class="form-control"
@@ -152,10 +157,10 @@ $is_mod   = $is_mod ?? false;
 
               <!-- Image 2 -->
               <div class="col-md-6">
-                <div class="fw-semibold mb-2" style="font-size:.85rem">Cover image 2</div>
+                <div class="fw-semibold mb-2" style="font-size:.85rem"><?= ags_fmt(htmlspecialchars($lang->details['et_lbl_cover'], ENT_QUOTES), 2) ?></div>
                 <div class="et-img-tabs">
-                  <span class="et-img-tab active" onclick="etImgTab(2,'url',this)">URL</span>
-                  <span class="et-img-tab" onclick="etImgTab(2,'file',this)">Upload</span>
+                  <span class="et-img-tab active" onclick="etImgTab(2,'url',this)"><?= htmlspecialchars($lang->details['et_tab_url'], ENT_QUOTES) ?></span>
+                  <span class="et-img-tab" onclick="etImgTab(2,'file',this)"><?= htmlspecialchars($lang->details['et_tab_upload'], ENT_QUOTES) ?></span>
                 </div>
                 <div id="et-img2-url" class="et-img-panel active">
                   <input type="text" name="t_image_url2" class="form-control"
@@ -178,16 +183,16 @@ $is_mod   = $is_mod ?? false;
           <?php if ($is_mod): ?>
           <!-- Moderator options -->
           <div class="et-section">
-            <div class="et-section-title"><i class="bi bi-shield-check me-1"></i>Moderator options</div>
+            <div class="et-section-title"><i class="bi bi-shield-check me-1"></i><?= htmlspecialchars($lang->details['et_sec_mod'], ENT_QUOTES) ?></div>
 
             <div class="row g-0">
               <div class="col-md-6" style="padding-right:.75rem">
                 <?php
                 $switches_left = [
-                    ['free',         $lang->upload['free1']??'Free',         $lang->upload['free2']??''],
-                    ['silver',       $lang->upload['silver1']??'Silver',     $lang->upload['silver2']??''],
-                    ['thirtypercent',$lang->upload['thirtypercent1']??'30% Leech', $lang->upload['thirtypercent2']??''],
-                    ['doubleupload', $lang->upload['doubleupload1']??'Double Upload', $lang->upload['doubleupload2']??''],
+                    ['free',         $lang->upload['free1']??$lang->details['et_sw_free'],         $lang->upload['free2']??''],
+                    ['silver',       $lang->upload['silver1']??$lang->details['et_sw_silver'],     $lang->upload['silver2']??''],
+                    ['thirtypercent',$lang->upload['thirtypercent1']??$lang->details['et_sw_thirty'], $lang->upload['thirtypercent2']??''],
+                    ['doubleupload', $lang->upload['doubleupload1']??$lang->details['et_sw_double'], $lang->upload['doubleupload2']??''],
                 ];
                 foreach ($switches_left as [$name, $label, $desc]):
                     $checked = ($Torrent[$name] ?? '') === 'yes' ? 'checked' : '';
@@ -206,8 +211,8 @@ $is_mod   = $is_mod ?? false;
               <div class="col-md-6" style="padding-left:.75rem;border-left:1px solid #f1f3f5">
                 <?php
                 $switches_right = [
-                    ['allowcomments', $lang->upload['allowcomments1']??'Allow Comments', $lang->upload['allowcomments2']??'', 'no'],
-                    ['sticky',        $lang->upload['sticky1']??'Sticky',               $lang->upload['sticky2']??'', 'yes'],
+                    ['allowcomments', $lang->upload['allowcomments1']??$lang->details['et_sw_comments'], $lang->upload['allowcomments2']??'', 'no'],
+                    ['sticky',        $lang->upload['sticky1']??$lang->details['sticky'],               $lang->upload['sticky2']??'', 'yes'],
                 ];
                 foreach ($switches_right as [$name, $label, $desc, $val]):
                     $checked = ($Torrent[$name] ?? '') === $val ? 'checked' : '';
@@ -226,7 +231,7 @@ $is_mod   = $is_mod ?? false;
                 <!-- Nuked -->
                 <div class="et-switch-row">
                   <div>
-                    <span class="fw-semibold"><?= $lang->upload['nuked1']??'Nuked' ?></span>
+                    <span class="fw-semibold"><?= $lang->upload['nuked1']??$lang->details['et_sw_nuked'] ?></span>
                     <?php if (!empty($lang->upload['nuked2'])): ?>
                     <br><small class="text-muted"><?= $lang->upload['nuked2'] ?></small>
                     <?php endif; ?>
@@ -240,7 +245,7 @@ $is_mod   = $is_mod ?? false;
                 <div id="et-nukereason" class="et-nukereason"
                      style="display:<?= ($Torrent['isnuked']??'')==='yes'?'block':'none' ?>">
                   <input type="text" name="WhyNuked" class="form-control form-control-sm"
-                         placeholder="<?= $lang->upload['nreason']??'Reason for nuke' ?>"
+                         placeholder="<?= $lang->upload['nreason']??htmlspecialchars($lang->details['et_ph_nuke'], ENT_QUOTES) ?>"
                          value="<?= htmlspecialchars($Torrent['WhyNuked']??'') ?>">
                 </div>
               </div>
@@ -249,14 +254,14 @@ $is_mod   = $is_mod ?? false;
           <?php endif; ?>
 
           <button type="submit" id="et-save" class="et-btn-save">
-            <i class="bi bi-check2 me-1"></i>Save changes
+            <i class="bi bi-check2 me-1"></i><?= htmlspecialchars($lang->details['btn_save_changes'], ENT_QUOTES) ?>
           </button>
         </form>
       </div>
 
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary et-btn-cancel" data-bs-dismiss="modal">
-          Cancel
+          <?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?>
         </button>
       </div>
 
@@ -265,6 +270,7 @@ $is_mod   = $is_mod ?? false;
 </div>
 
 <script>
+// t() and agsIconText() come from the page scripts; AGS_LANG is printed by details.php
 function etImgTab(num, type, el) {
     document.querySelectorAll(`#et-img${num}-url, #et-img${num}-file`).forEach(p => p.classList.remove('active'));
     document.getElementById(`et-img${num}-${type}`).classList.add('active');
@@ -298,7 +304,7 @@ function etSubmit(event) {
     event.preventDefault();
     const btn = document.getElementById('et-save');
     btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Saving...';
+    agsIconText(btn, 'bi bi-hourglass-split me-1', t('et_saving', 'Saving...'));
 
     const formData = new FormData(document.getElementById('insert_form'));
     formData.append('id', '<?= htmlspecialchars($Torrent['id'] ?? '') ?>');
@@ -310,25 +316,25 @@ function etSubmit(event) {
     .then(r => r.text())
     .then(text => {
         let data;
-        try { data = JSON.parse(text); } catch(e) { throw new Error('Server error'); }
+        try { data = JSON.parse(text); } catch(e) { throw new Error(t('et_server_error', 'Server error')); }
         if (data.success) {
-            showToast('Torrent updated!', 'success');
+            showToast(t('et_updated', 'Torrent updated!'), 'success');
             setTimeout(() => {
                 bootstrap.Modal.getInstance(document.getElementById('add_data_Modal'))?.hide();
                 setTimeout(() => window.location.reload(), 800);
             }, 800);
         } else {
-            showToast('Error: ' + (data.message || 'Unknown error'), 'error');
+            showToast(t('et_error', 'Error: {1}', data.message || t('et_unknown_error', 'Unknown error')), 'error');
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save changes';
+            agsIconText(btn, 'bi bi-check2 me-1', t('et_save', 'Save changes'));
         }
     })
     .catch(err => {
-        showToast('Error: ' + err.message, 'error');
+        showToast(t('et_error', 'Error: {1}', err.message), 'error');
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save changes';
+        agsIconText(btn, 'bi bi-check2 me-1', t('et_save', 'Save changes'));
     });
 
     return false;
 }
-</script>
+</script>

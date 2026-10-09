@@ -70,6 +70,13 @@ function search_css(): string
     return '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/search.css">';
 }
 
+// Escaped lang string for HTML text / attributes (plain-text keys only).
+function sr_e(string $key): string
+{
+    global $lang;
+    return htmlspecialchars_uni($lang->search[$key]);
+}
+
 
 
 
@@ -176,7 +183,7 @@ if ($mybb->input['action'] === 'suggest')
             'type'    => 'thread',
             'icon'    => 'fa-comments',
             'title' => highlight_search_term($row['subject'], $kw),
-            'meta'    => htmlspecialchars_uni($row['forumname']).' · '.$row['replies'].' replies',
+            'meta'    => ags_fmt($lang->search['suggest_meta_thread'], htmlspecialchars_uni((string)$row['forumname']), (int)$row['replies']),
             'url'     => get_thread_link($row['tid'])
         ];
     }
@@ -231,7 +238,7 @@ if ($mybb->input['action'] === 'suggest')
             'type'    => 'user',
             'icon'    => 'fa-user',
             'title' => highlight_search_term($row['username'], $kw),
-            'meta'    => 'Member',
+            'meta'    => htmlspecialchars_uni($lang->search['suggest_meta_user']),
             'url'     => 'userdetails.php?id='.(int)$row['id']
         ];
     }
@@ -427,21 +434,29 @@ if ($mybb->input['action'] === 'results') {
         }
 
         // ── OUTPUT ────────────────────────────────────────────────────────
-        stdhead('Search Results');
+        stdhead($lang->search['title_results_threads']);
         build_breadcrumb();
         echo search_css();
         echo '<div class="sr-res-wrap">';
 
         // Header
         echo '<div class="sr-res-header">';
-        echo '<div><div class="sr-res-title"><i class="fas fa-search me-2" style="color:var(--sr-primary)"></i>Thread Results</div>';
-        echo '<div class="sr-res-count">Found <strong>' . ts_nf($threadcount) . '</strong> thread' . ($threadcount !== 1 ? 's' : '') . '</div></div>';
+        echo '<div><div class="sr-res-title"><i class="fas fa-search me-2" style="color:var(--sr-primary)"></i>' . sr_e('sec_thread_results') . '</div>';
+        echo '<div class="sr-res-count">' . ags_fmt($lang->search[(int)$threadcount === 1 ? 'lbl_found_thread_one' : 'lbl_found_threads'], ts_nf($threadcount)) . '</div></div>';
         echo '<div class="sr-sort-bar">';
-        $sort_opts = ['lastpost'=>'Date','replies'=>'Replies','views'=>'Views','rating'=>'Rating','subject'=>'Subject','starter'=>'Author','forum'=>'Forum'];
+        $sort_opts = [
+            'lastpost' => $lang->search['opt_sort_date'],
+            'replies'  => $lang->search['opt_sort_replies'],
+            'views'    => $lang->search['opt_sort_views'],
+            'rating'   => $lang->search['opt_sort_rating'],
+            'subject'  => $lang->search['opt_sort_subject'],
+            'starter'  => $lang->search['opt_sort_author'],
+            'forum'    => $lang->search['opt_sort_forum'],
+        ];
         foreach ($sort_opts as $key => $label) {
             $active = $sortby === $key ? ' active' : '';
             $no     = ($sortby === $key && $order === 'asc') ? 'desc' : 'asc';
-            echo '<a href="' . $sorturl . '&amp;sortby=' . $key . '&amp;order=' . $no . '" class="sr-sort-btn' . $active . '">' . $label . '</a>';
+            echo '<a href="' . $sorturl . '&amp;sortby=' . $key . '&amp;order=' . $no . '" class="sr-sort-btn' . $active . '">' . htmlspecialchars_uni($label) . '</a>';
         }
         echo '</div></div>';
 
@@ -468,14 +483,14 @@ if ($mybb->input['action'] === 'results') {
             if ($threadreadcut > 0 && $CURUSER['id'] && $thread['lastpost'] > $forum_read) {
                 $last_read = $thread['lastread'] ?? $read_cutoff;
             } else {
-                $last_read = my_get_array_cookie('threadread', $thread['tid']);
+                $last_read = my_get_array_cookie('threadread', (string)$thread['tid']);
             }
             if ($forum_read > $last_read) $last_read = $forum_read;
             if ($thread['lastpost'] > $last_read && $last_read) {
-                $badges .= '<span class="sr-new-badge"><i class="fas fa-circle" style="font-size:6px"></i> New</span>';
+                $badges .= '<span class="sr-new-badge"><i class="fas fa-circle" style="font-size:6px"></i> ' . sr_e('badge_new') . '</span>';
             }
             if ($thread['replies'] >= 20 || $thread['views'] >= 150) {
-                $badges .= '<span class="sr-new-badge sr-hot-badge"><i class="fas fa-fire"></i> Hot</span>';
+                $badges .= '<span class="sr-new-badge sr-hot-badge"><i class="fas fa-fire"></i> ' . sr_e('badge_hot') . '</span>';
             }
             if ($thread['closed'] == 1) {
                 $badges .= '<span class="sr-new-badge sr-closed-badge"><i class="fas fa-lock"></i></span>';
@@ -523,12 +538,12 @@ if ($mybb->input['action'] === 'results') {
             echo '<div class="sr-meta">';
             echo '<a href="' . $forum_link . '" class="sr-sort-btn active" onclick="event.stopPropagation()"><i class="fas fa-folder-open"></i>' . $forum_name . '</a>';
             echo '<span><i class="fas fa-user"></i><a href="' . $profile_link . '" onclick="event.stopPropagation()">' . $thread['username'] . '</a></span>';
-            echo '<span><i class="fas fa-comments"></i>' . ts_nf($thread['replies']) . ' replies</span>';
-            echo '<span><i class="fas fa-eye"></i>' . ts_nf($thread['views']) . ' views</span>';
+            echo '<span><i class="fas fa-comments"></i>' . htmlspecialchars_uni(ags_fmt($lang->search['lbl_replies_count'], ts_nf($thread['replies']))) . '</span>';
+            echo '<span><i class="fas fa-eye"></i>' . htmlspecialchars_uni(ags_fmt($lang->search['lbl_views_count'], ts_nf($thread['views']))) . '</span>';
             if (!empty($thread['avg_rating']) && (float)$thread['avg_rating'] > 0) {
                 echo '<span class="sr-rating-pill"><i class="fas fa-star"></i>' . number_format((float)$thread['avg_rating'], 1) . '</span>';
             }
-            echo '<span><i class="fas fa-clock"></i>' . $lastpostdate . ' by ' . $lp_link . '</span>';
+            echo '<span><i class="fas fa-clock"></i>' . ags_fmt(htmlspecialchars_uni($lang->search['lbl_lastpost_by']), $lastpostdate, $lp_link) . '</span>';
             echo '</div>';
 
             if ($multipages_html) echo $multipages_html;
@@ -536,7 +551,7 @@ if ($mybb->input['action'] === 'results') {
 
             // Action button
             echo '<div class="sr-thread-actions">';
-            echo '<a href="' . $thread_link . '" class="sr-action-btn sr-action-view" onclick="event.stopPropagation()"><i class="fas fa-arrow-right"></i> View</a>';
+            echo '<a href="' . $thread_link . '" class="sr-action-btn sr-action-view" onclick="event.stopPropagation()"><i class="fas fa-arrow-right"></i> ' . sr_e('btn_view') . '</a>';
             echo '</div>';
 
             echo '</div>'; // inner
@@ -635,21 +650,26 @@ if ($mybb->input['action'] === 'results') {
         ");
 		
 
-        stdhead('Search Results — Posts');
+        stdhead($lang->search['title_results_posts']);
         build_breadcrumb();
         echo search_css();
         echo '<div class="sr-res-wrap">';
 
         // Header
         echo '<div class="sr-res-header">';
-        echo '<div><div class="sr-res-title"><i class="fas fa-comment-dots me-2" style="color:#10b981"></i>Post Results</div>';
-        echo '<div class="sr-res-count">Found <strong>' . ts_nf($postcount) . '</strong> post' . ($postcount !== 1 ? 's' : '') . '</div></div>';
+        echo '<div><div class="sr-res-title"><i class="fas fa-comment-dots me-2" style="color:#10b981"></i>' . sr_e('sec_post_results') . '</div>';
+        echo '<div class="sr-res-count">' . ags_fmt($lang->search[$postcount === 1 ? 'lbl_found_post_one' : 'lbl_found_posts'], ts_nf($postcount)) . '</div></div>';
         echo '<div class="sr-sort-bar">';
-        $sort_opts2 = ['dateline'=>'Date','subject'=>'Subject','starter'=>'Author','forum'=>'Forum'];
+        $sort_opts2 = [
+            'dateline' => $lang->search['opt_sort_date'],
+            'subject'  => $lang->search['opt_sort_subject'],
+            'starter'  => $lang->search['opt_sort_author'],
+            'forum'    => $lang->search['opt_sort_forum'],
+        ];
         foreach ($sort_opts2 as $key => $label) {
             $active = $sortby === $key ? ' active' : '';
             $no     = ($sortby === $key && $order === 'asc') ? 'desc' : 'asc';
-            echo '<a href="' . $sorturl . '&amp;sortby=' . $key . '&amp;order=' . $no . '" class="sr-sort-btn' . $active . '">' . $label . '</a>';
+            echo '<a href="' . $sorturl . '&amp;sortby=' . $key . '&amp;order=' . $no . '" class="sr-sort-btn' . $active . '">' . htmlspecialchars_uni($label) . '</a>';
         }
         echo '</div></div>';
 
@@ -686,7 +706,7 @@ if ($mybb->input['action'] === 'results') {
             echo '<a href="' . $profile_url . '" class="sr-post-author">' . $post['username'] . '</a>';
             echo '<span class="sr-post-dot">&middot;</span>';
             echo '<span class="sr-post-time"><i class="fas fa-clock"></i>' . $posted . '</span>';
-            echo '<span class="badge bg-success-subtle text-success-emphasis sr-post-badge">Post</span>';
+            echo '<span class="badge bg-success-subtle text-success-emphasis sr-post-badge">' . sr_e('badge_post') . '</span>';
             echo '</div>';
 
             // Subject (what)
@@ -704,8 +724,8 @@ if ($mybb->input['action'] === 'results') {
             echo '</div>'; // body
 
             echo '<div class="sr-thread-actions">';
-            echo '<a href="' . $post_url . '#pid' . $post['pid'] . '" class="sr-action-btn sr-action-view"><i class="fas fa-comment"></i> View post</a>';
-            echo '<a href="' . $thread_url . '" class="sr-thread-badge-link"><i class="fas fa-list"></i> Thread</a>';
+            echo '<a href="' . $post_url . '#pid' . $post['pid'] . '" class="sr-action-btn sr-action-view"><i class="fas fa-comment"></i> ' . sr_e('btn_view_post') . '</a>';
+            echo '<a href="' . $thread_url . '" class="sr-thread-badge-link"><i class="fas fa-list"></i> ' . sr_e('btn_thread') . '</a>';
             echo '</div>';
 
             echo '</div></div>';
@@ -825,8 +845,8 @@ if ($mybb->input['action'] === 'results') {
         if (!empty($ls['sid'])) {
             $rt  = $searchfloodtime - (TIMENOW - $ls['dateline']);
             stderr($rt === 1
-                ? sprintf($lang->search['error_searchflooding_1'], $searchfloodtime)
-                : sprintf($lang->search['error_searchflooding'], $searchfloodtime, $rt)
+                ? ags_fmt($lang->search['error_searchflooding_1'], $searchfloodtime)
+                : ags_fmt($lang->search['error_searchflooding'], $searchfloodtime, $rt)
             );
         }
     }
@@ -858,7 +878,7 @@ if ($mybb->input['action'] === 'results') {
         $search_data['visible'] = $mybb->get_input('visible', MyBB::INPUT_INT);
     }
 
-    if (!$db->can_search) stderr('error_no_search_support');
+    if (!$db->can_search) stderr($lang->search['error_no_search_support']);
 
     $search_results = ($db->supports_fulltext_boolean('posts') && $db->is_fulltext('posts'))
         ? perform_search_mysql_ft($search_data)
@@ -953,25 +973,25 @@ if ($mybb->input['action'] === 'results') {
     $kw_val     = htmlspecialchars_uni($mybb->get_input('keywords'));
     $author_val = htmlspecialchars_uni($mybb->get_input('author'));
 
-    stdhead('Forum Search');
+    stdhead($lang->search['title_search']);
     build_breadcrumb();
     echo search_css();
     ?>
     <div class="container mt-3">
 
         <div class="sr-hero">
-            <h1><i class="fas fa-search" style="color:var(--sr-primary)"></i> Forum Search</h1>
-            <p>Find threads, posts and discussions across the forum</p>
+            <h1><i class="fas fa-search" style="color:var(--sr-primary)"></i> <?= sr_e('sec_hero_title') ?></h1>
+            <p><?= sr_e('hint_hero') ?></p>
         </div>
 
         <!-- Quick links -->
         <div class="sr-quick-links">
-            <a href="search.php?action=getnew" class="sr-quick-link"><i class="fas fa-bolt"></i> New posts</a>
-            <a href="search.php?action=getdaily&days=1" class="sr-quick-link"><i class="fas fa-calendar-day"></i> Today</a>
-            <a href="search.php?action=getdaily&days=7" class="sr-quick-link"><i class="fas fa-calendar-week"></i> This week</a>
+            <a href="search.php?action=getnew" class="sr-quick-link"><i class="fas fa-bolt"></i> <?= sr_e('lnk_new_posts') ?></a>
+            <a href="search.php?action=getdaily&days=1" class="sr-quick-link"><i class="fas fa-calendar-day"></i> <?= sr_e('lnk_today') ?></a>
+            <a href="search.php?action=getdaily&days=7" class="sr-quick-link"><i class="fas fa-calendar-week"></i> <?= sr_e('lnk_this_week') ?></a>
             <?php if ($CURUSER['id']): ?>
-            <a href="search.php?action=finduserthreads&uid=<?= (int)$CURUSER['id'] ?>" class="sr-quick-link"><i class="fas fa-user"></i> My threads</a>
-            <a href="search.php?action=finduser&uid=<?= (int)$CURUSER['id'] ?>" class="sr-quick-link"><i class="fas fa-comment"></i> My posts</a>
+            <a href="search.php?action=finduserthreads&uid=<?= (int)$CURUSER['id'] ?>" class="sr-quick-link"><i class="fas fa-user"></i> <?= sr_e('lnk_my_threads') ?></a>
+            <a href="search.php?action=finduser&uid=<?= (int)$CURUSER['id'] ?>" class="sr-quick-link"><i class="fas fa-comment"></i> <?= sr_e('lnk_my_posts') ?></a>
             <?php endif; ?>
         </div>
 
@@ -984,13 +1004,13 @@ if ($mybb->input['action'] === 'results') {
                 <!-- Main input -->
                 <div class="sr-main-row" style="position:relative;">
                     <input type="text" name="keywords" id="srKeywords"
-                           placeholder="Search keywords… (Ctrl+K)"
+                           placeholder="<?= sr_e('ph_keywords') ?>"
                            value="<?= $kw_val ?>" autocomplete="off" maxlength="200">
                     <button type="submit" class="sr-btn sr-btn-primary">
-                        <i class="fas fa-search me-1"></i>Search
+                        <i class="fas fa-search me-1"></i><?= sr_e('btn_search') ?>
                     </button>
                     <button type="button" class="sr-btn sr-btn-ghost" id="srClear">
-                        <i class="fas fa-times me-1"></i>Clear
+                        <i class="fas fa-times me-1"></i><?= sr_e('btn_clear') ?>
                     </button>
 
                     <div id="srSuggestBox" class="sr-suggest-box" style="display:none;"></div>
@@ -998,14 +1018,14 @@ if ($mybb->input['action'] === 'results') {
 
                 <!-- Show results as -->
                 <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
-                    <span class="sr-field-label mb-0">Show as:</span>
+                    <span class="sr-field-label mb-0"><?= sr_e('lbl_show_as') ?></span>
                     <div class="form-check form-check-inline mb-0">
                         <input class="form-check-input" type="radio" name="showresults" id="srT" value="threads" checked>
-                        <label class="form-check-label small fw-semibold" for="srT">Threads</label>
+                        <label class="form-check-label small fw-semibold" for="srT"><?= sr_e('opt_show_threads') ?></label>
                     </div>
                     <div class="form-check form-check-inline mb-0">
                         <input class="form-check-input" type="radio" name="showresults" id="srP" value="posts">
-                        <label class="form-check-label small fw-semibold" for="srP">Posts</label>
+                        <label class="form-check-label small fw-semibold" for="srP"><?= sr_e('opt_show_posts') ?></label>
                     </div>
                 </div>
 
@@ -1013,7 +1033,7 @@ if ($mybb->input['action'] === 'results') {
 
                 <!-- Advanced toggle -->
                 <span class="sr-adv-toggle" data-bs-toggle="collapse" data-bs-target="#srAdv">
-                    <i class="fas fa-sliders-h"></i> Advanced options
+                    <i class="fas fa-sliders-h"></i> <?= sr_e('lbl_advanced') ?>
                     <i class="fas fa-chevron-down" style="font-size:10px;transition:transform .2s"></i>
                 </span>
 
@@ -1022,67 +1042,67 @@ if ($mybb->input['action'] === 'results') {
                         <div class="row g-3">
 
                             <div class="col-md-6">
-                                <label class="sr-field-label"><i class="fas fa-user me-1"></i>Author</label>
+                                <label class="sr-field-label"><i class="fas fa-user me-1"></i><?= sr_e('lbl_author') ?></label>
                                 <input type="text" name="author" class="sr-field-ctrl"
-                                       value="<?= $author_val ?>" placeholder="Username…">
+                                       value="<?= $author_val ?>" placeholder="<?= sr_e('ph_author') ?>">
                                 <div class="form-check mt-1">
                                     <input class="form-check-input" type="checkbox" name="matchusername" value="1" id="srExact">
-                                    <label class="form-check-label small text-muted" for="srExact">Exact match only</label>
+                                    <label class="form-check-label small text-muted" for="srExact"><?= sr_e('lbl_exact_match') ?></label>
                                 </div>
                             </div>
 
                             <div class="col-md-6">
-                                <label class="sr-field-label"><i class="fas fa-search-plus me-1"></i>Search in</label>
+                                <label class="sr-field-label"><i class="fas fa-search-plus me-1"></i><?= sr_e('lbl_search_in') ?></label>
                                 <select name="postthread" class="sr-field-ctrl">
-                                    <option value="1">Subject &amp; message</option>
-                                    <option value="0">Subject only</option>
+                                    <option value="1"><?= sr_e('opt_subject_message') ?></option>
+                                    <option value="0"><?= sr_e('opt_subject_only') ?></option>
                                 </select>
                             </div>
 
                             <div class="col-md-4">
-                                <label class="sr-field-label"><i class="fas fa-sort me-1"></i>Sort by</label>
+                                <label class="sr-field-label"><i class="fas fa-sort me-1"></i><?= sr_e('lbl_sort_by') ?></label>
                                 <select name="sortby" class="sr-field-ctrl">
-                                    <option value="lastpost">Last post date</option>
-                                    <option value="dateline">Post date</option>
-                                    <option value="subject">Subject</option>
-                                    <option value="replies">Replies</option>
-                                    <option value="views">Views</option>
-                                    <option value="starter">Author</option>
-                                    <option value="forum">Forum</option>
+                                    <option value="lastpost"><?= sr_e('opt_sortby_lastpost') ?></option>
+                                    <option value="dateline"><?= sr_e('opt_sortby_dateline') ?></option>
+                                    <option value="subject"><?= sr_e('opt_sortby_subject') ?></option>
+                                    <option value="replies"><?= sr_e('opt_sortby_replies') ?></option>
+                                    <option value="views"><?= sr_e('opt_sortby_views') ?></option>
+                                    <option value="starter"><?= sr_e('opt_sortby_starter') ?></option>
+                                    <option value="forum"><?= sr_e('opt_sortby_forum') ?></option>
                                 </select>
                             </div>
 
                             <div class="col-md-4">
-                                <label class="sr-field-label"><i class="fas fa-sort-amount-down me-1"></i>Order</label>
+                                <label class="sr-field-label"><i class="fas fa-sort-amount-down me-1"></i><?= sr_e('lbl_order') ?></label>
                                 <select name="sortordr" class="sr-field-ctrl">
-                                    <option value="desc">Newest first</option>
-                                    <option value="asc">Oldest first</option>
+                                    <option value="desc"><?= sr_e('opt_order_desc') ?></option>
+                                    <option value="asc"><?= sr_e('opt_order_asc') ?></option>
                                 </select>
                             </div>
 
                             <div class="col-md-3">
-                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i>Posted from</label>
+                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i><?= sr_e('lbl_date_from') ?></label>
                                 <input type="text" name="postdate_from" id="srDateFrom" class="sr-field-ctrl"
-                                       placeholder="YYYY-MM-DD" autocomplete="off"
+                                       placeholder="<?= sr_e('ph_date') ?>" autocomplete="off"
                                        value="<?= htmlspecialchars($mybb->get_input('postdate_from')) ?>">
                             </div>
 
                             <div class="col-md-3">
-                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i>Posted to</label>
+                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i><?= sr_e('lbl_date_to') ?></label>
                                 <input type="text" name="postdate_to" id="srDateTo" class="sr-field-ctrl"
-                                       placeholder="YYYY-MM-DD" autocomplete="off"
+                                       placeholder="<?= sr_e('ph_date') ?>" autocomplete="off"
                                        value="<?= htmlspecialchars($mybb->get_input('postdate_to')) ?>">
                             </div>
 
                             <div class="col-md-6">
-                                <label class="sr-field-label"><i class="fas fa-reply me-1"></i>Minimum replies</label>
+                                <label class="sr-field-label"><i class="fas fa-reply me-1"></i><?= sr_e('lbl_min_replies') ?></label>
                                 <input type="number" name="numreplies" class="sr-field-ctrl" value="0" min="0">
                             </div>
 
                             <div class="col-md-6">
-                                <label class="sr-field-label"><i class="fas fa-comments me-1"></i>Forums</label>
+                                <label class="sr-field-label"><i class="fas fa-comments me-1"></i><?= sr_e('lbl_forums') ?></label>
                                 <?= $srchlist ?>
-                                <small class="text-muted">Hold Ctrl to select multiple</small>
+                                <small class="text-muted"><?= sr_e('hint_forums_multi') ?></small>
                             </div>
 
                             <?php if ($moderator_options): ?>
@@ -1102,7 +1122,15 @@ if ($mybb->input['action'] === 'results') {
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
     <script src="<?= $BASEURL ?>/admin/scripts/flatpickr.js"></script>
-    <script src="<?= $BASEURL ?>/scripts/search_page.js"></script>
+    <?php
+    // JS strings: js_* keys → AGS_LANG without the prefix
+    $ags_js_lang = [];
+    foreach ($lang->search as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) $ags_js_lang[substr((string)$k, 3)] = $v;
+    }
+    ?>
+    <script>const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+    <script src="<?= $BASEURL ?>/scripts/search_page.js?ver=2"></script>
     <?php
     stdfoot();
 }

@@ -253,25 +253,31 @@ function processAddComment(int $torrentid): void
         $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
         $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
 
-        // Send PM notification
-        if ($CURUSER['id'] != $arr['owner']) {
-            $ras = $db->sql_query_prepared('SELECT commentpm FROM users WHERE id = ?', [$arr['owner']]);
-            $arg = $ras ? $db->fetch_array($ras) : null;
+// Send PM notification
+if ($CURUSER['id'] != $arr['owner']) {
+    $ras = $db->sql_query_prepared('SELECT commentpm, language FROM users WHERE id = ?', [$arr['owner']]);
+    $arg = $ras ? $db->fetch_array($ras) : null;
 
-            if ($arg['commentpm'] == 1) {
-                require_once INC_PATH . '/functions_pm.php';
-                $url2 = get_comment_link($newid, $torrentid) . "#pid{$newid}";
+    if (!empty($arg) && (int)$arg['commentpm'] === 1) {
+        require_once INC_PATH . '/functions_pm.php';
+        $url2 = get_comment_link($newid, $torrentid) . "#pid{$newid}";
 
-                $pm = [
-                    'subject' => sprintf($lang->comment['newcommentsub']),
-                    'message' => sprintf($lang->comment['newcommenttxt'], '[url=' . $BASEURL . '/' . $url2 . ']' . $arr['name'] . '[/url]'),
-                    'touid' => $arr['owner']
-                ];
+        // Скобки в названии ломают [url=...]...[/url]
+        $torrent_name = str_replace(['[', ']'], ['(', ')'], (string)$arr['name']);
 
-                $pm['sender']['uid'] = -1;
-                send_pm($pm, -1, true);
-            }
-        }
+        send_pm([
+            'subject'       => ['newcommentsub'],
+            'message'       => [
+                'newcommenttxt',
+                '[url=' . $BASEURL . '/' . $url2 . ']' . $torrent_name . '[/url]',
+            ],
+            'touid'         => (int)$arr['owner'],
+            'language'      => $arg['language'],
+            'language_file' => 'comment',
+            'sender'        => ['uid' => -1],
+        ], -1, true);
+    }
+}
 
         //kps('+', $kpscomment, $CURUSER['id']);
 		kps('+', $kpscomment, (int)$CURUSER['id'],

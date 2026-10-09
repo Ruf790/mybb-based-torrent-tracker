@@ -14,6 +14,8 @@ $nosession['avatar'] = 1;
 
 require_once 'global.php';
 
+$lang->load('member');
+
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
@@ -41,6 +43,22 @@ if (!function_exists('hsafe')) {
     }
 }
 
+/**
+ * Substitutes {1}, {2}… (and %1$s, %2$s… which $lang->load() produces) in a lang string.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 function rt_cat_fa(?string $iconRaw, string $title = ''): string
 {
     $cls = preg_replace('/[^a-z0-9\-\s]/i', '', (string)$iconRaw) ?: 'fa-solid fa-question';
@@ -60,25 +78,25 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
     };
 
     if (!$CURUSER) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Не авторизован'], 401) : exit('Error: вы не авторизованы.');
+        $is_ajax ? $json(['ok' => false, 'error' => $lang->member['err_not_logged_in']], 401) : exit(hsafe($lang->member['err_not_logged_in']));
     }
 
     $user_uid = (int)($CURUSER['id'] ?? 0);
     if ($user_uid <= 0) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Не авторизован'], 401) : exit('Error: вы не авторизованы.');
+        $is_ajax ? $json(['ok' => false, 'error' => $lang->member['err_not_logged_in']], 401) : exit(hsafe($lang->member['err_not_logged_in']));
     }
 
     $uid = (int)($_POST['id'] ?? $_GET['id'] ?? $memprofile['id'] ?? 0);
     if ($uid <= 0) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Не указан uid профиля'], 400) : exit('Error: не указан uid профиля.');
+        $is_ajax ? $json(['ok' => false, 'error' => $lang->member['err_no_profile_uid']], 400) : exit(hsafe($lang->member['err_no_profile_uid']));
     }
 
     if ($user_uid !== $uid && !is_mod($usergroups)) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Нет прав менять этот аватар'], 403) : exit('Error: нет прав менять этот аватар.');
+        $is_ajax ? $json(['ok' => false, 'error' => $lang->member['err_avatar_no_perm']], 403) : exit(hsafe($lang->member['err_avatar_no_perm']));
     }
 
     if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Файл не загружен'], 400) : exit('Error: file is not uploaded.');
+        $is_ajax ? $json(['ok' => false, 'error' => $lang->member['err_avatar_no_file']], 400) : exit(hsafe($lang->member['err_avatar_no_file']));
     }
 
     // Вся валидация (расширение, реальный MIME через getimagesize(),
@@ -91,7 +109,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
     if (!empty($avatarResult['error'])) {
         $is_ajax
             ? $json(['ok' => false, 'error' => $avatarResult['error']], 415)
-            : exit('Ошибка: ' . $avatarResult['error']);
+            : exit(hsafe(ags_fmt($lang->member['err_avatar_failed'], (string)$avatarResult['error'])));
     }
 
     $width  = (int)$avatarResult['width'];
@@ -105,7 +123,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
     );
 
     if ($is_ajax) {
-        $json(['ok' => true, 'url' => $avatar_url, 'width' => $width, 'height' => $height, 'message' => 'Аватар обновлён']);
+        $json(['ok' => true, 'url' => $avatar_url, 'width' => $width, 'height' => $height, 'message' => $lang->member['msg_avatar_updated']]);
     }
 
     header("Location: member.php?action=profile&uid={$uid}");
@@ -118,12 +136,12 @@ function fetch_ban_times(): array
     global $plugins, $lang;
 
     $ban_times = [
-        '1-0-0'  => '1 Day',   '2-0-0'  => '2 Days',  '3-0-0'  => '3 Days',
-        '4-0-0'  => '4 Days',  '5-0-0'  => '5 Days',  '6-0-0'  => '6 Days',
-        '7-0-0'  => '1 Week',  '14-0-0' => '2 Weeks', '21-0-0' => '3 Weeks',
-        '0-1-0'  => '1 Month', '0-2-0'  => '2 Months','0-3-0'  => '3 Months',
-        '0-4-0'  => '4 Months','0-5-0'  => '5 Months','0-6-0'  => '6 Months',
-        '0-0-1'  => '1 Year',  '0-0-2'  => '2 Years',
+        '1-0-0'  => $lang->member['opt_ban_1d'],  '2-0-0'  => $lang->member['opt_ban_2d'],  '3-0-0'  => $lang->member['opt_ban_3d'],
+        '4-0-0'  => $lang->member['opt_ban_4d'],  '5-0-0'  => $lang->member['opt_ban_5d'],  '6-0-0'  => $lang->member['opt_ban_6d'],
+        '7-0-0'  => $lang->member['opt_ban_1w'],  '14-0-0' => $lang->member['opt_ban_2w'],  '21-0-0' => $lang->member['opt_ban_3w'],
+        '0-1-0'  => $lang->member['opt_ban_1m'],  '0-2-0'  => $lang->member['opt_ban_2m'],  '0-3-0'  => $lang->member['opt_ban_3m'],
+        '0-4-0'  => $lang->member['opt_ban_4m'],  '0-5-0'  => $lang->member['opt_ban_5m'],  '0-6-0'  => $lang->member['opt_ban_6m'],
+        '0-0-1'  => $lang->member['opt_ban_1y'],  '0-0-2'  => $lang->member['opt_ban_2y'],
     ];
 
     $ban_times = $plugins->run_hooks('functions_fetch_ban_times', $ban_times);
@@ -156,12 +174,12 @@ function fix_mktime(string $format, string|int $year): string
 // ── Active swarm ───────────────────────────────────────────────────────────
 function build_user_active_swarm(object $db, int $uid, int $limit = 10): array
 {
-    global $BASEURL, $dateformat, $timeformat;
+    global $BASEURL, $dateformat, $timeformat, $lang;
 
     $uid   = max(0, $uid);
     $limit = max(1, $limit);
 
-    $render = static function (string $seeder_val) use ($db, $uid, $limit, $BASEURL, $dateformat, $timeformat): array {
+    $render = static function (string $seeder_val) use ($db, $uid, $limit, $BASEURL, $dateformat, $timeformat, $lang): array {
         $sql = "
             SELECT t.id, t.name, t.size, t.category, t.t_image, t.t_link,
                    c.name AS cat_name, c.icon AS cat_icon,
@@ -180,7 +198,7 @@ function build_user_active_swarm(object $db, int $uid, int $limit = 10): array
             return ['html' => '<div class="text-center py-4">
                 <div class="d-inline-flex flex-column align-items-center gap-2">
                     <i class="bi bi-' . $icon . ' fs-1 text-secondary opacity-25"></i>
-                    <div class="text-muted small">Nothing active right now</div>
+                    <div class="text-muted small">' . hsafe($lang->member['empty_active']) . '</div>
                 </div>
             </div>', 'count' => 0];
         }
@@ -248,7 +266,7 @@ function build_user_active_swarm(object $db, int $uid, int $limit = 10): array
                         </a>
                         <div class="mt-2 mb-1">
                             <div class="d-flex justify-content-between mb-1" style="font-size:0.7rem;">
-                                <span class="text-muted">Progress</span>
+                                <span class="text-muted">' . hsafe($lang->member['lbl_progress']) . '</span>
                                 <span class="fw-bold text-' . $progress_color . '">' . $progress . '%</span>
                             </div>
                             <div class="progress" style="height:4px;">
@@ -285,7 +303,7 @@ function build_user_active_swarm(object $db, int $uid, int $limit = 10): array
 // ── Recent uploads ─────────────────────────────────────────────────────────
 function build_recent_user_torrents(object $db, int $uid): string
 {
-    global $BASEURL, $dateformat;
+    global $BASEURL, $dateformat, $lang;
 
     $uid = max(0, $uid);
     $sql = "
@@ -307,7 +325,7 @@ function build_recent_user_torrents(object $db, int $uid): string
                 <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width:70px;height:70px;">
                     <i class="bi bi-cloud-arrow-up fs-1 text-secondary"></i>
                 </div>
-                <div class="text-secondary fw-medium">No uploads yet.</div>
+                <div class="text-secondary fw-medium">' . hsafe($lang->member['empty_uploads']) . '</div>
             </div>
         </div>';
     }
@@ -363,7 +381,7 @@ function build_recent_user_torrents(object $db, int $uid): string
                                 </div>
                             </div>
                             <div class="flex-shrink-0">
-                                <a href="' . $BASEURL . '/download.php/' . $id . '.torrent" class="btn btn-primary btn-sm rounded-pill" title="Download">
+                                <a href="' . $BASEURL . '/download.php/' . $id . '.torrent" class="btn btn-primary btn-sm rounded-pill" title="' . hsafe($lang->member['tip_download']) . '">
                                     <i class="bi bi-download"></i>
                                 </a>
                             </div>
@@ -381,7 +399,7 @@ function build_recent_user_torrents(object $db, int $uid): string
 // ── Completed torrents ─────────────────────────────────────────────────────
 function build_user_completed_torrents_from_snatched(object $db, int $uid, int $limit = 10): array
 {
-    global $BASEURL, $dateformat, $timeformat;
+    global $BASEURL, $dateformat, $timeformat, $lang;
 
     $uid   = max(0, $uid);
     $limit = max(1, $limit);
@@ -410,8 +428,8 @@ function build_user_completed_torrents_from_snatched(object $db, int $uid, int $
                 <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width:70px;height:70px;">
                     <i class="bi bi-check2-circle fs-1 text-secondary opacity-50"></i>
                 </div>
-                <div class="text-secondary fw-medium">No completed history.</div>
-                <div class="small text-muted">Completed torrents will appear here</div>
+                <div class="text-secondary fw-medium">' . hsafe($lang->member['empty_completed']) . '</div>
+                <div class="small text-muted">' . hsafe($lang->member['hint_empty_completed']) . '</div>
             </div>
         </div>', 'count' => $total];
     }
@@ -482,8 +500,6 @@ function build_user_completed_torrents_from_snatched(object $db, int $uid, int $
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-
-$lang->load('member');
 
 $mybb->input['action'] = $mybb->get_input('action');
 
@@ -635,8 +651,8 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
 			 
 			stdok(
               message: sprintf($lang->member['redirect_registered_activation'], $SITENAME, htmlspecialchars_uni($user_info['username'])),
-              title:   'Registration successful',
-              subtitle: 'Your account has been created.'
+              title:   $lang->member['sec_reg_success'],
+              subtitle: $lang->member['hint_reg_success']
             ); 
 			 
 			 
@@ -688,9 +704,9 @@ if ($mybb->input['action'] === 'register') {
             }
             
 			$tppselect = '<div class="mb-2 pb-3">
-	<label for="tpp">'.$lang->usercp['tpp'].'</label>
+	<label for="tpp">'.$lang->member['tpp'].'</label>
 <select name="tpp" class="form-select form-select-sm border pe-5 w-auto">
-<option value="">'.$lang->usercp['use_default'].'</option>
+<option value="">'.$lang->member['lang_select_default'].'</option>
 '.$tppoptions.'
 </select>
 </div>';
@@ -707,9 +723,9 @@ if ($mybb->input['action'] === 'register') {
             }
             
 			$pppselect = '<div class="mb-2 pb-3">
-	<label for="ppp">'.$lang->usercp['post_per_page'].'</label>
+	<label for="ppp">'.$lang->member['ppp'].'</label>
 <select name="ppp" class="form-select form-select-sm border pe-5 w-auto">
-<option value="">'.$lang->usercp['use_default'].'</option>
+<option value="">'.$lang->member['lang_select_default'].'</option>
 '.$pppoptions.'
 </select>
 </div>';
@@ -774,6 +790,20 @@ if ($mybb->input['action'] === 'register') {
         $time            = TIMENOW;
        
 
+        $js_validator_strings = [
+            'js_validator_no_username'           => $lang->member['js_validator_no_username'],
+            'js_validator_username_length'       => $js_validator_username_length,
+            'js_validator_invalid_email'         => $lang->member['js_validator_invalid_email'],
+            'js_validator_email_match'           => $lang->member['js_validator_email_match'],
+            'js_validator_not_empty'             => $lang->member['js_validator_not_empty'],
+            'js_validator_password_length'       => $js_validator_password_length,
+            'js_validator_password_matches'      => $lang->member['js_validator_password_matches'],
+            'js_validator_no_image_text'         => $lang->member['js_validator_no_image_text'],
+            'js_validator_no_security_question'  => $lang->member['js_validator_no_security_question'],
+            'js_validator_bad_password_security' => $lang->member['js_validator_bad_password_security'],
+        ];
+        $js_json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+
         $validator_javascript = '<script type="text/javascript">
             var regsettings = {
                 minnamelength: \'' . $minnamelength . '\',
@@ -782,18 +812,11 @@ if ($mybb->input['action'] === 'register') {
                 maxpasswordlength:       \'' . $maxpasswordlength . '\',
                 requirecomplexpasswords: \'' . $requirecomplexpasswords . '\',
                 regtype: \'' . $regtype . '\'
-            };
-            lang.js_validator_no_username = \'' . $lang->member['js_validator_no_username'] . '\';
-            lang.js_validator_username_length = \'' . $js_validator_username_length . '\';
-            lang.js_validator_invalid_email = \'' . $lang->member['js_validator_invalid_email'] . '\';
-            lang.js_validator_email_match = \'' . $lang->member['js_validator_email_match'] . '\';
-            lang.js_validator_not_empty = \'' . $lang->member['js_validator_not_empty'] . '\';
-            lang.js_validator_password_length = \'' . $lang->member['js_validator_password_length'] . '\';
-            lang.js_validator_password_matches = \'' . $lang->member['js_validator_password_matches'] . '\';
-            lang.js_validator_no_image_text = \'' . $lang->member['js_validator_no_image_text'] . '\';
-            lang.js_validator_no_security_question = \'' . $lang->member['js_validator_no_security_question'] . '\';
-            lang.js_validator_bad_password_security = \'' . $lang->member['js_validator_bad_password_security'] . '\';
-        </script>' . "\n";
+            };' . "\n";
+        foreach ($js_validator_strings as $js_key => $js_val) {
+            $validator_javascript .= '            lang.' . $js_key . ' = ' . json_encode((string)$js_val, $js_json_flags) . ";\n";
+        }
+        $validator_javascript .= '        </script>' . "\n";
 
         $plugins->run_hooks('member_register_end');
         
@@ -839,7 +862,7 @@ if ($mybb->input['action'] === 'register') {
                                     <label for="username" class="form-label">'.$lang->member['username'].'</label>
                                     <div class="position-relative">
                                         <i class="fas fa-user form-icon"></i>
-                                        <input type="text" class="form-control input-with-icon" name="username" id="username" value="'.$username.'" placeholder="Enter username" />
+                                        <input type="text" class="form-control input-with-icon" name="username" id="username" value="'.$username.'" placeholder="'.hsafe($lang->member['ph_username']).'" />
                                     </div>
                                 </div>
                                 
@@ -851,7 +874,7 @@ if ($mybb->input['action'] === 'register') {
                                     <label for="email" class="form-label">'.$lang->member['email'].'</label>
                                     <div class="position-relative">
                                         <i class="fas fa-envelope form-icon"></i>
-                                        <input type="email" class="form-control input-with-icon" name="email" id="email" maxlength="50" value="'.$email.'" placeholder="Your email" />
+                                        <input type="email" class="form-control input-with-icon" name="email" id="email" maxlength="50" value="'.$email.'" placeholder="'.hsafe($lang->member['ph_email']).'" />
                                     </div>
                                 </div>
                                 
@@ -860,7 +883,7 @@ if ($mybb->input['action'] === 'register') {
                                     <label for="email2" class="form-label">'.$lang->member['confirm_email'].'</label>
                                     <div class="position-relative">
                                         <i class="fas fa-envelope-circle-check form-icon"></i>
-                                        <input type="email" class="form-control input-with-icon" name="email2" id="email2" maxlength="50" value="'.$email2.'" placeholder="Confirm email" />
+                                        <input type="email" class="form-control input-with-icon" name="email2" id="email2" maxlength="50" value="'.$email2.'" placeholder="'.hsafe($lang->member['ph_email2']).'" />
                                     </div>
                                     <div style="display: none;" id="email_status">&nbsp;</div>
                                 </div>
@@ -905,7 +928,7 @@ if ($mybb->input['action'] === 'register') {
                                 
                                 <!-- Настройки уведомлений -->
                                 <div class="col-12 mb-3">
-                                    <label class="form-label">Настройки уведомлений</label>
+                                    <label class="form-label">'.hsafe($lang->member['lbl_notifications']).'</label>
                                     <div class="border rounded p-3">
                                         <div class="form-check form-switch mb-2">
                                             <input class="form-check-input" type="checkbox" name="allownotices" id="allownotices" value="1" '.$allownoticescheck.'>
@@ -1003,7 +1026,7 @@ if ($mybb->input['action'] === 'activate') {
 
     if (isset($mybb->input['username'])) {
         $user = get_user_by_username($mybb->get_input('username'), ['fields' => '*']);
-        if (!$user) { stderr('error_invalidpworusername'); }
+        if (!$user) { stderr($lang->member['error_invalidpworusername']); }
         $uid = $user['id'];
     } else {
         $user = get_user($mybb->get_input('id', MyBB::INPUT_INT));
@@ -1013,8 +1036,8 @@ if ($mybb->input['action'] === 'activate') {
         $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND (type='r' OR type='e' OR type='b')", [$user['id']]);
         $activation = $query ? $db->fetch_array($query) : null;
 
-        if (!$activation)                                       { stderr('error_alreadyactivated'); }
-        if ($activation['code'] !== $mybb->get_input('code'))  { stderr('error_badactivationcode'); }
+        if (!$activation)                                       { stderr($lang->member['error_alreadyactivated']); }
+        if ($activation['code'] !== $mybb->get_input('code'))  { stderr($lang->member['error_badactivationcode']); }
         if ($activation['type'] === 'b' && $activation['validated'] == 1) { stderr($lang->member['error_alreadyvalidated']); }
 
         $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND (type='r' OR type='e')", [$user['id']]);
@@ -1098,7 +1121,7 @@ if ($mybb->input['action'] === 'activate') {
 </html>';
 		
 		
-        stdhead('title');
+        stdhead($lang->member['account_activation']);
         echo $activate;
     }
 }
@@ -1173,7 +1196,7 @@ $activate = '<html>
                 </div>
                 <div>
                     <h5 class="mb-0 fw-bold">'.$lang->member['resend_activation'].'</h5>
-                    <p class="mb-0 small opacity-75">Enter your email to receive a new activation code</p>
+                    <p class="mb-0 small opacity-75">'.hsafe($lang->member['hint_resend_activation']).'</p>
                 </div>
             </div>
         </div>
@@ -1198,7 +1221,7 @@ $activate = '<html>
         </div>
         <div class="card-footer bg-light border-0 text-center py-3">
             <a href="member.php?action=login" class="small text-muted text-decoration-none">
-                <i class="fa-solid fa-arrow-left me-1"></i>Back to Login
+                <i class="fa-solid fa-arrow-left me-1"></i>'.hsafe($lang->member['lnk_back_to_login']).'
             </a>
         </div>
     </div>
@@ -1295,7 +1318,7 @@ if ($mybb->input['action'] === 'lostpw') {
 </html>';
 	
 	
-    stdhead('title');
+    stdhead($lang->member['lost_pw']);
     echo $lostpw;
 }
 
@@ -1309,13 +1332,13 @@ if ($mybb->input['action'] === 'resetpassword') {
         ? get_user_by_username($mybb->get_input('username'), ['fields' => '*'])
         : get_user($mybb->get_input('id', MyBB::INPUT_INT));
 
-    if (!$user && isset($mybb->input['username'])) { stderr('error_invalidpworusername'); }
+    if (!$user && isset($mybb->input['username'])) { stderr($lang->member['error_invalidpworusername']); }
 
     if (isset($mybb->input['code']) && $user) {
         $query          = $db->sql_query_prepared("SELECT code FROM awaitingactivation WHERE uid = ? AND type='p'", [$user['id']]);
         $activationcode = $query ? $db->fetch_field($query, 'code') : null;
 
-        if (!$activationcode || $activationcode !== $mybb->get_input('code')) { stderr('error_badlostpwcode'); }
+        if (!$activationcode || $activationcode !== $mybb->get_input('code')) { stderr($lang->member['error_badlostpwcode']); }
 
         $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND type='p'", [$user['id']]);
 
@@ -1340,7 +1363,7 @@ if ($mybb->input['action'] === 'resetpassword') {
         $plugins->run_hooks('member_resetpassword_form');
         $code           = htmlspecialchars_uni($mybb->get_input('code'));
         $input_username = htmlspecialchars_uni($mybb->get_input('username'));
-        stdhead('title');
+        stdhead($lang->member['reset_password']);
         
 		$activate = '<html>
 <head>
@@ -1357,7 +1380,7 @@ if ($mybb->input['action'] === 'resetpassword') {
 	<div class="legend mb-4">'.$lang->member['reset_password'].'</div>
 
 	<div class="mb-3 ps-3 pe-3">
-                 <label for="email" class="form-label">'.$lang->username.'</label>
+                 <label for="email" class="form-label">'.$lang->member['username'].'</label>
                 <input type="text" class="form-control border form-control-sm" name="username" value="'.$input_username.'" />
 	</div>
 	
@@ -1518,12 +1541,8 @@ if ($mybb->input['action'] === 'verify_2fa') {
             require_once INC_PATH . '/functions_pm.php';
             $user_data = get_user($uid);
             $pm = [
-              'subject' => '⚠️ Failed two-factor authentication attempt',
-              'message' => "Someone entered your correct password but failed the 2FA code check.\n\n"
-                   . "IP: " . get_ip() . "\n"
-                   . "Time: " . date('Y-m-d H:i:s') . "\n\n"
-                   . "If this wasn't you, your password may be compromised. "
-                   . "Consider changing it immediately.",
+              'subject' => $lang->member['pm_2fa_fail_subject'],
+              'message' => ags_fmt($lang->member['pm_2fa_fail_body'], get_ip(), date('Y-m-d H:i:s')),
               'touid'  => $uid,
               'sender' => ['uid' => -1],
             ];
@@ -1532,29 +1551,29 @@ if ($mybb->input['action'] === 'verify_2fa') {
 			
 			$error = '<div class="alert alert-danger mt-3">
                 <i class="fa-solid fa-triangle-exclamation me-2"></i>
-                Invalid or expired code. Please try again.
+                ' . hsafe($lang->member['err_2fa_invalid']) . '
             </div>';
         }
     }
 
-    stdhead($SITENAME . ' - Two-Factor Authentication');
+    stdhead($SITENAME . ' - ' . $lang->member['sec_2fa']);
     echo '
     <div class="container-md mt-5" style="max-width:420px">
         <div class="card shadow-sm">
             <div class="card-header bg-dark text-white text-center">
                 <h5 class="mb-0">
                     <i class="fa-solid fa-shield-halved me-2"></i>
-                    Two-Factor Authentication
+                    ' . hsafe($lang->member['sec_2fa']) . '
                 </h5>
             </div>
             <div class="card-body">
                 ' . $error . '
                 <p class="text-muted small mb-3">
-                    Enter the 6-digit code from your authenticator app.
+                    ' . hsafe($lang->member['hint_2fa']) . '
                 </p>
                 <form method="post" action="member.php?action=verify_2fa">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Authentication Code</label>
+                        <label class="form-label fw-bold">' . hsafe($lang->member['lbl_2fa_code']) . '</label>
                         <input type="text" name="totp_code"
                                class="form-control form-control-lg text-center fw-bold letter-spacing-3"
                                placeholder="000 000" maxlength="6"
@@ -1563,7 +1582,7 @@ if ($mybb->input['action'] === 'verify_2fa') {
                     </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-right-to-bracket me-2"></i>Verify & Login
+                            <i class="fa-solid fa-right-to-bracket me-2"></i>' . hsafe($lang->member['btn_2fa_verify']) . '
                         </button>
                     </div>
                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
@@ -1571,7 +1590,7 @@ if ($mybb->input['action'] === 'verify_2fa') {
             </div>
             <div class="card-footer text-center">
                 <a href="member.php?action=login" class="small text-muted">
-                    <i class="fa-solid fa-arrow-left me-1"></i>Back to login
+                    <i class="fa-solid fa-arrow-left me-1"></i>' . hsafe($lang->member['lnk_back_to_login']) . '
                 </a>
             </div>
         </div>
@@ -1712,7 +1731,7 @@ if ($mybb->input['action'] === 'profile') {
     
 	if (!$memprofile) 
 	{ 
-        stderr($lang->member['error_nomember'], $SITENAME . ' - Member Not Found', 404, '404'); 
+        stderr($lang->member['error_nomember'], $SITENAME . ' - ' . $lang->member['sec_member_not_found'], 404, '404'); 
 	}
 
     $uid       = $memprofile['id'];
@@ -1723,14 +1742,14 @@ if ($mybb->input['action'] === 'profile') {
 	
 	if ($memprofile['invisible'] == 1 && !$SameUser && !$IsStaff) 
 	{ 
-        stderr($lang->member['noperm'], $SITENAME . ' - Access Denied', 403, '403'); 
+        stderr($lang->member['noperm'], $SITENAME . ' - ' . $lang->member['sec_access_denied'], 403, '403'); 
 	}
 	
    
 	
 	if ($memprofile['ustatus'] === 'pending') 
 	{    
-        stderr($lang->member['pendinguser'], $SITENAME . ' - Access Denied', 403, '403'); 
+        stderr($lang->member['pendinguser'], $SITENAME . ' - ' . $lang->member['sec_access_denied'], 403, '403'); 
 	}
 	
 	
@@ -1795,14 +1814,14 @@ if ($mybb->input['action'] === 'profile') {
 		$contact_details = '<div class="card-clean mb-4 hov-soft">
   <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
     <i class="bi bi-person-lines-fill"></i>
-    <span>Contact Details</span>
+    <span>'.hsafe($lang->member['sec_contact_details']).'</span>
   </div>
 
   <div class="p-3">
     <div class="list-row">
       <span class="muted d-flex align-items-center gap-2">
         <i class="bi bi-envelope-fill"></i>
-        <span>Private Message</span>
+        <span>'.hsafe($lang->member['lbl_private_message']).'</span>
       </span>
       <span>'.$sendpm.'</span>
     </div>
@@ -1810,7 +1829,7 @@ if ($mybb->input['action'] === 'profile') {
     <div class="list-row">
       <span class="muted d-flex align-items-center gap-2">
         <i class="bi bi-at"></i>
-        <span>Email</span>
+        <span>'.hsafe($lang->member['lbl_email']).'</span>
       </span>
       <span>'.$sendemail.'</span>
     </div>
@@ -1881,9 +1900,9 @@ if ($mybb->input['action'] === 'profile') {
     $uploaded_percent   = min(100, (int)round($up   / $total * 100));
     $downloaded_percent = min(100, (int)round($down / $total * 100));
     $ratio_label = match($ratio_class) {
-        'ratio-ok'   => '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Good</span>',
-        'ratio-warn' => '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>Fair</span>',
-        default      => '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Poor</span>',
+        'ratio-ok'   => '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>' . hsafe($lang->member['lbl_ratio_good']) . '</span>',
+        'ratio-warn' => '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>' . hsafe($lang->member['lbl_ratio_fair']) . '</span>',
+        default      => '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>' . hsafe($lang->member['lbl_ratio_poor']) . '</span>',
     };
 
     // Timezone / dates
@@ -1894,11 +1913,18 @@ if ($mybb->input['action'] === 'profile') {
             $memprofile['timezone'] = '+' . $memprofile['timezone'];
         }
     }
+	
+	
+
 
     $memregdate    = my_datee($dateformat, $memprofile['added']);
-    $memlocaldate = gmdate($dateformat, (int)(TIMENOW + ((float)$memprofile['timezone'] * 3600)));
-    $memlocaltime = gmdate($timeformat, (int)(TIMENOW + ((float)$memprofile['timezone'] * 3600)));
-    $localtime     = $memlocaldate . ' at ' . $memlocaltime;
+    $memoffset    = (string)(float)$memprofile['timezone'];
+    $memlocaldate = my_datee($dateformat, TIMENOW, $memoffset, 0);
+    $memlocaltime = my_datee($timeformat, TIMENOW, $memoffset, 0);
+	
+	
+	
+    $localtime     = ags_fmt($lang->member['local_time_format'], $memlocaldate, $memlocaltime);
 
     // Birthday
     $membday = $membdayage = '';
@@ -1906,7 +1932,7 @@ if ($mybb->input['action'] === 'profile') {
         $membday_arr = explode('-', $memprofile['birthday']);
         if ($memprofile['birthdayprivacy'] !== 'none') {
             if (!empty($membday_arr[0]) && !empty($membday_arr[1]) && !empty($membday_arr[2])) {
-                $membdayage = sprintf('(' . get_age($memprofile['birthday']) . ' years old)');
+                $membdayage = ags_fmt($lang->member['membdayage'], (int)get_age($memprofile['birthday']));
                 $bdayformat = fix_mktime($dateformat, $membday_arr[2]);
                 $membday    = date($bdayformat, mktime(0, 0, 0, (int)$membday_arr[1], (int)$membday_arr[0], (int)$membday_arr[2]));
             } elseif (!empty($membday_arr[2])) {
@@ -1915,10 +1941,10 @@ if ($mybb->input['action'] === 'profile') {
                 $membday = date('F j', mktime(0, 0, 0, (int)$membday_arr[1], (int)$membday_arr[0], 0));
             }
         }
-        if ($memprofile['birthdayprivacy'] === 'age')  { $membday = 'Hidden'; }
-        if ($memprofile['birthdayprivacy'] === 'none') { $membday = 'Hidden'; $membdayage = ''; }
+        if ($memprofile['birthdayprivacy'] === 'age')  { $membday = $lang->member['birthdayhidden']; }
+        if ($memprofile['birthdayprivacy'] === 'none') { $membday = $lang->member['birthdayhidden']; $membdayage = ''; }
     } else {
-        $membday    = 'Not Specified';
+        $membday    = $lang->member['not_specified'];
         $membdayage = '';
     }
 
@@ -1932,7 +1958,7 @@ if ($mybb->input['action'] === 'profile') {
     $query      = $db->sql_query_prepared("SELECT location,nopermission FROM sessions WHERE uid = ? AND time > ? ORDER BY time DESC LIMIT 1", [$uid, $timesearch]);
     $session    = $query ? $db->fetch_array($query) : null;
 
-    $timeonline      = 'None Registered';
+    $timeonline      = $lang->member['none_registered'];
     $memlastvisitdate = $lang->member['lastvisit_never'];
     $last_seen        = max($memprofile['lastactive'], $memprofile['lastvisit']);
 
@@ -1981,11 +2007,11 @@ if ($mybb->input['action'] === 'profile') {
         $query = $db->sql_query_prepared("SELECT b.*, a.username AS adminuser FROM banned b LEFT JOIN users a ON (b.admin=a.id) WHERE b.uid = ? LIMIT 1", [$uid]);
         if ($query && $db->num_rows($query)) {
             $memban = $db->fetch_array($query);
-            $memban['reason'] = $memban['reason'] ? htmlspecialchars_uni($parser->parse_badwords($memban['reason'])) : $lang->na;
+            $memban['reason'] = $memban['reason'] ? htmlspecialchars_uni($parser->parse_badwords($memban['reason'])) : $lang->member['not_available'];
 
             if (in_array($memban['lifted'], ['perm', ''], true) || in_array($memban['bantime'], ['perm', '---'], true)) {
                 $banlength     = $lang->member['permanent'];
-                $timeremaining = 'na';
+                $timeremaining = $lang->member['not_available'];
                 $banned_class  = 'normal_banned';
             } else {
                 $bantimes  = fetch_ban_times();
@@ -2000,7 +2026,7 @@ if ($mybb->input['action'] === 'profile') {
                 };
             }
 
-            $timeremaining        = '<span class="' . $banned_class . '">(' . $timeremaining . ' remaining)</span>';
+            $timeremaining        = '<span class="' . $banned_class . '">' . hsafe(ags_fmt($lang->member['ban_time_remaining'], $timeremaining)) . '</span>';
             $memban['adminuser']  = build_profile_link(htmlspecialchars_uni($memban['adminuser']), $memban['admin']);
             
 			$bannedbit = '<div class="card-clean p-3 mb-4" style="border-left:4px solid #dc3545;">
@@ -2051,10 +2077,10 @@ if ($mybb->input['action'] === 'profile') {
     
 	
 	$ipaddress = '<div class="py-2 border-bottom">
-						<span class="text-muted">Registration IP:</span> '.$memprofile['regip'].'
+						<span class="text-muted">'.$lang->member['registration_ip'].'</span> '.$memprofile['regip'].'
 					</div>
 					<div class="py-2 border-bottom">
-						<span class="text-muted">Last Known IP:</span> '.$memprofile['lastip'].'
+						<span class="text-muted">'.$lang->member['last_known_ip'].'</span> '.$memprofile['lastip'].'
 					</div>';
 	
 	
@@ -2074,8 +2100,8 @@ if ($mybb->input['action'] === 'profile') {
     $tpd = round(min($memprofile['threadnum'], $memprofile['threadnum'] / $daysreg), 2);
     $thread_percent = $stats22 > 0 ? min(100, round($memprofile['threadnum'] * 100 / $stats22, 2)) : 0;
 
-    $ppd_percent_total = ts_nf($ppd) . ' posts per day | ' . $post_percent . ' percent of total posts';
-    $tpd_percent_total = ts_nf($tpd) . ' threads per day | ' . $thread_percent . ' percent of total threads';
+    $ppd_percent_total = ags_fmt($lang->member['ppd_percent_total'], ts_nf($ppd), $post_percent);
+    $tpd_percent_total = ags_fmt($lang->member['tpd_percent_total'], ts_nf($tpd), $thread_percent);
 
     // Mod options
     $modoptions = $viewnotes = $editnotes = $editprofile = $banuser = $manageban = $manageuser = '';
@@ -2104,20 +2130,20 @@ if ($mybb->input['action'] === 'profile') {
 $modoptions = '<!-- Moderator Options (compact) -->
 <div class="card-clean mb-4 hov-soft">
   <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
-    <i class="bi bi-shield-check"></i><span>Moderator Options</span>
+    <i class="bi bi-shield-check"></i><span>'.hsafe($lang->member['mod_options']).'</span>
   </div>
 
   <div class="p-3">
     <div class="list-row">
       <span class="muted d-flex align-items-center gap-2">
-        <i class="bi bi-geo-alt-fill"></i><span>IP Address</span>
+        <i class="bi bi-geo-alt-fill"></i><span>'.hsafe($lang->member['lbl_ip_address']).'</span>
       </span>
       <span>'.$ipaddress.'</span>
     </div>
 
     <div class="mt-3">
       <div class="muted mb-2 d-flex align-items-center gap-2">
-        <i class="bi bi-tools"></i><span>Quick actions</span>
+        <i class="bi bi-tools"></i><span>'.hsafe($lang->member['lbl_quick_actions']).'</span>
       </div>
 
       
@@ -2140,7 +2166,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     .icon-grid a{border-color:#1f2a38;background:#0f1720}
   }
 </style>
-<script type="text/javascript" src="' . $BASEURL . '/scripts/mod-actions.js"></script>';
+<script type="text/javascript" src="' . $BASEURL . '/scripts/mod-actions.js?ver=2"></script>';
 
 		
 		
@@ -2170,8 +2196,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
         $ignore_list = explode(',', $CURUSER['ignorelist']);
 
         $add_remove_options = in_array($uid, $buddy_list)
-            ? ['url' => "usercp.php?action=do_editlists&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_buddy_button', 'lang' => 'Remove from Buddy List']
-            : ['url' => "usercp.php?action=do_editlists&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_buddy_button', 'lang' => 'Add to Buddy List'];
+            ? ['url' => "usercp.php?action=do_editlists&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_buddy_button', 'lang' => $lang->member['remove_from_buddy_list']]
+            : ['url' => "usercp.php?action=do_editlists&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_buddy_button', 'lang' => $lang->member['add_to_buddy_list']];
 
         if (!in_array($uid, $ignore_list)) 
 		{ 
@@ -2182,8 +2208,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
 		}
 
         $add_remove_options = in_array($uid, $ignore_list)
-            ? ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_ignore_button', 'lang' => 'Remove from Ignore List']
-            : ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_ignore_button', 'lang' => 'Add to Ignore List'];
+            ? ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_ignore_button', 'lang' => $lang->member['remove_from_ignore_list']]
+            : ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_ignore_button', 'lang' => $lang->member['add_to_ignore_list']];
 
         if (!in_array($uid, $buddy_list)) 
 		{ 
@@ -2215,7 +2241,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     // Own profile or staff: other users' claims are not public (claim.php checks it too)
     $claims_line = CLAIM_ENABLED && ((int)$uid === (int)$CURUSER['id'] || (isset($usergroups) && is_mod($usergroups)))
         ? '<div class="mt-1 small"><a href="' . $BASEURL . '/claim.php?uid=' . (int)$uid . '" class="text-decoration-none">'
-          . '<i class="bi bi-heart-pulse me-1"></i>Claims: ' . claim_count_user((int)$uid) . ' / ' . number_format(CLAIM_MAX_PER_USER) . '</a></div>'
+          . '<i class="bi bi-heart-pulse me-1"></i>' . hsafe(ags_fmt($lang->member['lbl_claims'], claim_count_user((int)$uid), number_format(CLAIM_MAX_PER_USER))) . '</a></div>'
         : '';
     $completed_list        = $completed['html'];
     $times_completed_total = ts_nf($completed['count']);
@@ -2229,19 +2255,19 @@ $modoptions = '<!-- Moderator Options (compact) -->
     // Report button
     $report_button = '';
     if ($CURUSER['id'] != $memprofile['id'] && $CURUSER['id'] != 0) {
-        $report_button = '<button type="button" class="btn btn-sm btn-outline-danger" onclick="openReportUserModal(' . $memprofile['id'] . ', \'' . addslashes($memprofile['username']) . '\')" data-bs-toggle="tooltip" title="Report this user for violations"><i class="fa-solid fa-flag me-1"></i> Report User</button>';
+        $report_button = '<button type="button" class="btn btn-sm btn-outline-danger" onclick="openReportUserModal(' . $memprofile['id'] . ', \'' . addslashes($memprofile['username']) . '\')" data-bs-toggle="tooltip" title="' . hsafe($lang->member['tip_report_user']) . '"><i class="fa-solid fa-flag me-1"></i> ' . hsafe($lang->member['report_user']) . '</button>';
     }
 
     $reasons_map = [
-        'spam'          => ['text' => 'Spam Account',            'icon' => 'fa-user-slash',       'description' => 'User is posting spam content'],
-        'harassment'    => ['text' => 'Harassment/Bullying',     'icon' => 'fa-ban',               'description' => 'User is harassing or bullying others'],
-        'fake'          => ['text' => 'Fake Account',            'icon' => 'fa-mask',              'description' => 'User is pretending to be someone else'],
-        'impersonation' => ['text' => 'Impersonation',           'icon' => 'fa-id-badge',          'description' => 'User is impersonating another user'],
-        'inappropriate' => ['text' => 'Inappropriate Profile',   'icon' => 'fa-eye-slash',         'description' => 'User has inappropriate profile content'],
-        'scam'          => ['text' => 'Scam/Fraud',              'icon' => 'fa-skull-crossbones',  'description' => 'User is involved in scams or fraud'],
-        'copyright'     => ['text' => 'Copyright Infringement',  'icon' => 'fa-copyright',         'description' => 'User is sharing copyrighted content'],
-        'malware'       => ['text' => 'Malware Distribution',    'icon' => 'fa-bug',               'description' => 'User is distributing malware/viruses'],
-        'other'         => ['text' => 'Other Reason',            'icon' => 'fa-ellipsis',          'description' => 'Select for other reasons'],
+        'spam'          => ['text' => $lang->member['opt_reason_spam'], 'icon' => 'fa-user-slash', 'description' => $lang->member['hint_reason_spam']],
+        'harassment'    => ['text' => $lang->member['opt_reason_harassment'], 'icon' => 'fa-ban', 'description' => $lang->member['hint_reason_harassment']],
+        'fake'          => ['text' => $lang->member['opt_reason_fake'], 'icon' => 'fa-mask', 'description' => $lang->member['hint_reason_fake']],
+        'impersonation' => ['text' => $lang->member['opt_reason_impersonation'], 'icon' => 'fa-id-badge', 'description' => $lang->member['hint_reason_impersonation']],
+        'inappropriate' => ['text' => $lang->member['opt_reason_inappropriate'], 'icon' => 'fa-eye-slash', 'description' => $lang->member['hint_reason_inappropriate']],
+        'scam'          => ['text' => $lang->member['opt_reason_scam'], 'icon' => 'fa-skull-crossbones', 'description' => $lang->member['hint_reason_scam']],
+        'copyright'     => ['text' => $lang->member['opt_reason_copyright'], 'icon' => 'fa-copyright', 'description' => $lang->member['hint_reason_copyright']],
+        'malware'       => ['text' => $lang->member['opt_reason_malware'], 'icon' => 'fa-bug', 'description' => $lang->member['hint_reason_malware']],
+        'other'         => ['text' => $lang->member['opt_reason_other'], 'icon' => 'fa-ellipsis', 'description' => $lang->member['hint_reason_other']],
     ];
 
     // Recent comments
@@ -2261,7 +2287,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
             $pid          = $comment['id'];
             $tid          = $comment['torrentid'];
             $comment_link = $BASEURL . '/' . get_comment_link($pid, $tid);
-            $torrent_name = htmlspecialchars_uni($comment['torrent_name'] ?? 'Unknown');
+            $torrent_name = htmlspecialchars_uni($comment['torrent_name'] ?? $lang->member['lbl_unknown_torrent']);
 
             $recent_comments_html .= '
             <div class="list-row">
@@ -2285,7 +2311,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
                 <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width:70px;height:70px;">
                     <i class="bi bi-chat-square-dots fs-1 text-secondary opacity-50"></i>
                 </div>
-                <div class="text-secondary fw-medium">No comments yet.</div>
+                <div class="text-secondary fw-medium">' . hsafe($lang->member['empty_comments']) . '</div>
             </div>
         </div>';
     }
@@ -2307,6 +2333,17 @@ $modoptions = '<!-- Moderator Options (compact) -->
 		
     }
 
+    // Strings for report_user.js: js_report_* lang keys → AGS_LANG without the js_ prefix
+    $ags_js_lang = [];
+    foreach ($lang->member as $js_key => $js_val) {
+        if (str_starts_with((string)$js_key, 'js_report_')) {
+            $ags_js_lang[substr((string)$js_key, 3)] = (string)$js_val;
+        }
+    }
+    $ags_lang_script = '<script>const AGS_LANG = '
+        . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . ';</script>';
+
     $formattedname = format_name($memprofile['username'], $memprofile['usergroup'], $memprofile['displaygroup']);
 
     $profile = '
@@ -2315,10 +2352,11 @@ $modoptions = '<!-- Moderator Options (compact) -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>'.$SITENAME.' - '.$lang->member['profile'].'</title>
+  <title>'.$SITENAME.' - '.hsafe(ags_fmt($lang->member['profile'], $me_username)).'</title>
   
   <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-  <script type="text/javascript" src="'.$BASEURL.'/scripts/report_user.js"></script>
+  '.$ags_lang_script.'
+  <script type="text/javascript" src="'.$BASEURL.'/scripts/report_user.js?ver=3"></script>
   
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   
@@ -2340,11 +2378,11 @@ $modoptions = '<!-- Moderator Options (compact) -->
        data-uid="'.$memprofile['id'].'"
        data-can-change="'.$can_change_avatar.'"
 	   data-max-mb="'.round($avatarsize / 1024).'"
-       title="Avatar">
+       title="'.hsafe($lang->member['tip_avatar']).'">
     <div>
       '.$avatar.'
       '.$status_dot_html.'
-      <span class="avatar-overlay">Change</span>
+      <span class="avatar-overlay">'.hsafe($lang->member['lbl_change_avatar']).'</span>
     </div>
 
     <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
@@ -2365,20 +2403,20 @@ $modoptions = '<!-- Moderator Options (compact) -->
           <div class="mt-2">'.$userstars.'</div>
 
           <div class="mt-3 d-flex flex-wrap gap-2">
-    <span class="chip"><i class="bi bi-upload me-1 text-success"></i> Seeding: <strong>'.$active_seeds.'</strong></span>
-    <span class="chip"><i class="bi bi-download me-1 text-danger"></i> Leeching: <strong>'.$active_leeches.'</strong></span>
-    <span class="chip"><i class="bi bi-check2-circle me-1 text-primary"></i> Completed: <strong>'.$times_completed_total.'</strong></span>
-    <span class="chip"><i class="bi bi-calendar-check me-1 text-muted"></i> Joined: <strong>'.$memregdate.'</strong></span>
+    <span class="chip"><i class="bi bi-upload me-1 text-success"></i> '.hsafe($lang->member['lbl_seeding']).' <strong>'.$active_seeds.'</strong></span>
+    <span class="chip"><i class="bi bi-download me-1 text-danger"></i> '.hsafe($lang->member['lbl_leeching']).' <strong>'.$active_leeches.'</strong></span>
+    <span class="chip"><i class="bi bi-check2-circle me-1 text-primary"></i> '.hsafe($lang->member['lbl_completed']).' <strong>'.$times_completed_total.'</strong></span>
+    <span class="chip"><i class="bi bi-calendar-check me-1 text-muted"></i> '.hsafe($lang->member['joined']).' <strong>'.$memregdate.'</strong></span>
 </div>
         </div>
 
         <div class="col-12 col-lg-3">
           <div class="d-grid gap-2">
-            <a href="private.php?action=send&uid='.$memprofile['id'].'" class="btn btn-primary btn-sm" aria-label="Send private message">
-              <i class="bi bi-envelope me-1"></i> Send PM
+            <a href="private.php?action=send&uid='.$memprofile['id'].'" class="btn btn-primary btn-sm" aria-label="'.hsafe($lang->member['aria_send_pm']).'">
+              <i class="bi bi-envelope me-1"></i> '.hsafe($lang->member['btn_send_pm']).'
             </a>
-            <a href="misc.php?action=buddy&add='.$memprofile['id'].'" class="btn btn-outline-secondary btn-sm" aria-label="Add to buddy list">
-              <i class="bi bi-person-plus me-1"></i> Add to Buddy
+            <a href="misc.php?action=buddy&add='.$memprofile['id'].'" class="btn btn-outline-secondary btn-sm" aria-label="'.hsafe($lang->member['aria_add_buddy']).'">
+              <i class="bi bi-person-plus me-1"></i> '.hsafe($lang->member['btn_add_buddy']).'
             </a>
             '.$report_button.'
           </div>
@@ -2387,19 +2425,19 @@ $modoptions = '<!-- Moderator Options (compact) -->
     <div class="mt-3 p-3 card-clean text-center">
         <div class="row g-2">
             <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">POSTS</div>
+                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_posts']).'</div>
                 <div class="fw-bold">'.$memprofile['postnum'].'</div>
             </div>
             <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">THREADS</div>
+                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_threads']).'</div>
                 <div class="fw-bold">'.$memprofile['threadnum'].'</div>
             </div>
             <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">SEEDS</div>
+                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_seeds']).'</div>
                 <div class="fw-bold text-success">'.$active_seeds.'</div>
             </div>
             <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">LEECHES</div>
+                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_leeches']).'</div>
                 <div class="fw-bold text-danger">'.$active_leeches.'</div>
             </div>
         </div>
@@ -2415,8 +2453,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
         <div class="metric text-center hov-soft">
-            <div class="label">Ratio</div>
-            <div class="value {$ratio_class}" style="font-size:1.35rem;">'.$ratio.'</div>
+            <div class="label">'.hsafe($lang->member['lbl_ratio']).'</div>
+            <div class="value '.$ratio_class.'" style="font-size:1.35rem;">'.$ratio.'</div>
             <div class="mt-2">
                 
                    '.$ratio_label.'
@@ -2427,7 +2465,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     </div>
     <div class="col-6 col-md-3">
         <div class="metric text-center hov-soft">
-            <div class="label"><i class="bi bi-check2-circle me-1"></i>Snatched</div>
+            <div class="label"><i class="bi bi-check2-circle me-1"></i>'.hsafe($lang->member['lbl_snatched']).'</div>
             <div class="value" style="font-size:1.35rem;">'.$times_completed_total.'</div>
             '.$claims_line.'
         </div>
@@ -2435,28 +2473,28 @@ $modoptions = '<!-- Moderator Options (compact) -->
     <div class="col-12 col-md-3">
         <div class="metric hov-soft">
             <div class="d-flex justify-content-between align-items-center">
-                <div class="label"><i class="bi bi-arrow-up-right text-success me-1"></i>Uploaded</div>
+                <div class="label"><i class="bi bi-arrow-up-right text-success me-1"></i>'.hsafe($lang->member['lbl_uploaded']).'</div>
                 <div class="value text-success">'.$uploaded.'</div>
             </div>
             <div class="progress mt-2">
-                <div class="progress-bar" style="width:{$uploaded_percent}%;background:linear-gradient(90deg,#4ade80,#22c55e)"></div>
+                <div class="progress-bar" style="width:'.$uploaded_percent.'%;background:linear-gradient(90deg,#4ade80,#22c55e)"></div>
             </div>
             <div class="d-flex justify-content-between mt-1">
-                <small class="muted">'.$uploaded_percent.'% of total</small>
+                <small class="muted">'.hsafe(ags_fmt($lang->member['lbl_pct_of_total'], $uploaded_percent)).'</small>
             </div>
         </div>
     </div>
     <div class="col-12 col-md-3">
         <div class="metric hov-soft">
             <div class="d-flex justify-content-between align-items-center">
-                <div class="label"><i class="bi bi-arrow-down-right text-danger me-1"></i>Downloaded</div>
+                <div class="label"><i class="bi bi-arrow-down-right text-danger me-1"></i>'.hsafe($lang->member['lbl_downloaded']).'</div>
                 <div class="value text-danger">'.$downloaded.'</div>
             </div>
             <div class="progress mt-2">
                 <div class="progress-bar" style="width:'.$downloaded_percent.'%;background:linear-gradient(90deg,#f87171,#ef4444)"></div>
             </div>
             <div class="d-flex justify-content-between mt-1">
-                <small class="muted">'.$downloaded_percent.'% of total</small>
+                <small class="muted">'.hsafe(ags_fmt($lang->member['lbl_pct_of_total'], $downloaded_percent)).'</small>
             </div>
         </div>
     </div>
@@ -2475,24 +2513,24 @@ $modoptions = '<!-- Moderator Options (compact) -->
 	  <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item">
         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-about" type="button">
-            <i class="bi bi-person me-1"></i>About
+            <i class="bi bi-person me-1"></i>'.hsafe($lang->member['tab_about']).'
         </button>
     </li>
     <li class="nav-item">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-forum" type="button">
-            <i class="bi bi-chat-dots me-1"></i>Forum
+            <i class="bi bi-chat-dots me-1"></i>'.hsafe($lang->member['tab_forum']).'
             <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$memprofile['postnum'].'</span>
         </button>
     </li>
     <li class="nav-item">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-torrents" type="button">
-            <i class="bi bi-collection-play me-1"></i>Torrents
+            <i class="bi bi-collection-play me-1"></i>'.hsafe($lang->member['tab_torrents']).'
             <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$times_completed_total.'</span>
         </button>
     </li>
     <li class="nav-item">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contact" type="button">
-            <i class="bi bi-envelope me-1"></i>Contact
+            <i class="bi bi-envelope me-1"></i>'.hsafe($lang->member['tab_contact']).'
         </button>
     </li>
 </ul>
@@ -2546,7 +2584,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
               <div class="card-clean p-0 mt-3 hov-soft">
                 <div class="p-3 border-bottom d-flex align-items-center gap-2">
                   <i class="bi bi-activity"></i>
-                  <strong>Status</strong>
+                  <strong>'.hsafe($lang->member['sec_status']).'</strong>
                 </div>
                 <div class="p-3">
                   <div class="list-row">
@@ -2625,7 +2663,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
         <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
             <span class="text-19 fw-bold d-flex align-items-center gap-2">
                 <i class="bi bi-chat-left-text-fill"></i>
-                Recent Comments
+                '.hsafe($lang->member['sec_recent_comments']).'
             </span>
             <span class="badge-soft">'.$memprofile['comms'].'</span>
         </div>
@@ -2646,7 +2684,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
 		<!-- TORRENTS -->
 <div class="tab-pane fade" id="tab-torrents">
     <div class="card-clean p-0 hov-soft mb-3">
-        <div class="p-3 border-bottom text-19 fw-bold">Uploaded torrents</div>
+        <div class="p-3 border-bottom text-19 fw-bold">'.hsafe($lang->member['sec_uploaded_torrents']).'</div>
         <div class="p-3">'.$recent_user_torrents.'</div>
     </div>
 
@@ -2654,7 +2692,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     <div class="card-clean p-0 hov-soft mb-3">
         <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
             <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-cloud-upload"></i> Seeding now
+                <i class="bi bi-cloud-upload"></i> '.hsafe($lang->member['sec_seeding_now']).'
             </span>
             <span class="badge-soft">'.$active_seeds.'</span>
         </div>
@@ -2667,7 +2705,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     <div class="card-clean p-0 hov-soft mb-3">
         <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
             <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-cloud-download"></i> Leeching now
+                <i class="bi bi-cloud-download"></i> '.hsafe($lang->member['sec_leeching_now']).'
             </span>
             <span class="badge-soft">'.$active_leeches.'</span>
         </div>
@@ -2680,7 +2718,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     <div class="card-clean p-0 hov-soft">
         <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
             <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-check-circle-fill"></i> Completed recently
+                <i class="bi bi-check-circle-fill"></i> '.hsafe($lang->member['sec_completed_recently']).'
             </span>
             <span class="badge-soft">'.$times_completed_total.'</span>
         </div>
@@ -2746,14 +2784,14 @@ $modoptions = '<!-- Moderator Options (compact) -->
                     <input type="hidden" name="addedby" value="<?= (int)$CURUSER['id'] ?>">
                     <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                     <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title" id="reportUserModalLabel">
-                            <i class="fa-solid fa-flag me-2"></i>Report User: <?= hsafe($memprofile['username']) ?>
+                        <h5 class="modal-title" id="reportUserModalLabel" data-username="<?= hsafe($me_username) ?>">
+                            <i class="fa-solid fa-flag me-2"></i><?= hsafe(ags_fmt($lang->member['sec_report_user'], $me_username)) ?>
                         </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= hsafe($lang->member['cans']) ?>"></button>
                     </div>
                     <div class="modal-body">
                         <div class="mb-4">
-                            <h6 class="mb-3"><i class="fa-solid fa-circle-exclamation me-2"></i>Select Report Reason</h6>
+                            <h6 class="mb-3"><i class="fa-solid fa-circle-exclamation me-2"></i><?= hsafe($lang->member['sec_report_reason']) ?></h6>
                             <div class="row g-3">
                                 <?php foreach ($reasons_map as $key => $reason): ?>
                                 <div class="col-md-6">
@@ -2762,8 +2800,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
                                         <div class="d-flex align-items-center">
                                             <div class="me-3"><i class="fa-solid <?= $reason['icon'] ?> fa-2x"></i></div>
                                             <div>
-                                                <div class="fw-bold"><?= $reason['text'] ?></div>
-                                                <div class="small text-muted mt-1"><?= $reason['description'] ?></div>
+                                                <div class="fw-bold"><?= hsafe($reason['text']) ?></div>
+                                                <div class="small text-muted mt-1"><?= hsafe($reason['description']) ?></div>
                                             </div>
                                         </div>
                                     </label>
@@ -2772,48 +2810,48 @@ $modoptions = '<!-- Moderator Options (compact) -->
                             </div>
                         </div>
                         <div class="mb-4">
-                            <h6 class="mb-3"><i class="fa-solid fa-file-alt me-2"></i>Report Details</h6>
+                            <h6 class="mb-3"><i class="fa-solid fa-file-alt me-2"></i><?= hsafe($lang->member['sec_report_details']) ?></h6>
                             <div class="mb-3">
-                                <label for="reportDescription" class="form-label fw-bold">Detailed Description <span class="text-danger">*</span></label>
-                                <textarea class="form-control" id="reportDescription" name="description" rows="5" placeholder="Please provide as much detail as possible..." required></textarea>
+                                <label for="reportDescription" class="form-label fw-bold"><?= hsafe($lang->member['lbl_report_description']) ?> <span class="text-danger">*</span></label>
+                                <textarea class="form-control" id="reportDescription" name="description" rows="5" placeholder="<?= hsafe($lang->member['ph_report_description']) ?>" required></textarea>
                             </div>
                             <div class="mb-3">
-                                <label for="additionalInfo" class="form-label">Additional Information (Optional)</label>
+                                <label for="additionalInfo" class="form-label"><?= hsafe($lang->member['lbl_report_additional']) ?></label>
                                 <textarea class="form-control" id="additionalInfo" name="additional_info" rows="3"></textarea>
                             </div>
                             <div class="mb-3">
-                                <label for="evidenceLinks" class="form-label"><i class="fa-solid fa-link me-1"></i>Evidence Links (Optional)</label>
-                                <input type="text" class="form-control" id="evidenceLinks" name="evidence_links" placeholder="Paste URLs to screenshots or other evidence...">
+                                <label for="evidenceLinks" class="form-label"><i class="fa-solid fa-link me-1"></i><?= hsafe($lang->member['lbl_report_evidence']) ?></label>
+                                <input type="text" class="form-control" id="evidenceLinks" name="evidence_links" placeholder="<?= hsafe($lang->member['ph_report_evidence']) ?>">
                             </div>
                         </div>
                         <div class="mb-4">
                             <div class="d-flex align-items-center mb-2">
-                                <h6 class="mb-0"><i class="fa-solid fa-shield-halved me-2"></i>Security Check</h6>
+                                <h6 class="mb-0"><i class="fa-solid fa-shield-halved me-2"></i><?= hsafe($lang->member['sec_security_check']) ?></h6>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
-                                        id="userReportRefreshCaptcha">
+                                        id="userReportRefreshCaptcha" title="<?= hsafe($lang->member['tip_captcha_refresh']) ?>" aria-label="<?= hsafe($lang->member['tip_captcha_refresh']) ?>">
                                     <i class="fa-solid fa-arrows-rotate"></i>
                                 </button>
                             </div>
                             <div class="row g-2 align-items-center">
                                 <div class="col-6">
-                                    <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                    <img src="report_captcha.php" alt="<?= hsafe($lang->member['alt_captcha']) ?>" class="border rounded"
                                          id="userReportCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
-                                         title="Click to refresh">
+                                         title="<?= hsafe($lang->member['tip_captcha_refresh']) ?>">
                                 </div>
                                 <div class="col-6">
                                     <input type="text" class="form-control"
-                                           id="userReportCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                           id="userReportCaptchaInput" name="captcha_response" placeholder="<?= hsafe($lang->member['ph_captcha']) ?>" autocomplete="off">
                                 </div>
                             </div>
                         </div>
                         <div class="alert alert-warning">
                             <i class="fa-solid fa-exclamation-triangle me-2"></i>
-                            <strong>Important:</strong> False or malicious reports may result in action against your account.
+                            <strong><?= hsafe($lang->member['lbl_important']) ?></strong> <?= hsafe($lang->member['hint_report_warning']) ?>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fa-solid fa-times me-1"></i> Cancel</button>
-                        <button type="submit" class="btn btn-danger"><i class="fa-solid fa-paper-plane me-1"></i> Submit Report</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fa-solid fa-times me-1"></i> <?= hsafe($lang->member['cans']) ?></button>
+                        <button type="submit" class="btn btn-danger"><i class="fa-solid fa-paper-plane me-1"></i> <?= hsafe($lang->member['btn_report_submit']) ?></button>
                     </div>
                 </form>
             </div>
@@ -2846,8 +2884,8 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
     $query   = $db->sql_query_prepared("SELECT id, username, email, hideemail FROM users WHERE id = ?", [$mybb->get_input('id', MyBB::INPUT_INT)]);
     $to_user = $query ? $db->fetch_array($query) : null;
 
-    if (!$to_user['username']) { stderr('error_invalidusername'); }
-    if ($to_user['hideemail'] != 0) { stderr('error_hideemail'); }
+    if (!$to_user['username']) { stderr($lang->member['error_invalidusername']); }
+    if ($to_user['hideemail'] != 0) { stderr($lang->member['error_hideemail']); }
 
     if ($CURUSER['id']) {
         $mybb->input['fromemail'] = $CURUSER['email'];
@@ -2883,7 +2921,7 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
         }
 
         $plugins->run_hooks('member_do_emailuser_end');
-        redirect(get_profile_link($to_user['id']), 'redirect_emailsent');
+        redirect(get_profile_link($to_user['id']), $lang->member['redirect_emailsent']);
     } else {
         $mybb->input['action'] = 'emailuser';
     }
@@ -2902,8 +2940,8 @@ if ($mybb->input['action'] === 'emailuser') {
     $to_user['username'] = htmlspecialchars_uni($to_user['username']);
     $email_user = sprintf($lang->member['email_user'], $to_user['username']);
 
-    if (!$to_user['id'])          { stderr('error_invaliduser'); }
-    if ($to_user['hideemail'] != 0) { stderr('error_hideemail'); }
+    if (!$to_user['id'])          { stderr($lang->member['error_invaliduser']); }
+    if ($to_user['hideemail'] != 0) { stderr($lang->member['error_hideemail']); }
     if ($to_user['ignorelist'] && str_contains(',' . $to_user['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') && $usergroups['cansendemailoverride'] != 1) {
         print_no_permission();
     }
@@ -2979,7 +3017,7 @@ $emailuser = '
 
 
 	
-    stdhead('title');
+    stdhead($lang->member['nav_emailuser']);
     echo $emailuser;
     stdfoot();
 }

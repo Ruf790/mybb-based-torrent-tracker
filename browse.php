@@ -9,8 +9,15 @@ define("SCRIPTNAME", "browse.php");
 
 
 require './global.php';
+
+$lang->load('browse');
+
+
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_bookmark.php';
+
+// Флаги для безопасного вывода строк в <script>
+$agsJsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
 maxsysop();
 
@@ -19,8 +26,6 @@ if (empty($CURUSER['id'])) {
     print_no_permission();
 }
 
-
-$lang->load('browse');
 
 // Страницы с query-параметрами (?search_type=...&keywords=...&page=...) -
 // это дубли одного и того же browse.php, поисковики их индексировать не должны.
@@ -69,7 +74,7 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             <div class="card error-card4 fade show">
               <div class="card-header4">
                 <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
-                <div><h2 class="mb-0">All torrents are Free Leech</h2></div>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_freeleech'] . '</h2></div>
               </div>
               <div class="card-body">
                 <div class="alert4 alert-info" role="alert">
@@ -90,7 +95,7 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             <div class="card error-card4 fade show">
               <div class="card-header4">
                 <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
-                <div><h2 class="mb-0">All torrents are Silver Leech</h2></div>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_silverleech'] . '</h2></div>
               </div>
               <div class="card-body">
                 <div class="alert4 alert-info" role="alert">
@@ -112,7 +117,7 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             <div class="card error-card4 fade show">
               <div class="card-header4">
                 <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
-                <div><h2 class="mb-0">All torrents are Double Upload (x2)</h2></div>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_doubleupload'] . '</h2></div>
               </div>
               <div class="card-body">
                 <div class="alert4 alert-info" role="alert">
@@ -267,7 +272,7 @@ $categories .= '
 
     // Имя выбранной категории для хлебных крошек - ищем, пока массив
     // ещё не очищен ниже.
-    $catName = 'All';
+    $catName = $lang->browse['lbl_crumb_all'];
     if ($category) {
         foreach ($_categoriesC as $c) {
             if ((int)$c['id'] === $category) {
@@ -323,7 +328,7 @@ $hide_downloaded = (($_GET['hide_downloaded'] ?? '') === '1');
 $imdb_min = in_array($_GET['imdb_min'] ?? '', ['7', '8', '9'], true) ? (int)$_GET['imdb_min'] : 0;
 
 $seeders_options = [
-    ''    => 'Any Seeders',
+    ''    => $lang->browse['opt_any_seeders'],
     '1'   => '1+',
     '5'   => '5+',
     '10'  => '10+',
@@ -335,44 +340,50 @@ $seeders_options = [
 $seeders_select = '<select class="form-select" name="min_seeders">';
 foreach ($seeders_options as $val => $label) {
     $selected = ($min_seeders == $val) ? ' selected' : '';
-    $seeders_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+    $seeders_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
 }
 $seeders_select .= '</select>';
 
+// "0.5 GB" -> "0,5 ГБ" и т.п. по языку
+$fmtGb = static function (string $n): string {
+    global $lang;
+    return sprintf($lang->browse['opt_size_gb'], str_replace('.', $lang->browse['lbl_num_dec_point'], $n));
+};
+
 $size_options_min = [
-    ''            => 'Min Size',
-    '536870912'   => '0.5 GB',
-    '1073741824'  => '1 GB',
-    '2147483648'  => '2 GB',
-    '5368709120'  => '5 GB',
-    '10737418240' => '10 GB',
-    '21474836480' => '20 GB',
-    '53687091200' => '50 GB',
+    ''            => $lang->browse['opt_min_size'],
+    '536870912'   => $fmtGb('0.5'),
+    '1073741824'  => $fmtGb('1'),
+    '2147483648'  => $fmtGb('2'),
+    '5368709120'  => $fmtGb('5'),
+    '10737418240' => $fmtGb('10'),
+    '21474836480' => $fmtGb('20'),
+    '53687091200' => $fmtGb('50'),
 ];
 
 $size_options_max = [
-    ''             => 'Max Size',
-    '536870912'    => '0.5 GB',
-    '1073741824'   => '1 GB',
-    '2147483648'   => '2 GB',
-    '5368709120'   => '5 GB',
-    '10737418240'  => '10 GB',
-    '21474836480'  => '20 GB',
-    '53687091200'  => '50 GB',
-    '107374182400' => '100 GB',
+    ''             => $lang->browse['opt_max_size'],
+    '536870912'    => $fmtGb('0.5'),
+    '1073741824'   => $fmtGb('1'),
+    '2147483648'   => $fmtGb('2'),
+    '5368709120'   => $fmtGb('5'),
+    '10737418240'  => $fmtGb('10'),
+    '21474836480'  => $fmtGb('20'),
+    '53687091200'  => $fmtGb('50'),
+    '107374182400' => $fmtGb('100'),
 ];
 
 $size_min_select = '<select class="form-select" name="size_min">';
 foreach ($size_options_min as $val => $label) {
     $selected = ($size_min == $val) ? ' selected' : '';
-    $size_min_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+    $size_min_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
 }
 $size_min_select .= '</select>';
 
 $size_max_select = '<select class="form-select" name="size_max">';
 foreach ($size_options_max as $val => $label) {
     $selected = ($size_max == $val) ? ' selected' : '';
-    $size_max_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+    $size_max_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
 }
 $size_max_select .= '</select>';
 
@@ -394,19 +405,19 @@ $added_from = $to_ts_browse($_GET['added_from'] ?? null, false);
 $added_to   = $to_ts_browse($_GET['added_to'] ?? null, true);
 
 $daysprune_options = [
-    0   => 'Any time',
-    1   => 'Last 24 hours',
-    7   => 'Last 7 days',
-    30  => 'Last 30 days',
-    90  => 'Last 3 months',
-    180 => 'Last 6 months',
-    365 => 'Last year',
+    0   => $lang->browse['opt_days_any'],
+    1   => $lang->browse['opt_days_1'],
+    7   => $lang->browse['opt_days_7'],
+    30  => $lang->browse['opt_days_30'],
+    90  => $lang->browse['opt_days_90'],
+    180 => $lang->browse['opt_days_180'],
+    365 => $lang->browse['opt_days_365'],
 ];
 
 $daysprune_select = '<select class="form-select" name="daysprune" id="daysprune">';
 foreach ($daysprune_options as $val => $label) {
     $selected = ((int)$daysprune === $val) ? ' selected' : '';
-    $daysprune_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+    $daysprune_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
 }
 $daysprune_select .= '</select>';
 
@@ -435,54 +446,54 @@ $min_seeders_val = ($min_seeders !== '') ? (int)$min_seeders : null;
 
 $activeFilters = [];
 if ($category) {
-    $activeFilters[] = ['label' => 'Category #' . $category, 'param' => 'category'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_category'], $category), 'param' => 'category'];
 }
 if ($size_min_val) {
-    $activeFilters[] = ['label' => 'Size ≥ ' . mksize($size_min_val), 'param' => 'size_min'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_size_min'], mksize($size_min_val)), 'param' => 'size_min'];
 }
 if ($size_max_val) {
-    $activeFilters[] = ['label' => 'Size ≤ ' . mksize($size_max_val), 'param' => 'size_max'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_size_max'], mksize($size_max_val)), 'param' => 'size_max'];
 }
 if ($min_seeders_val) {
-    $activeFilters[] = ['label' => 'Seeders ≥ ' . $min_seeders_val, 'param' => 'min_seeders'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_seeders_min'], $min_seeders_val), 'param' => 'min_seeders'];
 }
 if ($keywords !== '') {
-    $activeFilters[] = ['label' => 'Search: ' . htmlspecialchars_uni($keywords), 'param' => 'keywords'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_search'], htmlspecialchars_uni($keywords)), 'param' => 'keywords'];
 }
 if ($search_type !== '' && $search_type !== 't_both') {
-    $activeFilters[] = ['label' => 'Type: ' . htmlspecialchars_uni($search_type), 'param' => 'search_type'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_type'], htmlspecialchars_uni($search_type)), 'param' => 'search_type'];
 }
 if ($special_search !== '') {
-    $activeFilters[] = ['label' => 'Special: ' . htmlspecialchars_uni($special_search), 'param' => 'special_search'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_special'], htmlspecialchars_uni($special_search)), 'param' => 'special_search'];
 }
 if ($include_dead_torrents === 'yes') {
-    $activeFilters[] = ['label' => 'Include dead', 'param' => 'include_dead_torrents'];
+    $activeFilters[] = ['label' => $lang->browse['flt_include_dead'], 'param' => 'include_dead_torrents'];
 }
 if ($freeleech_only) {
-    $activeFilters[] = ['label' => 'Free Leech only', 'param' => 'freeleech_only'];
+    $activeFilters[] = ['label' => $lang->browse['flt_freeleech_only'], 'param' => 'freeleech_only'];
 }
 if ($no_seeders_only) {
-    $activeFilters[] = ['label' => 'No seeders', 'param' => 'no_seeders'];
+    $activeFilters[] = ['label' => $lang->browse['flt_no_seeders'], 'param' => 'no_seeders'];
 }
 if ($seeders_gt_leechers) {
-    $activeFilters[] = ['label' => 'Seeders > Leechers', 'param' => 'seeders_gt_leechers'];
+    $activeFilters[] = ['label' => $lang->browse['flt_seeders_gt_leechers'], 'param' => 'seeders_gt_leechers'];
 }
 if ($hide_downloaded) {
-    $activeFilters[] = ['label' => 'Hide downloaded', 'param' => 'hide_downloaded'];
+    $activeFilters[] = ['label' => $lang->browse['flt_hide_downloaded'], 'param' => 'hide_downloaded'];
 }
 if ($imdb_min > 0) {
-    $activeFilters[] = ['label' => 'IMDb ' . $imdb_min . '+', 'param' => 'imdb_min'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_imdb_min'], $imdb_min), 'param' => 'imdb_min'];
 }
 
 if ($daysprune > 0) {
-    $daysLabel = $daysprune_options[$daysprune] ?? ('Last ' . $daysprune . ' days');
+    $daysLabel = $daysprune_options[$daysprune] ?? sprintf($lang->browse['flt_last_n_days'], $daysprune);
     $activeFilters[] = ['label' => $daysLabel, 'param' => 'daysprune'];
 }
 if ($added_from) {
-    $activeFilters[] = ['label' => 'Added from ' . htmlspecialchars($_GET['added_from']), 'param' => 'added_from'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_added_from'], htmlspecialchars($_GET['added_from'])), 'param' => 'added_from'];
 }
 if ($added_to) {
-    $activeFilters[] = ['label' => 'Added until ' . htmlspecialchars($_GET['added_to']), 'param' => 'added_to'];
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_added_to'], htmlspecialchars($_GET['added_to'])), 'param' => 'added_to'];
 }
 
 $filterGroups = [
@@ -528,7 +539,7 @@ if (!empty($activeFilters)) {
 }
 
 $resetFiltersBtn = '<a href="' . htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES) . '" class="btn btn-outline-secondary btn-sm">'
-    . '<i class="fa-solid fa-rotate-left me-1"></i>Reset filters</a>';
+    . '<i class="fa-solid fa-rotate-left me-1"></i>' . $lang->browse['btn_reset_filters'] . '</a>';
 
 // Quick Filters: быстрые пресеты используют существующие фильтры каталога.
 // По умолчанию включены (не нужно нажимать отдельную кнопку) - выключить
@@ -573,63 +584,63 @@ if ($smartBrowse) {
     <section class="card border-0 shadow-sm mb-3 smart-browse-panel" style="border-radius:18px;">
       <div class="card-body p-3 p-lg-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 smart-browse-heading">
-          <div><div class="smart-eyebrow">DISCOVER</div><h4 class="mb-1"><i class="fa-solid fa-wand-magic-sparkles me-2"></i>Quick Filters</h4>
-          <small>Find your next torrent with quick, focused filters.</small></div>
+          <div><div class="smart-eyebrow">' . $lang->browse['sec_discover'] . '</div><h4 class="mb-1"><i class="fa-solid fa-wand-magic-sparkles me-2"></i>' . $lang->browse['sec_quick_filters'] . '</h4>
+          <small>' . $lang->browse['hint_quick_filters'] . '</small></div>
         </div>
         
-        <div class="smart-filter-label">QUICK FILTERS</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_quick'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['health' => 'seeded']) . '" href="' . $smartPreset(['health' => 'seeded']) . '"><i class="fa-solid fa-heart-pulse me-1"></i>Has seeders <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
-          <a class="' . $smartBtnClass(['sort' => 'seeders', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'seeders', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>Most seeders</a>
-          <a class="' . $smartBtnClass(['min_seeders' => '1']) . '" href="' . $smartPreset(['min_seeders' => '1']) . '"><i class="fa-solid fa-signal me-1"></i>Active torrents <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
-          <a class="' . $smartBtnClass(['daysprune' => '7']) . '" href="' . $smartPreset(['daysprune' => '7']) . '"><i class="fa-regular fa-clock me-1"></i>Last 7 days <span class="smart-preset-count">(@@CNT-7D@@)</span></a>
-          <a class="' . $smartBtnClass(['daysprune' => '30']) . '" href="' . $smartPreset(['daysprune' => '30']) . '"><i class="fa-regular fa-calendar me-1"></i>Last 30 days <span class="smart-preset-count">(@@CNT-30D@@)</span></a>
-          <a class="' . $smartBtnClass(['size_min' => '5368709120']) . '" href="' . $smartPreset(['size_min' => '5368709120']) . '"><i class="fa-solid fa-database me-1"></i>5 GB+ <span class="smart-preset-count">(@@CNT-BIG@@)</span></a>
-          <a class="' . $smartBtnClass(['freeleech_only' => '1']) . '" href="' . $smartPreset(['freeleech_only' => '1']) . '"><i class="bi bi-gift me-1"></i>Free Leech only <span class="smart-preset-count">(@@CNT-FL@@)</span></a>
+          <a class="' . $smartBtnClass(['health' => 'seeded']) . '" href="' . $smartPreset(['health' => 'seeded']) . '"><i class="fa-solid fa-heart-pulse me-1"></i>' . $lang->browse['qf_has_seeders'] . ' <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
+          <a class="' . $smartBtnClass(['sort' => 'seeders', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'seeders', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $lang->browse['qf_most_seeders'] . '</a>
+          <a class="' . $smartBtnClass(['min_seeders' => '1']) . '" href="' . $smartPreset(['min_seeders' => '1']) . '"><i class="fa-solid fa-signal me-1"></i>' . $lang->browse['qf_active'] . ' <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
+          <a class="' . $smartBtnClass(['daysprune' => '7']) . '" href="' . $smartPreset(['daysprune' => '7']) . '"><i class="fa-regular fa-clock me-1"></i>' . $lang->browse['opt_days_7'] . ' <span class="smart-preset-count">(@@CNT-7D@@)</span></a>
+          <a class="' . $smartBtnClass(['daysprune' => '30']) . '" href="' . $smartPreset(['daysprune' => '30']) . '"><i class="fa-regular fa-calendar me-1"></i>' . $lang->browse['opt_days_30'] . ' <span class="smart-preset-count">(@@CNT-30D@@)</span></a>
+          <a class="' . $smartBtnClass(['size_min' => '5368709120']) . '" href="' . $smartPreset(['size_min' => '5368709120']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 5) . ' <span class="smart-preset-count">(@@CNT-BIG@@)</span></a>
+          <a class="' . $smartBtnClass(['freeleech_only' => '1']) . '" href="' . $smartPreset(['freeleech_only' => '1']) . '"><i class="bi bi-gift me-1"></i>' . $lang->browse['flt_freeleech_only'] . ' <span class="smart-preset-count">(@@CNT-FL@@)</span></a>
         </div>
 
-        <div class="smart-filter-label">POPULAR</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_popular'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['sort' => 'snatched', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'snatched', 'dir' => 'desc']) . '"><i class="fa-solid fa-fire me-1"></i>Most downloaded</a>
-          <a class="' . $smartBtnClass(['sort' => 'leechers', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'leechers', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>Most leeched</a>
+          <a class="' . $smartBtnClass(['sort' => 'snatched', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'snatched', 'dir' => 'desc']) . '"><i class="fa-solid fa-fire me-1"></i>' . $lang->browse['qf_most_downloaded'] . '</a>
+          <a class="' . $smartBtnClass(['sort' => 'leechers', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'leechers', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $lang->browse['qf_most_leeched'] . '</a>
         </div>
 
-        <div class="smart-filter-label">HEALTH</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_health'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['no_seeders' => '1']) . '" href="' . $smartPreset(['no_seeders' => '1']) . '"><i class="fa-solid fa-skull-crossbones me-1"></i>No seeders</a>
-          <a class="' . $smartBtnClass(['seeders_gt_leechers' => '1']) . '" href="' . $smartPreset(['seeders_gt_leechers' => '1']) . '"><i class="fa-solid fa-scale-balanced me-1"></i>Seeders &gt; Leechers</a>
+          <a class="' . $smartBtnClass(['no_seeders' => '1']) . '" href="' . $smartPreset(['no_seeders' => '1']) . '"><i class="fa-solid fa-skull-crossbones me-1"></i>' . $lang->browse['flt_no_seeders'] . '</a>
+          <a class="' . $smartBtnClass(['seeders_gt_leechers' => '1']) . '" href="' . $smartPreset(['seeders_gt_leechers' => '1']) . '"><i class="fa-solid fa-scale-balanced me-1"></i>' . $lang->browse['flt_seeders_gt_leechers'] . '</a>
         </div>
 
-        <div class="smart-filter-label">FRESHNESS &amp; SIZE</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_fresh'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['daysprune' => '1']) . '" href="' . $smartPreset(['daysprune' => '1']) . '"><i class="fa-solid fa-star me-1"></i>Added today</a>
-          <a class="' . $smartBtnClass(['daysprune' => '3']) . '" href="' . $smartPreset(['daysprune' => '3']) . '"><i class="fa-regular fa-clock me-1"></i>Last 3 days</a>
-          <a class="' . $smartBtnClass(['size_max' => '536870912']) . '" href="' . $smartPreset(['size_max' => '536870912']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>Small (&lt;0.5GB)</a>
-          <a class="' . $smartBtnClass(['size_max' => '1073741824']) . '" href="' . $smartPreset(['size_max' => '1073741824']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>Small torrents (&lt;1GB)</a>
-          <a class="' . $smartBtnClass(['size_min' => '10737418240']) . '" href="' . $smartPreset(['size_min' => '10737418240']) . '"><i class="fa-solid fa-database me-1"></i>10 GB+</a>
-          <a class="' . $smartBtnClass(['size_min' => '53687091200']) . '" href="' . $smartPreset(['size_min' => '53687091200']) . '"><i class="fa-solid fa-database me-1"></i>50 GB+</a>' .
+          <a class="' . $smartBtnClass(['daysprune' => '1']) . '" href="' . $smartPreset(['daysprune' => '1']) . '"><i class="fa-solid fa-star me-1"></i>' . $lang->browse['qf_added_today'] . '</a>
+          <a class="' . $smartBtnClass(['daysprune' => '3']) . '" href="' . $smartPreset(['daysprune' => '3']) . '"><i class="fa-regular fa-clock me-1"></i>' . $lang->browse['qf_last_3_days'] . '</a>
+          <a class="' . $smartBtnClass(['size_max' => '536870912']) . '" href="' . $smartPreset(['size_max' => '536870912']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>' . sprintf($lang->browse['qf_small'], str_replace('.', $lang->browse['lbl_num_dec_point'], '0.5')) . '</a>
+          <a class="' . $smartBtnClass(['size_max' => '1073741824']) . '" href="' . $smartPreset(['size_max' => '1073741824']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>' . sprintf($lang->browse['qf_small_torrents'], 1) . '</a>
+          <a class="' . $smartBtnClass(['size_min' => '10737418240']) . '" href="' . $smartPreset(['size_min' => '10737418240']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 10) . '</a>
+          <a class="' . $smartBtnClass(['size_min' => '53687091200']) . '" href="' . $smartPreset(['size_min' => '53687091200']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 50) . '</a>' .
           ($CURUSER['id'] ? '
-          <a class="' . $smartBtnClass(['hide_downloaded' => '1']) . '" href="' . $smartPreset(['hide_downloaded' => '1']) . '"><i class="fa-solid fa-eye-slash me-1"></i>Hide downloaded</a>' : '') . '
+          <a class="' . $smartBtnClass(['hide_downloaded' => '1']) . '" href="' . $smartPreset(['hide_downloaded' => '1']) . '"><i class="fa-solid fa-eye-slash me-1"></i>' . $lang->browse['flt_hide_downloaded'] . '</a>' : '') . '
         </div>' .
         ($CURUSER['id'] ? '
 
-        <div class="smart-filter-label">AUTHORSHIP</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_authorship'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['special_search' => 'mytorrents']) . '" href="' . $smartPreset(['special_search' => 'mytorrents']) . '"><i class="fa-solid fa-user me-1"></i>My uploads</a>
-          <a class="' . $smartBtnClass(['special_search' => 'mybookmarks']) . '" href="' . $smartPreset(['special_search' => 'mybookmarks']) . '"><i class="fa-solid fa-bookmark me-1"></i>My bookmarks</a>
-          <a class="' . $smartBtnClass(['special_search' => 'myreseeds']) . '" href="' . $smartPreset(['special_search' => 'myreseeds']) . '"><i class="fa-solid fa-rotate me-1"></i>Need reseed</a>
-          <a class="' . $smartBtnClass(['include_dead_torrents' => 'yes']) . '" href="' . $smartPreset(['include_dead_torrents' => 'yes']) . '"><i class="fa-solid fa-ghost me-1"></i>Include dead</a>
+          <a class="' . $smartBtnClass(['special_search' => 'mytorrents']) . '" href="' . $smartPreset(['special_search' => 'mytorrents']) . '"><i class="fa-solid fa-user me-1"></i>' . $lang->browse['qf_my_uploads'] . '</a>
+          <a class="' . $smartBtnClass(['special_search' => 'mybookmarks']) . '" href="' . $smartPreset(['special_search' => 'mybookmarks']) . '"><i class="fa-solid fa-bookmark me-1"></i>' . $lang->browse['qf_my_bookmarks'] . '</a>
+          <a class="' . $smartBtnClass(['special_search' => 'myreseeds']) . '" href="' . $smartPreset(['special_search' => 'myreseeds']) . '"><i class="fa-solid fa-rotate me-1"></i>' . $lang->browse['qf_need_reseed'] . '</a>
+          <a class="' . $smartBtnClass(['include_dead_torrents' => 'yes']) . '" href="' . $smartPreset(['include_dead_torrents' => 'yes']) . '"><i class="fa-solid fa-ghost me-1"></i>' . $lang->browse['flt_include_dead'] . '</a>
         </div>' : '') . '
 
-        <div class="smart-filter-label">RATING</div>
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_rating'] . '</div>
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="' . $smartBtnClass(['imdb_min' => '7']) . '" href="' . $smartPreset(['imdb_min' => '7']) . '">⭐ IMDb 7+</a>
-          <a class="' . $smartBtnClass(['imdb_min' => '8']) . '" href="' . $smartPreset(['imdb_min' => '8']) . '">⭐ IMDb 8+</a>
-          <a class="' . $smartBtnClass(['imdb_min' => '9']) . '" href="' . $smartPreset(['imdb_min' => '9']) . '">⭐ IMDb 9+</a>
+          <a class="' . $smartBtnClass(['imdb_min' => '7']) . '" href="' . $smartPreset(['imdb_min' => '7']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 7) . '</a>
+          <a class="' . $smartBtnClass(['imdb_min' => '8']) . '" href="' . $smartPreset(['imdb_min' => '8']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 8) . '</a>
+          <a class="' . $smartBtnClass(['imdb_min' => '9']) . '" href="' . $smartPreset(['imdb_min' => '9']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 9) . '</a>
         </div>
 
         <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
-          <a class="btn btn-sm btn-outline-secondary" href="' . $smartPreset(['min_seeders' => null, 'daysprune' => null, 'size_min' => null, 'size_max' => null, 'health' => null, 'freeleech_only' => null, 'no_seeders' => null, 'seeders_gt_leechers' => null, 'hide_downloaded' => null, 'special_search' => null, 'include_dead_torrents' => null, 'imdb_min' => null, 'added_from' => null, 'added_to' => null]) . '"><i class="fa-solid fa-rotate-left me-1"></i>Clear quick filters</a>
+          <a class="btn btn-sm btn-outline-secondary" href="' . $smartPreset(['min_seeders' => null, 'daysprune' => null, 'size_min' => null, 'size_max' => null, 'health' => null, 'freeleech_only' => null, 'no_seeders' => null, 'seeders_gt_leechers' => null, 'hide_downloaded' => null, 'special_search' => null, 'include_dead_torrents' => null, 'imdb_min' => null, 'added_from' => null, 'added_to' => null]) . '"><i class="fa-solid fa-rotate-left me-1"></i>' . $lang->browse['qf_clear'] . '</a>
         </div>
 
       </div>
@@ -646,7 +657,7 @@ $SearchTorrent = '
     <!-- Поиск -->
     <div class="form-group position-relative mb-2">
         <input type="text" class="form-control" id="torrent-search" name="keywords"
-               placeholder="Search for a torrent..." autocomplete="off"
+               placeholder="' . htmlspecialchars_uni($lang->browse['ph_search']) . '" autocomplete="off"
                value="' . ($keywords ? htmlspecialchars_uni($keywords) : '') . '">
         <div id="autocomplete-results" class="dropdown-menu"></div>
     </div>
@@ -657,7 +668,7 @@ $SearchTorrent = '
             <select class="form-select" id="search_type" name="search_type">
                 <option value="t_name"'        . ($search_type === 't_name'        ? ' selected' : '') . '>' . $lang->browse['t_name']        . '</option>
                 <option value="t_description"' . ($search_type === 't_description' ? ' selected' : '') . '>' . $lang->browse['t_description'] . '</option>
-                <option value="t_tags"'        . ($search_type === 't_tags'        ? ' selected' : '') . '>Tags</option>
+                <option value="t_tags"'        . ($search_type === 't_tags'        ? ' selected' : '') . '>' . $lang->browse['opt_tags'] . '</option>
                 <option value="t_both"'        . ($search_type === 't_both' || $search_type === '' ? ' selected' : '') . '>' . $lang->browse['t_both'] . '</option>
                 <option value="t_uploader"'    . ($search_type === 't_uploader'    ? ' selected' : '') . '>' . $lang->browse['t_uploader']    . '</option>
                 <option value="t_genre"'       . ($search_type === 't_genre'       ? ' selected' : '') . '>' . $lang->browse['t_genre']       . '</option>
@@ -680,7 +691,7 @@ $SearchTorrent = '
         </div>
         <div class="col-md-2">
             <button type="submit" class="btn btn-primary w-100">
-                <i class="fa-solid fa-magnifying-glass"></i> Search
+                <i class="fa-solid fa-magnifying-glass"></i> ' . $lang->browse['btn_search'] . '
             </button>
         </div>
     </div>
@@ -694,10 +705,10 @@ $SearchTorrent = '
         ' . $daysprune_select . '
         </div>
         <div class="col-md-2">
-            <input type="text" id="added_from_input" class="form-control" name="added_from" placeholder="Added from" autocomplete="off" value="' . htmlspecialchars($_GET['added_from'] ?? '', ENT_QUOTES) . '">
+            <input type="text" id="added_from_input" class="form-control" name="added_from" placeholder="' . htmlspecialchars_uni($lang->browse['ph_added_from']) . '" autocomplete="off" value="' . htmlspecialchars($_GET['added_from'] ?? '', ENT_QUOTES) . '">
         </div>
         <div class="col-md-2">
-            <input type="text" id="added_to_input" class="form-control" name="added_to" placeholder="Added until" autocomplete="off" value="' . htmlspecialchars($_GET['added_to'] ?? '', ENT_QUOTES) . '">
+            <input type="text" id="added_to_input" class="form-control" name="added_to" placeholder="' . htmlspecialchars_uni($lang->browse['ph_added_to']) . '" autocomplete="off" value="' . htmlspecialchars($_GET['added_to'] ?? '', ENT_QUOTES) . '">
         </div>
     </div>
 
@@ -708,7 +719,7 @@ $SearchTorrent = '
     <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
         ' . $resetFiltersBtn . '
         <a href="' . $BASEURL . '/getrss.php?' . htmlspecialchars(http_build_query($_GET), ENT_QUOTES) . '" class="btn btn-outline-warning btn-sm">
-            <i class="fa-solid fa-rss"></i> Subscribe via RSS
+            <i class="fa-solid fa-rss"></i> ' . $lang->browse['btn_rss'] . '
         </a>
     </div>
 </div>
@@ -1041,9 +1052,9 @@ $SearchTorrent = str_replace(
 
 
 $resultsCountHtml = '<p class="text-muted small mb-2 mt-2">'
-    . '<i class="bi bi-funnel me-1"></i> Found <strong>' . $threadcount . '</strong> torrent(s)'
-    . ($search_type !== '' && $search_type !== 't_both' ? ' · by <em>' . htmlspecialchars_uni($search_type) . '</em>' : '')
-    . ($daysprune > 0 ? ' · <em>' . htmlspecialchars_uni($daysprune_options[$daysprune] ?? ($daysprune . 'd')) . '</em>' : '')
+    . '<i class="bi bi-funnel me-1"></i> ' . sprintf($lang->browse['res_found'], '<strong>' . $threadcount . '</strong>')
+    . ($search_type !== '' && $search_type !== 't_both' ? ' · ' . sprintf($lang->browse['res_by'], '<em>' . htmlspecialchars_uni($search_type) . '</em>') : '')
+    . ($daysprune > 0 ? ' · <em>' . htmlspecialchars_uni($daysprune_options[$daysprune] ?? sprintf($lang->browse['flt_last_n_days'], $daysprune)) . '</em>' : '')
     . '</p>';	
 	
 
@@ -1121,27 +1132,27 @@ $ListTorrents = '
 		</td>
 		
 		<td>
-		' . render_sort_header('Name', 'name', $page_url, $sortBy, $sortDir) . '
+		' . render_sort_header($lang->browse['hdr_name'], 'name', $page_url, $sortBy, $sortDir) . '
 		</td>
 		
 		<td class="text-center">
-		' . render_sort_header('Size', 'size', $page_url, $sortBy, $sortDir) . '
+		' . render_sort_header($lang->browse['sortby6'], 'size', $page_url, $sortBy, $sortDir) . '
 		</td>
 
 		<td class="text-center">
-	    ' . render_sort_header('Snatched', 'snatched', $page_url, $sortBy, $sortDir) . '
+	    ' . render_sort_header($lang->browse['sortby7'], 'snatched', $page_url, $sortBy, $sortDir) . '
 		</td>
 		
 		<td class="text-center">
-		' . render_sort_header('Seeders', 'seeders', $page_url, $sortBy, $sortDir) . '
+		' . render_sort_header($lang->browse['sortby4'], 'seeders', $page_url, $sortBy, $sortDir) . '
 		</td>
 		
 		<td class="text-center">
-		' . render_sort_header('Leechers', 'leechers', $page_url, $sortBy, $sortDir) . '
+		' . render_sort_header($lang->browse['sortby5'], 'leechers', $page_url, $sortBy, $sortDir) . '
 		</td>
 		
 		<td>
-		Uploader
+		' . $lang->browse['sortby8'] . '
 		</td>
 	
 	
@@ -1240,7 +1251,7 @@ if ($TotalTorrents && count($TotalTorrents))
 
 		$d_link = '<a href="' . get_download_link($Torrent['id']) . '" class="badge-popover download-popover" 
            data-bs-toggle="popover" data-bs-placement="top" 
-           data-bs-title="📥 Download Torrent" 
+           data-bs-title="📥 ' . htmlspecialchars_uni($lang->browse['pop_download_title']) . '" 
            data-bs-content="' . htmlspecialchars('
                 <div class="download-popover-content">
                     <div class="torrent-info mb-3">
@@ -1252,30 +1263,30 @@ if ($TotalTorrents && count($TotalTorrents))
                             </div>
                             <div class="detail-item">
                                 <i class="bi bi-file-earmark me-2"></i>
-                                <span>' . ts_nf($Torrent['numfiles']) . ' files</span>
+                                <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_files'], ts_nf($Torrent['numfiles']))) . '</span>
                             </div>
                             ' . ($Torrent['seeders'] > 0 ? '
                             <div class="detail-item text-success">
                                 <i class="bi bi-arrow-up-circle me-2"></i>
                                 <a href="' . $torrentPeersLink . '#seeders" class="text-decoration-none text-success">
-                                    <span>' . ts_nf($Torrent['seeders']) . ' seeders</span>
+                                    <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_seeders'], ts_nf($Torrent['seeders']))) . '</span>
                                 </a>
                             </div>' : '') . '
                             ' . ($Torrent['leechers'] > 0 ? '
                             <div class="detail-item text-warning">
                                 <i class="bi bi-arrow-down-circle me-2"></i>
                                 <a href="' . $torrentPeersLink . '#leechers" class="text-decoration-none text-warning">
-                                    <span>' . ts_nf($Torrent['leechers']) . ' leechers</span>
+                                    <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_leechers'], ts_nf($Torrent['leechers']))) . '</span>
                                 </a>
                             </div>' : '') . '
                         </div>
                     </div>
                     <div class="download-actions">
                         <button class="btn btn-success btn-sm w-100" onclick="window.location.href=\'' . get_download_link($Torrent['id']) . '\'">
-                            <i class="bi bi-download me-1"></i>Download .torrent
+                            <i class="bi bi-download me-1"></i>' . htmlspecialchars_uni($lang->browse['pop_download_btn']) . '
                         </button>
                         <div class="text-center mt-2">
-                            <small class="text-muted">Click icon to download immediately</small>
+                            <small class="text-muted">' . htmlspecialchars_uni($lang->browse['pop_download_hint']) . '</small>
                         </div>
                     </div>
                 </div>
@@ -1381,7 +1392,7 @@ $isAlreadySnatched = isset($already_snatched_ids[(int)$Torrent['id']]);
 
 $ListTorrentsss = '
 <tr class="torrent-row' . ($isAlreadySnatched ? ' torrent-row-snatched' : '') . '"
-    ' . ($isAlreadySnatched ? 'title="You have already downloaded this torrent"' : '') . '
+    ' . ($isAlreadySnatched ? 'title="' . htmlspecialchars_uni($lang->browse['tip_already_snatched']) . '"' : '') . '
     data-id="' . (int)$Torrent['id'] . '" 
     data-seeders="' . $s . '" 
     data-leechers="' . $l . '">	
@@ -1408,7 +1419,7 @@ $ListTorrentsss = '
         </a>
         <div class="torrent-actions-inline">
             '.$d_link.'
-            <span id="bookmark'.$count.'" data-tooltip="Bookmark">
+            <span id="bookmark'.$count.'" data-tooltip="'.htmlspecialchars_uni($lang->browse['title_bookmark_torrent']).'">
                 '.get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id']).'
             </span>
         </div>
@@ -1434,7 +1445,7 @@ $ListTorrentsss = '
 <td class="torrent-stat-cell text-center">
     <a href="'.$BASEURL.'/viewsnatches.php?id='.$Torrent['id'].'" 
        class="text-decoration-none text-muted"
-       data-tooltip="Total snatched count">
+       data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_snatched_count']).'">
         <i class="bi bi-cloud-download me-1"></i>
         <span class="fw-semibold">'.$times_completed.'</span>
     </a>
@@ -1445,7 +1456,7 @@ $ListTorrentsss = '
     <span id="seeders_'.$Torrent['id'].'">
         <a href="'.$torrentPeersLinkRow.'#seeders" 
            class="text-decoration-none text-success fw-bold"
-           data-tooltip="Current seeders">
+           data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_current_seeders']).'">
             <i class="bi bi-arrow-up-circle-fill me-1"></i>
             <span class="fw-bold">'.$sedars.'</span>
         </a>
@@ -1457,7 +1468,7 @@ $ListTorrentsss = '
     <span id="leechers_'.$Torrent['id'].'">
         <a href="'.$torrentPeersLinkRow.'#leechers" 
            class="text-decoration-none text-danger"
-           data-tooltip="Current leechers">
+           data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_current_leechers']).'">
             <i class="bi bi-arrow-down-circle-fill me-1"></i>
             <span class="fw-bold">'.$lechars.'</span>
         </a>
@@ -1499,10 +1510,10 @@ $ListTorrentsss = '
             <div class="card-body p-4">
                 <div class="empty-state text-center py-5">
                     <i class="fa-regular fa-folder-open fa-4x text-muted mb-4"></i>
-                    <h4>No torrents found</h4>
-                    <p class="text-muted">Try changing filters or <a href="' . $BASEURL . '/browse.php">reset them</a>.</p>
+                    <h4>' . $lang->browse['empty_title'] . '</h4>
+                    <p class="text-muted">' . sprintf($lang->browse['empty_hint'], '<a href="' . $BASEURL . '/browse.php">' . $lang->browse['empty_reset_link'] . '</a>') . '</p>
                     <a href="' . $BASEURL . '/browse.php" class="btn btn-primary mt-3">
-                        <i class="fa-solid fa-rotate-left me-1"></i> Reset filters
+                        <i class="fa-solid fa-rotate-left me-1"></i> ' . $lang->browse['btn_reset_filters'] . '
                     </a>
                 </div>
             </div>
@@ -1524,20 +1535,20 @@ $bedit = '
     <div class="moderation-stats">
         <span class="badge bg-primary rounded-pill px-3 py-2" id="totalSelectedBadge">
             <i class="fas fa-check-circle me-1"></i>
-            <span id="selectedCountDisplay" aria-live="polite">0</span> selected
+            ' . sprintf($lang->browse['mod_selected'], '<span id="selectedCountDisplay" aria-live="polite">0</span>') . '
         </span>
         <span class="badge bg-secondary rounded-pill px-3 py-2 ms-2">
             <i class="fas fa-list me-1"></i>
-            <span id="totalTorrentsCount">' . $threadcount . '</span> total
+            ' . sprintf($lang->browse['mod_total'], '<span id="totalTorrentsCount">' . $threadcount . '</span>') . '
         </span>
     </div>
 
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-outline-primary" onclick="ModerationModal.selectAllFiltered(this)">
-            <i class="fas fa-check-double me-1"></i>Select All Matching Filter
+            <i class="fas fa-check-double me-1"></i>' . $lang->browse['btn_select_all_filtered'] . '
         </button>
         <button type="button" class="btn btn-mod-trigger" data-bs-toggle="modal" data-bs-target="#moderationModal">
-            <i class="fas fa-shield-alt me-2"></i>Moderation Actions
+            <i class="fas fa-shield-alt me-2"></i>' . $lang->browse['pane_moderation'] . '
         </button>
     </div>
 </div>
@@ -1552,9 +1563,9 @@ $bedit = '
 
       <div class="modal-header mod-modal-header">
         <h5 class="modal-title" id="moderationModalLabel">
-            <i class="fas fa-shield-alt me-2"></i>Moderation Actions
+            <i class="fas fa-shield-alt me-2"></i>' . $lang->browse['pane_moderation'] . '
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
       </div>
 
       <div class="modal-body mod-modal-body">
@@ -1565,10 +1576,10 @@ $bedit = '
                 <div class="mod-poster-container" id="modPosterContainer">
                     <div class="mod-poster-placeholder" id="modPosterPlaceholder">
                         <i class="fas fa-images fa-3x text-muted"></i>
-                        <p class="text-muted mt-2 small">Select torrents to preview</p>
+                        <p class="text-muted mt-2 small">' . $lang->browse['hint_select_to_preview'] . '</p>
                     </div>
                     <div class="mod-poster-wrapper" id="modPosterWrapper" style="display:none;">
-                        <img id="modPosterPreview" src="" alt="Torrent poster" class="mod-poster-img">
+                        <img id="modPosterPreview" src="" alt="' . htmlspecialchars_uni($lang->browse['alt_torrent_poster']) . '" class="mod-poster-img">
                         <div class="mod-poster-count" id="modPosterCount"></div>
                     </div>
                 </div>
@@ -1579,14 +1590,14 @@ $bedit = '
                 <!-- Selection info -->
                 <div class="mod-selection-info alert alert-info alert-dismissible fade show" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
-                    <strong id="modalSelectedCount" aria-live="polite">0</strong> torrent(s) selected
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    ' . sprintf($lang->browse['mod_torrents_selected'], '<strong id="modalSelectedCount" aria-live="polite">0</strong>') . '
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
                 </div>
 
                 <!-- Progress bar -->
                 <div class="mod-progress-container mb-2" id="modProgressContainer" style="display:none;">
                     <div class="d-flex justify-content-between small">
-                        <span>Selected: <strong id="selectedCount2">0</strong> / <span id="totalCount2">0</span></span>
+                        <span>' . sprintf($lang->browse['mod_progress'], '<strong id="selectedCount2">0</strong>', '<span id="totalCount2">0</span>') . '</span>
                         <span id="progressPercentage">0%</span>
                     </div>
                     <div class="progress" style="height:6px;border-radius:4px;">
@@ -1597,8 +1608,8 @@ $bedit = '
 				
 			<div class="mod-restore-info" id="modRestoreInfo" style="display:none;">
     <i class="fas fa-history me-1"></i>
-    <span id="modRestoreMessage">Selection restored from previous session</span>
-    <button type="button" class="btn-close btn-close-sm float-end" id="modRestoreCloseBtn" aria-label="Close"></button>
+    <span id="modRestoreMessage">' . $lang->browse['mod_restored_default'] . '</span>
+    <button type="button" class="btn-close btn-close-sm float-end" id="modRestoreCloseBtn" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
 </div>
 				
 				
@@ -1629,29 +1640,29 @@ $bedit = '
                 <div id="selectedTorrentsList" class="mod-selected-list" style="display:none;"></div>
 
                 <label class="mod-label" for="actiontype">
-                    <i class="fas fa-bolt me-1"></i>Choose an action
+                    <i class="fas fa-bolt me-1"></i>' . $lang->browse['lbl_choose_action'] . '
                 </label>
                 <select class="form-select mod-select" name="actiontype" id="actiontype">
-                    <option value="0">⚙️ Select Action</option>
-                    <optgroup label="── Torrent ──">
-                        <option value="move">📁 Move selected</option>
-                        <option value="delete">🗑️ Delete selected</option>
-                        <option value="sticky">📌 Sticky / Unsticky</option>
-                        <option value="visible">👁️ Visible / Hidden</option>
-                        <option value="banned">🚫 Ban / Unban</option>
-                        <option value="nuke">☢️ Nuke / Unnuke</option>
-                        <option value="openclose">💬 Open / Close comments</option>
+                    <option value="0">⚙️ ' . $lang->browse['opt_select_action'] . '</option>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_torrent']) . ' ──">
+                        <option value="move">📁 ' . $lang->browse['opt_act_move'] . '</option>
+                        <option value="delete">🗑️ ' . $lang->browse['opt_act_delete'] . '</option>
+                        <option value="sticky">📌 ' . $lang->browse['opt_act_sticky'] . '</option>
+                        <option value="visible">👁️ ' . $lang->browse['opt_act_visible'] . '</option>
+                        <option value="banned">🚫 ' . $lang->browse['opt_act_banned'] . '</option>
+                        <option value="nuke">☢️ ' . $lang->browse['opt_act_nuke'] . '</option>
+                        <option value="openclose">💬 ' . $lang->browse['opt_act_openclose'] . '</option>
                     </optgroup>
-                    <optgroup label="── Promo ──">
-                        <option value="free">🎁 Free / Non-Free</option>
-                        <option value="silver">🥈 Silver / Non-Silver</option>
-                        <option value="doubleupload">⏫ Double Upload ON/OFF</option>
-                        <option value="thirtypercent">🟣 30% Leech ON/OFF</option>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_promo']) . ' ──">
+                        <option value="free">🎁 ' . $lang->browse['opt_act_free'] . '</option>
+                        <option value="silver">🥈 ' . $lang->browse['opt_act_silver'] . '</option>
+                        <option value="doubleupload">⏫ ' . $lang->browse['opt_act_doubleupload'] . '</option>
+                        <option value="thirtypercent">🟣 ' . $lang->browse['opt_act_thirtypercent'] . '</option>
                     </optgroup>
-                    <optgroup label="── Other ──">
-                        <option value="anonymous">🎭 Anonymize / Deanon</option>
-                        <option value="request">📩 Request / Non-Request</option>
-                        <option value="resetrating">⭐ Reset Rating</option>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_other']) . ' ──">
+                        <option value="anonymous">🎭 ' . $lang->browse['opt_act_anonymous'] . '</option>
+                        <option value="request">📩 ' . $lang->browse['opt_act_request'] . '</option>
+                        <option value="resetrating">⭐ ' . $lang->browse['opt_act_resetrating'] . '</option>
                     </optgroup>
                 </select>
 
@@ -1659,13 +1670,13 @@ $bedit = '
                 <div id="movetorrent" class="mod-move-block" style="display:none;">
                     <div class="mod-move-container">
                         <span class="mod-move-label">
-                            <i class="fas fa-folder-open me-1"></i>Move to category
+                            <i class="fas fa-folder-open me-1"></i>' . $lang->browse['lbl_move_to'] . '
                         </span>
                         ' . $catdropdown . '
                     </div>
                     <div id="modMoveCategoryWarning" class="mod-move-mismatch-warning" style="display:none;">
                         <i class="fas fa-triangle-exclamation me-1"></i>
-                        <span id="modMoveCategoryWarningText">Selected torrents come from different categories.</span>
+                        <span id="modMoveCategoryWarningText">' . $lang->browse['mod_mixed_categories'] . '</span>
                     </div>
                 </div>
 
@@ -1673,13 +1684,13 @@ $bedit = '
                 <div id="actionInfo" class="mod-action-info" style="display:none;">
                     <div class="alert alert-warning mt-3">
                         <i class="fas fa-exclamation-triangle me-2"></i>
-                        <span id="actionDescription">Select an action</span>
+                        <span id="actionDescription">' . $lang->browse['mod_action_default'] . '</span>
                     </div>
                 </div>
 
                 <div class="mod-hint">
                     <i class="fas fa-circle-info me-1"></i>
-                    <span>Select torrents in the table below, choose an action, then apply.</span>
+                    <span>' . $lang->browse['hint_mod'] . '</span>
                 </div>
             </div>
         </div>
@@ -1689,13 +1700,13 @@ $bedit = '
       
 	  <div class="modal-footer mod-modal-footer">
     <button type="button" class="btn btn-outline-danger btn-sm me-auto" id="clearAllSelectionsBtn">
-        <i class="fas fa-trash-alt me-1"></i>Clear All
+        <i class="fas fa-trash-alt me-1"></i>' . $lang->browse['btn_clear_all'] . '
     </button>
     <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
-        <i class="fas fa-times me-1"></i>Cancel
+        <i class="fas fa-times me-1"></i>' . $lang->browse['btn_cancel'] . '
     </button>
     <button type="button" class="btn btn-mod-apply" id="applyActionBtn">
-        <i class="fas fa-play me-1"></i> Apply
+        <i class="fas fa-play me-1"></i> ' . $lang->browse['btn_apply'] . '
     </button>
 </div>
 	  
@@ -1711,9 +1722,9 @@ $bedit = '
     <div class="modal-content mod-modal-content shadow-lg">
       <div class="modal-header mod-modal-header mod-modal-header-danger">
         <h5 class="modal-title" id="modConfirmModalLabel">
-            <i class="fas fa-exclamation-triangle me-2"></i>Please confirm
+            <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->browse['pane_confirm'] . '
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
       </div>
       <div class="modal-body mod-modal-body">
         <p id="modConfirmMessage" class="mb-0"></p>
@@ -1721,10 +1732,10 @@ $bedit = '
       </div>
       <div class="modal-footer mod-modal-footer">
         <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
-            <i class="fas fa-times me-1"></i>Cancel
+            <i class="fas fa-times me-1"></i>' . $lang->browse['btn_cancel'] . '
         </button>
         <button type="button" class="btn btn-mod-danger" id="modConfirmAcceptBtn">
-            <i class="fas fa-check me-1"></i>Confirm
+            <i class="fas fa-check me-1"></i>' . $lang->browse['btn_confirm'] . '
         </button>
       </div>
     </div>
@@ -1785,7 +1796,7 @@ if ($showimages === 'yes' && $total > 0): ?>
             <?php for ($i = 0; $i < $total; $i++): ?>
                 <button type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide-to="<?= $i ?>" 
                     class="<?= $i === 0 ? 'active' : '' ?>" aria-current="<?= $i === 0 ? 'true' : 'false' ?>" 
-                    aria-label="Slide <?= $i + 1 ?>"></button>
+                    aria-label="<?= htmlspecialchars_uni(sprintf($lang->browse['lbl_slide'], $i + 1)) ?>"></button>
             <?php endfor; ?>
         </div>
 
@@ -1811,18 +1822,18 @@ if ($showimages === 'yes' && $total > 0): ?>
         <!-- Controls -->
         <button class="carousel-control-prev" type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide="prev">
             <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-            <span class="visually-hidden">Previous</span>
+            <span class="visually-hidden"><?= htmlspecialchars_uni($lang->browse['lbl_prev']) ?></span>
         </button>
         <button class="carousel-control-next" type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide="next">
             <span class="carousel-control-next-icon" aria-hidden="true"></span>
-            <span class="visually-hidden">Next</span>
+            <span class="visually-hidden"><?= htmlspecialchars_uni($lang->browse['lbl_next']) ?></span>
         </button>
     </div>
 
     <!-- Optional Thumbnails Below Carousel -->
     <div class="d-flex justify-content-center flex-wrap gap-2 mt-3">
         <?php foreach ($carouselItems as $index => $row2): ?>
-            <img src="<?= htmlspecialchars($row2['t_image']) ?>" alt="Thumb <?= $index + 1 ?>" 
+            <img src="<?= htmlspecialchars($row2['t_image']) ?>" alt="<?= htmlspecialchars_uni(sprintf($lang->browse['lbl_thumb'], $index + 1)) ?>" 
                  style="width: 80px; height: 50px; object-fit: cover; cursor: pointer;" 
                  onclick="bootstrap.Carousel.getInstance(document.querySelector('#cachedTorrentCarousel')).to(<?= $index ?>);">
         <?php endforeach; ?>
@@ -2043,7 +2054,7 @@ $table = '
 
 <!-- Enhanced Poster Zoom Overlay (один раз на страницу) -->
 <div class="poster-zoom-overlay" id="posterZoomOverlay">
-    <img src="" alt="Poster preview" class="poster-zoom-img" id="posterZoomImg">
+    <img src="" alt="'.htmlspecialchars_uni($lang->browse['alt_poster_preview']).'" class="poster-zoom-img" id="posterZoomImg">
 </div>
 
 <div class="container mt-3">
@@ -2085,7 +2096,7 @@ $table = '
             <i class="bi bi-gear me-1"></i>
             '.$actionns.'
             '.($is_mod ? '
-            <div class="form-check form-switch d-inline-block ms-2 align-middle" title="Select all on this page">
+            <div class="form-check form-switch d-inline-block ms-2 align-middle" title="'.htmlspecialchars_uni($lang->browse['tip_select_all_page']).'">
                 <input
                     class="form-check-input"
                     type="checkbox"
@@ -2171,14 +2182,14 @@ echo '<script>
     [2,3,4,5].forEach((i, index) => {
       const item = document.createElement("span");
       item.innerHTML = cells[i].innerHTML;
-      item.setAttribute("aria-label", ["Size", "Downloads", "Seeders", "Leechers"][index]);
+      item.setAttribute("aria-label", ' . json_encode([$lang->browse['js_card_size'], $lang->browse['js_card_downloads'], $lang->browse['js_card_seeders'], $lang->browse['js_card_leechers']], $agsJsonFlags) . '[index]);
       stats.appendChild(item);
     });
     body.appendChild(stats);
     if (row.classList.contains("torrent-row-snatched")) {
       const badge = document.createElement("span");
       badge.className = "badge bg-primary align-self-start mt-2";
-      badge.textContent = "Already downloaded";
+      badge.textContent = ' . json_encode($lang->browse['js_card_already'], $agsJsonFlags) . ';
       body.appendChild(badge);
     }
     card.appendChild(body);
@@ -2221,10 +2232,19 @@ echo '<script>
 #smartTorrentCards[hidden], #smartTorrentTableWrap[hidden] { display: none !important; }
 </style>';
 
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse.js"></script>';
+// JS-строки: ключи js_* из ланга -> AGS_LANG без префикса
+$agsJsLang = [];
+foreach ($lang->browse as $agsKey => $agsVal) {
+    if (str_starts_with((string)$agsKey, 'js_')) {
+        // $lang->load() превратил {1} в %1$s - возвращаем {N} для t() в JS
+        $agsJsLang[substr((string)$agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
+    }
+}
+echo '<script>const AGS_LANG = ' . json_encode($agsJsLang, $agsJsonFlags) . ';</script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse.js?ver=2"></script>';
 
 if ($is_mod) {
-    echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse-moderation.js"></script>';
+    echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse-moderation.js?ver=2"></script>';
 	echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse-moderation.css">';
 }
 
@@ -2269,6 +2289,11 @@ $hasActiveFilters = !empty($activeFilters);
     const KEY = 'browse_last_filters';
     const hasFilters = <?= $hasActiveFilters ? 'true' : 'false' ?>;
     const currentQuery = window.location.search;
+    const L = {
+        msg: <?= json_encode($lang->browse['js_restore_filters_msg'], $agsJsonFlags) ?>,
+        restore: <?= json_encode($lang->browse['js_restore_filters_btn'], $agsJsonFlags) ?>,
+        dismiss: <?= json_encode($lang->browse['js_restore_filters_dismiss'], $agsJsonFlags) ?>
+    };
 
     if (hasFilters) {
         try { localStorage.setItem(KEY, currentQuery); } catch (e) {}
@@ -2283,13 +2308,31 @@ $hasActiveFilters = !empty($activeFilters);
     document.addEventListener('DOMContentLoaded', () => {
         const bar = document.createElement('div');
         bar.className = 'container mt-3';
-        bar.innerHTML = '<div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 mb-0">' +
-            '<span><i class="fa-solid fa-clock-rotate-left me-1"></i>You had filters applied last time you browsed.</span>' +
-            '<span>' +
-                '<a href="' + window.location.pathname + saved + '" class="btn btn-sm btn-primary me-2">Restore filters</a>' +
-                '<button type="button" class="btn btn-sm btn-outline-secondary" id="dismissRestoreFilters">Dismiss</button>' +
-            '</span>' +
-        '</div>';
+        const alertBox = document.createElement('div');
+        alertBox.className = 'alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 mb-0';
+
+        const msg = document.createElement('span');
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-clock-rotate-left me-1';
+        msg.appendChild(icon);
+        msg.appendChild(document.createTextNode(L.msg));
+
+        const actions = document.createElement('span');
+        const restoreLink = document.createElement('a');
+        restoreLink.href = window.location.pathname + saved;
+        restoreLink.className = 'btn btn-sm btn-primary me-2';
+        restoreLink.textContent = L.restore;
+        const dismissButton = document.createElement('button');
+        dismissButton.type = 'button';
+        dismissButton.className = 'btn btn-sm btn-outline-secondary';
+        dismissButton.id = 'dismissRestoreFilters';
+        dismissButton.textContent = L.dismiss;
+        actions.appendChild(restoreLink);
+        actions.appendChild(dismissButton);
+
+        alertBox.appendChild(msg);
+        alertBox.appendChild(actions);
+        bar.appendChild(alertBox);
 
         const anchor = document.querySelector('nav[aria-label="breadcrumb"]');
         if (anchor && anchor.parentElement) {

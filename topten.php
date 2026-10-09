@@ -3,862 +3,544 @@
 declare(strict_types=1);
 
 // display_errors НЕ включаем: подробности ошибок показывает только
-// error_handler.php и только staff. ini_set('display_errors', 1) здесь
-// выводил сырые ошибки PHP (пути, SQL) любому посетителю.
+// error_handler.php и только staff.
 define("THIS_SCRIPT", "topten.php");
 require "./global.php";
-define("T_VERSION", "v.1.3.1 by xam");
+$lang->load("topten");
+define("T_VERSION", "2.2");
 
 include_once INC_PATH . "/functions_ratio.php";
-$is_mod = is_mod($usergroups);
+require_once INC_PATH . "/functions_icons.php";
+
+$is_mod     = is_mod($usergroups);
 $xbt_active = "no";
-$lang->load("topten");
-$notin = "7,6,5";
-stdhead($lang->topten["head"]);
+$notin      = "7,6,5";
 
-
-
-
-
-function get_thread_link(int|string $tid, int|string $page = 0, string $action = ''): string
-{
-	// strict_types: str_replace() принимает только строки, а tid/page
-	// приходят из БД как native int (prepared statements).
-	$tid  = (string)(int)$tid;
-	$page = (int)$page;
-
-	if($page > 1)
-	{
-		if($action)
-		{
-			$link = THREAD_URL_ACTION;
-			$link = str_replace("{action}", $action, $link);
-		}
-		else
-		{
-			$link = THREAD_URL_PAGED;
-		}
-		$link = str_replace("{tid}", $tid, $link);
-		$link = str_replace("{page}", (string)$page, $link);
-		return htmlspecialchars_uni($link);
-	}
-	else
-	{
-		if($action)
-		{
-			$link = THREAD_URL_ACTION;
-			$link = str_replace("{action}", $action, $link);
-		}
-		else
-		{
-			$link = THREAD_URL;
-		}
-		$link = str_replace("{tid}", $tid, $link);
-		return htmlspecialchars_uni($link);
-	}
-}
-
-
-
-
-
-
-echo '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
-    <style>
-/* ============================================================================
-   topten.css — ArtCore Gangsta leaderboard styling
-   Same visual language as rules.php: amber accent, Oswald for display type,
-   Bootstrap CSS variables for automatic light/dark theme support.
-   ============================================================================ */
-
-:root {
-    --rules-accent: var(--bs-primary);
-    --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
-    --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
-}
-
-
-
-/* ── Shared "glass card" shell used by every table ───────────────────────── */
-.glass-card {
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: .75rem;
-    box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .18);
-    overflow: hidden;
-}
-
-.glass-card .card-header {
-    background: transparent;
-    border-bottom: 1px solid var(--bs-border-color);
-    border-left: 4px solid var(--rules-accent);
-    padding: .9rem 1.25rem;
-    font-family: "Oswald", sans-serif;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .03em;
-    font-size: .95rem;
-    color: var(--bs-emphasis-color);
-}
-
-.glass-card .card-header i {
-    color: var(--rules-accent);
-}
-
-.stats-badge {
-    font-family: "Oswald", sans-serif;
-    font-size: .7rem;
-    font-weight: 600;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--rules-accent-strong);
-    background: var(--rules-accent-soft);
-    border: 1px solid var(--rules-accent);
-    border-radius: 999px;
-    padding: .25rem .75rem;
-}
-
-/* ── Masthead ─────────────────────────────────────────────────────────────── */
-.topten-masthead {
-    padding: 2rem 1.5rem;
-}
-
-.topten-masthead__eyebrow {
-    display: inline-block;
-    font-family: "Oswald", sans-serif;
-    font-weight: 600;
-    font-size: .72rem;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--rules-accent-strong);
-    background: var(--rules-accent-soft);
-    border: 1px solid var(--rules-accent);
-    border-radius: 999px;
-    padding: .3rem .85rem;
-    margin-bottom: .9rem;
-}
-
-.topten-masthead__title {
-    font-family: "Oswald", sans-serif;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .01em;
-    font-size: clamp(1.5rem, 3.4vw, 2.1rem);
-    color: var(--bs-emphasis-color);
-}
-
-.topten-masthead__title i {
-    color: var(--rules-accent);
-}
-
-/* ── Tabs ─────────────────────────────────────────────────────────────────── */
-.topten-tabs {
-    border-bottom: none;
-    gap: .35rem;
-}
-
-.topten-tabs .nav-link {
-    font-family: "Oswald", sans-serif;
-    font-weight: 600;
-    font-size: .82rem;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: var(--bs-secondary-color);
-    border: 1px solid transparent;
-    border-radius: .5rem;
-    padding: .6rem .9rem;
-    transition: color .2s ease, background .2s ease, border-color .2s ease;
-}
-
-.topten-tabs .nav-link:hover {
-    color: var(--rules-accent-strong);
-    background: var(--rules-accent-soft);
-}
-
-.topten-tabs .nav-link.active {
-    color: #fff;
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-}
-
-/* ── Tables ───────────────────────────────────────────────────────────────── */
-.glass-card .table {
-    margin-bottom: 0;
-    color: var(--bs-body-color);
-}
-
-.glass-card .table thead th {
-    font-family: "Oswald", sans-serif;
-    font-size: .72rem;
-    font-weight: 600;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--bs-secondary-color);
-    background: var(--bs-tertiary-bg);
-    border-bottom: 1px solid var(--bs-border-color);
-    white-space: nowrap;
-}
-
-.glass-card .table tbody tr {
-    border-color: var(--bs-border-color-translucent, var(--bs-border-color));
-}
-
-.glass-card .table tbody tr.hover-shadow {
-    transition: background-color .15s ease;
-}
-
-.glass-card .table tbody tr.hover-shadow:hover {
-    background-color: var(--rules-accent-soft);
-}
-
-/* ── Avatars / flags / rank badges ───────────────────────────────────────── */
-.user-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-right: .65rem;
-    border: 2px solid var(--bs-border-color);
-    flex-shrink: 0;
-}
-
-.flag-icon {
-    width: 24px;
-    height: auto;
-    margin-right: .65rem;
-    border-radius: 2px;
-    box-shadow: 0 0 0 1px var(--bs-border-color);
-}
-
-.torrent-poster-link {
-    display: inline-block;
-}
-
-.torrent-poster {
-    width: 40px;
-    height: 56px;
-    object-fit: cover;
-    border-radius: .35rem;
-    border: 1px solid var(--bs-border-color);
-    box-shadow: 0 2px 6px -2px rgba(0, 0, 0, .35);
-    transition: transform .2s ease, box-shadow .2s ease;
-    display: block;
-}
-
-.torrent-poster-link:hover .torrent-poster {
-    transform: scale(1.12) translateY(-2px);
-    box-shadow: 0 6px 14px -4px rgba(0, 0, 0, .45);
-}
-
-.torrent-poster--placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bs-tertiary-bg);
-    color: var(--bs-secondary-color);
-    font-size: 1.1rem;
-}
-
-.ratio-badge {
-    font-family: "Oswald", sans-serif;
-    font-weight: 600;
-    letter-spacing: .02em;
-    color: #fff;
-    padding: .3rem .55rem;
-}
-
-/* Rank column: top 3 get a small accent treatment */
-.glass-card .table tbody tr:nth-child(1) td:first-child,
-.glass-card .table tbody tr:nth-child(2) td:first-child,
-.glass-card .table tbody tr:nth-child(3) td:first-child {
-    position: relative;
-    color: var(--rules-accent-strong) !important;
-}
-
-/* ── Category icon chip (re-branded, moved out of inline PHP <style>) ──────── */
-.category-icon-wrapper {
-    width: 40px;
-    height: 40px;
-    border-radius: .5rem;
-    background: var(--rules-accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 1.1rem;
-    transition: transform .25s ease, box-shadow .25s ease;
-    box-shadow: 0 4px 10px -4px rgba(var(--bs-primary-rgb), .5);
-    flex-shrink: 0;
-}
-
-.category-icon-wrapper:hover {
-    transform: scale(1.08) rotate(-4deg);
-    box-shadow: 0 6px 14px -4px rgba(var(--bs-primary-rgb), .6);
-}
-
-.category-link {
-    color: var(--bs-body-color);
-    transition: color .2s ease;
-}
-
-.category-link:hover {
-    color: var(--rules-accent-strong);
-}
-
-/* ── Empty / warning states ──────────────────────────────────────────────── */
-.glass-card .alert {
-    border: 1px solid var(--bs-border-color);
-    background: var(--bs-tertiary-bg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .glass-card .table tbody tr.hover-shadow,
-    .category-icon-wrapper,
-    .topten-tabs .nav-link {
-        transition: none !important;
+/**
+ * Подстановка {1}, {2}… в строку ланга. $lang->load() превращает {1} в %1$s,
+ * поэтому подставляются оба формата.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
     }
 }
 
-@media (max-width: 576px) {
-    .topten-masthead {
-        padding: 1.5rem 1rem;
-    }
-    .topten-tabs {
-        flex-wrap: wrap;
-    }
-}
-</style>
-   
-</head>
-<body>';
-
-echo "<div class=\"container py-4\">";
-    
-// Header with stats
-echo '<div class="row mb-4">';
-echo '<div class="col-12">';
-echo '<div class="glass-card topten-masthead p-4 text-center">';
-echo '<span class="topten-masthead__eyebrow">Leaderboards</span>';
-echo '<h1 class="topten-masthead__title mb-2"><i class="bi bi-trophy-fill me-2"></i>' . $lang->topten["head"] . '</h1>';
-echo '<p class="text-muted mb-0">' . $lang->topten["subtitle"] . '</p>';
-echo '</div>';
-echo '</div>';
-echo '</div>';
-
-$type = isset($_GET["type"]) ? intval($_GET["type"]) : 1;
-if (!in_array($type, [1, 2, 3, 4, 5, 6, 7, 8, 9])) {
+// ── Входные параметры ───────────────────────────────────────────────────────
+$type = isset($_GET["type"]) ? (int)$_GET["type"] : 1;
+if (!in_array($type, [1, 2, 3, 4, 5, 6, 7, 8, 9], true)) {
     $type = 1;
 }
-$limit = isset($_GET["lim"]) ? 0 + $_GET["lim"] : false;
-$subtype = isset($_GET["subtype"]) ? $_GET["subtype"] : false;
+$limit   = isset($_GET["lim"]) ? (int)$_GET["lim"] : false;
+$subtype = (isset($_GET["subtype"]) && is_string($_GET["subtype"])) ? $_GET["subtype"] : false;
 
-echo '
-    <div class="glass-card p-3 mb-4">
-        <ul class="nav nav-tabs topten-tabs nav-justified">
-            <li class="nav-item">
-                <a class="nav-link' . ($type == 1 ? ' active' : '') . '" href="topten.php?type=1">
-                    <i class="bi bi-people-fill me-2"></i>' . $lang->topten["users"] . '
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link' . ($type == 2 ? ' active' : '') . '" href="topten.php?type=2">
-                    <i class="bi bi-collection-play-fill me-2"></i>' . $lang->topten["torrents"] . '
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link' . ($type == 3 ? ' active' : '') . '" href="topten.php?type=3">
-                    <i class="bi bi-globe-americas me-2"></i>' . $lang->topten["countries"] . '
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link' . ($type == 4 ? ' active' : '') . '" href="topten.php?type=4">
-                    <i class="bi bi-hdd-stack-fill me-2"></i>' . $lang->topten["peers"] . '
-                </a>
-            </li>
-
-
-
-<li class="nav-item">
-        <a class="nav-link' . ($type == 5 ? ' active' : '') . '" href="topten.php?type=5">
-            <i class="bi bi-tags-fill me-2"></i>' . $lang->topten["categories"] . '
-        </a>
-      </li>
-
-
-<li class="nav-item">
-        <a class="nav-link' . ($type == 6 ? ' active' : '') . '" href="topten.php?type=6">
-            <i class="bi bi-coin me-2"></i>SeedBonus
-        </a>
-      </li>
-
-
-
-
-<li class="nav-item">
-        <a class="nav-link' . ($type == 8 ? ' active' : '') . '" href="topten.php?type=8">
-            <i class="bi bi-fire me-2"></i>Hot Right Now
-        </a>
-      </li>
-
-
-
-
-<li class="nav-item">
-        <a class="nav-link' . ($type == 9 ? ' active' : '') . '" href="topten.php?type=9">
-            <i class="bi bi-chat-heart-fill me-2"></i>Top Contributors
-        </a>
-      </li>
-
-
-
-
-<li class="nav-item">
-        <a class="nav-link' . ($type == 7 ? ' active' : '') . '" href="topten.php?type=7">
-            <i class="bi bi-collection me-2"></i>Forum
-        </a>
-      </li>
-
-
-
-
-        </ul>
-    </div>';
-
-$pu = $is_mod ? true : false;
+$pu = (bool)$is_mod;
 if (!$pu) {
     $limit = 10;
 }
 
+// ── Вкладки: [type, иконка FA, ключ ланга] ──────────────────────────────────
+$tt_tabs = [
+    [1, 'fa-users',               'tab_users'],
+    [2, 'fa-photo-film',          'tab_torrents'],
+    [3, 'fa-earth-europe',        'tab_countries'],
+    [4, 'fa-server',              'tab_peers'],
+    [5, 'fa-tags',                'tab_categories'],
+    [6, 'fa-coins',               'tab_seedbonus'],
+    [8, 'fa-fire',                'tab_hot'],
+    [9, 'fa-hand-holding-heart',  'tab_contributors'],
+    [7, 'fa-comments',            'tab_forum'],
+];
+
+// ── KPI (один запрос) ───────────────────────────────────────────────────────
+$kpi = $db->fetch_array($db->sql_query_prepared(
+    "SELECT (SELECT COUNT(*) FROM users WHERE enabled = 'yes')       AS users_cnt,
+            (SELECT COUNT(*) FROM torrents)                          AS torrents_cnt,
+            (SELECT COUNT(*) FROM peers)                             AS peers_cnt,
+            (SELECT COALESCE(SUM(seeder = 'yes'), 0) FROM peers)     AS seeders_cnt,
+            (SELECT COALESCE(SUM(uploaded), 0) FROM users)           AS up_total,
+            (SELECT COALESCE(SUM(downloaded), 0) FROM users)         AS down_total",
+    []
+));
+$kpi_users    = (int)($kpi['users_cnt'] ?? 0);
+$kpi_torrents = (int)($kpi['torrents_cnt'] ?? 0);
+$kpi_peers    = (int)($kpi['peers_cnt'] ?? 0);
+$kpi_seeders  = (int)($kpi['seeders_cnt'] ?? 0);
+$kpi_leechers = max(0, $kpi_peers - $kpi_seeders);
+$kpi_up       = (float)($kpi['up_total'] ?? 0);
+$kpi_down     = (float)($kpi['down_total'] ?? 0);
 
 
-
-
-
-if ($type == 1) 
+function get_thread_link(int|string $tid, int|string $page = 0, string $action = ''): string
 {
-    
-    if (!$limit || $limit > 250) 
-    {
-        $limit = 10;
+    // strict_types: str_replace() принимает только строки, а tid/page
+    // приходят из БД как native int (prepared statements).
+    $tid  = (string)(int)$tid;
+    $page = (int)$page;
+
+    if ($action) {
+        $link = str_replace("{action}", $action, THREAD_URL_ACTION);
+    } else {
+        $link = $page > 1 ? THREAD_URL_PAGED : THREAD_URL;
     }
-    
-
-
-    $mainquery = "SELECT u.id as userid, u.username, u.usergroup, u.added, u.uploaded, u.downloaded, 
-              u.uploaded / (UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(u.added)) AS upspeed,
-              u.downloaded / (UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(u.added)) AS downspeed,
-              u.avatar, u.avatardimensions, -- добавляем поле аватара
-              g.namestyle, g.canstaffpanel, g.issupermod, g.cansettingspanel 
-              FROM users u 
-              LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
-              WHERE u.enabled = 'yes' AND u.usergroup NOT IN (" . $notin . ")";
-
-
-
-
-
-
-    if ($limit == 10 || $subtype == "ul") {
-        $order = "uploaded DESC";
-        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=ul'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=ul'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
+    $link = str_replace("{tid}", $tid, $link);
+    if ($page > 1) {
+        $link = str_replace("{page}", (string)$page, $link);
     }
-    if ($limit == 10 || $subtype == "dl") {
-        $order = "downloaded DESC";
-        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=dl'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=dl'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "uls") {
-        $order = "upspeed DESC";
-        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title3"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=uls'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=uls'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "dls") {
-        $order = "downspeed DESC";
-        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title4"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=dls'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=dls'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "bsh") {
-        $order = "uploaded / downloaded DESC";
-        $extrawhere = " AND downloaded > 1073741824";
-        ($r = $db->sql_query_prepared($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title5"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=bsh'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=bsh'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "wsh") {
-        $order = "uploaded / downloaded ASC, downloaded DESC";
-        $extrawhere = " AND downloaded > 1073741824";
-        ($r = $db->sql_query_prepared($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
-        usertable($r, sprintf($lang->topten["type1_title6"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=wsh'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=wsh'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
-    }
-} 
-
-
-
-
-
-
-
-
-elseif ($type == 2) 
-{
-    if (!$limit || $limit > 50) {
-        $limit = 10;
-    }
-    if ($limit == 10 || $subtype == "act") {
-        if ($xbt_active == "yes") {
-            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 287);
-        } else {
-            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 289);
-        }
-        _torrenttable($r, sprintf($lang->topten["type2_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=act'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=act'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "sna") {
-        if ($xbt_active == "yes") {
-            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 296);
-        } else {
-            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 298);
-        }
-        _torrenttable($r, sprintf($lang->topten["type2_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=sna'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=sna'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "mdt") {
-        if ($xbt_active == "yes") {
-            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 305);
-        } else {
-            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 307);
-        }
-        _torrenttable($r, sprintf($lang->topten["type2_title3"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=mdt'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=mdt'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "bse") {
-        if ($xbt_active == "yes") {
-            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 314);
-        } else {
-            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 316);
-        }
-        _torrenttable($r, sprintf($lang->topten["type2_title4"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=bse'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=bse'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
-    }
-    if ($limit == 10 || $subtype == "wse") {
-        if ($xbt_active == "yes") {
-            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 323);
-        } else {
-            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 325);
-        }
-        _torrenttable($r, sprintf($lang->topten["type2_title5"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=wse'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=wse'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
-    }
-
-
-   // В раздел type == 2 (torrents) добавить:
-    if ($limit == 10 || $subtype == "mcom") {
-
-    $sql = "
-        SELECT t.*, COUNT(c.id) AS comment_count
-        FROM torrents t
-        LEFT JOIN comments c ON t.id = c.torrent
-        GROUP BY t.id
-        ORDER BY comment_count DESC
-        LIMIT ?
-    ";
-
-    $params = [(int)$limit];
-
-    $r = $db->sql_query_prepared($sql, $params);
-
-
-    mostcommentedtable($r, sprintf($lang->topten["type2_title_comments"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=mcom'>" . $lang->topten["top25"] . "</a>]</small>" : ""));
+    return htmlspecialchars_uni($link);
 }
 
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  UI-хелперы
+// ═════════════════════════════════════════════════════════════════════════════
 
-} 
-
-
-
-
-
-
-
-
-elseif ($type == 3) 
+/** Строка ланга с фолбэком (для новых ключей). */
+function tt_l(string $key, string $fallback = ''): string
 {
-    
-    
-    
-    
-    if (!$limit || $limit > 50) {
-        $limit = 10;
+    global $lang;
+    return (string)($lang->topten[$key] ?? $fallback);
+}
+
+function tt_rank(int $n): string
+{
+    return match ($n) {
+        1       => '<span class="tt-rank tt-rank--gold"><i class="fa-solid fa-trophy"></i></span>',
+        2       => '<span class="tt-rank tt-rank--silver"><i class="fa-solid fa-trophy"></i></span>',
+        3       => '<span class="tt-rank tt-rank--bronze"><i class="fa-solid fa-trophy"></i></span>',
+        default => '<span class="tt-rank">' . $n . '</span>',
+    };
+}
+
+function tt_row(int $n): string
+{
+    return $n <= 3 ? '<tr class="tt-row--' . $n . '">' : '<tr>';
+}
+
+function tt_th(string $label, string $icon = '', string $class = '', string $width = ''): string
+{
+    $style = $width !== '' ? ' style="width:' . $width . '"' : '';
+    $ico   = $icon !== '' ? '<i class="fa-solid ' . $icon . '"></i>' : '';
+    return '<th class="' . $class . '"' . $style . '>' . $ico . $label . '</th>';
+}
+
+/** Ссылки «Топ-N» для staff. */
+function tt_more(int $type, string $sub, array $lims): string
+{
+    global $pu, $limit, $lang;
+    if (!$pu || $limit != 10) {
+        return '';
     }
-    
-    
-    if ($limit == 10 || $subtype == "us") {
-        
-
-        $sql = "
-           SELECT c.name, c.flagpic, COUNT(u.country) AS num
-           FROM countries AS c
-           LEFT JOIN users AS u ON u.country = c.id
-           GROUP BY c.id, c.name, c.flagpic
-           ORDER BY num DESC LIMIT ?";
-
-           $params = [(int)$limit];
-           $r = $db->sql_query_prepared($sql, $params);
-
-
-        if ($r) {
-            countriestable($r, sprintf($lang->topten["type3_title1"], $limit) . 
-                ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=3&lim=25&subtype=us'>" . $lang->topten["top25"] . "</a>]</small>" : ""), 
-                "Users"
-            );
-        }
+    $html = '';
+    foreach ($lims as $l) {
+        $href  = 'topten.php?type=' . $type . '&amp;lim=' . (int)$l . ($sub !== '' ? '&amp;subtype=' . $sub : '');
+        $html .= '<a class="tt-chip" href="' . $href . '"><i class="fa-solid fa-list-ol"></i>' . $lang->topten['lnk_top' . (int)$l] . '</a>';
     }
+    return $html;
+}
 
-    if ($limit == 10 || $subtype == "ul") {
-       
+function tt_card_open(string $icon, string $tone, string $title, string $more, string $thead): void
+{
+    global $lang;
+    echo '
+    <div class="tt-card tt-section">
+        <div class="tt-toolbar">
+            <div class="tt-toolbar__title">
+                <span class="tt-toolbar__icon tt-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>
+                <span>' . $title . '</span>
+            </div>
+            <div class="tt-toolbar__side">
+                ' . $more . '
+                <span class="tt-badge tt-soft-' . $tone . '"><i class="fa-solid fa-ranking-star"></i>' . ags_fmt($lang->topten["badge_top"], $GLOBALS['limit'] ?? 10) . '</span>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table tt-table">
+                <thead><tr>' . $thead . '</tr></thead>
+                <tbody>';
+}
 
-
-        $sql = "
-    SELECT c.name, c.flagpic, SUM(u.uploaded) AS ul
-    FROM users AS u
-    LEFT JOIN countries AS c ON u.country = c.id
-    WHERE u.enabled = 'yes'
-    GROUP BY c.id, c.name, c.flagpic
-    ORDER BY ul DESC
-    LIMIT ?
-";
-
-$params = [(int)$limit];
-
-$r = $db->sql_query_prepared($sql, $params);
-
-
-
-
-
-
-        if ($r) {
-            countriestable($r, sprintf($lang->topten["type3_title2"], $limit) . 
-                ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=3&lim=25&subtype=ul'>" . $lang->topten["top25"] . "</a>]</small>" : ""), 
-                "Uploaded"
-            );
-        }
+function tt_card_close(int $rows, int $cols): void
+{
+    if ($rows === 0) {
+        echo '<tr><td colspan="' . $cols . '">
+                <div class="tt-empty">
+                    <div class="tt-empty__icon tt-soft-muted"><i class="fa-solid fa-inbox"></i></div>
+                    <div class="text-body-secondary">' . tt_l('msg_no_data', 'No data yet') . '</div>
+                </div>
+              </td></tr>';
     }
+    echo '</tbody></table></div></div>';
+}
 
-    if ($limit == 10 || $subtype == "avg") {
-       
+/** Тонкая полоска «доля от лидера». */
+function tt_bar(float $value, float $max, string $tone): string
+{
+    $pct = $max > 0 ? max(2, min(100, (int)round($value / $max * 100))) : 0;
+    return '<div class="progress tt-progress"><div class="progress-bar tt-bg-' . $tone . '" style="width:' . $pct . '%"></div></div>';
+}
 
+/** Пользователь: аватар + ник + значки + ID. */
+function tt_user_cell(array $a): string
+{
+    $av    = format_avatar((string)($a['avatar'] ?? ''), (string)($a['avatardimensions'] ?? ''));
+    $icons = array_key_exists('warned', $a) ? get_user_icons($a) : '';
+    return '<div class="d-flex align-items-center gap-2 tt-user">
+                <img class="tt-avatar" src="' . $av['image'] . '" alt="" loading="lazy">
+                <div class="lh-sm">
+                    <a href="' . get_profile_link((int)$a['userid']) . '">'
+                        . format_name(htmlspecialchars_uni((string)$a['username']), (int)$a['usergroup']) .
+                    '</a>' . $icons . '
+                    <div class="tt-meta"><i class="fa-solid fa-id-badge"></i>' . (int)$a['userid'] . '</div>
+                </div>
+            </div>';
+}
 
-        $sql = "
-    SELECT c.name, c.flagpic, SUM(u.uploaded)/COUNT(u.id) AS ul_avg
-    FROM users AS u
-    LEFT JOIN countries AS c ON u.country = c.id
-    WHERE u.enabled = 'yes'
-    GROUP BY c.id, c.name, c.flagpic
-    HAVING SUM(u.uploaded) > 1099511627776 AND COUNT(u.id) >= 100
-    ORDER BY ul_avg DESC
-    LIMIT ?
-";
+/** Торрент: постер (или иконка магнита) + название + мета. */
+function tt_torrent_cell(array $a, string $meta = ''): string
+{
+    $link   = get_torrent_link($a['id']);
+    $poster = trim((string)($a['t_image'] ?? ''));
+    $thumb  = $poster !== ''
+        ? '<a href="' . $link . '" tabindex="-1"><img src="' . htmlspecialchars($poster, ENT_QUOTES, 'UTF-8') . '" alt="" class="tt-poster" loading="lazy"'
+          . ' onerror="this.parentNode.outerHTML=\'<span class=&quot;tt-torrent-ico tt-soft-danger&quot;><i class=&quot;fa-solid fa-magnet&quot;></i></span>\'"></a>'
+        : '<span class="tt-torrent-ico tt-soft-danger"><i class="fa-solid fa-magnet"></i></span>';
 
-$params = [(int)$limit];
+    return '<div class="d-flex align-items-center gap-2">' . $thumb . '
+                <div class="lh-sm">
+                    <a href="' . $link . '" class="tt-link">' . cutename($a['name'], 55) . '</a>
+                    <div class="tt-meta"><i class="fa-solid fa-hashtag"></i>' . (int)$a['id']
+                        . '<span class="ms-2"><i class="fa-solid fa-hard-drive"></i>' . mksize((float)($a['size'] ?? 0)) . '</span>'
+                        . $meta . '</div>
+                </div>
+            </div>';
+}
 
-$r = $db->sql_query_prepared($sql, $params);
-
-
-
-
-
-        if ($r) {
-            countriestable($r, sprintf($lang->topten["type3_title3"], $limit) . 
-                ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=3&lim=25&subtype=avg'>" . $lang->topten["top25"] . "</a>]</small>" : ""), 
-                "Average"
-            );
-        }
+/** Бейдж рейтинга в soft-цветах (как в snatched_torrents). */
+function tt_ratio(int|float $up, int|float $down): string
+{
+    if ($down > 0) {
+        $r    = $up / $down;
+        $soft = $r >= 1 ? 'tt-soft-success' : ($r >= 0.5 ? 'tt-soft-warning' : 'tt-soft-danger');
+        return '<span class="tt-badge ' . $soft . '">' . number_format((float)$r, 2) . '</span>';
     }
-
-    if ($limit == 10 || $subtype == "r") {
-       
-
-
-
-       $sql = "
-    SELECT c.name, c.flagpic, SUM(u.uploaded)/SUM(u.downloaded) AS r
-    FROM users AS u
-    LEFT JOIN countries AS c ON u.country = c.id
-    WHERE u.enabled = 'yes'
-    GROUP BY c.id, c.name, c.flagpic
-    HAVING SUM(u.uploaded) > 1099511627776 
-       AND SUM(u.downloaded) > 1099511627776 
-       AND COUNT(u.id) >= 100
-    ORDER BY r DESC
-    LIMIT ?
-";
-
-$params = [(int)$limit];
-
-$r = $db->sql_query_prepared($sql, $params);
-
-
-
-
-
-
-
-        if ($r) {
-            countriestable($r, sprintf($lang->topten["type3_title4"], $limit) . 
-                ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=3&lim=25&subtype=r'>" . $lang->topten["top25"] . "</a>]</small>" : ""), 
-                "Ratio"
-            );
-        }
-    }
+    return $up > 0
+        ? '<span class="tt-badge tt-soft-success"><i class="fa-solid fa-infinity"></i></span>'
+        : '<span class="tt-badge tt-soft-muted">—</span>';
 }
 
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  Вывод
+// ═════════════════════════════════════════════════════════════════════════════
+stdhead($lang->topten["page_title"]);
 
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/topten.css?v=' . T_VERSION . '">';
+?>
 
+<div class="container mt-3 py-4 tt-page">
 
-elseif ($type == 4) {
+    <!-- Header -->
+    <div class="tt-card tt-head mb-3">
+        <div class="tt-head__icon"><i class="fa-solid fa-trophy"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="tt-title"><?php echo $lang->topten["page_title"]; ?></h1>
+            <p><?php echo $lang->topten["page_subtitle"]; ?></p>
+        </div>
+        <span class="tt-badge tt-soft-warning d-none d-md-inline-flex"><i class="fa-solid fa-star"></i><?php echo $lang->topten["page_eyebrow"]; ?></span>
+    </div>
+
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="tt-card tt-kpi">
+                <div class="tt-kpi__icon tt-soft-primary"><i class="fa-solid fa-users"></i></div>
+                <div>
+                    <div class="tt-kpi__value"><?php echo number_format($kpi_users); ?></div>
+                    <div class="tt-kpi__label"><?php echo tt_l('kpi_users', 'Members'); ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tt-card tt-kpi">
+                <div class="tt-kpi__icon tt-soft-danger"><i class="fa-solid fa-magnet"></i></div>
+                <div>
+                    <div class="tt-kpi__value"><?php echo number_format($kpi_torrents); ?></div>
+                    <div class="tt-kpi__label"><?php echo tt_l('kpi_torrents', 'Torrents'); ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tt-card tt-kpi">
+                <div class="tt-kpi__icon tt-soft-success"><i class="fa-solid fa-seedling"></i></div>
+                <div>
+                    <div class="tt-kpi__value"><?php echo number_format($kpi_peers); ?></div>
+                    <div class="tt-kpi__label"><?php echo tt_l('kpi_peers', 'Peers'); ?></div>
+                    <div class="tt-kpi__sub">
+                        <i class="fa-solid fa-arrow-up text-success"></i> <?php echo number_format($kpi_seeders); ?>
+                        <i class="fa-solid fa-arrow-down text-danger ms-2"></i> <?php echo number_format($kpi_leechers); ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tt-card tt-kpi">
+                <div class="tt-kpi__icon tt-soft-warning"><i class="fa-solid fa-right-left"></i></div>
+                <div>
+                    <div class="tt-kpi__value tt-kpi__value--sm">
+                        <i class="fa-solid fa-arrow-up text-success tt-ico-sm"></i> <?php echo mksize($kpi_up); ?>
+                    </div>
+                    <div class="tt-kpi__sub">
+                        <i class="fa-solid fa-arrow-down text-danger"></i> <?php echo ags_fmt(tt_l('kpi_downloaded', '{1} downloaded'), mksize($kpi_down)); ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <nav class="tt-card tt-tabs-card mb-3">
+        <ul class="tt-tabs">
+        <?php foreach ($tt_tabs as [$tid, $ticon, $tkey]): $active = $type === $tid; ?>
+            <li>
+                <a class="tt-tab<?php echo $active ? ' active' : ''; ?>" href="topten.php?type=<?php echo $tid; ?>"<?php echo $active ? ' aria-current="page"' : ''; ?>>
+                    <i class="fa-solid <?php echo $ticon; ?>"></i><span class="tt-tab__label"><?php echo $lang->topten[$tkey]; ?></span>
+                </a>
+            </li>
+        <?php endforeach; ?>
+        </ul>
+    </nav>
+
+<?php
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Разделы
+// ═════════════════════════════════════════════════════════════════════════════
+
+$user_fields = "u.donor, u.enabled, u.warned, u.leechwarn";
+
+if ($type === 1) {
     if (!$limit || $limit > 250) {
         $limit = 10;
     }
-    if ($xbt_active == "yes") {
-        echo '<div class="glass-card p-4 text-center">';
-        echo '<div class="alert alert-warning mb-0">';
-        echo '<i class="bi bi-exclamation-triangle-fill me-2"></i>' . $lang->global["notavailable"];
-        echo '</div>';
-        echo '</div>';
-        echo "</div></body></html>";
+
+    $mainquery = "SELECT u.id as userid, u.username, u.usergroup, u.added, u.uploaded, u.downloaded,
+              u.uploaded / (UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(u.added)) AS upspeed,
+              u.downloaded / (UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(u.added)) AS downspeed,
+              u.avatar, u.avatardimensions, {$user_fields},
+              g.namestyle, g.canstaffpanel, g.issupermod, g.cansettingspanel
+              FROM users u
+              LEFT JOIN usergroups g ON (u.usergroup=g.gid)
+              WHERE u.enabled = 'yes' AND u.usergroup NOT IN (" . $notin . ")";
+
+    // subtype => [иконка, тон, ключ ланга, ORDER BY, доп. WHERE]
+    $sections = [
+        'ul'  => ['fa-cloud-arrow-up',   'success', 'sec_users_ul',  'uploaded DESC', ''],
+        'dl'  => ['fa-cloud-arrow-down', 'danger',  'sec_users_dl',  'downloaded DESC', ''],
+        'uls' => ['fa-gauge-high',       'info',    'sec_users_uls', 'upspeed DESC', ''],
+        'dls' => ['fa-gauge',            'warning', 'sec_users_dls', 'downspeed DESC', ''],
+        'bsh' => ['fa-thumbs-up',        'success', 'sec_users_bsh', 'uploaded / downloaded DESC', ' AND downloaded > 1073741824'],
+        'wsh' => ['fa-thumbs-down',      'danger',  'sec_users_wsh', 'uploaded / downloaded ASC, downloaded DESC', ' AND downloaded > 1073741824'],
+    ];
+    foreach ($sections as $sub => [$icon, $tone, $key, $order, $extra]) {
+        if ($limit == 10 || $subtype === $sub) {
+            $r = $db->sql_query_prepared($mainquery . $extra . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]);
+            usertable($r, ags_fmt($lang->topten[$key], $limit), tt_more(1, $sub, [100, 250]), $icon, $tone);
+        }
+    }
+}
+
+elseif ($type === 2) {
+    if (!$limit || $limit > 50) {
+        $limit = 10;
+    }
+
+    $join  = $xbt_active === "yes" ? "xbt_files_users AS p ON t.id = p.fid" : "peers AS p ON t.id = p.torrent";
+    $leech = $xbt_active === "yes" ? "p.`left` > 0" : "p.seeder = 'no'";
+
+    // subtype => [иконка, тон, ключ ланга, WHERE, ORDER BY]
+    $sections = [
+        'act' => ['fa-bolt',                 'primary', 'sec_torrents_act', $leech, 'seeders + leechers DESC, seeders DESC, added ASC'],
+        'sna' => ['fa-download',             'info',    'sec_torrents_sna', 't.times_completed > 0', 'times_completed DESC, added ASC'],
+        'mdt' => ['fa-database',             'purple',  'sec_torrents_mdt', 'times_completed > 0', 'data DESC, added ASC'],
+        'bse' => ['fa-seedling',             'success', 'sec_torrents_bse', 'seeders >= 5', 'seeders DESC, seeders+leechers DESC, added ASC'],
+        'wse' => ['fa-triangle-exclamation', 'danger',  'sec_torrents_wse', $leech . ' AND leechers >= 5 AND times_completed > 0', 'seeders / leechers ASC, leechers DESC'],
+    ];
+    foreach ($sections as $sub => [$icon, $tone, $key, $where, $order]) {
+        if ($limit == 10 || $subtype === $sub) {
+            $r = $db->sql_query_prepared(
+                "SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data
+                 FROM torrents AS t LEFT JOIN {$join}
+                 WHERE {$where}
+                 GROUP BY t.id
+                 ORDER BY {$order}
+                 LIMIT ?",
+                [(int)$limit]
+            );
+            _torrenttable($r, ags_fmt($lang->topten[$key], $limit), tt_more(2, $sub, [25, 50]), $icon, $tone);
+        }
+    }
+
+    if ($limit == 10 || $subtype === "mcom") {
+        $r = $db->sql_query_prepared(
+            "SELECT t.*, COUNT(c.id) AS comment_count
+             FROM torrents t
+             LEFT JOIN comments c ON t.id = c.torrent
+             GROUP BY t.id
+             ORDER BY comment_count DESC
+             LIMIT ?",
+            [(int)$limit]
+        );
+        mostcommentedtable($r, ags_fmt($lang->topten["sec_torrents_mcom"], $limit), tt_more(2, 'mcom', [25]));
+    }
+}
+
+elseif ($type === 3) {
+    if (!$limit || $limit > 50) {
+        $limit = 10;
+    }
+
+    $country_sections = [
+        'us' => ["SELECT c.name, c.flagpic, COUNT(u.country) AS v
+                  FROM countries AS c
+                  LEFT JOIN users AS u ON u.country = c.id
+                  GROUP BY c.id, c.name, c.flagpic
+                  ORDER BY v DESC LIMIT ?", 'sec_countries_us', 'Users'],
+        'ul' => ["SELECT c.name, c.flagpic, SUM(u.uploaded) AS v
+                  FROM users AS u
+                  LEFT JOIN countries AS c ON u.country = c.id
+                  WHERE u.enabled = 'yes'
+                  GROUP BY c.id, c.name, c.flagpic
+                  ORDER BY v DESC LIMIT ?", 'sec_countries_ul', 'Uploaded'],
+        'avg' => ["SELECT c.name, c.flagpic, SUM(u.uploaded)/COUNT(u.id) AS v
+                  FROM users AS u
+                  LEFT JOIN countries AS c ON u.country = c.id
+                  WHERE u.enabled = 'yes'
+                  GROUP BY c.id, c.name, c.flagpic
+                  HAVING SUM(u.uploaded) > 1099511627776 AND COUNT(u.id) >= 100
+                  ORDER BY v DESC LIMIT ?", 'sec_countries_avg', 'Average'],
+        'r' => ["SELECT c.name, c.flagpic, SUM(u.uploaded)/SUM(u.downloaded) AS v
+                  FROM users AS u
+                  LEFT JOIN countries AS c ON u.country = c.id
+                  WHERE u.enabled = 'yes'
+                  GROUP BY c.id, c.name, c.flagpic
+                  HAVING SUM(u.uploaded) > 1099511627776
+                     AND SUM(u.downloaded) > 1099511627776
+                     AND COUNT(u.id) >= 100
+                  ORDER BY v DESC LIMIT ?", 'sec_countries_r', 'Ratio'],
+    ];
+    foreach ($country_sections as $sub => [$sql, $key, $what]) {
+        if ($limit == 10 || $subtype === $sub) {
+            $r = $db->sql_query_prepared($sql, [(int)$limit]);
+            if ($r) {
+                countriestable($r, ags_fmt($lang->topten[$key], $limit), tt_more(3, $sub, [25]), $what);
+            }
+        }
+    }
+}
+
+elseif ($type === 4) {
+    if (!$limit || $limit > 250) {
+        $limit = 10;
+    }
+    if ($xbt_active === "yes") {
+        echo '<div class="tt-card">
+                <div class="tt-empty">
+                    <div class="tt-empty__icon tt-soft-warning"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    <div class="text-body-secondary">' . $lang->topten["msg_not_available"] . '</div>
+                </div>
+              </div></div>';
         stdfoot();
         exit;
     }
-    if ($limit == 10 || $subtype == "ul") {
-        
 
+    $peer_user = "users.id AS userid, users.usergroup, users.username, users.avatar, users.avatardimensions,
+                  users.donor, users.enabled, users.warned, users.leechwarn";
 
-
-
-
-$notin = "8,7,6,5";
-
-$sql = "
-    SELECT
-        users.id AS userid,
-        usergroup,
-        username,
-        avatar,
-        avatardimensions,
-        IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) / 
-            IF(UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started) != 0, UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started), 1) AS uprate,
-        IF(seeder = 'yes', 
-            (peers.downloaded - peers.downloadoffset) / IF(finishedat - UNIX_TIMESTAMP(started) != 0, finishedat - UNIX_TIMESTAMP(started), 1), 
-            (peers.downloaded - peers.downloadoffset) / IF(UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started) != 0, UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started), 1)
-        ) AS downrate,
-        g.namestyle,
-        g.canstaffpanel,
-        g.issupermod,
-        g.cansettingspanel
-    FROM peers
-    LEFT JOIN users ON peers.userid = users.id
-    LEFT JOIN usergroups g ON users.usergroup = g.gid
-    WHERE usergroup NOT IN ({$notin})
-    ORDER BY uprate DESC
-    LIMIT ?
-";
-
-
-
-$r = $db->sql_query_prepared($sql, [(int)$limit]);
-
-
-
-
-
-
-
-        peerstable($r, sprintf($lang->topten["type4_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=4&lim=100&subtype=ul'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=4&lim=250&subtype=ul'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
+    if ($limit == 10 || $subtype === "ul") {
+        $r = $db->sql_query_prepared(
+            "SELECT {$peer_user},
+                IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) /
+                    IF(UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started) != 0, UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started), 1) AS uprate,
+                IF(seeder = 'yes',
+                    (peers.downloaded - peers.downloadoffset) / IF(finishedat - UNIX_TIMESTAMP(started) != 0, finishedat - UNIX_TIMESTAMP(started), 1),
+                    (peers.downloaded - peers.downloadoffset) / IF(UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started) != 0, UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started), 1)
+                ) AS downrate
+             FROM peers
+             LEFT JOIN users ON peers.userid = users.id
+             WHERE users.usergroup NOT IN (8,7,6,5)
+             ORDER BY uprate DESC
+             LIMIT ?",
+            [(int)$limit]
+        );
+        peerstable($r, ags_fmt($lang->topten["sec_peers_ul"], $limit), tt_more(4, 'ul', [100, 250]), 'fa-rocket', 'success');
     }
-    if ($limit == 10 || $subtype == "dl") {
-        ($r = $db->sql_query_prepared("SELECT users.id AS userid, avatar, avatardimensions, usergroup, peers.id AS peerid, username, peers.uploaded, peers.downloaded, IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started)) AS uprate, IF(seeder = 'yes',(peers.downloaded - peers.downloadoffset) / (finishedat - UNIX_TIMESTAMP(started)),(peers.downloaded - peers.downloadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started))) AS downrate, g.namestyle FROM peers LEFT JOIN users ON peers.userid = users.id LEFT JOIN usergroups g ON (users.usergroup=g.gid) ORDER BY downrate DESC LIMIT ?", [(int)$limit]));
-        peerstable($r, sprintf($lang->topten["type4_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=4&lim=100&subtype=dl'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=4&lim=250&subtype=dl'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
+
+    if ($limit == 10 || $subtype === "dl") {
+        $r = $db->sql_query_prepared(
+            "SELECT {$peer_user},
+                    IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started)) AS uprate,
+                    IF(seeder = 'yes',(peers.downloaded - peers.downloadoffset) / (finishedat - UNIX_TIMESTAMP(started)),(peers.downloaded - peers.downloadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started))) AS downrate
+             FROM peers
+             LEFT JOIN users ON peers.userid = users.id
+             ORDER BY downrate DESC
+             LIMIT ?",
+            [(int)$limit]
+        );
+        peerstable($r, ags_fmt($lang->topten["sec_peers_dl"], $limit), tt_more(4, 'dl', [100, 250]), 'fa-bolt', 'warning');
     }
 }
 
-
-
-
-
-
-
-elseif ($type == 5) 
-{
+elseif ($type === 5) {
     if (!$limit || $limit > 50) {
         $limit = 10;
     }
-
-    if ($limit == 10 || $subtype == "categories") {
-       
-
-$sql = "
-    SELECT c.id, c.name, c.icon, 
-           COUNT(t.id) AS torrents_count,
-           SUM(t.seeders) AS total_seeders,
-           SUM(t.leechers) AS total_leechers,
-           SUM(t.times_completed) AS total_snatches,
-           SUM(t.size) AS total_size
-    FROM categories c 
-    LEFT JOIN torrents t ON c.id = t.category 
-    WHERE (t.visible = 'yes' OR t.id IS NULL)
-    GROUP BY c.id 
-    ORDER BY torrents_count DESC 
-    LIMIT ?
-";
-
-$params = [(int)$limit];
-
-$r = $db->sql_query_prepared($sql, $params);
-
-
-
-
-
-
-
-
-        categoriestable($r, sprintf($lang->topten["type5_title_categories"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=5&lim=25&subtype=categories'>" . $lang->topten["top25"] . "</a>]</small>" : ""));
+    if ($limit == 10 || $subtype === "categories") {
+        $r = $db->sql_query_prepared(
+            "SELECT c.id, c.name, c.icon,
+                    COUNT(t.id) AS torrents_count,
+                    SUM(t.seeders) AS total_seeders,
+                    SUM(t.leechers) AS total_leechers,
+                    SUM(t.times_completed) AS total_snatches,
+                    SUM(t.size) AS total_size
+             FROM categories c
+             LEFT JOIN torrents t ON c.id = t.category
+             WHERE (t.visible = 'yes' OR t.id IS NULL)
+             GROUP BY c.id
+             ORDER BY torrents_count DESC
+             LIMIT ?",
+            [(int)$limit]
+        );
+        categoriestable($r, ags_fmt($lang->topten["sec_categories"], $limit), tt_more(5, 'categories', [25]));
     }
-
 }
 
-
-
-elseif ($type == 6)
-{
+elseif ($type === 6) {
     if (!$limit || $limit > 250) {
         $limit = 10;
     }
-
     $r = $db->sql_query_prepared(
-        "SELECT u.id as userid, u.username, u.usergroup, u.seedbonus, u.avatar, u.avatardimensions
+        "SELECT u.id as userid, u.username, u.usergroup, u.seedbonus, u.avatar, u.avatardimensions, {$user_fields}
          FROM users u
          WHERE u.enabled = 'yes' AND u.usergroup NOT IN (5,6,7,8,9)
          ORDER BY u.seedbonus DESC
          LIMIT ?",
         [(int)$limit]
     );
-
-    seedbonustable($r, sprintf($lang->topten["type6_title"] ?? "Top SeedBonus (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=6&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=6&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+    seedbonustable($r, ags_fmt($lang->topten["sec_seedbonus"], $limit), tt_more(6, '', [25, 50]));
 }
 
-elseif ($type == 8)
-{
+elseif ($type === 8) {
     if (!$limit || $limit > 50) {
         $limit = 10;
     }
-
     $r = $db->sql_query_prepared(
         "SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data
          FROM torrents AS t
@@ -869,18 +551,15 @@ elseif ($type == 8)
          LIMIT ?",
         [(int)$limit]
     );
-
-    hottorrentstable($r, sprintf($lang->topten["type8_title"] ?? "Hot Right Now (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=8&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=8&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+    hottorrentstable($r, ags_fmt($lang->topten["sec_hot"], $limit), tt_more(8, '', [25, 50]));
 }
 
-elseif ($type == 9)
-{
+elseif ($type === 9) {
     if (!$limit || $limit > 250) {
         $limit = 10;
     }
-
     $r = $db->sql_query_prepared(
-        "SELECT u.id as userid, u.username, u.usergroup, u.avatar, u.avatardimensions,
+        "SELECT u.id as userid, u.username, u.usergroup, u.avatar, u.avatardimensions, {$user_fields},
                 COALESCE(c.cnt, 0) AS comment_count,
                 COALESCE(rt.cnt, 0) AS rating_count,
                 (COALESCE(c.cnt, 0) + COALESCE(rt.cnt, 0)) AS total_activity
@@ -893,700 +572,395 @@ elseif ($type == 9)
          LIMIT ?",
         [(int)$limit]
     );
-
-    activitytable($r, sprintf($lang->topten["type9_title"] ?? "Top Contributors (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=9&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=9&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+    activitytable($r, ags_fmt($lang->topten["sec_contributors"], $limit), tt_more(9, '', [25, 50]));
 }
 
-elseif ($type == 7) 
-{
+elseif ($type === 7) {
     if (!$limit || $limit > 50) {
         $limit = 10;
     }
-
-
-if ($limit == 10 || $subtype == "active_threads") {
-   
-
-
-$sql = "
-    SELECT t.tid, t.subject, t.uid, t.username, t.views, t.replies, 
-           t.dateline, t.lastpost, t.lastposter,
-           f.name AS forum_name,
-           u.avatar,
-           (t.replies + t.views) AS activity_score
-    FROM threads t 
-    LEFT JOIN forums f ON t.fid = f.fid
-    LEFT JOIN users u ON t.uid = u.id
-    WHERE t.visible = 1
-    ORDER BY activity_score DESC 
-    LIMIT ?
-";
-
-$params = [(int)$limit];
-
-$r = $db->sql_query_prepared($sql, $params);
-
-
-
-
-
-    activethreadstable($r, "Самые активные темы");
+    if ($limit == 10 || $subtype === "active_threads") {
+        $r = $db->sql_query_prepared(
+            "SELECT t.tid, t.subject, t.uid, t.username, t.views, t.replies,
+                    t.dateline, t.lastpost, t.lastposter,
+                    f.name AS forum_name,
+                    u.avatar, u.avatardimensions,
+                    (t.replies + t.views) AS activity_score
+             FROM threads t
+             LEFT JOIN forums f ON t.fid = f.fid
+             LEFT JOIN users u ON t.uid = u.id
+             WHERE t.visible = 1
+             ORDER BY activity_score DESC
+             LIMIT ?",
+            [(int)$limit]
+        );
+        activethreadstable($r, $lang->topten["sec_active_threads"]);
+    }
 }
 
-}
-
-
-
-
-
-
-
-
-
-
-
-echo "</div></body></html>";
+echo '</div>'; // .tt-page
 stdfoot();
 
 
-
-
-
-
-
-function usertable($res, $frame_caption) {
-    global $CURUSER, $lang, $regdateformat, $pic_base_url, $BASEURL, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-person-badge-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col" style="min-width: 200px;">' . $lang->topten["user"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["uploaded"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["ulspeed"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["downloaded"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["dlspeed"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;">' . $lang->topten["ratio"] . '</th>
-                            <th scope="col" class="text-center" style="width: 120px;">' . $lang->topten["joined"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-        
-        
-        $ratio_value = 0;
-        $ratio_display = "∞";
-        $color = "#000000";
-        
-        if ($a["downloaded"] > 0) {
-            $ratio_value = $a["uploaded"] / $a["downloaded"];
-            $ratio_display = number_format($ratio_value, 2);
-            $color = get_ratio_color($ratio_value);
-        }
-        
-        $ratio_badge = $ratio_display == "∞" ? 
-            '<span class="badge bg-dark ratio-badge">∞</span>' : 
-            '<span class="badge ratio-badge" style="background: ' . $color . '">' . $ratio_display . '</span>';
-        
-        $joindate = ($a["added"] == "0000-00-00 00:00:00") ? $lang->users["na"] : my_datee($regdateformat, $a["added"]);
-
-
-
-$useravatarzz = format_avatar($a['avatar'], $a['avatardimensions']);
-$ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
-
-
-
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        ".$ava22."
-                        <div>
-                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-end fw-bold text-success'>" . mksize($a["uploaded"]) . "</td>
-                <td class='text-end text-info'>" . mksize($a["upspeed"]) . "/s</td>
-                <td class='text-end fw-bold text-danger'>" . mksize($a["downloaded"]) . "</td>
-                <td class='text-end text-warning'>" . mksize($a["downspeed"]) . "/s</td>
-                <td class='text-end'>" . $ratio_badge . "</td>
-                <td class='text-center text-muted small'>" . $joindate . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-function seedbonustable($res, $frame_caption) {
-    global $lang, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-coin me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col" style="min-width: 200px;">' . $lang->topten["user"] . '</th>
-                            <th scope="col" class="text-end" style="width: 160px;">SeedBonus</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-
-        $useravatarzz = format_avatar($a['avatar'], $a['avatardimensions']);
-        $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
-
-        $rankBadge = match (true) {
-            $num === 1 => '<i class="bi bi-trophy-fill" style="color:#d4af37"></i>',
-            $num === 2 => '<i class="bi bi-trophy-fill" style="color:#a8a8a8"></i>',
-            $num === 3 => '<i class="bi bi-trophy-fill" style="color:#b5651d"></i>',
-            default    => (string) $num,
-        };
-
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $rankBadge . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        ".$ava22."
-                        <div>
-                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-end fw-bold'><span class='badge stats-badge'>" . number_format((float)$a["seedbonus"], 2) . "</span></td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-function hottorrentstable($res, $frame_caption) {
-    global $lang, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-fire me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col" style="width: 56px;"></th>
-                            <th scope="col">' . $lang->topten["name"] . '</th>
-                            <th scope="col" style="width: 110px;">Promo</th>
-                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-up-circle me-1"></i>' . $lang->topten["seeders"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-down-circle me-1"></i>' . $lang->topten["leechers"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-
-        $SEOLink = get_torrent_link($a['id']);
-
-        $posterUrl = trim((string) ($a['t_image'] ?? ''));
-        $posterCell = $posterUrl
-            ? "<a href='{$SEOLink}' class='torrent-poster-link' tabindex='-1'><img src='" . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . "' alt='' class='torrent-poster' loading='lazy' onerror=\"this.closest('td').innerHTML='<div class=&quot;torrent-poster torrent-poster--placeholder&quot;><i class=&quot;bi bi-film&quot;></i></div>'\"></a>"
-            : "<div class='torrent-poster torrent-poster--placeholder'><i class='bi bi-film'></i></div>";
-
-        if (($a['free'] ?? 'no') === 'yes') {
-            $promoBadge = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="bi bi-gift me-1"></i>Free</span>';
-        } elseif (($a['silver'] ?? 'no') === 'yes') {
-            $promoBadge = '<span class="badge-silver" title="silverdownload"><i class="fas fa-star"></i></span>';
-        } elseif (($a['thirtypercent'] ?? 'no') === 'yes') {
-            $promoBadge = '<span class="badge bg-secondary bg-opacity-10 border border-secondary border-opacity-25" style="color:#411749;border-color:#41174966 !important;"><i class="bi bi-pie-chart-fill me-1"></i>30%</span>';
-        } else {
-            $promoBadge = '';
-        }
-
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td class='text-center'>" . $posterCell . "</td>
-                <td>
-                    <a href='" . $SEOLink . "' class='text-decoration-none'>
-                        <strong>" . cutename($a["name"], 55) . "</strong>
-                    </a>
-                </td>
-                <td>" . $promoBadge . "</td>
-                <td class='text-end text-success'>" . number_format($a["seeders"]) . "</td>
-                <td class='text-end text-warning'>" . number_format($a["leechers"]) . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-function activitytable($res, $frame_caption) {
-    global $lang, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-chat-heart-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col" style="min-width: 200px;">' . $lang->topten["user"] . '</th>
-                            <th scope="col" class="text-end" style="width: 130px;"><i class="bi bi-chat-dots me-1"></i>Comments</th>
-                            <th scope="col" class="text-end" style="width: 130px;"><i class="bi bi-star me-1"></i>Ratings</th>
-                            <th scope="col" class="text-end" style="width: 130px;">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-
-        $useravatarzz = format_avatar($a['avatar'], $a['avatardimensions']);
-        $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
-
-        $rankBadge = match (true) {
-            $num === 1 => '<i class="bi bi-trophy-fill" style="color:#d4af37"></i>',
-            $num === 2 => '<i class="bi bi-trophy-fill" style="color:#a8a8a8"></i>',
-            $num === 3 => '<i class="bi bi-trophy-fill" style="color:#b5651d"></i>',
-            default    => (string) $num,
-        };
-
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $rankBadge . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        ".$ava22."
-                        <div>
-                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-end'>" . number_format((int)$a["comment_count"]) . "</td>
-                <td class='text-end'>" . number_format((int)$a["rating_count"]) . "</td>
-                <td class='text-end fw-bold'><span class='badge stats-badge'>" . number_format((int)$a["total_activity"]) . "</span></td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-function _torrenttable($res, $frame_caption) {
-    global $lang, $BASEURL, $pic_base_url, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-collection-play-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col" style="width: 56px;"></th>
-                            <th scope="col">' . $lang->topten["name"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-download me-1"></i>' . $lang->topten["snatched"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["data"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-up-circle me-1"></i>' . $lang->topten["seeders"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-down-circle me-1"></i>' . $lang->topten["leechers"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;">' . $lang->topten["total"] . '</th>
-                            <th scope="col" class="text-end" style="width: 100px;">' . $lang->topten["ratio"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res))
-	{
-        $num++;
-        $ratio = $a["leechers"] ? number_format($a["seeders"] / $a["leechers"], 2) : "∞";
-        $color = $a["leechers"] ? get_ratio_color($a["seeders"] / $a["leechers"]) : "#000";
-        $ratio_badge = $ratio == "∞" ? 
-            '<span class="badge bg-dark ratio-badge">∞</span>' : 
-            '<span class="badge ratio-badge" style="background: ' . $color . '">' . $ratio . '</span>';
-        
-        $SEOLink = get_torrent_link($a['id']);
-
-        $posterUrl = trim((string) ($a['t_image'] ?? ''));
-        $posterCell = $posterUrl
-            ? "<a href='{$SEOLink}' class='torrent-poster-link' tabindex='-1'><img src='" . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . "' alt='' class='torrent-poster' loading='lazy' onerror=\"this.closest('td').innerHTML='<div class=&quot;torrent-poster torrent-poster--placeholder&quot;><i class=&quot;bi bi-film&quot;></i></div>'\"></a>"
-            : "<div class='torrent-poster torrent-poster--placeholder'><i class='bi bi-film'></i></div>";
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td class='text-center'>" . $posterCell . "</td>
-                <td>
-                    <a href='" . $SEOLink . "' class='text-decoration-none'>
-                        <strong>" . cutename($a["name"], 55) . "</strong>
-                    </a>
-                </td>
-                <td class='text-end fw-bold'>" . number_format($a["times_completed"]) . "</td>
-                <td class='text-end text-info fw-bold'>" . mksize((int)$a["data"]) . "</td>
-                <td class='text-end text-success'>" . number_format($a["seeders"]) . "</td>
-                <td class='text-end text-warning'>" . number_format($a["leechers"]) . "</td>
-                <td class='text-end fw-bold'>" . ($a["leechers"] + $a["seeders"]) . "</td>
-                <td class='text-end'>" . $ratio_badge . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-function countriestable($res, $frame_caption, $what) {
-    global $CURUSER, $pic_base_url, $lang, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-globe-americas me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col">' . $lang->topten["country"] . '</th>
-                            <th scope="col" class="text-center" style="width: 150px;">' . $what . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-        $value = ($what == "Users") ? number_format($a["num"]) : (($what == "Uploaded") ? mksize($a["ul"]) : (($what == "Average") ? mksize($a["ul_avg"]) : number_format($a["r"], 2)));
-        $value_class = ($what == "Ratio") ? "fw-bold" : "";
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        <img src='" . $pic_base_url . "flag/" . $a["flagpic"] . "' class='flag-icon' alt='" . $a["name"] . "'>
-                        <strong>" . $a["name"] . "</strong>
-                    </div>
-                </td>
-                <td class='text-center " . $value_class . "'>" . $value . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-function peerstable($res, $frame_caption) {
-    global $lang, $BASEURL, $pic_base_url, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-hdd-stack-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col">' . $lang->topten["user"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["ulspeed"] . '</th>
-                            <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["dlspeed"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $n = 1;
-    while ($arr = $db->fetch_array($res)) 
-    {
-        
-        
-        
-        $useravatarzz = format_avatar($arr['avatar'], $arr['avatardimensions']);
-$ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
-        
-        
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $n . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                       ".$ava22."
-                        <div>
-                            <a href='" . get_profile_link($arr["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . format_name($arr["username"], $arr["usergroup"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-               <td class='text-end text-success fw-bold'>" . mksize($arr["uprate"] ?? 0) . "/s</td>
-			   <td class='text-end text-warning fw-bold'>" . mksize($arr["downrate"] ?? 0) . "/s</td>
-              </tr>";
-        $n++;
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-
-
-
-
-
-
-
-
-function commenterstable($res, $frame_caption) {
-    global $lang, $pic_base_url, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-chat-dots-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col">' . $lang->topten["user"] . '</th>
-                            <th scope="col" class="text-center" style="width: 120px;">' . $lang->topten["comments"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-        $avatar_url = !empty($a["avatar"]) ? $a["avatar"] : $pic_base_url . "user.png";
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        <img src='" . $avatar_url . "' class='user-avatar' alt='User Avatar' onerror=\"this.src='" . $pic_base_url . "user.png'\">
-                        <div>
-                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . get_user_color($a["username"], $a["namestyle"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-center fw-bold text-info'>" . number_format($a["comment_count"]) . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-function mostcommentedtable($res, $frame_caption) {
-    global $lang, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-chat-quote-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col">' . $lang->topten["torrent"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["comments"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["snatched"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-        $SEOLink = get_torrent_link($a['id']);
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <a href='" . $SEOLink . "' class='text-decoration-none'>
-                        <strong>" . cutename($a["name"], 55) . "</strong>
-                    </a>
-                </td>
-                <td class='text-center fw-bold text-info'>" . number_format($a["comment_count"]) . "</td>
-                <td class='text-center'>" . number_format($a["times_completed"]) . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-
-
-
-
-
-function categoriestable($res, $frame_caption) {
-    global $lang, $pic_base_url, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-tags-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center" style="width: 60px;">#</th>
-                            <th scope="col">' . $lang->topten["category"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["torrents"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["seeders"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["leechers"] . '</th>
-                            <th scope="col" class="text-center" style="width: 100px;">' . $lang->topten["snatches"] . '</th>
-                            <th scope="col" class="text-center" style="width: 120px;">' . $lang->topten["total_size"] . '</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-    $num = 0;
-    while ($a = $db->fetch_array($res)) {
-        $num++;
-        
-        $category_link = "browse.php?cat=" . $a["id"];
-        $icon_classes = !empty($a["icon"]) ? $a["icon"] : "fa-solid fa-folder";
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        <div class='category-icon-wrapper'>
-                            <i class='" . $icon_classes . "'></i>
-                        </div>
-                        <div class='ms-3'>
-                            <a href='" . $category_link . "' class='text-decoration-none category-link'>
-                                <strong>" . htmlspecialchars($a["name"]) . "</strong>
-                            </a>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-center fw-bold text-primary'>" . number_format($a["torrents_count"]) . "</td>
-                <td class='text-center text-success'>" . number_format((int)($a["total_seeders"] ?? 0)) . "</td>
-                <td class='text-center text-warning'>" . number_format((int)($a["total_leechers"] ?? 0)) . "</td>
-                <td class='text-center text-info'>" . number_format((int)($a["total_snatches"] ?? 0)) . "</td>
-                <td class='text-center'>" . mksize($a["total_size"] ?? 0) . "</td>
-              </tr>";
-    }
-    echo '</tbody></table></div></div></div>';
-}
-
-
-
-
-
-
-
-
-
-
-
-function activethreadstable($res, $frame_caption) 
+// ═════════════════════════════════════════════════════════════════════════════
+//  Таблицы
+// ═════════════════════════════════════════════════════════════════════════════
+
+function usertable($res, string $title, string $more, string $icon, string $tone): void
 {
-    global $lang, $pic_base_url, $db;
-    echo '
-    <div class="glass-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-chat-dots-fill me-2"></i>' . $frame_caption . '</span>
-            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="text-center">#</th>
-                            <th scope="col">Thread</th>
-                            <th scope="col" class="text-center">Forum</th>
-                            <th scope="col" class="text-center">Views</th>
-                            <th scope="col" class="text-center">Replies</th>
-                            <th scope="col" class="text-center">Activity</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
+    global $lang, $regdateformat, $db;
+
+    tt_card_open($icon, $tone, $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_user"], 'fa-user')
+        . tt_th($lang->topten["col_uploaded"], 'fa-arrow-up', 'text-end')
+        . tt_th($lang->topten["col_ulspeed"], 'fa-gauge-high', 'text-end')
+        . tt_th($lang->topten["col_downloaded"], 'fa-arrow-down', 'text-end')
+        . tt_th($lang->topten["col_dlspeed"], 'fa-gauge', 'text-end')
+        . tt_th($lang->topten["col_ratio"], 'fa-scale-balanced', 'text-center')
+        . tt_th($lang->topten["col_joined"], 'fa-calendar-day')
+    );
+
     $num = 0;
-    while ($a = $db->fetch_array($res)) 
-	{
+    while ($a = $db->fetch_array($res)) {
         $num++;
-        
-		$thread_link = get_thread_link($a['tid']);
-		
-        $avatar_url = !empty($a["avatar"]) ? $a["avatar"] : $pic_base_url . "user.png";
-        
-        echo "<tr class='hover-shadow'>
-                <td class='text-center fw-bold text-muted'>" . $num . "</td>
-                <td>
-                    <div class='d-flex align-items-center'>
-                        <img src='" . $avatar_url . "' class='user-avatar' alt='Avatar'>
-                        <div class='ms-2'>
-                            <a href='" . $thread_link . "' class='text-decoration-none'>
-                                <strong>" . htmlspecialchars($a["subject"]) . "</strong>
-                            </a>
-                            <div class='text-muted small'>by " . htmlspecialchars($a["username"]) . "</div>
-                        </div>
-                    </div>
-                </td>
-                <td class='text-center'>" . htmlspecialchars($a["forum_name"]) . "</td>
-                <td class='text-center text-info'>" . number_format($a["views"]) . "</td>
-                <td class='text-center text-success'>" . number_format($a["replies"]) . "</td>
-                <td class='text-center fw-bold'>" . number_format($a["activity_score"]) . "</td>
+        $joined = ($a["added"] == "0000-00-00 00:00:00" || empty($a["added"]))
+            ? '<span class="tt-meta">' . $lang->topten["lbl_na"] . '</span>'
+            : '<i class="fa-solid fa-calendar-day me-1 text-body-secondary"></i>' . my_datee($regdateformat, $a["added"]);
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_user_cell($a) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . mksize($a["uploaded"]) . "</td>
+                <td class='text-end tt-num'><span class='tt-badge tt-soft-info'><i class='fa-solid fa-gauge-high'></i>" . mksize($a["upspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . mksize($a["downloaded"]) . "</td>
+                <td class='text-end tt-num'><span class='tt-badge tt-soft-warning'><i class='fa-solid fa-gauge'></i>" . mksize($a["downspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
+                <td class='text-center'>" . tt_ratio($a["uploaded"], $a["downloaded"]) . "</td>
+                <td class='tt-num'>" . $joined . "</td>
               </tr>";
     }
-    echo '</tbody></table></div></div></div>';
+    tt_card_close($num, 8);
 }
 
 
+function seedbonustable($res, string $title, string $more): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-coins', 'warning', $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_user"], 'fa-user')
+        . tt_th($lang->topten["col_seedbonus"], 'fa-coins', 'text-end', '240px')
+    );
+
+    $num = 0;
+    $max = 0.0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $bp = (float)$a["seedbonus"];
+        if ($num === 1) {
+            $max = $bp;
+        }
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_user_cell($a) . "</td>
+                <td class='text-end'>
+                    <span class='tt-badge tt-soft-warning'><i class='fa-solid fa-coins'></i>" . number_format($bp, 2) . "</span>
+                    " . tt_bar($bp, $max, 'warning') . "
+                </td>
+              </tr>";
+    }
+    tt_card_close($num, 3);
+}
 
 
+function hottorrentstable($res, string $title, string $more): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-fire', 'danger', $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_name"], 'fa-magnet')
+        . tt_th($lang->topten["col_promo"], 'fa-gift', 'text-center')
+        . tt_th($lang->topten["col_seeders"], 'fa-arrow-up', 'text-end')
+        . tt_th($lang->topten["col_leechers"], 'fa-arrow-down', 'text-end')
+    );
+
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $promo = match (true) {
+            ($a['free'] ?? 'no') === 'yes'          => '<span class="tt-badge tt-soft-success"><i class="fa-solid fa-gift"></i>' . $lang->topten["badge_free"] . '</span>',
+            ($a['silver'] ?? 'no') === 'yes'        => '<span class="tt-badge tt-soft-muted" title="' . htmlspecialchars_uni($lang->topten["tip_silver"]) . '"><i class="fa-solid fa-star-half-stroke"></i>50%</span>',
+            ($a['thirtypercent'] ?? 'no') === 'yes' => '<span class="tt-badge tt-soft-purple"><i class="fa-solid fa-chart-pie"></i>' . $lang->topten["badge_thirty"] . '</span>',
+            default                                 => '',
+        };
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_torrent_cell($a) . "</td>
+                <td class='text-center'>" . $promo . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format((int)$a["seeders"]) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format((int)$a["leechers"]) . "</td>
+              </tr>";
+    }
+    tt_card_close($num, 5);
+}
 
 
+function activitytable($res, string $title, string $more): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-hand-holding-heart', 'purple', $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_user"], 'fa-user')
+        . tt_th($lang->topten["col_comments"], 'fa-comment-dots', 'text-end')
+        . tt_th($lang->topten["col_ratings"], 'fa-star', 'text-end')
+        . tt_th($lang->topten["col_total_activity"], 'fa-chart-line', 'text-end', '200px')
+    );
+
+    $num = 0;
+    $max = 0.0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $total = (int)$a["total_activity"];
+        if ($num === 1) {
+            $max = (float)$total;
+        }
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_user_cell($a) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-comment-dots me-1 text-body-secondary'></i>" . number_format((int)$a["comment_count"]) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-star me-1 text-warning'></i>" . number_format((int)$a["rating_count"]) . "</td>
+                <td class='text-end'>
+                    <span class='tt-badge tt-soft-purple'><i class='fa-solid fa-bolt'></i>" . number_format($total) . "</span>
+                    " . tt_bar((float)$total, $max, 'purple') . "
+                </td>
+              </tr>";
+    }
+    tt_card_close($num, 5);
+}
 
 
+function _torrenttable($res, string $title, string $more, string $icon, string $tone): void
+{
+    global $lang, $db;
+
+    tt_card_open($icon, $tone, $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_name"], 'fa-magnet')
+        . tt_th($lang->topten["col_snatched"], 'fa-flag-checkered', 'text-end')
+        . tt_th($lang->topten["col_data"], 'fa-database', 'text-end')
+        . tt_th($lang->topten["col_seeders"], 'fa-arrow-up', 'text-end')
+        . tt_th($lang->topten["col_leechers"], 'fa-arrow-down', 'text-end')
+        . tt_th($lang->topten["col_total"], 'fa-users', 'text-end')
+        . tt_th($lang->topten["col_sl_ratio"], 'fa-scale-balanced', 'text-center')
+    );
+
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $seeders  = (int)$a["seeders"];
+        $leechers = (int)$a["leechers"];
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_torrent_cell($a) . "</td>
+                <td class='text-end tt-num'><span class='tt-badge tt-soft-info'><i class='fa-solid fa-flag-checkered'></i>" . number_format((int)$a["times_completed"]) . "</span></td>
+                <td class='text-end tt-traffic'><i class='fa-solid fa-hard-drive me-1 text-body-secondary tt-ico-sm'></i>" . mksize((float)$a["data"]) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format($seeders) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format($leechers) . "</td>
+                <td class='text-end tt-traffic'>" . number_format($seeders + $leechers) . "</td>
+                <td class='text-center'>" . tt_ratio($seeders, $leechers) . "</td>
+              </tr>";
+    }
+    tt_card_close($num, 8);
+}
 
 
+function countriestable($res, string $title, string $more, string $what): void
+{
+    global $pic_base_url, $lang, $db;
+
+    [$icon, $tone, $label, $colIcon] = match ($what) {
+        "Users"    => ['fa-users',          'success', $lang->topten["col_cnt_users"],    'fa-users'],
+        "Uploaded" => ['fa-cloud-arrow-up', 'info',    $lang->topten["col_cnt_uploaded"], 'fa-arrow-up'],
+        "Average"  => ['fa-chart-column',   'purple',  $lang->topten["col_cnt_average"],  'fa-chart-column'],
+        default    => ['fa-scale-balanced', 'warning', $lang->topten["col_cnt_ratio"],    'fa-scale-balanced'],
+    };
+
+    tt_card_open($icon, $tone, $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_country"], 'fa-flag')
+        . tt_th($label, $colIcon, 'text-end', '240px')
+    );
+
+    $num = 0;
+    $max = 0.0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $raw   = (float)($a["v"] ?? 0);
+        $value = match ($what) {
+            "Users"              => number_format((int)$raw),
+            "Uploaded", "Average" => mksize($raw),
+            default              => number_format($raw, 2),
+        };
+        if ($num === 1) {
+            $max = $raw;
+        }
+
+        $name = htmlspecialchars_uni((string)($a["name"] ?? ''));
+        if ($name === '') {
+            $name = $lang->topten["lbl_na"];
+        }
+        $flag = !empty($a["flagpic"])
+            ? '<img src="' . $pic_base_url . 'flag/' . htmlspecialchars_uni((string)$a["flagpic"]) . '" class="tt-flag" alt="" loading="lazy">'
+            : '<span class="tt-torrent-ico tt-soft-muted"><i class="fa-solid fa-earth-europe"></i></span>';
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td><div class='d-flex align-items-center gap-2'>" . $flag . "<strong>" . $name . "</strong></div></td>
+                <td class='text-end'>
+                    <span class='tt-badge tt-soft-" . $tone . "'>" . $value . "</span>
+                    " . tt_bar($raw, $max, $tone) . "
+                </td>
+              </tr>";
+    }
+    tt_card_close($num, 3);
+}
 
 
+function peerstable($res, string $title, string $more, string $icon, string $tone): void
+{
+    global $lang, $db;
+
+    tt_card_open($icon, $tone, $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_user"], 'fa-user')
+        . tt_th($lang->topten["col_ulspeed"], 'fa-arrow-up', 'text-end', '170px')
+        . tt_th($lang->topten["col_dlspeed"], 'fa-arrow-down', 'text-end', '170px')
+    );
+
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_user_cell($a) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . mksize($a["uprate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . mksize($a["downrate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
+              </tr>";
+    }
+    tt_card_close($num, 4);
+}
 
 
-?>
+function mostcommentedtable($res, string $title, string $more): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-comment-dots', 'info', $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_torrent"], 'fa-magnet')
+        . tt_th($lang->topten["col_comments"], 'fa-comment-dots', 'text-center')
+        . tt_th($lang->topten["col_snatched"], 'fa-flag-checkered', 'text-center')
+    );
+
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>" . tt_torrent_cell($a) . "</td>
+                <td class='text-center'><span class='tt-badge tt-soft-info'><i class='fa-solid fa-comment-dots'></i>" . number_format((int)$a["comment_count"]) . "</span></td>
+                <td class='text-center tt-num'><i class='fa-solid fa-flag-checkered me-1 text-body-secondary'></i>" . number_format((int)$a["times_completed"]) . "</td>
+              </tr>";
+    }
+    tt_card_close($num, 4);
+}
+
+
+function categoriestable($res, string $title, string $more): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-tags', 'primary', $title, $more,
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_category"], 'fa-folder')
+        . tt_th($lang->topten["col_torrents"], 'fa-magnet', 'text-center', '150px')
+        . tt_th($lang->topten["col_seeders"], 'fa-arrow-up', 'text-end')
+        . tt_th($lang->topten["col_leechers"], 'fa-arrow-down', 'text-end')
+        . tt_th($lang->topten["col_snatches"], 'fa-flag-checkered', 'text-end')
+        . tt_th($lang->topten["col_total_size"], 'fa-hard-drive', 'text-end')
+    );
+
+    $num = 0;
+    $max = 0.0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $count = (int)$a["torrents_count"];
+        if ($num === 1) {
+            $max = (float)$count;
+        }
+        $icon_classes = !empty($a["icon"]) ? htmlspecialchars_uni((string)$a["icon"]) : "fa-solid fa-folder";
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>
+                    <div class='d-flex align-items-center gap-2'>
+                        <span class='tt-torrent-ico tt-soft-primary'><i class='" . $icon_classes . "'></i></span>
+                        <a href='browse.php?cat=" . (int)$a["id"] . "' class='tt-link'>" . htmlspecialchars((string)$a["name"]) . "</a>
+                    </div>
+                </td>
+                <td class='text-center'>
+                    <span class='tt-badge tt-soft-primary'>" . number_format($count) . "</span>
+                    " . tt_bar((float)$count, $max, 'primary') . "
+                </td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format((int)($a["total_seeders"] ?? 0)) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format((int)($a["total_leechers"] ?? 0)) . "</td>
+                <td class='text-end tt-num'>" . number_format((int)($a["total_snatches"] ?? 0)) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-hard-drive me-1 text-body-secondary'></i>" . mksize((float)($a["total_size"] ?? 0)) . "</td>
+              </tr>";
+    }
+    tt_card_close($num, 7);
+}
+
+
+function activethreadstable($res, string $title): void
+{
+    global $lang, $db;
+
+    tt_card_open('fa-comments', 'info', $title, '',
+        tt_th('#', '', 'text-center', '60px')
+        . tt_th($lang->topten["col_thread"], 'fa-message')
+        . tt_th($lang->topten["col_forum"], 'fa-folder-open')
+        . tt_th($lang->topten["col_views"], 'fa-eye', 'text-end')
+        . tt_th($lang->topten["col_replies"], 'fa-reply', 'text-end')
+        . tt_th($lang->topten["col_activity"], 'fa-chart-line', 'text-center')
+    );
+
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+        $av = format_avatar((string)($a['avatar'] ?? ''), (string)($a['avatardimensions'] ?? ''));
+
+        echo tt_row($num) . "
+                <td class='text-center'>" . tt_rank($num) . "</td>
+                <td>
+                    <div class='d-flex align-items-center gap-2'>
+                        <img class='tt-avatar' src='" . $av['image'] . "' alt='' loading='lazy'>
+                        <div class='lh-sm'>
+                            <a href='" . get_thread_link($a['tid']) . "' class='tt-link'>" . htmlspecialchars((string)$a["subject"]) . "</a>
+                            <div class='tt-meta'><i class='fa-solid fa-user'></i>" . ags_fmt($lang->topten["lbl_by"], htmlspecialchars((string)$a["username"])) . "</div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class='tt-chip'><i class='fa-solid fa-folder-open'></i>" . htmlspecialchars((string)$a["forum_name"]) . "</span></td>
+                <td class='text-end tt-num'><i class='fa-solid fa-eye me-1 text-body-secondary'></i>" . number_format((int)$a["views"]) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-reply me-1 text-body-secondary'></i>" . number_format((int)$a["replies"]) . "</td>
+                <td class='text-center'><span class='tt-badge tt-soft-info'><i class='fa-solid fa-bolt'></i>" . number_format((int)$a["activity_score"]) . "</span></td>
+              </tr>";
+    }
+    tt_card_close($num, 6);
+}

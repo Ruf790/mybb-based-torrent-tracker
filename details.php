@@ -6,6 +6,49 @@ define("SCRIPTNAME", "details.php");
 
 require_once('global.php');
 
+$lang->load('details');
+
+// ── Lang helpers ────────────────────────────────────────────────────────────
+// $lang->load() turns {1} into %1$s, so both forms are substituted.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
+// Plural form from a lang string: "one|other" (2 forms, English rules)
+// or "one|few|many" (3 forms, Russian rules).
+if (!function_exists('ags_plural')) {
+    function ags_plural(int $n, string $forms): string
+    {
+        $f = explode('|', $forms);
+        $n = abs($n);
+
+        if (count($f) < 2) {
+            return $f[0];
+        }
+        if (count($f) === 2) {
+            return $n === 1 ? $f[0] : $f[1];
+        }
+
+        $m10  = $n % 10;
+        $m100 = $n % 100;
+
+        return match (true) {
+            $m10 === 1 && $m100 !== 11                         => $f[0],
+            $m10 >= 2 && $m10 <= 4 && ($m100 < 12 || $m100 > 14) => $f[1],
+            default                                              => $f[2],
+        };
+    }
+}
+
 require_once 'cache/smilies.php';
 
 require_once __DIR__ . '/vendor/autoload.php';
@@ -236,7 +279,7 @@ function renderAccordion($tree, $parentId = 'root', $level = 0)
 $Torrent = get_torrent((int)$mybb->input['id']);
 
 if (!$Torrent) {
-    stderr($lang->global['notorrentid'], $SITENAME . ' - Torrent Not Found', 404, 'torrent');
+    stderr($lang->global['notorrentid'], $SITENAME . ' - ' . $lang->details['title_notfound'], 404, 'torrent');
 }
 
 $id = $Torrent['id'];
@@ -261,7 +304,6 @@ if (!$query || $db->num_rows($query) == 0 || !($torrent2 = $db->fetch_array($que
     stderr($lang->global['torrentbanned']);
 }
 
-$lang->load('details');
 $lang->load('browse');
 $lang->load('upload');
 
@@ -416,21 +458,30 @@ if ($torrent2['type'] == 's') {
 }
 
 // ── stdhead + assets ────────────────────────────────────────────────────────
-$HEAD = sprintf($lang->details['detailsfor'], $Torrent['name']);
+$HEAD = ags_fmt($lang->details['detailsfor'], (string)$Torrent['name']);
 stdhead($HEAD);
 
 require_once INC_PATH . '/functions_bookmark.php';
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/claim.css?ver=12">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
+// Strings for page scripts: js_* keys from the lang, without the prefix
+$ags_js_lang = [];
+foreach ($lang->details as $ags_key => $ags_val) {
+    if (str_starts_with((string)$ags_key, 'js_')) {
+        $ags_js_lang[substr((string)$ags_key, 3)] = $ags_val;
+    }
+}
+echo '<script>const AGS_LANG = ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=2"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=2"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
 
@@ -451,7 +502,7 @@ if ($hitrun == 'yes') {
         $warning_message = '<div class="container mt-3">
            <div class="hitrun-alert mb-3" role="alert">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                ' . sprintf($lang->details['downloadwarning'], number_format($ratio, 2), mksize($percentage), $hitrun_ratio) . '
+                ' . ags_fmt($lang->details['downloadwarning'], number_format($ratio, 2), mksize($percentage), (string)$hitrun_ratio) . '
            </div>
         </div>';
     }
@@ -511,19 +562,21 @@ if ($CURUSER['id']) {
         <div class="d-flex align-items-center gap-2">
             <div class="user-stars d-flex gap-1" id="user-stars">' . $user_stars_html . '</div>
             <span class="small text-muted" id="rating-hint">'
-                . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : 'rate') .
+                . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : htmlspecialchars($lang->details['hint_rate'])) .
             '</span>
         </div>';
 } else {
-    $user_section = '<a href="login.php" class="btn btn-sm btn-outline-primary rounded-pill"><i class="bi bi-box-arrow-in-right me-1"></i>Login to rate</a>';
+    $user_section = '<a href="login.php" class="btn btn-sm btn-outline-primary rounded-pill"><i class="bi bi-box-arrow-in-right me-1"></i>' . htmlspecialchars($lang->details['btn_login_to_rate']) . '</a>';
 }
+
+$ags_votes_label = ags_fmt(ags_plural($rating_data['count'], $lang->details['lbl_votes']), number_format($rating_data['count']));
 
 $rating_html = '
 <div class="rating-panel mt-4">
     <div class="rating-panel-header">
         <i class="bi bi-star-fill text-warning"></i>
-        <span>User Rating</span>
-        <span class="badge bg-warning text-dark ms-auto">' . number_format($rating_data['count']) . ' votes</span>
+        <span>' . htmlspecialchars($lang->details['sec_user_rating']) . '</span>
+        <span class="badge bg-warning text-dark ms-auto">' . htmlspecialchars($ags_votes_label) . '</span>
     </div>
     <div class="row g-4 align-items-center mt-2">
         <div class="col-auto">
@@ -532,7 +585,7 @@ $rating_html = '
                 <div class="rating-score-max">/ 10</div>
                 <div class="rating-votes text-muted small mt-1">
                     <i class="bi bi-people-fill me-1"></i>
-                    ' . number_format($rating_data['count']) . ' vote' . ($rating_data['count'] === 1 ? '' : 's') . '
+                    ' . htmlspecialchars($ags_votes_label) . '
                 </div>
             </div>
         </div>
@@ -544,7 +597,7 @@ $rating_html = '
         </div>
     </div>
 </div>
-<script src="' . $BASEURL . '/scripts/rating.js"></script>
+<script src="' . $BASEURL . '/scripts/rating.js?ver=2"></script>
 <script>ratingInit(' . $rating_data['user_rating'] . ', ' . $id . ', "' . $BASEURL . '");</script>';
 
 // ── Comments ────────────────────────────────────────────────────────────────
@@ -684,7 +737,7 @@ if ($Torrent['seeders'] == 0) {
     $reseed = '
     <tr>
         <td style="padding-left: 5px;" class="trow2" valign="top" width="147">' . $lang->details['askreseed'] . '</td>
-        <td valign="top" style="padding-left: 5px;">' . sprintf($lang->details['askreseed2'], $id) . '</td>
+        <td valign="top" style="padding-left: 5px;">' . ags_fmt($lang->details['askreseed2'], (int)$id) . '</td>
     </tr>';
     $rowspan++;
 }
@@ -758,9 +811,9 @@ $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
 $showcommenttable .= '
 <br />
 <div class="container mt-4">
-    <h2 class="mb-3"><i class="bi bi-pencil-square me-2 text-primary"></i>Quick Comment</h2>
+    <h2 class="mb-3"><i class="bi bi-pencil-square me-2 text-primary"></i>' . htmlspecialchars($lang->details['sec_quick_comment']) . '</h2>
     ' . (!empty($cerror) ? '<div class="error">' . $cerror . '</div>' : '') . '
-    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js"></script>' : '') . '
+    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=2"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">
@@ -769,9 +822,9 @@ $showcommenttable .= '
         <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
         <div id="fileIdsContainer"></div>
         <div class="mb-3">
-            <label for="message" class="form-label"><i class="bi bi-chat-left-text me-1"></i>Your Comment <small class="text-muted">(макс. 500 символов)</small></label>
+            <label for="message" class="form-label"><i class="bi bi-chat-left-text me-1"></i>' . htmlspecialchars($lang->details['lbl_your_comment']) . ' <small class="text-muted">' . htmlspecialchars(ags_fmt($lang->details['hint_max_chars'], 500)) . '</small></label>
             <textarea class="form-control" id="message" name="message" rows="6"
-                      placeholder="Write a comment, use BBCode..." maxlength="500"
+                      placeholder="' . htmlspecialchars($lang->details['ph_comment'], ENT_QUOTES) . '" maxlength="500"
                       aria-describedby="charCount" required></textarea>
             <div id="charCount" class="form-text text-end">0 / 500</div>
         </div>
@@ -779,7 +832,7 @@ $showcommenttable .= '
         ' . $uploader . '
         ' . ($use_xmlhttprequest == '1' ? '
         <div class="d-flex align-items-center justify-content-center mb-3">
-            <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin" aria-label="Loading..." style="display:none; color: #0b59e0; width:24px; height:24px; margin-right: 10px;"></i>
+            <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin" aria-label="' . htmlspecialchars($lang->details['aria_loading'], ENT_QUOTES) . '" style="display:none; color: #0b59e0; width:24px; height:24px; margin-right: 10px;"></i>
             <button type="button" class="btn btn-primary me-2" id="quickcomment" onclick="TSajaxquickcomment(\'' . $id . '\');"><i class="bi bi-send me-1"></i>' . $lang->global['buttonsubmit'] . '</button>
             <a href="comment.php?action=add&tid=' . $id . '" class="btn btn-secondary"><i class="bi bi-gear me-1"></i>' . $lang->global['advancedbutton'] . '</a>
         </div>' : '
@@ -836,7 +889,7 @@ if ($CURUSER['id'] === $torrent2['owner'] OR $is_mod) {
     <div class="dropdown d-inline-block">
         <a href="#" class="btn btn-light btn-icon rounded-circle p-2 shadow-sm manage-btn"
            role="button" id="manageCompactDropdown" data-bs-toggle="dropdown"
-           aria-expanded="false" data-bs-toggle="tooltip" title="Manage Torrent">
+           aria-expanded="false" data-bs-toggle="tooltip" title="' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '">
             <i class="bi bi-three-dots-vertical text-primary"></i>
         </a>
         <ul class="dropdown-menu shadow border-0 rounded-2 p-1" aria-labelledby="manageCompactDropdown">
@@ -844,14 +897,14 @@ if ($CURUSER['id'] === $torrent2['owner'] OR $is_mod) {
                 <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1"
                    href="#" data-bs-toggle="modal" data-bs-target="#add_data_Modal">
                     <i class="bi bi-pencil-square text-success me-2"></i>
-                    <span>Quick Edit</span>
+                    <span>' . htmlspecialchars($lang->details['menu_quick_edit']) . '</span>
                 </a>
             </li>
             <li>
                 <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1"
                    href="upload.php?id=' . $id . '">
                     <i class="bi bi-file-earmark-text text-info me-2"></i>
-                    <span>Full Edit</span>
+                    <span>' . htmlspecialchars($lang->details['menu_full_edit']) . '</span>
                 </a>
             </li>
             <li><hr class="dropdown-divider my-1"></li>
@@ -861,7 +914,7 @@ if ($CURUSER['id'] === $torrent2['owner'] OR $is_mod) {
                    data-torrent-id="' . $id . '"
                    data-torrent-name="' . htmlspecialchars_uni($Torrent['name']) . '">
                     <i class="bi bi-trash3 me-2"></i>
-                    <span>Delete</span>
+                    <span>' . htmlspecialchars($lang->details['btn_delete']) . '</span>
                 </a>
             </li>
         </ul>
@@ -869,26 +922,33 @@ if ($CURUSER['id'] === $torrent2['owner'] OR $is_mod) {
 }
 
 if ($is_mod) {
+    $ags_t_hitrun     = htmlspecialchars($lang->details['tip_hitrun'], ENT_QUOTES);
+    $ags_t_open       = htmlspecialchars($lang->details['open'], ENT_QUOTES);
+    $ags_t_close      = htmlspecialchars($lang->details['close'], ENT_QUOTES);
+    $ags_t_status     = htmlspecialchars(addslashes($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']), ENT_QUOTES);
+    $ags_t_info       = htmlspecialchars($lang->details['torrentinfo'], ENT_QUOTES);
+    $ags_t_delete     = htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES);
+
     $show_manage .= '
     <a href="' . $BASEURL . '/admin/index.php?act=hit_and_run&torrentid=' . $id . '" class="manage-icon-btn">
-        <i class="fa-solid fa-person-running" alt="Hit & Run" title="Hit & Run"></i></a>
+        <i class="fa-solid fa-person-running" alt="' . $ags_t_hitrun . '" title="' . $ags_t_hitrun . '"></i></a>
 
     <form method="post" action="' . $BASEURL . '/comment.php?tid=' . $id . '&action=' . ($Torrent['allowcomments'] != 'yes' ? 'open' : 'close') . '" style="display:inline;">
         <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
         <button type="submit" class="manage-icon-btn"
                 onmouseout="window.status=\'\'; return true;"
-                onMouseOver="window.status=\'' . ($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']) . '\'; return true;">'
+                onMouseOver="window.status=\'' . $ags_t_status . '\'; return true;">'
         . ($Torrent['allowcomments'] != 'yes'
-            ? '<i class="fa-solid fa-comment-slash" style="color: #e91b0c;" alt="' . $lang->details['open'] . '" title="' . $lang->details['open'] . '"></i>'
-            : '<i class="fa-solid fa-comment-slash" style="color: #08e74b;" alt="' . $lang->details['close'] . '" title="' . $lang->details['close'] . '"></i>')
+            ? '<i class="fa-solid fa-comment-slash" style="color: #e91b0c;" alt="' . $ags_t_open . '" title="' . $ags_t_open . '"></i>'
+            : '<i class="fa-solid fa-comment-slash" style="color: #08e74b;" alt="' . $ags_t_close . '" title="' . $ags_t_close . '"></i>')
         . '</button>
     </form>
 
     <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
-        <i class="fa-sharp fa-solid fa-info" style="color: #94b4eb;" alt="Torrent Info" title="Torrent Info"></i></a>
+        <i class="fa-sharp fa-solid fa-info" style="color: #94b4eb;" alt="' . $ags_t_info . '" title="' . $ags_t_info . '"></i></a>
 
     <a href="' . $BASEURL . '/admin/index.php?act=fastdelete&amp;id=' . $id . '" class="manage-icon-btn">
-        <i class="fa-solid fa-trash-can" style="color: #eb0f0f;" alt="Delete Torrent" title="Delete Torrent"></i></a>';
+        <i class="fa-solid fa-trash-can" style="color: #eb0f0f;" alt="' . $ags_t_delete . '" title="' . $ags_t_delete . '"></i></a>';
 }
 
 // ── Torrent file tree ───────────────────────────────────────────────────────
@@ -938,7 +998,8 @@ if ($res) {
     }
 }
 
-$screensHtml = '<div class="row g-3">';
+$ags_t_screenshot = htmlspecialchars($lang->details['lbl_screenshot'], ENT_QUOTES);
+$screensHtml      = '<div class="row g-3">';
 foreach ($screenshots as $shot) {
     $filename      = htmlspecialchars($shot['filename']);
     $screenshotUrl = '/torrents/screens/' . $filename;
@@ -947,8 +1008,8 @@ foreach ($screenshots as $shot) {
     <div class="col-6 col-md-4 col-lg-3">
         <a href="#" class="screenshot-wrapper d-block position-relative overflow-hidden rounded-4"
            data-bs-toggle="modal" data-bs-target="#universalImageModal"
-           data-img-src="' . $screenshotUrl . '" data-title="Screenshot">
-            <img src="' . $screenshotUrl . '" class="img-fluid rounded-4 transition-scale" alt="Screenshot">
+           data-img-src="' . $screenshotUrl . '" data-title="' . $ags_t_screenshot . '">
+            <img src="' . $screenshotUrl . '" class="img-fluid rounded-4 transition-scale" alt="' . $ags_t_screenshot . '">
         </a>
     </div>';
 }
@@ -979,7 +1040,7 @@ if (!empty($screenshots)) {
         <button class="nav-link fw-semibold" id="screen-tab" data-bs-toggle="tab"
                 data-bs-target="#screen" type="button" role="tab"
                 aria-controls="screen" aria-selected="false">
-            <i class="bi bi-images me-2"></i>Screens
+            <i class="bi bi-images me-2"></i>' . htmlspecialchars($lang->details['tab_screens']) . '
         </button>
     </li>';
 
@@ -999,16 +1060,16 @@ if (!empty($torrent2['nfo'])) {
     <li class="nav-item" role="presentation">
         <button class="nav-link fw-semibold" id="nfo-tab" data-bs-toggle="tab"
                 data-bs-target="#nfo" type="button" role="tab">
-            <i class="bi bi-file-earmark-text-fill me-2"></i>NFO
+            <i class="bi bi-file-earmark-text-fill me-2"></i>' . htmlspecialchars($lang->details['tab_nfo']) . '
         </button>
     </li>';
 
     $nfoContent = '
     <div class="tab-pane fade" id="nfo" role="tabpanel" aria-labelledby="nfo-tab">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>NFO File</h6>
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>' . htmlspecialchars($lang->details['sec_nfo_file']) . '</h6>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyNfo()">
-                <i class="bi bi-clipboard me-1"></i>Copy
+                <i class="bi bi-clipboard me-1"></i>' . htmlspecialchars($lang->details['btn_copy']) . '
             </button>
         </div>
         <div class="card border-0" style="border: 1px solid #dee2e6 !important;">
@@ -1033,12 +1094,13 @@ if (!empty($torrent2['nfo'])) {
 
 // ── Magnet button ───────────────────────────────────────────────────────────
 $magnetButton = ($TorrentObj !== null && !$TorrentObj->isPrivate())
-    ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>'
+    ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>' . htmlspecialchars($lang->details['menu_magnet']) . '</a></li>'
     : '';
 
 // ── Claim box (port of NexusPHP "claim block" in details.php) ───────────────
 require_once INC_PATH . '/functions_claim.php';
 $claimBox = '';
+$ags_json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
     $myClaim     = claim_get((int)$CURUSER['id'], (int)$id);
     $claimCount  = claim_count_torrent((int)$id);
@@ -1049,23 +1111,20 @@ if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
              . '<input type="hidden" name="action" value="' . $action . '">'
              . '<input type="hidden" name="torrent_id" value="' . (int)$id . '">'
              . '<input type="hidden" name="returnto" value="details.php?id=' . (int)$id . '">'
-             . '<button class="btn ' . $btnClass . ' btn-sm"><i class="bi ' . $icon . ' me-1"></i>' . $label . '</button></form>';
+             . '<button class="btn ' . $btnClass . ' btn-sm"><i class="bi ' . $icon . ' me-1"></i>' . htmlspecialchars($label) . '</button></form>';
     };
 
     if ($myClaim) {
-        $text = '<strong>You claimed this torrent</strong> on ' . date('d.m.Y', (int)$myClaim['added'])
-              . '. Seed it ' . CLAIM_SEED_HOURS . ' h a month (or upload ' . CLAIM_UPLOAD_TIMES . '× its size) to get bonus.';
-        $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-list-check me-1"></i>My claims</a>'
-              . $claimForm('remove', 'btn-outline-danger', 'bi-x-lg', 'Give up',
-                    'Give up this claim? ' . number_format(CLAIM_GIVE_UP_DEDUCT) . ' bonus points will be deducted.');
+        $text = ags_fmt($lang->details['claim_mine'], date('d.m.Y', (int)$myClaim['added']), CLAIM_SEED_HOURS, CLAIM_UPLOAD_TIMES);
+        $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-list-check me-1"></i>' . htmlspecialchars($lang->details['claim_btn_my']) . '</a>'
+              . $claimForm('remove', 'btn-outline-danger', 'bi-x-lg', $lang->details['claim_btn_give_up'],
+                    ags_fmt($lang->details['claim_confirm_give_up'], number_format(CLAIM_GIVE_UP_DEDUCT)));
     } else {
         try {
             claim_check_can((int)$CURUSER['id'], (int)$id);
-            $text = '<strong>Claim this torrent</strong> and keep it alive: seed it ' . CLAIM_SEED_HOURS
-                  . ' h a month and get bonus points for every hour.';
-            $btn  = $claimForm('add', 'btn-success', 'bi-hand-thumbs-up', 'Claim',
-                    'Claim this torrent? Seed it ' . CLAIM_SEED_HOURS . ' h every month. If you stop, the claim is removed and '
-                    . number_format(CLAIM_REMOVE_DEDUCT) . ' bonus points are deducted.');
+            $text = ags_fmt($lang->details['claim_offer'], CLAIM_SEED_HOURS);
+            $btn  = $claimForm('add', 'btn-success', 'bi-hand-thumbs-up', $lang->details['claim_btn_claim'],
+                    ags_fmt($lang->details['claim_confirm_add'], CLAIM_SEED_HOURS, number_format(CLAIM_REMOVE_DEDUCT)));
         } catch (ClaimException $ex) {
             $text = '<span class="text-muted">' . htmlspecialchars($ex->getMessage(), ENT_QUOTES) . '</span>';
             $btn  = '';
@@ -1076,7 +1135,7 @@ if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
             <div class="claim-box mt-4">
                 <i class="bi bi-heart-pulse fs-4 text-success"></i>
                 <div class="claim-box__text">' . $text . '
-                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">Claimed by ' . $claimCount . ' / ' . CLAIM_MAX_PER_TORRENT . ' user(s)</a></div>
+                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">' . htmlspecialchars(ags_fmt($lang->details['claim_by'], (int)$claimCount, CLAIM_MAX_PER_TORRENT)) . '</a></div>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">' . $btn . '</div>
             </div>
@@ -1087,8 +1146,8 @@ if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
                 e.preventDefault();
                 var go = function () { f.dataset.ok = "1"; f.querySelector("button").disabled = true; f.submit(); };
                 if (window.Swal) {
-                    window.Swal.fire({ icon: "question", text: f.dataset.claimConfirm, showCancelButton: true, confirmButtonText: "Yes",
-                        cancelButtonText: "Cancel", reverseButtons: true }).then(function (r) { if (r.isConfirmed) go(); });
+                    window.Swal.fire({ icon: "question", text: f.dataset.claimConfirm, showCancelButton: true, confirmButtonText: ' . json_encode($lang->details['claim_yes'], $ags_json_flags) . ',
+                        cancelButtonText: ' . json_encode($lang->details['claim_cancel'], $ags_json_flags) . ', reverseButtons: true }).then(function (r) { if (r.isConfirmed) go(); });
                 } else if (window.confirm(f.dataset.claimConfirm)) { go(); }
             });
             </script>';
@@ -1099,6 +1158,10 @@ $act = '<span id="bookmark' . $Torrent['id'] . '">'
      . '</span>';
 
 // ── Main layout ─────────────────────────────────────────────────────────────
+$ags_health    = getHealthPercentage($Torrent['seeders'], $Torrent['leechers']);
+$ags_numfiles  = (int)$Torrent['numfiles'];
+$ags_files_lbl = htmlspecialchars(ags_fmt(ags_plural($ags_numfiles, $lang->details['lbl_files']), ts_nf($ags_numfiles)));
+
 $details = '
 <div id="torrent_details" class="container mt-5">
 
@@ -1107,12 +1170,12 @@ $details = '
         <ol class="breadcrumb torrent-breadcrumb p-3 rounded-3 shadow-sm">
             <li class="breadcrumb-item">
                 <a href="/" class="text-decoration-none">
-                    <i class="bi bi-house-door-fill me-1"></i> Home
+                    <i class="bi bi-house-door-fill me-1"></i> ' . htmlspecialchars($lang->details['nav_home'], ENT_QUOTES) . '
                 </a>
             </li>
             <li class="breadcrumb-item">
                 <a href="browse.php" class="text-decoration-none">
-                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> Browse
+                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> ' . htmlspecialchars($lang->details['nav_browse'], ENT_QUOTES) . '
                 </a>
             </li>
             <li class="breadcrumb-item active text-truncate" style="max-width: 400px;"
@@ -1139,24 +1202,24 @@ $details = '
                 </h1>
 
                 <div class="d-flex flex-wrap gap-2 align-items-center torrent-meta-badges">
-                    <span class="badge meta-badge meta-badge-id" title="Torrent ID">
-                        <i class="bi bi-hash me-1"></i>ID: ' . $id . '
+                    <span class="badge meta-badge meta-badge-id" title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '">
+                        <i class="bi bi-hash me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '
                     </span>
-                    <span class="badge meta-badge meta-badge-size" title="Size">
+                    <span class="badge meta-badge meta-badge-size" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '">
                         <i class="bi bi-hdd-fill me-1"></i>' . mksize($Torrent['size']) . '
                     </span>
-                    <span class="badge meta-badge meta-badge-health bg-' . getHealthColor($Torrent['seeders'], $Torrent['leechers']) . '" title="Health">
-                        <i class="bi bi-activity me-1"></i>Health: ' . getHealthPercentage($Torrent['seeders'], $Torrent['leechers']) . '%
+                    <span class="badge meta-badge meta-badge-health bg-' . getHealthColor($Torrent['seeders'], $Torrent['leechers']) . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '">
+                        <i class="bi bi-activity me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '
                     </span>
-                    <span class="badge meta-badge meta-badge-files" title="Number of files">
-                        <i class="bi bi-file-earmark-fill me-1"></i>' . ts_nf($Torrent['numfiles']) . ' files
+                    <span class="badge meta-badge meta-badge-files" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '">
+                        <i class="bi bi-file-earmark-fill me-1"></i>' . $ags_files_lbl . '
                     </span>
-                    <span class="badge meta-badge meta-badge-date" title="Uploaded">
+                    <span class="badge meta-badge meta-badge-date" title="' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '">
                         <i class="bi bi-calendar-check-fill me-1"></i>' . my_datee('relative', $Torrent['added']) . '
                     </span>
                     ' . ($already_snatched ? '
-                    <span class="badge meta-badge meta-badge-snatched" title="You have already downloaded this torrent">
-                        <i class="bi bi-check2-circle me-1"></i>Already Downloaded
+                    <span class="badge meta-badge meta-badge-snatched" title="' . htmlspecialchars($lang->details['tip_snatched_by_you'], ENT_QUOTES) . '">
+                        <i class="bi bi-check2-circle me-1"></i>' . htmlspecialchars($lang->details['badge_already_downloaded'], ENT_QUOTES) . '
                     </span>' : '') . '
                     ' . $act . '
                 </div>
@@ -1174,11 +1237,11 @@ $details = '
                             <i class="bi bi-cloud-download"></i>
                         </div>
                         <div>
-                            <h5 class="mb-1 fw-bold">Download Torrent</h5>
+                            <h5 class="mb-1 fw-bold">' . htmlspecialchars($lang->details['dltorrent'], ENT_QUOTES) . '</h5>
                             <div class="text-muted small">
                                 <i class="bi bi-hdd me-1"></i>' . mksize($Torrent['size']) . '
                                 <span class="mx-2">•</span>
-                                <i class="bi bi-file-earmark me-1"></i>' . ts_nf($Torrent['numfiles']) . ' files
+                                <i class="bi bi-file-earmark me-1"></i>' . $ags_files_lbl . '
                             </div>
                         </div>
                     </div>
@@ -1187,21 +1250,21 @@ $details = '
                     <div class="d-flex gap-2 justify-content-md-end flex-wrap align-items-center">
                         <a href="' . get_download_link($id) . '"
                            class="btn btn-primary btn-lg btn-download-pulse"
-                           title="' . $lang->details['dltorrent'] . '">
-                            <i class="bi bi-cloud-arrow-down-fill me-2"></i>Download
+                           title="' . htmlspecialchars($lang->details['dltorrent'], ENT_QUOTES) . '">
+                            <i class="bi bi-cloud-arrow-down-fill me-2"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '
                         </a>
                         <button type="button" class="btn btn-outline-secondary btn-lg report-btn"
                                 data-bs-toggle="modal" data-bs-target="#reportModal"
                                 data-report-type="torrent"
                                 data-report-id="' . $id . '"
                                 data-report-userid="' . $Torrent['owner'] . '"
-                                data-report-name="' . htmlspecialchars($Torrent['name'] ?? 'Torrent') . '"
-                                title="Report torrent">
+                                data-report-name="' . htmlspecialchars($Torrent['name'] ?? $lang->details['lbl_torrent_fallback']) . '"
+                                title="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '">
                             <i class="bi bi-flag-fill"></i>
                         </button>
                         <div class="btn-group">
                             <button type="button" class="btn btn-outline-primary btn-lg dropdown-toggle"
-                                    data-bs-toggle="dropdown" aria-expanded="false" title="More options">
+                                    data-bs-toggle="dropdown" aria-expanded="false" title="' . htmlspecialchars($lang->details['tip_more_options'], ENT_QUOTES) . '">
                                 <i class="bi bi-three-dots-vertical"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end shadow">
@@ -1209,17 +1272,17 @@ $details = '
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <a class="dropdown-item scroll-to-tab" href="#info" data-scroll-tab="info">
-                                        <i class="bi bi-info-circle me-2"></i>Information
+                                        <i class="bi bi-info-circle me-2"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
                                     </a>
                                 </li>
                                 <li>
                                     <a class="dropdown-item scroll-to-tab" href="#files" data-scroll-tab="files">
-                                        <i class="bi bi-folder me-2"></i>File list
+                                        <i class="bi bi-folder me-2"></i>' . htmlspecialchars($lang->details['menu_filelist'], ENT_QUOTES) . '
                                     </a>
                                 </li>
                                 <li>
                                     <a class="dropdown-item scroll-to-tab" href="#peers" data-scroll-tab="peers">
-                                        <i class="bi bi-people me-2"></i>Peers
+                                        <i class="bi bi-people me-2"></i>' . htmlspecialchars($lang->details['menu_peers'], ENT_QUOTES) . '
                                     </a>
                                 </li>
                             </ul>
@@ -1241,7 +1304,7 @@ $details = '
             <div class="health-progress-wrap mt-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="small fw-semibold text-muted">
-                        <i class="bi bi-heart-pulse-fill me-1 text-danger"></i>Torrent Health
+                        <i class="bi bi-heart-pulse-fill me-1 text-danger"></i>' . htmlspecialchars($lang->details['lbl_torrent_health'], ENT_QUOTES) . '
                     </span>
                     <span class="small fw-bold">' . getHealthPercentage($Torrent['seeders'], $Torrent['leechers']) . '%</span>
                 </div>
@@ -1261,7 +1324,7 @@ $details = '
                         <div class="stat-tile-body">
                             <div class="stat-tile-value">' . ts_nf($Torrent['seeders']) . '</div>
                             <div class="stat-tile-label">
-                                <i class="bi bi-broadcast me-1"></i>Seeders
+                                <i class="bi bi-broadcast me-1"></i>' . htmlspecialchars($lang->details['stat_seeders'], ENT_QUOTES) . '
                             </div>
                         </div>
                     </div>
@@ -1272,7 +1335,7 @@ $details = '
                         <div class="stat-tile-body">
                             <div class="stat-tile-value">' . ts_nf($Torrent['leechers']) . '</div>
                             <div class="stat-tile-label">
-                                <i class="bi bi-download me-1"></i>Leechers
+                                <i class="bi bi-download me-1"></i>' . htmlspecialchars($lang->details['stat_leechers'], ENT_QUOTES) . '
                             </div>
                         </div>
                     </div>
@@ -1283,7 +1346,7 @@ $details = '
                         <div class="stat-tile-body">
                             <div class="stat-tile-value">' . ts_nf($Torrent['times_completed']) . '</div>
                             <div class="stat-tile-label">
-                                <i class="bi bi-check2-all me-1"></i>Snatched
+                                <i class="bi bi-check2-all me-1"></i>' . htmlspecialchars($lang->details['snatched'], ENT_QUOTES) . '
                             </div>
                         </div>
                     </div>
@@ -1294,7 +1357,7 @@ $details = '
                         <div class="stat-tile-body">
                             <div class="stat-tile-value">' . ts_nf($Torrent['comments']) . '</div>
                             <div class="stat-tile-label">
-                                <i class="bi bi-chat-dots me-1"></i>Comments
+                                <i class="bi bi-chat-dots me-1"></i>' . htmlspecialchars($lang->details['comments'], ENT_QUOTES) . '
                             </div>
                         </div>
                     </div>
@@ -1310,7 +1373,7 @@ $details = '
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active fw-semibold" id="info-tab" data-bs-toggle="tab"
                             data-bs-target="#info" type="button" role="tab">
-                        <i class="bi bi-info-square-fill me-2"></i>Information
+                        <i class="bi bi-info-square-fill me-2"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
                     </button>
                 </li>
                 ' . $screenTab . '
@@ -1318,21 +1381,21 @@ $details = '
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold" id="files-tab" data-bs-toggle="tab"
                             data-bs-target="#files" type="button" role="tab">
-                        <i class="bi bi-folder-fill me-2"></i>Files (' . ts_nf($Torrent['numfiles']) . ')
+                        <i class="bi bi-folder-fill me-2"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_files'], ts_nf($Torrent['numfiles']))) . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold" id="peers-tab" data-bs-toggle="tab"
                             data-bs-target="#peers" type="button" role="tab">
-                        <i class="bi bi-people-fill me-2"></i>Peers (' . ts_nf($Torrent['seeders'] + $Torrent['leechers']) . ')
+                        <i class="bi bi-people-fill me-2"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_peers'], ts_nf($Torrent['seeders'] + $Torrent['leechers']))) . '
                     </button>
                 </li>
                 ' . ((int)$Torrent['seeders'] === 0 && $CURUSER ? '
                 <li class="nav-item align-self-center ms-2">
                     <a href="' . $BASEURL . '/takereseed.php?reseedid=' . (int)$Torrent['id'] . '"
                        class="btn btn-sm btn-outline-warning"
-                       onclick="return confirm(\'Send reseed request to all previous downloaders?\')">
-                        <i class="bi bi-megaphone-fill me-1"></i> Request Reseed
+                       onclick="return confirm(' . htmlspecialchars(json_encode($lang->details['confirm_reseed'], $ags_json_flags), ENT_QUOTES) . ')">
+                        <i class="bi bi-megaphone-fill me-1"></i> ' . htmlspecialchars($lang->details['btn_request_reseed'], ENT_QUOTES) . '
                     </a>
                 </li>' : '') . '
             </ul>
@@ -1348,23 +1411,23 @@ $details = '
                         <div class="col-md-6">
                             <div class="info-grid">
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-calendar me-1"></i>Uploaded</span>
+                                    <span class="text-muted"><i class="bi bi-calendar me-1"></i>' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '</span>
                                     <span class="fw-bold text-end">
                                         ' . my_datee($dateformat, $Torrent['added']) . '
                                         <small class="text-muted ms-2">' . my_datee($timeformat, $Torrent['added']) . '</small>
                                     </span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-tag me-1"></i>Category</span>
+                                    <span class="text-muted"><i class="bi bi-tag me-1"></i>' . htmlspecialchars($lang->details['lbl_category'], ENT_QUOTES) . '</span>
                                     <span class="fw-bold text-end">' . $torrent2['categoryname'] . '</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-hdd me-1"></i>Size</span>
+                                    <span class="text-muted"><i class="bi bi-hdd me-1"></i>' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '</span>
                                     <span class="fw-bold text-end">' . mksize($Torrent['size']) . '</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-hash me-1"></i>Hash</span>
-                                    <span class="font-monospace small text-end text-break">' . htmlspecialchars($Torrent['info_hash'] ?? 'N/A') . '</span>
+                                    <span class="text-muted"><i class="bi bi-hash me-1"></i>' . htmlspecialchars($lang->details['infohash'], ENT_QUOTES) . '</span>
+                                    <span class="font-monospace small text-end text-break">' . htmlspecialchars($Torrent['info_hash'] ?? $lang->details['na']) . '</span>
                                 </div>
                             </div>
                         </div>
@@ -1373,7 +1436,7 @@ $details = '
                         <div class="col-md-6">
                             <div class="info-grid">
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-download me-1"></i>Snatched</span>
+                                    <span class="text-muted"><i class="bi bi-download me-1"></i>' . htmlspecialchars($lang->details['snatched'], ENT_QUOTES) . '</span>
                                     <span class="badge bg-light text-dark">
                                         <a href="viewsnatches.php?id=' . $id . '" class="text-decoration-none text-dark">
                                             ' . ts_nf($Torrent['times_completed']) . '
@@ -1381,20 +1444,20 @@ $details = '
                                     </span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-eye me-1"></i>Views</span>
+                                    <span class="text-muted"><i class="bi bi-eye me-1"></i>' . htmlspecialchars($lang->details['views'], ENT_QUOTES) . '</span>
                                     <span class="badge bg-light text-dark">' . ts_nf($Torrent['hits']) . '</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-chat me-1"></i>Comments</span>
+                                    <span class="text-muted"><i class="bi bi-chat me-1"></i>' . htmlspecialchars($lang->details['comments'], ENT_QUOTES) . '</span>
                                     <span class="badge bg-light text-dark">' . ts_nf($Torrent['comments']) . '</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-person me-1"></i>Uploader</span>
+                                    <span class="text-muted"><i class="bi bi-person me-1"></i>' . htmlspecialchars($lang->details['uppedby'], ENT_QUOTES) . '</span>
                                     <span class="fw-bold text-end">' . $username . '</span>
                                 </div>
                                 ' . ($show_manage != '' ? '
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-gear me-1"></i>Manage Torrent</span>
+                                    <span class="text-muted"><i class="bi bi-gear me-1"></i>' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '</span>
                                     <span class="fw-bold text-end">' . $show_manage . '</span>
                                 </div>' : '') . '
                             </div>
@@ -1405,7 +1468,7 @@ $details = '
                     ' . ($keywords ? '
                     <div class="mt-4 tag-section">
                         <h6 class="fw-semibold mb-3">
-                            <i class="bi bi-tags me-2"></i>Tags
+                            <i class="bi bi-tags me-2"></i>' . htmlspecialchars($lang->details['sec_tags'], ENT_QUOTES) . '
                         </h6>
                         <div class="d-flex flex-wrap gap-2">' . $keywords . '</div>
                     </div>' : '') . '
@@ -1417,19 +1480,19 @@ $details = '
                 <!-- Files tab -->
                 <div class="tab-pane fade" id="files" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="mb-0 fw-semibold"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>File Structure</h6>
+                        <h6 class="mb-0 fw-semibold"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>' . htmlspecialchars($lang->details['sec_file_structure'], ENT_QUOTES) . '</h6>
                         <div class="btn-group btn-group-sm">
                             <button type="button" class="btn btn-primary rounded-2 d-flex align-items-center gap-2" onclick="expandAllFiles()">
-                                <i class="bi bi-plus-circle"></i><span>Expand All</span>
+                                <i class="bi bi-plus-circle"></i><span>' . htmlspecialchars($lang->details['btn_expand_all'], ENT_QUOTES) . '</span>
                             </button>
                             <button type="button" class="btn btn-outline-primary rounded-2 d-flex align-items-center gap-2" onclick="collapseAllFiles()">
-                                <i class="bi bi-dash-circle"></i><span>Collapse All</span>
+                                <i class="bi bi-dash-circle"></i><span>' . htmlspecialchars($lang->details['btn_collapse_all'], ENT_QUOTES) . '</span>
                             </button>
                         </div>
                     </div>
                     ' . (isset($tree) && $tree !== null
                         ? '<div class="file-tree">' . renderAccordion($tree) . '</div>'
-                        : '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>Torrent file is missing</div>') . '
+                        : '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($lang->details['err_torrent_file_missing'], ENT_QUOTES) . '</div>') . '
                 </div>
 
                 ' . $screenContent . '
@@ -1446,7 +1509,7 @@ $details = '
     <!-- Description -->
     <div class="card shadow-sm border-0 mt-5 animate__animated animate__fadeInUp">
         <div class="card-header bg-light">
-            <h5 class="mb-0 fw-semibold"><i class="bi bi-card-text me-2 text-primary"></i>Description</h5>
+            <h5 class="mb-0 fw-semibold"><i class="bi bi-card-text me-2 text-primary"></i>' . htmlspecialchars($lang->details['description'], ENT_QUOTES) . '</h5>
         </div>
         <div class="card-body p-4">' . $descr . '</div>
     </div>

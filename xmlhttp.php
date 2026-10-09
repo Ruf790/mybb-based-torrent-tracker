@@ -1204,23 +1204,42 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
         $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
         $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
 
-        $sql = "SELECT commentpm FROM users WHERE id = ?";
+        $sql = "SELECT commentpm, language FROM users WHERE id = ?";
         $params = [(int)$arr['owner']];
         $ras = $db->sql_query_prepared($sql, $params);
         $arg = $ras ? $db->fetch_array($ras) : null;
+		
+		
 
         if ($arg['commentpm'] == 1 && $CURUSER['id'] != $arr['owner']) {
             require_once INC_PATH . '/functions_pm.php';
             $url2 = get_comment_link($cid, $torrentid)."#pid{$cid}";
                     
-            $pm = [
-                'subject' => sprintf($lang->comment['newcommentsub']),
-                'message' => sprintf($lang->comment['newcommenttxt'], '[url=' . $BASEURL.'/'.$url2.']' . $arr['name'] . '[/url]'),
-                'touid' => $arr['owner']
-            ];
+            //$pm = [
+            //    'subject' => sprintf($lang->comment['newcommentsub']),
+            //    'message' => sprintf($lang->comment['newcommenttxt'], '[url=' . $BASEURL.'/'.$url2.']' . $arr['name'] . '[/url]'),
+            //    'touid' => $arr['owner']
+           // ];
             
-            $pm['sender']['uid'] = -1;
-            send_pm($pm, -1, true);
+            //$pm['sender']['uid'] = -1;
+            //send_pm($pm, -1, true);
+
+			send_pm([
+               'subject'       => ['newcommentsub'],
+               'message'       => [
+                'newcommenttxt',
+                '[url=' . $BASEURL . '/' . $url2 . ']' . $arr['name'] . '[/url]',
+                ],
+                'touid'         => (int)$arr['owner'],
+                'language' => $arg['language'],
+                'language_file' => 'comment',
+                'sender'        => ['uid' => -1],
+            ], -1, true);
+			
+			
+			
+			
+			
         }
     }
 

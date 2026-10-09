@@ -1,4 +1,21 @@
+(function () {
 'use strict';
+
+// ── i18n ────────────────────────────────────────────────────
+// AGS_LANG выводит browse.php (ключи js_* из languages/<lang>/browse.lang.php
+// без префикса). Fallback - английский текст, {1}, {2}… - аргументы.
+function t(key, fallback, ...args) {
+  const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+  const str = (typeof dict[key] === 'string') ? dict[key] : fallback;
+  return str.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] === undefined ? m : String(args[n - 1])));
+}
+
+function disabledItem(text) {
+  const a = document.createElement('a');
+  a.className = 'dropdown-item disabled';
+  a.textContent = text;
+  return a;
+}
 
 // ── Autocomplete search ─────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function () {
@@ -25,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function () {
           results.innerHTML = '';
 
           if (!Array.isArray(data) || data.length === 0) {
-            results.innerHTML = '<a class="dropdown-item disabled">No results found</a>';
+            results.appendChild(disabledItem(t('no_results', 'No results found')));
             results.classList.add("show");
             return;
           }
@@ -43,7 +60,8 @@ document.addEventListener("DOMContentLoaded", function () {
           results.classList.add("show");
         })
         .catch(() => {
-          results.innerHTML = '<a class="dropdown-item disabled">Error retrieving results</a>';
+          results.innerHTML = '';
+          results.appendChild(disabledItem(t('search_error', 'Error retrieving results')));
           results.classList.add("show");
         });
     }, 300);
@@ -118,3 +136,5 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+
+})();

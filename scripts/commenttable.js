@@ -1,3 +1,32 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 function toggleCommentSelect(checkbox) {
     const wrapper = document.getElementById('comment-' + checkbox.value);
     if (wrapper) {
@@ -24,7 +53,7 @@ function toggleMassDeleteButton() {
     const btn = document.getElementById('massDeleteButton');
     if (btn) {
         btn.classList.toggle('d-none', count === 0);
-        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete Selected (' + count + ')';
+        agsIconText(btn, 'fa-solid fa-trash', ' ' + t('cm_delete_selected', 'Delete Selected ({1})', count));
     }
 }
 
@@ -34,7 +63,7 @@ function toggleMergeButton() {
     if (btn) {
         // Merge имеет смысл только от 2 выбранных комментариев
         btn.classList.toggle('d-none', count < 2);
-        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Merge Selected (' + count + ')';
+        agsIconText(btn, 'fa-solid fa-code-merge', ' ' + t('ct_merge_selected', 'Merge Selected ({1})', count));
     }
 }
 
@@ -43,7 +72,7 @@ function mergeComments() {
     if (checked.length < 2) {
         return;
     }
-    if (!confirm('Merge ' + checked.length + ' selected comments into one? This cannot be undone.')) {
+    if (!confirm(t('ct_merge_confirm', 'Merge {1} selected comments into one? This cannot be undone.', checked.length))) {
         return;
     }
 
@@ -51,7 +80,7 @@ function mergeComments() {
     const originalHtml = btn ? btn.innerHTML : '';
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Merging...';
+        agsIconText(btn, 'spinner-border spinner-border-sm me-1', t('ct_merging', 'Merging...'), 'span');
     }
 
     fetch('comment.php?action=merge', {
@@ -65,7 +94,7 @@ function mergeComments() {
         .then(r => r.json())
         .then(data => {
             if (!data.success) {
-                alert('Error: ' + (data.error || 'Unknown error'));
+                alert(t('cm_error', 'Error: {1}', data.error || t('ct_unknown_error', 'Unknown error')));
                 if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
                 return;
             }
@@ -88,7 +117,7 @@ function mergeComments() {
             toggleMergeButton();
         })
         .catch(() => {
-            alert('Merge failed. Please try again.');
+            alert(t('ct_merge_failed', 'Merge failed. Please try again.'));
             if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
         });
 }

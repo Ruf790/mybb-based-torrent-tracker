@@ -1,3 +1,17 @@
+(function () {
+
+// ── i18n: строки приходят из PHP (js_* ключи ланга) как AGS_LANG ────────
+const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+function t(key, fallback, ...args) {
+    let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+    args.forEach((a, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+    });
+    return s;
+}
+const TYPE_FALLBACK = { thread: 'thread', post: 'post', user: 'user', forum: 'forum' };
+
 // Ctrl+K
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -47,25 +61,37 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
             return;
         }
 
-        box.innerHTML = items.map((item, i) => `
-<a href="${item.url}" class="sr-suggest-item" data-index="${i}">
-    <i class="fas ${item.icon} sr-suggest-icon"></i>
+        box.innerHTML = '';
+        items.forEach((item, i) => {
+            const a = document.createElement('a');
+            a.href = item.url;
+            a.className = 'sr-suggest-item';
+            a.dataset.index = String(i);
 
-    <span class="sr-suggest-text">
-        <span class="sr-suggest-subject">
-            ${item.title}
-        </span>
+            const icon = document.createElement('i');
+            icon.className = 'fas ' + item.icon + ' sr-suggest-icon';
 
-        <span class="sr-suggest-meta">
-            ${item.meta}
-        </span>
-    </span>
+            const text = document.createElement('span');
+            text.className = 'sr-suggest-text';
 
-    <span class="badge bg-secondary ms-auto">
-        ${item.type}
-    </span>
-</a>
-`).join('');
+            // title/meta - HTML с сервера (уже экранирован, с <mark> подсветкой)
+            const subj = document.createElement('span');
+            subj.className = 'sr-suggest-subject';
+            subj.innerHTML = item.title;
+
+            const meta = document.createElement('span');
+            meta.className = 'sr-suggest-meta';
+            meta.innerHTML = item.meta;
+
+            text.append(subj, meta);
+
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-secondary ms-auto';
+            badge.textContent = t('type_' + item.type, TYPE_FALLBACK[item.type] || String(item.type));
+
+            a.append(icon, text, badge);
+            box.appendChild(a);
+        });
 
         box.style.display = 'block';
     }
@@ -135,7 +161,11 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
         disableMobile: true,
         static:        true
     };
-    if (flatpickr.l10ns && flatpickr.l10ns.ru) baseOpts.locale = flatpickr.l10ns.ru;
+    // Локаль календаря - по языку сайта ('default' = английский)
+    const fpLocale = t('fp_locale', 'default');
+    if (fpLocale !== 'default' && flatpickr.l10ns && flatpickr.l10ns[fpLocale]) {
+        baseOpts.locale = flatpickr.l10ns[fpLocale];
+    }
 
     const fpFrom = flatpickr('#srDateFrom', baseOpts);
     const fpTo   = flatpickr('#srDateTo',   baseOpts);
@@ -146,4 +176,6 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
         if (fpFrom.input.value) fpTo.set('minDate', fpFrom.selectedDates[0] || fpFrom.input.value);
         if (fpTo.input.value)   fpFrom.set('maxDate', fpTo.selectedDates[0] || fpTo.input.value);
     }
+})();
+
 })();

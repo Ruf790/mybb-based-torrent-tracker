@@ -1,6 +1,30 @@
 window.ModerationModal = (function () {
     'use strict';
 
+    // ── i18n ────────────────────────────────────────────────
+    // AGS_LANG выводит browse.php (ключи js_* из ланга без префикса).
+    // Fallback - английский, {1}, {2}… - аргументы. Результат - обычный
+    // текст: вставлять через textContent / createTextNode или esc().
+    function t(key, fallback, ...args) {
+        const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+        const str = (typeof dict[key] === 'string') ? dict[key] : fallback;
+        return str.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] === undefined ? m : String(args[n - 1])));
+    }
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // Иконка (статичный HTML) + переведённый текст как текстовый узел.
+    function setIconText(el, iconHtml, text) {
+        el.innerHTML = iconHtml;
+        el.appendChild(document.createTextNode(text));
+    }
+
     const settings = {
         totalTorrents: null,
         selectAllId: 'checkAllSwitchVisible',
@@ -197,8 +221,8 @@ function showRestoreNotification(count) {
     if (!restoreInfo || !restoreMessage) return;
     
     const message = count === 1 
-        ? '1 torrent selection restored from previous session'
-        : count + ' torrents selection restored from previous session';
+        ? t('restore_one', '1 torrent selection restored from previous session')
+        : t('restore_many', '{1} torrents selection restored from previous session', count);
     
     restoreMessage.textContent = message;
     restoreInfo.style.display = 'block';
@@ -302,7 +326,7 @@ function showRestoreNotification(count) {
         }).join('');
 
         const more = allItems.length > maxShown
-            ? '<li class="mod-selected-list-more">…and ' + (allItems.length - maxShown) + ' more</li>'
+            ? '<li class="mod-selected-list-more">' + esc(t('list_more', '…and {1} more', allItems.length - maxShown)) + '</li>'
             : '';
 
         return '<ul>' + items + more + '</ul>';
@@ -418,7 +442,7 @@ function showRestoreNotification(count) {
             if (placeholder) {
                 placeholder.style.display = 'block';
                 const p = placeholder.querySelector('p');
-                if (p) p.textContent = 'No posters available';
+                if (p) p.textContent = t('no_posters', 'No posters available');
             }
             container.classList.remove('has-poster');
             return;
@@ -436,7 +460,7 @@ function showRestoreNotification(count) {
             }
             if (posterImg) {
                 posterImg.src = posters[0].url;
-                posterImg.alt = posters[0].title || 'Torrent poster';
+                posterImg.alt = posters[0].title || t('poster_alt', 'Torrent poster');
                 posterImg.title = posters[0].title || '';
                 posterImg.style.display = 'block';
                 posterImg.style.maxHeight = '350px';
@@ -447,7 +471,7 @@ function showRestoreNotification(count) {
                     if (placeholder) {
                         placeholder.style.display = 'block';
                         const p = placeholder.querySelector('p');
-                        if (p) p.textContent = 'Image not available';
+                        if (p) p.textContent = t('image_na', 'Image not available');
                     }
                 };
                 posterImg.onload = function() {
@@ -495,7 +519,7 @@ function showRestoreNotification(count) {
                 // preview on hover for free.
                 thumb.className = 'mod-poster-thumb poster-link';
                 thumb.dataset.zoom = poster.url;
-                thumb.alt = poster.title || 'Poster';
+                thumb.alt = poster.title || t('poster_thumb_alt', 'Poster');
                 thumb.title = poster.title || '';
                 thumb.loading = 'lazy';
                 thumb.onerror = function() {
@@ -507,8 +531,8 @@ function showRestoreNotification(count) {
                     const removeBtn = document.createElement('button');
                     removeBtn.type = 'button';
                     removeBtn.className = 'mod-poster-thumb-remove';
-                    removeBtn.setAttribute('aria-label', 'Remove from selection');
-                    removeBtn.title = 'Remove from selection';
+                    removeBtn.setAttribute('aria-label', t('remove_from_selection', 'Remove from selection'));
+                    removeBtn.title = t('remove_from_selection', 'Remove from selection');
                     removeBtn.innerHTML = '<i class="fas fa-times"></i>';
                     removeBtn.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -548,7 +572,7 @@ function showRestoreNotification(count) {
             
             if (posterImg) posterImg.style.display = 'none';
             if (posterCount) {
-                posterCount.textContent = posters.length + ' posters';
+                posterCount.textContent = t('posters_count', '{1} posters', posters.length);
                 posterCount.style.display = 'block';
             }
         }
@@ -632,7 +656,9 @@ function updateProgress() {
         if (seedersEl) seedersEl.textContent = totalSeeders.toLocaleString();
         if (leechersEl) leechersEl.textContent = totalLeechers.toLocaleString();
         if (categoriesEl) {
-            categoriesEl.textContent = categories.size + (categories.size === 1 ? ' category' : ' categories');
+            categoriesEl.textContent = categories.size === 1
+                ? t('category_one', '{1} category', categories.size)
+                : t('categories_many', '{1} categories', categories.size);
         }
 
         stats.style.display = 'flex';
@@ -669,8 +695,8 @@ function updateProgress() {
         const textEl = document.getElementById(settings.moveCategoryWarningTextId);
         if (textEl) {
             const names = Array.from(categoryNames.values()).slice(0, 5).join(', ');
-            const extra = categoryNames.size > 5 ? ` and ${categoryNames.size - 5} more` : '';
-            textEl.textContent = `Selected torrents come from ${categoryNames.size} different categories (${names}${extra}). They will all be moved to the category you pick below.`;
+            const extra = categoryNames.size > 5 ? t('move_warning_more', ' and {1} more', categoryNames.size - 5) : '';
+            textEl.textContent = t('move_warning', 'Selected torrents come from {1} different categories ({2}{3}). They will all be moved to the category you pick below.', categoryNames.size, names, extra);
         }
         warning.style.display = 'block';
     }
@@ -714,14 +740,14 @@ function updateProgress() {
         const origHtml = btn ? btn.innerHTML : '';
         if (btn) {
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Selecting...';
+            setIconText(btn, '<span class="spinner-border spinner-border-sm me-1"></span>', t('selecting', 'Selecting...'));
         }
 
         fetch('xmlhttp.php?action=select_all_filtered&' + window.location.search.replace(/^\?/, ''))
             .then(r => r.json())
             .then(data => {
                 if (!data.ids || !Array.isArray(data.ids)) {
-                    showModerationToast('Could not select all - please try again', 'error');
+                    showModerationToast(t('select_all_failed', 'Could not select all - please try again'), 'error');
                     return;
                 }
 
@@ -754,11 +780,11 @@ function updateProgress() {
 
                 updateTorrentSelectionCount();
 
-                const capNote = data.capped ? ` (capped at ${data.count})` : '';
-                showModerationToast(`Selected ${data.count} torrent(s) matching current filter${capNote}`, 'success');
+                const capNote = data.capped ? t('select_all_capped', ' (capped at {1})', data.count) : '';
+                showModerationToast(t('select_all_done', 'Selected {1} torrent(s) matching current filter{2}', data.count, capNote), 'success');
             })
             .catch(() => {
-                showModerationToast('Network error while selecting all', 'error');
+                showModerationToast(t('select_all_network', 'Network error while selecting all'), 'error');
             })
             .finally(() => {
                 if (btn) {
@@ -849,19 +875,19 @@ function updateProgress() {
         if (badge) {
             if (count > 0) {
                 badge.className = 'badge bg-success rounded-pill px-3 py-2';
-                badge.innerHTML = `<i class="fas fa-check-circle me-1"></i> ${count} selected`;
+                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', count));
             } else {
                 badge.className = 'badge bg-primary rounded-pill px-3 py-2';
-                badge.innerHTML = `<i class="fas fa-check-circle me-1"></i> 0 selected`;
+                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', 0));
             }
         }
 
         const applyBtn = document.getElementById(settings.applyBtnId);
         if (applyBtn) {
             applyBtn.disabled = count === 0;
-            applyBtn.innerHTML = count > 0
-                ? `<i class="fas fa-play me-1"></i> Apply (${count})`
-                : '<i class="fas fa-play me-1"></i> Apply';
+            setIconText(applyBtn, '<i class="fas fa-play me-1"></i> ', count > 0
+                ? t('apply_count', 'Apply ({1})', count)
+                : t('apply', 'Apply'));
         }
 
         updateMasterCheckbox();
@@ -891,27 +917,34 @@ function updateProgress() {
      * still works even on a page that hasn't added that markup.
      */
     function confirmDangerousAction(action, count) {
-        const actionNames = { delete: 'delete', banned: 'ban/unban', nuke: 'mark as Nuked', resetrating: 'reset the rating of' };
-        const actionName = actionNames[action] || action;
 
         // Уточняем в тексте, если часть выбранного - с других страниц
         // (не видна прямо сейчас), раз действие теперь применяется ко
         // всему накопленному выбору, а не только к видимому на экране.
         const visibleCount = document.querySelectorAll(checkboxSelector() + ':checked').length;
         const crossPageNote = count > visibleCount
-            ? ` (${count - visibleCount} of these are on other pages)`
+            ? t('confirm_cross_page', ' ({1} of these are on other pages)', count - visibleCount)
             : '';
 
-        const message = `You are about to ${actionName} ${count} torrent(s)${crossPageNote}.` +
-            (action === 'delete' ? ' This action is IRREVERSIBLE! All data will be permanently deleted.' : '') +
-            ' Are you sure you want to continue?';
+        // Целые фразы на каждое действие - порядок слов в языках разный.
+        const heads = {
+            delete: t('confirm_delete', 'You are about to delete {1} torrent(s){2}.', count, crossPageNote),
+            banned: t('confirm_banned', 'You are about to ban/unban {1} torrent(s){2}.', count, crossPageNote),
+            nuke: t('confirm_nuke', 'You are about to mark as Nuked {1} torrent(s){2}.', count, crossPageNote),
+            resetrating: t('confirm_resetrating', 'You are about to reset the rating of {1} torrent(s){2}.', count, crossPageNote)
+        };
+        const head = heads[action] || t('confirm_generic', 'You are about to {1} {2} torrent(s){3}.', action, count, crossPageNote);
+
+        const message = head +
+            (action === 'delete' ? t('confirm_irreversible', ' This action is IRREVERSIBLE! All data will be permanently deleted.') : '') +
+            t('confirm_continue', ' Are you sure you want to continue?');
 
         const modal = document.getElementById(settings.confirmModalId);
         const msgEl = document.getElementById(settings.confirmMessageId);
         const acceptBtn = document.getElementById(settings.confirmAcceptBtnId);
 
         if (!modal || !msgEl || !acceptBtn || typeof bootstrap === 'undefined') {
-            return Promise.resolve(window.confirm('⚠️ WARNING!\n\n' + message));
+            return Promise.resolve(window.confirm(t('warning', '⚠️ WARNING!') + '\n\n' + message));
         }
 
         msgEl.textContent = message;
@@ -970,10 +1003,10 @@ function updateProgress() {
         toast.innerHTML = `
             <div class="toast-header bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} text-white border-0">
                 <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
-                <strong class="me-auto">${type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Info'}</strong>
+                <strong class="me-auto">${esc(type === 'success' ? t('toast_success', 'Success') : type === 'error' ? t('toast_error', 'Error') : t('toast_info', 'Info'))}</strong>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
             </div>
-            <div class="toast-body">${message}</div>
+            <div class="toast-body">${esc(message)}</div>
         `;
 
         toastContainer.appendChild(toast);
@@ -1024,17 +1057,17 @@ function updateProgress() {
         const form = document.querySelector(settings.formSelector);
 
         if (!form) {
-            showModerationToast('Form not found', 'error');
+            showModerationToast(t('form_not_found', 'Form not found'), 'error');
             return;
         }
 
         if (!actionSelect || actionSelect.value === '0' || actionSelect.value === '') {
-            showModerationToast('Please select an action', 'warning');
+            showModerationToast(t('select_action', 'Please select an action'), 'warning');
             return;
         }
 
         if (count === 0) {
-            showModerationToast('Please select at least one torrent', 'warning');
+            showModerationToast(t('select_torrent', 'Please select at least one torrent'), 'warning');
             return;
         }
 
@@ -1051,7 +1084,7 @@ function updateProgress() {
             if (moveBlock) {
                 const catSelect = moveBlock.querySelector('select');
                 if (catSelect && (catSelect.value === '0' || catSelect.value === '')) {
-                    showModerationToast('Please select a category to move to', 'warning');
+                    showModerationToast(t('select_category', 'Please select a category to move to'), 'warning');
                     return;
                 }
             }
@@ -1060,7 +1093,7 @@ function updateProgress() {
         const applyBtn = document.getElementById(settings.applyBtnId);
         if (applyBtn) {
             applyBtn.disabled = true;
-            applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Processing...';
+            setIconText(applyBtn, '<i class="fas fa-spinner fa-spin me-1"></i> ', t('processing', 'Processing...'));
         }
 
         const modal = document.getElementById(settings.modalId);
@@ -1120,7 +1153,7 @@ function updateProgress() {
             if (contentType.indexOf('application/json') !== -1) {
                 const data = await res.json();
                 if (!data.ok) {
-                    throw new Error(data.message || 'Action failed');
+                    throw new Error(data.message || t('action_failed_generic', 'Action failed'));
                 }
                 okMsg = data.message || null;
             } else {
@@ -1139,7 +1172,7 @@ function updateProgress() {
                     throw new Error(finalErr);
                 }
                 if (!res.ok || !finalOk) {
-                    throw new Error('Unexpected response from the admin panel (admin session or 2FA may have expired). Open the admin panel, verify, and try again.');
+                    throw new Error(t('unexpected_response', 'Unexpected response from the admin panel (admin session or 2FA may have expired). Open the admin panel, verify, and try again.'));
                 }
                 okMsg = finalOk;
             }
@@ -1152,14 +1185,14 @@ function updateProgress() {
             const url = new URL(window.location.href);
             url.searchParams.delete('mod_success');
             url.searchParams.delete('mod_error');
-            url.searchParams.set('mod_success', okMsg || 'Action completed successfully!');
+            url.searchParams.set('mod_success', okMsg || t('action_done', 'Action completed successfully!'));
             window.location.href = url.toString();
         } catch (err) {
             if (applyBtn) {
                 applyBtn.disabled = false;
-                applyBtn.innerHTML = '<i class="fas fa-play me-1"></i> Apply';
+                setIconText(applyBtn, '<i class="fas fa-play me-1"></i> ', t('apply', 'Apply'));
             }
-            showModerationToast('Action failed: ' + err.message, 'error');
+            showModerationToast(t('action_failed', 'Action failed: {1}', err.message), 'error');
         }
     }
 
@@ -1235,20 +1268,20 @@ function updateProgress() {
                 }
 
                 const descriptions = {
-                    move: 'Move selected torrents to another category',
-                    delete: '⚠️ PERMANENTLY DELETE selected torrents and all associated data. This action is irreversible!',
-                    sticky: 'Toggle "Sticky" status for selected torrents',
-                    visible: 'Toggle visibility for selected torrents',
-                    banned: '⚠️ Toggle ban status for selected torrents',
-                    nuke: '⚠️ Mark selected torrents as "Nuked" (rule violation)',
-                    openclose: 'Open/Close comments for selected torrents',
-                    free: 'Toggle Freeleech for selected torrents',
-                    silver: 'Toggle Silverleech for selected torrents',
-                    doubleupload: 'Toggle Double Upload for selected torrents',
-                    thirtypercent: 'Toggle 30% Leech for selected torrents',
-                    anonymous: 'Make selected torrents anonymous or restore authorship',
-                    request: 'Toggle "Request" status for selected torrents',
-                    resetrating: '⚠️ Permanently reset all user ratings for selected torrents. This cannot be undone!'
+                    move: t('desc_move', 'Move selected torrents to another category'),
+                    delete: t('desc_delete', '⚠️ PERMANENTLY DELETE selected torrents and all associated data. This action is irreversible!'),
+                    sticky: t('desc_sticky', 'Toggle "Sticky" status for selected torrents'),
+                    visible: t('desc_visible', 'Toggle visibility for selected torrents'),
+                    banned: t('desc_banned', '⚠️ Toggle ban status for selected torrents'),
+                    nuke: t('desc_nuke', '⚠️ Mark selected torrents as "Nuked" (rule violation)'),
+                    openclose: t('desc_openclose', 'Open/Close comments for selected torrents'),
+                    free: t('desc_free', 'Toggle Freeleech for selected torrents'),
+                    silver: t('desc_silver', 'Toggle Silverleech for selected torrents'),
+                    doubleupload: t('desc_doubleupload', 'Toggle Double Upload for selected torrents'),
+                    thirtypercent: t('desc_thirtypercent', 'Toggle 30% Leech for selected torrents'),
+                    anonymous: t('desc_anonymous', 'Make selected torrents anonymous or restore authorship'),
+                    request: t('desc_request', 'Toggle "Request" status for selected torrents'),
+                    resetrating: t('desc_resetrating', '⚠️ Permanently reset all user ratings for selected torrents. This cannot be undone!')
                 };
 
                 if (actionInfo && actionDesc) {
@@ -1264,11 +1297,13 @@ function updateProgress() {
                             if (dangerous.includes(value)) {
                                 alertEl.className = 'alert alert-danger mt-3';
                                 alertEl.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>
-                                                    <span id="${settings.actionDescriptionId}">${desc}</span>`;
+                                                    <span id="${settings.actionDescriptionId}"></span>`;
+                                alertEl.querySelector('span').textContent = desc;
                             } else {
                                 alertEl.className = 'alert alert-warning mt-3';
                                 alertEl.innerHTML = `<i class="fas fa-info-circle me-2"></i>
-                                                    <span id="${settings.actionDescriptionId}">${desc}</span>`;
+                                                    <span id="${settings.actionDescriptionId}"></span>`;
+                                alertEl.querySelector('span').textContent = desc;
                             }
                         }
                     } else {

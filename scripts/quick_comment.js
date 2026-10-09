@@ -1,5 +1,34 @@
-var l_ajaxerror = "There was a problem with the request. Please report this to administrator.";
-var l_updateerror = "There was an error performing the update.\n\nError Message:";
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
+var l_ajaxerror = t('qc_ajax_error', "There was a problem with the request. Please report this to the administrator.");
+var l_updateerror = t('qc_update_error', "There was an error performing the update.\n\nError message: ");
 
 function intval(mixed_var, base) {
     var tmp;
@@ -35,16 +64,16 @@ function showModalError(message) {
                 <div class="modal-content border-0 shadow-lg animate__animated animate__zoomIn">
                     <div class="modal-header bg-danger text-white">
                         <h5 class="modal-title">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>Error
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>${agsEsc(t('qc_error_title', 'Error'))}
                         </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="${agsEsc(t('qc_close', 'Close'))}"></button>
                     </div>
                     <div class="modal-body bg-light">
                         <p class="mb-0 text-danger fw-bold">${message}</p>
                     </div>
                     <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-danger" data-bs-dismiss="modal">
-                            <i class="bi bi-x-circle me-1"></i>Close
+                            <i class="bi bi-x-circle me-1"></i>${agsEsc(t('qc_close', 'Close'))}
                         </button>
                     </div>
                 </div>
@@ -122,13 +151,13 @@ function TSajaxquickcomment(TorrentID) {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(response => {
-        if (!response.ok) throw new Error('Network response was not ok');
+        if (!response.ok) throw new Error(t('qc_network', 'Network response was not ok'));
         return response.text();
     })
     .then(result => {
         var match = result.match(/<error>(.*)<\/error>/);
         if (match) {
-            showModalError(l_updateerror + (match[1] || l_ajaxerror));
+            showModalError(agsEsc(l_updateerror) + (match[1] || agsEsc(l_ajaxerror)));
         } else {
             var redirectMatch = result.match(/<redirect>(.*?)<\/redirect>/);
             if (redirectMatch) {
@@ -168,7 +197,7 @@ function TSajaxquickcomment(TorrentID) {
         }
     })
     .catch(error => {
-        showModalError(l_ajaxerror + "\n\n" + error.message);
+        showModalError(agsEsc(l_ajaxerror + "\n\n" + error.message));
     })
     .finally(() => {
         if (loadingLayer) loadingLayer.style.display = 'none';
@@ -176,4 +205,4 @@ function TSajaxquickcomment(TorrentID) {
             button.disabled = false;
         });
     });
-}
+}

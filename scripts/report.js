@@ -1,3 +1,32 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 // scripts/report.js
 // Универсальная система репортов
 
@@ -96,7 +125,7 @@ class ReportSystem {
             const infoAlert = modal.querySelector('.alert-info');
             if (infoAlert) {
                 infoAlert.className = 'alert alert-info mb-3';
-                infoAlert.innerHTML = `<i class="bi bi-info-circle me-2"></i>${this.getInfoText(data, config.isComment)}`;
+                this.renderInfoText(infoAlert, data, config.isComment);
             }
         } else {
             submitBtn.disabled = true;
@@ -107,7 +136,11 @@ class ReportSystem {
             const infoAlert = modal.querySelector('.alert-info');
             if (infoAlert) {
                 infoAlert.className = 'alert alert-danger mb-3';
-                infoAlert.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i><strong>Error:</strong> Cannot identify item to report. Please use a valid report button.';
+                agsIconText(infoAlert, 'bi bi-exclamation-triangle me-2', '');
+                const errLabel = document.createElement('strong');
+                errLabel.textContent = t('rep_err_label', 'Error:');
+                infoAlert.appendChild(errLabel);
+                infoAlert.appendChild(document.createTextNode(' ' + t('rep_err_no_item', 'Cannot identify item to report. Please use a valid report button.')));
             }
         }
         
@@ -124,17 +157,17 @@ class ReportSystem {
                 id: button.getAttribute('data-comment-id') || '',
                 userId: button.getAttribute('data-comment-author-id') || '0',
                 text: button.getAttribute('data-comment-text') || '',
-                author: button.getAttribute('data-comment-author') || 'User',
+                author: button.getAttribute('data-comment-author') || t('rep_user', 'User'),
                 date: button.getAttribute('data-comment-date') || '',
                 parentId: button.getAttribute('data-parent-id') || '',
-                name: `Comment by ${button.getAttribute('data-comment-author') || 'User'}`
+                name: t('rep_comment_by', 'Comment by {1}', button.getAttribute('data-comment-author') || t('rep_user', 'User'))
             };
         } else {
             return {
                 type: button.getAttribute('data-report-type') || 'torrent',
                 id: button.getAttribute('data-report-id') || '',
                 userId: button.getAttribute('data-report-userid') || '0',
-                name: button.getAttribute('data-report-name') || 'Item'
+                name: button.getAttribute('data-report-name') || t('rep_item', 'Item')
             };
         }
     }
@@ -171,16 +204,18 @@ class ReportSystem {
         const infoElement = document.getElementById(config.infoTextId);
         if (!infoElement) return;
         
-        let text = `Reporting ${data.type.charAt(0).toUpperCase() + data.type.slice(1)}`;
+        let text;
         
         if (data.type === 'comment') {
-            text = `Reporting Comment by ${data.author}`;
+            text = t('rep_reporting_comment', 'Reporting comment by {1}', data.author);
         } else if (data.name) {
-            text += `: ${data.name}`;
+            text = t('rep_reporting_named', 'Reporting {1}: {2}', this.typeLabel(data.type), data.name);
+        } else {
+            text = t('rep_reporting', 'Reporting {1}', this.typeLabel(data.type));
         }
         
         if (data.id && data.id !== '0') {
-            text += ` (ID: ${data.id})`;
+            text += ' (' + t('rep_id', 'ID: {1}', data.id) + ')';
         }
         
         infoElement.textContent = text;
@@ -198,12 +233,12 @@ class ReportSystem {
         
         if (previewText) {
             const displayText = data.text && data.text.length > 150 ? 
-                data.text.substring(0, 147) + '...' : data.text || 'Comment text will appear here...';
+                data.text.substring(0, 147) + '...' : data.text || t('rep_comment_placeholder', 'Comment text will appear here...');
             previewText.textContent = this.decodeHtmlEntities(displayText);
         }
         
         if (authorPreview) {
-            authorPreview.textContent = data.author || 'User';
+            authorPreview.textContent = data.author || t('rep_user', 'User');
         }
         
         if (datePreview) {
@@ -211,11 +246,42 @@ class ReportSystem {
         }
     }
     
-    getInfoText(data, isComment) {
-        if (isComment) {
-            return `Reporting comment by <strong>${this.escapeHtml(data.author)}</strong> (ID: ${this.escapeHtml(data.id)})`;
+    // Report type name for the UI (lang has it in the form used inside "Reporting {1}")
+    typeLabel(type) {
+        if (type === 'torrent') return t('rep_type_torrent', 'Torrent');
+        if (type === 'comment') return t('rep_type_comment', 'Comment');
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+    
+    // Appends a translated template as DOM nodes; args at boldIdx go into <strong>.
+    appendFmt(el, tpl, args, boldIdx = []) {
+        const re = /\{(\d+)\}|%(\d+)\$s/g;
+        let last = 0;
+        let m;
+        while ((m = re.exec(tpl)) !== null) {
+            if (m.index > last) el.appendChild(document.createTextNode(tpl.slice(last, m.index)));
+            const i   = parseInt(m[1] || m[2], 10) - 1;
+            const val = (i >= 0 && i < args.length) ? String(args[i]) : m[0];
+            if (boldIdx.includes(i)) {
+                const b = document.createElement('strong');
+                b.textContent = val;
+                el.appendChild(b);
+            } else {
+                el.appendChild(document.createTextNode(val));
+            }
+            last = re.lastIndex;
         }
-        return `Reporting <strong>${this.escapeHtml(data.type)}</strong>: ${this.escapeHtml(data.name)} (ID: ${this.escapeHtml(data.id)})`;
+        if (last < tpl.length) el.appendChild(document.createTextNode(tpl.slice(last)));
+    }
+    
+    renderInfoText(el, data, isComment) {
+        agsIconText(el, 'bi bi-info-circle me-2', '');
+        if (isComment) {
+            this.appendFmt(el, t('rep_reporting_comment', 'Reporting comment by {1}'), [data.author], [0]);
+        } else {
+            this.appendFmt(el, t('rep_reporting_named', 'Reporting {1}: {2}'), [this.typeLabel(data.type), data.name], [0]);
+        }
+        el.appendChild(document.createTextNode(' (' + t('rep_id', 'ID: {1}', data.id) + ')'));
     }
     
     initCharCounter(descriptionId, charCountId) {
@@ -269,14 +335,14 @@ class ReportSystem {
         // Проверяем ID
         const idField = document.getElementById(config.reportedIdField);
         if (!idField || !idField.value || idField.value === '0') {
-            this.showAlert(modal, 'Error: Cannot identify item to report.', 'danger');
+            this.showAlert(modal, t('rep_err_no_item_short', 'Error: Cannot identify item to report.'), 'danger');
             return false;
         }
         
         // Проверяем причину
         const reasonField = document.getElementById(config.reasonId);
         if (!reasonField || !reasonField.value) {
-            this.showAlert(modal, 'Please select a reason for your report.', 'danger');
+            this.showAlert(modal, t('rep_select_reason', 'Please select a reason for your report.'), 'danger');
             reasonField?.focus();
             return false;
         }
@@ -286,7 +352,7 @@ class ReportSystem {
         const captchaInput = document.getElementById(config.captchaInputId);
         
         if (captchaInput && !captchaInput.value.trim()) {
-            this.showAlert(modal, 'Please enter the security code.', 'danger');
+            this.showAlert(modal, t('rep_enter_code', 'Please enter the security code.'), 'danger');
             captchaInput.focus();
             return false;
         }
@@ -294,7 +360,7 @@ class ReportSystem {
         // Показываем индикатор загрузки
         const submitBtn = document.getElementById(config.submitBtnId);
         const originalText = submitBtn.innerHTML;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Processing...';
+        agsIconText(submitBtn, 'spinner-border spinner-border-sm me-1', ' ' + t('rep_processing', 'Processing...'), 'span');
         submitBtn.disabled = true;
         
         // Таймаут
@@ -302,7 +368,7 @@ class ReportSystem {
             if (submitBtn.disabled) {
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
-                this.showAlert(modal, 'Request timeout. Please try again.', 'warning');
+                this.showAlert(modal, t('rep_timeout', 'Request timeout. Please try again.'), 'warning');
             }
         }, 30000);
         
@@ -319,7 +385,7 @@ class ReportSystem {
             clearTimeout(timeout);
             
             if (data.trim() === 'success' || data.includes('success') || data.includes('Location:')) {
-                this.showAlert(modal, 'Report submitted successfully!', 'success');
+                this.showAlert(modal, t('rep_success', 'Report submitted successfully!'), 'success');
                 
                 // Закрываем через 2 секунды
                 setTimeout(() => {
@@ -334,13 +400,13 @@ class ReportSystem {
                 } catch (e) {
                     // ответ не JSON - используем как есть
                 }
-                throw new Error(serverMessage || 'Server error');
+                throw new Error(serverMessage || t('rep_server_error', 'Server error'));
             }
         })
         .catch(error => {
             clearTimeout(timeout);
             console.error('Error:', error);
-            this.showAlert(modal, error.message || 'Failed to submit report. Please try again.', 'danger');
+            this.showAlert(modal, error.message || t('rep_failed', 'Failed to submit report. Please try again.'), 'danger');
             
             // Код капчи одноразовый и сервер уже аннулировал его при этой
             // попытке (вне зависимости от результата) - показываем новую картинку.
@@ -406,7 +472,7 @@ class ReportSystem {
         // Сбрасываем информационный текст
         const infoText = document.getElementById(config.infoTextId);
         if (infoText) {
-            infoText.textContent = config.isComment ? 'Comment' : 'Torrent';
+            infoText.textContent = config.isComment ? t('rep_label_comment', 'Comment') : t('rep_label_torrent', 'Torrent');
         }
         
         // Сбрасываем предпросмотр комментария
@@ -415,15 +481,15 @@ class ReportSystem {
             const authorPreview = document.getElementById('commentAuthorPreview');
             const datePreview = document.getElementById('commentDatePreview');
             
-            if (previewText) previewText.textContent = 'Comment text will appear here...';
-            if (authorPreview) authorPreview.textContent = 'User';
+            if (previewText) previewText.textContent = t('rep_comment_placeholder', 'Comment text will appear here...');
+            if (authorPreview) authorPreview.textContent = t('rep_user', 'User');
             if (datePreview) datePreview.textContent = '';
         }
         
         // Сбрасываем кнопку
         const submitBtn = document.getElementById(config.submitBtnId);
         if (submitBtn) {
-            submitBtn.innerHTML = '<i class="bi bi-send me-1"></i>Submit Report';
+            agsIconText(submitBtn, 'bi bi-send me-1', t('rep_submit', 'Submit Report'));
             submitBtn.disabled = false;
             submitBtn.classList.remove('btn-secondary');
             submitBtn.classList.add('btn-primary');

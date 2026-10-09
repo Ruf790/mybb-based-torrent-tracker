@@ -1,11 +1,18 @@
 (function() {
+    // I18N: AGS_LANG (js_* lang keys, prefix stripped) is printed by moderation.php; English fallbacks are used if a key is missing.
+    function t(key, fallback, ...args) {
+        let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+        args.forEach(function (a, i) { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+        return s;
+    }
+
     const form = document.getElementById('delayedModForm');
     if (!form) return;
     
     form.addEventListener('submit', function(e) {
         const typeChecked = form.querySelectorAll('input[name="type"]:checked');
         if (typeChecked.length === 0) {
-            alert('Please select a moderation action to schedule.');
+            alert(t('dm_select_action', 'Please select a moderation action to schedule.'));
             e.preventDefault();
             return false;
         }
@@ -18,7 +25,7 @@
             const year = parseInt(dateYear.value);
             const currentYear = new Date().getFullYear();
             if (isNaN(year) || year < currentYear || year > currentYear + 10) {
-                errorMsg = 'Please enter a valid year (' + currentYear + ' - ' + (currentYear+10) + ').';
+                errorMsg = t('dm_bad_year', 'Please enter a valid year ({1} - {2}).', currentYear, currentYear + 10);
                 dateYear.focus();
             }
         }
@@ -26,7 +33,7 @@
         if (!errorMsg && dateTime && dateTime.value) {
             const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
             if (!timeRegex.test(dateTime.value.trim())) {
-                errorMsg = 'Please enter time in HH:MM format (24-hour). Example: 14:30';
+                errorMsg = t('dm_bad_time', 'Please enter time in HH:MM format (24-hour). Example: 14:30');
                 dateTime.focus();
             }
         }
@@ -35,7 +42,7 @@
         if (!errorMsg && moveRadio && moveRadio.checked) {
             const forumSelect = form.querySelector('select[name="fid"]');
             if (forumSelect && (!forumSelect.value || forumSelect.value === '0')) {
-                errorMsg = 'Please select a destination forum for move/copy operation.';
+                errorMsg = t('dm_select_forum', 'Please select a destination forum for move/copy operation.');
                 forumSelect.focus();
             }
         }
@@ -46,7 +53,7 @@
             return false;
         }
         
-        if (!confirm('Schedule this moderation action on the selected date & time? You can manage later from queue.')) {
+        if (!confirm(t('dm_confirm', 'Schedule this moderation action on the selected date and time? You can manage it later from the queue.'))) {
             e.preventDefault();
             return false;
         }
@@ -54,7 +61,11 @@
         const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-pulse me-2"></i> Scheduling...';
+            while (submitBtn.firstChild) submitBtn.removeChild(submitBtn.firstChild);
+            const spin = document.createElement('i');
+            spin.className = 'fas fa-spinner fa-pulse me-2';
+            submitBtn.appendChild(spin);
+            submitBtn.appendChild(document.createTextNode(' ' + t('dm_scheduling', 'Scheduling...')));
         }
         return true;
     });

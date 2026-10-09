@@ -1,3 +1,32 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 // ===== Peers tab switching (?tab=peers в URL) =====
 document.addEventListener("DOMContentLoaded", function () {
     var params = new URLSearchParams(window.location.search);
@@ -25,9 +54,9 @@ document.addEventListener("DOMContentLoaded", function () {
 function copyNfo() {
     var text = document.getElementById("nfoText").textContent;
     navigator.clipboard.writeText(text).then(function() {
-        showToast("NFO copied to clipboard!", "success");
+        showToast(t("dt_nfo_copied", "NFO copied to clipboard!"), "success");
     }).catch(function() {
-        showToast("Copy failed", "danger");
+        showToast(t("dt_copy_failed", "Copy failed"), "danger");
     });
 }
 
@@ -182,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Validate required fields
         if (!name || !descr) {
-            alert("Please fill out all required fields.");
+            alert(t("dt_fill_required", "Please fill out all required fields."));
             e.preventDefault();
             return;
         }
@@ -234,7 +263,7 @@ document.addEventListener("DOMContentLoaded", function() {
         confirmBtn.addEventListener("click", function() {
             if (currentTorrentId && confirmCheckbox && confirmCheckbox.checked) {
                 // Показываем состояние загрузки
-                confirmBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Deleting...';
+                agsIconText(confirmBtn, 'bi bi-hourglass-split me-1', t('dt_deleting', 'Deleting...'));
                 confirmBtn.disabled = true;
 
                 // Создаем и отправляем форму POST
@@ -281,7 +310,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             if (confirmBtn) {
                 confirmBtn.disabled = true;
-                confirmBtn.innerHTML = '<i class="bi bi-trash3 me-1"></i>Delete Torrent';
+                agsIconText(confirmBtn, 'bi bi-trash3 me-1', t('dt_delete_torrent', 'Delete Torrent'));
             }
         });
     }
@@ -309,7 +338,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const magnetUrl = magnetInput.value;
 
     if (!magnetUrl || !magnetUrl.startsWith("magnet:?")) {
-      showToast("Invalid magnet link", "error");
+      showToast(t("dt_magnet_invalid", "Invalid magnet link"), "error");
       return;
     }
 
@@ -318,7 +347,7 @@ document.addEventListener("DOMContentLoaded", function() {
       window.location.href = magnetUrl;
 
       // Показываем уведомление с тоастом
-      showToast("Opening torrent client...", "info");
+      showToast(t("dt_magnet_opening", "Opening torrent client..."), "info");
 
       // Закрываем модалку и убираем оверлей
       if (modalInstance) {
@@ -334,7 +363,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     } catch (e) {
       console.error(e);
-      showToast("Could not open torrent client. Please copy the magnet link manually.", "error");
+      showToast(t("dt_magnet_open_failed", "Could not open torrent client. Please copy the magnet link manually."), "error");
     }
   });
 
@@ -347,7 +376,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (copySuccess) copySuccess.classList.remove("d-none");
 
       const originalHtml = copyBtn.innerHTML;
-      copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+      agsIconText(copyBtn, 'fas fa-check me-1', t('dt_copied', 'Copied!'));
       copyBtn.classList.remove("btn-primary");
       copyBtn.classList.add("btn-success");
 
@@ -360,7 +389,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     }).catch(err => {
       console.error(err);
-      showToast("Could not copy to clipboard", "error");
+      showToast(t("dt_clipboard_failed", "Could not copy to clipboard"), "error");
     });
   });
 
@@ -377,7 +406,7 @@ document.addEventListener("DOMContentLoaded", function() {
           magnet = magnet.trim();
 
           if (!magnet.startsWith("magnet:?")) {
-            showToast("Magnet link error", "error");
+            showToast(t("dt_magnet_error", "Magnet link error"), "error");
             return;
           }
 
@@ -396,7 +425,7 @@ document.addEventListener("DOMContentLoaded", function() {
         })
         .catch(err => {
           console.error(err);
-          showToast("Failed to load magnet link", "error");
+          showToast(t("dt_magnet_load_failed", "Failed to load magnet link"), "error");
         });
     });
   });
@@ -446,7 +475,7 @@ function TS_IMDB(torrentId) {
     const postData = "tid=" + parseInteger(torrentId);
 
     // Update button state
-    updateButton.textContent = 'Please Wait...';
+    updateButton.textContent = t('dt_please_wait', 'Please Wait...');
     updateButton.disabled = true;
 
     fetch(baseurl + "/ajax_imdb.php", {
@@ -465,14 +494,14 @@ function TS_IMDB(torrentId) {
     .then(response => {
         if (response.match(/<error>(.*)<\/error>/)) {
             const errorMatch = response.match(/<error>(.*)<\/error>/);
-            const errorMessage = errorMatch[1] || 'An error occurred';
+            const errorMessage = errorMatch[1] || t('dt_error_generic', 'An error occurred');
 
-            alert('Update error: ' + errorMessage);
-            updateButton.textContent = 'Refresh';
+            alert(t('dt_update_error', 'Update error: {1}', errorMessage));
+            updateButton.textContent = t('dt_refresh', 'Refresh');
             updateButton.disabled = false;
         } else {
             imdbDetails.innerHTML = response;
-            updateButton.textContent = 'Updated';
+            updateButton.textContent = t('dt_updated', 'Updated');
             updateButton.disabled = false;
 
             // Visual feedback
@@ -489,8 +518,8 @@ function TS_IMDB(torrentId) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('AJAX error occurred');
-        updateButton.textContent = 'Refresh';
+        alert(t('dt_ajax_error', 'AJAX error occurred'));
+        updateButton.textContent = t('dt_refresh', 'Refresh');
         updateButton.disabled = false;
     });
 }

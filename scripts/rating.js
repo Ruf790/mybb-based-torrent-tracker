@@ -1,3 +1,32 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 var userRating = 0;
 var torrentId  = 0;
 var ratingBaseUrl = '';
@@ -62,7 +91,7 @@ function rateTorrent(val) {
             displayEl.innerHTML = html;
         }
 
-        if (typeof showToast === 'function') showToast('Rating saved!', 'success');
+        if (typeof showToast === 'function') showToast(t('rate_saved', 'Rating saved!'), 'success');
     });
 }
 function rateThread(val) {
@@ -106,6 +135,6 @@ function rateThread(val) {
             displayEl.innerHTML = html;
         }
 
-        if (typeof showToast === 'function') showToast('Rating saved!', 'success');
+        if (typeof showToast === 'function') showToast(t('rate_saved', 'Rating saved!'), 'success');
     });
-}
+}

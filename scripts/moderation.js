@@ -5,6 +5,70 @@
     'use strict';
 
     // ============================
+    // 0. I18N + SAFE DOM HELPERS
+    // ============================
+    // AGS_LANG (js_* lang keys, prefix stripped) is printed by moderation.php before this script.
+    // English fallbacks below are used when a key is missing. Translations are inserted as text only.
+    function t(key, fallback, ...args) {
+        let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+        args.forEach(function (a, i) { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+        return s;
+    }
+
+    function clearNode(node) {
+        while (node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    function el(tag, className, text) {
+        const n = document.createElement(tag);
+        if (className) n.className = className;
+        if (text !== undefined) n.textContent = text;
+        return n;
+    }
+
+    // <i class="{iconClass}"></i> + " " + text (text node), replaces the node content
+    function setIconLabel(node, iconClass, text) {
+        clearNode(node);
+        node.appendChild(el('i', iconClass));
+        node.appendChild(document.createTextNode(' ' + text));
+    }
+
+    // <div class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>text</div>
+    function showSpinner(container, text) {
+        clearNode(container);
+        const box = el('div', 'text-center text-muted');
+        box.appendChild(el('i', 'fas fa-spinner fa-spin me-2'));
+        box.appendChild(document.createTextNode(text));
+        container.appendChild(box);
+    }
+
+    // <div class="{cls}"><i class="{icon}"></i><strong>title</strong><p class="mb-0 mt-2 small">text</p></div>
+    function showNotice(container, cls, iconClass, title, text) {
+        clearNode(container);
+        const box = el('div', cls);
+        box.appendChild(el('i', iconClass));
+        box.appendChild(el('strong', '', title));
+        box.appendChild(el('p', 'mb-0 mt-2 small', text));
+        container.appendChild(box);
+    }
+
+    // Server-provided values (thread title, author, ...) keep their previous HTML handling.
+    function appendHtml(parent, html) {
+        const s = document.createElement('span');
+        s.innerHTML = html;
+        parent.appendChild(s);
+    }
+
+    // <div class="{cls}"><strong>label</strong> {server value}</div>
+    function labelRow(cls, label, value) {
+        const row = el('div', cls);
+        row.appendChild(el('strong', '', label));
+        row.appendChild(document.createTextNode(' '));
+        appendHtml(row, value);
+        return row;
+    }
+
+    // ============================
     // 4. MOVE POSTS PAGE FUNCTIONS
     // ============================
     
@@ -56,7 +120,7 @@
             // Show loading state
             if (threadPreview && previewContent) {
                 threadPreview.classList.add('show');
-                previewContent.innerHTML = '<div class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Validating URL...</div>';
+                showSpinner(previewContent, t('validating_url', 'Validating URL...'));
             }
             
             typingTimer = setTimeout(function() {
@@ -74,7 +138,7 @@
             // Show loading state on button
             const submitBtn = this.querySelector('.btn-move');
             if (submitBtn) {
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Moving Posts...';
+                setIconLabel(submitBtn, 'fas fa-spinner fa-spin me-2', t('moving_posts', 'Moving Posts...'));
                 submitBtn.disabled = true;
             }
         });
@@ -89,7 +153,7 @@
         
         if (!url.trim()) {
             if (showAlert) {
-                showToast('Please enter a thread URL', 'error');
+                showToast(t('toast_enter_url', 'Please enter a thread URL'), 'error');
             }
             if (threadPreview) {
                 threadPreview.classList.remove('show');
@@ -102,10 +166,12 @@
         
         if (!threadInfo.tid) {
             if (showAlert) {
-                showToast('Invalid thread URL format. Please use a valid thread link.', 'error');
+                showToast(t('toast_invalid_url', 'Invalid thread URL format. Please use a valid thread link.'), 'error');
             }
             if (previewContent && threadPreview) {
-                previewContent.innerHTML = '<div class="text-danger"><i class="fas fa-exclamation-circle me-2"></i><strong>Invalid URL format</strong><p class="mb-0 mt-2 small">Please use a valid thread URL containing thread ID.</p></div>';
+                showNotice(previewContent, 'text-danger', 'fas fa-exclamation-circle me-2',
+                    t('invalid_url_title', 'Invalid URL format'),
+                    t('invalid_url_text', 'Please use a valid thread URL containing thread ID.'));
                 threadPreview.classList.add('show');
             }
             return false;
@@ -117,10 +183,12 @@
         const currentThreadId = document.querySelector('input[name="tid"]')?.value || '';
         if (threadId == currentThreadId) {
             if (showAlert) {
-                showToast('Cannot move posts to the same thread. Please choose a different thread.', 'error');
+                showToast(t('toast_same_thread', 'Cannot move posts to the same thread. Please choose a different thread.'), 'error');
             }
             if (previewContent && threadPreview) {
-                previewContent.innerHTML = '<div class="text-warning"><i class="fas fa-exclamation-triangle me-2"></i><strong>Same Thread Detected</strong><p class="mb-0 mt-2 small">You are trying to move posts to the same thread. Please select a different destination thread.</p></div>';
+                showNotice(previewContent, 'text-warning', 'fas fa-exclamation-triangle me-2',
+                    t('same_thread_title', 'Same Thread Detected'),
+                    t('same_thread_text', 'You are trying to move posts to the same thread. Please select a different destination thread.'));
                 threadPreview.classList.add('show');
             }
             return false;
@@ -207,7 +275,7 @@
         if (!threadPreview || !previewContent) return;
 
         threadPreview.classList.add('show');
-        previewContent.innerHTML = '<div class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Validating thread...</div>';
+        showSpinner(previewContent, t('validating_thread', 'Validating thread...'));
 
         fetch('xmlhttp.php?action=get_thread_info&tid=' + encodeURIComponent(threadId))
             .then(response => {
@@ -218,40 +286,43 @@
             })
             .then(data => {
                 if (!data.success) {
-                    const message = (data.errors && data.errors[0]) || 'Could not load thread info';
-                    previewContent.innerHTML =
-                        '<div class="text-danger"><i class="fas fa-exclamation-circle me-2"></i>' + message + '</div>';
+                    const serverMessage = data.errors && data.errors[0];
+                    const errBox = el('div', 'text-danger');
+                    errBox.appendChild(el('i', 'fas fa-exclamation-circle me-2'));
+                    if (serverMessage) {
+                        appendHtml(errBox, serverMessage);
+                    } else {
+                        errBox.appendChild(document.createTextNode(t('thread_load_failed', 'Could not load thread info')));
+                    }
+                    clearNode(previewContent);
+                    previewContent.appendChild(errBox);
                     return;
                 }
 
-                previewContent.innerHTML =
-                    '<div>' +
-                    '<div class="mb-3">' +
-                    '<strong>Thread Title:</strong> ' + data.title +
-                    '</div>' +
-                    '<div class="row">' +
-                    '<div class="col-md-6 mb-2">' +
-                    '<strong>Author:</strong> ' + data.author +
-                    '</div>' +
-                    '<div class="col-md-6 mb-2">' +
-                    '<strong>Total Posts:</strong> ' + data.posts +
-                    '</div>' +
-                    '<div class="col-md-6 mb-2">' +
-                    '<strong>Last Post:</strong> ' + data.lastpost +
-                    '</div>' +
-                    '<div class="col-md-6 mb-2">' +
-                    '<strong>Forum:</strong> ' + data.forum +
-                    '</div>' +
-                    '</div>' +
-                    '<div class="mt-3 text-success small">' +
-                    '<i class="fas fa-check-circle me-2"></i>' +
-                    'Valid thread URL detected. Ready to move posts.' +
-                    '</div>' +
-                    '</div>';
+                const info = el('div');
+                info.appendChild(labelRow('mb-3', t('thread_title', 'Thread Title:'), data.title));
+
+                const grid = el('div', 'row');
+                grid.appendChild(labelRow('col-md-6 mb-2', t('thread_author', 'Author:'), data.author));
+                grid.appendChild(labelRow('col-md-6 mb-2', t('thread_posts', 'Total Posts:'), data.posts));
+                grid.appendChild(labelRow('col-md-6 mb-2', t('thread_lastpost', 'Last Post:'), data.lastpost));
+                grid.appendChild(labelRow('col-md-6 mb-2', t('lbl_forum', 'Forum:'), data.forum));
+                info.appendChild(grid);
+
+                const ok = el('div', 'mt-3 text-success small');
+                ok.appendChild(el('i', 'fas fa-check-circle me-2'));
+                ok.appendChild(document.createTextNode(t('thread_valid', 'Valid thread URL detected. Ready to move posts.')));
+                info.appendChild(ok);
+
+                clearNode(previewContent);
+                previewContent.appendChild(info);
             })
             .catch(() => {
-                previewContent.innerHTML =
-                    '<div class="text-danger"><i class="fas fa-exclamation-circle me-2"></i>Error loading thread info</div>';
+                clearNode(previewContent);
+                const failBox = el('div', 'text-danger');
+                failBox.appendChild(el('i', 'fas fa-exclamation-circle me-2'));
+                failBox.appendChild(document.createTextNode(t('thread_load_error', 'Error loading thread info')));
+                previewContent.appendChild(failBox);
             });
     }
     
@@ -270,11 +341,11 @@
                     
                     if (!threadUrl) {
                         e.preventDefault();
-                        alert('Please enter the thread URL to merge.');
+                        alert(t('merge_enter_url', 'Please enter the thread URL to merge.'));
                         return;
                     }
                     
-                    if (!confirm('Are you sure you want to merge these threads?\n\nThis action is permanent and cannot be undone.')) {
+                    if (!confirm(t('merge_confirm', 'Are you sure you want to merge these threads?') + '\n\n' + t('merge_confirm_note', 'This action is permanent and cannot be undone.'))) {
                         e.preventDefault();
                     }
                 });

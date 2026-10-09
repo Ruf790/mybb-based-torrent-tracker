@@ -1,5 +1,34 @@
 'use strict';
 
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 /* ══════════════════════════════════════════════════════════
    BBCode helpers (доступны глобально до DOMContentLoaded)
    ══════════════════════════════════════════════════════════ */
@@ -44,14 +73,16 @@ function parseBBCode(text) {
             const id = 'preview-spoiler-' + (++spoilerPreviewCounter);
             return '<div class="mycode_spoiler my-2">'
                  + '<a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#' + id + '" role="button" aria-expanded="false" aria-controls="' + id + '">'
-                 + '<i class="fa-solid fa-eye"></i> Spoiler (click to show)'
+                 + '<i class="fa-solid fa-eye"></i> ' + escapeHtml(t('cm_spoiler', 'Spoiler (click to show)'))
                  + '</a>'
                  + '<div class="collapse mt-2 p-2 border rounded bg-light" id="' + id + '">'
                  + content
                  + '</div>'
                  + '</div>';
         })
-        .replace(/\[torrent=(\d+)\]/gi, '<div class="mycode_torrent_card card d-inline-block my-2" data-torrent-preview-id="$1" style="max-width:420px;"><div class="card-body py-2 px-3 text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading torrent #$1...</div></div>')
+        .replace(/\[torrent=(\d+)\]/gi, function (_, id) {
+            return '<div class="mycode_torrent_card card d-inline-block my-2" data-torrent-preview-id="' + id + '" style="max-width:420px;"><div class="card-body py-2 px-3 text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>' + escapeHtml(t('cm_loading_torrent', 'Loading torrent #{1}...', id)) + '</div></div>';
+        })
         .replace(/\n/g, '<br>');
 }
 
@@ -117,7 +148,7 @@ function initTorrentTagPanel() {
                 return;
             }
             debounceTimer = setTimeout(function () {
-                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>' + escapeHtml(t('cm_loading_preview', 'Loading preview...')) + '</div>';
                 fetch('ajax_torrent_preview.php?id=' + encodeURIComponent(id))
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -132,12 +163,12 @@ function initTorrentTagPanel() {
                             + '<div class="card-body py-2 px-3">'
                             + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
                             + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
-                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
-                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                            + ' &middot; <span class="text-success">' + escapeHtml(t('cm_seeders', '{1} seeders', data.seeders)) + '</span>'
+                            + ' &middot; <span class="text-danger">' + escapeHtml(t('cm_leechers', '{1} leechers', data.leechers)) + '</span>'
                             + '</div></div>';
                     })
                     .catch(function () {
-                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                        preview.innerHTML = '<div class="text-danger small">' + escapeHtml(t('cm_preview_failed', 'Failed to load preview')) + '</div>';
                     });
             }, 400);
         });
@@ -193,12 +224,12 @@ function loadTorrentEmbedPreviews(container) {
                     + '<div class="card-body py-2 px-3">'
                     + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
                     + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
-                    + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
-                    + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                    + ' &middot; <span class="text-success">' + escapeHtml(t('cm_seeders', '{1} seeders', data.seeders)) + '</span>'
+                    + ' &middot; <span class="text-danger">' + escapeHtml(t('cm_leechers', '{1} leechers', data.leechers)) + '</span>'
                     + '</div>';
             })
             .catch(function () {
-                el.innerHTML = '<div class="card-body py-2 px-3 text-danger small">Failed to load preview</div>';
+                el.innerHTML = '<div class="card-body py-2 px-3 text-danger small">' + escapeHtml(t('cm_preview_failed', 'Failed to load preview')) + '</div>';
             });
     });
 }
@@ -221,7 +252,7 @@ function toggleMassDeleteButton() {
     if (!btn) return;
     if (checked.length > 0) {
         btn.classList.remove('d-none');
-        btn.innerHTML = `<i class="fa-solid fa-trash"></i> Delete Selected (${checked.length})`;
+        agsIconText(btn, 'fa-solid fa-trash', ' ' + t('cm_delete_selected', 'Delete Selected ({1})', checked.length));
     } else {
         btn.classList.add('d-none');
     }
@@ -229,7 +260,7 @@ function toggleMassDeleteButton() {
 
 function massDeleteComments() {
     const checked = document.querySelectorAll('.comment-checkbox:checked');
-    if (!checked.length) { showToast('Please select at least one comment.', 'warning'); return; }
+    if (!checked.length) { showToast(t('cm_select_one', 'Please select at least one comment.'), 'warning'); return; }
 
     window.selectedCommentIds = [];
     window.selectedTorrentIds = [];
@@ -240,7 +271,7 @@ function massDeleteComments() {
         const delBtn  = document.querySelector(`.postbit_qdelete[data-commentid="${cid}"]`);
         window.selectedCommentIds.push(cid);
         window.selectedTorrentIds.push(cb.dataset.tid);
-        const author  = delBtn?.getAttribute('data-author')  || 'Unknown';
+        const author  = delBtn?.getAttribute('data-author')  || t('cm_unknown', 'Unknown');
         const date    = delBtn?.getAttribute('data-date')    || '';
         const preview = delBtn?.getAttribute('data-preview') || '';
         previewHTML += `
@@ -253,7 +284,7 @@ function massDeleteComments() {
                 </div>
             </div>
             <div class="card-body py-2 px-3 small">
-                ${preview ? parseBBCode(preview) : '<span class="text-muted">No content</span>'}
+                ${preview ? parseBBCode(preview) : '<span class="text-muted">' + escapeHtml(t('cm_no_content', 'No content')) + '</span>'}
             </div>
         </div>`;
     });
@@ -277,7 +308,7 @@ function executeMassDelete() {
     const confirmBtn = document.getElementById('confirmMassDelete');
     if (!confirmBtn) return;
     const originalHTML = confirmBtn.innerHTML;
-    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+    agsIconText(confirmBtn, 'spinner-border spinner-border-sm me-2', t('cm_deleting', 'Deleting...'), 'span');
     confirmBtn.disabled  = true;
 
     const formData = new FormData();
@@ -295,7 +326,7 @@ function executeMassDelete() {
             bootstrap.Modal.getInstance(modalEl)?.hide();
 
             if (!data?.success) {
-                showToast('Error: ' + (data?.error || 'Failed to delete comments'), 'danger');
+                showToast(t('cm_error', 'Error: {1}', data?.error || t('cm_mass_delete_failed', 'Failed to delete comments')), 'danger');
                 return;
             }
 
@@ -303,7 +334,7 @@ function executeMassDelete() {
             const totalOnPage  = document.querySelectorAll('[id^="comment-"]').length;
             const willBeEmpty  = totalOnPage <= window.selectedCommentIds.length;
 
-            showToast(`Successfully deleted ${deleted} comment(s)!`, 'success');
+            showToast(t('cm_mass_deleted', 'Successfully deleted {1} comment(s)!', deleted), 'success');
 
             if (willBeEmpty) {
                 const params = new URLSearchParams(window.location.search);
@@ -325,7 +356,7 @@ function executeMassDelete() {
         })
         .catch(err => {
             console.error(err);
-            showToast('Network error. Please try again.', 'danger');
+            showToast(t('cm_network_error', 'Network error. Please try again.'), 'danger');
         })
         .finally(() => {
             confirmBtn.innerHTML = originalHTML;
@@ -394,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function () {
             commentToDeleteId = delTrigger.dataset.commentid;
             torrentId         = delTrigger.dataset.torrentid;
             const safe = id => document.getElementById(id);
-            if (safe('commentPreviewAuthor')) safe('commentPreviewAuthor').textContent = delTrigger.getAttribute('data-author')  || 'Unknown';
+            if (safe('commentPreviewAuthor')) safe('commentPreviewAuthor').textContent = delTrigger.getAttribute('data-author')  || t('cm_unknown', 'Unknown');
             if (safe('commentPreviewDate'))   safe('commentPreviewDate').textContent   = delTrigger.getAttribute('data-date')    || '';
             if (safe('commentPreviewId'))     safe('commentPreviewId').textContent     = 'CID: ' + (commentToDeleteId || '');
             if (safe('commentPreviewText')) {
@@ -410,11 +441,11 @@ document.addEventListener('DOMContentLoaded', function () {
     editBtn?.addEventListener('click', function () {
         if (!commentToEditId || !torrentId) return;
         const text = editTextarea?.value.trim();
-        if (!text) { showToast('Comment text cannot be empty.', 'warning'); return; }
+        if (!text) { showToast(t('cm_empty_text', 'Comment text cannot be empty.'), 'warning'); return; }
 
         const origHTML  = editBtn.innerHTML;
         editBtn.disabled = true;
-        editBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+        agsIconText(editBtn, 'spinner-border spinner-border-sm me-2', t('cm_saving', 'Saving...'), 'span');
 
         fetch('comment.php?action=edit2', {
             method: 'POST',
@@ -425,7 +456,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .then(res => res.json())
         .then(data => {
-            if (!data?.success) { showToast(data?.error || 'Failed to update comment.', 'danger'); return; }
+            if (!data?.success) { showToast(data?.error || t('cm_update_failed', 'Failed to update comment.'), 'danger'); return; }
             const container = document.getElementById('comment-' + data.pid);
             if (container && data.html) {
                 const tmp   = document.createElement('div');
@@ -434,9 +465,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (fresh) container.replaceWith(fresh);
             }
             editModal.hide();
-            showToast('Comment updated successfully.', 'success');
+            showToast(t('cm_updated', 'Comment updated successfully.'), 'success');
         })
-        .catch(() => showToast('Request failed. Please try again.', 'danger'))
+        .catch(() => showToast(t('cm_request_failed', 'Request failed. Please try again.'), 'danger'))
         .finally(() => { editBtn.disabled = false; editBtn.innerHTML = origHTML; });
     });
 
@@ -446,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const origHTML    = deleteBtn.innerHTML;
         deleteBtn.disabled = true;
-        deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+        agsIconText(deleteBtn, 'spinner-border spinner-border-sm me-2', t('cm_deleting', 'Deleting...'), 'span');
 
         fetch('comment.php?action=delete', {
             method: 'POST',
@@ -456,9 +487,9 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .then(res => res.json())
         .then(data => {
-            if (!data?.success) { showToast(data?.error || 'Failed to delete comment.', 'danger'); return; }
+            if (!data?.success) { showToast(data?.error || t('cm_delete_failed', 'Failed to delete comment.'), 'danger'); return; }
             deleteModal.hide();
-            showToast('Comment deleted successfully.', 'success');
+            showToast(t('cm_deleted', 'Comment deleted successfully.'), 'success');
 
             const totalOnPage = document.querySelectorAll('[id^="comment-"]').length;
             if (totalOnPage <= 1) {
@@ -477,7 +508,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         })
-        .catch(() => showToast('Request failed. Please try again.', 'danger'))
+        .catch(() => showToast(t('cm_request_failed', 'Request failed. Please try again.'), 'danger'))
         .finally(() => { deleteBtn.disabled = false; deleteBtn.innerHTML = origHTML; });
     });
 

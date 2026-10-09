@@ -1,3 +1,10 @@
+// I18N: AGS_LANG (js_* lang keys, prefix stripped) is printed by moderation.php; English fallbacks are used if a key is missing.
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach(function (a, i) { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+    return s;
+}
+
 // Подсчет количества постов
 function countPosts() {
     const postsInput = document.querySelector('input[name="posts"]');
@@ -61,14 +68,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Проверка заголовка
         if (!subjectInput?.value.trim()) {
-            showError('Title Required', 'Please enter a title for the new thread.');
+            showError(t('split_title_required', 'Title Required'), t('split_title_required_text', 'Please enter a title for the new thread.'));
             subjectInput?.focus();
             return;
         }
 
         // Проверка форума
         if (!forumSelect?.value) {
-            showError('Forum Required', 'Please select a destination forum.');
+            showError(t('split_forum_required', 'Forum Required'), t('split_forum_required_text', 'Please select a destination forum.'));
             forumSelect?.focus();
             return;
         }
@@ -95,6 +102,7 @@ async function showError(title, text) {
             icon: 'error',
             title,
             text,
+            confirmButtonText: t('ok', 'OK'),
             confirmButtonColor: '#0d6efd'
         });
     } else {
@@ -102,25 +110,46 @@ async function showError(title, text) {
     }
 }
 
+// Тело окна подтверждения (DOM, текст вставляется как текст — не через innerHTML)
+function buildSplitConfirmBody(postCount, newTitle, forumName) {
+    const wrap = document.createElement('div');
+    wrap.className = 'text-start';
+
+    const intro = document.createElement('p');
+    const parts = t('split_confirm_body', 'You are about to move {1} post(s)').split('{1}');
+    intro.appendChild(document.createTextNode(parts[0]));
+    const count = document.createElement('strong');
+    count.textContent = postCount;
+    intro.appendChild(count);
+    if (parts.length > 1) intro.appendChild(document.createTextNode(parts.slice(1).join('')));
+    wrap.appendChild(intro);
+
+    [[t('split_lbl_title', 'Title:'), newTitle], [t('lbl_forum', 'Forum:'), forumName]].forEach(function (row) {
+        const p = document.createElement('p');
+        const label = document.createElement('strong');
+        label.textContent = row[0];
+        p.appendChild(label);
+        p.appendChild(document.createTextNode(' ' + row[1]));
+        wrap.appendChild(p);
+    });
+
+    return wrap;
+}
+
 // Подтверждение
 async function confirmSplit(postCount, newTitle, forumName) {
     if (typeof Swal !== 'undefined') {
         const result = await Swal.fire({
-            title: '<strong>Split Thread Confirmation</strong>',
-            html: `
-                <div class="text-start">
-                    <p>You are about to move <strong>${postCount}</strong> post(s)</p>
-                    <p><strong>Title:</strong> ${newTitle}</p>
-                    <p><strong>Forum:</strong> ${forumName}</p>
-                </div>
-            `,
+            title: t('split_confirm_title', 'Split Thread Confirmation'),
+            html: buildSplitConfirmBody(postCount, newTitle, forumName),
             icon: 'question',
             showCancelButton: true,
-            confirmButtonText: 'Split Thread'
+            confirmButtonText: t('split_confirm_btn', 'Split Thread'),
+            cancelButtonText: t('cancel', 'Cancel')
         });
         return result.isConfirmed;
     } else {
-        return confirm(`Create "${newTitle}" in "${forumName}" with ${postCount} posts?`);
+        return confirm(t('split_confirm_plain', 'Create "{1}" in "{2}" with {3} posts?', newTitle, forumName, postCount));
     }
 }
 
@@ -149,5 +178,9 @@ function disableButton(form) {
     if (!btn) return;
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Splitting...';
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-spinner fa-spin me-2';
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' ' + t('splitting', 'Splitting...')));
 }

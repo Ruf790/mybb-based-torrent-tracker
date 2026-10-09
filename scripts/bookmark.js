@@ -1,33 +1,63 @@
 'use strict';
 
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   AGS_LANG is printed by the page (details.php) before the scripts.
+   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
+   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Replaces the element content with <tag class="iconClass"></tag> + text node.
+function agsIconText(el, iconClass, text, tag) {
+    el.textContent = '';
+    const icon = document.createElement(tag || 'i');
+    icon.className = iconClass;
+    el.appendChild(icon);
+    el.appendChild(document.createTextNode(text));
+}
+
+// HTML-escape for the few places where a translation has to go into an HTML template.
+function agsEsc(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 /* ── Popover content builder ─────────────────────────────────────── */
 
+// Popover is rendered with html:true, so translations are escaped before going into the markup.
 function getBookmarkPopover(bookmarked) {
     if (bookmarked) {
         return {
-            title: '✅ Bookmarked',
+            title: t('bm_title_on', '✅ Bookmarked'),
             content:
                 '<div class="bookmark-popover-content">' +
                     '<div class="mb-2">' +
-                        '<strong>In Your Bookmarks</strong>' +
-                        '<div class="small text-muted">Easily accessible anytime</div>' +
+                        '<strong>' + agsEsc(t('bm_on_head', 'In Your Bookmarks')) + '</strong>' +
+                        '<div class="small text-muted">' + agsEsc(t('bm_on_sub', 'Easily accessible anytime')) + '</div>' +
                     '</div>' +
                     '<div class="small text-success">' +
-                        '<i class="bi bi-check-circle me-1"></i>Added to your collection' +
+                        '<i class="bi bi-check-circle me-1"></i>' + agsEsc(t('bm_on_note', 'Added to your collection')) +
                     '</div>' +
                 '</div>',
         };
     }
     return {
-        title: '⭐ Add to Bookmarks',
+        title: t('bm_title_off', '⭐ Add to Bookmarks'),
         content:
             '<div class="bookmark-popover-content">' +
                 '<div class="mb-2">' +
-                    '<strong>Save for later</strong>' +
-                    '<div class="small text-muted">Quick access to this torrent</div>' +
+                    '<strong>' + agsEsc(t('bm_off_head', 'Save for later')) + '</strong>' +
+                    '<div class="small text-muted">' + agsEsc(t('bm_off_sub', 'Quick access to this torrent')) + '</div>' +
                 '</div>' +
                 '<div class="small">' +
-                    '<i class="bi bi-link-45deg me-1"></i>Torrent preview' +
+                    '<i class="bi bi-link-45deg me-1"></i>' + agsEsc(t('bm_off_note', 'Torrent preview')) +
                 '</div>' +
             '</div>',
     };
@@ -70,27 +100,27 @@ async function toggleBookmark(torrentId, element) {
             body: JSON.stringify({ action: 'toggle', id: torrentId }),
         });
 
-        if (!response.ok) throw new Error('HTTP error ' + response.status);
+        if (!response.ok) throw new Error(t('bm_http', 'HTTP error {1}', response.status));
 
         const data = await response.json();
-        if (!data.success) throw new Error(data.message || 'Operation failed');
+        if (!data.success) throw new Error(data.message || t('bm_failed', 'Operation failed'));
 
         if (data.bookmarked) {
             element.innerHTML = '<i class="fa-solid fa-star fa-lg" style="color:#ffc107"></i>';
             element.classList.add('bookmarked');
             updatePopoverContent(element, true);
-            showToast('Bookmark added!', 'success');
+            showToast(t('bm_added', 'Bookmark added!'), 'success');
         } else {
             element.innerHTML = '<i class="fa-regular fa-star fa-lg" style="color:#6c757d"></i>';
             element.classList.remove('bookmarked');
             updatePopoverContent(element, false);
-            showToast('Bookmark removed!', 'info');
+            showToast(t('bm_removed', 'Bookmark removed!'), 'info');
         }
 
     } catch (error) {
         console.error('Bookmark toggle error:', error);
         element.innerHTML = originalHTML;
-        showToast('Error: ' + error.message, 'danger');
+        showToast(t('bm_error', 'Error: {1}', error.message), 'danger');
     } finally {
         element.style.pointerEvents = 'auto';
         delete element.dataset.loading;
@@ -120,4 +150,4 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.bookmark-toggle[data-bs-toggle="popover"]').forEach(el => {
         new bootstrap.Popover(el, { html: true, trigger: 'hover focus' });
     });
-});
+});

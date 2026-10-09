@@ -47,8 +47,8 @@ if ($wrapped && $wrapped->result) {
         $CQueryCount++;
 
         $result = send_pm([
-            'subject' => $lang->cronjobs['vip_subject'] ?? 'VIP status expired',
-            'message' => $lang->cronjobs['vip_message'] ?? 'Your VIP status has expired.',
+            'subject' => $lang->cron['vip_subject'] ?? 'VIP status expired',
+            'message' => $lang->cron['vip_message'] ?? 'Your VIP status has expired.',
             'touid'   => (int)$row['id'],
             'sender'  => ['uid' => -1],
         ], -1, true);

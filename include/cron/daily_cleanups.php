@@ -93,8 +93,8 @@ if ($leechwarn_ids) {
 
     send_bulk_pm(
         $leechwarn_ids,
-        $lang->cronjobs['lwarning_subject'],
-        sprintf($lang->cronjobs['lwarning_message'], $leechwarn_remove_ratio, $leechwarn_length)
+        $lang->cron['lwarning_subject'],
+        sprintf($lang->cron['lwarning_message'], $leechwarn_remove_ratio, $leechwarn_length)
     );
 }
 
@@ -253,8 +253,8 @@ if ($promote_gig_limit > 0) {
 
         send_bulk_pm(
             $promote_ids,
-            $lang->cronjobs['promote_subject'],
-            $lang->cronjobs['promote_message']
+            $lang->cron['promote_subject'],
+            $lang->cron['promote_message']
         );
     }
 }
@@ -290,7 +290,7 @@ if ($demote_ids) {
 
     send_bulk_pm(
         $demote_ids,
-        $lang->cronjobs['demote_subject'],
-        sprintf($lang->cronjobs['demote_message'], $demote_min_ratio)
+        $lang->cron['demote_subject'],
+        sprintf($lang->cron['demote_message'], $demote_min_ratio)
     );
 }

@@ -7,11 +7,16 @@ if (!defined('IN_CRON')) exit();
 
 require_once INC_PATH . '/functions_pm.php';
 
-$MinSeedHours   = 24;
-$MinFinishDate  = 1230772229;
-$Enabled        = true;
-$HRSkipGroups   = [4, 5, 6, 7, 8];
-$ban_user_limit = 5;
+// H&R rules come from site settings (Admin → Settings → Cleanup → Hit & Run).
+// Defaults = the old hard-coded values, so the cron keeps working until the form is saved once.
+$Enabled        = (string)($hr_enabled ?? 'yes') === 'yes';
+$MinSeedHours   = max(0, (int)($hr_min_seed_hours ?? 24));
+$MinFinishDate  = !empty($hr_start_date) ? (int)strtotime((string)$hr_start_date . ' 00:00:00') : 0;
+$HRSkipGroups   = array_values(array_filter(
+    array_map('intval', explode(',', (string)($hr_skip_groups ?? '4,5,6,7,8'))),
+    static fn(int $g): bool => $g > 0
+));
+$ban_user_limit = max(1, (int)($ban_user_limit ?? 5));
 
 if (!$Enabled || $MinSeedHours <= 0) return;
 
@@ -92,11 +97,11 @@ foreach ($userTorrents as $uid => $torrents) {
 }
 
 if (!empty($warnPm)) {
-    hr_send_pm($warnPm, $lang->cronjobs['hr_warn_subject'], $lang->cronjobs['hr_warn_message']);
+    hr_send_pm($warnPm, $lang->cron['hr_warn_subject'], $lang->cron['hr_warn_message'], $ban_user_limit);
 }
 
 if (!empty($finalPm)) {
-    hr_send_pm($finalPm, $lang->cronjobs['hr_final_subject'], $lang->cronjobs['hr_final_message']);
+    hr_send_pm($finalPm, $lang->cron['hr_final_subject'], $lang->cron['hr_final_message'], $ban_user_limit);
 }
 
 if (!empty($silentMark)) {
@@ -152,14 +157,22 @@ if ($warnPm || $finalPm || $silentMark) {
     ), 'cron');
 }
 
-function hr_send_pm(array $rows, string $subject, string $tpl): void
+/**
+ * Template placeholders (hr_warn_message / hr_final_message):
+ *   {1} username          {2} torrent link (details)   {3} hours seeded
+ *   {4} required hours    {5} download link             {6} required hours (rule text)
+ *   {7} warning limit before ban ($ban_user_limit)
+ *   {8} hours still to seed
+ */
+function hr_send_pm(array $rows, string $subject, string $tpl, int $banLimit): void
 {
     global $CQueryCount, $MinSeedHours, $BASEURL, $db;
 
     $snatchedIds = [];
 
     foreach ($rows as $r) {
-        $seeded_h = (int)floor($r['seedtime'] / HOUR_IN_SECONDS);
+        $seeded_h    = (int)floor($r['seedtime'] / HOUR_IN_SECONDS);
+        $remaining_h = max(0, (int)$MinSeedHours - $seeded_h);
 
         $message = sprintf($tpl,
             $r['username'],
@@ -167,7 +180,9 @@ function hr_send_pm(array $rows, string $subject, string $tpl): void
             $seeded_h,
             $MinSeedHours,
             '[URL=' . $BASEURL . '/download.php?id=' . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
-            $MinSeedHours
+            $MinSeedHours,
+            $banLimit,
+            $remaining_h
         );
 
         send_pm([

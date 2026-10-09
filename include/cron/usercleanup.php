@@ -2,10 +2,7 @@
 
 declare(strict_types=1);
 
-/**
- * TS Special Edition / MyBB Ban Expiration Task
- * Fully compatible with PHP 8.4
- */
+
 
 if (!defined('IN_CRON')) {
     exit();

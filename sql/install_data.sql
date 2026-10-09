@@ -121,7 +121,8 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (36, 0, 3600, 'vipexpire.php', 'Automatically expires VIP status and reverts users to their previous usergroup.', 1, 1),
 (37, 0, 3600, 'exam_update_progress.php', 'Exams and tasks: recalculates the progress of ongoing attempts.', 1, 1),
 (38, 0, 300, 'exam_checkout.php', 'Exams and tasks: counts results of finished attempts (reward, penalty, account disabling).', 1, 1),
-(39, 0, 900, 'exam_assign.php', 'Exams: gives auto-assign exams to users that match their filters.', 1, 1);
+(39, 0, 900, 'exam_assign.php', 'Exams: gives auto-assign exams to users that match their filters.', 1, 1),
+(41, 0, 3600, 'claim_settle.php', 'Claims: monthly settlement (bonus for reached torrents, removes unreached).', 1, 1);
 
 
 

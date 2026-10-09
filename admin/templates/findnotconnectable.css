@@ -1,0 +1,269 @@
+/* admin/findnotconnectable.php — all rules scoped under .fnc-page */
+
+.fnc-page {
+    font-size: 1.055rem;
+    --fnc-radius: .9rem;
+    --fnc-border: var(--bs-border-color-translucent);
+}
+
+/* ── Cards ─────────────────────────────────────────────── */
+.fnc-page .fnc-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--fnc-border);
+    border-radius: var(--fnc-radius);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .04);
+}
+.fnc-page .fnc-card > :first-child,
+.fnc-page .fnc-card > form > :nth-child(2) {
+    border-top-left-radius: var(--fnc-radius);
+    border-top-right-radius: var(--fnc-radius);
+}
+.fnc-page .fnc-card > :last-child,
+.fnc-page .fnc-card > form > :last-child {
+    border-bottom-left-radius: var(--fnc-radius);
+    border-bottom-right-radius: var(--fnc-radius);
+}
+
+/* ── Soft colors ───────────────────────────────────────── */
+.fnc-page .fnc-soft-primary { background: var(--bs-primary-bg-subtle);   color: var(--bs-primary-text-emphasis); }
+.fnc-page .fnc-soft-success { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.fnc-page .fnc-soft-info    { background: var(--bs-info-bg-subtle);      color: var(--bs-info-text-emphasis); }
+.fnc-page .fnc-soft-warning { background: var(--bs-warning-bg-subtle);   color: var(--bs-warning-text-emphasis); }
+.fnc-page .fnc-soft-danger  { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+.fnc-page .fnc-soft-muted   { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-color); }
+
+/* ── Header ────────────────────────────────────────────── */
+.fnc-page .fnc-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+}
+.fnc-page .fnc-head__icon {
+    flex-shrink: 0;
+    width: 3.25rem;
+    height: 3.25rem;
+    display: grid;
+    place-items: center;
+    border-radius: .85rem;
+    font-size: 1.45rem;
+    background: var(--bs-danger-bg-subtle);
+    color: var(--bs-danger-text-emphasis);
+}
+.fnc-page .fnc-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.fnc-page .fnc-head p {
+    margin: .2rem 0 0;
+    color: var(--bs-secondary-color);
+}
+
+/* ── KPI tiles ─────────────────────────────────────────── */
+.fnc-page .fnc-kpi {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    height: 100%;
+    padding: 1rem 1.1rem;
+}
+.fnc-page .fnc-kpi__icon {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    border-radius: .75rem;
+    font-size: 1.15rem;
+}
+.fnc-page .fnc-kpi__value {
+    font-size: 1.45rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.fnc-page .fnc-kpi__label { font-size: .85em; color: var(--bs-secondary-color); }
+.fnc-page .fnc-kpi__sub   { font-size: .8em;  color: var(--bs-tertiary-color); }
+
+/* ── Buttons / nav ─────────────────────────────────────── */
+.fnc-page .fnc-pill {
+    border-radius: 50rem;
+    padding-inline: 1rem;
+}
+.fnc-page .btn-sm.fnc-pill { padding-inline: .75rem; }
+
+.fnc-page .fnc-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+.fnc-page .fnc-nav__link {
+    border: 1px solid var(--fnc-border);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+.fnc-page .fnc-nav__link:hover {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+}
+.fnc-page .fnc-nav__link.is-active {
+    background: var(--bs-primary-bg-subtle);
+    border-color: var(--bs-primary-border-subtle);
+    color: var(--bs-primary-text-emphasis);
+    font-weight: 600;
+}
+
+/* ── Alerts ────────────────────────────────────────────── */
+.fnc-page .fnc-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    border: 0;
+    border-radius: var(--fnc-radius);
+}
+.fnc-page .fnc-alert > i { margin-top: .2rem; }
+
+/* ── Toolbar ───────────────────────────────────────────── */
+.fnc-page .fnc-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .85rem 1.1rem;
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--fnc-border);
+}
+.fnc-page .fnc-toolbar--bottom {
+    border-bottom: 0;
+    border-top: 1px solid var(--fnc-border);
+}
+.fnc-page .fnc-toolbar .pagination { margin: 0; }
+
+.fnc-page .fnc-body { padding: 1.1rem; }
+
+/* ── Table ─────────────────────────────────────────────── */
+.fnc-page .fnc-table {
+    margin: 0;
+    --bs-table-bg: transparent;
+}
+.fnc-page .fnc-table thead th {
+    padding: .75rem 1rem;
+    font-size: .78em;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--fnc-border);
+}
+.fnc-page .fnc-table thead th > i:first-child {
+    margin-right: .4rem;
+    opacity: .7;
+}
+.fnc-page .fnc-table td {
+    padding: .7rem 1rem;
+    vertical-align: middle;
+    border-color: var(--fnc-border);
+}
+.fnc-page .fnc-table tbody tr:last-child td { border-bottom: 0; }
+.fnc-page .fnc-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
+.fnc-page .fnc-col-check { width: 3rem; }
+.fnc-page .form-check-input { cursor: pointer; }
+
+.fnc-page .fnc-user { text-decoration: none; font-weight: 600; }
+.fnc-page .fnc-torrent {
+    text-decoration: none;
+    font-weight: 600;
+    color: var(--bs-body-color);
+}
+.fnc-page .fnc-torrent:hover { color: var(--bs-primary); }
+.fnc-page .fnc-torrent-ico {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    display: grid;
+    place-items: center;
+    border-radius: .55rem;
+    font-size: .85rem;
+}
+.fnc-page .fnc-ip code {
+    padding: .15rem .45rem;
+    border-radius: .4rem;
+    font-size: .85em;
+    white-space: nowrap;
+    color: var(--bs-body-color);
+    background: var(--bs-tertiary-bg);
+}
+.fnc-page .fnc-client {
+    max-width: 16rem;
+    font-size: .9em;
+    word-break: break-word;
+}
+.fnc-page .fnc-date i { width: 1.1em; margin-right: .35rem; opacity: .7; }
+
+/* ── Badges / meta ─────────────────────────────────────── */
+.fnc-page .fnc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .65rem;
+    border-radius: 50rem;
+    font-size: .8em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.fnc-page .fnc-meta {
+    font-size: .82em;
+    color: var(--bs-secondary-color);
+}
+.fnc-page .fnc-meta .fa-hashtag { margin-right: .15rem; }
+
+/* ── Textarea ──────────────────────────────────────────── */
+.fnc-page .fnc-textarea {
+    min-height: 16rem;
+    font-family: var(--bs-font-monospace);
+    font-size: .9em;
+    line-height: 1.55;
+}
+
+/* ── Sticky action bar ─────────────────────────────────── */
+.fnc-page .fnc-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .85rem 1.1rem;
+    border-top: 1px solid var(--fnc-border);
+    background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+    backdrop-filter: blur(6px);
+}
+.fnc-page .fnc-actionbar.justify-content-end { justify-content: flex-end; }
+
+/* ── Empty state ───────────────────────────────────────── */
+.fnc-page .fnc-empty {
+    padding: 3rem 1rem;
+    text-align: center;
+}
+.fnc-page .fnc-empty__icon {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto 1rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    font-size: 1.6rem;
+}
+.fnc-page .fnc-empty .fnc-title { font-size: 1.15rem; margin-bottom: .35rem; }
+
+@media (max-width: 575.98px) {
+    .fnc-page .fnc-head { padding: 1rem; }
+    .fnc-page .fnc-actionbar > .fnc-meta { flex-basis: 100%; }
+}

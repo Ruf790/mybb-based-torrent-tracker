@@ -164,7 +164,7 @@
     box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .25);
 }
 
-/* Checkerboard so transparency and real image bounds are visible */
+/* Thumbnail area (plain background) */
 .ma-page .ma-thumb {
     position: relative;
     aspect-ratio: 1 / 1;
@@ -172,13 +172,6 @@
     place-items: center;
     padding: 1.1rem;
     background-color: var(--bs-tertiary-bg);
-    background-image:
-        linear-gradient(45deg,  var(--bs-secondary-bg) 25%, transparent 25%),
-        linear-gradient(-45deg, var(--bs-secondary-bg) 25%, transparent 25%),
-        linear-gradient(45deg,  transparent 75%, var(--bs-secondary-bg) 75%),
-        linear-gradient(-45deg, transparent 75%, var(--bs-secondary-bg) 75%);
-    background-size: 16px 16px;
-    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
 .ma-page .ma-thumb img {
     max-width: 100%;

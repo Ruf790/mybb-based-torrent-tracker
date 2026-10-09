@@ -1,0 +1,213 @@
+/* Mass Message (staffmess.php) — all rules scoped under .smm-page */
+
+.smm-page {
+    font-size: 1.055rem;
+    --smm-radius: 1rem;
+    --smm-border: var(--bs-border-color-translucent, rgba(0, 0, 0, .1));
+}
+
+/* ── Cards ── */
+.smm-page .smm-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--smm-border);
+    border-radius: var(--smm-radius);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.smm-page .smm-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .85rem 1.15rem;
+    border-bottom: 1px solid var(--smm-border);
+}
+.smm-page .smm-card__head h5 {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--bs-emphasis-color);
+}
+.smm-page .smm-card__head h5 i { color: var(--bs-primary); }
+.smm-page .smm-card__body { padding: 1.15rem; }
+
+/* ── Header ── */
+.smm-page .smm-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.15rem 1.35rem;
+}
+.smm-page .smm-head__icon {
+    flex: 0 0 auto;
+    width: 3.1rem;
+    height: 3.1rem;
+    display: grid;
+    place-items: center;
+    border-radius: .9rem;
+    font-size: 1.35rem;
+    background: rgba(var(--bs-primary-rgb), .12);
+    color: var(--bs-primary-text-emphasis, var(--bs-primary));
+}
+.smm-page .smm-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--bs-emphasis-color);
+}
+.smm-page .smm-head p {
+    margin: .15rem 0 0;
+    color: var(--bs-secondary-color);
+    font-size: .92em;
+}
+
+/* ── Soft colors ── */
+.smm-page .smm-soft-primary { background: rgba(var(--bs-primary-rgb), .12); color: var(--bs-primary-text-emphasis, var(--bs-primary)); }
+.smm-page .smm-soft-success { background: rgba(var(--bs-success-rgb), .12); color: var(--bs-success-text-emphasis, var(--bs-success)); }
+.smm-page .smm-soft-info    { background: rgba(var(--bs-info-rgb), .14);    color: var(--bs-info-text-emphasis, var(--bs-info)); }
+.smm-page .smm-soft-warning { background: rgba(var(--bs-warning-rgb), .16); color: var(--bs-warning-text-emphasis, var(--bs-warning)); }
+.smm-page .smm-soft-danger  { background: rgba(var(--bs-danger-rgb), .12);  color: var(--bs-danger-text-emphasis, var(--bs-danger)); }
+.smm-page .smm-soft-muted   { background: var(--bs-tertiary-bg);            color: var(--bs-secondary-color); }
+
+/* ── Badge / pill ── */
+.smm-page .smm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .35rem .8rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.smm-page .smm-pill { border-radius: 999px; }
+
+/* ── Alert ── */
+.smm-page .smm-alert {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    border: 0;
+    border-radius: var(--smm-radius);
+    padding: .85rem 3rem .85rem 1.15rem;
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+/* ── KPI tiles ── */
+.smm-page .smm-kpi {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: 1rem 1.1rem;
+    height: 100%;
+}
+.smm-page .smm-kpi__icon {
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    border-radius: .8rem;
+    font-size: 1.1rem;
+}
+.smm-page .smm-kpi__value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--bs-emphasis-color);
+    font-variant-numeric: tabular-nums;
+}
+.smm-page .smm-kpi__label {
+    font-size: .82rem;
+    color: var(--bs-secondary-color);
+}
+
+/* ── Usergroup chips ── */
+.smm-page .smm-group {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    margin: 0;
+    padding: .55rem .8rem;
+    border: 1px solid var(--smm-border);
+    border-radius: .75rem;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.smm-page .smm-group:hover {
+    border-color: rgba(var(--bs-primary-rgb), .45);
+    background: rgba(var(--bs-primary-rgb), .05);
+}
+.smm-page .smm-group:has(input:checked) {
+    border-color: rgba(var(--bs-primary-rgb), .55);
+    background: rgba(var(--bs-primary-rgb), .08);
+}
+.smm-page .smm-group__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.smm-page .smm-group input:checked ~ .smm-group__name { font-weight: 600; }
+.smm-page .smm-count {
+    flex: 0 0 auto;
+    min-width: 2rem;
+    padding: .1rem .55rem;
+    border-radius: 999px;
+    text-align: center;
+    font-size: .78rem;
+    font-weight: 600;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+.smm-page .smm-group:has(input:checked) .smm-count {
+    background: rgba(var(--bs-primary-rgb), .15);
+    color: var(--bs-primary-text-emphasis, var(--bs-primary));
+}
+
+/* ── Text helpers ── */
+.smm-page .smm-link {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--bs-primary-text-emphasis, var(--bs-primary));
+    text-decoration: none;
+    white-space: nowrap;
+}
+.smm-page .smm-link:hover { text-decoration: underline; }
+.smm-page .smm-hint,
+.smm-page .smm-meta {
+    font-size: .82rem;
+    color: var(--bs-secondary-color);
+}
+.smm-page .smm-meta b { color: var(--bs-emphasis-color); font-variant-numeric: tabular-nums; }
+.smm-page .form-label { font-weight: 600; font-size: .9rem; }
+.smm-page .form-label i { color: var(--bs-secondary-color); }
+.smm-page textarea#message { min-height: 14rem; resize: vertical; }
+
+/* ── Editor toolbar ── */
+.smm-page .bbcode-toolbar .btn { border-color: var(--bs-border-color); }
+
+/* ── Sticky action bar ── */
+.smm-page .smm-actionbar {
+    position: sticky;
+    bottom: .75rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .7rem .8rem .7rem 1.15rem;
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
+}
+
+@media (max-width: 575.98px) {
+    .smm-page .smm-head { padding: 1rem; }
+    .smm-page .smm-title { font-size: 1.15rem; }
+    .smm-page .smm-actionbar { flex-wrap: wrap; }
+    .smm-page .smm-actionbar .btn { width: 100%; }
+}

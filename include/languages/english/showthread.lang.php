@@ -1,9 +1,5 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- */
+
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
@@ -124,5 +120,189 @@ $language['showthread'] = array
 'quick_restore_error' => 'There was an error restoring your reply:',
 'quick_restore_success' => 'The post was restored successfully.',
 'post_deleted_error' => 'You can not perform this action to a deleted post.',
+
+
+
+
+
+// ── Report modal ──
+'report_title'             => 'Report Forum Post',
+'report_close'             => 'Close',
+'report_reporting'         => 'Reporting:',
+'report_forum_post'        => 'Forum Post',
+
+// ── Post preview ──
+'report_post_preview'      => 'Post Preview',
+'report_user'              => 'User',
+'report_post_subject'      => 'Post Subject',
+'report_forum'             => 'Forum:',
+'report_forum_default'     => 'General',
+'report_thread'            => 'Thread:',
+'report_thread_default'    => 'Discussion',
+'report_content_default'   => 'Post content will appear here...',
+
+// ── Reason ──
+'report_reason'            => 'Reason for Report',
+'report_select_reason'     => 'Select a reason...',
+
+'report_group_content'     => 'Content Violations',
+'report_r_spam'            => 'Spam / Advertising',
+'report_r_offensive'       => 'Offensive / Abusive Language',
+'report_r_harassment'      => 'Harassment / Bullying',
+'report_r_hate_speech'     => 'Hate Speech / Discrimination',
+'report_r_explicit'        => 'Explicit / Adult Content',
+'report_r_illegal'         => 'Illegal Content / Warez',
+
+'report_group_rules'       => 'Forum Rules',
+'report_r_off_topic'       => 'Off Topic / Wrong Forum',
+'report_r_double_post'     => 'Double Post / Cross-Posting',
+'report_r_flame'           => 'Flaming / Trolling',
+'report_r_personal_attack' => 'Personal Attack',
+'report_r_spoiler'         => 'Unmarked Spoilers',
+
+'report_group_other'       => 'Other Issues',
+'report_r_copyright'       => 'Copyright Infringement',
+'report_r_personal_info'   => 'Personal Information',
+'report_r_malware'         => 'Malware Link',
+'report_r_scam'            => 'Scam / Fraud',
+'report_r_other'           => 'Other Reason',
+
+// ── Details ──
+'report_details'              => 'Additional Details',
+'report_details_placeholder'  => 'Please provide more details...',
+'report_details_hint'         => 'Optional but very helpful for moderators',
+
+// ── Rule violation ──
+'report_rule_violation'    => 'Specific Rule Violation (Optional)',
+'report_rule_none'         => 'Not specified',
+'report_rule_1'            => 'Rule 1: No spamming or advertising',
+'report_rule_2'            => 'Rule 2: No offensive language',
+'report_rule_3'            => 'Rule 3: No harassment or bullying',
+'report_rule_4'            => 'Rule 4: Stay on topic',
+'report_rule_5'            => 'Rule 5: No warez or illegal content',
+'report_rule_6'            => 'Rule 6: Respect other members',
+'report_rule_7'            => 'Rule 7: No double posting',
+'report_rule_8'            => 'Rule 8: Use appropriate language',
+
+// ── Email ──
+'report_email'             => 'Contact Email (Optional)',
+'report_email_placeholder' => 'your@email.com',
+
+// ── Captcha ──
+'report_security'            => 'Security Check',
+'report_captcha_alt'         => 'Security code',
+'report_captcha_title'       => 'Click to refresh',
+'report_captcha_placeholder' => 'Enter code',
+
+// ── Warning ──
+'report_important'         => 'Important:',
+'report_rules_pre'         => 'Please only report posts that violate our',
+'report_rules_link'        => 'forum rules',
+'report_rules_post'        => 'False reports may result in penalties.',
+
+// ── Buttons ──
+'report_cancel'            => 'Cancel',
+'report_submit'            => 'Submit Report',
+
+
+
+
+
+
+
+
+// ── Moderation: General ──
+'mod_go' => 'Go',
+'mod_cancel' => 'Cancel',
+'mod_delete_permanently' => 'Delete Permanently',
+'mod_thread_id' => 'Thread ID:',
+'mod_tid' => 'TID:',
+
+// ── Moderation: Delete posts modal ──
+'mod_dp_title' => 'Delete Posts Permanently',
+'mod_dp_subtitle' => 'Irreversible Action',
+'mod_dp_warning' => 'You are about to <strong>permanently delete</strong> selected posts. This <strong>cannot be undone</strong>.',
+'mod_dp_posts' => 'Posts:',
+'mod_dp_preview' => 'Posts to be deleted:',
+
+// ── Moderation: Delete thread modal ──
+'mod_dt_title' => 'Delete Thread',
+'mod_dt_warning_title' => 'Permanent Deletion Warning',
+'mod_dt_warning_text' => 'All posts, attachments, and poll data will be permanently deleted. This cannot be undone.',
+'mod_dt_confirm1' => 'I understand this is permanent and cannot be undone',
+'mod_dt_confirm2' => 'I have ensured all important content is backed up',
+
+// ── Moderation: Merge thread modal ──
+'mod_mg_title' => 'Merge Threads',
+'mod_mg_subtitle' => 'Combine multiple threads into one',
+'mod_mg_current' => 'Current Thread',
+'mod_mg_new_subject' => 'New Subject',
+'mod_mg_url' => 'Thread URL to Merge',
+'mod_mg_note' => 'The specified thread will be <strong>deleted</strong> and its posts merged into this one.',
+'mod_mg_button' => 'Merge Threads',
+
+// ── Moderation: Move / copy thread modal ──
+'mod_mv_title' => 'Move / Copy Thread',
+'mod_mv_subtitle' => 'Transfer to another forum',
+'mod_mv_destination' => 'Destination Forum',
+'mod_mv_method' => 'Transfer Method',
+'mod_mv_redirect' => 'Move with Redirect',
+'mod_mv_redirect_desc' => 'Leave redirect in original forum',
+'mod_mv_redirect_days' => 'Redirect days (blank = infinite)',
+'mod_mv_move' => 'Move Thread',
+'mod_mv_move_desc' => 'Remove from original forum',
+'mod_mv_copy' => 'Copy Thread',
+'mod_mv_copy_desc' => 'Keep original, create copy',
+'mod_mv_process' => 'Process Thread',
+
+
+
+
+
+
+
+
+
+
+
+// ── Postbit: edit / delete modals and buttons ──
+'pb_bb_left' => 'Left',
+'pb_bb_center' => 'Center',
+'pb_bb_right' => 'Right',
+'pb_bb_red' => 'Red',
+'pb_bb_size' => 'Size',
+'pb_bb_video' => 'Video',
+'pb_bb_quote' => 'Quote',
+'pb_bb_code' => 'Code',
+'pb_bb_list' => 'List',
+'pb_bb_list_num' => '#List',
+'pb_bb_spoiler' => 'Spoiler',
+'pb_torrent' => 'Torrent',
+'pb_torrent_id_label' => 'Torrent ID or URL',
+'pb_torrent_placeholder' => 'e.g. 17 or paste the torrent link',
+'pb_insert' => 'Insert',
+'pb_edit_title' => 'Edit Post',
+'pb_edit_reason' => 'Edit Reason (optional)',
+'pb_live_preview' => 'Live Preview',
+'pb_cancel' => 'Cancel',
+'pb_save_changes' => 'Save Changes',
+'pb_delete_title' => 'Delete Post',
+'pb_delete_confirm' => 'Are you sure you want to delete this post?',
+'pb_delete_irreversible' => 'This action cannot be undone.',
+'pb_pid' => 'PID:',
+'pb_deleting' => 'Deleting...',
+'pb_deleting_post' => 'Deleting post...',
+'pb_delete' => 'Delete',
+'pb_report_post' => 'Report Post',
+'pb_edit_note' => 'This post was last modified: %s by',
+'pb_unapproved_own' => 'The post made by you is under moderation and currently not visible publicly. It will be visible once a moderator approves it.',
+'pb_ignored' => 'The contents of this message are hidden because %s is on your <a href="usercp.php?action=editlists">ignore list</a>.',
+'pb_post_deleted' => 'This post has been deleted',
+
+
+
+
+
+
 
 );

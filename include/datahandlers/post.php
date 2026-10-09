@@ -554,7 +554,7 @@ class PostDataHandler extends DataHandler
             $excerpt     = $parser->text_parse_message($post['message'], $parser_opts);
 
             $query = $db->sql_query_prepared(
-                "SELECT u.username, u.email, u.id, u.loginkey, u.added, s.notification
+                "SELECT u.username, u.email, u.language, u.id, u.loginkey, u.added, s.notification
                  FROM threadsubscriptions s
                  LEFT JOIN users u ON (u.id = s.uid)
                  WHERE (s.notification = '1' OR s.notification = '2')
@@ -587,19 +587,24 @@ class PostDataHandler extends DataHandler
                     );
                     $queued_email = true;
                 } elseif ($member['notification'] == 2) {
-                    require_once INC_PATH . '/functions_pm.php';
-                    send_pm([
-                        'subject' => sprintf($lang->tsf_forums['pmsubject_subscription'] ?? '', $subject),
-                        'message' => sprintf(
-                            $lang->tsf_forums['pm_subscription'] ?? '',
-                            $member['username'], $post['username'] ?: 'guest',
-                            $subject, $excerpt,
-                            $BASEURL, str_replace('&amp;', '&', get_thread_link((int)$thread['tid'], 0, 'newpost')),
-                            $thread['tid']
-                        ),
-                        'touid'          => (int)$member['id'],
-                        'sender' => ['uid' => -1],
+                    $lang->load('tsf_forums');
+					require_once INC_PATH . '/functions_pm.php';
+                    
+					send_pm([
+                       'subject' => ['pmsubject_subscription', $subject],
+                       'message' => [
+                       'pm_subscription',
+                       $member['username'], $post['username'] ?: 'guest',
+                       $subject, $excerpt,
+                       $BASEURL, str_replace('&amp;', '&', get_thread_link((int)$thread['tid'], 0, 'newpost')),
+                       $thread['tid'],
+                       ],
+                       'touid'         => (int)$member['id'],
+                       'language'      => $member['language'],
+                       'language_file' => 'tsf_forums',
+                       'sender'        => ['uid' => -1],
                     ], -1, true);
+
                 }
             }
 

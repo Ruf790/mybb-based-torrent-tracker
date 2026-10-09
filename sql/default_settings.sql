@@ -216,4 +216,16 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 
 -- ── Misc ──────────────────────────────────────────────────────────────────────
 ('uploaderdouble',        'no'),
-('deldeadtorrent',        'no');
+('deldeadtorrent',        'no'),
+
+
+('hr_enabled',            'yes'),
+('hr_min_seed_hours',     '24'),
+('hr_start_date',         ''),
+('hr_skip_groups',        '4,5,6,7,8'),
+('hr_min_ratio',          '1.00'),
+('iu_maxdays',            '60'),
+('iu_deleteafter',        '15'),
+('iu_protect_groups',     '4,5,6,7,8'),
+
+('offline_message',       'Site is currently under maintenance. Please check back later.');

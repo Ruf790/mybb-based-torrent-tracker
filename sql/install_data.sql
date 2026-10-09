@@ -446,4 +446,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (127, 'convert_innodb', 'Convert DB Tables to InnoDB', 'convert_innodb.php', '[8]'),
 (128, 'useractivity', 'Daily active users chart with time stats and exports.', 'useractivity.php', '[8]'),
 (129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]'),
-(130, 'exams', 'Exams and Tasks', 'exams.php', '[6],[7],[8]');
+(130, 'exams', 'Exams and Tasks', 'exams.php', '[6],[7],[8]'),
+(132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]');

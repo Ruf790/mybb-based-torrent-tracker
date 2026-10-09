@@ -5,7 +5,23 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
 }
 
+$lang->load('manage_invites');
+
 require_once INC_PATH . '/functions_multipage.php';
+
+// {1}, {2}… placeholder substitution (also handles %1$s — $lang->load() converts {N} into it)
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 $action = $_GET['action'] ?? 'list';
 $page   = max(1, (int)($_GET['page'] ?? 1));
@@ -17,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!verify_post_check($_POST['my_post_key'] ?? '')) {
         http_response_code(403);
-        die('Invalid security token');
+        die(htmlspecialchars($lang->manage_invites['err_invalid_token']));
     }
 
     if (isset($_POST['admin_revoke'])) {
@@ -99,7 +115,7 @@ $q = $db->sql_query_prepared("
 $invites = [];
 while ($q && ($row = $db->fetch_array($q))) $invites[] = $row;
 
-stdhead('Invite Manager');
+stdhead($lang->manage_invites['page_title']);
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">' . "\n"
    . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>' . "\n";
 
@@ -260,13 +276,16 @@ function get_invite_by_id(int $id, int $user_id = 0): array|false
 
 function send_invite_email(string $to_email, string $code, string $inviter_name): bool
 {
-    global $BASEURL, $SITENAME;
+    global $BASEURL, $SITENAME, $lang;
     $invite_url = rtrim($BASEURL, '/') . '/signup.php?invite=' . $code;
-    $subject    = "You've been invited to {$SITENAME}";
-    $message    = "Hello!\n\n{$inviter_name} has invited you to join {$SITENAME}.\n\n"
-                . "Register here:\n{$invite_url}\n\n"
-                . "This invite expires in " . INVITE_EXPIRE_DAYS . " days.\n\n"
-                . "— {$SITENAME} Team";
+    $subject    = ags_fmt($lang->manage_invites['mail_subject'], (string)$SITENAME);
+    $message    = ags_fmt(
+        $lang->manage_invites['mail_body'],
+        $inviter_name,
+        (string)$SITENAME,
+        $invite_url,
+        INVITE_EXPIRE_DAYS
+    );
     return my_mail($to_email, $subject, $message);
 }
 
@@ -284,13 +303,27 @@ function get_invite_stats(): array
     return ($q ? $db->fetch_array($q) : null) ?: [];
 }
 
+// Translated status name (plain text — escape on output)
+function invite_status_label(string $status): string
+{
+    global $lang;
+    return match($status) {
+        'pending' => $lang->manage_invites['status_pending'],
+        'used'    => $lang->manage_invites['status_used'],
+        'expired' => $lang->manage_invites['status_expired'],
+        'revoked' => $lang->manage_invites['status_revoked'],
+        default   => ucfirst($status),
+    };
+}
+
 function invite_status_badge(string $status): string
 {
+    $label = htmlspecialchars(invite_status_label($status));
     return match($status) {
-        'pending' => '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Pending</span>',
-        'used'    => '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Used</span>',
-        'expired' => '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>Expired</span>',
-        'revoked' => '<span class="badge bg-danger"><i class="fas fa-ban me-1"></i>Revoked</span>',
+        'pending' => '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>' . $label . '</span>',
+        'used'    => '<span class="badge bg-success"><i class="fas fa-check me-1"></i>' . $label . '</span>',
+        'expired' => '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>' . $label . '</span>',
+        'revoked' => '<span class="badge bg-danger"><i class="fas fa-ban me-1"></i>' . $label . '</span>',
         default   => '<span class="badge bg-light text-dark">' . htmlspecialchars($status) . '</span>',
     };
 }
@@ -318,10 +351,13 @@ function get_invite_tree(int $user_id, int $depth = 0, int $max_depth = 3): arra
     return $tree;
 }
 
-
-
-
-
+// Strings for manage_invites.js: js_* keys without the prefix
+$ags_js_lang = [];
+foreach ($lang->manage_invites as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $ags_js_lang[substr((string)$k, 3)] = $v;
+    }
+}
 
 ?>
 
@@ -333,9 +369,9 @@ function get_invite_tree(int $user_id, int $depth = 0, int $max_depth = 3): arra
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1 fw-bold" style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-            <i class="fas fa-ticket-alt me-2"></i>Invite Management
+            <i class="fas fa-ticket-alt me-2"></i><?= htmlspecialchars($lang->manage_invites['pane_title']) ?>
         </h2>
-        <p class="text-muted mb-0" style="font-size: 0.95rem;">Manage and monitor all invitation codes</p>
+        <p class="text-muted mb-0" style="font-size: 0.95rem;"><?= htmlspecialchars($lang->manage_invites['pane_subtitle']) ?></p>
     </div>
     <div class="text-end">
         <span class="badge bg-light text-dark p-3" style="font-size: 0.9rem;">
@@ -348,11 +384,11 @@ function get_invite_tree(int $user_id, int $depth = 0, int $max_depth = 3): arra
 <div class="row g-4 mb-4">
 <?php
 $stat_cards = [
-    ['Total',   $stats['total']   ?? 0, 'fas fa-envelope',    'primary', 'Total invitations generated'],
-    ['Pending', $stats['pending'] ?? 0, 'fas fa-clock',        'warning', 'Awaiting activation'],
-    ['Used',    $stats['used']    ?? 0, 'fas fa-check-circle', 'success', 'Successfully used'],
-    ['Expired', $stats['expired'] ?? 0, 'fas fa-times-circle', 'secondary', 'Past expiration date'],
-    ['Revoked', $stats['revoked'] ?? 0, 'fas fa-ban',          'danger', 'Manually revoked'],
+    [$lang->manage_invites['stat_total'],   $stats['total']   ?? 0, 'fas fa-envelope',     'primary',   $lang->manage_invites['hint_stat_total']],
+    [$lang->manage_invites['stat_pending'], $stats['pending'] ?? 0, 'fas fa-clock',        'warning',   $lang->manage_invites['hint_stat_pending']],
+    [$lang->manage_invites['stat_used'],    $stats['used']    ?? 0, 'fas fa-check-circle', 'success',   $lang->manage_invites['hint_stat_used']],
+    [$lang->manage_invites['stat_expired'], $stats['expired'] ?? 0, 'fas fa-times-circle', 'secondary', $lang->manage_invites['hint_stat_expired']],
+    [$lang->manage_invites['stat_revoked'], $stats['revoked'] ?? 0, 'fas fa-ban',          'danger',    $lang->manage_invites['hint_stat_revoked']],
 ];
 foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
 ?>
@@ -364,11 +400,11 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
             </div>
             <div class="text-end">
                 <div class="fw-bold fs-2 mb-0"><?= ts_nf($val) ?></div>
-                <div class="text-muted" style="font-size: 0.9rem; font-weight: 500;"><?= $label ?></div>
+                <div class="text-muted" style="font-size: 0.9rem; font-weight: 500;"><?= htmlspecialchars($label) ?></div>
             </div>
         </div>
         <div class="text-muted mt-2" style="font-size: 0.8rem;">
-            <i class="fas fa-info-circle me-1"></i><?= $desc ?>
+            <i class="fas fa-info-circle me-1"></i><?= htmlspecialchars($desc) ?>
         </div>
     </div>
 </div>
@@ -382,53 +418,53 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
             <form method="get" class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label fw-semibold text-muted">
-                        <i class="fas fa-search me-1"></i>Search
+                        <i class="fas fa-search me-1"></i><?= htmlspecialchars($lang->manage_invites['lbl_search']) ?>
                     </label>
                     <input type="text" name="search" class="form-control form-control-lg"
-                           placeholder="Username, email or invite code..."
+                           placeholder="<?= htmlspecialchars($lang->manage_invites['ph_search']) ?>"
                            value="<?= htmlspecialchars($filter_search) ?>">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-semibold text-muted">
-                        <i class="fas fa-filter me-1"></i>Status
+                        <i class="fas fa-filter me-1"></i><?= htmlspecialchars($lang->manage_invites['lbl_status']) ?>
                     </label>
                     <select name="status" class="form-select form-select-lg">
-                        <option value="">All Statuses</option>
+                        <option value=""><?= htmlspecialchars($lang->manage_invites['opt_all_statuses']) ?></option>
                         <?php foreach (['pending','used','expired','revoked'] as $s): ?>
                         <option value="<?= $s ?>" <?= $filter_status === $s ? 'selected' : '' ?>>
-                            <?= ucfirst($s) ?>
+                            <?= htmlspecialchars(invite_status_label($s)) ?>
                         </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <button type="submit" class="btn btn-modern w-100" style="background: var(--primary-gradient); color: white;">
-                        <i class="fas fa-search me-2"></i>Apply Filters
+                        <i class="fas fa-search me-2"></i><?= htmlspecialchars($lang->manage_invites['btn_apply_filters']) ?>
                     </button>
                 </div>
                 <div class="col-md-2">
                     <a href="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>" class="btn btn-outline-secondary w-100 btn-modern">
-                        <i class="fas fa-redo-alt me-2"></i>Reset
+                        <i class="fas fa-redo-alt me-2"></i><?= htmlspecialchars($lang->manage_invites['btn_reset']) ?>
                     </a>
                 </div>
             </form>
         </div>
-        
+
         <div class="col-md-12 mt-3">
             <hr class="my-2">
             <form method="post" class="row g-3 align-items-end">
                 <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                 <div class="col-md-5">
                     <label class="form-label fw-semibold text-muted">
-                        <i class="fas fa-user-plus me-1"></i>Add Invites to User
+                        <i class="fas fa-user-plus me-1"></i><?= htmlspecialchars($lang->manage_invites['lbl_add_invites']) ?>
                     </label>
                     <div class="input-group input-group-lg">
-                        <span class="input-group-text">User ID</span>
-                        <input type="number" name="user_id" class="form-control" placeholder="Enter user ID" min="1" required>
+                        <span class="input-group-text"><?= htmlspecialchars($lang->manage_invites['lbl_user_id']) ?></span>
+                        <input type="number" name="user_id" class="form-control" placeholder="<?= htmlspecialchars($lang->manage_invites['ph_user_id']) ?>" min="1" required>
                         <span class="input-group-text">+</span>
-                        <input type="number" name="amount" class="form-control" placeholder="Amount" min="1" max="100" value="1" required>
+                        <input type="number" name="amount" class="form-control" placeholder="<?= htmlspecialchars($lang->manage_invites['ph_amount']) ?>" min="1" max="100" value="1" required>
                         <button type="submit" name="add_invites" class="btn btn-success btn-modern">
-                            <i class="fas fa-plus-circle me-2"></i>Add Invites
+                            <i class="fas fa-plus-circle me-2"></i><?= htmlspecialchars($lang->manage_invites['btn_add_invites']) ?>
                         </button>
                     </div>
                 </div>
@@ -442,17 +478,17 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
     <div class="d-flex justify-content-between align-items-center">
         <div>
             <i class="fas fa-check-circle me-2"></i>
-            <strong><span id="selectedCount">0</span> invite(s) selected</strong>
+            <strong><?= ags_fmt(htmlspecialchars($lang->manage_invites['lbl_selected_count']), '<span id="selectedCount">0</span>') ?></strong>
         </div>
         <div class="btn-group">
             <button type="button" class="btn btn-warning btn-modern-sm" onclick="bulkAction('revoke')">
-                <i class="fas fa-ban me-1"></i>Revoke Selected
+                <i class="fas fa-ban me-1"></i><?= htmlspecialchars($lang->manage_invites['btn_revoke_selected']) ?>
             </button>
             <button type="button" class="btn btn-danger btn-modern-sm" onclick="bulkAction('delete')">
-                <i class="fas fa-trash me-1"></i>Delete Selected
+                <i class="fas fa-trash me-1"></i><?= htmlspecialchars($lang->manage_invites['btn_delete_selected']) ?>
             </button>
             <button type="button" class="btn btn-secondary btn-modern-sm" onclick="clearSelection()">
-                <i class="fas fa-times me-1"></i>Cancel
+                <i class="fas fa-times me-1"></i><?= htmlspecialchars($lang->manage_invites['btn_cancel']) ?>
             </button>
         </div>
     </div>
@@ -464,11 +500,11 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <i class="fas fa-list-ul text-primary me-2"></i>
-                <strong>Invitations List</strong>
-                <span class="badge bg-secondary ms-2" style="font-size: 0.85rem;"><?= ts_nf($total_items) ?> total</span>
+                <strong><?= htmlspecialchars($lang->manage_invites['sec_list']) ?></strong>
+                <span class="badge bg-secondary ms-2" style="font-size: 0.85rem;"><?= htmlspecialchars(ags_fmt($lang->manage_invites['lbl_total_badge'], ts_nf($total_items))) ?></span>
             </div>
             <div class="text-muted" style="font-size: 0.9rem;">
-                <i class="fas fa-chart-line me-1"></i>Page <?= $page ?> of <?= $total_pages ?>
+                <i class="fas fa-chart-line me-1"></i><?= htmlspecialchars(ags_fmt($lang->manage_invites['lbl_page_of'], $page, $total_pages)) ?>
             </div>
         </div>
     </div>
@@ -476,8 +512,8 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
     <?php if (empty($invites)): ?>
     <div class="card-body text-center py-5">
         <i class="fas fa-inbox fa-4x mb-3 text-muted"></i>
-        <h5 class="text-muted">No invites found</h5>
-        <p class="text-muted" style="font-size: 0.95rem;">Try adjusting your filters or create new invites</p>
+        <h5 class="text-muted"><?= htmlspecialchars($lang->manage_invites['empty_title']) ?></h5>
+        <p class="text-muted" style="font-size: 0.95rem;"><?= htmlspecialchars($lang->manage_invites['empty_hint']) ?></p>
     </div>
     <?php else: ?>
     <div class="table-responsive">
@@ -492,16 +528,16 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
         <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleSelectAll()" style="cursor:pointer;width:2.5em;height:1.2em;">
     </div>
 </th>
-                        <th>ID</th>
-                        <th>Invite Code</th>
-                        <th>Inviter</th>
-                        <th>Invitee</th>
-                        <th>Email</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Expires</th>
-                        <th>IP Addresses</th>
-                        <th width="100">Actions</th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_id']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_code']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_inviter']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_invitee']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_email']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_status']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_created']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_expires']) ?></th>
+                        <th><?= htmlspecialchars($lang->manage_invites['col_ip']) ?></th>
+                        <th width="100"><?= htmlspecialchars($lang->manage_invites['col_actions']) ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -509,8 +545,8 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
                 <tr>
                     <td class="align-middle">
     <div class="form-check form-switch mb-0">
-        <input class="form-check-input invite-checkbox" type="checkbox" 
-               name="invite_ids[]" value="<?= $inv['id'] ?>" 
+        <input class="form-check-input invite-checkbox" type="checkbox"
+               name="invite_ids[]" value="<?= $inv['id'] ?>"
                onchange="updateBulkBar()"
                style="cursor:pointer;width:2.5em;height:1.2em;">
     </div>
@@ -518,31 +554,31 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
                     <td class="align-middle text-muted fw-bold">#<?= $inv['id'] ?></td>
                     <td class="align-middle">
                         <code class="invite-code"><?= htmlspecialchars($inv['code']) ?></code>
-                        <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="copyToClipboard('<?= htmlspecialchars($inv['code']) ?>')" title="Copy code">
+                        <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="copyToClipboard('<?= htmlspecialchars($inv['code']) ?>')" title="<?= htmlspecialchars($lang->manage_invites['tip_copy_code']) ?>">
                             <i class="fas fa-copy text-muted"></i>
                         </button>
                     </td>
                     <td class="align-middle">
                         <?php if ($inv['inviter_name']): ?>
-                        
-						
+
+
 						<a href="<?= get_profile_link($inv['inviter_id']) ?>">
 						     <i class="fas fa-user-circle me-1"></i><?= format_name($inv['inviter_name'], $inv['inviter_usergroup']) ?>
 					    </a>
-						
-						
-						
+
+
+
                         <?php else: ?>
                         <span class="text-muted">—</span>
                         <?php endif; ?>
                     </td>
                     <td class="align-middle">
                         <?php if ($inv['invitee_name']): ?>
-                        
+
 						<a href="<?= get_profile_link($inv['invitee_id']) ?>">
 						     <i class="fas fa-user-circle me-1"></i><?= format_name($inv['invitee_name'], $inv['invitee_usergroup']) ?>
 					    </a>
-						
+
                         <?php else: ?>
                         <span class="text-muted">—</span>
                         <?php endif; ?>
@@ -559,7 +595,7 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
                     <td class="align-middle">
                         <span class="badge-modern badge-<?= $inv['status'] ?>">
                             <i class="fas fa-<?= $inv['status'] === 'pending' ? 'clock' : ($inv['status'] === 'used' ? 'check' : ($inv['status'] === 'expired' ? 'times' : 'ban')) ?> me-1"></i>
-                            <?= ucfirst($inv['status']) ?>
+                            <?= htmlspecialchars(invite_status_label((string)$inv['status'])) ?>
                         </span>
                     </td>
                     <td class="align-middle text-muted">
@@ -581,30 +617,26 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
                         <code class="text-muted" style="font-size: 0.75rem;"><?= htmlspecialchars($inv['ip_used']) ?></code>
                         <?php endif; ?>
                      </td>
-                    
-					
-					<!-- СТАЛО: -->
+
 <td class="align-middle">
     <div class="btn-group btn-group-sm">
         <?php if ($inv['status'] === 'pending'): ?>
         <button type="button"
                 class="btn btn-outline-warning btn-modern-sm"
-                title="Revoke"
+                title="<?= htmlspecialchars($lang->manage_invites['tip_revoke']) ?>"
                 onclick="singleAction('revoke', <?= $inv['id'] ?>)">
             <i class="fas fa-ban"></i>
         </button>
         <?php endif; ?>
         <button type="button"
                 class="btn btn-outline-danger btn-modern-sm"
-                title="Delete"
+                title="<?= htmlspecialchars($lang->manage_invites['tip_delete']) ?>"
                 onclick="singleAction('delete', <?= $inv['id'] ?>)">
             <i class="fas fa-trash-alt"></i>
         </button>
     </div>
 </td>
-					 
-					 
-					 
+
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -626,6 +658,7 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
 
 </div>
 
-<script src="<?= $BASEURL ?>/admin/scripts/manage_invites.js?ver=1"></script>
+<script>const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_invites.js?ver=2"></script>
 
 <?php stdfoot(); ?>

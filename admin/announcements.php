@@ -8,6 +8,8 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('announcements');
+
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/class_parser.php';
 require_once __DIR__ . '/../cache/smilies.php';
@@ -20,6 +22,43 @@ define('B_VERSION', 'v.0.6');
 define('ANNOUNCEMENTS_PER_PAGE', 15);
 define('ANNOUNCEMENTS_TIMER_SECONDS', 60);
 define('ANNOUNCEMENTS_MAX_CHARS', 5000);
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitutes {1}, {2}… in a lang string. $lang->load() rewrites {N}
+     * into %N$s, so both forms are handled. strtr() is single-pass, so
+     * placeholders inside the arguments themselves are never re-expanded.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string) $arg;
+            $map['%' . $n . '$s'] = (string) $arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * Collects js_* keys of the announcements lang (prefix stripped) as JSON
+ * for `const AGS_LANG = …;`.
+ */
+function announcementsJsLang(): string
+{
+    global $lang;
+
+    $out = [];
+    foreach ((array) ($lang->announcements ?? []) as $key => $value) {
+        $key = (string) $key;
+        if (str_starts_with($key, 'js_')) {
+            $out[substr($key, 3)] = (string) $value;
+        }
+    }
+
+    return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}';
+}
 
 $parser = new postParser();
 
@@ -47,7 +86,7 @@ match ($action) {
     'edit'      => handleEditAction($id, $do),
     'delete'    => handleDeleteAction($id),
     'duplicate' => handleDuplicateAction($id),
-    default     => redirect('admin/index.php?act=announcements', 'Invalid action specified'),
+    default     => redirect('admin/index.php?act=announcements', $lang->announcements['flash_invalid_action']),
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -97,11 +136,13 @@ function countBBCodeTags(string $text): array
  */
 function determineContentType(string $text): string
 {
-    if (preg_match('/\[img\]/i', $text))  return 'With Images';
-    if (preg_match('/\[url\]/i', $text))  return 'With Links';
-    if (strlen($text) > 500)              return 'Long Text';
-    if (strlen($text) < 100)             return 'Short Text';
-    return 'Standard';
+    global $lang;
+
+    if (preg_match('/\[img\]/i', $text))  return $lang->announcements['opt_ct_images'];
+    if (preg_match('/\[url\]/i', $text))  return $lang->announcements['opt_ct_links'];
+    if (strlen($text) > 500)              return $lang->announcements['opt_ct_long'];
+    if (strlen($text) < 100)             return $lang->announcements['opt_ct_short'];
+    return $lang->announcements['opt_ct_standard'];
 }
 
 /**
@@ -109,9 +150,11 @@ function determineContentType(string $text): string
  */
 function calculateReadingTime(string $text): string
 {
+    global $lang;
+
     $words   = str_word_count(strip_tags($text));
     $minutes = (int) ceil($words / 200);
-    return $minutes . ' min' . ($minutes !== 1 ? 's' : '');
+    return ags_fmt($minutes !== 1 ? $lang->announcements['lbl_reading_many'] : $lang->announcements['lbl_reading_one'], $minutes);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -124,31 +167,31 @@ function calculateReadingTime(string $text): string
  */
 function renderDeleteModal(string $scriptName): void
 {
-    global $mybb;
+    global $mybb, $lang;
     ?>
     <div class="modal fade" id="deleteAnnouncementModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content shadow">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Delete Announcement
+                        <i class="fas fa-exclamation-triangle me-2"></i><?= $lang->announcements['del_title'] ?>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-2">You are about to delete:</p>
+                    <p class="mb-2"><?= $lang->announcements['del_about'] ?></p>
                     <div class="alert alert-warning fw-bold mb-3" id="deleteAnnouncementTitle"></div>
-                    <p class="text-danger mb-0"><strong>This action cannot be undone.</strong></p>
+                    <p class="text-danger mb-0"><strong><?= $lang->announcements['del_warning'] ?></strong></p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $lang->announcements['btn_cancel'] ?></button>
                     <form id="deleteAnnouncementForm" method="post" action="<?= htmlspecialchars($scriptName) ?>">
                         <input type="hidden" name="act" value="announcements">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="id" id="deleteAnnouncementId" value="">
                         <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
                         <button type="submit" class="btn btn-danger">
-                            <i class="fas fa-trash me-1"></i> Delete
+                            <i class="fas fa-trash me-1"></i> <?= $lang->announcements['btn_delete'] ?>
                         </button>
                     </form>
                 </div>
@@ -186,9 +229,9 @@ function renderDeleteModal(string $scriptName): void
  */
 function handleShowAction(): void
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
-    stdhead('Announcements ' . B_VERSION);
+    stdhead(ags_fmt($lang->announcements['title_list'], B_VERSION));
 
 	
 	$res   = $db->sql_query_prepared("SELECT COUNT(id) AS cnt FROM announcements");
@@ -209,28 +252,28 @@ function handleShowAction(): void
     <div class="container mt-4">
      
 		<div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="mb-0"><i class="fas fa-bullhorn me-2 text-primary"></i>Tracker Announcements</h3>
+            <h3 class="mb-0"><i class="fas fa-bullhorn me-2 text-primary"></i><?= $lang->announcements['sec_tracker_announcements'] ?></h3>
             <a href="<?= $_this_script_ ?>&action=add" class="btn btn-primary">
-                <i class="fas fa-plus me-1"></i> New Announcement
+                <i class="fas fa-plus me-1"></i> <?= $lang->announcements['btn_new'] ?>
             </a>
         </div>
 
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Announcements List</h5>
-                <span class="badge bg-light text-dark">Total: <?= number_format($total) ?></span>
+                <h5 class="mb-0"><?= $lang->announcements['sec_list'] ?></h5>
+                <span class="badge bg-light text-dark"><?= ags_fmt($lang->announcements['lbl_total'], number_format($total)) ?></span>
             </div>
 
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th width="60">ID</th>
-                            <th>Subject</th>
-                            <th width="300">Preview</th>
-                            <th width="180">Added</th>
-                            <th width="120">Min. Class</th>
-                            <th width="140" class="text-center">Actions</th>
+                            <th width="60"><?= $lang->announcements['th_id'] ?></th>
+                            <th><?= $lang->announcements['th_subject'] ?></th>
+                            <th width="300"><?= $lang->announcements['th_preview'] ?></th>
+                            <th width="180"><?= $lang->announcements['th_added'] ?></th>
+                            <th width="120"><?= $lang->announcements['th_minclass'] ?></th>
+                            <th width="140" class="text-center"><?= $lang->announcements['th_actions'] ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -242,7 +285,7 @@ function handleShowAction(): void
                             <tr>
                                 <td colspan="6" class="text-center py-5 text-muted">
                                     <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
-                                    No announcements found
+                                    <?= $lang->announcements['lbl_no_announcements'] ?>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -269,6 +312,8 @@ function handleShowAction(): void
  */
 function renderAnnouncementRow(array $row): void
 {
+    global $lang;
+
     $id      = (int) $row['id'];
     $subject = htmlspecialchars($row['subject']);
     $preview = htmlspecialchars(mb_substr(strip_tags($row['message']), 0, 100)) . '…';
@@ -290,7 +335,7 @@ function renderAnnouncementRow(array $row): void
             <div class="small">
                 <?= my_datee('relative', (int) $row['added']) ?>
                 <br>
-                <span class="badge bg-secondary"><?= $timeAgo ?> ago</span>
+                <span class="badge bg-secondary"><?= ags_fmt($lang->announcements['lbl_ago'], $timeAgo) ?></span>
             </div>
         </td>
         <td class="text-center">
@@ -299,14 +344,14 @@ function renderAnnouncementRow(array $row): void
         <td class="text-center">
             <div class="btn-group btn-group-sm" role="group">
                 <a href="<?= $base ?>&action=see&id=<?= $id ?>"
-                   class="btn btn-outline-info" title="Preview">
+                   class="btn btn-outline-info" title="<?= htmlspecialchars($lang->announcements['tip_preview']) ?>">
                     <i class="fas fa-eye"></i>
                 </a>
                 <a href="<?= $base ?>&action=edit&id=<?= $id ?>"
-                   class="btn btn-outline-primary" title="Edit">
+                   class="btn btn-outline-primary" title="<?= htmlspecialchars($lang->announcements['tip_edit']) ?>">
                     <i class="fas fa-edit"></i>
                 </a>
-                <button type="button" class="btn btn-outline-danger" title="Delete"
+                <button type="button" class="btn btn-outline-danger" title="<?= htmlspecialchars($lang->announcements['tip_delete']) ?>"
                         onclick="openDeleteModal(<?= $id ?>, '<?= htmlspecialchars(addslashes($row['subject'])) ?>')">
                     <i class="fas fa-trash"></i>
                 </button>
@@ -342,15 +387,15 @@ function renderPagination(int $currentPage, int $total, int $perPage): string
  */
 function handleSeeAction(int $id): void
 {
-    global $db, $parser, $parser_options;
+    global $db, $parser, $parser_options, $lang;
 
     if ($id <= 0) {
-        redirect('admin/index.php?act=announcements', 'Invalid announcement ID');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_invalid_id']);
     }
 
     $current = fetchAnnouncement($id);
     if (!$current) {
-        redirect('admin/index.php?act=announcements', 'Announcement not found');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_not_found']);
     }
 
     // Navigation neighbours
@@ -374,19 +419,19 @@ function handleSeeAction(int $id): void
     $scriptName    = $_SERVER['SCRIPT_NAME'];
     $base          = $scriptName . '?act=announcements';
 
-    stdhead('View Announcement');
+    stdhead($lang->announcements['title_view']);
     ?>
 
     <div class="container mt-4">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Announcement Preview</h5>
+                <h5 class="mb-0"><?= $lang->announcements['sec_preview_page'] ?></h5>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-info" onclick="seeToggleSidebar()" title="Toggle sidebar">
+                    <button class="btn btn-sm btn-outline-info" onclick="seeToggleSidebar()" title="<?= htmlspecialchars($lang->announcements['tip_toggle_sidebar']) ?>">
                         <i class="fas fa-columns"></i>
                     </button>
                     <a href="<?= $base ?>" class="btn btn-sm btn-secondary">
-                        <i class="fas fa-arrow-left me-1"></i> Back
+                        <i class="fas fa-arrow-left me-1"></i> <?= $lang->announcements['btn_back'] ?>
                     </a>
                 </div>
             </div>
@@ -460,6 +505,8 @@ function renderSeeModal(
     string $parsedMessage,
     string $scriptName
 ): void {
+    global $lang;
+
     $base = $scriptName . '?act=announcements';
     $id   = (int) $current['id'];
     ?>
@@ -475,20 +522,20 @@ function renderSeeModal(
                         <div class="btn-group">
                             <?php if ($prev): ?>
                                 <a href="<?= $base ?>&action=see&id=<?= (int)$prev['id'] ?>"
-                                   class="btn btn-light btn-sm" title="Previous (←)">
+                                   class="btn btn-light btn-sm" title="<?= htmlspecialchars($lang->announcements['tip_prev']) ?>">
                                     <i class="fas fa-chevron-left"></i>
                                 </a>
                             <?php else: ?>
                                 <button class="btn btn-light btn-sm" disabled><i class="fas fa-chevron-left"></i></button>
                             <?php endif; ?>
 
-                            <button class="btn btn-light btn-sm" onclick="seeToggleFullscreen()" title="Fullscreen (F)">
+                            <button class="btn btn-light btn-sm" onclick="seeToggleFullscreen()" title="<?= htmlspecialchars($lang->announcements['tip_fullscreen']) ?>">
                                 <i class="fas fa-expand"></i>
                             </button>
 
                             <?php if ($next): ?>
                                 <a href="<?= $base ?>&action=see&id=<?= (int)$next['id'] ?>"
-                                   class="btn btn-light btn-sm" title="Next (→)">
+                                   class="btn btn-light btn-sm" title="<?= htmlspecialchars($lang->announcements['tip_next']) ?>">
                                     <i class="fas fa-chevron-right"></i>
                                 </a>
                             <?php else: ?>
@@ -506,14 +553,14 @@ function renderSeeModal(
 
                     <div class="d-flex align-items-center gap-3">
                         <div class="progress" style="width:100px;height:6px"
-                             title="<?= $currentPosition ?> of <?= $totalCount ?>">
+                             title="<?= htmlspecialchars(ags_fmt($lang->announcements['tip_position'], $currentPosition, $totalCount)) ?>">
                             <div class="progress-bar bg-warning"
                                  style="width:<?= ($totalCount > 0 ? round(($currentPosition / $totalCount) * 100) : 0) ?>%">
                             </div>
                         </div>
                         <div class="text-end small">
                             <div>#<?= $currentPosition ?>/<?= $totalCount ?></div>
-                            <div>ID: <?= $id ?></div>
+                            <div><?= $lang->announcements['lbl_id'] ?>: <?= $id ?></div>
                         </div>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
                                 onclick="window.location.href='<?= $base ?>'">
@@ -552,6 +599,8 @@ function renderSeeTabContent(
     int    $totalCount,
     int    $currentPosition
 ): void {
+    global $lang;
+
     $tags        = countBBCodeTags($current['message']);
     $contentType = determineContentType($current['message']);
     $wordCount   = number_format(str_word_count(strip_tags($current['message'])));
@@ -561,9 +610,9 @@ function renderSeeTabContent(
     <ul class="nav nav-tabs mb-4" id="announcementTabs" role="tablist">
         <?php
         $tabs = [
-            ['content',  'fa-file-alt',    'Content'],
-            ['details',  'fa-info-circle', 'Details'],
-            ['stats',    'fa-chart-bar',   'Statistics'],
+            ['content',  'fa-file-alt',    $lang->announcements['tab_content']],
+            ['details',  'fa-info-circle', $lang->announcements['tab_details']],
+            ['stats',    'fa-chart-bar',   $lang->announcements['tab_stats']],
         ];
         foreach ($tabs as $i => [$pane, $icon, $label]): ?>
             <li class="nav-item" role="presentation">
@@ -581,21 +630,21 @@ function renderSeeTabContent(
         <div class="tab-pane fade show active" id="content" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary" onclick="seeFontSize(10)"  title="Increase">
+                    <button class="btn btn-outline-secondary" onclick="seeFontSize(10)"  title="<?= htmlspecialchars($lang->announcements['tip_font_inc']) ?>">
                         <i class="fas fa-search-plus"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="seeFontSize(-10)" title="Decrease">
+                    <button class="btn btn-outline-secondary" onclick="seeFontSize(-10)" title="<?= htmlspecialchars($lang->announcements['tip_font_dec']) ?>">
                         <i class="fas fa-search-minus"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="seeToggleDark()" title="Dark mode (D)">
+                    <button class="btn btn-outline-secondary" onclick="seeToggleDark()" title="<?= htmlspecialchars($lang->announcements['tip_dark']) ?>">
                         <i class="fas fa-moon"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="seeCopy()" title="Copy (C)">
+                    <button class="btn btn-outline-secondary" onclick="seeCopy()" title="<?= htmlspecialchars($lang->announcements['tip_copy']) ?>">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
                 <div class="text-muted small">
-                    Font: <span id="seeFontIndicator">100%</span>
+                    <?= $lang->announcements['lbl_font'] ?> <span id="seeFontIndicator">100%</span>
                 </div>
             </div>
 
@@ -605,12 +654,12 @@ function renderSeeTabContent(
 
             <div class="mt-4 pt-3 border-top d-flex justify-content-between align-items-center">
                 <div class="d-flex flex-wrap gap-2">
-                    <span class="badge bg-light text-dark"><i class="fas fa-font me-1"></i><?= $wordCount ?> words</span>
-                    <span class="badge bg-light text-dark"><i class="fas fa-ruler me-1"></i><?= $charCount ?> chars</span>
+                    <span class="badge bg-light text-dark"><i class="fas fa-font me-1"></i><?= ags_fmt($lang->announcements['lbl_words'], $wordCount) ?></span>
+                    <span class="badge bg-light text-dark"><i class="fas fa-ruler me-1"></i><?= ags_fmt($lang->announcements['lbl_chars'], $charCount) ?></span>
                     <span class="badge bg-light text-dark"><i class="fas fa-clock me-1"></i><?= $readingTime ?></span>
                 </div>
                 <button class="btn btn-sm btn-outline-success" onclick="seeShare()">
-                    <i class="fas fa-share-alt me-1"></i> Share
+                    <i class="fas fa-share-alt me-1"></i> <?= $lang->announcements['btn_share'] ?>
                 </button>
             </div>
         </div>
@@ -620,29 +669,29 @@ function renderSeeTabContent(
             <div class="row">
                 <div class="col-md-6">
                     <div class="card mb-3">
-                        <div class="card-header bg-light"><h6 class="mb-0">Announcement Details</h6></div>
+                        <div class="card-header bg-light"><h6 class="mb-0"><?= $lang->announcements['sec_details'] ?></h6></div>
                         <div class="card-body">
                             <dl class="row mb-0">
-                                <dt class="col-sm-4">ID:</dt>
+                                <dt class="col-sm-4"><?= $lang->announcements['dt_id'] ?></dt>
                                 <dd class="col-sm-8">#<?= (int) $current['id'] ?></dd>
 
-                                <dt class="col-sm-4">Created:</dt>
+                                <dt class="col-sm-4"><?= $lang->announcements['dt_created'] ?></dt>
                                 <dd class="col-sm-8">
                                     <?= my_datee('relative', (int) $current['added']) ?><br>
-                                    <small class="text-muted">(<?= mkprettytime(TIMENOW - (int) $current['added']) ?> ago)</small>
+                                    <small class="text-muted">(<?= ags_fmt($lang->announcements['lbl_ago'], mkprettytime(TIMENOW - (int) $current['added'])) ?>)</small>
                                 </dd>
 
-                                <dt class="col-sm-4">Author:</dt>
+                                <dt class="col-sm-4"><?= $lang->announcements['dt_author'] ?></dt>
                                
 
-                                <dt class="col-sm-4">Target:</dt>
+                                <dt class="col-sm-4"><?= $lang->announcements['dt_target'] ?></dt>
                                 <dd class="col-sm-8">
                                     <span class="badge bg-info">
                                         <?= get_user_class_name((string) $current['minclassread']) ?>
                                     </span>
                                 </dd>
 
-                                <dt class="col-sm-4">Subject:</dt>
+                                <dt class="col-sm-4"><?= $lang->announcements['dt_subject'] ?></dt>
                                 <dd class="col-sm-8"><?= htmlspecialchars($current['subject']) ?></dd>
                             </dl>
                         </div>
@@ -650,32 +699,32 @@ function renderSeeTabContent(
                 </div>
                 <div class="col-md-6">
                     <div class="card">
-                        <div class="card-header bg-light"><h6 class="mb-0">Technical Info</h6></div>
+                        <div class="card-header bg-light"><h6 class="mb-0"><?= $lang->announcements['sec_tech'] ?></h6></div>
                         <div class="card-body">
                             <dl class="row mb-0">
-                                <dt class="col-sm-5">BBCode Tags:</dt>
+                                <dt class="col-sm-5"><?= $lang->announcements['dt_bbcode'] ?></dt>
                                 <dd class="col-sm-7"><?= implode(', ', array_keys($tags)) ?: '—' ?></dd>
 
-                                <dt class="col-sm-5">Has Images:</dt>
-                                <dd class="col-sm-7"><?= preg_match('/\[img\]/i', $current['message']) ? 'Yes' : 'No' ?></dd>
+                                <dt class="col-sm-5"><?= $lang->announcements['dt_has_images'] ?></dt>
+                                <dd class="col-sm-7"><?= preg_match('/\[img\]/i', $current['message']) ? $lang->announcements['lbl_yes'] : $lang->announcements['lbl_no'] ?></dd>
 
-                                <dt class="col-sm-5">Has Links:</dt>
-                                <dd class="col-sm-7"><?= preg_match('/\[url\]/i', $current['message']) ? 'Yes' : 'No' ?></dd>
+                                <dt class="col-sm-5"><?= $lang->announcements['dt_has_links'] ?></dt>
+                                <dd class="col-sm-7"><?= preg_match('/\[url\]/i', $current['message']) ? $lang->announcements['lbl_yes'] : $lang->announcements['lbl_no'] ?></dd>
 
-                                <dt class="col-sm-5">Content Type:</dt>
+                                <dt class="col-sm-5"><?= $lang->announcements['dt_content_type'] ?></dt>
                                 <dd class="col-sm-7"><?= $contentType ?></dd>
 
-                                <dt class="col-sm-5">Last Modified:</dt>
+                                <dt class="col-sm-5"><?= $lang->announcements['dt_modified'] ?></dt>
                                 <dd class="col-sm-7">
                                     <?php if (!empty($current['updated']) && (int) $current['updated'] !== 0): ?>
                                         <?= my_datee('relative', (int) $current['updated']) ?>
                                         <br>
                                         <small class="text-muted">
-                                            <?= mkprettytime(TIMENOW - (int) $current['updated']) ?> ago
+                                            <?= ags_fmt($lang->announcements['lbl_ago'], mkprettytime(TIMENOW - (int) $current['updated'])) ?>
                                         </small>
                                     <?php else: ?>
-                                        <span class="text-success">Never</span>
-                                        <br><small class="text-muted">Original version</small>
+                                        <span class="text-success"><?= $lang->announcements['lbl_never'] ?></span>
+                                        <br><small class="text-muted"><?= $lang->announcements['lbl_original'] ?></small>
                                     <?php endif; ?>
                                 </dd>
                             </dl>
@@ -690,9 +739,9 @@ function renderSeeTabContent(
             <div class="row text-center">
                 <?php
                 $statCards = [
-                    [$viewCount,       'Total Views',         'primary'],
-                    [$totalCount,      'Total Announcements', 'success'],
-                    [$currentPosition, 'Position in List',    'info'],
+                    [$viewCount,       $lang->announcements['stat_total_views'], 'primary'],
+                    [$totalCount,      $lang->announcements['stat_total'],       'success'],
+                    [$currentPosition, $lang->announcements['stat_position'],    'info'],
                 ];
                 foreach ($statCards as [$val, $label, $color]): ?>
                     <div class="col-md-4">
@@ -708,7 +757,7 @@ function renderSeeTabContent(
 
             <?php if ($viewCount > 0): ?>
                 <div class="card">
-                    <div class="card-header bg-light"><h6 class="mb-0">View History (Last 7 Days)</h6></div>
+                    <div class="card-header bg-light"><h6 class="mb-0"><?= $lang->announcements['sec_view_history'] ?></h6></div>
                     <div class="card-body">
                         <canvas id="seeViewChart" height="100"></canvas>
                     </div>
@@ -730,31 +779,36 @@ function renderSeeSidebar(
     int    $currentPosition,
     string $scriptName
 ): void {
+    global $lang;
+
     $base = $scriptName . '?act=announcements';
     $id   = (int) $current['id'];
     ?>
     <!-- Quick Actions -->
     <div class="mb-4">
-        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-bolt me-2"></i>Quick Actions</h6>
+        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-bolt me-2"></i><?= $lang->announcements['sec_quick_actions'] ?></h6>
         <div class="d-grid gap-2">
             <a href="<?= $base ?>&action=edit&id=<?= $id ?>" class="btn btn-primary btn-sm">
-                <i class="fas fa-edit me-2"></i>Edit
+                <i class="fas fa-edit me-2"></i><?= $lang->announcements['btn_edit'] ?>
             </a>
             <button class="btn btn-danger btn-sm"
                     onclick="openDeleteModal(<?= $id ?>, '<?= htmlspecialchars(addslashes($current['subject'])) ?>')">
-                <i class="fas fa-trash me-2"></i>Delete
+                <i class="fas fa-trash me-2"></i><?= $lang->announcements['btn_delete'] ?>
             </button>
             <button class="btn btn-success btn-sm" id="duplicateBtn" onclick="seeDuplicate(<?= $id ?>)">
-                <i class="fas fa-copy me-2"></i>Duplicate
+                <i class="fas fa-copy me-2"></i><?= $lang->announcements['btn_duplicate'] ?>
             </button>
         </div>
     </div>
 
     <!-- Navigation -->
     <div class="mb-4">
-        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-compass me-2"></i>Navigation</h6>
+        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-compass me-2"></i><?= $lang->announcements['sec_navigation'] ?></h6>
         <div class="d-grid gap-2">
-            <?php foreach ([['prev', $prev, 'arrow-left', 'Previous'], ['next', $next, 'arrow-right', 'Next']] as [$dir, $neighbour, $icon, $label]): ?>
+            <?php foreach ([
+                ['prev', $prev, 'arrow-left',  $lang->announcements['lbl_prev'], $lang->announcements['lbl_no_prev']],
+                ['next', $next, 'arrow-right', $lang->announcements['lbl_next'], $lang->announcements['lbl_no_next']],
+            ] as [$dir, $neighbour, $icon, $label, $noLabel]): ?>
                 <?php if ($neighbour): ?>
                     <a href="<?= $base ?>&action=see&id=<?= (int)$neighbour['id'] ?>"
                        class="btn btn-outline-primary btn-sm text-start">
@@ -768,7 +822,7 @@ function renderSeeSidebar(
                     <button class="btn btn-outline-secondary btn-sm text-start" disabled>
                         <i class="fas fa-<?= $icon ?> me-2"></i>
                         <small><?= $label ?></small>
-                        <div>No <?= strtolower($label) ?></div>
+                        <div><?= $noLabel ?></div>
                     </button>
                 <?php endif; ?>
             <?php endforeach; ?>
@@ -777,16 +831,16 @@ function renderSeeSidebar(
 
     <!-- Auto-close Timer -->
     <div class="mb-4">
-        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-hourglass-half me-2"></i>Auto-close Timer</h6>
+        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-hourglass-half me-2"></i><?= $lang->announcements['sec_timer'] ?></h6>
         <div class="text-center">
             <div class="display-4" id="seeTimer"><?= ANNOUNCEMENTS_TIMER_SECONDS ?></div>
-            <small class="text-muted">seconds remaining</small>
+            <small class="text-muted"><?= $lang->announcements['lbl_seconds_left'] ?></small>
             <div class="mt-2 d-flex gap-2 justify-content-center">
                 <button class="btn btn-sm btn-outline-warning" onclick="seeResetTimer()">
-                    <i class="fas fa-redo"></i> Reset
+                    <i class="fas fa-redo"></i> <?= $lang->announcements['btn_reset'] ?>
                 </button>
                 <button class="btn btn-sm btn-outline-info" id="seeTimerToggleBtn" onclick="seeToggleTimer()">
-                    <i class="fas fa-pause"></i> Pause
+                    <i class="fas fa-pause"></i> <?= $lang->announcements['btn_pause'] ?>
                 </button>
             </div>
         </div>
@@ -794,26 +848,32 @@ function renderSeeSidebar(
 
     <!-- Export -->
     <div>
-        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-download me-2"></i>Export</h6>
+        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-download me-2"></i><?= $lang->announcements['sec_export'] ?></h6>
         <div class="d-grid gap-2">
             <button class="btn btn-outline-secondary btn-sm" onclick="seeExport('text')">
-                <i class="fas fa-file-alt me-2"></i>As Text
+                <i class="fas fa-file-alt me-2"></i><?= $lang->announcements['btn_export_text'] ?>
             </button>
             <button class="btn btn-outline-secondary btn-sm" onclick="seeExport('html')">
-                <i class="fas fa-code me-2"></i>As HTML
+                <i class="fas fa-code me-2"></i><?= $lang->announcements['btn_export_html'] ?>
             </button>
             <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
-                <i class="fas fa-file-pdf me-2"></i>Print / PDF
+                <i class="fas fa-file-pdf me-2"></i><?= $lang->announcements['btn_print'] ?>
             </button>
         </div>
     </div>
 
     <!-- Shortcuts cheat-sheet -->
     <div class="mt-4">
-        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-keyboard me-2"></i>Shortcuts</h6>
+        <h6 class="border-bottom pb-2 mb-3"><i class="fas fa-keyboard me-2"></i><?= $lang->announcements['sec_shortcuts'] ?></h6>
         <div class="row g-2 text-center">
             <?php
-            $shortcuts = [['← →', 'Navigate'], ['F', 'Fullscreen'], ['C', 'Copy'], ['D', 'Dark'], ['ESC', 'Close']];
+            $shortcuts = [
+                ['← →', $lang->announcements['key_navigate']],
+                ['F',   $lang->announcements['key_fullscreen']],
+                ['C',   $lang->announcements['key_copy']],
+                ['D',   $lang->announcements['key_dark']],
+                ['ESC', $lang->announcements['key_close']],
+            ];
             foreach ($shortcuts as [$key, $action]): ?>
                 <div class="col-6">
                     <kbd class="d-block"><?= $key ?></kbd>
@@ -830,15 +890,17 @@ function renderSeeSidebar(
  */
 function renderSeePreviewCard(array $current, int $viewCount, string $parsedMessage, string $scriptName): void
 {
+    global $lang;
+
     $base = $scriptName . '?act=announcements';
     $id   = (int) $current['id'];
     ?>
     <div class="col-md-8">
         <div class="card shadow-sm">
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">Preview</h6>
+                <h6 class="mb-0"><?= $lang->announcements['sec_preview'] ?></h6>
                 <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#announcementModal">
-                    <i class="fas fa-external-link-alt me-1"></i>Open in Modal
+                    <i class="fas fa-external-link-alt me-1"></i><?= $lang->announcements['btn_open_modal'] ?>
                 </button>
             </div>
             <div class="card-body">
@@ -856,15 +918,15 @@ function renderSeePreviewCard(array $current, int $viewCount, string $parsedMess
                     <div>
                         <span class="badge bg-info me-1"><?= get_user_class_name((string) $current['minclassread']) ?></span>
                         <span class="badge bg-secondary">#<?= $id ?></span>
-                        <span class="badge bg-danger ms-1"><?= $viewCount ?> views</span>
+                        <span class="badge bg-danger ms-1"><?= ags_fmt($lang->announcements['lbl_views'], $viewCount) ?></span>
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-sm btn-outline-primary"
                                 data-bs-toggle="modal" data-bs-target="#announcementModal">
-                            <i class="fas fa-eye me-1"></i>Full View
+                            <i class="fas fa-eye me-1"></i><?= $lang->announcements['btn_full_view'] ?>
                         </button>
                         <a href="<?= $base ?>&action=edit&id=<?= $id ?>" class="btn btn-sm btn-outline-success">
-                            <i class="fas fa-edit me-1"></i>Edit
+                            <i class="fas fa-edit me-1"></i><?= $lang->announcements['btn_edit'] ?>
                         </a>
                     </div>
                 </div>
@@ -879,19 +941,21 @@ function renderSeePreviewCard(array $current, int $viewCount, string $parsedMess
  */
 function renderSeeQuickStatsCard(array $current, int $viewCount, int $currentPosition, int $totalCount): void
 {
+    global $lang;
+
     $age = mkprettytime(TIMENOW - (int) $current['added']);
     ?>
     <div class="col-md-4">
         <div class="card shadow-sm">
-            <div class="card-header bg-light"><h6 class="mb-0">Quick Stats</h6></div>
+            <div class="card-header bg-light"><h6 class="mb-0"><?= $lang->announcements['sec_quick_stats'] ?></h6></div>
             <div class="card-body p-0">
                 <ul class="list-group list-group-flush">
                     <?php
                     $stats = [
-                        ['Position', "$currentPosition/$totalCount", 'primary'],
-                        ['Views',    $viewCount,                     'success'],
-                        ['Words',    number_format(str_word_count(strip_tags($current['message']))), 'info'],
-                        ['Age',      $age,                           'warning'],
+                        [$lang->announcements['qs_position'], "$currentPosition/$totalCount", 'primary'],
+                        [$lang->announcements['qs_views'],    $viewCount,                     'success'],
+                        [$lang->announcements['qs_words'],    number_format(str_word_count(strip_tags($current['message']))), 'info'],
+                        [$lang->announcements['qs_age'],      $age,                           'warning'],
                     ];
                     foreach ($stats as [$label, $val, $color]): ?>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -917,14 +981,14 @@ function renderSeeScripts(
     string $scriptName
 ): void {
 	
-	global $BASEURL, $mybb;
+	global $BASEURL, $mybb, $lang;
 	
     $base        = htmlspecialchars($scriptName . '?act=announcements');
     $prevId      = $prev ? (int) $prev['id'] : 'null';
     $nextId      = $next ? (int) $next['id'] : 'null';
     $subject     = addslashes(htmlspecialchars($current['subject']));
 	
-	$author      = 'Staff'; // нет поля автора в таблице
+	$author      = addslashes($lang->announcements['lbl_author_staff']); // нет поля автора в таблице
     
     $targetClass = addslashes(get_user_class_name((string) $current['minclassread']));
     $rawText     = addslashes(strip_tags($current['message']));
@@ -935,6 +999,9 @@ function renderSeeScripts(
     
 	<script src="<?= $BASEURL ?>/scripts/chart.js"></script>
 	
+    <script>
+    const AGS_LANG = <?= announcementsJsLang() ?>;
+    </script>
     <script>
     (() => {
         // ── State ──────────────────────────────────────────────────────────────
@@ -951,11 +1018,35 @@ function renderSeeScripts(
         const NEXT_ID  = <?= $nextId ?>;
 
         // ── Helpers ────────────────────────────────────────────────────────────
-        function notify(msg, type = 'info') {
-            const el = Object.assign(document.createElement('div'), {
-                className: `alert alert-${type} alert-dismissible fade show position-fixed`,
-                innerHTML: `${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`,
+        // t(key, fallback, ...args): AGS_LANG lookup with English fallback, {1}/%1$s substitution
+        const t = (key, fallback, ...args) => {
+            let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string')
+                ? AGS_LANG[key] : fallback;
+            args.forEach((arg, i) => {
+                const v = String(arg);
+                s = s.split('{' + (i + 1) + '}').join(v).split('%' + (i + 1) + '$s').join(v);
             });
+            return s;
+        };
+
+        // Replaces element content with <i class="…"> + plain text (no innerHTML for translations)
+        function setIconText(el, iconClass, text) {
+            el.textContent = '';
+            const icon = document.createElement('i');
+            icon.className = iconClass;
+            el.appendChild(icon);
+            el.appendChild(document.createTextNode(text));
+        }
+
+        function notify(msg, type = 'info') {
+            const el = document.createElement('div');
+            el.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            el.appendChild(document.createTextNode(String(msg)));
+            const closeBtn = document.createElement('button');
+            closeBtn.type      = 'button';
+            closeBtn.className = 'btn-close';
+            closeBtn.setAttribute('data-bs-dismiss', 'alert');
+            el.appendChild(closeBtn);
             Object.assign(el.style, { top: '20px', right: '20px', zIndex: 9999, minWidth: '280px' });
             document.body.appendChild(el);
             setTimeout(() => el.remove(), 3000);
@@ -1003,7 +1094,7 @@ function renderSeeScripts(
 
         window.seeCopy = function () {
             navigator.clipboard.writeText(document.getElementById('seeContentArea').innerText)
-                .then(() => notify('Content copied to clipboard!', 'success'));
+                .then(() => notify(t('copied_content', 'Content copied to clipboard!'), 'success'));
         };
 
         window.seeShare = function () {
@@ -1011,7 +1102,7 @@ function renderSeeScripts(
                 navigator.share({ title: '<?= $subject ?>', url: window.location.href });
             } else {
                 window.seeCopy();
-                notify('Link copied to clipboard!', 'info');
+                notify(t('copied_link', 'Link copied to clipboard!'), 'info');
             }
         };
 
@@ -1045,41 +1136,43 @@ function renderSeeScripts(
 
         function updateTimerBtn() {
             const btn = document.getElementById('seeTimerToggleBtn');
-            btn.innerHTML = _timerPaused
-                ? '<i class="fas fa-play"></i> Resume'
-                : '<i class="fas fa-pause"></i> Pause';
+            if (_timerPaused) {
+                setIconText(btn, 'fas fa-play', ' ' + t('resume', 'Resume'));
+            } else {
+                setIconText(btn, 'fas fa-pause', ' ' + t('pause', 'Pause'));
+            }
             btn.classList.toggle('btn-outline-info',    !_timerPaused);
             btn.classList.toggle('btn-outline-success',  _timerPaused);
         }
 
         // ── Duplicate ──────────────────────────────────────────────────────────
         window.seeDuplicate = function (id) {
-            if (!confirm('Duplicate this announcement?\n\nA copy will be created with "Copy of" prefix.')) return;
+            if (!confirm(t('confirm_duplicate', 'Duplicate this announcement?\n\nA copy will be created with "Copy of" prefix.'))) return;
 
             const btn = document.getElementById('duplicateBtn');
             btn.disabled  = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Duplicating…';
+            setIconText(btn, 'fas fa-spinner fa-spin me-2', t('duplicating', 'Duplicating…'));
 
             fetch(`${BASE_URL}&action=duplicate&id=${id}`, {
                 method: 'POST',
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'do=duplicate&my_post_key=' + encodeURIComponent(POST_KEY),
             })
-            .then(r => { if (!r.ok) throw new Error('Network error'); return r.json(); })
+            .then(r => { if (!r.ok) throw new Error(t('network_error', 'Network error')); return r.json(); })
             .then(data => {
                 if (data.success) {
                     notify(data.message, 'success');
                     setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
                 } else {
-                    alert('Error: ' + data.message);
+                    alert(t('error', 'Error: {1}', data.message));
                     btn.disabled  = false;
-                    btn.innerHTML = '<i class="fas fa-copy me-2"></i>Duplicate';
+                    setIconText(btn, 'fas fa-copy me-2', t('duplicate', 'Duplicate'));
                 }
             })
             .catch(err => {
-                alert('Network error: ' + err.message);
+                alert(t('network_error_fmt', 'Network error: {1}', err.message));
                 btn.disabled  = false;
-                btn.innerHTML = '<i class="fas fa-copy me-2"></i>Duplicate';
+                setIconText(btn, 'fas fa-copy me-2', t('duplicate', 'Duplicate'));
             });
         };
 
@@ -1087,7 +1180,7 @@ function renderSeeScripts(
         window.seeExport = function (format) {
             if (format === 'text') {
                 downloadFile(
-                    `Announcement: <?= $subject ?>\nDate: ...\nAuthor: <?= $author ?>\nFor: <?= $targetClass ?>\n\n<?= $rawText ?>`,
+                    `${t('exp_subject', 'Announcement: {1}', `<?= $subject ?>`)}\n${t('exp_date', 'Date: {1}', '...')}\n${t('exp_author', 'Author: {1}', `<?= $author ?>`)}\n${t('exp_for', 'For: {1}', `<?= $targetClass ?>`)}\n\n<?= $rawText ?>`,
                     'announcement-<?= $id ?>.txt',
                     'text/plain'
                 );
@@ -1123,8 +1216,11 @@ function renderSeeScripts(
             new Chart(document.getElementById('seeViewChart').getContext('2d'), {
                 type: 'line',
                 data: {
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                    datasets: [{ label: 'Views', data: [12, 19, 8, 15, 22, 13, 18],
+                    labels: [
+                        t('day_mon', 'Mon'), t('day_tue', 'Tue'), t('day_wed', 'Wed'), t('day_thu', 'Thu'),
+                        t('day_fri', 'Fri'), t('day_sat', 'Sat'), t('day_sun', 'Sun'),
+                    ],
+                    datasets: [{ label: t('chart_views', 'Views'), data: [12, 19, 8, 15, 22, 13, 18],
                         borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,.1)', tension: 0.4 }],
                 },
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
@@ -1155,11 +1251,11 @@ function renderSeeScripts(
  */
 function handleAddAction(string $do): void
 {
-    global $db, $mybb;
+    global $db, $mybb, $lang;
 
     if ($do === 'save') {
         if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-            redirect('admin/index.php?act=announcements&action=add', 'Security check failed. Please try again.');
+            redirect('admin/index.php?act=announcements&action=add', $lang->announcements['flash_csrf']);
         }
 
         $subject      = trim($_POST['subject'] ?? '');
@@ -1168,7 +1264,7 @@ function handleAddAction(string $do): void
        
 
         if ($subject === '' || $message === '') {
-            redirect('admin/index.php?act=announcements&action=add', 'Please fill in all required fields');
+            redirect('admin/index.php?act=announcements&action=add', $lang->announcements['flash_required']);
         }
 
         $minclassValue = ($minclassread === '-') ? 0 : (int) $minclassread;
@@ -1179,7 +1275,7 @@ function handleAddAction(string $do): void
         );
 
         markUsersAsUnread($minclassValue, $db);
-        redirect('admin/index.php?act=announcements', 'Announcement has been added successfully');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_added']);
     }
 
     renderAnnouncementForm('add');
@@ -1190,15 +1286,15 @@ function handleAddAction(string $do): void
  */
 function handleEditAction(int $id, string $do): void
 {
-    global $db, $mybb;
+    global $db, $mybb, $lang;
 
     if ($id <= 0) {
-        redirect('admin/index.php?act=announcements', 'Invalid announcement ID');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_invalid_id']);
     }
 
     if ($do === 'save') {
         if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-            redirect("admin/index.php?act=announcements&action=edit&id=$id", 'Security check failed. Please try again.');
+            redirect("admin/index.php?act=announcements&action=edit&id=$id", $lang->announcements['flash_csrf']);
         }
 
         $subject      = trim($_POST['subject'] ?? '');
@@ -1207,7 +1303,7 @@ function handleEditAction(int $id, string $do): void
         
 
         if ($subject === '' || $message === '') {
-            redirect("admin/index.php?act=announcements&action=edit&id=$id", 'Please fill in all required fields');
+            redirect("admin/index.php?act=announcements&action=edit&id=$id", $lang->announcements['flash_required']);
         }
 
         $minclassValue = ($minclassread === '-') ? 0 : (int) $minclassread;
@@ -1224,12 +1320,12 @@ function handleEditAction(int $id, string $do): void
             markUsersAsUnread($minclassValue, $db);
         }
 
-        redirect('admin/index.php?act=announcements', 'Announcement updated successfully');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_updated']);
     }
 
     $ann = fetchAnnouncement($id);
     if (!$ann) {
-        redirect('admin/index.php?act=announcements', 'Announcement not found');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_not_found']);
     }
 
     renderAnnouncementForm('edit', $ann);
@@ -1240,21 +1336,21 @@ function handleEditAction(int $id, string $do): void
  */
 function handleDeleteAction(int $id): void
 {
-    global $db, $mybb;
+    global $db, $mybb, $lang;
 
     if ($id <= 0) {
-        redirect('admin/index.php?act=announcements', 'Invalid announcement ID');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_invalid_id']);
     }
 
     // Раньше срабатывало по простой GET-ссылке (?sure=yes), без CSRF
     // вообще - сторонняя страница могла обманом заставить залогиненного
     // стаффа удалить объявление незаметно. Теперь только POST + токен.
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'), true)) {
-        redirect('admin/index.php?act=announcements', 'Invalid request method or security token.');
+        redirect('admin/index.php?act=announcements', $lang->announcements['flash_bad_request_token']);
     }
 
     $db->sql_query_prepared("DELETE FROM announcements WHERE type = 'tracker' AND id = ?", [$id]);
-    redirect('admin/index.php?act=announcements', 'Announcement has been deleted');
+    redirect('admin/index.php?act=announcements', $lang->announcements['flash_deleted']);
 }
 
 /**
@@ -1262,33 +1358,33 @@ function handleDeleteAction(int $id): void
  */
 function handleDuplicateAction(int $id)
 {
-    global $db, $mybb;
+    global $db, $mybb, $lang;
 
     $isAjax = (strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest');
 
     if ($id <= 0) {
-        return respondDuplicate($isAjax, false, 'Invalid announcement ID');
+        return respondDuplicate($isAjax, false, $lang->announcements['flash_invalid_id']);
     }
 
     // Show confirmation form for non-AJAX GET requests
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || ($_POST['do'] ?? '') !== 'duplicate') {
         if ($isAjax) {
-            return respondDuplicate($isAjax, false, 'Invalid request');
+            return respondDuplicate($isAjax, false, $lang->announcements['flash_invalid_request']);
         }
 
-        stdhead('Duplicate Announcement');
+        stdhead($lang->announcements['title_duplicate']);
         ?>
         <div class="container mt-4">
             <div class="card">
-                <div class="card-header bg-warning"><h5 class="mb-0">Duplicate Announcement</h5></div>
+                <div class="card-header bg-warning"><h5 class="mb-0"><?= $lang->announcements['title_duplicate'] ?></h5></div>
                 <div class="card-body">
-                    <p>Are you sure you want to duplicate this announcement?</p>
+                    <p><?= $lang->announcements['dup_confirm'] ?></p>
                     <form method="POST">
                         <input type="hidden" name="do" value="duplicate">
                         <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
-                        <button type="submit" class="btn btn-success">Yes, Duplicate</button>
+                        <button type="submit" class="btn btn-success"><?= $lang->announcements['btn_yes_duplicate'] ?></button>
                         <a href="<?= $_SERVER['SCRIPT_NAME'] ?>?act=announcements&action=see&id=<?= $id ?>"
-                           class="btn btn-secondary ms-2">Cancel</a>
+                           class="btn btn-secondary ms-2"><?= $lang->announcements['btn_cancel'] ?></a>
                     </form>
                 </div>
             </div>
@@ -1300,12 +1396,12 @@ function handleDuplicateAction(int $id)
 
     // CSRF - раньше отсутствовал, теперь проверяется до самого дублирования.
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        return respondDuplicate($isAjax, false, 'Security check failed. Please try again.');
+        return respondDuplicate($isAjax, false, $lang->announcements['flash_csrf']);
     }
 
     $original = fetchAnnouncement($id);
     if (!$original) {
-        return respondDuplicate($isAjax, false, 'Original announcement not found');
+        return respondDuplicate($isAjax, false, $lang->announcements['flash_original_not_found']);
     }
 
     $newSubject = buildCopySubject($original['subject'], $db);
@@ -1318,13 +1414,13 @@ function handleDuplicateAction(int $id)
     $newId = $db->insert_id();
 
     if (!$newId) {
-        return respondDuplicate($isAjax, false, 'Failed to duplicate announcement');
+        return respondDuplicate($isAjax, false, $lang->announcements['flash_dup_failed']);
     }
 
     markUsersAsUnread((int) $original['minclassread'], $db);
 
     $redirectUrl = $_SERVER['SCRIPT_NAME'] . '?act=announcements&action=see&id=' . $newId;
-    respondDuplicate($isAjax, true, 'Announcement duplicated successfully', $newId, $redirectUrl);
+    respondDuplicate($isAjax, true, $lang->announcements['flash_dup_ok'], $newId, $redirectUrl);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1361,7 +1457,9 @@ function markUsersAsUnread(int $minclass, object $db): void
  */
 function buildCopySubject(string $originalSubject, object $db): string
 {
-    $base = 'Copy of ' . $originalSubject;
+    global $lang;
+
+    $base = ags_fmt($lang->announcements['lbl_copy_subject'], $originalSubject);
     $q    = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker' AND subject LIKE ?", [$base . '%']);
     $row  = $q ? $db->fetch_array($q) : null;
     return ((int) ($row['c'] ?? 0) === 0) ? $base : $base . ' (' . ((int) $row['c'] + 1) . ')';
@@ -1404,15 +1502,16 @@ function respondDuplicate(
  */
 function renderAnnouncementForm(string $mode, array $data = []): void
 {
-    global $smilies, $_this_script_, $BASEURL, $mybb;
+    global $smilies, $_this_script_, $BASEURL, $mybb, $lang;
 
     $isEdit = ($mode === 'edit');
-    $title  = $isEdit ? 'Edit Announcement' : 'New Announcement';
+    $title  = $isEdit ? $lang->announcements['title_edit'] : $lang->announcements['title_add'];
 
     stdhead($title . ' ' . B_VERSION);
     ?>
     <script>
         const smilies = <?= json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        const AGS_LANG = <?= announcementsJsLang() ?>;
     </script>
     <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bbcode.css">
     <script src="<?= $BASEURL ?>/scripts/bbcode_tools.js"></script>
@@ -1487,14 +1586,14 @@ function renderAnnouncementForm(string $mode, array $data = []): void
 					
                     <div class="row g-3">
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold">Subject <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold"><?= $lang->announcements['lbl_subject'] ?> <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" name="subject"
                                    value="<?= htmlspecialchars($data['subject'] ?? '') ?>"
-                                   maxlength="120" placeholder="Announcement subject" required>
+                                   maxlength="120" placeholder="<?= htmlspecialchars($lang->announcements['ph_subject']) ?>" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold">Minimum User Class</label>
-                           <?= _selectbox_('', 'minclassread', true, 'All users', $data['minclassread'] ?? 0) ?>
+                            <label class="form-label fw-semibold"><?= $lang->announcements['lbl_minclass'] ?></label>
+                           <?= _selectbox_('', 'minclassread', true, $lang->announcements['opt_all_users'], $data['minclassread'] ?? 0) ?>
                         </div>
                     </div>
                
@@ -1516,30 +1615,30 @@ function renderAnnouncementForm(string $mode, array $data = []): void
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" name="reset" value="yes" id="resetRead">
                             <label class="form-check-label" for="resetRead">
-                                Mark as unread for all users
+                                <?= $lang->announcements['lbl_mark_unread'] ?>
                             </label>
-                            <div class="form-text">Forces all users to see this announcement again.</div>
+                            <div class="form-text"><?= $lang->announcements['hint_mark_unread'] ?></div>
                         </div>
                     <?php endif; ?>
 
                     <div class="mb-3">
-                        <label class="form-label">Message</label>
+                        <label class="form-label"><?= $lang->announcements['lbl_message'] ?></label>
                         <?php renderBBCodeToolbar('message'); ?>
                         <textarea class="form-control" id="message" name="message"
                                   rows="12" required
-                                  placeholder="Write your announcement using BBCode…"
+                                  placeholder="<?= htmlspecialchars($lang->announcements['ph_message']) ?>"
                         ><?= htmlspecialchars($data['message'] ?? '') ?></textarea>
                         <div class="form-text text-end">
-                            <span id="charCount">0</span> / <?= ANNOUNCEMENTS_MAX_CHARS ?> characters
+                            <span id="charCount">0</span> / <?= ANNOUNCEMENTS_MAX_CHARS ?> <?= $lang->announcements['lbl_characters'] ?>
                         </div>
                     </div>
 
                     <div class="d-flex justify-content-between mt-4">
                         <a href="<?= $_SERVER['SCRIPT_NAME'] ?>?act=announcements" class="btn btn-secondary">
-                            Cancel
+                            <?= $lang->announcements['btn_cancel'] ?>
                         </a>
                         <button type="submit" class="btn btn-primary px-4">
-                            <i class="fas fa-save me-2"></i>Save Announcement
+                            <i class="fas fa-save me-2"></i><?= $lang->announcements['btn_save'] ?>
                         </button>
                     </div>
                 </form>
@@ -1548,13 +1647,13 @@ function renderAnnouncementForm(string $mode, array $data = []): void
 
         <!-- Live preview -->
         <div class="card">
-            <div class="card-header"><h6 class="mb-0">Preview</h6></div>
+            <div class="card-header"><h6 class="mb-0"><?= $lang->announcements['sec_preview'] ?></h6></div>
             <div class="card-body">
                 <div id="previewArea" class="p-3 border rounded bg-light">
-                    <em>Preview will appear here…</em>
+                    <em><?= $lang->announcements['lbl_preview_placeholder'] ?></em>
                 </div>
                 <button type="button" class="btn btn-outline-info mt-3" onclick="formUpdatePreview()">
-                    <i class="fas fa-sync me-1"></i>Update Preview
+                    <i class="fas fa-sync me-1"></i><?= $lang->announcements['btn_update_preview'] ?>
                 </button>
             </div>
         </div>
@@ -1562,6 +1661,17 @@ function renderAnnouncementForm(string $mode, array $data = []): void
 
     <script>
     (() => {
+        // t(key, fallback, ...args): AGS_LANG lookup with English fallback, {1}/%1$s substitution
+        const t = (key, fallback, ...args) => {
+            let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string')
+                ? AGS_LANG[key] : fallback;
+            args.forEach((arg, i) => {
+                const v = String(arg);
+                s = s.split('{' + (i + 1) + '}').join(v).split('%' + (i + 1) + '$s').join(v);
+            });
+            return s;
+        };
+
         const textarea = document.getElementById('message');
         const counter  = document.getElementById('charCount');
 
@@ -1574,7 +1684,10 @@ function renderAnnouncementForm(string $mode, array $data = []): void
             const preview = document.getElementById('previewArea');
 
             if (!val) {
-                preview.innerHTML = '<em>No content to preview</em>';
+                const empty = document.createElement('em');
+                empty.textContent = t('no_preview', 'No content to preview');
+                preview.textContent = '';
+                preview.appendChild(empty);
                 return;
             }
 
@@ -1586,9 +1699,16 @@ function renderAnnouncementForm(string $mode, array $data = []): void
                 .replace(/\[url\]([\s\S]*?)\[\/url\]/gi,      '<a href="$1">$1</a>')
                 .replace(/\n/g, '<br>');
 
-            preview.innerHTML =
-                '<small class="text-muted d-block mb-2">Basic preview only — final rendering may differ.</small>'
-                + '<div>' + html + '</div>';
+            const note = document.createElement('small');
+            note.className   = 'text-muted d-block mb-2';
+            note.textContent = t('preview_note', 'Basic preview only — final rendering may differ.');
+
+            const body = document.createElement('div');
+            body.innerHTML = html; // BBCode→HTML of the message itself, as before
+
+            preview.textContent = '';
+            preview.appendChild(note);
+            preview.appendChild(body);
         };
     })();
     </script>
@@ -1601,6 +1721,8 @@ function renderAnnouncementForm(string $mode, array $data = []): void
  */
 function renderBBCodeToolbar(string $textareaId): void
 {
+    global $lang;
+
     $buttons = [
         ['[b]',       '[/b]',       '<strong>B</strong>'],
         ['[i]',       '[/i]',       '<em>I</em>'],
@@ -1608,13 +1730,17 @@ function renderBBCodeToolbar(string $textareaId): void
         ['[s]',       '[/s]',       'S'],
         ['[url]',     '[/url]',     'URL'],
         ['[img]',     '[/img]',     'IMG'],
-        ['[center]',  '[/center]',  'Center'],
-        ['[left]',    '[/left]',    'Left'],
-        ['[right]',   '[/right]',   'Right'],
-        ['[quote]',   '[/quote]',   'Quote'],
-        ['[code]',    '[/code]',    'Code'],
-        ['[spoiler]', '[/spoiler]', 'Spoiler'],
+        ['[center]',  '[/center]',  $lang->announcements['bb_center']],
+        ['[left]',    '[/left]',    $lang->announcements['bb_left']],
+        ['[right]',   '[/right]',   $lang->announcements['bb_right']],
+        ['[quote]',   '[/quote]',   $lang->announcements['bb_quote']],
+        ['[code]',    '[/code]',    $lang->announcements['bb_code']],
+        ['[spoiler]', '[/spoiler]', $lang->announcements['bb_spoiler']],
     ];
+
+    // List template items go into an onclick JS string: JS-escape, then HTML-escape
+    $listItem1 = htmlspecialchars(addslashes(ags_fmt($lang->announcements['bb_list_item'], 1)), ENT_QUOTES);
+    $listItem2 = htmlspecialchars(addslashes(ags_fmt($lang->announcements['bb_list_item'], 2)), ENT_QUOTES);
     ?>
     <div class="mb-2 d-flex flex-wrap gap-1">
         <?php foreach ($buttons as [$open, $close, $label]): ?>
@@ -1626,21 +1752,21 @@ function renderBBCodeToolbar(string $textareaId): void
 
         <!-- List (multi-line open tag) -->
         <button type="button" class="btn btn-sm btn-outline-secondary"
-                onclick="insertBBCode('[list]\n[*]Item 1\n[*]Item 2\n[/list]', '', '<?= $textareaId ?>')">
-            List
+                onclick="insertBBCode('[list]\n[*]<?= $listItem1 ?>\n[*]<?= $listItem2 ?>\n[/list]', '', '<?= $textareaId ?>')">
+            <?= $lang->announcements['bb_list'] ?>
         </button>
 
         <!-- YouTube -->
         <button type="button" class="btn btn-sm btn-outline-secondary"
                 onclick="insertBBCode('[video=youtube]', '[/video]', '<?= $textareaId ?>')">
-            YouTube
+            <?= $lang->announcements['bb_youtube'] ?>
         </button>
 
         <!-- Color picker -->
         <div class="btn-group position-relative">
             <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn"
                     data-textarea="<?= $textareaId ?>">
-                🎨 Color
+                🎨 <?= $lang->announcements['bb_color'] ?>
             </button>
             <div class="color-palette d-none"></div>
         </div>
@@ -1656,7 +1782,7 @@ function renderBBCodeToolbar(string $textareaId): void
         <div class="btn-group position-relative">
             <button type="button" class="btn btn-sm btn-outline-secondary size-picker-btn"
                     id="sizeBtn-<?= $textareaId ?>" data-textarea="<?= $textareaId ?>">
-                Size
+                <?= $lang->announcements['bb_size'] ?>
             </button>
             <div class="size-menu dropdown-menu p-2" id="sizeMenu-<?= $textareaId ?>"></div>
         </div>
@@ -1665,7 +1791,7 @@ function renderBBCodeToolbar(string $textareaId): void
         <div class="btn-group position-relative">
             <button type="button" class="btn btn-sm btn-outline-secondary font-picker-btn"
                     id="fontBtn-<?= $textareaId ?>" data-textarea="<?= $textareaId ?>">
-                Font
+                <?= $lang->announcements['bb_font'] ?>
             </button>
             <div class="font-menu dropdown-menu p-2 shadow" id="fontMenu-<?= $textareaId ?>"></div>
         </div>

@@ -8,6 +8,16 @@ if (!defined('STAFF_PANEL')) {
 define('SI_VERSION', '3.0');
 const SI_ASSET_VER = 1;
 
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        foreach ($args as $i => $arg) {
+            $str = str_replace('{' . ($i + 1) . '}', (string)$arg, $str);
+        }
+        return $str;
+    }
+}
+
 final class ServerInfo
 {
     private array $vars   = [];   // SHOW VARIABLES
@@ -138,16 +148,20 @@ final class ServerInfo
 
     private function uptime(int $sec): string
     {
+        global $lang;
         $d = intdiv($sec, 86400);
         $h = intdiv($sec % 86400, 3600);
         $m = intdiv($sec % 3600, 60);
-        return $d ? "{$d}d {$h}h" : ($h ? "{$h}h {$m}m" : "{$m}m");
+        return $d
+            ? ags_fmt($lang->serverinfo['fmt_uptime_dh'], $d, $h)
+            : ($h ? ags_fmt($lang->serverinfo['fmt_uptime_hm'], $h, $m) : ags_fmt($lang->serverinfo['fmt_uptime_m'], $m));
     }
 
     private function ini(string $key): string
     {
+        global $lang;
         $v = ini_get($key);
-        return $v === false ? '—' : ($v === '' ? '(empty)' : $v);
+        return $v === false ? '—' : ($v === '' ? $lang->serverinfo['val_empty'] : $v);
     }
 
     private function onOff(string $key): bool
@@ -170,57 +184,58 @@ final class ServerInfo
     /** @return list<array{0:string,1:string,2:string}> [ok|warn|bad|info, заголовок, пояснение] */
     private function checks(?array $opc, ?array $disk): array
     {
+        global $lang;
         $c = [];
 
         // Сроки поддержки: 8.1 - до 2025-12-31, 8.2 - до 2026-12-31, 8.3 - до 2027-12-31
         if (PHP_VERSION_ID < 80200) {
-            $c[] = ['bad', 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . ' no longer gets security fixes', 'Upgrade to PHP 8.3 or newer.'];
+            $c[] = ['bad', ags_fmt($lang->serverinfo['check_php_unsupported'], PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION), $lang->serverinfo['hint_php_unsupported']];
         } elseif (PHP_VERSION_ID < 80300) {
-            $c[] = ['warn', 'PHP 8.2 security support ends on 2026-12-31', 'Plan an upgrade to PHP 8.3 or newer.'];
+            $c[] = ['warn', $lang->serverinfo['check_php82_eol'], $lang->serverinfo['hint_php82_eol']];
         } else {
-            $c[] = ['ok', 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . ' is supported', 'Receives security fixes.'];
+            $c[] = ['ok', ags_fmt($lang->serverinfo['check_php_supported'], PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION), $lang->serverinfo['hint_php_supported']];
         }
 
         $c[] = $this->onOff('display_errors')
-            ? ['bad', 'display_errors is On', 'Errors with file paths are shown to visitors. Turn it off and use log_errors.']
-            : ['ok', 'display_errors is Off', 'Errors are not shown to visitors.'];
+            ? ['bad', $lang->serverinfo['check_display_errors_on'], $lang->serverinfo['hint_display_errors_on']]
+            : ['ok', $lang->serverinfo['check_display_errors_off'], $lang->serverinfo['hint_display_errors_off']];
 
         $c[] = $this->onOff('log_errors')
-            ? ['ok', 'log_errors is On', 'Errors go to ' . ($this->ini('error_log') !== '(empty)' ? $this->ini('error_log') : 'the server log') . '.']
-            : ['warn', 'log_errors is Off', 'PHP errors are not recorded anywhere.'];
+            ? ['ok', $lang->serverinfo['check_log_errors_on'], ags_fmt($lang->serverinfo['hint_log_errors_on'], $this->ini('error_log') !== '(empty)' ? $this->ini('error_log') : $lang->serverinfo['val_server_log'])]
+            : ['warn', $lang->serverinfo['check_log_errors_off'], $lang->serverinfo['hint_log_errors_off']];
 
         $c[] = $this->onOff('expose_php')
-            ? ['warn', 'expose_php is On', 'Every response advertises the PHP version in X-Powered-By.']
-            : ['ok', 'expose_php is Off', 'The PHP version is not advertised.'];
+            ? ['warn', $lang->serverinfo['check_expose_php_on'], $lang->serverinfo['hint_expose_php_on']]
+            : ['ok', $lang->serverinfo['check_expose_php_off'], $lang->serverinfo['hint_expose_php_off']];
 
         $c[] = $this->onOff('allow_url_include')
-            ? ['bad', 'allow_url_include is On', 'include() can load remote code. Turn it off.']
-            : ['ok', 'allow_url_include is Off', 'include() cannot load remote code.'];
+            ? ['bad', $lang->serverinfo['check_allow_url_include_on'], $lang->serverinfo['hint_allow_url_include_on']]
+            : ['ok', $lang->serverinfo['check_allow_url_include_off'], $lang->serverinfo['hint_allow_url_include_off']];
 
         $c[] = $this->onOff('session.cookie_httponly')
-            ? ['ok', 'Session cookie is HttpOnly', 'JavaScript cannot read the session cookie.']
-            : ['warn', 'Session cookie is not HttpOnly', 'Set session.cookie_httponly = 1.'];
+            ? ['ok', $lang->serverinfo['check_cookie_httponly_on'], $lang->serverinfo['hint_cookie_httponly_on']]
+            : ['warn', $lang->serverinfo['check_cookie_httponly_off'], $lang->serverinfo['hint_cookie_httponly_off']];
 
         $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
         if ($https) {
             $c[] = $this->onOff('session.cookie_secure')
-                ? ['ok', 'Session cookie is Secure', 'Sent over HTTPS only.']
-                : ['warn', 'Session cookie is not Secure', 'The site runs on HTTPS; set session.cookie_secure = 1.'];
+                ? ['ok', $lang->serverinfo['check_cookie_secure_on'], $lang->serverinfo['hint_cookie_secure_on']]
+                : ['warn', $lang->serverinfo['check_cookie_secure_off'], $lang->serverinfo['hint_cookie_secure_off']];
         }
 
         $c[] = $opc
             ? ($opc['mem_pct'] >= 90
-                ? ['warn', 'OPcache memory is ' . round($opc['mem_pct']) . '% full', 'Raise opcache.memory_consumption so scripts are not evicted.']
-                : ['ok', 'OPcache is enabled', round($opc['hit'], 1) . '% hit rate, ' . $this->num($opc['scripts']) . ' scripts cached.'])
-            : ['warn', 'OPcache is off', 'Enabling it makes every page faster.'];
+                ? ['warn', ags_fmt($lang->serverinfo['check_opcache_full'], round($opc['mem_pct'])), $lang->serverinfo['hint_opcache_full']]
+                : ['ok', $lang->serverinfo['check_opcache_on'], ags_fmt($lang->serverinfo['hint_opcache_on'], round($opc['hit'], 1), $this->num($opc['scripts']))])
+            : ['warn', $lang->serverinfo['check_opcache_off'], $lang->serverinfo['hint_opcache_off']];
 
         if ($disk) {
             $freePct = 100 - $disk['used_pct'];
             $c[] = $freePct < 10
-                ? ['bad', 'Disk is almost full', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']
+                ? ['bad', $lang->serverinfo['check_disk_almost_full'], ags_fmt($lang->serverinfo['hint_disk_almost_full'], $this->size($disk['free']), round($freePct, 1))]
                 : ($freePct < 20
-                    ? ['warn', 'Disk space is getting low', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']
-                    : ['ok', 'Enough disk space', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']);
+                    ? ['warn', $lang->serverinfo['check_disk_low'], ags_fmt($lang->serverinfo['hint_disk_low'], $this->size($disk['free']), round($freePct, 1))]
+                    : ['ok', $lang->serverinfo['check_disk_ok'], ags_fmt($lang->serverinfo['hint_disk_ok'], $this->size($disk['free']), round($freePct, 1))]);
         }
 
         $maxConn  = (int)$this->v('max_connections');
@@ -228,8 +243,8 @@ final class ServerInfo
         if ($maxConn > 0) {
             $pct = $usedConn / $maxConn * 100;
             $c[] = $pct >= 80
-                ? ['warn', 'Connection peak reached ' . round($pct) . '% of max_connections', "{$usedConn} of {$maxConn} since the last MySQL restart."]
-                : ['ok', 'Connection headroom is fine', "Peak {$usedConn} of {$maxConn} since the last MySQL restart."];
+                ? ['warn', ags_fmt($lang->serverinfo['check_conn_peak'], round($pct)), ags_fmt($lang->serverinfo['hint_conn_peak'], $usedConn, $maxConn)]
+                : ['ok', $lang->serverinfo['check_conn_ok'], ags_fmt($lang->serverinfo['hint_conn_ok'], $usedConn, $maxConn)];
         }
 
         $reads = $this->st('Innodb_buffer_pool_reads');
@@ -237,8 +252,8 @@ final class ServerInfo
         if ($reqs > 0) {
             $hit = (1 - $reads / $reqs) * 100;
             $c[] = $hit < 95
-                ? ['warn', 'InnoDB buffer pool hit rate is ' . round($hit, 2) . '%', 'Many reads go to disk; consider a larger innodb_buffer_pool_size.']
-                : ['ok', 'InnoDB buffer pool hit rate is ' . round($hit, 2) . '%', 'Almost all reads are served from memory.'];
+                ? ['warn', ags_fmt($lang->serverinfo['check_innodb_low'], round($hit, 2)), $lang->serverinfo['hint_innodb_low']]
+                : ['ok', ags_fmt($lang->serverinfo['check_innodb_ok'], round($hit, 2)), $lang->serverinfo['hint_innodb_ok']];
         }
 
         return $c;
@@ -250,7 +265,7 @@ final class ServerInfo
 
     public function render(): void
     {
-        global $BASEURL;
+        global $BASEURL, $lang;
 
         $this->loadMysql();
         $db    = $this->dbTotals();
@@ -261,17 +276,21 @@ final class ServerInfo
         $checks = $this->checks($opc, $disk);
 
         $isWin   = PHP_OS_FAMILY === 'Windows';
-        $mysqlV  = $this->v('version') ?: 'Unknown';
+        $mysqlV  = $this->v('version') ?: $lang->serverinfo['val_unknown'];
         $flavor  = stripos($this->v('version_comment'), 'mariadb') !== false || stripos($mysqlV, 'mariadb') !== false ? 'MariaDB' : 'MySQL';
         $maxConn = (int)$this->v('max_connections');
         $conn    = $this->st('Threads_connected');
-        $uptime  = $this->st('Uptime');
+        $uptime  = $this->st($lang->serverinfo['st_uptime']);
         $qps     = $uptime > 0 ? $this->st('Questions') / $uptime : 0;
 
         $problems = count(array_filter($checks, fn($c) => $c[0] === 'bad'));
         $warnings = count(array_filter($checks, fn($c) => $c[0] === 'warn'));
 
         $v = SI_ASSET_VER;
+        $jsLang = [];
+        foreach ($lang->serverinfo as $key => $value) {
+            if (str_starts_with($key, 'js_')) $jsLang[substr($key, 3)] = $value;
+        }
         echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/serverinfo.css?ver=' . $v . '">';
         ?>
 <div class="si-page container mt-3 mb-5">
@@ -279,18 +298,18 @@ final class ServerInfo
     <div class="si-head">
         <div class="si-head-icon"><i class="fa-solid fa-server"></i></div>
         <div class="si-head-text">
-            <h1>Server information</h1>
-            <p>PHP, <?= $flavor ?> and host details · <?= $this->e(date('Y-m-d H:i:s')) ?> (<?= $this->e(date_default_timezone_get()) ?>)</p>
+            <h1><?= $lang->serverinfo['title'] ?></h1>
+            <p><?= ags_fmt($lang->serverinfo['subhead'], $flavor, $this->e(date('Y-m-d H:i:s')), $this->e(date_default_timezone_get())) ?></p>
         </div>
         <div class="si-head-badges">
             <span class="si-chip"><i class="fa-brands <?= $isWin ? 'fa-windows' : 'fa-linux' ?>"></i><?= $this->e(PHP_OS_FAMILY) ?></span>
             <span class="si-chip"><i class="fa-solid fa-plug"></i><?= $this->e(PHP_SAPI) ?></span>
             <?php if ($problems): ?>
-                <span class="si-chip si-chip-bad"><i class="fa-solid fa-circle-xmark"></i><?= $problems ?> problem<?= $problems > 1 ? 's' : '' ?></span>
+                <span class="si-chip si-chip-bad"><i class="fa-solid fa-circle-xmark"></i><?= $problems ?> <?= $lang->serverinfo['lbl_problems'] ?></span>
             <?php elseif ($warnings): ?>
-                <span class="si-chip si-chip-warn"><i class="fa-solid fa-triangle-exclamation"></i><?= $warnings ?> warning<?= $warnings > 1 ? 's' : '' ?></span>
+                <span class="si-chip si-chip-warn"><i class="fa-solid fa-triangle-exclamation"></i><?= $warnings ?> <?= $lang->serverinfo['lbl_warnings'] ?></span>
             <?php else: ?>
-                <span class="si-chip si-chip-ok"><i class="fa-solid fa-circle-check"></i>All checks passed</span>
+                <span class="si-chip si-chip-ok"><i class="fa-solid fa-circle-check"></i><?= $lang->serverinfo['flash_all_checks_passed'] ?></span>
             <?php endif; ?>
         </div>
     </div>
@@ -299,25 +318,25 @@ final class ServerInfo
     <div class="si-kpis">
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-php"><i class="fa-brands fa-php"></i></div>
-            <div><div class="si-kpi-val"><?= $this->e(PHP_VERSION) ?></div><div class="si-kpi-lbl">PHP · <?= count(get_loaded_extensions()) ?> extensions</div></div>
+            <div><div class="si-kpi-val"><?= $this->e(PHP_VERSION) ?></div><div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_php'], count(get_loaded_extensions())) ?></div></div>
         </div>
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-db"><i class="fa-solid fa-database"></i></div>
-            <div><div class="si-kpi-val"><?= $this->e(preg_replace('~-.*$~', '', $mysqlV)) ?></div><div class="si-kpi-lbl"><?= $flavor ?> · up <?= $this->uptime($uptime) ?></div></div>
+            <div><div class="si-kpi-val"><?= $this->e(preg_replace('~-.*$~', '', $mysqlV)) ?></div><div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_db'], $flavor, $this->uptime($uptime)) ?></div></div>
         </div>
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-info"><i class="fa-solid fa-table"></i></div>
-            <div><div class="si-kpi-val"><?= $this->size($db['data'] + $db['index']) ?></div><div class="si-kpi-lbl">Database · <?= $db['tables'] ?> tables</div></div>
+            <div><div class="si-kpi-val"><?= $this->size($db['data'] + $db['index']) ?></div><div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_database'], $db['tables']) ?></div></div>
         </div>
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-disk"><i class="fa-solid fa-hard-drive"></i></div>
             <div class="si-kpi-body">
                 <?php if ($disk): ?>
                     <div class="si-kpi-val"><?= $this->size($disk['free']) ?></div>
-                    <div class="si-kpi-lbl">free of <?= $this->size($disk['total']) ?></div>
+                    <div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_disk_free'], $this->size($disk['total'])) ?></div>
                     <?= $this->bar($disk['used_pct'], 80, 90) ?>
                 <?php else: ?>
-                    <div class="si-kpi-val">—</div><div class="si-kpi-lbl">Disk space unavailable</div>
+                    <div class="si-kpi-val">—</div><div class="si-kpi-lbl"><?= $lang->serverinfo['val_disk_unavailable'] ?></div>
                 <?php endif; ?>
             </div>
         </div>
@@ -326,23 +345,23 @@ final class ServerInfo
             <div class="si-kpi-icon si-c-conn"><i class="fa-solid fa-network-wired"></i></div>
             <div class="si-kpi-body">
                 <div class="si-kpi-val"><?= $conn ?> <small>/ <?= $maxConn ?: '—' ?></small></div>
-                <div class="si-kpi-lbl">connections · peak <?= $this->st('Max_used_connections') ?></div>
+                <div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_connections'], $this->st('Max_used_connections')) ?></div>
                 <?= $maxConn ? $this->bar($conn / $maxConn * 100, 60, 80) : '' ?>
             </div>
         </div>
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-q"><i class="fa-solid fa-gauge-high"></i></div>
-            <div><div class="si-kpi-val"><?= round($qps, 1) ?></div><div class="si-kpi-lbl">queries / sec · <?= $this->num($this->st('Slow_queries')) ?> slow</div></div>
+            <div><div class="si-kpi-val"><?= round($qps, 1) ?></div><div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_queries'], $this->num($this->st('Slow_queries'))) ?></div></div>
         </div>
         <div class="si-kpi">
             <div class="si-kpi-icon si-c-opc"><i class="fa-solid fa-bolt"></i></div>
             <div class="si-kpi-body">
                 <?php if ($opc): ?>
                     <div class="si-kpi-val"><?= round($opc['hit'], 1) ?>%</div>
-                    <div class="si-kpi-lbl">OPcache hits · <?= $this->size($opc['used']) ?> / <?= $this->size($opc['total']) ?></div>
+                    <div class="si-kpi-lbl"><?= ags_fmt($lang->serverinfo['kpi_opcache'], $this->size($opc['used']), $this->size($opc['total'])) ?></div>
                     <?= $this->bar($opc['mem_pct'], 80, 95) ?>
                 <?php else: ?>
-                    <div class="si-kpi-val">Off</div><div class="si-kpi-lbl">OPcache</div>
+                    <div class="si-kpi-val"><?= $lang->serverinfo['val_off'] ?></div><div class="si-kpi-lbl"><?= $lang->serverinfo['lbl_opcache'] ?></div>
                 <?php endif; ?>
             </div>
         </div>
@@ -350,7 +369,7 @@ final class ServerInfo
             <div class="si-kpi-icon si-c-cpu"><i class="fa-solid fa-microchip"></i></div>
             <div>
                 <div class="si-kpi-val"><?= $cpu['load'] ? $this->e(implode(' · ', $cpu['load'])) : ($cpu['cores'] ?: '—') ?></div>
-                <div class="si-kpi-lbl"><?= $cpu['load'] ? 'load 1 · 5 · 15 min' : 'CPU cores' ?><?= $cpu['load'] && $cpu['cores'] ? ' · ' . $cpu['cores'] . ' cores' : '' ?></div>
+                <div class="si-kpi-lbl"><?= $cpu['load'] ? $lang->serverinfo['kpi_cpu_load'] : $lang->serverinfo['kpi_cpu_cores'] ?><?= $cpu['load'] && $cpu['cores'] ? ' · ' . $cpu['cores'] . ' ' . $lang->serverinfo['lbl_cores'] : '' ?></div>
             </div>
         </div>
     </div>
@@ -358,16 +377,16 @@ final class ServerInfo
     <!-- Вкладки -->
     <div class="si-tabs nav" role="tablist">
         <button class="si-tab active" id="si-tab-overview" data-bs-toggle="pill" data-bs-target="#si-overview" type="button" role="tab" aria-controls="si-overview" aria-selected="true">
-            <i class="fa-solid fa-gauge"></i>Overview
+            <i class="fa-solid fa-gauge"></i><?= $lang->serverinfo['tab_overview'] ?>
         </button>
         <button class="si-tab" id="si-tab-php" data-bs-toggle="pill" data-bs-target="#si-php" type="button" role="tab" aria-controls="si-php" aria-selected="false">
-            <i class="fa-brands fa-php"></i>PHP
+            <i class="fa-brands fa-php"></i><?= $lang->serverinfo['tab_php'] ?>
         </button>
         <button class="si-tab" id="si-tab-mysql" data-bs-toggle="pill" data-bs-target="#si-mysql" type="button" role="tab" aria-controls="si-mysql" aria-selected="false">
             <i class="fa-solid fa-database"></i><?= $flavor ?>
         </button>
         <button class="si-tab" id="si-tab-phpinfo" data-bs-toggle="pill" data-bs-target="#si-phpinfo" type="button" role="tab" aria-controls="si-phpinfo" aria-selected="false">
-            <i class="fa-solid fa-scroll"></i>phpinfo()
+            <i class="fa-solid fa-scroll"></i><?= $lang->serverinfo['tab_phpinfo'] ?>
         </button>
     </div>
 
@@ -378,7 +397,8 @@ final class ServerInfo
         <?php $this->tabPhpinfo(); ?>
     </div>
 </div>
-<script src="<?= $BASEURL ?>/admin/scripts/serverinfo.js?ver=<?= $v ?>"></script>
+<script>const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/serverinfo.js?ver=<?= $v + 1 ?>"></script>
         <?php
     }
 
@@ -386,15 +406,16 @@ final class ServerInfo
 
     private function tabOverview(array $checks, array $top, array $db): void
     {
+        global $lang;
         $host = [
-            ['fa-display',        'Operating system', php_uname('s') . ' ' . php_uname('r')],
-            ['fa-globe',          'Web server',       (string)($_SERVER['SERVER_SOFTWARE'] ?? '—')],
-            ['fa-signature',      'Hostname',         (string)($_SERVER['SERVER_NAME'] ?? gethostname())],
-            ['fa-location-dot',   'Address',          ($_SERVER['SERVER_ADDR'] ?? '—') . ':' . ($_SERVER['SERVER_PORT'] ?? '—')],
-            ['fa-folder-tree',    'Document root',    (string)($_SERVER['DOCUMENT_ROOT'] ?? '—')],
-            ['fa-clock',          'PHP time zone',    date_default_timezone_get()],
-            ['fa-business-time',  'MySQL time zone',  $this->v('time_zone') . ($this->v('system_time_zone') ? ' (system ' . $this->v('system_time_zone') . ')' : '')],
-            ['fa-font',           'MySQL charset',    $this->v('character_set_server') . ' / ' . $this->v('collation_server')],
+            ['fa-display',        $lang->serverinfo['lbl_os'], php_uname('s') . ' ' . php_uname('r')],
+            ['fa-globe',          $lang->serverinfo['lbl_web_server'],       (string)($_SERVER['SERVER_SOFTWARE'] ?? '—')],
+            ['fa-signature',      $lang->serverinfo['lbl_hostname'],         (string)($_SERVER['SERVER_NAME'] ?? gethostname())],
+            ['fa-location-dot',   $lang->serverinfo['lbl_address'],          ($_SERVER['SERVER_ADDR'] ?? '—') . ':' . ($_SERVER['SERVER_PORT'] ?? '—')],
+            ['fa-folder-tree',    $lang->serverinfo['lbl_document_root'],    (string)($_SERVER['DOCUMENT_ROOT'] ?? '—')],
+            ['fa-clock',          $lang->serverinfo['lbl_php_timezone'],    date_default_timezone_get()],
+            ['fa-business-time',  $lang->serverinfo['lbl_mysql_timezone'],  $this->v('time_zone') . ($this->v('system_time_zone') ? ' (' . $lang->serverinfo['lbl_system'] . ' ' . $this->v('system_time_zone') . ')' : '')],
+            ['fa-font',           $lang->serverinfo['lbl_mysql_charset'],    $this->v('character_set_server') . ' / ' . $this->v('collation_server')],
         ];
         $maxTop = $top ? max(1, $top[0]['size']) : 1;
         $icon = ['ok' => 'fa-circle-check', 'warn' => 'fa-triangle-exclamation', 'bad' => 'fa-circle-xmark', 'info' => 'fa-circle-info'];
@@ -406,7 +427,7 @@ final class ServerInfo
         <div class="tab-pane fade show active" id="si-overview" role="tabpanel" aria-labelledby="si-tab-overview">
             <div class="si-cols">
                 <div class="si-card">
-                    <h2 class="si-card-title"><i class="fa-solid fa-shield-halved"></i>Health checks</h2>
+                    <h2 class="si-card-title"><i class="fa-solid fa-shield-halved"></i><?= $lang->serverinfo['sec_health'] ?></h2>
                     <ul class="si-checks">
                         <?php foreach ($checks as [$lvl, $title, $detail]): ?>
                             <li class="si-check si-check-<?= $lvl ?>">
@@ -418,7 +439,7 @@ final class ServerInfo
                 </div>
 
                 <div class="si-card">
-                    <h2 class="si-card-title"><i class="fa-solid fa-circle-info"></i>Host</h2>
+                    <h2 class="si-card-title"><i class="fa-solid fa-circle-info"></i><?= $lang->serverinfo['sec_host'] ?></h2>
                     <dl class="si-dl">
                         <?php foreach ($host as [$ic, $k, $val]): ?>
                             <div><dt><i class="fa-solid <?= $ic ?>"></i><?= $this->e($k) ?></dt><dd><?= $this->e($val) ?></dd></div>
@@ -428,12 +449,12 @@ final class ServerInfo
             </div>
 
             <div class="si-card">
-                <h2 class="si-card-title"><i class="fa-solid fa-ranking-star"></i>Largest tables
-                    <span class="si-card-sub"><?= $this->size($db['data']) ?> data · <?= $this->size($db['index']) ?> indexes · <?= $this->size($db['free']) ?> reclaimable · ~<?= $this->num($db['rows']) ?> rows</span>
+                <h2 class="si-card-title"><i class="fa-solid fa-ranking-star"></i><?= $lang->serverinfo['sec_largest_tables'] ?>
+                    <span class="si-card-sub"><?= ags_fmt($lang->serverinfo['sub_largest_tables'], $this->size($db['data']), $this->size($db['index']), $this->size($db['free']), $this->num($db['rows'])) ?></span>
                 </h2>
                 <div class="si-table-wrap">
                     <table class="si-table">
-                        <thead><tr><th>Table</th><th>Engine</th><th class="text-end">Rows</th><th class="text-end">Size</th><th class="si-col-bar"></th></tr></thead>
+                        <thead><tr><th><?= $lang->serverinfo['th_table'] ?></th><th><?= $lang->serverinfo['th_engine'] ?></th><th class="text-end"><?= $lang->serverinfo['th_rows'] ?></th><th class="text-end"><?= $lang->serverinfo['th_size'] ?></th><th class="si-col-bar"></th></tr></thead>
                         <tbody>
                         <?php foreach ($top as $t): ?>
                             <tr>
@@ -456,21 +477,22 @@ final class ServerInfo
 
     private function tabPhp(): void
     {
+        global $lang;
         $groups = [
-            ['fa-memory', 'Limits', [
+            ['fa-memory', $lang->serverinfo['sec_limits'], [
                 'memory_limit', 'max_execution_time', 'max_input_time', 'max_input_vars',
                 'upload_max_filesize', 'post_max_size', 'max_file_uploads',
             ]],
-            ['fa-bug', 'Errors', ['display_errors', 'log_errors', 'error_log', 'error_reporting']],
-            ['fa-cookie-bite', 'Sessions', [
+            ['fa-bug', $lang->serverinfo['sec_errors'], ['display_errors', 'log_errors', 'error_log', 'error_reporting']],
+            ['fa-cookie-bite', $lang->serverinfo['sec_sessions'], [
                 'session.save_handler', 'session.gc_maxlifetime', 'session.cookie_httponly',
                 'session.cookie_secure', 'session.cookie_samesite', 'session.use_strict_mode',
             ]],
-            ['fa-bolt', 'OPcache', [
+            ['fa-bolt', $lang->serverinfo['sec_opcache'], [
                 'opcache.enable', 'opcache.memory_consumption', 'opcache.max_accelerated_files',
                 'opcache.validate_timestamps', 'opcache.revalidate_freq', 'opcache.jit',
             ]],
-            ['fa-sliders', 'Other', ['default_charset', 'date.timezone', 'file_uploads', 'allow_url_fopen', 'expose_php', 'open_basedir']],
+            ['fa-sliders', $lang->serverinfo['sec_other'], ['default_charset', 'date.timezone', 'file_uploads', 'allow_url_fopen', 'expose_php', 'open_basedir']],
         ];
         $ext = get_loaded_extensions();
         natcasesort($ext);
@@ -490,7 +512,7 @@ final class ServerInfo
             </div>
 
             <div class="si-card">
-                <h2 class="si-card-title"><i class="fa-solid fa-puzzle-piece"></i>Loaded extensions <span class="si-card-sub"><?= count($ext) ?></span></h2>
+                <h2 class="si-card-title"><i class="fa-solid fa-puzzle-piece"></i><?= $lang->serverinfo['sec_extensions'] ?> <span class="si-card-sub"><?= count($ext) ?></span></h2>
                 <div class="si-ext">
                     <?php foreach ($ext as $x): ?>
                         <span class="si-ext-chip"><?= $this->e($x) ?><small><?= $this->e((string)(phpversion($x) ?: '')) ?></small></span>
@@ -505,37 +527,38 @@ final class ServerInfo
 
     private function tabMysql(): void
     {
+        global $lang;
         // name => [описание, размер в байтах?]
         $key = [
-            'max_connections'                => ['Maximum simultaneous client connections', false],
-            'max_allowed_packet'             => ['Largest single packet or query', true],
-            'innodb_buffer_pool_size'        => ['Memory InnoDB uses to cache data and indexes', true],
-            'innodb_redo_log_capacity'       => ['Total size of the InnoDB redo log', true],
-            'innodb_flush_log_at_trx_commit' => ['1 = safest, 2 = faster, may lose ~1 s on OS crash', false],
-            'tmp_table_size'                 => ['Largest in-memory temporary table', true],
-            'max_heap_table_size'            => ['Largest MEMORY table', true],
-            'table_open_cache'               => ['Open tables kept in cache', false],
-            'thread_cache_size'              => ['Threads kept for reuse', false],
-            'wait_timeout'                   => ['Seconds before an idle connection is closed', false],
-            'slow_query_log'                 => ['Whether slow queries are logged', false],
-            'long_query_time'                => ['Seconds after which a query counts as slow', false],
-            'sql_mode'                       => ['SQL modes in effect', false],
+            'max_connections'                => [$lang->serverinfo['desc_max_connections'], false],
+            'max_allowed_packet'             => [$lang->serverinfo['desc_max_allowed_packet'], true],
+            'innodb_buffer_pool_size'        => [$lang->serverinfo['desc_innodb_buffer_pool_size'], true],
+            'innodb_redo_log_capacity'       => [$lang->serverinfo['desc_innodb_redo_log_capacity'], true],
+            'innodb_flush_log_at_trx_commit' => [$lang->serverinfo['desc_innodb_flush'], false],
+            'tmp_table_size'                 => [$lang->serverinfo['desc_tmp_table'], true],
+            'max_heap_table_size'            => [$lang->serverinfo['desc_max_heap'], true],
+            'table_open_cache'               => [$lang->serverinfo['desc_table_open'], false],
+            'thread_cache_size'              => [$lang->serverinfo['desc_thread_cache'], false],
+            'wait_timeout'                   => [$lang->serverinfo['desc_wait_timeout'], false],
+            'slow_query_log'                 => [$lang->serverinfo['desc_slow_query_log'], false],
+            'long_query_time'                => [$lang->serverinfo['desc_long_query'], false],
+            'sql_mode'                       => [$lang->serverinfo['desc_sql_mode'], false],
         ];
         $status = [
-            ['fa-clock',              'Uptime',             $this->uptime($this->st('Uptime'))],
-            ['fa-plug',               'Connected now',      $this->num($this->st('Threads_connected'))],
-            ['fa-person-running',     'Running now',        $this->num($this->st('Threads_running'))],
-            ['fa-arrow-trend-up',     'Peak connections',   $this->num($this->st('Max_used_connections'))],
-            ['fa-circle-question',    'Queries',            $this->num($this->st('Questions'))],
-            ['fa-hourglass-half',     'Slow queries',       $this->num($this->st('Slow_queries'))],
-            ['fa-ban',                'Aborted connects',   $this->num($this->st('Aborted_connects'))],
-            ['fa-download',           'Received',           $this->size($this->st('Bytes_received'))],
-            ['fa-upload',             'Sent',               $this->size($this->st('Bytes_sent'))],
+            ['fa-clock',              $lang->serverinfo['st_uptime'],             $this->uptime($this->st($lang->serverinfo['st_uptime']))],
+            ['fa-plug',               $lang->serverinfo['st_connected'],      $this->num($this->st('Threads_connected'))],
+            ['fa-person-running',     $lang->serverinfo['st_running'],        $this->num($this->st('Threads_running'))],
+            ['fa-arrow-trend-up',     $lang->serverinfo['st_peak'],   $this->num($this->st('Max_used_connections'))],
+            ['fa-circle-question',    $lang->serverinfo['st_queries'],            $this->num($this->st('Questions'))],
+            ['fa-hourglass-half',     $lang->serverinfo['st_slow'],       $this->num($this->st('Slow_queries'))],
+            ['fa-ban',                $lang->serverinfo['st_aborted'],   $this->num($this->st('Aborted_connects'))],
+            ['fa-download',           $lang->serverinfo['st_received'],           $this->size($this->st('Bytes_received'))],
+            ['fa-upload',             $lang->serverinfo['st_sent'],               $this->size($this->st('Bytes_sent'))],
         ];
         ?>
         <div class="tab-pane fade" id="si-mysql" role="tabpanel" aria-labelledby="si-tab-mysql">
             <div class="si-card">
-                <h2 class="si-card-title"><i class="fa-solid fa-chart-simple"></i>Status since last restart</h2>
+                <h2 class="si-card-title"><i class="fa-solid fa-chart-simple"></i><?= $lang->serverinfo['sec_status'] ?></h2>
                 <div class="si-stats">
                     <?php foreach ($status as [$ic, $k, $val]): ?>
                         <div class="si-stat"><i class="fa-solid <?= $ic ?>"></i><span><?= $this->e($k) ?></span><strong><?= $this->e($val) ?></strong></div>
@@ -544,10 +567,10 @@ final class ServerInfo
             </div>
 
             <div class="si-card">
-                <h2 class="si-card-title"><i class="fa-solid fa-star"></i>Key settings</h2>
+                <h2 class="si-card-title"><i class="fa-solid fa-star"></i><?= $lang->serverinfo['sec_key_settings'] ?></h2>
                 <div class="si-table-wrap">
                     <table class="si-table">
-                        <thead><tr><th>Variable</th><th>Value</th><th>What it does</th></tr></thead>
+                        <thead><tr><th><?= $lang->serverinfo['th_variable'] ?></th><th><?= $lang->serverinfo['th_value'] ?></th><th><?= $lang->serverinfo['th_what'] ?></th></tr></thead>
                         <tbody>
                         <?php foreach ($key as $name => [$desc, $isSize]):
                             if (!isset($this->vars[$name])) continue;
@@ -565,10 +588,10 @@ final class ServerInfo
             </div>
 
             <div class="si-card">
-                <h2 class="si-card-title"><i class="fa-solid fa-list"></i>All variables <span class="si-card-sub" id="siVarCount"><?= count($this->vars) ?></span></h2>
+                <h2 class="si-card-title"><i class="fa-solid fa-list"></i><?= $lang->serverinfo['sec_all_variables'] ?> <span class="si-card-sub" id="siVarCount"><?= count($this->vars) ?></span></h2>
                 <div class="si-search">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="search" id="siVarFilter" placeholder="Filter by name or value" aria-label="Filter variables">
+                    <input type="search" id="siVarFilter" placeholder="<?= $lang->serverinfo['ph_var_filter'] ?>" aria-label="<?= $lang->serverinfo['aria_var_filter'] ?>">
                 </div>
                 <div class="si-table-wrap si-scroll">
                     <table class="si-table" id="siVarTable">
@@ -591,6 +614,7 @@ final class ServerInfo
 
     private function tabPhpinfo(): void
     {
+        global $lang;
         // INFO_VARIABLES не выводим: там $_COOKIE и $_SERVER с cookie текущей
         // сессии - на скриншоте страницы их легко утащить.
         ob_start();
@@ -610,7 +634,7 @@ final class ServerInfo
             <div class="si-card">
                 <div class="si-search">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="search" id="siInfoFilter" placeholder="Filter directives, e.g. upload or curl" aria-label="Filter phpinfo">
+                    <input type="search" id="siInfoFilter" placeholder="<?= $lang->serverinfo['ph_info_filter'] ?>" aria-label="<?= $lang->serverinfo['aria_phpinfo_filter'] ?>">
                 </div>
                 <div class="si-modules" id="siModules"></div>
                 <div class="si-phpinfo" id="siPhpinfo"><?= $html ?></div>
@@ -620,13 +644,14 @@ final class ServerInfo
     }
 }
 
-stdhead('Server information');
+$lang->load('serverinfo');
+stdhead($lang->serverinfo['title']);
 
 try {
     (new ServerInfo($db))->render();
 } catch (Throwable $e) {
     echo '<div class="container mt-3"><div class="alert alert-danger"><i class="fa-solid fa-circle-xmark me-2"></i>'
-       . 'Could not load server information: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div></div>';
+       . $lang->serverinfo['flash_load_error'] . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div></div>';
 }
 
 stdfoot();

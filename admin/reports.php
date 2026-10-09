@@ -14,6 +14,8 @@ if (!defined('STAFF_PANEL')) {
 defined('DAY_IN_SECONDS') || define('DAY_IN_SECONDS', 86400);
 defined('TIMENOW')        || define('TIMENOW', time());
 
+$lang->load('reports');
+
 require_once(INC_PATH . '/class_parser.php');
 
 $parser = new postParser();
@@ -33,132 +35,166 @@ $report_id = (int)($_GET['id'] ?? 0);
 
 const REPORT_TYPES = ['torrent', 'user', 'comment', 'forumpost'];
 
+// Тексты живут в languages/*/reports.lang.php, здесь только оформление и имена ключей ланга
 const RULES_MAP = [
-    'rule_1' => ['text' => 'Rule 1: No spamming or advertising',    'color' => 'bg-danger',  'icon' => 'fa-bullhorn'],
-    'rule_2' => ['text' => 'Rule 2: No offensive language',         'color' => 'bg-danger',  'icon' => 'fa-comment-slash'],
-    'rule_3' => ['text' => 'Rule 3: No harassment or bullying',     'color' => 'bg-danger',  'icon' => 'fa-users-slash'],
-    'rule_4' => ['text' => 'Rule 4: Stay on topic',                 'color' => 'bg-warning', 'icon' => 'fa-signs-post'],
-    'rule_5' => ['text' => 'Rule 5: No warez or illegal content',   'color' => 'bg-danger',  'icon' => 'fa-ban'],
-    'rule_6' => ['text' => 'Rule 6: Respect other members',         'color' => 'bg-warning', 'icon' => 'fa-handshake'],
-    'rule_7' => ['text' => 'Rule 7: No double posting',             'color' => 'bg-info',    'icon' => 'fa-copy'],
-    'rule_8' => ['text' => 'Rule 8: Use appropriate language',      'color' => 'bg-warning', 'icon' => 'fa-language'],
+    'rule_1' => ['color' => 'bg-danger',  'icon' => 'fa-bullhorn'],
+    'rule_2' => ['color' => 'bg-danger',  'icon' => 'fa-comment-slash'],
+    'rule_3' => ['color' => 'bg-danger',  'icon' => 'fa-users-slash'],
+    'rule_4' => ['color' => 'bg-warning', 'icon' => 'fa-signs-post'],
+    'rule_5' => ['color' => 'bg-danger',  'icon' => 'fa-ban'],
+    'rule_6' => ['color' => 'bg-warning', 'icon' => 'fa-handshake'],
+    'rule_7' => ['color' => 'bg-info',    'icon' => 'fa-copy'],
+    'rule_8' => ['color' => 'bg-warning', 'icon' => 'fa-language'],
 ];
 
+/** reason => lang key */
 const REASON_RECOMMENDATIONS = [
     'comment' => [
-        'spam'          => 'Consider deleting the comment and warning the user about spam policies.',
-        'offensive'     => 'Review the language used and consider deletion with a user warning.',
-        'harassment'    => 'Immediate action recommended. Delete comment and consider user ban.',
-        'hate_speech'   => 'Zero tolerance policy. Delete immediately and consider permanent ban.',
-        'inappropriate' => 'Review content against community guidelines. Edit or delete as needed.',
-        'spoiler'       => 'Consider adding spoiler tags or moving to appropriate section.',
-        'misinformation'=> 'Verify information and add correction notice if false.',
-        'off_topic'     => 'Move to appropriate thread or delete if completely irrelevant.',
-        'personal_info' => 'Delete immediately. Do not share personal information.',
-        'other'         => 'Review based on description provided.',
+        'spam'          => 'rec_comment_spam',
+        'offensive'     => 'rec_comment_offensive',
+        'harassment'    => 'rec_comment_harassment',
+        'hate_speech'   => 'rec_comment_hate_speech',
+        'inappropriate' => 'rec_comment_inappropriate',
+        'spoiler'       => 'rec_comment_spoiler',
+        'misinformation'=> 'rec_comment_misinformation',
+        'off_topic'     => 'rec_comment_off_topic',
+        'personal_info' => 'rec_comment_personal_info',
+        'other'         => 'rec_comment_other',
     ],
     'torrent' => [
-        'copyright'     => 'Verify copyright claim. Remove torrent if infringement is confirmed.',
-        'malware'       => 'Scan files for malware. Remove immediately if infected.',
-        'fake'          => 'Verify content authenticity. Remove if fake or mislabeled.',
-        'broken'        => 'Check tracker and seed status. Mark as broken if dead.',
-        'inappropriate' => 'Review against content policies. Remove if violates guidelines.',
-        'other'         => 'Review based on description provided.',
+        'copyright'     => 'rec_torrent_copyright',
+        'malware'       => 'rec_torrent_malware',
+        'fake'          => 'rec_torrent_fake',
+        'broken'        => 'rec_torrent_broken',
+        'inappropriate' => 'rec_torrent_inappropriate',
+        'other'         => 'rec_torrent_other',
     ],
 ];
 
+/** code => lang key */
 const REPORT_MESSAGES = [
     'success' => [
-        'resolved'        => 'Report marked as resolved',
-        'deleted'         => 'Report deleted',
-        'comment_deleted' => 'Comment deleted and report resolved',
-        'post_deleted'    => 'Forum post deleted and report resolved',
-        'post_gone'       => 'Forum post was already gone, report resolved',
-        'ignored'         => 'Report ignored and closed',
-        'cleared'         => 'Old resolved reports cleared',
+        'resolved'        => 'flash_resolved',
+        'deleted'         => 'flash_deleted',
+        'comment_deleted' => 'flash_comment_deleted',
+        'post_deleted'    => 'flash_post_deleted',
+        'post_gone'       => 'flash_post_gone',
+        'ignored'         => 'flash_ignored',
+        'cleared'         => 'flash_cleared',
     ],
     'error' => [
-        'invalid_id'        => 'Invalid report ID',
-        'not_found'         => 'Report not found',
-        'invalid_action'    => 'Invalid action',
-        'no_user'           => 'This report has no user to act on',
-        'csrf'              => 'Security token expired, reload the page and try again',
-        'bad_method'        => 'Actions must be submitted from the panel',
-        'wrong_type'        => 'This action does not match the report type',
-        'comment_not_found' => 'Comment not found',
-        'post_error'        => 'Could not delete the forum post, check the error log',
+        'invalid_id'        => 'flash_err_invalid_id',
+        'not_found'         => 'flash_err_not_found',
+        'invalid_action'    => 'flash_err_invalid_action',
+        'no_user'           => 'flash_err_no_user',
+        'csrf'              => 'flash_err_csrf',
+        'bad_method'        => 'flash_err_bad_method',
+        'wrong_type'        => 'flash_err_wrong_type',
+        'comment_not_found' => 'flash_err_comment_not_found',
+        'post_error'        => 'flash_err_post_error',
     ],
 ];
+
+if (!function_exists('ags_fmt')) {
+    /** Подставляет {1}, {2}… (и %1$s, в которые их превращает $lang->load()). */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/** Translated flash/AJAX message for a response code. */
+function rp_message(string $code, bool $success): string
+{
+    global $lang;
+    $key = REPORT_MESSAGES[$success ? 'success' : 'error'][$code] ?? null;
+    return $key !== null ? $lang->reports[$key] : $lang->reports[$success ? 'flash_done' : 'flash_fail'];
+}
+
+/** RULES_MAP entry with its translated text, or null for an unknown rule. */
+function rp_rule(string $code): ?array
+{
+    global $lang;
+    return isset(RULES_MAP[$code]) ? RULES_MAP[$code] + ['text' => $lang->reports[$code]] : null;
+}
 
 // ==================== МАППИНГИ ПРИЧИН ====================
 
 function get_report_reasons_map(?string $type = null): array
 {
+    global $lang;
     static $maps = null;
 
     if ($maps === null) {
+        $l = $lang->reports;
         $maps = [
             'comment' => [
-                'spam'          => ['text' => 'Spam / Advertising',           'color' => 'bg-danger',    'icon' => 'fa-bullhorn',            'severity' => 'high',    'category' => 'Content Issues'],
-                'offensive'     => ['text' => 'Offensive / Abusive Language', 'color' => 'bg-danger',    'icon' => 'fa-comment-slash',       'severity' => 'high',    'category' => 'Content Issues'],
-                'harassment'    => ['text' => 'Harassment / Bullying',        'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => 'Content Issues'],
-                'hate_speech'   => ['text' => 'Hate Speech / Discrimination', 'color' => 'bg-danger',    'icon' => 'fa-triangle-exclamation','severity' => 'high',    'category' => 'Content Issues'],
-                'inappropriate' => ['text' => 'Inappropriate Content',        'color' => 'bg-warning',   'icon' => 'fa-eye-slash',           'severity' => 'medium',  'category' => 'Content Issues'],
-                'spoiler'       => ['text' => 'Spoiler / Leaked Content',     'color' => 'bg-info',      'icon' => 'fa-mask',                'severity' => 'low',     'category' => 'Other Issues'],
-                'misinformation'=> ['text' => 'Misinformation / Fake News',   'color' => 'bg-warning',   'icon' => 'fa-circle-exclamation',  'severity' => 'medium',  'category' => 'Other Issues'],
-                'off_topic'     => ['text' => 'Off Topic / Irrelevant',       'color' => 'bg-secondary', 'icon' => 'fa-signs-post',          'severity' => 'low',     'category' => 'Other Issues'],
-                'personal_info' => ['text' => 'Personal Information',         'color' => 'bg-danger',    'icon' => 'fa-id-card',             'severity' => 'high',    'category' => 'Other Issues'],
-                'other'         => ['text' => 'Other Reason',                 'color' => 'bg-dark',      'icon' => 'fa-ellipsis',            'severity' => 'unknown', 'category' => 'Other Issues'],
+                'spam' => ['text' => $l['rsn_spam'],           'color' => 'bg-danger',    'icon' => 'fa-bullhorn',            'severity' => 'high',    'category' => $l['cat_content']],
+                'offensive' => ['text' => $l['rsn_offensive'], 'color' => 'bg-danger',    'icon' => 'fa-comment-slash',       'severity' => 'high',    'category' => $l['cat_content']],
+                'harassment' => ['text' => $l['rsn_harassment'],        'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => $l['cat_content']],
+                'hate_speech' => ['text' => $l['rsn_hate_speech'], 'color' => 'bg-danger',    'icon' => 'fa-triangle-exclamation','severity' => 'high',    'category' => $l['cat_content']],
+                'inappropriate' => ['text' => $l['rsn_inappropriate'],        'color' => 'bg-warning',   'icon' => 'fa-eye-slash',           'severity' => 'medium',  'category' => $l['cat_content']],
+                'spoiler' => ['text' => $l['rsn_c_spoiler'],     'color' => 'bg-info',      'icon' => 'fa-mask',                'severity' => 'low',     'category' => $l['cat_other']],
+                'misinformation' => ['text' => $l['rsn_c_misinformation'],   'color' => 'bg-warning',   'icon' => 'fa-circle-exclamation',  'severity' => 'medium',  'category' => $l['cat_other']],
+                'off_topic' => ['text' => $l['rsn_c_off_topic'],       'color' => 'bg-secondary', 'icon' => 'fa-signs-post',          'severity' => 'low',     'category' => $l['cat_other']],
+                'personal_info' => ['text' => $l['rsn_personal_info'],         'color' => 'bg-danger',    'icon' => 'fa-id-card',             'severity' => 'high',    'category' => $l['cat_other']],
+                'other' => ['text' => $l['rsn_other'],                 'color' => 'bg-dark',      'icon' => 'fa-ellipsis',            'severity' => 'unknown', 'category' => $l['cat_other']],
             ],
             'torrent' => [
-                'copyright'     => ['text' => 'Copyright Infringement',  'color' => 'bg-danger',  'icon' => 'fa-copyright',  'severity' => 'high',    'category' => 'Legal Issues'],
-                'malware'       => ['text' => 'Malware/Virus',           'color' => 'bg-danger',  'icon' => 'fa-bug',        'severity' => 'high',    'category' => 'Security Issues'],
-                'fake'          => ['text' => 'Fake/Incorrect Content',  'color' => 'bg-warning', 'icon' => 'fa-ban',        'severity' => 'medium',  'category' => 'Content Issues'],
-                'broken'        => ['text' => 'Broken/Dead Torrent',     'color' => 'bg-info',    'icon' => 'fa-link-slash', 'severity' => 'low',     'category' => 'Technical Issues'],
-                'inappropriate' => ['text' => 'Inappropriate Content',   'color' => 'bg-warning', 'icon' => 'fa-eye-slash',  'severity' => 'medium',  'category' => 'Content Issues'],
-                'other'         => ['text' => 'Other Reason',            'color' => 'bg-dark',    'icon' => 'fa-ellipsis',   'severity' => 'unknown', 'category' => 'Other Issues'],
+                'copyright' => ['text' => $l['rsn_copyright'],  'color' => 'bg-danger',  'icon' => 'fa-copyright',  'severity' => 'high',    'category' => $l['cat_legal']],
+                'malware' => ['text' => $l['rsn_t_malware'],           'color' => 'bg-danger',  'icon' => 'fa-bug',        'severity' => 'high',    'category' => $l['cat_security']],
+                'fake' => ['text' => $l['rsn_t_fake'],  'color' => 'bg-warning', 'icon' => 'fa-ban',        'severity' => 'medium',  'category' => $l['cat_content']],
+                'broken' => ['text' => $l['rsn_t_broken'],     'color' => 'bg-info',    'icon' => 'fa-link-slash', 'severity' => 'low',     'category' => $l['cat_technical']],
+                'inappropriate' => ['text' => $l['rsn_inappropriate'],   'color' => 'bg-warning', 'icon' => 'fa-eye-slash',  'severity' => 'medium',  'category' => $l['cat_content']],
+                'other' => ['text' => $l['rsn_other'],            'color' => 'bg-dark',    'icon' => 'fa-ellipsis',   'severity' => 'unknown', 'category' => $l['cat_other']],
             ],
             'forumpost' => [
-                'spam'           => ['text' => 'Spam / Advertising',           'color' => 'bg-danger',    'icon' => 'fa-bullhorn',            'severity' => 'high',    'category' => 'Content Violations'],
-                'offensive'      => ['text' => 'Offensive / Abusive Language', 'color' => 'bg-danger',    'icon' => 'fa-comment-slash',       'severity' => 'high',    'category' => 'Content Violations'],
-                'harassment'     => ['text' => 'Harassment / Bullying',        'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => 'Content Violations'],
-                'hate_speech'    => ['text' => 'Hate Speech / Discrimination', 'color' => 'bg-danger',    'icon' => 'fa-triangle-exclamation','severity' => 'high',    'category' => 'Content Violations'],
-                'explicit'       => ['text' => 'Explicit / Adult Content',     'color' => 'bg-danger',    'icon' => 'fa-eye-slash',           'severity' => 'high',    'category' => 'Content Violations'],
-                'illegal'        => ['text' => 'Illegal Content / Warez',      'color' => 'bg-danger',    'icon' => 'fa-ban',                 'severity' => 'high',    'category' => 'Content Violations'],
-                'off_topic'      => ['text' => 'Off Topic / Wrong Forum',      'color' => 'bg-warning',   'icon' => 'fa-signs-post',          'severity' => 'medium',  'category' => 'Forum Rules'],
-                'double_post'    => ['text' => 'Double Post / Cross-Posting',  'color' => 'bg-info',      'icon' => 'fa-copy',                'severity' => 'low',     'category' => 'Forum Rules'],
-                'flame'          => ['text' => 'Flaming / Trolling',           'color' => 'bg-warning',   'icon' => 'fa-fire',                'severity' => 'medium',  'category' => 'Forum Rules'],
-                'personal_attack'=> ['text' => 'Personal Attack',              'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => 'Forum Rules'],
-                'spoiler'        => ['text' => 'Unmarked Spoilers',            'color' => 'bg-warning',   'icon' => 'fa-mask',                'severity' => 'medium',  'category' => 'Forum Rules'],
-                'copyright'      => ['text' => 'Copyright Infringement',       'color' => 'bg-danger',    'icon' => 'fa-copyright',           'severity' => 'high',    'category' => 'Other Issues'],
-                'personal_info'  => ['text' => 'Personal Information',         'color' => 'bg-danger',    'icon' => 'fa-id-card',             'severity' => 'high',    'category' => 'Other Issues'],
-                'malware'        => ['text' => 'Malware Link',                 'color' => 'bg-danger',    'icon' => 'fa-bug',                 'severity' => 'high',    'category' => 'Other Issues'],
-                'scam'           => ['text' => 'Scam / Fraud',                 'color' => 'bg-danger',    'icon' => 'fa-skull-crossbones',    'severity' => 'high',    'category' => 'Other Issues'],
-                'other'          => ['text' => 'Other Reason',                 'color' => 'bg-dark',      'icon' => 'fa-ellipsis',            'severity' => 'unknown', 'category' => 'Other Issues'],
+                'spam' => ['text' => $l['rsn_spam'],           'color' => 'bg-danger',    'icon' => 'fa-bullhorn',            'severity' => 'high',    'category' => $l['cat_violations']],
+                'offensive' => ['text' => $l['rsn_offensive'], 'color' => 'bg-danger',    'icon' => 'fa-comment-slash',       'severity' => 'high',    'category' => $l['cat_violations']],
+                'harassment' => ['text' => $l['rsn_harassment'],        'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => $l['cat_violations']],
+                'hate_speech' => ['text' => $l['rsn_hate_speech'], 'color' => 'bg-danger',    'icon' => 'fa-triangle-exclamation','severity' => 'high',    'category' => $l['cat_violations']],
+                'explicit' => ['text' => $l['rsn_f_explicit'],     'color' => 'bg-danger',    'icon' => 'fa-eye-slash',           'severity' => 'high',    'category' => $l['cat_violations']],
+                'illegal' => ['text' => $l['rsn_f_illegal'],      'color' => 'bg-danger',    'icon' => 'fa-ban',                 'severity' => 'high',    'category' => $l['cat_violations']],
+                'off_topic' => ['text' => $l['rsn_f_off_topic'],      'color' => 'bg-warning',   'icon' => 'fa-signs-post',          'severity' => 'medium',  'category' => $l['cat_forum_rules']],
+                'double_post' => ['text' => $l['rsn_f_double_post'],  'color' => 'bg-info',      'icon' => 'fa-copy',                'severity' => 'low',     'category' => $l['cat_forum_rules']],
+                'flame' => ['text' => $l['rsn_f_flame'],           'color' => 'bg-warning',   'icon' => 'fa-fire',                'severity' => 'medium',  'category' => $l['cat_forum_rules']],
+                'personal_attack' => ['text' => $l['rsn_f_personal_attack'],              'color' => 'bg-danger',    'icon' => 'fa-user-slash',          'severity' => 'high',    'category' => $l['cat_forum_rules']],
+                'spoiler' => ['text' => $l['rsn_f_spoiler'],            'color' => 'bg-warning',   'icon' => 'fa-mask',                'severity' => 'medium',  'category' => $l['cat_forum_rules']],
+                'copyright' => ['text' => $l['rsn_copyright'],       'color' => 'bg-danger',    'icon' => 'fa-copyright',           'severity' => 'high',    'category' => $l['cat_other']],
+                'personal_info' => ['text' => $l['rsn_personal_info'],         'color' => 'bg-danger',    'icon' => 'fa-id-card',             'severity' => 'high',    'category' => $l['cat_other']],
+                'malware' => ['text' => $l['rsn_f_malware'],                 'color' => 'bg-danger',    'icon' => 'fa-bug',                 'severity' => 'high',    'category' => $l['cat_other']],
+                'scam' => ['text' => $l['rsn_f_scam'],                 'color' => 'bg-danger',    'icon' => 'fa-skull-crossbones',    'severity' => 'high',    'category' => $l['cat_other']],
+                'other' => ['text' => $l['rsn_other'],                 'color' => 'bg-dark',      'icon' => 'fa-ellipsis',            'severity' => 'unknown', 'category' => $l['cat_other']],
                 // Forum rules
-                'rule_1' => array_merge(RULES_MAP['rule_1'], ['severity' => 'high',   'category' => 'Forum Rules']),
-                'rule_2' => array_merge(RULES_MAP['rule_2'], ['severity' => 'high',   'category' => 'Forum Rules']),
-                'rule_3' => array_merge(RULES_MAP['rule_3'], ['severity' => 'high',   'category' => 'Forum Rules']),
-                'rule_4' => array_merge(RULES_MAP['rule_4'], ['severity' => 'medium', 'category' => 'Forum Rules']),
-                'rule_5' => array_merge(RULES_MAP['rule_5'], ['severity' => 'high',   'category' => 'Forum Rules']),
-                'rule_6' => array_merge(RULES_MAP['rule_6'], ['severity' => 'medium', 'category' => 'Forum Rules']),
-                'rule_7' => array_merge(RULES_MAP['rule_7'], ['severity' => 'low',    'category' => 'Forum Rules']),
-                'rule_8' => array_merge(RULES_MAP['rule_8'], ['severity' => 'medium', 'category' => 'Forum Rules']),
+                'rule_1' => array_merge(rp_rule('rule_1'), ['severity' => 'high',   'category' => $l['cat_forum_rules']]),
+                'rule_2' => array_merge(rp_rule('rule_2'), ['severity' => 'high',   'category' => $l['cat_forum_rules']]),
+                'rule_3' => array_merge(rp_rule('rule_3'), ['severity' => 'high',   'category' => $l['cat_forum_rules']]),
+                'rule_4' => array_merge(rp_rule('rule_4'), ['severity' => 'medium', 'category' => $l['cat_forum_rules']]),
+                'rule_5' => array_merge(rp_rule('rule_5'), ['severity' => 'high',   'category' => $l['cat_forum_rules']]),
+                'rule_6' => array_merge(rp_rule('rule_6'), ['severity' => 'medium', 'category' => $l['cat_forum_rules']]),
+                'rule_7' => array_merge(rp_rule('rule_7'), ['severity' => 'low',    'category' => $l['cat_forum_rules']]),
+                'rule_8' => array_merge(rp_rule('rule_8'), ['severity' => 'medium', 'category' => $l['cat_forum_rules']]),
             ],
             'user' => [
-                'spam'          => ['text' => 'Spam Account',            'color' => 'bg-danger',  'icon' => 'fa-user-slash',       'severity' => 'high',    'category' => 'Account Issues',  'description' => 'User is posting spam content',                       'recommended_action' => 'Review user posts and consider temporary suspension'],
-                'harassment'    => ['text' => 'Harassment/Bullying',     'color' => 'bg-danger',  'icon' => 'fa-ban',              'severity' => 'high',    'category' => 'Behavior Issues', 'description' => 'User is harassing or bullying others',               'recommended_action' => 'Immediate warning or temporary ban'],
-                'fake'          => ['text' => 'Fake Account',            'color' => 'bg-warning', 'icon' => 'fa-mask',             'severity' => 'medium',  'category' => 'Account Issues',  'description' => 'User is pretending to be someone else',              'recommended_action' => 'Verify identity and take appropriate action'],
-                'impersonation' => ['text' => 'Impersonation',           'color' => 'bg-danger',  'icon' => 'fa-id-badge',         'severity' => 'high',    'category' => 'Account Issues',  'description' => 'User is impersonating another user',                 'recommended_action' => 'Immediate account suspension'],
-                'inappropriate' => ['text' => 'Inappropriate Profile',   'color' => 'bg-warning', 'icon' => 'fa-eye-slash',        'severity' => 'medium',  'category' => 'Content Issues',  'description' => 'User has inappropriate profile content',             'recommended_action' => 'Request profile cleanup or temporary restriction'],
-                'scam'          => ['text' => 'Scam/Fraud',              'color' => 'bg-danger',  'icon' => 'fa-skull-crossbones', 'severity' => 'high',    'category' => 'Legal Issues',    'description' => 'User is involved in scams or fraud',                 'recommended_action' => 'Immediate ban and report if necessary'],
-                'copyright'     => ['text' => 'Copyright Infringement',  'color' => 'bg-danger',  'icon' => 'fa-copyright',        'severity' => 'high',    'category' => 'Legal Issues',    'description' => 'User is sharing copyrighted content',                'recommended_action' => 'Remove infringing content and issue warning'],
-                'malware'       => ['text' => 'Malware Distribution',    'color' => 'bg-danger',  'icon' => 'fa-bug',              'severity' => 'high',    'category' => 'Security Issues', 'description' => 'User is distributing malware/viruses',               'recommended_action' => 'Immediate ban and content removal'],
-                'racism'        => ['text' => 'Racism/Hate Speech',      'color' => 'bg-danger',  'icon' => 'fa-comment-slash',    'severity' => 'high',    'category' => 'Behavior Issues', 'description' => 'User is posting racist or hateful content',          'recommended_action' => 'Immediate suspension or ban'],
-                'threats'       => ['text' => 'Threats/Violence',        'color' => 'bg-danger',  'icon' => 'fa-triangle-exclamation', 'severity' => 'high', 'category' => 'Behavior Issues', 'description' => 'User is making threats or promoting violence',      'recommended_action' => 'Immediate permanent ban'],
-                'underage'      => ['text' => 'Underage User',           'color' => 'bg-warning', 'icon' => 'fa-child',            'severity' => 'medium',  'category' => 'Account Issues',  'description' => 'User appears to be underage',                       'recommended_action' => 'Suspend until age verification'],
-                'cheating'      => ['text' => 'Cheating/Gaming System',  'color' => 'bg-warning', 'icon' => 'fa-gamepad',          'severity' => 'medium',  'category' => 'Behavior Issues', 'description' => 'User is cheating or exploiting the system',          'recommended_action' => 'Reset stats and issue warning'],
-                'other'         => ['text' => 'Other Reason',            'color' => 'bg-dark',    'icon' => 'fa-ellipsis',         'severity' => 'unknown', 'category' => 'Other Issues',    'description' => 'Select for other reasons',                           'recommended_action' => 'Review report description carefully'],
+                'spam' => ['text' => $l['rsn_u_spam'],            'color' => 'bg-danger',  'icon' => 'fa-user-slash',       'severity' => 'high',    'category' => $l['cat_account'],  'description' => $l['rdesc_u_spam'],                       'recommended_action' => $l['rec_user_spam']],
+                'harassment' => ['text' => $l['rsn_u_harassment'],     'color' => 'bg-danger',  'icon' => 'fa-ban',              'severity' => 'high',    'category' => $l['cat_behavior'], 'description' => $l['rdesc_u_harassment'],               'recommended_action' => $l['rec_user_harassment']],
+                'fake' => ['text' => $l['rsn_u_fake'],            'color' => 'bg-warning', 'icon' => 'fa-mask',             'severity' => 'medium',  'category' => $l['cat_account'],  'description' => $l['rdesc_u_fake'],              'recommended_action' => $l['rec_user_fake']],
+                'impersonation' => ['text' => $l['rsn_u_impersonation'],           'color' => 'bg-danger',  'icon' => 'fa-id-badge',         'severity' => 'high',    'category' => $l['cat_account'],  'description' => $l['rdesc_u_impersonation'],                 'recommended_action' => $l['rec_user_impersonation']],
+                'inappropriate' => ['text' => $l['rsn_u_inappropriate'],   'color' => 'bg-warning', 'icon' => 'fa-eye-slash',        'severity' => 'medium',  'category' => $l['cat_content'],  'description' => $l['rdesc_u_inappropriate'],             'recommended_action' => $l['rec_user_inappropriate']],
+                'scam' => ['text' => $l['rsn_u_scam'],              'color' => 'bg-danger',  'icon' => 'fa-skull-crossbones', 'severity' => 'high',    'category' => $l['cat_legal'],    'description' => $l['rdesc_u_scam'],                 'recommended_action' => $l['rec_user_scam']],
+                'copyright' => ['text' => $l['rsn_copyright'],  'color' => 'bg-danger',  'icon' => 'fa-copyright',        'severity' => 'high',    'category' => $l['cat_legal'],    'description' => $l['rdesc_u_copyright'],                'recommended_action' => $l['rec_user_copyright']],
+                'malware' => ['text' => $l['rsn_u_malware'],    'color' => 'bg-danger',  'icon' => 'fa-bug',              'severity' => 'high',    'category' => $l['cat_security'], 'description' => $l['rdesc_u_malware'],               'recommended_action' => $l['rec_user_malware']],
+                'racism' => ['text' => $l['rsn_u_racism'],      'color' => 'bg-danger',  'icon' => 'fa-comment-slash',    'severity' => 'high',    'category' => $l['cat_behavior'], 'description' => $l['rdesc_u_racism'],          'recommended_action' => $l['rec_user_racism']],
+                'threats' => ['text' => $l['rsn_u_threats'],        'color' => 'bg-danger',  'icon' => 'fa-triangle-exclamation', 'severity' => 'high', 'category' => $l['cat_behavior'], 'description' => $l['rdesc_u_threats'],      'recommended_action' => $l['rec_user_threats']],
+                'underage' => ['text' => $l['rsn_u_underage'],           'color' => 'bg-warning', 'icon' => 'fa-child',            'severity' => 'medium',  'category' => $l['cat_account'],  'description' => $l['rdesc_u_underage'],                       'recommended_action' => $l['rec_user_underage']],
+                'cheating' => ['text' => $l['rsn_u_cheating'],  'color' => 'bg-warning', 'icon' => 'fa-gamepad',          'severity' => 'medium',  'category' => $l['cat_behavior'], 'description' => $l['rdesc_u_cheating'],          'recommended_action' => $l['rec_user_cheating']],
+                'other' => ['text' => $l['rsn_other'],            'color' => 'bg-dark',    'icon' => 'fa-ellipsis',         'severity' => 'unknown', 'category' => $l['cat_other'],    'description' => $l['rdesc_u_other'],                           'recommended_action' => $l['rec_user_other']],
             ],
         ];
     }
@@ -222,12 +258,28 @@ function getTypeIcon(string $type): string
 
 function getTypeLabel(string $type): string
 {
+    global $lang;
+
     return match ($type) {
-        'torrent'   => 'Torrent',
-        'comment'   => 'Comment',
-        'user'      => 'User',
-        'forumpost' => 'Forum post',
+        'torrent'   => $lang->reports['type_torrent'],
+        'comment'   => $lang->reports['type_comment'],
+        'user'      => $lang->reports['type_user'],
+        'forumpost' => $lang->reports['type_forumpost'],
         default     => ucfirst($type),
+    };
+}
+
+/** "Torrent report" etc. — подзаголовок карточки жалобы */
+function getTypeReportLabel(string $type): string
+{
+    global $lang;
+
+    return match ($type) {
+        'torrent'   => $lang->reports['sub_report_torrent'],
+        'comment'   => $lang->reports['sub_report_comment'],
+        'user'      => $lang->reports['sub_report_user'],
+        'forumpost' => $lang->reports['sub_report_forumpost'],
+        default     => ags_fmt($lang->reports['sub_report_other'], getTypeLabel($type)),
     };
 }
 
@@ -267,26 +319,38 @@ function rp_reason_chip(?array $reason_data, string $raw_reason, int $max = 0): 
 
 function rp_severity_chip(string $sev): string
 {
+    global $lang;
+
     if ($sev === 'unknown' || $sev === '') {
         return '';
     }
-    return '<span class="rp-chip rp-chip-outline rp-tone-' . rp_severity_tone($sev) . '"><i class="fa-solid ' . rp_severity_icon($sev) . '"></i>' . ucfirst($sev) . ' priority</span>';
+    $label = match ($sev) {
+        'high'   => $lang->reports['sev_high'],
+        'medium' => $lang->reports['sev_medium'],
+        'low'    => $lang->reports['sev_low'],
+        default  => ags_fmt($lang->reports['sev_other'], ucfirst($sev)),
+    };
+    return '<span class="rp-chip rp-chip-outline rp-tone-' . rp_severity_tone($sev) . '"><i class="fa-solid ' . rp_severity_icon($sev) . '"></i>' . rp_h($label) . '</span>';
 }
 
 function renderStatusBadge(bool $resolved): string
 {
+    global $lang;
+
     return $resolved
-        ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-circle-check"></i>Resolved</span>'
-        : '<span class="rp-chip rp-tone-warning"><i class="fa-solid fa-clock"></i>Pending</span>';
+        ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-circle-check"></i>' . rp_h($lang->reports['st_resolved']) . '</span>'
+        : '<span class="rp-chip rp-tone-warning"><i class="fa-solid fa-clock"></i>' . rp_h($lang->reports['st_pending']) . '</span>';
 }
 
 function rp_user_cell(int $id, ?string $name, string $tone, string $empty_label, string $empty_icon = 'fa-user-secret'): string
 {
+    global $lang;
+
     if ($id <= 0) {
         return '<span class="rp-muted"><i class="fa-solid ' . $empty_icon . ' me-1"></i>' . rp_h($empty_label) . '</span>';
     }
 
-    $name    = ($name !== null && $name !== '') ? $name : 'User #' . $id;
+    $name    = ($name !== null && $name !== '') ? $name : ags_fmt($lang->reports['lbl_user_num'], $id);
     $initial = mb_strtoupper(mb_substr($name, 0, 1));
 
     return '<a class="rp-user" href="user-' . $id . '.html" target="_blank" rel="noopener">'
@@ -446,7 +510,7 @@ function sendResponse(string $code, bool $success = true, array $redirect = ['ac
 {
     global $_this_script_;
 
-    $message = REPORT_MESSAGES[$success ? 'success' : 'error'][$code] ?? ($success ? 'Done' : 'Something went wrong');
+    $message = rp_message($code, $success);
 
     if (isAjaxRequest()) {
         header('Content-Type: application/json; charset=utf-8');
@@ -596,6 +660,8 @@ function handleClearOld(): never
 
 function handleUserRedirect(array $report, string $kind, array $target): never
 {
+    global $lang;
+
     $uid = (int)($report['reported_user_id'] ?? 0);
 
     if ($uid <= 0) {
@@ -603,7 +669,7 @@ function handleUserRedirect(array $report, string $kind, array $target): never
     }
 
     $url = $kind === 'warn'
-        ? 'warn.php?uid=' . $uid . '&reason=' . urlencode('Report #' . $report['id'] . ': ' . $report['reason'])
+        ? 'warn.php?uid=' . $uid . '&reason=' . urlencode(ags_fmt($lang->reports['warn_reason'], (int)$report['id'], (string)$report['reason']))
         : 'bans.php?action=add&uid=' . $uid;
 
     header('Location: ' . $url);
@@ -802,7 +868,7 @@ function buildReportWhereClause(string $type, string $status, string $search, st
 
 function exportReportsCsv(): never
 {
-    global $db;
+    global $db, $lang;
 
     [$where_sql, $params] = buildReportWhereClause(rp_get('type'), rp_get('status'), trim(rp_get('search')), rp_get('priority'));
 
@@ -830,7 +896,10 @@ function exportReportsCsv(): never
 
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['ID', 'Type', 'Reason', 'Item ID', 'Reporter', 'Reported user', 'Filed', 'Status', 'Resolved by', 'Resolved at', 'Description'], ',', '"', '');
+    fputcsv($out, array_map(static fn(string $k): string => $lang->reports[$k], [
+        'csv_id', 'csv_type', 'csv_reason', 'csv_item_id', 'csv_reporter', 'csv_reported_user',
+        'csv_filed', 'csv_status', 'csv_resolved_by', 'csv_resolved_at', 'csv_description',
+    ]), ',', '"', '');
 
     while ($res && ($row = $db->fetch_array($res))) {
         $reason_data = get_report_reasons_map((string)$row['type'])[$row['reason']] ?? null;
@@ -842,7 +911,7 @@ function exportReportsCsv(): never
             $row['reporter_name'] ?? '',
             $row['reported_user_name'] ?? '',
             date('Y-m-d H:i', (int)$row['added']),
-            $row['dealtwith'] ? 'Resolved' : 'Pending',
+            $row['dealtwith'] ? $lang->reports['st_resolved'] : $lang->reports['st_pending'],
             $row['dealtby_name'] ?? '',
             $row['dealtwith'] ? date('Y-m-d H:i', (int)$row['updated_at']) : '',
             preg_replace('/\s+/u', ' ', (string)($row['description'] ?? '')),
@@ -865,17 +934,17 @@ if (rp_get('export') === 'csv') {
 
 $header_stats = getHeaderStats();
 
-stdhead("Report Management - Admin Panel");
+stdhead($lang->reports['page_title']);
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
 echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>';
 echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
 renderPageStyles();
 
 $tabs = [
-    'list'     => ['All reports', 'fa-layer-group', null],
-    'pending'  => ['Pending',     'fa-clock',       $header_stats['pending']],
-    'resolved' => ['Resolved',    'fa-circle-check', null],
-    'stats'    => ['Statistics',  'fa-chart-column', null],
+    'list'     => [$lang->reports['tab_list'],     'fa-layer-group',  null],
+    'pending'  => [$lang->reports['tab_pending'],  'fa-clock',        $header_stats['pending']],
+    'resolved' => [$lang->reports['tab_resolved'], 'fa-circle-check', null],
+    'stats'    => [$lang->reports['tab_stats'],    'fa-chart-column', null],
 ];
 
 ?>
@@ -886,20 +955,20 @@ $tabs = [
         <div class="rp-hero-top">
             <span class="rp-ico rp-ico-lg rp-tone-danger"><i class="fa-solid fa-flag"></i></span>
             <div class="rp-hero-text">
-                <h1>Report Management</h1>
-                <p>Member reports on torrents, comments, profiles and forum posts</p>
+                <h1><?= rp_h($lang->reports['hero_title']) ?></h1>
+                <p><?= rp_h($lang->reports['hero_sub']) ?></p>
             </div>
             <?php if ($header_stats['high_pending'] > 0): ?>
             <a class="rp-alert-pill rp-tone-danger" href="<?= rp_h($_this_script_) ?>&amp;action=pending&amp;priority=high">
-                <span class="rp-dot"></span><?= $header_stats['high_pending'] ?> high priority waiting
+                <span class="rp-dot"></span><?= rp_h(ags_fmt($lang->reports['hero_high_waiting'], number_format($header_stats['high_pending']))) ?>
             </a>
             <?php endif; ?>
         </div>
-        <nav class="rp-tabs" aria-label="Report views">
+        <nav class="rp-tabs" aria-label="<?= rp_h($lang->reports['aria_tabs']) ?>">
             <?php foreach ($tabs as $act => [$label, $icon, $count]): ?>
             <a href="<?= rp_h($_this_script_) ?>&amp;action=<?= $act ?>"
                class="rp-tab<?= $action === $act ? ' is-active' : '' ?>"<?= $action === $act ? ' aria-current="page"' : '' ?>>
-                <i class="fa-solid <?= $icon ?>"></i><?= $label ?>
+                <i class="fa-solid <?= $icon ?>"></i><?= rp_h($label) ?>
                 <?php if ($count): ?><span class="rp-count"><?= number_format($count) ?></span><?php endif; ?>
             </a>
             <?php endforeach; ?>
@@ -908,10 +977,10 @@ $tabs = [
 
     <?php if ($action !== 'stats'): ?>
     <div class="rp-kpis">
-        <?= rp_kpi('warning', 'fa-inbox',        $header_stats['pending'],      'Pending reports',       $_this_script_ . '&action=pending') ?>
-        <?= rp_kpi('danger',  'fa-fire',         $header_stats['high_pending'], 'High priority pending', $_this_script_ . '&action=pending&priority=high') ?>
-        <?= rp_kpi('info',    'fa-bolt',         $header_stats['new_24h'],      'New in last 24 hours',  $_this_script_ . '&action=list') ?>
-        <?= rp_kpi('success', 'fa-circle-check', $header_stats['resolved_30'],  'Resolved in 30 days',   $_this_script_ . '&action=resolved') ?>
+        <?= rp_kpi('warning', 'fa-inbox',        $header_stats['pending'],      $lang->reports['kpi_pending'],      $_this_script_ . '&action=pending') ?>
+        <?= rp_kpi('danger',  'fa-fire',         $header_stats['high_pending'], $lang->reports['kpi_high_pending'], $_this_script_ . '&action=pending&priority=high') ?>
+        <?= rp_kpi('info',    'fa-bolt',         $header_stats['new_24h'],      $lang->reports['kpi_new_24h'],      $_this_script_ . '&action=list') ?>
+        <?= rp_kpi('success', 'fa-circle-check', $header_stats['resolved_30'],  $lang->reports['kpi_resolved_30'],  $_this_script_ . '&action=resolved') ?>
     </div>
     <?php endif; ?>
 
@@ -948,7 +1017,7 @@ function rp_kpi(string $tone, string $icon, int $value, string $label, ?string $
 
 function showReportList(string $mode): void
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
     $page    = max(1, (int)rp_get('page'));
     $perpage = 25;
@@ -985,9 +1054,9 @@ function showReportList(string $mode): void
     );
 
     [$title, $icon, $tone] = match ($mode) {
-        'pending'  => ['Pending reports',  'fa-clock',        'warning'],
-        'resolved' => ['Resolved reports', 'fa-circle-check', 'success'],
-        default    => ['All reports',      'fa-layer-group',  'primary'],
+        'pending'  => [$lang->reports['pane_pending'],  'fa-clock',        'warning'],
+        'resolved' => [$lang->reports['pane_resolved'], 'fa-circle-check', 'success'],
+        default    => [$lang->reports['pane_all'],      'fa-layer-group',  'primary'],
     };
 
     $filter_params = array_filter(['type' => $type, 'status' => $mode === 'list' ? $status : '', 'search' => $search, 'priority' => $priority]);
@@ -1008,45 +1077,45 @@ function showReportList(string $mode): void
             <?php endforeach; ?>
 
             <div class="rp-field rp-field-wide">
-                <label class="rp-label" for="rp-search"><i class="fa-solid fa-magnifying-glass"></i>Search</label>
+                <label class="rp-label" for="rp-search"><i class="fa-solid fa-magnifying-glass"></i><?= rp_h($lang->reports['lbl_search']) ?></label>
                 <div class="rp-input-icon">
                     <i class="fa-solid fa-magnifying-glass"></i>
                     <input type="search" id="rp-search" name="search" class="form-control"
-                           placeholder="Reason, description, username..." value="<?= rp_h($search) ?>">
+                           placeholder="<?= rp_h($lang->reports['ph_search']) ?>" value="<?= rp_h($search) ?>">
                 </div>
             </div>
             <div class="rp-field">
-                <label class="rp-label" for="rp-type"><i class="fa-solid fa-shapes"></i>Type</label>
+                <label class="rp-label" for="rp-type"><i class="fa-solid fa-shapes"></i><?= rp_h($lang->reports['lbl_type']) ?></label>
                 <select id="rp-type" name="type" class="form-select">
-                    <option value="">All types</option>
+                    <option value=""><?= rp_h($lang->reports['opt_all_types']) ?></option>
                     <?php foreach (REPORT_TYPES as $v): ?>
-                    <option value="<?= $v ?>" <?= $type === $v ? 'selected' : '' ?>><?= getTypeLabel($v) ?></option>
+                    <option value="<?= $v ?>" <?= $type === $v ? 'selected' : '' ?>><?= rp_h(getTypeLabel($v)) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <?php if ($mode === 'list'): ?>
             <div class="rp-field">
-                <label class="rp-label" for="rp-status"><i class="fa-solid fa-signal"></i>Status</label>
+                <label class="rp-label" for="rp-status"><i class="fa-solid fa-signal"></i><?= rp_h($lang->reports['lbl_status']) ?></label>
                 <select id="rp-status" name="status" class="form-select">
-                    <option value="">Any status</option>
-                    <option value="pending"  <?= $status === 'pending'  ? 'selected' : '' ?>>Pending</option>
-                    <option value="resolved" <?= $status === 'resolved' ? 'selected' : '' ?>>Resolved</option>
+                    <option value=""><?= rp_h($lang->reports['opt_any_status']) ?></option>
+                    <option value="pending"  <?= $status === 'pending'  ? 'selected' : '' ?>><?= rp_h($lang->reports['opt_pending']) ?></option>
+                    <option value="resolved" <?= $status === 'resolved' ? 'selected' : '' ?>><?= rp_h($lang->reports['opt_resolved']) ?></option>
                 </select>
             </div>
             <?php endif; ?>
             <div class="rp-field">
-                <label class="rp-label" for="rp-priority"><i class="fa-solid fa-fire"></i>Priority</label>
+                <label class="rp-label" for="rp-priority"><i class="fa-solid fa-fire"></i><?= rp_h($lang->reports['lbl_priority']) ?></label>
                 <select id="rp-priority" name="priority" class="form-select">
-                    <option value="">Any priority</option>
-                    <option value="high" <?= $priority === 'high' ? 'selected' : '' ?>>High only</option>
+                    <option value=""><?= rp_h($lang->reports['opt_any_priority']) ?></option>
+                    <option value="high" <?= $priority === 'high' ? 'selected' : '' ?>><?= rp_h($lang->reports['opt_high_only']) ?></option>
                 </select>
             </div>
             <div class="rp-field rp-field-actions">
                 <button type="submit" class="rp-btn rp-btn-solid rp-tone-primary">
-                    <i class="fa-solid fa-filter"></i><span>Apply</span>
+                    <i class="fa-solid fa-filter"></i><span><?= rp_h($lang->reports['btn_apply']) ?></span>
                 </button>
                 <?php if ($has_filters): ?>
-                <?= rp_link_button($_this_script_ . '&action=' . $mode, 'Reset filters', 'fa-rotate-left', 'secondary', ['small' => false, 'icon_only' => true]) ?>
+                <?= rp_link_button($_this_script_ . '&action=' . $mode, $lang->reports['btn_reset_filters'], 'fa-rotate-left', 'secondary', ['small' => false, 'icon_only' => true]) ?>
                 <?php endif; ?>
             </div>
         </form>
@@ -1057,8 +1126,8 @@ function showReportList(string $mode): void
             $icon,
             $tone,
             rp_h($title) . ' <span class="rp-count rp-count-soft">' . number_format($total) . '</span>',
-            rp_link_button($_this_script_ . '&' . http_build_query($export_params), 'Export CSV', 'fa-file-csv', 'secondary'),
-            $has_filters ? 'Filtered view' : ''
+            rp_link_button($_this_script_ . '&' . http_build_query($export_params), $lang->reports['btn_export_csv'], 'fa-file-csv', 'secondary'),
+            $has_filters ? rp_h($lang->reports['sub_filtered']) : ''
         ) ?>
 
         <?php if ($total > 0 && $result): ?>
@@ -1066,14 +1135,14 @@ function showReportList(string $mode): void
             <table class="rp-table">
                 <thead>
                     <tr>
-                        <th><i class="fa-solid fa-hashtag"></i>ID</th>
-                        <th><i class="fa-solid fa-shapes"></i>Type</th>
-                        <th><i class="fa-solid fa-triangle-exclamation"></i>Reason</th>
-                        <th><i class="fa-solid fa-user-pen"></i>Reporter</th>
-                        <th><i class="fa-solid fa-user-xmark"></i>Reported user</th>
-                        <th><i class="fa-solid fa-calendar-day"></i><?= $mode === 'resolved' ? 'Resolved' : 'Filed' ?></th>
-                        <th><i class="fa-solid fa-signal"></i>Status</th>
-                        <th class="rp-th-actions"><i class="fa-solid fa-gavel"></i>Actions</th>
+                        <th><i class="fa-solid fa-hashtag"></i><?= rp_h($lang->reports['th_id']) ?></th>
+                        <th><i class="fa-solid fa-shapes"></i><?= rp_h($lang->reports['th_type']) ?></th>
+                        <th><i class="fa-solid fa-triangle-exclamation"></i><?= rp_h($lang->reports['th_reason']) ?></th>
+                        <th><i class="fa-solid fa-user-pen"></i><?= rp_h($lang->reports['th_reporter']) ?></th>
+                        <th><i class="fa-solid fa-user-xmark"></i><?= rp_h($lang->reports['th_reported_user']) ?></th>
+                        <th><i class="fa-solid fa-calendar-day"></i><?= rp_h($mode === 'resolved' ? $lang->reports['th_resolved'] : $lang->reports['th_filed']) ?></th>
+                        <th><i class="fa-solid fa-signal"></i><?= rp_h($lang->reports['th_status']) ?></th>
+                        <th class="rp-th-actions"><i class="fa-solid fa-gavel"></i><?= rp_h($lang->reports['th_actions']) ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1091,12 +1160,12 @@ function showReportList(string $mode): void
                         <div class="rp-reason-cell">
                             <?= rp_reason_chip($reason_data, (string)$row['reason'], 26) ?>
                             <?php if ($sev === 'high' && !$done): ?>
-                            <span class="rp-dot" title="High priority" aria-label="High priority"></span>
+                            <span class="rp-dot" title="<?= rp_h($lang->reports['sev_high']) ?>" aria-label="<?= rp_h($lang->reports['sev_high']) ?>"></span>
                             <?php endif; ?>
                         </div>
                     </td>
-                    <td><?= rp_user_cell((int)$row['addedby'], $row['reporter_name'] ?? null, 'info', 'Guest') ?></td>
-                    <td><?= rp_user_cell((int)$row['reported_user_id'], $row['reported_user_name'] ?? null, 'danger', 'None', 'fa-minus') ?></td>
+                    <td><?= rp_user_cell((int)$row['addedby'], $row['reporter_name'] ?? null, 'info', $lang->reports['lbl_guest']) ?></td>
+                    <td><?= rp_user_cell((int)$row['reported_user_id'], $row['reported_user_name'] ?? null, 'danger', $lang->reports['lbl_none'], 'fa-minus') ?></td>
                     <td class="rp-nowrap" title="<?= date('Y-m-d H:i', (int)$ts) ?>">
                         <i class="fa-solid fa-clock rp-muted me-1"></i><?= my_datee('relative', $ts) ?>
                     </td>
@@ -1108,17 +1177,17 @@ function showReportList(string $mode): void
                     </td>
                     <td>
                         <div class="rp-row-actions">
-                            <?= rp_link_button($_this_script_ . '&action=view&id=' . $rid, 'View details', 'fa-eye', 'primary', ['icon_only' => true]) ?>
+                            <?= rp_link_button($_this_script_ . '&action=view&id=' . $rid, $lang->reports['btn_view_details'], 'fa-eye', 'primary', ['icon_only' => true]) ?>
                             <?php if (!$done): ?>
                             <?= rp_action_button('resolve', $rid, [
-                                'return' => $mode, 'label' => 'Mark as resolved', 'icon' => 'fa-check', 'tone' => 'success',
+                                'return' => $mode, 'label' => $lang->reports['btn_mark_resolved'], 'icon' => 'fa-check', 'tone' => 'success',
                                 'icon_only' => true, 'btn_class' => 'resolve-report',
                             ]) ?>
                             <?php endif; ?>
                             <?= rp_action_button('delete', $rid, [
-                                'return' => $mode, 'label' => 'Delete report', 'icon' => 'fa-trash-can', 'tone' => 'danger',
+                                'return' => $mode, 'label' => $lang->reports['btn_delete_report'], 'icon' => 'fa-trash-can', 'tone' => 'danger',
                                 'icon_only' => true, 'ajax' => true, 'btn_class' => 'delete-report',
-                                'confirm' => ['title' => 'Delete report #' . $rid . '?', 'text' => 'This cannot be undone.', 'btn' => 'Delete', 'variant' => 'danger'],
+                                'confirm' => ['title' => ags_fmt($lang->reports['cnf_delete_report_title'], $rid), 'text' => $lang->reports['cnf_cannot_undo'], 'btn' => $lang->reports['btn_delete'], 'variant' => 'danger'],
                             ]) ?>
                         </div>
                     </td>
@@ -1135,11 +1204,11 @@ function showReportList(string $mode): void
         <?php endif; ?>
 
         <?php elseif ($mode === 'pending' && !$has_filters): ?>
-            <?= rp_empty('fa-mug-hot', 'success', 'Inbox zero', 'Every report has been handled. Nice work.') ?>
+            <?= rp_empty('fa-mug-hot', 'success', $lang->reports['empty_inbox_title'], $lang->reports['empty_inbox_text']) ?>
         <?php else: ?>
-            <?= rp_empty('fa-inbox', 'secondary', 'No reports found',
-                $has_filters ? 'Nothing matches these filters.' : 'There is nothing here yet.',
-                $has_filters ? rp_link_button($_this_script_ . '&action=' . $mode, 'Clear filters', 'fa-rotate-left', 'primary') : '') ?>
+            <?= rp_empty('fa-inbox', 'secondary', $lang->reports['empty_none_title'],
+                $has_filters ? $lang->reports['empty_none_filtered'] : $lang->reports['empty_none_text'],
+                $has_filters ? rp_link_button($_this_script_ . '&action=' . $mode, $lang->reports['btn_clear_filters'], 'fa-rotate-left', 'primary') : '') ?>
         <?php endif; ?>
     </section>
     <?php
@@ -1148,18 +1217,18 @@ function showReportList(string $mode): void
 
 function renderPagination(int $page, int $total, int $perpage, array $extra_params): void
 {
-    global $_this_script_;
+    global $_this_script_, $lang;
 
     $totalPages = (int)ceil($total / $perpage);
     $base       = $_this_script_ . '&' . http_build_query($extra_params) . '&page=';
 
     $link = static fn(int $p, string $inner, string $label = '') =>
-        '<a href="' . rp_h($base . $p) . '"' . ($label !== '' ? ' aria-label="' . $label . '"' : '') . '>' . $inner . '</a>';
+        '<a href="' . rp_h($base . $p) . '"' . ($label !== '' ? ' aria-label="' . rp_h($label) . '"' : '') . '>' . $inner . '</a>';
 
-    echo '<nav class="rp-pager" aria-label="Pagination">';
+    echo '<nav class="rp-pager" aria-label="' . rp_h($lang->reports['aria_pagination']) . '">';
 
     if ($page > 1) {
-        echo $link($page - 1, '<i class="fa-solid fa-chevron-left"></i>', 'Previous page');
+        echo $link($page - 1, '<i class="fa-solid fa-chevron-left"></i>', $lang->reports['aria_prev']);
     }
 
     $from = max(1, $page - 2);
@@ -1182,7 +1251,7 @@ function renderPagination(int $page, int $total, int $perpage, array $extra_para
     }
 
     if ($page < $totalPages) {
-        echo $link($page + 1, '<i class="fa-solid fa-chevron-right"></i>', 'Next page');
+        echo $link($page + 1, '<i class="fa-solid fa-chevron-right"></i>', $lang->reports['aria_next']);
     }
 
     echo '</nav>';
@@ -1190,7 +1259,7 @@ function renderPagination(int $page, int $total, int $perpage, array $extra_para
 
 function showStatistics(): void
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
     $thirty_days_ago = TIMENOW - 30 * DAY_IN_SECONDS;
 
@@ -1231,16 +1300,16 @@ function showStatistics(): void
 
     ?>
     <div class="rp-kpis">
-        <?= rp_kpi('primary', 'fa-flag',          $stats['total'],            'Reports in 30 days') ?>
-        <?= rp_kpi('success', 'fa-circle-check',  $stats['resolved'],         'Resolved', null, $rate . '% resolution rate') ?>
-        <?= rp_kpi('warning', 'fa-clock',         $stats['pending'],          'Still pending', $_this_script_ . '&action=pending') ?>
-        <?= rp_kpi('info',    'fa-users',         $stats['unique_reporters'], 'Unique reporters', null, $stats['unique_reported_users'] . ' users reported') ?>
+        <?= rp_kpi('primary', 'fa-flag',          $stats['total'],            $lang->reports['kpi_total_30']) ?>
+        <?= rp_kpi('success', 'fa-circle-check',  $stats['resolved'],         $lang->reports['kpi_resolved'], null, ags_fmt($lang->reports['hint_resolution_rate'], $rate)) ?>
+        <?= rp_kpi('warning', 'fa-clock',         $stats['pending'],          $lang->reports['kpi_still_pending'], $_this_script_ . '&action=pending') ?>
+        <?= rp_kpi('info',    'fa-users',         $stats['unique_reporters'], $lang->reports['kpi_unique_reporters'], null, ags_fmt($lang->reports['hint_users_reported'], number_format($stats['unique_reported_users']))) ?>
     </div>
 
     <div class="row g-3">
         <div class="col-lg-6">
             <section class="rp-card h-100">
-                <?= rp_card_head('fa-chart-pie', 'primary', 'Reports by type', '', 'Last 30 days') ?>
+                <?= rp_card_head('fa-chart-pie', 'primary', rp_h($lang->reports['pane_by_type']), '', rp_h($lang->reports['sub_last_30'])) ?>
                 <div class="rp-card-body">
                 <?php if ($type_stats_result && $db->num_rows($type_stats_result) > 0): ?>
                     <ul class="rp-typebars">
@@ -1254,44 +1323,44 @@ function showStatistics(): void
                             <div class="rp-typebar-top">
                                 <?= rp_type_chip((string)$row['type']) ?>
                                 <span class="rp-typebar-nums">
-                                    <span title="Total"><i class="fa-solid fa-layer-group"></i><?= $count ?></span>
-                                    <span class="rp-fg-success" title="Resolved"><i class="fa-solid fa-check"></i><?= $resolved ?></span>
-                                    <span class="rp-fg-warning" title="Pending"><i class="fa-solid fa-clock"></i><?= $pending ?></span>
+                                    <span title="<?= rp_h($lang->reports['tip_total']) ?>"><i class="fa-solid fa-layer-group"></i><?= $count ?></span>
+                                    <span class="rp-fg-success" title="<?= rp_h($lang->reports['tip_resolved']) ?>"><i class="fa-solid fa-check"></i><?= $resolved ?></span>
+                                    <span class="rp-fg-warning" title="<?= rp_h($lang->reports['tip_pending']) ?>"><i class="fa-solid fa-clock"></i><?= $pending ?></span>
                                 </span>
                             </div>
                             <div class="rp-bar" role="progressbar" aria-valuenow="<?= $percent ?>" aria-valuemin="0" aria-valuemax="100">
                                 <span style="width:<?= $percent ?>%"></span>
                             </div>
-                            <div class="rp-sub"><?= $percent ?>% resolved</div>
+                            <div class="rp-sub"><?= rp_h(ags_fmt($lang->reports['lbl_percent_resolved'], $percent)) ?></div>
                         </li>
                     <?php endwhile; ?>
                     </ul>
                 <?php else: ?>
-                    <?= rp_empty('fa-chart-pie', 'secondary', 'No data for this period') ?>
+                    <?= rp_empty('fa-chart-pie', 'secondary', $lang->reports['empty_no_period']) ?>
                 <?php endif; ?>
                 </div>
             </section>
         </div>
 
         <div class="col-lg-6">
-            <?= renderTopUsersTable($top_reported_result, 'Most reported users', 'reported_user_id', 'fa-user-slash', 'danger') ?>
+            <?= renderTopUsersTable($top_reported_result, $lang->reports['pane_top_reported'], 'reported_user_id', 'fa-user-slash', 'danger') ?>
         </div>
 
         <div class="col-lg-6">
-            <?= renderTopUsersTable($top_reporters_result, 'Top reporters', 'addedby', 'fa-user-check', 'info') ?>
+            <?= renderTopUsersTable($top_reporters_result, $lang->reports['pane_top_reporters'], 'addedby', 'fa-user-check', 'info') ?>
         </div>
 
         <div class="col-lg-6">
             <section class="rp-card h-100">
-                <?= rp_card_head('fa-bolt', 'warning', 'Quick actions') ?>
+                <?= rp_card_head('fa-bolt', 'warning', rp_h($lang->reports['pane_quick'])) ?>
                 <div class="rp-card-body rp-stack">
-                    <?= rp_link_button($_this_script_ . '&action=pending', 'Review pending reports', 'fa-clock', 'warning', ['small' => false, 'class' => 'rp-btn-block']) ?>
-                    <?= rp_link_button($_this_script_ . '&action=pending&priority=high', 'High priority only', 'fa-fire', 'danger', ['small' => false, 'class' => 'rp-btn-block']) ?>
-                    <?= rp_link_button($_this_script_ . '&export=csv', 'Export all reports (CSV)', 'fa-file-csv', 'secondary', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_link_button($_this_script_ . '&action=pending', $lang->reports['btn_review_pending'], 'fa-clock', 'warning', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_link_button($_this_script_ . '&action=pending&priority=high', $lang->reports['btn_high_only'], 'fa-fire', 'danger', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_link_button($_this_script_ . '&export=csv', $lang->reports['btn_export_all'], 'fa-file-csv', 'secondary', ['small' => false, 'class' => 'rp-btn-block']) ?>
                     <?= rp_action_button('clearold', 0, [
-                        'return' => 'stats', 'label' => 'Clear resolved reports older than 30 days', 'icon' => 'fa-broom',
+                        'return' => 'stats', 'label' => $lang->reports['btn_clear_old'], 'icon' => 'fa-broom',
                         'tone' => 'danger', 'small' => false, 'btn_class' => 'rp-btn-block', 'class' => 'rp-block-form',
-                        'confirm' => ['title' => 'Clear old resolved reports?', 'text' => 'Resolved reports older than 30 days will be deleted permanently.', 'btn' => 'Clear them', 'variant' => 'danger'],
+                        'confirm' => ['title' => $lang->reports['cnf_clear_old_title'], 'text' => $lang->reports['cnf_clear_old_text'], 'btn' => $lang->reports['cnf_clear_old_btn'], 'variant' => 'danger'],
                     ]) ?>
                 </div>
             </section>
@@ -1305,25 +1374,25 @@ function showStatistics(): void
 
 function renderTopUsersTable($result, string $title, string $id_field, string $icon, string $tone): string
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
     ob_start(); ?>
     <section class="rp-card h-100">
-        <?= rp_card_head($icon, $tone, rp_h($title), '', 'All time, top 10') ?>
+        <?= rp_card_head($icon, $tone, rp_h($title), '', rp_h($lang->reports['sub_top10'])) ?>
         <div class="rp-card-body">
         <?php if ($result && $db->num_rows($result) > 0): ?>
             <ol class="rp-rank">
             <?php $n = 0; while ($row = $db->fetch_array($result)): $n++; ?>
                 <li>
                     <span class="rp-rank-n"><?= $n ?></span>
-                    <span class="rp-rank-user"><?= rp_user_cell((int)$row[$id_field], $row['username'] ?? null, $tone, 'Unknown') ?></span>
+                    <span class="rp-rank-user"><?= rp_user_cell((int)$row[$id_field], $row['username'] ?? null, $tone, $lang->reports['lbl_unknown']) ?></span>
                     <span class="rp-chip rp-tone-<?= $tone ?>"><i class="fa-solid fa-flag"></i><?= (int)$row['report_count'] ?></span>
-                    <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode((string)($row['username'] ?? '')), 'Show reports', 'fa-magnifying-glass', 'primary', ['icon_only' => true]) ?>
+                    <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode((string)($row['username'] ?? '')), $lang->reports['btn_show_reports'], 'fa-magnifying-glass', 'primary', ['icon_only' => true]) ?>
                 </li>
             <?php endwhile; ?>
             </ol>
         <?php else: ?>
-            <?= rp_empty('fa-users', 'secondary', 'No data yet') ?>
+            <?= rp_empty('fa-users', 'secondary', $lang->reports['empty_no_data']) ?>
         <?php endif; ?>
         </div>
     </section>
@@ -1332,10 +1401,10 @@ function renderTopUsersTable($result, string $title, string $id_field, string $i
 
 function showReportDetails(int $report_id): void
 {
-    global $db, $_this_script_, $BASEURL;
+    global $db, $_this_script_, $BASEURL, $lang;
 
     if ($report_id <= 0) {
-        echo '<section class="rp-card">' . rp_empty('fa-circle-exclamation', 'danger', 'Invalid report ID') . '</section>';
+        echo '<section class="rp-card">' . rp_empty('fa-circle-exclamation', 'danger', $lang->reports['flash_err_invalid_id']) . '</section>';
         return;
     }
 
@@ -1363,8 +1432,8 @@ function showReportDetails(int $report_id): void
     $report = $result ? $db->fetch_array($result) : null;
 
     if (!$report) {
-        echo '<section class="rp-card">' . rp_empty('fa-magnifying-glass', 'secondary', 'Report not found', 'It may have been deleted already.',
-            rp_link_button($_this_script_ . '&action=list', 'Back to reports', 'fa-arrow-left', 'primary')) . '</section>';
+        echo '<section class="rp-card">' . rp_empty('fa-magnifying-glass', 'secondary', $lang->reports['flash_err_not_found'], $lang->reports['empty_not_found_text'],
+            rp_link_button($_this_script_ . '&action=list', $lang->reports['btn_back_reports'], 'fa-arrow-left', 'primary')) . '</section>';
         return;
     }
 
@@ -1385,7 +1454,7 @@ function showReportDetails(int $report_id): void
         <div class="col-lg-4">
             <div class="rp-side">
                 <section class="rp-card rp-mb">
-                    <?= rp_card_head('fa-gavel', 'primary', 'Take action', '', $done ? 'This report is already closed' : 'Pick what to do with it') ?>
+                    <?= rp_card_head('fa-gavel', 'primary', rp_h($lang->reports['pane_take_action']), '', rp_h($done ? $lang->reports['sub_closed'] : $lang->reports['sub_pick'])) ?>
                     <div class="rp-card-body"><?= renderActionForm($rid, (string)$report['type'], (int)$report['reported_user_id'], $done) ?></div>
                 </section>
                 <?php if ((int)$report['reported_user_id'] > 0): ?>
@@ -1398,18 +1467,18 @@ function showReportDetails(int $report_id): void
     <div class="rp-actionbar">
         <span class="rp-actionbar-info">
             <i class="fa-solid <?= getTypeIcon((string)$report['type']) ?>"></i>
-            Report #<?= $rid ?> is <?= $done ? 'resolved' : 'pending' ?>
+            <?= rp_h(ags_fmt($done ? $lang->reports['bar_resolved'] : $lang->reports['bar_pending'], $rid)) ?>
         </span>
-        <?= rp_link_button($_this_script_ . '&action=list', 'Back to list', 'fa-arrow-left', 'secondary', ['small' => false]) ?>
+        <?= rp_link_button($_this_script_ . '&action=list', $lang->reports['btn_back_list'], 'fa-arrow-left', 'secondary', ['small' => false]) ?>
         <?php if ($item_url): ?>
-        <?= rp_link_button($item_url, 'Open reported item', 'fa-arrow-up-right-from-square', 'primary', ['small' => false, 'blank' => true]) ?>
+        <?= rp_link_button($item_url, $lang->reports['btn_open_item'], 'fa-arrow-up-right-from-square', 'primary', ['small' => false, 'blank' => true]) ?>
         <?php endif; ?>
         <?php if (!$done): ?>
-        <?= rp_action_button('resolve', $rid, ['return' => 'view', 'label' => 'Mark as resolved', 'icon' => 'fa-check', 'tone' => 'success', 'solid' => true, 'small' => false]) ?>
+        <?= rp_action_button('resolve', $rid, ['return' => 'view', 'label' => $lang->reports['btn_mark_resolved'], 'icon' => 'fa-check', 'tone' => 'success', 'solid' => true, 'small' => false]) ?>
         <?php endif; ?>
         <?= rp_action_button('delete', $rid, [
-            'return' => 'list', 'label' => 'Delete', 'icon' => 'fa-trash-can', 'tone' => 'danger', 'small' => false,
-            'confirm' => ['title' => 'Delete report #' . $rid . '?', 'text' => 'This cannot be undone.', 'btn' => 'Delete', 'variant' => 'danger'],
+            'return' => 'list', 'label' => $lang->reports['btn_delete'], 'icon' => 'fa-trash-can', 'tone' => 'danger', 'small' => false,
+            'confirm' => ['title' => ags_fmt($lang->reports['cnf_delete_report_title'], $rid), 'text' => $lang->reports['cnf_cannot_undo'], 'btn' => $lang->reports['btn_delete'], 'variant' => 'danger'],
         ]) ?>
     </div>
     <?php
@@ -1434,7 +1503,7 @@ function rp_item_url(array $report): ?string
 
 function renderReportDetails(array $report): string
 {
-    global $parser, $parser_options, $_this_script_;
+    global $parser, $parser_options, $_this_script_, $lang;
 
     $type        = (string)$report['type'];
     $reason_data = get_report_reasons_map($type)[$report['reason']] ?? null;
@@ -1446,37 +1515,37 @@ function renderReportDetails(array $report): string
 
     // Reported item
     $item_label = match ($type) {
-        'torrent'   => !empty($report['torrent_name']) ? $report['torrent_name'] : 'Torrent #' . $report['reported_id'] . ' (deleted)',
-        'comment'   => 'Comment #' . $report['reported_id'] . (empty($report['comment_text']) ? ' (deleted)' : ''),
-        'forumpost' => !empty($report['thread_subject']) ? $report['thread_subject'] : 'Post #' . $report['reported_id'],
-        'user'      => $report['reported_user_name'] ?? ('User #' . $report['reported_id']),
+        'torrent'   => !empty($report['torrent_name']) ? $report['torrent_name'] : ags_fmt($lang->reports['item_torrent_deleted'], (int)$report['reported_id']),
+        'comment'   => ags_fmt($lang->reports[empty($report['comment_text']) ? 'item_comment_deleted' : 'item_comment'], (int)$report['reported_id']),
+        'forumpost' => !empty($report['thread_subject']) ? $report['thread_subject'] : ags_fmt($lang->reports['item_post'], (int)$report['reported_id']),
+        'user'      => $report['reported_user_name'] ?? ags_fmt($lang->reports['lbl_user_num'], (int)$report['reported_id']),
         default     => '#' . $report['reported_id'],
     };
     $item_html = $item_url
         ? '<a href="' . rp_h($item_url) . '" target="_blank" rel="noopener">' . rp_h($item_label) . ' <i class="fa-solid fa-arrow-up-right-from-square rp-ext"></i></a>'
         : rp_h($item_label);
 
-    $reporter_html = rp_user_cell((int)$report['addedby'], $report['reporter_name'] ?? null, 'info', 'Guest')
+    $reporter_html = rp_user_cell((int)$report['addedby'], $report['reporter_name'] ?? null, 'info', $lang->reports['lbl_guest'])
         . (!empty($report['reporter_email']) ? '<div class="rp-sub"><i class="fa-solid fa-envelope me-1"></i><a href="mailto:' . rp_h($report['reporter_email']) . '">' . rp_h($report['reporter_email']) . '</a></div>' : '');
 
-    $reported_html = rp_user_cell((int)$report['reported_user_id'], $report['reported_user_name'] ?? null, 'danger', 'No user attached', 'fa-minus')
+    $reported_html = rp_user_cell((int)$report['reported_user_id'], $report['reported_user_name'] ?? null, 'danger', $lang->reports['lbl_no_user'], 'fa-minus')
         . (!empty($report['reported_user_email']) ? '<div class="rp-sub"><i class="fa-solid fa-envelope me-1"></i><a href="mailto:' . rp_h($report['reported_user_email']) . '">' . rp_h($report['reported_user_email']) . '</a></div>' : '');
 
     $filed_html = my_datee('relative', $report['added']) . '<div class="rp-sub">' . date('Y-m-d H:i', (int)$report['added']) . '</div>';
 
     $ip_html = !empty($report['ip_address'])
         ? '<code class="rp-code">' . rp_h($report['ip_address']) . '</code> '
-          . rp_link_button($_this_script_ . '&action=iplookup&ip=' . urlencode((string)$report['ip_address']), 'Look up IP', 'fa-magnifying-glass-location', 'info', ['icon_only' => true])
-        : '<span class="rp-muted">Not recorded</span>';
+          . rp_link_button($_this_script_ . '&action=iplookup&ip=' . urlencode((string)$report['ip_address']), $lang->reports['btn_lookup_ip'], 'fa-magnifying-glass-location', 'info', ['icon_only' => true])
+        : '<span class="rp-muted">' . rp_h($lang->reports['lbl_not_recorded']) . '</span>';
 
     ob_start(); ?>
     <section class="rp-card rp-mb">
         <?= rp_card_head(
             getTypeIcon($type),
             getTypeColor($type),
-            'Report #' . (int)$report['id'],
+            rp_h(ags_fmt($lang->reports['pane_report_num'], (int)$report['id'])),
             renderStatusBadge($done),
-            rp_h(getTypeLabel($type)) . ' report'
+            rp_h(getTypeReportLabel($type))
         ) ?>
         <div class="rp-card-body">
             <div class="rp-summary">
@@ -1492,30 +1561,30 @@ function renderReportDetails(array $report): string
             <?php endif; ?>
 
             <div class="rp-facts">
-                <?= rp_fact('fa-user-pen',   'Reporter',       $reporter_html, 'info') ?>
-                <?= rp_fact('fa-user-xmark', 'Reported user',  $reported_html, 'danger') ?>
-                <?= rp_fact(getTypeIcon($type), 'Reported item', $item_html, getTypeColor($type)) ?>
-                <?= rp_fact('fa-calendar-day', 'Filed',        $filed_html, 'secondary') ?>
-                <?= rp_fact('fa-network-wired', 'Reporter IP', $ip_html, 'secondary') ?>
+                <?= rp_fact('fa-user-pen',   $lang->reports['fact_reporter'],       $reporter_html, 'info') ?>
+                <?= rp_fact('fa-user-xmark', $lang->reports['fact_reported_user'],  $reported_html, 'danger') ?>
+                <?= rp_fact(getTypeIcon($type), $lang->reports['fact_item'], $item_html, getTypeColor($type)) ?>
+                <?= rp_fact('fa-calendar-day', $lang->reports['fact_filed'],        $filed_html, 'secondary') ?>
+                <?= rp_fact('fa-network-wired', $lang->reports['fact_ip'], $ip_html, 'secondary') ?>
                 <?php if ($done): ?>
-                <?= rp_fact('fa-user-shield', 'Resolved',
+                <?= rp_fact('fa-user-shield', $lang->reports['fact_resolved'],
                     my_datee('relative', $report['updated_at'])
-                    . (!empty($report['dealtby_name']) ? '<div class="rp-sub">by ' . rp_h($report['dealtby_name']) . '</div>' : ''),
+                    . (!empty($report['dealtby_name']) ? '<div class="rp-sub">' . rp_h(ags_fmt($lang->reports['lbl_resolved_by'], (string)$report['dealtby_name'])) . '</div>' : ''),
                     'success') ?>
                 <?php endif; ?>
             </div>
 
             <?php if ($type !== 'user'): ?>
-            <h3 class="rp-section-title"><i class="fa-solid fa-quote-left"></i>What the reporter wrote</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-quote-left"></i><?= rp_h($lang->reports['sec_reporter_wrote']) ?></h3>
             <?php if (trim($description) !== ''): ?>
             <div class="rp-quote"><?= $parser->parse_message($description, $parser_options) ?></div>
             <?php else: ?>
-            <div class="rp-quote rp-muted">No details provided.</div>
+            <div class="rp-quote rp-muted"><?= rp_h($lang->reports['lbl_no_details']) ?></div>
             <?php endif; ?>
             <?php endif; ?>
 
             <?php if ($notes): ?>
-            <h3 class="rp-section-title"><i class="fa-solid fa-note-sticky"></i>Staff notes</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-note-sticky"></i><?= rp_h($lang->reports['sec_staff_notes']) ?></h3>
             <?php foreach ($notes as $note): ?>
             <div class="rp-note rp-tone-success"><i class="fa-solid fa-user-shield"></i><div><?= nl2br(rp_h($note)) ?></div></div>
             <?php endforeach; ?>
@@ -1531,13 +1600,20 @@ function renderReportDetails(array $report): string
 
 function renderPriorityAlert(array $reason_data, array $report): string
 {
+    global $lang;
+
     $sev      = $reason_data['severity'];
     $tone     = rp_severity_tone($sev);
-    $headline = match ($sev) { 'high' => 'High priority, act now', 'medium' => 'Medium priority, review within 24 hours', default => 'Standard review' };
+    $headline = match ($sev) {
+        'high'   => $lang->reports['alert_high'],
+        'medium' => $lang->reports['alert_medium'],
+        default  => $lang->reports['alert_standard'],
+    };
 
+    $rec_key        = REASON_RECOMMENDATIONS[$report['type']][$report['reason']] ?? null;
     $recommendation = $reason_data['recommended_action']
-        ?? REASON_RECOMMENDATIONS[$report['type']][$report['reason']]
-        ?? 'Review based on provided information.';
+        ?? ($rec_key !== null ? $lang->reports[$rec_key] : null)
+        ?? $lang->reports['rec_fallback'];
 
     return '<div class="rp-callout rp-tone-' . $tone . '">'
         . '<span class="rp-ico rp-ico-md rp-callout-ico"><i class="fa-solid ' . rp_severity_icon($sev) . '"></i></span>'
@@ -1547,30 +1623,30 @@ function renderPriorityAlert(array $reason_data, array $report): string
 
 function renderCommentContent(array $report, ?array $reason_data, ?string $commentlink): string
 {
-    global $parser, $parser_options, $_this_script_;
+    global $parser, $parser_options, $_this_script_, $lang;
 
     $rid      = (int)$report['id'];
     $severity = $reason_data['severity'] ?? 'low';
     $tone     = $severity === 'high' ? 'danger' : 'warning';
 
     ob_start(); ?>
-    <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i>Reported comment</h3>
+    <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i><?= rp_h($lang->reports['sec_reported_comment']) ?></h3>
     <div class="rp-quote rp-quote-<?= $tone ?>">
         <?= $parser->parse_message((string)$report['comment_text'], $parser_options) ?>
     </div>
     <div class="rp-btnrow">
         <?php if ($commentlink): ?>
-        <?= rp_link_button($commentlink, 'View in context', 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
+        <?= rp_link_button($commentlink, $lang->reports['btn_view_context'], 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
         <?php endif; ?>
         <?php if (!$report['dealtwith']): ?>
         <?= rp_action_button('deletecomment', $rid, [
-            'return' => 'view', 'label' => 'Delete comment', 'icon' => 'fa-trash-can', 'tone' => 'danger',
+            'return' => 'view', 'label' => $lang->reports['btn_delete_comment'], 'icon' => 'fa-trash-can', 'tone' => 'danger',
             'solid' => in_array($severity, ['high', 'medium'], true),
-            'confirm' => ['title' => 'Delete this comment?', 'text' => 'The comment and its attachments will be removed and the report resolved.', 'btn' => 'Delete comment', 'variant' => 'danger'],
+            'confirm' => ['title' => $lang->reports['cnf_delete_comment_title'], 'text' => $lang->reports['cnf_delete_comment_text'], 'btn' => $lang->reports['btn_delete_comment'], 'variant' => 'danger'],
         ]) ?>
         <?php endif; ?>
         <?php if ((int)$report['reported_user_id'] > 0 && $severity === 'high'): ?>
-        <?= rp_link_button('warn.php?uid=' . (int)$report['reported_user_id'] . '&reason=' . urlencode($reason_data['text'] ?? ''), 'Warn author', 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
+        <?= rp_link_button('warn.php?uid=' . (int)$report['reported_user_id'] . '&reason=' . urlencode($reason_data['text'] ?? ''), $lang->reports['btn_warn_author'], 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
         <?php endif; ?>
     </div>
     <?php return (string)ob_get_clean();
@@ -1578,68 +1654,73 @@ function renderCommentContent(array $report, ?array $reason_data, ?string $comme
 
 function renderForumPostDetails(array $report): string
 {
-    global $BASEURL, $parser, $parser_options;
+    global $BASEURL, $parser, $parser_options, $lang;
 
     $post_id   = (int)$report['reported_id'];
     $post_data = getForumPostData($post_id, $report);
 
     if (!$post_data) {
-        return '<section class="rp-card rp-mb">' . rp_empty('fa-ghost', 'warning', 'Forum post not found', 'The post may have been deleted already.') . '</section>';
+        return '<section class="rp-card rp-mb">' . rp_empty('fa-ghost', 'warning', $lang->reports['empty_post_title'], $lang->reports['empty_post_text']) . '</section>';
     }
 
     $pid       = (int)$post_data['pid'];
     $postlink  = $BASEURL . '/' . get_post_link($pid, $post_data['thread_id']) . '#pid' . $pid;
     $rule_code = (string)($post_data['rule_violation'] ?? '');
-    $rule_data = RULES_MAP[$rule_code] ?? null;
+    $rule_data = rp_rule($rule_code);
 
-    $visible_map = [0 => ['Deleted / hidden', 'danger', 'fa-eye-slash'], 1 => ['Visible', 'success', 'fa-eye'], 2 => ['Awaiting approval', 'warning', 'fa-hourglass-half']];
+    $visible_map = [
+        0 => [$lang->reports['vis_hidden'],  'danger',  'fa-eye-slash'],
+        1 => [$lang->reports['vis_visible'], 'success', 'fa-eye'],
+        2 => [$lang->reports['vis_pending'], 'warning', 'fa-hourglass-half'],
+    ];
+    $vis_unknown = [$lang->reports['lbl_unknown'], 'secondary', 'fa-circle-question'];
     [$vis_text, $vis_tone, $vis_icon] = isset($post_data['visible'])
-        ? ($visible_map[(int)$post_data['visible']] ?? ['Unknown', 'secondary', 'fa-circle-question'])
-        : ['Unknown', 'secondary', 'fa-circle-question'];
+        ? ($visible_map[(int)$post_data['visible']] ?? $vis_unknown)
+        : $vis_unknown;
 
     ob_start(); ?>
     <section class="rp-card rp-mb">
-        <?= rp_card_head('fa-comments', 'success', 'Forum post #' . $pid,
-            '<span class="rp-chip rp-tone-' . $vis_tone . '"><i class="fa-solid ' . $vis_icon . '"></i>' . $vis_text . '</span>',
+        <?= rp_card_head('fa-comments', 'success', rp_h(ags_fmt($lang->reports['pane_forum_post'], $pid)),
+            '<span class="rp-chip rp-tone-' . $vis_tone . '"><i class="fa-solid ' . $vis_icon . '"></i>' . rp_h($vis_text) . '</span>',
             !empty($post_data['subject']) ? rp_h($post_data['subject']) : '') ?>
         <div class="rp-card-body">
             <div class="rp-facts">
-                <?= rp_fact('fa-user', 'Author', rp_user_cell((int)$post_data['author_id'], $post_data['author_name'] ?? null, 'danger', 'Unknown'), 'danger') ?>
-                <?= rp_fact('fa-calendar-day', 'Posted', my_datee('relative', $post_data['dateline']), 'secondary') ?>
-                <?= rp_fact('fa-folder-open', 'Forum',
-                    '<a href="forumdisplay.php?fid=' . (int)$post_data['forum_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['forum_name'] ?? 'Unknown forum') . '</a>', 'success') ?>
-                <?= rp_fact('fa-comments', 'Thread',
-                    '<a href="showthread.php?tid=' . (int)$post_data['thread_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['thread_subject'] ?? 'Unknown thread') . '</a>'
-                    . '<div class="rp-sub"><i class="fa-solid fa-eye me-1"></i>' . number_format((int)($post_data['thread_views'] ?? 0)) . ' views</div>', 'success') ?>
+                <?= rp_fact('fa-user', $lang->reports['fact_author'], rp_user_cell((int)$post_data['author_id'], $post_data['author_name'] ?? null, 'danger', $lang->reports['lbl_unknown']), 'danger') ?>
+                <?= rp_fact('fa-calendar-day', $lang->reports['fact_posted'], my_datee('relative', $post_data['dateline']), 'secondary') ?>
+                <?= rp_fact('fa-folder-open', $lang->reports['fact_forum'],
+                    '<a href="forumdisplay.php?fid=' . (int)$post_data['forum_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['forum_name'] ?? $lang->reports['lbl_unknown_forum']) . '</a>', 'success') ?>
+                <?= rp_fact('fa-comments', $lang->reports['fact_thread'],
+                    '<a href="showthread.php?tid=' . (int)$post_data['thread_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['thread_subject'] ?? $lang->reports['lbl_unknown_thread']) . '</a>'
+                    . '<div class="rp-sub"><i class="fa-solid fa-eye me-1"></i>' . rp_h(ags_fmt($lang->reports['lbl_views'], number_format((int)($post_data['thread_views'] ?? 0)))) . '</div>', 'success') ?>
                 <?php if ($rule_data): ?>
-                <?= rp_fact('fa-scale-balanced', 'Rule broken',
+                <?= rp_fact('fa-scale-balanced', $lang->reports['fact_rule'],
                     '<span class="rp-chip rp-tone-' . rp_tone($rule_data['color']) . '"><i class="fa-solid ' . $rule_data['icon'] . '"></i>' . rp_h($rule_data['text']) . '</span>', 'warning') ?>
                 <?php endif; ?>
                 <?php if (!empty($post_data['moderated'])): ?>
-                <?= rp_fact('fa-shield-halved', 'Moderated', rp_h($post_data['moderated']), 'secondary') ?>
+                <?= rp_fact('fa-shield-halved', $lang->reports['fact_moderated'], rp_h($post_data['moderated']), 'secondary') ?>
                 <?php endif; ?>
             </div>
 
-            <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i>Post content</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i><?= rp_h($lang->reports['sec_post_content']) ?></h3>
             <?php if (!empty($post_data['message'])): ?>
             <div class="rp-quote rp-quote-warning"><?= $parser->parse_message((string)$post_data['message'], $parser_options) ?></div>
             <?php else: ?>
-            <div class="rp-quote rp-muted">The post is empty.</div>
+            <div class="rp-quote rp-muted"><?= rp_h($lang->reports['lbl_post_empty']) ?></div>
             <?php endif; ?>
 
             <div class="rp-btnrow">
-                <?= rp_link_button($postlink, 'View in forum', 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
-                <?= rp_link_button('editpost.php?pid=' . $pid, 'Edit post', 'fa-pen-to-square', 'secondary', ['blank' => true]) ?>
+                <?= rp_link_button($postlink, $lang->reports['btn_view_forum'], 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
+                <?= rp_link_button('editpost.php?pid=' . $pid, $lang->reports['btn_edit_post'], 'fa-pen-to-square', 'secondary', ['blank' => true]) ?>
                 <?php if ((int)$post_data['author_id'] > 0): ?>
-                <?= rp_link_button('warn.php?uid=' . (int)$post_data['author_id'], 'Warn author', 'fa-triangle-exclamation', 'warning', [
+                <?= rp_link_button('warn.php?uid=' . (int)$post_data['author_id'], $lang->reports['btn_warn_author'], 'fa-triangle-exclamation', 'warning', [
                     'blank' => true,
-                    'confirm' => ['title' => 'Warn the author?', 'text' => 'The warning form opens in a new tab.', 'btn' => 'Open warning form', 'variant' => 'warning'],
+                    'confirm' => ['title' => $lang->reports['cnf_warn_author_title'], 'text' => $lang->reports['cnf_warn_new_tab'], 'btn' => $lang->reports['cnf_open_warn'], 'variant' => 'warning'],
                 ]) ?>
                 <?php endif; ?>
                 <?php if (!$report['dealtwith']): ?>
                 <?= rp_action_button('deleteforumpost', (int)$report['id'], [
-                    'return' => 'view', 'label' => 'Delete post', 'icon' => 'fa-trash-can', 'tone' => 'danger', 'solid' => true,
-                    'confirm' => ['title' => 'Delete this forum post?', 'text' => 'The post is removed permanently and the report resolved.', 'btn' => 'Delete post', 'variant' => 'danger'],
+                    'return' => 'view', 'label' => $lang->reports['btn_delete_post'], 'icon' => 'fa-trash-can', 'tone' => 'danger', 'solid' => true,
+                    'confirm' => ['title' => $lang->reports['cnf_delete_post_title'], 'text' => $lang->reports['cnf_delete_post_text'], 'btn' => $lang->reports['btn_delete_post'], 'variant' => 'danger'],
                 ]) ?>
                 <?php endif; ?>
             </div>
@@ -1650,30 +1731,32 @@ function renderForumPostDetails(array $report): string
 
 function renderActionForm(int $report_id, string $report_type, int $reported_user_id, bool $done): string
 {
-    global $_this_script_;
+    global $_this_script_, $lang;
+
+    $l = $lang->reports;
 
     $choices = [
-        ['resolve', 'Mark as resolved', 'Close the report, nothing else changes', 'fa-circle-check', 'success',
-            ['title' => 'Resolve this report?', 'icon' => 'question', 'btn' => 'Resolve', 'variant' => 'success']],
+        ['resolve', $l['act_resolve'], $l['hint_resolve'], 'fa-circle-check', 'success',
+            ['title' => $l['cnf_resolve_title'], 'icon' => 'question', 'btn' => $l['cnf_resolve_btn'], 'variant' => 'success']],
     ];
 
     if ($report_type === 'forumpost') {
-        $choices[] = ['deleteforumpost', 'Delete forum post', 'Remove the post and resolve', 'fa-trash-can', 'danger',
-            ['title' => 'Delete this forum post?', 'text' => 'This cannot be undone.', 'btn' => 'Delete post', 'variant' => 'danger']];
+        $choices[] = ['deleteforumpost', $l['act_delete_post'], $l['hint_delete_post'], 'fa-trash-can', 'danger',
+            ['title' => $l['cnf_delete_post_title'], 'text' => $l['cnf_cannot_undo'], 'btn' => $l['btn_delete_post'], 'variant' => 'danger']];
     } elseif ($report_type === 'comment') {
-        $choices[] = ['deletecomment', 'Delete comment', 'Remove the comment and resolve', 'fa-trash-can', 'danger',
-            ['title' => 'Delete this comment?', 'text' => 'This cannot be undone.', 'btn' => 'Delete comment', 'variant' => 'danger']];
+        $choices[] = ['deletecomment', $l['act_delete_comment'], $l['hint_delete_comment'], 'fa-trash-can', 'danger',
+            ['title' => $l['cnf_delete_comment_title'], 'text' => $l['cnf_cannot_undo'], 'btn' => $l['btn_delete_comment'], 'variant' => 'danger']];
     }
 
     if ($reported_user_id > 0) {
-        $choices[] = ['warn_user', 'Warn reported user', 'Opens the warning form', 'fa-triangle-exclamation', 'warning',
-            ['title' => 'Go to the warning form?', 'icon' => 'question', 'btn' => 'Continue', 'variant' => 'warning']];
-        $choices[] = ['ban_user', 'Ban reported user', 'Opens the ban form', 'fa-ban', 'danger',
-            ['title' => 'Go to the ban form?', 'text' => 'You can still review the details before banning.', 'btn' => 'Continue', 'variant' => 'danger']];
+        $choices[] = ['warn_user', $l['act_warn'], $l['hint_warn'], 'fa-triangle-exclamation', 'warning',
+            ['title' => $l['cnf_warn_title'], 'icon' => 'question', 'btn' => $l['btn_continue'], 'variant' => 'warning']];
+        $choices[] = ['ban_user', $l['act_ban'], $l['hint_ban'], 'fa-ban', 'danger',
+            ['title' => $l['cnf_ban_title'], 'text' => $l['cnf_ban_text'], 'btn' => $l['btn_continue'], 'variant' => 'danger']];
     }
 
-    $choices[] = ['ignore', 'Ignore report', 'Close it as not actionable', 'fa-eye-slash', 'secondary',
-        ['title' => 'Ignore this report?', 'icon' => 'question', 'btn' => 'Ignore', 'variant' => 'secondary']];
+    $choices[] = ['ignore', $l['act_ignore'], $l['hint_ignore'], 'fa-eye-slash', 'secondary',
+        ['title' => $l['cnf_ignore_title'], 'icon' => 'question', 'btn' => $l['cnf_ignore_btn'], 'variant' => 'secondary']];
 
     ob_start(); ?>
     <form method="post" action="<?= rp_h($_this_script_) ?>&amp;action=takeaction" data-confirm="choice" class="rp-action-form">
@@ -1681,7 +1764,7 @@ function renderActionForm(int $report_id, string $report_type, int $reported_use
         <input type="hidden" name="id" value="<?= $report_id ?>">
         <input type="hidden" name="return" value="view">
 
-        <div class="rp-choices" role="radiogroup" aria-label="Action">
+        <div class="rp-choices" role="radiogroup" aria-label="<?= rp_h($lang->reports['aria_action']) ?>">
             <?php foreach ($choices as $i => [$value, $label, $hint, $icon, $tone, $confirm]): ?>
             <label class="rp-choice rp-tone-<?= $tone ?>">
                 <input type="radio" name="do" value="<?= $value ?>" <?= $i === 0 && !$done ? 'checked' : '' ?><?= rp_confirm_attrs($confirm) ?>>
@@ -1692,11 +1775,11 @@ function renderActionForm(int $report_id, string $report_type, int $reported_use
             <?php endforeach; ?>
         </div>
 
-        <label class="rp-label mt-3" for="rp-notes"><i class="fa-solid fa-note-sticky"></i>Notes (optional)</label>
-        <textarea id="rp-notes" name="notes" class="form-control" rows="3" placeholder="How was this report handled?"></textarea>
+        <label class="rp-label mt-3" for="rp-notes"><i class="fa-solid fa-note-sticky"></i><?= rp_h($lang->reports['lbl_notes']) ?></label>
+        <textarea id="rp-notes" name="notes" class="form-control" rows="3" placeholder="<?= rp_h($lang->reports['ph_notes']) ?>"></textarea>
 
         <button type="submit" class="rp-btn rp-btn-solid rp-tone-primary rp-btn-block mt-3">
-            <i class="fa-solid fa-paper-plane"></i><span>Apply action</span>
+            <i class="fa-solid fa-paper-plane"></i><span><?= rp_h($lang->reports['btn_apply_action']) ?></span>
         </button>
     </form>
     <?php return (string)ob_get_clean();
@@ -1704,7 +1787,7 @@ function renderActionForm(int $report_id, string $report_type, int $reported_use
 
 function renderUserReportStats(int $user_id, ?string $username): string
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
     $r = $db->sql_query_prepared(
         "SELECT COUNT(*) AS total_reports,
@@ -1719,14 +1802,14 @@ function renderUserReportStats(int $user_id, ?string $username): string
 
     ob_start(); ?>
     <section class="rp-card">
-        <?= rp_card_head('fa-clock-rotate-left', 'danger', 'User report history', '', rp_h($username ?? ('User #' . $user_id))) ?>
+        <?= rp_card_head('fa-clock-rotate-left', 'danger', rp_h($lang->reports['pane_user_history']), '', rp_h($username ?? ags_fmt($lang->reports['lbl_user_num'], $user_id))) ?>
         <div class="rp-card-body">
             <div class="rp-mini">
-                <div class="rp-tone-primary"><strong><?= $s['total_reports'] ?></strong><span><i class="fa-solid fa-flag"></i>Total</span></div>
-                <div class="rp-tone-success"><strong><?= $s['resolved'] ?></strong><span><i class="fa-solid fa-check"></i>Resolved</span></div>
-                <div class="rp-tone-warning"><strong><?= $s['pending'] ?></strong><span><i class="fa-solid fa-clock"></i>Pending</span></div>
+                <div class="rp-tone-primary"><strong><?= $s['total_reports'] ?></strong><span><i class="fa-solid fa-flag"></i><?= rp_h($lang->reports['tip_total']) ?></span></div>
+                <div class="rp-tone-success"><strong><?= $s['resolved'] ?></strong><span><i class="fa-solid fa-check"></i><?= rp_h($lang->reports['tip_resolved']) ?></span></div>
+                <div class="rp-tone-warning"><strong><?= $s['pending'] ?></strong><span><i class="fa-solid fa-clock"></i><?= rp_h($lang->reports['tip_pending']) ?></span></div>
             </div>
-            <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode($username ?? ''), 'All reports for this user', 'fa-list', 'primary', ['class' => 'rp-btn-block mt-3']) ?>
+            <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode($username ?? ''), $lang->reports['btn_user_reports'], 'fa-list', 'primary', ['class' => 'rp-btn-block mt-3']) ?>
         </div>
     </section>
     <?php return (string)ob_get_clean();
@@ -1734,7 +1817,7 @@ function renderUserReportStats(int $user_id, ?string $username): string
 
 function renderUserReportDetails(array $report): string
 {
-    global $parser, $parser_options, $_this_script_, $db;
+    global $parser, $parser_options, $_this_script_, $db, $lang;
 
     $user_id = (int)$report['reported_user_id'];
     $rid     = (int)$report['id'];
@@ -1768,22 +1851,22 @@ function renderUserReportDetails(array $report): string
 
     ob_start(); ?>
     <section class="rp-card rp-mb">
-        <?= rp_card_head('fa-file-lines', 'info', 'Report contents', '', 'Submitted through the user report form') ?>
+        <?= rp_card_head('fa-file-lines', 'info', rp_h($lang->reports['pane_contents']), '', rp_h($lang->reports['sub_user_form'])) ?>
         <div class="rp-card-body">
-            <h3 class="rp-section-title rp-mt0"><i class="fa-solid fa-quote-left"></i>What the reporter wrote</h3>
+            <h3 class="rp-section-title rp-mt0"><i class="fa-solid fa-quote-left"></i><?= rp_h($lang->reports['sec_reporter_wrote']) ?></h3>
             <?php if (trim($main_text) !== ''): ?>
             <div class="rp-quote"><?= $parser->parse_message($main_text, $parser_options) ?></div>
             <?php else: ?>
-            <div class="rp-quote rp-muted">No details provided.</div>
+            <div class="rp-quote rp-muted"><?= rp_h($lang->reports['lbl_no_details']) ?></div>
             <?php endif; ?>
 
             <?php if ($parsed_data['additional_info'] !== ''): ?>
-            <h3 class="rp-section-title"><i class="fa-solid fa-circle-info"></i>Additional information</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-circle-info"></i><?= rp_h($lang->reports['sec_additional']) ?></h3>
             <div class="rp-quote"><?= nl2br(rp_h($parsed_data['additional_info'])) ?></div>
             <?php endif; ?>
 
             <?php if ($parsed_data['evidence_links'] !== ''): ?>
-            <h3 class="rp-section-title"><i class="fa-solid fa-link"></i>Evidence links</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-link"></i><?= rp_h($lang->reports['sec_evidence']) ?></h3>
             <ul class="rp-links">
                 <?php foreach (array_filter(array_map('trim', explode("\n", $parsed_data['evidence_links']))) as $link):
                     $safe = rp_safe_url($link); ?>
@@ -1793,7 +1876,7 @@ function renderUserReportDetails(array $report): string
                         <i class="fa-solid fa-arrow-up-right-from-square"></i><?= rp_h(truncateString($link, 70)) ?>
                     </a>
                     <?php else: ?>
-                    <span class="rp-muted" title="Not a http(s) link, shown as text"><i class="fa-solid fa-link-slash"></i><?= rp_h(truncateString($link, 70)) ?></span>
+                    <span class="rp-muted" title="<?= rp_h($lang->reports['tip_not_link']) ?>"><i class="fa-solid fa-link-slash"></i><?= rp_h(truncateString($link, 70)) ?></span>
                     <?php endif; ?>
                 </li>
                 <?php endforeach; ?>
@@ -1803,38 +1886,38 @@ function renderUserReportDetails(array $report): string
     </section>
 
     <?php if ($user_info):
-        $uname = (string)($user_info['username'] ?? 'Unknown');
+        $uname = (string)($user_info['username'] ?? $lang->reports['lbl_unknown']);
         $days  = max(1, (int)floor((TIMENOW - (int)$user_info['added']) / DAY_IN_SECONDS));
         $rate  = number_format((int)($user_info['total_reports'] ?? 0) / $days, 2);
         $enabled = ($user_info['enabled'] ?? '') === 'yes';
     ?>
     <section class="rp-card rp-mb">
-        <?= rp_card_head('fa-user-large', 'warning', rp_user_cell($user_id, $uname, 'danger', 'Unknown'),
+        <?= rp_card_head('fa-user-large', 'warning', rp_user_cell($user_id, $uname, 'danger', $lang->reports['lbl_unknown']),
             $enabled
-                ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-user-check"></i>Active</span>'
-                : '<span class="rp-chip rp-tone-danger"><i class="fa-solid fa-user-lock"></i>Disabled</span>',
-            'Reported account') ?>
+                ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-user-check"></i>' . rp_h($lang->reports['st_active']) . '</span>'
+                : '<span class="rp-chip rp-tone-danger"><i class="fa-solid fa-user-lock"></i>' . rp_h($lang->reports['st_disabled']) . '</span>',
+            rp_h($lang->reports['sub_reported_account'])) ?>
         <div class="rp-card-body">
             <div class="rp-facts">
-                <?= rp_fact('fa-id-badge', 'User ID', (string)$user_id, 'secondary') ?>
-                <?= rp_fact('fa-envelope', 'Email', !empty($user_info['email'])
+                <?= rp_fact('fa-id-badge', $lang->reports['fact_user_id'], (string)$user_id, 'secondary') ?>
+                <?= rp_fact('fa-envelope', $lang->reports['fact_email'], !empty($user_info['email'])
                     ? '<a href="mailto:' . rp_h($user_info['email']) . '">' . rp_h($user_info['email']) . '</a>'
-                    : '<span class="rp-muted">Not available</span>', 'secondary') ?>
-                <?= rp_fact('fa-calendar-plus', 'Registered', my_datee('relative', $user_info['added']), 'secondary') ?>
-                <?= rp_fact('fa-gauge-high', 'Report rate', rp_h($rate) . ' per day', 'warning') ?>
+                    : '<span class="rp-muted">' . rp_h($lang->reports['lbl_not_available']) . '</span>', 'secondary') ?>
+                <?= rp_fact('fa-calendar-plus', $lang->reports['fact_registered'], my_datee('relative', $user_info['added']), 'secondary') ?>
+                <?= rp_fact('fa-gauge-high', $lang->reports['fact_report_rate'], rp_h(ags_fmt($lang->reports['lbl_per_day'], $rate)), 'warning') ?>
             </div>
 
-            <h3 class="rp-section-title"><i class="fa-solid fa-shield-halved"></i>Moderation</h3>
+            <h3 class="rp-section-title"><i class="fa-solid fa-shield-halved"></i><?= rp_h($lang->reports['sec_moderation']) ?></h3>
             <div class="rp-btnrow">
-                <?= rp_link_button('warn.php?uid=' . $user_id . '&reason=' . rawurlencode('Report #' . $rid . ': ' . $report['reason']), 'Issue warning', 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
-                <?= rp_link_button('edituser.php?action=edituser&userid=' . $user_id, 'Edit user', 'fa-user-pen', 'info', ['blank' => true]) ?>
-                <?= rp_link_button('staff.php?act=users&do=suspend&uid=' . $user_id, 'Suspend', 'fa-user-clock', 'danger', [
+                <?= rp_link_button('warn.php?uid=' . $user_id . '&reason=' . rawurlencode(ags_fmt($lang->reports['warn_reason'], $rid, (string)$report['reason'])), $lang->reports['btn_issue_warning'], 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
+                <?= rp_link_button('edituser.php?action=edituser&userid=' . $user_id, $lang->reports['btn_edit_user'], 'fa-user-pen', 'info', ['blank' => true]) ?>
+                <?= rp_link_button('staff.php?act=users&do=suspend&uid=' . $user_id, $lang->reports['btn_suspend'], 'fa-user-clock', 'danger', [
                     'blank' => true,
-                    'confirm' => ['title' => 'Suspend ' . $uname . '?', 'text' => 'The suspension form opens in a new tab.', 'btn' => 'Continue', 'variant' => 'danger'],
+                    'confirm' => ['title' => ags_fmt($lang->reports['cnf_suspend_title'], $uname), 'text' => $lang->reports['cnf_suspend_new_tab'], 'btn' => $lang->reports['btn_continue'], 'variant' => 'danger'],
                 ]) ?>
-                <?= rp_link_button('bans.php?action=add&uid=' . $user_id, 'Ban user', 'fa-ban', 'danger', [
+                <?= rp_link_button('bans.php?action=add&uid=' . $user_id, $lang->reports['btn_ban_user'], 'fa-ban', 'danger', [
                     'solid' => true, 'blank' => true,
-                    'confirm' => ['title' => 'Ban ' . $uname . '?', 'text' => 'The ban form opens in a new tab.', 'btn' => 'Continue', 'variant' => 'danger'],
+                    'confirm' => ['title' => ags_fmt($lang->reports['cnf_ban_user_title'], $uname), 'text' => $lang->reports['cnf_ban_new_tab'], 'btn' => $lang->reports['btn_continue'], 'variant' => 'danger'],
                 ]) ?>
             </div>
         </div>
@@ -1843,17 +1926,17 @@ function renderUserReportDetails(array $report): string
 
     <?php if ($user_id > 0): ?>
     <section class="rp-card rp-mb">
-        <?= rp_card_head('fa-clock-rotate-left', 'secondary', 'Other reports about this user') ?>
+        <?= rp_card_head('fa-clock-rotate-left', 'secondary', rp_h($lang->reports['pane_other_reports'])) ?>
         <?php if ($recent_result && $db->num_rows($recent_result) > 0): ?>
         <div class="rp-scroll">
             <table class="rp-table rp-table-compact">
                 <thead>
                     <tr>
-                        <th><i class="fa-solid fa-calendar-day"></i>Date</th>
-                        <th><i class="fa-solid fa-shapes"></i>Type</th>
-                        <th><i class="fa-solid fa-triangle-exclamation"></i>Reason</th>
-                        <th><i class="fa-solid fa-user-pen"></i>Reporter</th>
-                        <th><i class="fa-solid fa-signal"></i>Status</th>
+                        <th><i class="fa-solid fa-calendar-day"></i><?= rp_h($lang->reports['th_date']) ?></th>
+                        <th><i class="fa-solid fa-shapes"></i><?= rp_h($lang->reports['th_type']) ?></th>
+                        <th><i class="fa-solid fa-triangle-exclamation"></i><?= rp_h($lang->reports['th_reason']) ?></th>
+                        <th><i class="fa-solid fa-user-pen"></i><?= rp_h($lang->reports['th_reporter']) ?></th>
+                        <th><i class="fa-solid fa-signal"></i><?= rp_h($lang->reports['th_status']) ?></th>
                         <th></th>
                     </tr>
                 </thead>
@@ -1864,16 +1947,16 @@ function renderUserReportDetails(array $report): string
                     <td class="rp-nowrap"><?= date('Y-m-d', (int)$r['added']) ?></td>
                     <td><?= rp_type_chip((string)$r['type']) ?></td>
                     <td><?= rp_reason_chip($rd, (string)$r['reason'], 22) ?></td>
-                    <td><?= rp_user_cell((int)$r['addedby'], $r['reporter_name'] ?? null, 'info', 'Guest') ?></td>
+                    <td><?= rp_user_cell((int)$r['addedby'], $r['reporter_name'] ?? null, 'info', $lang->reports['lbl_guest']) ?></td>
                     <td><?= renderStatusBadge((bool)$r['dealtwith']) ?></td>
-                    <td><?= rp_link_button($_this_script_ . '&action=view&id=' . (int)$r['id'], 'View', 'fa-eye', 'primary', ['icon_only' => true]) ?></td>
+                    <td><?= rp_link_button($_this_script_ . '&action=view&id=' . (int)$r['id'], $lang->reports['btn_view'], 'fa-eye', 'primary', ['icon_only' => true]) ?></td>
                 </tr>
                 <?php endwhile; ?>
                 </tbody>
             </table>
         </div>
         <?php else: ?>
-        <?= rp_empty('fa-circle-info', 'info', 'This is the only report about this user') ?>
+        <?= rp_empty('fa-circle-info', 'info', $lang->reports['empty_only_report']) ?>
         <?php endif; ?>
     </section>
     <?php endif; ?>
@@ -1907,11 +1990,28 @@ function renderPageStyles(): void
 
 function renderPageAssets(): void
 {
-    global $BASEURL;
-	
-	$messages = json_encode(REPORT_MESSAGES, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    global $BASEURL, $lang;
+
+    $json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
+
+    // Флеш-тексты по кодам ?success= / ?error= (уже переведённые)
+    $messages = [];
+    foreach (REPORT_MESSAGES as $kind => $codes) {
+        foreach ($codes as $code => $key) {
+            $messages[$kind][$code] = $lang->reports[$key];
+        }
+    }
+
+    // js_* → AGS_LANG без префикса
+    $js_lang = [];
+    foreach ($lang->reports as $key => $value) {
+        if (str_starts_with((string)$key, 'js_')) {
+            $js_lang[substr((string)$key, 3)] = (string)$value;
+        }
+    }
     ?>
-<script type="application/json" id="rp-messages"><?= $messages ?></script>
-<script src="<?= $BASEURL ?>/admin/scripts/reports.js?ver=2"></script>
+<script type="application/json" id="rp-messages"><?= json_encode($messages, $json_flags) ?></script>
+<script>const AGS_LANG = <?= json_encode($js_lang, $json_flags) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/reports.js?ver=32"></script>
     <?php
 }

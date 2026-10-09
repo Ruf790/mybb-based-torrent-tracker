@@ -3,15 +3,37 @@ declare(strict_types=1);
 
 
 if (!defined('STAFF_PANEL')) {
-    exit('<div class="alert alert-light border m-3"><i class="fas fa-exclamation-triangle me-2 text-warning"></i><b class="text-dark">Error!</b> Direct initialization of this file is not allowed.</div>');
+    exit('<div class="alert alert-light border m-3"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i><b class="text-dark">Error!</b> Direct initialization of this file is not allowed.</div>');
 }
+
+define('CI_VERSION', '1.1');
+
+global $lang;
+$lang->load('convert_innodb');
 
 
 /**
- * Convert Tables to InnoDB + utf8mb4 
+ * Convert Tables to InnoDB + utf8mb4
 */
 
 const TARGET_COLLATION = 'utf8mb4_unicode_ci';
+
+/**
+ * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+ * so both forms are replaced (strtr, not sprintf: a literal % is safe).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 function get_tables_to_convert(): array
 {
@@ -56,13 +78,13 @@ function build_alter_sql(string $escapedName, array $row): string
 // ACTION: AJAX-конвертация одной таблицы
 // ═══════════════════════════════════════════════════════════
 if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $lang;
 
     header('Content-Type: application/json; charset=utf-8');
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->convert_innodb['err_invalid_token']]);
         exit;
     }
 
@@ -78,7 +100,7 @@ if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST'
         }
     }
     if ($row === null) {
-        echo json_encode(['status' => 'error', 'message' => "Table '{$tableName}' does not need conversion"]);
+        echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->convert_innodb['err_not_needed'], $tableName)]);
         exit;
     }
 
@@ -96,13 +118,13 @@ if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST'
                 $row['needs_charset'] ? 'utf8mb4' : null,
             ]));
             write_log("Table converted to {$what}: {$tableName} ({$elapsed}s) | {$CURUSER['username']}");
-            echo json_encode(['status' => 'success', 'message' => "Converted in {$elapsed}s"]);
+            echo json_encode(['status' => 'success', 'message' => ags_fmt($lang->convert_innodb['msg_converted_in'], $elapsed)]);
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'ALTER TABLE failed']);
+            echo json_encode(['status' => 'error', 'message' => $lang->convert_innodb['err_alter_failed']]);
         }
     } catch (\Throwable $e) {
         write_log("Table conversion FAILED: {$tableName} - " . $e->getMessage() . " | {$CURUSER['username']}");
-       
+
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
     exit;
@@ -111,177 +133,211 @@ if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST'
 // ═══════════════════════════════════════════════════════════
 // UI
 // ═══════════════════════════════════════════════════════════
+global $BASEURL;
+
 $pendingTables = get_tables_to_convert();
+$L = $lang->convert_innodb;
 
-stdhead('Convert Tables to InnoDB + utf8mb4');
+// KPI totals (from the same list, no extra query)
+$kpi_pending = count($pendingTables);
+$kpi_engine  = 0;
+$kpi_charset = 0;
+$kpi_bytes   = 0;
+$kpi_rows    = 0;
+foreach ($pendingTables as $t) {
+    $kpi_engine  += $t['needs_engine'] ? 1 : 0;
+    $kpi_charset += $t['needs_charset'] ? 1 : 0;
+    $kpi_bytes   += (int)round((float)$t['size_mb'] * 1024 * 1024);
+    $kpi_rows    += (int)$t['TABLE_ROWS'];
+}
+
+$jsLang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = $v;
+    }
+}
+
+stdhead($L['page_title']);
+
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/snatched_torrents.css?v=' . CI_VERSION . '">';
 ?>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
 
-<style>
-:root {
-    --rules-accent: var(--bs-primary);
-    --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
-    --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
-}
+<div class="container mt-3 py-4 stn-page">
 
-.ci-masthead {
-    padding: 1.75rem 1.5rem;
-    margin-bottom: 1.25rem;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: .75rem;
-}
-
-.ci-masthead__eyebrow {
-    display: inline-block;
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    font-size: .72rem;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--rules-accent-strong);
-    background: var(--rules-accent-soft);
-    border: 1px solid var(--rules-accent);
-    border-radius: 999px;
-    padding: .3rem .85rem;
-    margin-bottom: .75rem;
-}
-
-.ci-masthead__title {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .01em;
-    font-size: clamp(1.4rem, 3.2vw, 1.9rem);
-    color: var(--bs-emphasis-color);
-    margin: 0;
-}
-
-.ci-panel {
-    border: 1px solid var(--bs-border-color) !important;
-    border-radius: .75rem;
-    overflow: hidden;
-}
-
-.ci-panel .card-header {
-    background: transparent !important;
-    color: var(--bs-emphasis-color) !important;
-    border-bottom: 1px solid var(--bs-border-color);
-    border-left: 4px solid var(--rules-accent);
-}
-
-.ci-panel .card-header h5 {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .03em;
-    font-size: .95rem;
-}
-
-.ci-count-badge {
-    font-family: 'Oswald', sans-serif;
-    font-size: .72rem;
-    font-weight: 600;
-    letter-spacing: .05em;
-    color: var(--rules-accent-strong) !important;
-    background: var(--rules-accent-soft) !important;
-    border: 1px solid var(--rules-accent) !important;
-    border-radius: 999px;
-}
-
-.ci-panel table thead th {
-    font-family: 'Oswald', sans-serif;
-    font-size: .72rem;
-    font-weight: 600;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    color: var(--bs-secondary-color);
-    background: var(--bs-tertiary-bg);
-    border-bottom: 1px solid var(--bs-border-color);
-}
-
-.ci-panel table tbody tr:hover {
-    background-color: var(--rules-accent-soft);
-}
-</style>
-
-<div class="container mt-4">
-
-    <div class="ci-masthead">
-        <span class="ci-masthead__eyebrow">Admin / Database Maintenance</span>
-        <h1 class="ci-masthead__title"><i class="fas fa-database me-2" style="color: var(--rules-accent)"></i>Convert Tables to InnoDB + utf8mb4</h1>
-    </div>
-
-    <div class="alert alert-warning">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        Each table is locked for the duration of its own conversion. Large tables can take a while &mdash;
-        make a backup first and consider running this during low-traffic hours.
-    </div>
-
-    <?php if (empty($pendingTables)): ?>
-        <div class="alert alert-success">
-            <i class="fas fa-check-circle me-2"></i>No tables to convert &mdash; everything is already InnoDB + utf8mb4.
+    <!-- Header -->
+    <div class="stn-card stn-head mb-3">
+        <div class="stn-head__icon"><i class="fa-solid fa-database"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="stn-title"><?= htmlspecialchars($L['page_title']) ?></h1>
+            <p><?= htmlspecialchars($L['sec_subtitle']) ?></p>
         </div>
-    <?php else: ?>
-        <div class="card ci-panel shadow-sm mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-list-check me-2" style="color: var(--rules-accent)"></i>Pending Tables</h5>
-                <span class="badge ci-count-badge"><?= count($pendingTables) ?> to convert</span>
+        <?php if ($kpi_pending > 0): ?>
+            <span class="stn-badge stn-soft-warning d-none d-md-inline-flex"><i class="fa-solid fa-hourglass-half"></i><?= htmlspecialchars(ags_fmt($L['badge_to_convert'], $kpi_pending)) ?></span>
+        <?php else: ?>
+            <span class="stn-badge stn-soft-success d-none d-md-inline-flex"><i class="fa-solid fa-circle-check"></i><?= htmlspecialchars($L['badge_all_done']) ?></span>
+        <?php endif; ?>
+    </div>
+
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-primary"><i class="fa-solid fa-table-list"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?= number_format($kpi_pending) ?></div>
+                    <div class="stn-kpi__label"><?= htmlspecialchars($L['kpi_pending']) ?></div>
+                </div>
             </div>
-            <div class="card-body">
-                <table class="table table-sm align-middle" id="pendingTable">
-                    <thead>
-                        <tr>
-                            <th style="width:1%"><input type="checkbox" id="selectAll" checked></th>
-                            <th>Table</th>
-                            <th>Engine</th>
-                            <th>Collation</th>
-                            <th>Rows</th>
-                            <th>Size (MB)</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($pendingTables as $t): ?>
-                        <tr data-table="<?= htmlspecialchars($t['TABLE_NAME'], ENT_QUOTES) ?>">
-                            <td><input type="checkbox" class="table-check" checked></td>
-                            <td><code><?= htmlspecialchars($t['TABLE_NAME']) ?></code></td>
-                            <td>
-                                <?php if ($t['needs_engine']): ?>
-                                    <span class="badge bg-danger-subtle text-danger-emphasis"><?= htmlspecialchars((string)$t['ENGINE']) ?></span>
-                                <?php else: ?>
-                                    <span class="badge bg-success-subtle text-success-emphasis">InnoDB</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($t['needs_charset']): ?>
-                                    <span class="badge bg-danger-subtle text-danger-emphasis"><?= htmlspecialchars((string)$t['TABLE_COLLATION']) ?></span>
-                                <?php else: ?>
-                                    <span class="badge bg-success-subtle text-success-emphasis"><?= htmlspecialchars((string)$t['TABLE_COLLATION']) ?></span>
-                                <?php endif; ?>
-                            </td>
-                            <td><?= number_format((int)$t['TABLE_ROWS']) ?></td>
-                            <td><?= htmlspecialchars((string)$t['size_mb']) ?></td>
-                            <td class="status-cell text-muted">Pending</td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                <button class="btn btn-primary" id="startConvertBtn">
-                    <i class="fas fa-play me-2"></i>Start Conversion
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-danger"><i class="fa-solid fa-gears"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?= number_format($kpi_engine) ?></div>
+                    <div class="stn-kpi__label"><?= htmlspecialchars($L['kpi_engine']) ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-info"><i class="fa-solid fa-language"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?= number_format($kpi_charset) ?></div>
+                    <div class="stn-kpi__label"><?= htmlspecialchars($L['kpi_charset']) ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-warning"><i class="fa-solid fa-hard-drive"></i></div>
+                <div>
+                    <div class="stn-kpi__value stn-kpi__value--sm"><?= mksize($kpi_bytes) ?></div>
+                    <div class="stn-kpi__sub"><?= htmlspecialchars(ags_fmt($L['kpi_rows'], number_format($kpi_rows))) ?></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning -->
+    <div class="stn-card stn-kpi mb-3">
+        <div class="stn-kpi__icon stn-soft-warning"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div>
+            <div class="stn-kpi__label fw-semibold"><?= htmlspecialchars($L['warn_title']) ?></div>
+            <div class="stn-meta"><?= $L['warn_text'] ?></div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="stn-card overflow-hidden">
+    <?php if ($kpi_pending > 0): ?>
+
+        <div class="stn-toolbar">
+            <span><i class="fa-solid fa-list-check me-1"></i><?= htmlspecialchars(ags_fmt($L['toolbar_pending'], number_format($kpi_pending))) ?></span>
+            <div class="d-flex align-items-center gap-3">
+                <span class="stn-meta fw-medium" id="overallProgress"></span>
+                <button type="button" class="btn btn-primary btn-sm stn-pill" id="startConvertBtn">
+                    <i class="fa-solid fa-play me-2"></i><?= htmlspecialchars($L['btn_start']) ?>
                 </button>
-                <span class="ms-3 fw-medium" id="overallProgress"></span>
             </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table stn-table" id="pendingTable">
+                <thead>
+                    <tr>
+                        <th style="width:1%"><input type="checkbox" class="form-check-input" id="selectAll" checked aria-label="<?= htmlspecialchars($L['aria_select_all'], ENT_QUOTES) ?>"></th>
+                        <th><i class="fa-solid fa-table"></i><?= htmlspecialchars($L['col_table']) ?></th>
+                        <th><i class="fa-solid fa-gears"></i><?= htmlspecialchars($L['col_engine']) ?></th>
+                        <th><i class="fa-solid fa-language"></i><?= htmlspecialchars($L['col_collation']) ?></th>
+                        <th class="text-end"><i class="fa-solid fa-list-ol"></i><?= htmlspecialchars($L['col_rows']) ?></th>
+                        <th class="text-end"><i class="fa-solid fa-hard-drive"></i><?= htmlspecialchars($L['col_size']) ?></th>
+                        <th><i class="fa-solid fa-bars-progress"></i><?= htmlspecialchars($L['col_status']) ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pendingTables as $t): ?>
+                    <tr data-table="<?= htmlspecialchars($t['TABLE_NAME'], ENT_QUOTES) ?>">
+                        <td><input type="checkbox" class="form-check-input table-check" checked aria-label="<?= htmlspecialchars(ags_fmt($L['aria_select_table'], (string)$t['TABLE_NAME']), ENT_QUOTES) ?>"></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="stn-torrent-ico stn-soft-primary"><i class="fa-solid fa-table"></i></span>
+                                <code><?= htmlspecialchars($t['TABLE_NAME']) ?></code>
+                            </div>
+                        </td>
+                        <td>
+                            <?php if ($t['needs_engine']): ?>
+                                <span class="stn-badge stn-soft-danger"><?= htmlspecialchars((string)$t['ENGINE']) ?></span>
+                            <?php else: ?>
+                                <span class="stn-badge stn-soft-success">InnoDB</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($t['needs_charset']): ?>
+                                <span class="stn-badge stn-soft-danger"><?= htmlspecialchars((string)$t['TABLE_COLLATION']) ?></span>
+                            <?php else: ?>
+                                <span class="stn-badge stn-soft-success"><?= htmlspecialchars((string)$t['TABLE_COLLATION']) ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-end"><?= number_format((int)$t['TABLE_ROWS']) ?></td>
+                        <td class="text-end stn-traffic"><?= mksize((int)round((float)$t['size_mb'] * 1024 * 1024)) ?></td>
+                        <td class="status-cell">
+                            <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-hourglass-half"></i><?= htmlspecialchars($L['lbl_status_pending']) ?></span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+    <?php else: ?>
+        <div class="stn-empty">
+            <div class="stn-empty__icon stn-soft-success"><i class="fa-solid fa-circle-check"></i></div>
+            <h4 class="stn-title"><?= htmlspecialchars($L['empty_title']) ?></h4>
+            <p class="text-body-secondary mb-0"><?= htmlspecialchars($L['empty_text']) ?></p>
         </div>
     <?php endif; ?>
+    </div>
 </div>
 
+<script>
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
 <script>
 (function() {
     const myPostKey = <?= json_encode($mybb->post_code ?? '') ?>;
     const scriptUrl  = <?= json_encode($_SERVER['REQUEST_URI'] ?? '') ?>;
+
+    function t(key, fallback, ...args) {
+        let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string')
+            ? AGS_LANG[key] : fallback;
+        args.forEach((a, i) => { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+        return s;
+    }
+
+    function icon(name) {
+        const i = document.createElement('i');
+        i.className = 'fa-solid ' + name;
+        return i;
+    }
+    function spinner() {
+        const s = document.createElement('span');
+        s.className = 'spinner-border spinner-border-sm';
+        return s;
+    }
+    // Replace element content with an optional leading node + plain text
+    function setContent(el, leadNode, text) {
+        el.replaceChildren();
+        if (leadNode) el.appendChild(leadNode);
+        el.appendChild(document.createTextNode(text));
+    }
+    // Status badge: <span class="stn-badge stn-soft-*">[lead]text</span>
+    function setStatus(cell, soft, leadNode, text) {
+        const b = document.createElement('span');
+        b.className = 'stn-badge ' + soft;
+        setContent(b, leadNode, text);
+        cell.replaceChildren(b);
+    }
 
     document.getElementById('selectAll')?.addEventListener('change', function() {
         document.querySelectorAll('.table-check').forEach(cb => cb.checked = this.checked);
@@ -290,7 +346,9 @@ stdhead('Convert Tables to InnoDB + utf8mb4');
     document.getElementById('startConvertBtn')?.addEventListener('click', async function() {
         const btn = this;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Converting...';
+        const btnSpin = spinner();
+        btnSpin.classList.add('me-2');
+        setContent(btn, btnSpin, t('btn_converting', 'Converting...'));
 
         const rows = [...document.querySelectorAll('#pendingTable tbody tr')]
             .filter(row => row.querySelector('.table-check').checked);
@@ -302,8 +360,7 @@ stdhead('Convert Tables to InnoDB + utf8mb4');
         for (const row of rows) {
             const tableName  = row.dataset.table;
             const statusCell = row.querySelector('.status-cell');
-            statusCell.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Converting...';
-            statusCell.className = 'status-cell text-primary';
+            setStatus(statusCell, 'stn-soft-info', spinner(), t('status_converting', 'Converting...'));
 
             try {
                 const formData = new FormData();
@@ -314,30 +371,28 @@ stdhead('Convert Tables to InnoDB + utf8mb4');
                 const data = await resp.json();
 
                 if (data.status === 'success') {
-                    statusCell.textContent = '\u2713 ' + data.message;
-                    statusCell.className = 'status-cell text-success';
-                    row.querySelectorAll('td:nth-child(3) .badge, td:nth-child(4) .badge')
-                        .forEach(b => { b.className = 'badge bg-success-subtle text-success-emphasis'; });
+                    setStatus(statusCell, 'stn-soft-success', icon('fa-circle-check'), String(data.message));
+                    row.querySelectorAll('td:nth-child(3) .stn-badge, td:nth-child(4) .stn-badge')
+                        .forEach(b => { b.classList.replace('stn-soft-danger', 'stn-soft-success'); });
                 } else {
-                    statusCell.textContent = '\u2717 ' + data.message;
-                    statusCell.className = 'status-cell text-danger';
+                    setStatus(statusCell, 'stn-soft-danger', icon('fa-circle-xmark'), String(data.message));
                     failed++;
                 }
             } catch (err) {
-                statusCell.textContent = '\u2717 Network error';
-                statusCell.className = 'status-cell text-danger';
+                setStatus(statusCell, 'stn-soft-danger', icon('fa-circle-xmark'), t('network_error', 'Network error'));
                 failed++;
             }
 
             done++;
             document.getElementById('overallProgress').textContent =
-                `${done} / ${total} processed` + (failed ? ` (${failed} failed)` : '');
+                t('progress', '{1} / {2} processed', done, total)
+                + (failed ? t('progress_failed', ' ({1} failed)', failed) : '');
         }
 
         btn.disabled = false;
-        btn.innerHTML = failed
-            ? '<i class="fas fa-exclamation-triangle me-2"></i>Done with errors'
-            : '<i class="fas fa-check me-2"></i>Done';
+        const btnIco = icon(failed ? 'fa-triangle-exclamation' : 'fa-check');
+        btnIco.classList.add('me-2');
+        setContent(btn, btnIco, failed ? t('done_errors', 'Done with errors') : t('done', 'Done'));
     });
 })();
 </script>

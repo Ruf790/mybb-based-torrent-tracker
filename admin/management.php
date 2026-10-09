@@ -23,6 +23,16 @@ if (!defined('STAFF_PANEL')) {
 // FormContainer, которые здесь больше нигде не используются.
 
 $lang->load('forum_management');
+$L = $lang->forum_management;
+
+
+
+
+/** Строка ланга → экранированный текст, затем {1}… заменяются готовым HTML из аргументов */
+function fm_fmt_html(string $str, string|int|float ...$args): string
+{
+    return ags_fmt(htmlspecialchars_uni($str), ...$args);
+}
 
 // ── Breadcrumb (замена DefaultPage) ─────────────────────────
 // Раньше mgmt_add_breadcrumb()/mgmt_render_breadcrumb() -
@@ -680,7 +690,7 @@ function update_forum_lastpost(int $fid): void
 
 
 
-mgmt_add_breadcrumb('Forum Management', 'index.php?act=management');
+mgmt_add_breadcrumb($L['title_forum_management'], 'index.php?act=management');
 
 // ═══════════════════════════════════════════════════════════
 // SHARED HELPERS
@@ -689,15 +699,26 @@ mgmt_add_breadcrumb('Forum Management', 'index.php?act=management');
 /** Общие CSS + JS assets (вызывается один раз в начале страницы) */
 function fm_head_assets(): void
 {
+    global $lang;
+
+    // Строки для JS: ключи js_* из ланга без префикса
+    $js_lang = [];
+    foreach ($lang->forum_management as $key => $value) {
+        if (str_starts_with((string)$key, 'js_')) {
+            $js_lang[substr((string)$key, 3)] = $value;
+        }
+    }
+
     echo '<link rel="stylesheet" href="templates/forum_management.css">',
          '<link rel="stylesheet" href="templates/forum_management2.css?ver=1">',
          '<link rel="stylesheet" href="templates/main.css?ver=1813">',
          '<link rel="stylesheet" href="templates/modal.css?ver=1813">',
+         '<script>const AGS_LANG = ' . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>',
          '<script src="scripts/admincp.js?ver=1821"></script>',
          '<script src="scripts/tabs.js"></script>',
-         '<script src="scripts/popup.js"></script>',
-         '<script src="scripts/quick_perm_editor.js?ver=2"></script>',
-         '<script src="scripts/forum_management.js?ver=4"></script>';
+         '<script src="scripts/popup.js?ver=2"></script>',
+         '<script src="scripts/quick_perm_editor.js?ver=3"></script>',
+         '<script src="scripts/forum_management.js?ver=5"></script>';
 }
 
 /** Иконка группы: в usergroups.image здесь хранится HTML (<i …>) или путь к картинке */
@@ -716,20 +737,26 @@ function fm_group_icon(array $ug): string
 /** Зоны Allowed / Denied для QuickPermEditor (id/классы прежние — их использует JS) */
 function fm_perm_zones(int $gid, string $enabled, string $disabled): string
 {
+    global $lang;
+    $L = $lang->forum_management;
+
     return '<div class="fm2-zones">'
-         . '<div><div class="fm2-zone-label is-on"><i class="fa-solid fa-circle-check"></i>Allowed</div>'
+         . '<div><div class="fm2-zone-label is-on"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars_uni($L['zone_allowed']) . '</div>'
          . '<div class="enabled-permissions" id="enabled-' . $gid . '">' . $enabled . '</div></div>'
-         . '<div><div class="fm2-zone-label is-off"><i class="fa-solid fa-circle-xmark"></i>Denied</div>'
+         . '<div><div class="fm2-zone-label is-off"><i class="fa-solid fa-circle-xmark"></i>' . htmlspecialchars_uni($L['zone_denied']) . '</div>'
          . '<div class="disabled-permissions" id="disabled-' . $gid . '">' . $disabled . '</div></div>'
          . '</div>';
 }
 
 function fm_perm_card_head(string $title, string $sub): string
 {
+    global $lang;
+    $L = $lang->forum_management;
+
     return '<div class="fm2-hdr"><span class="fm2-hdr-icon ic-amber"><i class="fas fa-shield-halved"></i></span>'
          . '<div style="min-width:0"><h1>' . $title . '</h1><p>' . $sub . '</p></div>'
          . '<div class="ms-auto d-flex flex-wrap gap-2 fm2-legend">'
-         . '<span class="fm2-tag t-on"><i class="fa-solid fa-hand-pointer"></i>Drag a permission to move it</span>'
+         . '<span class="fm2-tag t-on"><i class="fa-solid fa-hand-pointer"></i>' . htmlspecialchars_uni($L['tag_drag_hint']) . '</span>'
          . '</div></div>';
 }
 
@@ -754,6 +781,7 @@ function fm_card_header(string $title, string $subtitle, string $icon, string $c
 /** Пронумерованный шаг формы */
 function fm_step(int $num, string $color, string $icon, string $title): void
 {
+    $title = htmlspecialchars_uni($title);
     echo <<<HTML
     <div class="d-flex align-items-center mb-4">
         <div class="step-number bg-{$color} text-white rounded-circle me-3" style="width:40px;height:40px;">
@@ -768,6 +796,8 @@ function fm_step(int $num, string $color, string $icon, string $title): void
 
 function fm_section_header(string $icon, string $color, string $title, string $desc = ''): void
 {
+    $title    = htmlspecialchars_uni($title);
+    $desc     = htmlspecialchars_uni($desc);
     $descHtml = $desc ? "<p class=\"text-muted mb-0\" style=\"font-size:13px\">{$desc}</p>" : '';
     
     echo '<div class="d-flex align-items-center mb-4">
@@ -804,20 +834,23 @@ function fm_errors(array $errors): void
 /** Блок переключателя "Additional Options" */
 function fm_toggle_advanced_open(): void
 {
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
     echo <<<HTML
     <div id="additional_options_link" class="text-center py-5">
         <button onclick="return toggleAdditionalOptions();" class="toggle-options-btn">
             <i class="fas fa-cogs fa-lg"></i>
-            <span>Show Additional Forum Options</span>
+            <span>{$t['btn_show_options']}</span>
             <i class="fas fa-chevron-down"></i>
         </button>
-        <p class="mt-3 text-muted" style="font-size:13px">Advanced settings for forum configuration</p>
+        <p class="mt-3 text-muted" style="font-size:13px">{$t['hint_show_options']}</p>
     </div>
     <div id="additional_options" style="display:none">
     <div class="card"><div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-sliders-h fa-lg me-2"></i>Additional Forum Options</span>
+        <span><i class="fas fa-sliders-h fa-lg me-2"></i>{$t['hdr_additional_options']}</span>
         <button onclick="return toggleAdditionalOptions();" class="toggle-options-btn" style="font-size:14px;padding:10px 20px">
-            <i class="fas fa-times"></i> Hide Options <i class="fas fa-chevron-up"></i>
+            <i class="fas fa-times"></i> {$t['btn_hide_options']} <i class="fas fa-chevron-up"></i>
         </button>
     </div><div class="card-body">
     HTML;
@@ -838,6 +871,10 @@ function fm_type_cards(string $current): void
     $c_checked = $current !== 'f' ? 'checked' : '';
     $f_icon    = $current === 'f' ? 'fas fa-check-circle' : 'far fa-circle';
     $c_icon    = $current !== 'f' ? 'fas fa-check-circle' : 'far fa-circle';
+
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
     echo <<<HTML
     <div class="row g-4">
         <div class="col-md-6">
@@ -845,8 +882,8 @@ function fm_type_cards(string $current): void
                 <input type="radio" name="type" value="f" class="d-none" id="type_forum" {$f_checked}>
                 <div class="type-card-body text-center">
                     <div class="type-icon"><i class="fas fa-comments fa-2x"></i></div>
-                    <h6 class="fw-bold mt-3 mb-2">Standard Forum</h6>
-                    <p class="text-muted small mb-0">A regular forum where users can post threads and replies</p>
+                    <h6 class="fw-bold mt-3 mb-2">{$t['type_standard_forum']}</h6>
+                    <p class="text-muted small mb-0">{$t['type_standard_forum_desc']}</p>
                 </div>
                 <div class="type-check"><i class="{$f_icon}"></i></div>
             </div>
@@ -856,8 +893,8 @@ function fm_type_cards(string $current): void
                 <input type="radio" name="type" value="c" class="d-none" id="type_category" {$c_checked}>
                 <div class="type-card-body text-center">
                     <div class="type-icon"><i class="fas fa-folder fa-2x"></i></div>
-                    <h6 class="fw-bold mt-3 mb-2">Category</h6>
-                    <p class="text-muted small mb-0">A container for organizing multiple forums together</p>
+                    <h6 class="fw-bold mt-3 mb-2">{$t['lbl_type_category']}</h6>
+                    <p class="text-muted small mb-0">{$t['type_category_desc']}</p>
                 </div>
                 <div class="type-check"><i class="{$c_icon}"></i></div>
             </div>
@@ -874,31 +911,36 @@ function fm_basic_fields(array $data): void
     $order   = (int)($data['disporder'] ?? 1);
     $desc    = htmlspecialchars_uni($data['description'] ?? '');
     $dcLen   = mb_strlen($data['description'] ?? '');
+
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+    $charCount = ags_fmt($t['hint_char_count'], '<span id="charCount">' . $dcLen . '</span>');
+
     echo <<<HTML
     <div class="row g-4">
         <div class="col-lg-6">
             <label class="form-label fw-bold">
-                <i class="fas fa-heading me-2 text-primary"></i>Forum Title
-                <span class="required-badge ms-2">Required</span>
+                <i class="fas fa-heading me-2 text-primary"></i>{$t['lbl_forum_title']}
+                <span class="required-badge ms-2">{$t['badge_required']}</span>
             </label>
             <input type="text" name="title" class="form-control form-control-lg"
-                   value="{$title}" placeholder="e.g. General Discussion" required>
+                   value="{$title}" placeholder="{$t['ph_forum_title']}" required>
         </div>
         <div class="col-lg-6">
             <label class="form-label fw-bold">
-                <i class="fas fa-sort-numeric-up me-2 text-primary"></i>Display Order
+                <i class="fas fa-sort-numeric-up me-2 text-primary"></i>{$t['lbl_display_order']}
             </label>
             <input type="number" name="disporder" class="form-control form-control-lg"
                    value="{$order}" min="0">
         </div>
         <div class="col-12">
             <label class="form-label fw-bold">
-                <i class="fas fa-align-left me-2 text-primary"></i>Description
+                <i class="fas fa-align-left me-2 text-primary"></i>{$t['lbl_description']}
             </label>
             <textarea name="description" id="description" class="form-control form-control-lg"
                       rows="4" style="resize:vertical">{$desc}</textarea>
             <div class="d-flex justify-content-end mt-1">
-                <small class="text-muted"><span id="charCount">{$dcLen}</span>/500 characters</small>
+                <small class="text-muted">{$charCount}</small>
             </div>
         </div>
     </div>
@@ -915,81 +957,87 @@ function fm_extra_fields(array $d): void
     $posts   = !empty($d['usepostcounts'])  ? 'checked' : '';
     $threads = !empty($d['usethreadcounts'])? 'checked' : '';
 
-    $datecuts = [0=>'Board Default',1=>'Last 24h',5=>'Last 5 days',10=>'Last 10 days',
-                 20=>'Last 20 days',50=>'Last 50 days',75=>'Last 75 days',
-                 100=>'Last 100 days',365=>'Last year',9999=>'All time'];
-    $sortbys  = [''=> 'Board Default','subject'=>'Subject','lastpost'=>'Last post',
-                 'starter'=>'Starter','started'=>'Thread time','rating'=>'Rating',
-                 'replies'=>'Replies','views'=>'Views'];
-    $sortords = [''=> 'Board Default','asc'=>'Ascending ↑','desc'=>'Descending ↓'];
+    global $lang;
+    $L = $lang->forum_management;
+    $t = array_map('htmlspecialchars_uni', $L);
+
+    $datecuts = [0 => $L['opt_board_default']];
+    foreach ([1, 5, 10, 20, 50, 75, 100, 365, 9999] as $dc) {
+        $datecuts[$dc] = $L['opt_datecut_' . $dc];
+    }
+    $sortbys  = ['' => $L['opt_board_default']];
+    foreach (['subject', 'lastpost', 'starter', 'started', 'rating', 'replies', 'views'] as $sb) {
+        $sortbys[$sb] = $L['opt_sort_' . $sb];
+    }
+    $sortords = ['' => $L['opt_board_default'], 'asc' => $L['opt_order_asc'], 'desc' => $L['opt_order_desc']];
 
     $sel = fn($arr, $cur) => implode('', array_map(
-        fn($v, $l) => '<option value="' . $v . '" ' . ($cur == $v ? 'selected' : '') . '>' . $l . '</option>',
+        fn($v, $l) => '<option value="' . $v . '" ' . ($cur == $v ? 'selected' : '') . '>' . htmlspecialchars_uni($l) . '</option>',
         array_keys($arr), $arr
     ));
 
     echo <<<HTML
     <div class="form-row">
-        <label class="form-label"><i class="fas fa-external-link-alt me-2"></i>Forum Link (Redirect)</label>
-        <p class="text-muted small">Leave empty for a normal forum. Entering a URL disables posting.</p>
+        <label class="form-label"><i class="fas fa-external-link-alt me-2"></i>{$t['lbl_forum_link']}</label>
+        <p class="text-muted small">{$t['hint_forum_link']}</p>
         <input type="text" name="linkto" class="form-control" value="{$linkto}" placeholder="https://example.com" style="max-width:450px">
     </div>
     <div class="form-row">
-        <label class="form-label"><i class="fas fa-lock me-2"></i>Password Protection</label>
-        <p class="text-muted small">Optional. Users still need group permissions on top of the password.</p>
-        <input type="text" name="password" class="form-control" value="{$pass}" placeholder="Leave empty for no password" style="max-width:450px">
+        <label class="form-label"><i class="fas fa-lock me-2"></i>{$t['lbl_password']}</label>
+        <p class="text-muted small">{$t['hint_password']}</p>
+        <input type="text" name="password" class="form-control" value="{$pass}" placeholder="{$t['ph_password']}" style="max-width:450px">
     </div>
     <div class="form-row">
-        <label class="form-label"><i class="fas fa-shield-alt me-2"></i>Access Control</label>
+        <label class="form-label"><i class="fas fa-shield-alt me-2"></i>{$t['lbl_access_control']}</label>
         <div class="settings-grid">
             <label class="form-check settings-group mb-0">
                 <input type="checkbox" name="active" value="1" class="form-check-input" {$active}>
                 <span class="form-check-label fw-semibold">
-                    <i class="fas fa-toggle-on me-1 text-success"></i>Forum is Active
-                    <small class="d-block text-muted fw-normal">Hidden from users when unchecked</small>
+                    <i class="fas fa-toggle-on me-1 text-success"></i>{$t['lbl_forum_active']}
+                    <small class="d-block text-muted fw-normal">{$t['hint_forum_active']}</small>
                 </span>
             </label>
             <label class="form-check settings-group mb-0">
                 <input type="checkbox" name="open" value="1" class="form-check-input" {$open}>
                 <span class="form-check-label fw-semibold">
-                    <i class="fas fa-door-open me-1 text-info"></i>Forum is Open
-                    <small class="d-block text-muted fw-normal">No posting when unchecked, regardless of permissions</small>
+                    <i class="fas fa-door-open me-1 text-info"></i>{$t['lbl_forum_open']}
+                    <small class="d-block text-muted fw-normal">{$t['hint_forum_open']}</small>
                 </span>
             </label>
         </div>
     </div>
     <div class="form-row">
-        <label class="form-label"><i class="fas fa-eye me-2"></i>Default View Options</label>
+        <label class="form-label"><i class="fas fa-eye me-2"></i>{$t['lbl_default_view']}</label>
         <div class="settings-grid">
             <div class="settings-group">
-                <div class="settings-group-title"><i class="fas fa-calendar-alt"></i>Date Range</div>
+                <div class="settings-group-title"><i class="fas fa-calendar-alt"></i>{$t['lbl_date_range']}</div>
                 <select name="defaultdatecut" class="form-select">{$sel($datecuts, $d['defaultdatecut'] ?? 0)}</select>
             </div>
             <div class="settings-group">
-                <div class="settings-group-title"><i class="fas fa-sort-amount-down"></i>Sort By</div>
+                <div class="settings-group-title"><i class="fas fa-sort-amount-down"></i>{$t['lbl_sort_by']}</div>
                 <select name="defaultsortby" class="form-select">{$sel($sortbys, $d['defaultsortby'] ?? '')}</select>
             </div>
             <div class="settings-group">
-                <div class="settings-group-title"><i class="fas fa-sort-alpha-down"></i>Sort Order</div>
+                <div class="settings-group-title"><i class="fas fa-sort-alpha-down"></i>{$t['lbl_sort_order']}</div>
                 <select name="defaultsortorder" class="form-select">{$sel($sortords, $d['defaultsortorder'] ?? '')}</select>
             </div>
         </div>
     </div>
     <div class="form-row">
-        <label class="form-label"><i class="fas fa-chart-bar me-2"></i>Statistics Counting</label>
+        <label class="form-label"><i class="fas fa-chart-bar me-2"></i>{$t['lbl_stats_counting']}</label>
         <div class="settings-grid">
             <label class="form-check settings-group mb-0">
                 <input type="checkbox" name="usepostcounts" value="1" class="form-check-input" {$posts}>
                 <span class="form-check-label fw-semibold">
-                    <i class="fas fa-comment-alt me-1 text-primary"></i>Count user posts
-                    <small class="d-block text-muted fw-normal">Posts here count toward user totals</small>
+                    <i class="fas fa-comment-alt me-1 text-primary"></i>{$t['lbl_count_posts']}
+                    <small class="d-block text-muted fw-normal">{$t['hint_count_posts']}</small>
                 </span>
             </label>
             <label class="form-check settings-group mb-0">
                 <input type="checkbox" name="usethreadcounts" value="1" class="form-check-input" {$threads}>
                 <span class="form-check-label fw-semibold">
-                    <i class="fas fa-file-alt me-1 text-primary"></i>Count user threads
-                    <small class="d-block text-muted fw-normal">Threads here count toward user totals</small>
+                    <i class="fas fa-file-alt me-1 text-primary"></i>{$t['lbl_count_threads']}
+                    <small class="d-block text-muted fw-normal">{$t['hint_count_threads']}</small>
                 </span>
             </label>
         </div>
@@ -998,15 +1046,19 @@ function fm_extra_fields(array $d): void
 }
 
 /** Кнопки submit / cancel */
-function fm_submit_row(string $cancel_url, string $submit_label = 'Save Changes', bool $show_advanced = true): void
+function fm_submit_row(string $cancel_url, string $submit_label = '', bool $show_advanced = true): void
 {
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
+    $submit_label = htmlspecialchars_uni($submit_label !== '' ? $submit_label : $lang->forum_management['btn_save_changes']);
     $adv = $show_advanced
-        ? '<button type="button" class="btn btn-outline-secondary px-4" onclick="toggleAdditionalOptions()"><i class="fas fa-cogs me-2"></i>Advanced</button>'
+        ? '<button type="button" class="btn btn-outline-secondary px-4" onclick="toggleAdditionalOptions()"><i class="fas fa-cogs me-2"></i>' . $t['btn_advanced'] . '</button>'
         : '';
     echo <<<HTML
     <div class="d-flex justify-content-between align-items-center mt-5 pt-4 border-top">
         <a href="{$cancel_url}" class="btn btn-outline-secondary px-4">
-            <i class="fas fa-arrow-left me-2"></i>Cancel
+            <i class="fas fa-arrow-left me-2"></i>{$t['btn_cancel']}
         </a>
         <div class="d-flex gap-2">
             {$adv}
@@ -1021,20 +1073,24 @@ function fm_submit_row(string $cancel_url, string $submit_label = 'Save Changes'
 /** Модалка подтверждения очистки разрешений */
 function fm_clear_permission_modal(): void
 {
-    echo <<<'HTML'
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+    $text = ags_fmt($t['modal_clear_text'], '<span class="fw-semibold text-primary" id="modalGroupName"></span>');
+
+    echo <<<HTML
     <div class="modal fade" id="clearPermissionModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content border-0 shadow-lg rounded-3">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-trash-can fa-2x text-danger mb-3"></i>
-                    <h5 class="fw-bold mb-2">Clear Custom Permissions</h5>
+                    <h5 class="fw-bold mb-2">{$t['modal_clear_title']}</h5>
                     <p class="text-muted mb-4">
-                        Clear permissions for <span class="fw-semibold text-primary" id="modalGroupName"></span>?
-                        <small class="d-block mt-1">This cannot be undone.</small>
+                        {$text}
+                        <small class="d-block mt-1">{$t['modal_clear_warn']}</small>
                     </p>
                     <div class="d-flex gap-3 justify-content-center">
-                        <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">Cancel</button>
-                        <button class="btn btn-danger px-4" id="confirmClearBtn">Clear</button>
+                        <button class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">{$t['btn_cancel']}</button>
+                        <button class="btn btn-danger px-4" id="confirmClearBtn">{$t['btn_clear']}</button>
                     </div>
                 </div>
             </div>
@@ -1065,9 +1121,10 @@ function fm_resolve_group_perms(array $usergroup, int $fid, array $existing_perm
  */
 function fm_perm_row(array $usergroup, int $fid, array $perms, bool $default_checked): string
 {
-    global $mybb;
+    global $mybb, $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
 
-    $field_list = ['canview' => 'View', 'canpostthreads' => 'Post Threads', 'canpostreplys' => 'Post Replies', 'canpostpolls' => 'Post Polls'];
+    $field_list = ['canview' => $t['perm_canview'], 'canpostthreads' => $t['perm_canpostthreads'], 'canpostreplys' => $t['perm_canpostreplys'], 'canpostpolls' => $t['perm_canpostpolls']];
     $gid    = (int)$usergroup['gid'];
     $utitle = htmlspecialchars_uni((string)$usergroup['title']);
 
@@ -1087,12 +1144,12 @@ function fm_perm_row(array $usergroup, int $fid, array $perms, bool $default_che
 
     $fields_val = implode(',', array_keys(array_filter($perms_checked)));
     $source = $default_checked
-        ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>Inherited</span>'
-        : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>Custom</span>';
+        ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>' . $t['tag_inherited'] . '</span>'
+        : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>' . $t['tag_custom'] . '</span>';
 
-    $actions = '<a href="index.php?act=management&amp;action=permissions&amp;gid=' . $gid . '&amp;fid=' . $fid . '" class="fm2-act" title="Advanced permissions" onclick="popupWindow(this.href + \'&ajax=1\', null, true);return false;"><i class="fas fa-sliders"></i></a>';
+    $actions = '<a href="index.php?act=management&amp;action=permissions&amp;gid=' . $gid . '&amp;fid=' . $fid . '" class="fm2-act" title="' . $t['tip_advanced_perms'] . '" onclick="popupWindow(this.href + \'&ajax=1\', null, true);return false;"><i class="fas fa-sliders"></i></a>';
     if (!$default_checked) {
-        $actions .= '<a href="javascript:void(0);" class="fm2-act text-danger clear-permission-btn" title="Reset to inherited"'
+        $actions .= '<a href="javascript:void(0);" class="fm2-act text-danger clear-permission-btn" title="' . $t['tip_reset_inherited'] . '"'
                   . ' data-pid="' . (int)$perms['pid'] . '" data-fid="' . $fid . '" data-gid="' . $gid . '"'
                   . ' data-group-name="' . $utitle . '" data-post-key="' . $mybb->post_code . '"><i class="fas fa-rotate-left"></i></a>';
     }
@@ -1100,7 +1157,7 @@ function fm_perm_row(array $usergroup, int $fid, array $perms, bool $default_che
     return '
                             <tr data-group-id="' . $gid . '">
                                 <td><div class="d-flex align-items-center gap-3">' . fm_group_icon($usergroup)
-        . '<div><div class="fw-bold">' . $utitle . '</div><div class="fm2-gid">GID ' . $gid . '</div></div></div></td>
+        . '<div><div class="fw-bold">' . $utitle . '</div><div class="fm2-gid">' . ags_fmt($t['lbl_gid'], $gid) . '</div></div></div></td>
                                 <td>
                                     <div class="permission-fields" id="permission-fields-' . $gid . '">
                                         ' . fm_perm_zones($gid, $enabled_html, $disabled_html) . '
@@ -1129,16 +1186,19 @@ function fm_json_response(array $data, int $status = 200): never
 /** Модалка подтверждения удаления модератора */
 function fm_delete_mod_modal(): void
 {
-    echo <<<'HTML'
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
+    echo <<<HTML
     <div class="modal fade" id="deleteModeratorModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content">
                 <div class="modal-body text-center p-4">
                     <i class="fas fa-user-slash fa-2x text-danger mb-3"></i>
-                    <h5 class="mb-3">Remove this moderator?</h5>
+                    <h5 class="mb-3">{$t['modal_delmod_title']}</h5>
                     <div class="d-flex justify-content-center gap-2">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button class="btn btn-danger" id="confirmDeleteModeratorBtn">Remove</button>
+                        <button class="btn btn-secondary" data-bs-dismiss="modal">{$t['btn_cancel']}</button>
+                        <button class="btn btn-danger" id="confirmDeleteModeratorBtn">{$t['btn_remove']}</button>
                     </div>
                 </div>
             </div>
@@ -1155,7 +1215,7 @@ function fm_delete_mod_modal(): void
 
 
 
-mgmt_add_breadcrumb('Forum Management', "index.php?act=management");
+mgmt_add_breadcrumb($L['title_forum_management'], "index.php?act=management");
 
 $action = $mybb->get_input('action');
 
@@ -1166,41 +1226,41 @@ if($action == "add" || $action == "edit" || $action == "copy" || $action == "per
 		$nav_fid = $mybb->get_input('fid', MyBB::INPUT_INT);
 
 		$sub_tabs['view_forum'] = array(
-			'title' =>'View Forum',
+			'title' => $L['tab_view_forum'],
 			'link' => "index.php?act=management&fid=".$nav_fid,
-			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
+			'description' => $L['tab_view_forum_desc']
 		);
 
 		$sub_tabs['add_child_forum'] = array(
-			'title' => 'Add Child Forum',
+			'title' => $L['tab_add_child_forum'],
 			'link' => "index.php?act=management&action=add&pid=".$nav_fid,
-			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
+			'description' => $L['tab_view_forum_desc']
 		);
 
 		$sub_tabs['edit_forum_settings'] = array(
-			'title' => 'Edit Forum Settings',
+			'title' => $L['tab_edit_forum_settings'],
 			'link' => "index.php?act=management&action=edit&fid=".$nav_fid,
-			'description' => 'Here you can edit an existing forums settings and its permissions'
+			'description' => $L['tab_edit_forum_settings_desc']
 		);
 
 		$sub_tabs['copy_forum'] = array(
-			'title' => 'Copy Forum',
+			'title' => $L['tab_copy_forum'],
 			'link' => "index.php?act=management&action=copy&fid=".$nav_fid,
-			'description' => 'Here you can copy forum settings or permissions from an existing forum to another or to a new forum'
+			'description' => $L['tab_copy_forum_desc']
 		);
 	}
 	else
 	{
 		$sub_tabs['forum_management'] = array(
-			'title' => 'Forum Management',
+			'title' => $L['title_forum_management'],
 			'link' => "index.php?act=management",
-			'description' => 'This section allows you to manage the categories and forums on your board. You can manage forum permissions and forum-specific moderators as well. If you change the display order for one or more forums or categories, make sure you submit the form at the bottom of the page'
+			'description' => $L['tab_forum_management_desc']
 		);
 
 		$sub_tabs['add_forum'] = array(
-			'title' => 'Add New Forum',
+			'title' => $L['title_add_forum'],
 			'link' => "index.php?act=management&action=add",
-			'description' => 'Here you can add a new forum or category to your board. You may also set initial permissions for this forum'
+			'description' => $L['tab_add_forum_desc']
 		);
 	}
 }
@@ -1225,11 +1285,11 @@ if ($action === 'copy') {
 
         $query      = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$from]);
         $from_forum = $query ? $db->fetch_array($query) : null;
-        if (!$query || !$db->num_rows($query)) $errors[] = 'error_invalid_source_forum';
+        if (!$query || !$db->num_rows($query)) $errors[] = $L['err_invalid_source_forum'];
 
         if ($to === -1) {
-            if (empty($mybb->input['title']))                               $errors[] = 'You need to give your new forum a name';
-            if ($mybb->input['pid'] == -1 && $mybb->input['type'] === 'f') $errors[] = 'You must select a parent forum';
+            if (empty($mybb->input['title']))                               $errors[] = $L['err_new_forum_needs_name'];
+            if ($mybb->input['pid'] == -1 && $mybb->input['type'] === 'f') $errors[] = $L['err_no_parent'];
 
             if (!$errors) {
                 $pid = max(0, $mybb->get_input('pid', MyBB::INPUT_INT));
@@ -1255,7 +1315,7 @@ if ($action === 'copy') {
         } elseif ($mybb->input['copyforumsettings'] == 1) {
             $query    = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$to]);
             $to_forum = $query ? $db->fetch_array($query) : null;
-            if (!$query || !$db->num_rows($query)) $errors[] = 'Invalid destination forum';
+            if (!$query || !$db->num_rows($query)) $errors[] = $L['err_invalid_destination_forum'];
 
             if (!$errors) {
                 $new_forum = array_diff_key($from_forum, array_flip([
@@ -1300,7 +1360,7 @@ if ($action === 'copy') {
             $cache->update_forums();
             $cache->update_forumpermissions();
 
-            flash_message($lang->forum_management['success_forum_copied'], 'success');
+            flash_message($L['flash_forum_copied'], 'success');
             admin_redirect("index.php?act=management&action=edit&fid={$to}");
         }
     }
@@ -1309,10 +1369,10 @@ if ($action === 'copy') {
     if (!empty($mybb->input['fid'])) {
         $nav_fid = $mybb->get_input('fid', MyBB::INPUT_INT);
         $sub_tabs = [
-            'view_forum'         => ['title'=>'View Forum',         'link'=>"index.php?act=management&fid={$nav_fid}",                    'description'=>''],
-            'add_child_forum'    => ['title'=>'Add Child Forum',    'link'=>"index.php?act=management&action=add&pid={$nav_fid}",          'description'=>''],
-            'edit_forum_settings'=> ['title'=>'Edit Forum Settings','link'=>"index.php?act=management&action=edit&fid={$nav_fid}",         'description'=>''],
-            'copy_forum'         => ['title'=>'Copy Forum',         'link'=>"index.php?act=management&action=copy&fid={$nav_fid}",         'description'=>''],
+            'view_forum'         => ['title'=>$L['tab_view_forum'],          'link'=>"index.php?act=management&fid={$nav_fid}",                    'description'=>''],
+            'add_child_forum'    => ['title'=>$L['tab_add_child_forum'],     'link'=>"index.php?act=management&action=add&pid={$nav_fid}",          'description'=>''],
+            'edit_forum_settings'=> ['title'=>$L['tab_edit_forum_settings'], 'link'=>"index.php?act=management&action=edit&fid={$nav_fid}",         'description'=>''],
+            'copy_forum'         => ['title'=>$L['tab_copy_forum'],          'link'=>"index.php?act=management&action=copy&fid={$nav_fid}",         'description'=>''],
         ];
     }
 
@@ -1335,7 +1395,7 @@ if ($action === 'copy') {
         $usergroupsZZ[$ug['gid']] = htmlspecialchars_uni($ug['title']);
     }
 
-    stdhead('Copy Forum');
+    stdhead($L['title_copy_forum']);
     fm_head_assets();
     output_nav_tabs($sub_tabs ?? [], 'copy_forum');
     ?>
@@ -1343,7 +1403,7 @@ if ($action === 'copy') {
     <div class="admin-container">
     <div class="container mt-3">
         <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
-            <?php fm_card_header('Copy Forum Settings', 'Duplicate forum settings and permissions to another forum', 'clone', 'info'); ?>
+            <?php fm_card_header(htmlspecialchars_uni($L['hdr_copy']), htmlspecialchars_uni($L['hdr_copy_sub']), 'clone', 'info'); ?>
 
             <div class="card-body px-5 py-4">
                 <?php fm_errors($errors ?? []); ?>
@@ -1353,42 +1413,42 @@ if ($action === 'copy') {
                 <form method="post" action="index.php?act=management&action=copy" id="copyForumForm">
                     <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
-                    <?php fm_step(1, 'info', 'exchange-alt', 'Select Forums'); ?>
+                    <?php fm_step(1, 'info', 'exchange-alt', $L['step_select_forums']); ?>
                     <div class="row g-4 mb-5">
                         <div class="col-md-6">
                             <div class="card h-100">
                                 <div class="card-header bg-info bg-opacity-10 py-3">
-                                    <h6 class="mb-0 fw-bold"><i class="fas fa-download me-2 text-info"></i>Copy FROM <span class="text-danger">*</span></h6>
+                                    <h6 class="mb-0 fw-bold"><i class="fas fa-download me-2 text-info"></i><?= htmlspecialchars_uni($L['lbl_copy_from']) ?> <span class="text-danger">*</span></h6>
                                 </div>
                                 <div class="card-body">
                                     <?= generate_forum_select('from', $copy_data['from'], ['id'=>'from','class'=>'form-select']) ?>
-                                    <small class="text-muted">Forum to copy settings from</small>
+                                    <small class="text-muted"><?= htmlspecialchars_uni($L['hint_copy_from']) ?></small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="card h-100">
                                 <div class="card-header bg-success bg-opacity-10 py-3">
-                                    <h6 class="mb-0 fw-bold"><i class="fas fa-upload me-2 text-success"></i>Copy TO <span class="text-danger">*</span></h6>
+                                    <h6 class="mb-0 fw-bold"><i class="fas fa-upload me-2 text-success"></i><?= htmlspecialchars_uni($L['lbl_copy_to']) ?> <span class="text-danger">*</span></h6>
                                 </div>
                                 <div class="card-body">
-                                    <?= generate_forum_select('to', $copy_data['to'], ['id'=>'to','class'=>'form-select','main_option'=>'Create New Forum']) ?>
-                                    <small class="text-muted">Forum to copy settings to</small>
+                                    <?= generate_forum_select('to', $copy_data['to'], ['id'=>'to','class'=>'form-select','main_option'=>$L['opt_create_new_forum']]) ?>
+                                    <small class="text-muted"><?= htmlspecialchars_uni($L['hint_copy_to']) ?></small>
 
                                     <!-- New forum fields -->
                                     <div id="newForumSettings" style="display:none" class="mt-3">
                                         <?php fm_type_cards($copy_data['type']); ?>
                                         <div class="mt-3">
-                                            <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                                            <label class="form-label fw-semibold"><?= htmlspecialchars_uni($L['lbl_title']) ?> <span class="text-danger">*</span></label>
                                             <input type="text" name="title" class="form-control" value="<?= htmlspecialchars_uni($copy_data['title']) ?>">
                                         </div>
                                         <div class="mt-3">
-                                            <label class="form-label fw-semibold">Description</label>
+                                            <label class="form-label fw-semibold"><?= htmlspecialchars_uni($L['lbl_description']) ?></label>
                                             <textarea name="description" class="form-control" rows="2"><?= htmlspecialchars_uni($copy_data['description']) ?></textarea>
                                         </div>
                                         <div class="mt-3" id="parentForumField">
-                                            <label class="form-label fw-semibold">Parent Forum <span class="text-danger">*</span></label>
-                                            <?= generate_forum_select('pid', $copy_data['pid'], ['id'=>'pid','class'=>'form-select','main_option'=>'None']) ?>
+                                            <label class="form-label fw-semibold"><?= htmlspecialchars_uni($L['lbl_parent_forum']) ?> <span class="text-danger">*</span></label>
+                                            <?= generate_forum_select('pid', $copy_data['pid'], ['id'=>'pid','class'=>'form-select','main_option'=>$L['opt_none']]) ?>
                                         </div>
                                     </div>
 
@@ -1396,7 +1456,7 @@ if ($action === 'copy') {
                                     <div id="copySettings" style="display:none" class="mt-3">
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" name="copyforumsettings" id="copyforumsettings" value="1" <?= $copy_data['copyforumsettings'] ? 'checked' : '' ?>>
-                                            <label class="form-check-label fw-semibold" for="copyforumsettings">Copy Forum Settings</label>
+                                            <label class="form-check-label fw-semibold" for="copyforumsettings"><?= htmlspecialchars_uni($L['lbl_copy_forum_settings']) ?></label>
                                         </div>
                                     </div>
                                 </div>
@@ -1404,31 +1464,31 @@ if ($action === 'copy') {
                         </div>
                     </div>
 
-                    <?php fm_step(2, 'warning', 'users', 'Copy Permissions'); ?>
+                    <?php fm_step(2, 'warning', 'users', $L['step_copy_permissions']); ?>
                     <div class="card mb-5">
                         <div class="card-header bg-warning bg-opacity-10 py-3">
-                            <h6 class="mb-0 fw-bold"><i class="fas fa-shield-alt me-2 text-warning"></i>User Group Permissions</h6>
+                            <h6 class="mb-0 fw-bold"><i class="fas fa-shield-alt me-2 text-warning"></i><?= htmlspecialchars_uni($L['lbl_ug_permissions']) ?></h6>
                         </div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-lg-6">
-                                    <label class="form-label fw-semibold">Select User Groups</label>
+                                    <label class="form-label fw-semibold"><?= htmlspecialchars_uni($L['lbl_select_groups']) ?></label>
                                     <?= generate_select_box('copygroups[]', $usergroupsZZ, $copy_data['copygroups'], ['id'=>'copygroups','multiple'=>true,'size'=>8,'class'=>'form-select']) ?>
-                                    <small class="text-muted">Hold CTRL for multiple</small>
+                                    <small class="text-muted"><?= htmlspecialchars_uni($L['hint_hold_ctrl']) ?></small>
                                 </div>
                                 <div class="col-lg-6">
                                     <div class="bg-light rounded p-3 h-100">
-                                        <h6 class="fw-bold mb-3">Selected Groups</h6>
-                                        <div id="selectedGroupsList"><p class="text-muted small mb-2">No groups selected</p></div>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllGroups">Select All</button>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="deselectAllGroups">Deselect All</button>
+                                        <h6 class="fw-bold mb-3"><?= htmlspecialchars_uni($L['lbl_selected_groups']) ?></h6>
+                                        <div id="selectedGroupsList"><p class="text-muted small mb-2"><?= htmlspecialchars_uni($L['hint_no_groups_selected']) ?></p></div>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllGroups"><?= htmlspecialchars_uni($L['btn_select_all']) ?></button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="deselectAllGroups"><?= htmlspecialchars_uni($L['btn_deselect_all']) ?></button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <?php fm_submit_row('index.php?act=management', 'Copy Forum Settings', false); ?>
+                    <?php fm_submit_row('index.php?act=management', $L['btn_copy_settings'], false); ?>
                 </form>
                 </div>
 
@@ -1437,12 +1497,12 @@ if ($action === 'copy') {
                     <div class="sticky-top" style="top:20px">
                         <div class="card border-0 shadow-sm mb-4">
                             <div class="card-header bg-info text-white py-3">
-                                <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Quick Tips</h6>
+                                <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i><?= htmlspecialchars_uni($L['sec_quick_tips']) ?></h6>
                             </div>
                             <div class="card-body">
-                                <div class="alert alert-info small mb-2"><strong>New Forum:</strong> Select "Create New Forum" as destination</div>
-                                <div class="alert alert-warning small mb-2"><strong>Existing Forum:</strong> Enable "Copy Forum Settings" to overwrite</div>
-                                <div class="alert alert-success small mb-0"><strong>Permissions:</strong> Hold CTRL to multi-select groups</div>
+                                <div class="alert alert-info small mb-2"><strong><?= htmlspecialchars_uni($L['tip_new_forum_lbl']) ?></strong> <?= htmlspecialchars_uni($L['tip_new_forum']) ?></div>
+                                <div class="alert alert-warning small mb-2"><strong><?= htmlspecialchars_uni($L['tip_existing_lbl']) ?></strong> <?= htmlspecialchars_uni($L['tip_existing']) ?></div>
+                                <div class="alert alert-success small mb-0"><strong><?= htmlspecialchars_uni($L['tip_perms_lbl']) ?></strong> <?= htmlspecialchars_uni($L['tip_perms']) ?></div>
                             </div>
                         </div>
                     </div>
@@ -1466,7 +1526,7 @@ if($action == "editmod")
 
 	if(!$mod_data['id'])
 	{
-		flash_message($lang->forum_management['error_incorrect_moderator'], 'error');
+		flash_message($L['err_incorrect_moderator'], 'error');
 		admin_redirect("index.php?act=management");
 	}
 
@@ -1488,7 +1548,7 @@ if($action == "editmod")
 		$mid = $mybb->get_input('mid', MyBB::INPUT_INT);
 		if(!$mid)
 		{
-			flash_message($lang->forum_management['error_incorrect_moderator'], 'error');
+			flash_message($L['err_incorrect_moderator'], 'error');
 			admin_redirect("index.php?act=management");
 		}
 
@@ -1545,7 +1605,7 @@ if($action == "editmod")
 			// Log admin action
 			log_admin_action($fid, $forum['name'], $mid, $mod[$fieldname]);
 
-			flash_message($lang->forum_management['success_moderator_updated'], 'success');
+			flash_message($L['flash_mod_updated'], 'success');
 			admin_redirect("index.php?act=management&fid=".$mybb->get_input('fid', MyBB::INPUT_INT)."#tab_moderators");
 		}
 	}
@@ -1564,18 +1624,18 @@ if($action == "editmod")
 	$sub_tabs = array();
 
 	$sub_tabs['edit_mod'] = array(
-		'title' => $lang->forum_management['edit_mod'],
+		'title' => $L['title_edit_mod'],
 		'link' => "index.php?act=management&action=editmod&mid=".$mybb->get_input('mid', MyBB::INPUT_INT),
-		'description' => $lang->forum_management['edit_mod_desc']
+		'description' => $L['tab_edit_mod_desc']
 	);
 
-	mgmt_add_breadcrumb('forum_moderators', "index.php?act=management&amp;fid={$mod_data['fid']}#tab_moderators");
-	mgmt_add_breadcrumb('edit_forum');
+	mgmt_add_breadcrumb($L['crumb_forum_moderators'], "index.php?act=management&amp;fid={$mod_data['fid']}#tab_moderators");
+	mgmt_add_breadcrumb($L['title_edit_mod']);
 	
 	
 
 	
-	stdhead('Edit Moderator');
+	stdhead($L['title_edit_mod']);
 	
 	fm_head_assets();
 	
@@ -1606,15 +1666,17 @@ $fm_sw = static function (string $name, string $label, string $icon, bool $dange
          . '<input type="checkbox" class="form-check-input" role="switch" name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
          . '</label>';
 };
-$L = $lang->forum_management;
 $fm_section = static function (string $icon, string $cls, string $title, array $items, string $desc = '') use ($fm_sw): string {
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
     $html = '<div class="fm2-msec"><div class="fm2-msec-head">'
-          . '<span class="fm2-msec-icon ' . $cls . '"><i class="fas ' . $icon . '"></i></span><span class="fw-bold">' . $title . '</span>'
+          . '<span class="fm2-msec-icon ' . $cls . '"><i class="fas ' . $icon . '"></i></span><span class="fw-bold">' . htmlspecialchars_uni($title) . '</span>'
           . '<span class="ms-auto d-flex gap-1">'
-          . '<button type="button" class="fm2-mini" data-sw-all="1" title="Enable all"><i class="fa-solid fa-check-double"></i></button>'
-          . '<button type="button" class="fm2-mini" data-sw-all="0" title="Disable all"><i class="fa-solid fa-xmark"></i></button>'
+          . '<button type="button" class="fm2-mini" data-sw-all="1" title="' . $t['tip_enable_all'] . '"><i class="fa-solid fa-check-double"></i></button>'
+          . '<button type="button" class="fm2-mini" data-sw-all="0" title="' . $t['tip_disable_all'] . '"><i class="fa-solid fa-xmark"></i></button>'
           . '</span></div>'
-          . ($desc !== '' ? '<div class="fm2-muted mb-2">' . $desc . '</div>' : '')
+          . ($desc !== '' ? '<div class="fm2-muted mb-2">' . htmlspecialchars_uni($desc) . '</div>' : '')
           . '<div class="fm2-sw-grid">';
     foreach ($items as $it) {
         $html .= $fm_sw($it[0], $it[1], $it[2], $it[3] ?? false);
@@ -1627,65 +1689,65 @@ $mod_title = htmlspecialchars_uni($mod_data[$fieldname] ?? '');
 echo '<div class="card fm2-perm">';
 echo '<div class="fm2-hdr">'
    . '<span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-pen"></i></span>'
-   . '<div style="min-width:0"><h1>' . sprintf($L['edit_mod_for'], $mod_title) . '</h1>'
-   . '<p>What this moderator can do in the selected forum</p></div>'
-   . '<div class="ms-auto fm2-legend"><span class="fm2-tag t-on" id="fm2SwCount"><i class="fa-solid fa-toggle-on"></i>0 enabled</span></div>'
+   . '<div style="min-width:0"><h1>' . fm_fmt_html($L['hdr_edit_mod_for'], $mod_title) . '</h1>'
+   . '<p>' . htmlspecialchars_uni($L['hdr_edit_mod_sub']) . '</p></div>'
+   . '<div class="ms-auto fm2-legend"><span class="fm2-tag t-on" id="fm2SwCount"><i class="fa-solid fa-toggle-on"></i>' . fm_fmt_html($L['tag_sw_count'], 0) . '</span></div>'
    . '</div>';
 
 echo '<div class="p-3 p-md-4">';
 
 // Форум
-echo '<div class="fm2-msec"><div class="fm2-msec-head"><span class="fm2-msec-icon ic-amber"><i class="fas fa-comments"></i></span><span class="fw-bold">' . $L['forum'] . '</span></div>';
-if ($L['forum_desc'] !== '') echo '<div class="fm2-muted mb-2">' . $L['forum_desc'] . '</div>';
+echo '<div class="fm2-msec"><div class="fm2-msec-head"><span class="fm2-msec-icon ic-amber"><i class="fas fa-comments"></i></span><span class="fw-bold">' . htmlspecialchars_uni($L['sec_mod_forum']) . '</span></div>';
+if ($L['hint_mod_forum'] !== '') echo '<div class="fm2-muted mb-2">' . htmlspecialchars_uni($L['hint_mod_forum']) . '</div>';
 echo '<div style="max-width:420px">' . generate_forum_select('fid', $mod_data['fid'], ['id' => 'fid', 'class' => 'form-select']) . '</div></div>';
 
 echo '<div class="row g-3">';
 echo '<div class="col-lg-6">';
-echo $fm_section('fa-file-lines', 'ic-blue', 'Posts', [
-    ['caneditposts',       $L['can_edit_posts'],        'fa-pen'],
-    ['cansoftdeleteposts', $L['can_soft_delete_posts'], 'fa-trash-can'],
-    ['canrestoreposts',    $L['can_restore_posts'],     'fa-rotate-left'],
-    ['candeleteposts',     $L['can_delete_posts'],      'fa-trash', true],
-    ['canpostclosedthreads', $L['can_post_closed_threads'], 'fa-comment'],
+echo $fm_section('fa-file-lines', 'ic-blue', $L['sec_mod_posts'], [
+    ['caneditposts',       $L['mod_caneditposts'],        'fa-pen'],
+    ['cansoftdeleteposts', $L['mod_cansoftdeleteposts'], 'fa-trash-can'],
+    ['canrestoreposts',    $L['mod_canrestoreposts'],     'fa-rotate-left'],
+    ['candeleteposts',     $L['mod_candeleteposts'],      'fa-trash', true],
+    ['canpostclosedthreads', $L['mod_canpostclosedthreads'], 'fa-comment'],
 ]);
-echo $fm_section('fa-list', 'ic-green', 'Threads', [
-    ['cansoftdeletethreads',   $L['can_soft_delete_threads'],   'fa-trash-can'],
-    ['canrestorethreads',      $L['can_restore_threads'],       'fa-rotate-left'],
-    ['candeletethreads',       $L['can_delete_threads'],        'fa-trash', true],
-    ['canopenclosethreads',    $L['can_open_close_threads'],    'fa-lock-open'],
-    ['canstickunstickthreads', $L['can_stick_unstick_threads'], 'fa-thumbtack'],
+echo $fm_section('fa-list', 'ic-green', $L['sec_mod_threads'], [
+    ['cansoftdeletethreads',   $L['mod_cansoftdeletethreads'],   'fa-trash-can'],
+    ['canrestorethreads',      $L['mod_canrestorethreads'],       'fa-rotate-left'],
+    ['candeletethreads',       $L['mod_candeletethreads'],        'fa-trash', true],
+    ['canopenclosethreads',    $L['mod_canopenclosethreads'],    'fa-lock-open'],
+    ['canstickunstickthreads', $L['mod_canstickunstickthreads'], 'fa-thumbtack'],
 ]);
 echo '</div><div class="col-lg-6">';
-echo $fm_section('fa-eye', 'ic-teal', 'Visibility & approval', [
-    ['canviewunapprove',           $L['can_view_unapprove'],                'fa-eye-slash'],
-    ['canviewdeleted',             $L['can_view_deleted'],                  'fa-eye'],
-    ['canapproveunapprovethreads', $L['can_approve_unapprove_threads'],     'fa-circle-check'],
-    ['canapproveunapproveposts',   $L['can_approve_unapprove_posts'],       'fa-circle-check'],
-    ['canapproveunapproveattachs', $L['can_approve_unapprove_attachments'], 'fa-paperclip'],
-    ['canviewips',                 $L['can_view_ips'],                      'fa-network-wired', true],
+echo $fm_section('fa-eye', 'ic-teal', $L['sec_mod_visibility'], [
+    ['canviewunapprove',           $L['mod_canviewunapprove'],                'fa-eye-slash'],
+    ['canviewdeleted',             $L['mod_canviewdeleted'],                  'fa-eye'],
+    ['canapproveunapprovethreads', $L['mod_canapproveunapprovethreads'],     'fa-circle-check'],
+    ['canapproveunapproveposts',   $L['mod_canapproveunapproveposts'],       'fa-circle-check'],
+    ['canapproveunapproveattachs', $L['mod_canapproveunapproveattachs'], 'fa-paperclip'],
+    ['canviewips',                 $L['mod_canviewips'],                      'fa-network-wired', true],
 ]);
-echo $fm_section('fa-screwdriver-wrench', 'ic-purple', 'Management', [
-    ['canmanagethreads',     $L['can_manage_threads'],       'fa-code-merge'],
-    ['canmanagepolls',       $L['can_manage_polls'],         'fa-chart-simple'],
-    ['canmovetononmodforum', $L['can_move_to_other_forums'], 'fa-right-left', true],
-    ['canusecustomtools',    $L['can_use_custom_tools'],     'fa-toolbox'],
+echo $fm_section('fa-screwdriver-wrench', 'ic-purple', $L['sec_mod_management'], [
+    ['canmanagethreads',     $L['mod_canmanagethreads'],       'fa-code-merge'],
+    ['canmanagepolls',       $L['mod_canmanagepolls'],         'fa-chart-simple'],
+    ['canmovetononmodforum', $L['mod_canmovetononmodforum'], 'fa-right-left', true],
+    ['canusecustomtools',    $L['mod_canusecustomtools'],     'fa-toolbox'],
 ]);
 echo '</div></div>';
 
-echo $fm_section('fa-gauge-high', 'ic-red', $L['moderator_cp_permissions'], [
-    ['canmanageannouncements', $L['can_manage_announcements'],  'fa-bullhorn'],
-    ['canmanagereportedposts', $L['can_manage_reported_posts'], 'fa-flag'],
-    ['canviewmodlog',          $L['can_view_mod_log'],          'fa-clock-rotate-left'],
-], $L['moderator_cp_permissions_desc']);
+echo $fm_section('fa-gauge-high', 'ic-red', $L['sec_mod_cp'], [
+    ['canmanageannouncements', $L['mod_canmanageannouncements'],  'fa-bullhorn'],
+    ['canmanagereportedposts', $L['mod_canmanagereportedposts'], 'fa-flag'],
+    ['canviewmodlog',          $L['mod_canviewmodlog'],          'fa-clock-rotate-left'],
+], $L['hint_mod_cp']);
 
 echo '</div>'; // p-3
 
 echo '<div class="fm2-savebar">'
-   . '<span class="fm2-muted"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>Red switches grant powerful rights</span>'
+   . '<span class="fm2-muted"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>' . htmlspecialchars_uni($L['hint_red_switches']) . '</span>'
    . '<div class="d-flex gap-2">'
-   . '<a href="index.php?act=management&amp;fid=' . (int)$mod_data['fid'] . '#tab_moderators" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>'
-   . '<button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . htmlspecialchars_uni($lang->reset ?? 'Reset') . '</button>'
-   . '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . htmlspecialchars_uni($L['save_mod']) . '</button>'
+   . '<a href="index.php?act=management&amp;fid=' . (int)$mod_data['fid'] . '#tab_moderators" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-arrow-left me-1"></i>' . htmlspecialchars_uni($L['btn_back']) . '</a>'
+   . '<button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . htmlspecialchars_uni($L['btn_reset']) . '</button>'
+   . '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . htmlspecialchars_uni($L['btn_save_mod']) . '</button>'
    . '</div></div>';
 
 echo '</div>'; // .card
@@ -1743,7 +1805,7 @@ if($action == "clear_permission")
 
 		$cache->update_forumpermissions();
 
-		flash_message($lang->forum_management['success_custom_permission_cleared'], 'success');
+		flash_message($L['flash_custom_perm_cleared'], 'success');
 		admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
 	}
 }
@@ -1770,7 +1832,7 @@ if ($action === 'permissions') {
         $is_ajax_post = (int)($mybb->input['ajax'] ?? 0) === 1;
         if ($is_ajax_post) {
             if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-                fm_json_response(['ok' => false, 'error' => 'Invalid security token. Reload the page and try again.'], 403);
+                fm_json_response(['ok' => false, 'error' => $L['err_invalid_token']], 403);
             }
         } else {
             verify_post_check($mybb->get_input('my_post_key'));
@@ -1836,7 +1898,7 @@ if ($action === 'permissions') {
             ]);
         }
 
-        flash_message($lang->forum_management['success_forum_permissions_saved'], 'success');
+        flash_message($L['flash_perms_saved'], 'success');
         admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
     }
 
@@ -1850,12 +1912,12 @@ if ($action === 'permissions') {
 
         if ($fid_in && $gid_in) {
             $sub_tabs['edit_permissions'] = [
-                'title'       => $lang->forum_management['forum_permissions2'],
+                'title'       => $L['title_forum_permissions'],
                 'link'        => "index.php?act=management&action=permissions&fid={$fid_in}&amp;gid={$gid_in}",
-                'description' => $lang->forum_management['forum_permissions_desc'],
+                'description' => $L['tab_forum_permissions_desc'],
             ];
             mgmt_add_breadcrumb(
-                $lang->forum_management['forum_permissions2'],
+                $L['title_forum_permissions'],
                 "index.php?act=management&fid={$fid_in}#tab_permissions"
             );
         } else {
@@ -1864,19 +1926,19 @@ if ($action === 'permissions') {
             $mybb->input['fid'] = $query ? $db->fetch_field($query, 'fid') : null;
 
             $sub_tabs['edit_permissions'] = [
-                'title'       => $lang->forum_management['forum_permissions'],
+                'title'       => $L['tab_permissions'],
                 'link'        => "index.php?act=management&action=permissions&pid={$pid_in}",
-                'description' => $lang->forum_management['forum_permissions_desc'],
+                'description' => $L['tab_forum_permissions_desc'],
             ];
             mgmt_add_breadcrumb(
-                $lang->forum_management['forum_permissions2'],
+                $L['title_forum_permissions'],
                 "index.php?act=management&fid={$mybb->input['fid']}#tab_permissions"
             );
         }
 
-        mgmt_add_breadcrumb($lang->forum_management['forum_permissions']);
+        mgmt_add_breadcrumb($L['tab_permissions']);
 
-        stdhead('Forum Permissions');
+        stdhead($L['title_forum_permissions']);
         fm_head_assets();
 
         output_nav_tabs($sub_tabs, 'edit_permissions');
@@ -1897,9 +1959,9 @@ if ($action === 'permissions') {
         <div class="modal-content">
             <div class="modal-header bg-light">
                 <h5 class="modal-title fw-bold">
-                    <i class="fas fa-shield-alt me-2"></i>Forum Permissions
+                    <i class="fas fa-shield-alt me-2"></i>' . htmlspecialchars_uni($L['title_forum_permissions']) . '
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars_uni($L['btn_cancel']) . '"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="p-4">
@@ -1988,29 +2050,25 @@ if ($action === 'permissions') {
 
         $tab_colors  = ['viewing'=>'bg-primary','posting_rating'=>'bg-success','editing'=>'bg-info','moderate'=>'bg-warning','polls'=>'bg-purple','misc'=>'bg-secondary'];
         $tab_icons   = ['viewing'=>'fa-eye','posting_rating'=>'fa-comment','editing'=>'fa-edit','moderate'=>'fa-gavel','polls'=>'fa-chart-bar','misc'=>'fa-cog'];
-        $tab_titles  = ['viewing'=>'Viewing','posting_rating'=>'Posting & Rating','editing'=>'Editing','moderate'=>'Moderation','polls'=>'Polls','misc'=>'Misc'];
+        $tab_titles  = [];
+        foreach (['viewing', 'posting_rating', 'editing', 'moderate', 'polls', 'misc'] as $tg) {
+            $tab_titles[$tg] = htmlspecialchars_uni($L['tab_' . $tg]);
+        }
 
-        $l = [
-            'viewing_field_canview'                       => 'Can view forum?',
-            'viewing_field_canviewthreads'                => 'Can view threads within forum?',
-            'viewing_field_canonlyviewownthreads'         => 'Can only view own threads?',
-            'viewing_field_candlattachments'              => 'Can download attachments?',
-            'posting_rating_field_canpostthreads'         => 'Can post threads?',
-            'posting_rating_field_canpostreplys'          => 'Can post replies?',
-            'posting_rating_field_canonlyreplyownthreads' => 'Can only reply to own threads?',
-            'posting_rating_field_canpostattachments'     => 'Can post attachments?',
-            'editing_field_caneditposts'                  => 'Can edit own posts?',
-            'editing_field_candeleteposts'                => 'Can delete own posts?',
-            'editing_field_candeletethreads'              => 'Can delete own threads?',
-            'editing_field_caneditattachments'            => 'Can update own attachments?',
-            'moderate_field_modposts'                     => 'Moderate new posts?',
-            'moderate_field_modthreads'                   => 'Moderate new threads?',
-            'moderate_field_modattachments'               => 'Moderate new attachments?',
-            'moderate_field_mod_edit_posts'               => "Moderate posts after they've been edited?",
-            'polls_field_canpostpolls'                    => 'Can post polls?',
-            'polls_field_canvotepolls'                    => 'Can vote in polls?',
-            'misc_field_cansearch'                        => 'Can search forum?',
-        ];
+        // Подписи полей: ключ ланга perm_<группа>_<поле>
+        $l = [];
+        foreach ([
+            'viewing'        => ['canview', 'canviewthreads', 'canonlyviewownthreads', 'candlattachments'],
+            'posting_rating' => ['canpostthreads', 'canpostreplys', 'canonlyreplyownthreads', 'canpostattachments'],
+            'editing'        => ['caneditposts', 'candeleteposts', 'candeletethreads', 'caneditattachments'],
+            'moderate'       => ['modposts', 'modthreads', 'modattachments', 'mod_edit_posts'],
+            'polls'          => ['canpostpolls', 'canvotepolls'],
+            'misc'           => ['cansearch'],
+        ] as $lg => $lfields) {
+            foreach ($lfields as $lf) {
+                $l[$lg . '_field_' . $lf] = htmlspecialchars_uni($L['perm_' . $lg . '_' . $lf]);
+            }
+        }
 
         // Tabs nav
         echo '<div class="container-fluid px-0">
@@ -2039,10 +2097,8 @@ if ($action === 'permissions') {
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header ' . $tab_colors[$group] . ' text-white py-3">
                             <h6 class="mb-0">
-                                <i class="fas fa-user me-2"></i>"'
-                                . htmlspecialchars_uni($usergroup['title'])
-                                . '" Custom Permissions for "'
-                                . htmlspecialchars_uni($forum['name']) . '"
+                                <i class="fas fa-user me-2"></i>'
+                                . fm_fmt_html($L['hdr_custom_perms_for'], htmlspecialchars_uni($usergroup['title']), htmlspecialchars_uni($forum['name'])) . '
                             </h6>
                         </div>
                         <div class="card-body"><div class="row">';
@@ -2077,10 +2133,10 @@ if ($action === 'permissions') {
 
         echo '<div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-2"></i>Cancel
+                    <i class="fas fa-times me-2"></i>' . htmlspecialchars_uni($L['btn_cancel']) . '
                 </button>
                 <button type="submit" class="btn btn-primary" id="savePermissions">
-                    <i class="fas fa-save me-2"></i>Save Permissions
+                    <i class="fas fa-save me-2"></i>' . htmlspecialchars_uni($L['btn_save_permissions']) . '
                 </button>
               </div>';
 
@@ -2115,10 +2171,10 @@ if ($action === 'add') {
         verify_post_check($mybb->get_input('my_post_key'));
 
         $errors = [];
-        if (!trim($mybb->input['title'])) $errors[] = 'You must enter a title';
+        if (!trim($mybb->input['title'])) $errors[] = $L['err_missing_title'];
         $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
         $type = $mybb->input['type'];
-        if ($pid <= 0 && $type === 'f') $errors[] = 'You must select a parent forum';
+        if ($pid <= 0 && $type === 'f') $errors[] = $L['err_no_parent'];
 
         if (!$errors) {
             $pid = max(0, $pid);
@@ -2176,12 +2232,12 @@ if ($action === 'add') {
 
             $plugins->run_hooks('admin_forum_management_add_commit');
             log_admin_action($fid, $insert['name']);
-            flash_message($lang->forum_management['success_forum_added'], 'success');
+            flash_message($L['flash_forum_added'], 'success');
             admin_redirect('index.php?act=management');
         }
     }
 
-    mgmt_add_breadcrumb('Add New Forum');
+    mgmt_add_breadcrumb($L['title_add_forum']);
 
     $forum_data = [
         'type'           => 'f',
@@ -2221,7 +2277,7 @@ if ($action === 'add') {
         }
     }
 
-    stdhead('Add New Forum');
+    stdhead($L['title_add_forum']);
 	
     // admin-container: без него стили forum_management.css (они ограничены этим классом) сюда не применялись
     echo '<div class="container mt-3 admin-container fm2">';
@@ -2241,26 +2297,26 @@ if ($action === 'add') {
 
     <div class="container mt-4">
     <div class="card border-0 shadow-lg">
-        <?php fm_card_header('Create New Forum', 'Configure your new forum with the settings below', 'plus-circle'); ?>
+        <?php fm_card_header(htmlspecialchars_uni($L['hdr_create_forum']), htmlspecialchars_uni($L['hdr_create_forum_sub']), 'plus-circle'); ?>
         <div class="card-body p-4">
 
             <div class="form-section">
-                <?php fm_section_header('layer-group', 'primary', 'Forum Type', 'Select the type of forum you are creating'); ?>
+                <?php fm_section_header('layer-group', 'primary', $L['sec_forum_type'], $L['sec_forum_type_desc_add']); ?>
                 <?php fm_type_cards($forum_data['type']); ?>
             </div>
 
             <div class="form-section">
-                <?php fm_section_header('info-circle', 'info', 'Basic Information', 'Essential details for your new forum'); ?>
+                <?php fm_section_header('info-circle', 'info', $L['sec_basic_info'], $L['sec_basic_info_desc']); ?>
                 <?php fm_basic_fields($forum_data); ?>
             </div>
 
             <div class="form-section">
-                <?php fm_section_header('sitemap', 'success', 'Forum Hierarchy', 'Organize your forum within the site structure'); ?>
-                <label class="form-label fw-bold">Parent Forum <span class="required-badge">Required</span></label>
-                <?= generate_forum_select('pid', $forum_data['pid'], ['id'=>'pid','class'=>'form-select form-select-lg','main_option'=>'None (Top Level)']) ?>
+                <?php fm_section_header('sitemap', 'success', $L['sec_hierarchy'], $L['sec_hierarchy_desc']); ?>
+                <label class="form-label fw-bold"><?= htmlspecialchars_uni($L['lbl_parent_forum']) ?> <span class="required-badge"><?= htmlspecialchars_uni($L['badge_required']) ?></span></label>
+                <?= generate_forum_select('pid', $forum_data['pid'], ['id'=>'pid','class'=>'form-select form-select-lg','main_option'=>$L['opt_none_top_level']]) ?>
             </div>
 
-            <?php fm_submit_row('index.php?act=management', 'Create Forum'); ?>
+            <?php fm_submit_row('index.php?act=management', $L['btn_create_forum']); ?>
         </div>
     </div>
     </div>
@@ -2272,10 +2328,10 @@ if ($action === 'add') {
 
     // ── Permissions table ─────────────────────────────────────
     $field_list2 = [
-        'canview'       => 'View',
-        'canpostthreads'=> 'Post Threads',
-        'canpostreplys' => 'Post Replies',
-        'canpostpolls'  => 'Post Polls',
+        'canview'       => htmlspecialchars_uni($L['perm_canview']),
+        'canpostthreads'=> htmlspecialchars_uni($L['perm_canpostthreads']),
+        'canpostreplys' => htmlspecialchars_uni($L['perm_canpostreplys']),
+        'canpostpolls'  => htmlspecialchars_uni($L['perm_canpostpolls']),
     ];
 
     $q = $db->sql_query_prepared("SELECT * FROM usergroups");
@@ -2283,13 +2339,13 @@ if ($action === 'add') {
     ?>
 
     <div class="card fm2-perm mt-4">
-        <?= fm_perm_card_head('Initial Permissions', 'What each group can do in the new forum — you can change this later') ?>
+        <?= fm_perm_card_head(htmlspecialchars_uni($L['hdr_initial_perms']), htmlspecialchars_uni($L['hdr_initial_perms_sub'])) ?>
         <div class="table-responsive">
         <table class="table fm2-table fm2-perm-table align-middle mb-0">
             <thead>
                 <tr>
-                    <th style="width:28%"><i class="fa-solid fa-users"></i>User group</th>
-                    <th><i class="fa-solid fa-key"></i>Permissions</th>
+                    <th style="width:28%"><i class="fa-solid fa-users"></i><?= htmlspecialchars_uni($L['col_user_group']) ?></th>
+                    <th><i class="fa-solid fa-key"></i><?= htmlspecialchars_uni($L['col_permissions']) ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -2320,13 +2376,14 @@ if ($action === 'add') {
 
         $group_icon = fm_group_icon($ug);
         $zones      = fm_perm_zones((int)$gid, $enabled_html, $disabled_html);
+        $gid_label  = ags_fmt(htmlspecialchars_uni($L['lbl_gid']), $gid);
 
 echo <<<HTML
         <tr data-group-id="{$gid}">
             <td>
                 <div class="d-flex align-items-center gap-3">
                     {$group_icon}
-                    <div><div class="fw-bold">{$title}</div><div class="fm2-gid">GID {$gid}</div></div>
+                    <div><div class="fw-bold">{$title}</div><div class="fm2-gid">{$gid_label}</div></div>
                 </div>
             </td>
             <td>
@@ -2343,9 +2400,9 @@ echo <<<HTML
         </table>
         </div>
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
-            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Permissions are saved together with the forum</span>
+            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i><?= htmlspecialchars_uni($L['hint_perms_saved_with_forum']) ?></span>
             <button type="submit" name="save" class="btn btn-primary rounded-pill px-4">
-                <i class="fas fa-floppy-disk me-2"></i>Create Forum
+                <i class="fas fa-floppy-disk me-2"></i><?= htmlspecialchars_uni($L['btn_create_forum']) ?>
             </button>
         </div>
     </div>
@@ -2369,14 +2426,14 @@ echo <<<HTML
 // ═══════════════════════════════════════════════════════════
 if ($action === 'edit') {
     if (!$mybb->input['fid']) {
-        flash_message($lang->forum_management['error_invalid_fid'], 'error');
+        flash_message($L['err_invalid_fid'], 'error');
         admin_redirect('index.php?act=management');
     }
     $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
     $query = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
     $forum_data = $query ? $db->fetch_array($query) : null;
     if (!$forum_data) {
-        flash_message($lang->forum_management['error_invalid_fid'], 'error');
+        flash_message($L['err_invalid_fid'], 'error');
         admin_redirect('index.php?act=management');
     }
 
@@ -2386,25 +2443,25 @@ if ($action === 'edit') {
 		verify_post_check($mybb->get_input('my_post_key'));
 
         $errors = [];
-        if (!trim($mybb->input['title']))    $errors[] = 'You must enter a title';
+        if (!trim($mybb->input['title']))    $errors[] = $L['err_missing_title'];
         $pid = $mybb->get_input('pid', MyBB::INPUT_INT);
-        if ($pid === $fid)                   $errors[] = 'The forum parent cannot be the forum itself';
+        if ($pid === $fid)                   $errors[] = $L['err_parent_itself'];
         else {
             $plq = $db->sql_query_prepared("SELECT parentlist FROM forums WHERE fid = ?", [$pid]);
             $parents = explode(',', $plq ? (string)$db->fetch_field($plq, 'parentlist') : '');
-            if (in_array($fid, $parents))    $errors[] = 'Cannot set parent to a child forum';
+            if (in_array($fid, $parents))    $errors[] = $L['err_parent_child'];
         }
         $type = $mybb->input['type'];
-        if ($pid <= 0 && $type === 'f')      $errors[] = 'You must select a parent forum';
+        if ($pid <= 0 && $type === 'f')      $errors[] = $L['err_no_parent'];
         if ($type === 'c' && $forum_data['type'] === 'f') {
             $ctq = $db->sql_query_prepared("SELECT COUNT(tid) as n FROM threads WHERE fid = ?", [$fid]);
             if (($ctq ? $db->fetch_field($ctq, 'n') : 0) > 0)
-                $errors[] = 'Forums with threads cannot be converted to categories';
+                $errors[] = $L['err_not_empty'];
         }
         if (!empty($mybb->input['linkto']) && empty($forum_data['linkto'])) {
             $ctq2 = $db->sql_query_prepared("SELECT COUNT(tid) as n FROM threads WHERE fid = ?", [$fid]);
             if (($ctq2 ? $db->fetch_field($ctq2, 'n') : 0) > 0)
-                $errors[] = 'Forums with threads cannot be redirected';
+                $errors[] = $L['err_link_not_empty'];
         }
 
         if (!$errors) {
@@ -2465,7 +2522,7 @@ if ($action === 'edit') {
 
             $plugins->run_hooks('admin_forum_management_edit_commit');
             log_admin_action($fid, $mybb->input['title']);
-            flash_message('The forum settings have been updated successfully', 'success');
+            flash_message($L['flash_forum_updated'], 'success');
             admin_redirect("index.php?act=management&fid={$fid}");
         }
     }
@@ -2479,9 +2536,9 @@ if ($action === 'edit') {
     }
 
     //$extra_header = "<script src=\"scripts/quick_perm_editor.js\"></script>\n";
-    mgmt_add_breadcrumb('Edit Forum');
+    mgmt_add_breadcrumb($L['title_edit_forum']);
 
-    stdhead('Edit Forum');
+    stdhead($L['title_edit_forum']);
     // admin-container: без него стили forum_management.css (они ограничены этим классом) сюда не применялись
     echo '<div class="container mt-3 admin-container fm2">';
     // Крошки убраны: дублировали вкладки ниже (View / Add Child / Edit / Copy)
@@ -2504,26 +2561,26 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
 
     <div class="container mt-4">
     <div class="card border-0 shadow-sm">
-        <?php fm_card_header('Edit Forum: ' . htmlspecialchars_uni($forum_data['title']), 'Update and configure your forum settings', 'edit'); ?>
+        <?php fm_card_header(fm_fmt_html($L['hdr_edit_forum'], htmlspecialchars_uni($forum_data['title'])), htmlspecialchars_uni($L['hdr_edit_forum_sub']), 'edit'); ?>
         <div class="card-body p-4">
 
             <div class="form-section">
-                <?php fm_section_header('layer-group','primary','Forum Type','Select the type of forum'); ?>
+                <?php fm_section_header('layer-group','primary',$L['sec_forum_type'],$L['sec_forum_type_desc_edit']); ?>
                 <?php fm_type_cards($forum_data['type']); ?>
             </div>
 
             <div class="form-section">
-                <?php fm_section_header('info-circle','info','Basic Information'); ?>
+                <?php fm_section_header('info-circle','info',$L['sec_basic_info']); ?>
                 <?php fm_basic_fields($forum_data); ?>
             </div>
 
             <div class="form-section">
-                <?php fm_section_header('sitemap','success','Forum Hierarchy'); ?>
-                <label class="form-label fw-bold">Parent Forum <span class="required-badge">Required</span></label>
-                <?= generate_forum_select('pid', $forum_data['pid'], ['id'=>'pid','class'=>'form-select form-select-lg','main_option'=>'None (Top Level)']) ?>
+                <?php fm_section_header('sitemap','success',$L['sec_hierarchy']); ?>
+                <label class="form-label fw-bold"><?= htmlspecialchars_uni($L['lbl_parent_forum']) ?> <span class="required-badge"><?= htmlspecialchars_uni($L['badge_required']) ?></span></label>
+                <?= generate_forum_select('pid', $forum_data['pid'], ['id'=>'pid','class'=>'form-select form-select-lg','main_option'=>$L['opt_none_top_level']]) ?>
             </div>
 
-            <?php fm_submit_row('index.php?act=management', 'Save Changes'); ?>
+            <?php fm_submit_row('index.php?act=management', $L['btn_save_changes']); ?>
         </div>
     </div>
     </div>
@@ -2537,7 +2594,12 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
 
     // ── Permissions table (same as add, but with existing data) ──
     $cached_forum_perms = $cache->read('forumpermissions');
-    $field_list2 = ['canview'=>'View','canpostthreads'=>'Post Threads','canpostreplys'=>'Post Replies','canpostpolls'=>'Post Polls'];
+    $field_list2 = [
+        'canview'        => htmlspecialchars_uni($L['perm_canview']),
+        'canpostthreads' => htmlspecialchars_uni($L['perm_canpostthreads']),
+        'canpostreplys'  => htmlspecialchars_uni($L['perm_canpostreplys']),
+        'canpostpolls'   => htmlspecialchars_uni($L['perm_canpostpolls']),
+    ];
     $existing_permissions = [];
 
     $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
@@ -2548,15 +2610,15 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     ?>
 
     <div class="card fm2-perm mt-4">
-        <?= fm_perm_card_head('Forum Permissions', htmlspecialchars_uni($forum_data['name']) . ' — inherited from the group unless customised') ?>
+        <?= fm_perm_card_head(htmlspecialchars_uni($L['title_forum_permissions']), fm_fmt_html($L['hdr_edit_perms_sub'], htmlspecialchars_uni($forum_data['name']))) ?>
         <div class="table-responsive">
         <table class="table fm2-table fm2-perm-table align-middle mb-0">
             <thead>
                 <tr>
-                    <th style="width:24%"><i class="fa-solid fa-users"></i>User group</th>
-                    <th><i class="fa-solid fa-key"></i>Permissions</th>
-                    <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i>Source</th>
-                    <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i>Actions</th>
+                    <th style="width:24%"><i class="fa-solid fa-users"></i><?= htmlspecialchars_uni($L['col_user_group']) ?></th>
+                    <th><i class="fa-solid fa-key"></i><?= htmlspecialchars_uni($L['col_permissions']) ?></th>
+                    <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i><?= htmlspecialchars_uni($L['col_source']) ?></th>
+                    <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i><?= htmlspecialchars_uni($L['col_actions']) ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -2589,14 +2651,14 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
 		
         $hiddenVal = implode(',', array_keys(array_filter($pc)));
         $status    = $default_checked
-            ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>Inherited</span>'
-            : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>Custom</span>';
+            ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>' . htmlspecialchars_uni($L['tag_inherited']) . '</span>'
+            : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>' . htmlspecialchars_uni($L['tag_custom']) . '</span>';
     ?>
             <tr data-group-id="<?= $gid ?>">
                 <td>
                     <div class="d-flex align-items-center gap-3">
                         <?= fm_group_icon($ug) ?>
-                        <div><div class="fw-bold"><?= $title ?></div><div class="fm2-gid">GID <?= $gid ?></div></div>
+                        <div><div class="fw-bold"><?= $title ?></div><div class="fm2-gid"><?= ags_fmt(htmlspecialchars_uni($L['lbl_gid']), $gid) ?></div></div>
                     </div>
                 </td>
                 <td>
@@ -2609,11 +2671,11 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
                 <td class="text-end text-nowrap">
                     <?php if (!$default_checked): ?>
                     <a href="index.php?act=management&action=permissions&pid=<?= $perms['pid'] ?>"
-                       class="fm2-act" title="Edit permissions"
+                       class="fm2-act" title="<?= htmlspecialchars_uni($L['tip_edit_permissions']) ?>"
                        onclick="popupWindow(this.href + '&ajax=1', null, true);return false;">
                         <i class="fas fa-pen"></i>
                     </a>
-                    <a href="javascript:void(0)" class="fm2-act text-danger clear-permission-btn" title="Reset to inherited"
+                    <a href="javascript:void(0)" class="fm2-act text-danger clear-permission-btn" title="<?= htmlspecialchars_uni($L['tip_reset_inherited']) ?>"
                        data-pid="<?= $perms['pid'] ?>" data-fid="<?= $fid ?>"
                        data-gid="<?= $gid ?>" data-group-name="<?= addslashes($title) ?>"
                        data-post-key="<?= $mybb->post_code ?>">
@@ -2621,7 +2683,7 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
                     </a>
                     <?php else: ?>
                     <a href="index.php?act=management&action=permissions&gid=<?= $gid ?>&fid=<?= $fid ?>"
-                       class="fm2-act" title="Customise"
+                       class="fm2-act" title="<?= htmlspecialchars_uni($L['tip_customise']) ?>"
                        onclick="popupWindow(this.href + '&ajax=1', null, true);return false;">
                         <i class="fas fa-sliders"></i>
                     </a>
@@ -2633,9 +2695,9 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
         </table>
         </div>
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
-            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Saved together with the forum settings above</span>
+            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i><?= htmlspecialchars_uni($L['hint_saved_with_settings']) ?></span>
             <button type="submit" name="save_forum" class="btn btn-primary rounded-pill px-4">
-                <i class="fas fa-floppy-disk me-2"></i>Save Changes
+                <i class="fas fa-floppy-disk me-2"></i><?= htmlspecialchars_uni($L['btn_save_changes']) ?>
             </button>
         </div>
     </div>
@@ -2670,7 +2732,7 @@ if($action == "deletemod")
 	// Does the forum not exist?
 	if(!$mod)
 	{
-		flash_message($lang->forum_management['error_invalid_moderator'], 'error');
+		flash_message($L['err_invalid_moderator'], 'error');
 		admin_redirect("index.php?act=management&fid={$fid}");
 	}
 
@@ -2725,7 +2787,7 @@ if($action == "deletemod")
 			log_admin_action($mid, $mod['username'], $forum['fid'], $forum['name']);
 		}
 
-		flash_message($lang->forum_management['success_moderator_deleted'], 'success');
+		flash_message($L['flash_mod_deleted'], 'success');
 		admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
 	}
 }
@@ -2742,7 +2804,7 @@ if ($action === 'delete')
     if ($mybb->request_method !== 'post')
     {
         http_response_code(405);
-        echo 'Method not allowed';
+        echo $L['err_method_not_allowed'];
         exit;
     }
 
@@ -2750,7 +2812,7 @@ if ($action === 'delete')
     if (!verify_post_check($mybb->get_input('my_post_key')))
     {
         http_response_code(403);
-        echo 'Invalid security token';
+        echo $L['err_invalid_token'];
         exit;
     }
 
@@ -2759,7 +2821,7 @@ if ($action === 'delete')
     if (!$fid)
     {
         http_response_code(400);
-        echo 'Invalid forum id';
+        echo $L['err_invalid_fid'];
         exit;
     }
 
@@ -2770,7 +2832,7 @@ if ($action === 'delete')
     if (!$forum)
     {
         http_response_code(404);
-        echo 'Forum not found';
+        echo $L['err_forum_not_found'];
         exit;
     }
 
@@ -2850,7 +2912,7 @@ if ($action === 'delete')
     // -------------------------------------------------
     // AJAX-ответ
     // -------------------------------------------------
-    echo 'Forum deleted successfully';
+    echo $L['flash_forum_deleted'];
     exit;
 }
 
@@ -2919,13 +2981,13 @@ if (!$action) {
             $cache->update_forums();
             log_admin_action('quickpermissions', $fid, $forum['name'] ?? '');
 
-            flash_message($lang->forum_management['success_forum_permissions_updated'], 'success');
+            flash_message($L['flash_perms_updated'], 'success');
             admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
 
         } elseif ($mybb->get_input('add') === 'moderators') {
             $forum = get_forum($fid, true);
             if (!$forum) {
-                flash_message($lang->forum_management['error_invalid_forum'], 'error');
+                flash_message($L['err_invalid_forum'], 'error');
                 admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
             }
 
@@ -2933,7 +2995,7 @@ if (!$action) {
                 $isgroup = 1;
                 $gid     = $mybb->get_input('usergroup', MyBB::INPUT_INT);
                 if (empty($groupscache[$gid])) {
-                    flash_message($lang->forum_management['error_moderator_not_found'], 'error');
+                    flash_message($L['err_moderator_not_found'], 'error');
                     admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
                 }
                 $newmod = ['id' => $gid, 'name' => $groupscache[$gid]['title']];
@@ -2942,7 +3004,7 @@ if (!$action) {
                 $newmod     = $newmoduser = get_user_by_username($mybb->input['username'] ?? '', $options);
                 $isgroup    = 0;
                 if (empty($newmod['id'])) {
-                    flash_message($lang->forum_management['error_moderator_not_found'], 'error');
+                    flash_message($L['err_moderator_not_found'], 'error');
                     admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
                 }
             }
@@ -2993,14 +3055,14 @@ if (!$action) {
                     $cache->update_moderators();
                     log_admin_action('addmod', $mid, $newmod['name'], $fid, $forum['name'] ?? '');
 
-                    flash_message($lang->forum_management['success_moderator_added'], 'success');
+                    flash_message($L['flash_mod_added'], 'success');
                     admin_redirect("index.php?act=management&action=editmod&mid={$mid}");
                 } else {
-                    flash_message($lang->forum_management['error_moderator_already_added'], 'error');
+                    flash_message($L['err_moderator_already_added'], 'error');
                     admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
                 }
             } else {
-                flash_message($lang->forum_management['error_moderator_not_found'], 'error');
+                flash_message($L['err_moderator_not_found'], 'error');
                 admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
             }
 
@@ -3021,7 +3083,7 @@ if (!$action) {
                         log_admin_action('orders', 0);
                     }
 
-                    flash_message($lang->forum_management['success_forum_disporder_updated'], 'success');
+                    flash_message($L['flash_disporder_updated'], 'success');
                     admin_redirect('index.php?act=management&fid=' . $mybb->get_input('fid', MyBB::INPUT_INT));
                 }
             }
@@ -3032,7 +3094,7 @@ if (!$action) {
     //$extra_header .= "<script src=\"scripts/quick_perm_editor.js\"></script>\n";
 
     if ($fid) {
-        mgmt_add_breadcrumb('View Forum', 'index.php?act=management');
+        mgmt_add_breadcrumb($L['tab_view_forum'], 'index.php?act=management');
     }
 
     if (!isset($forum_cache) || !is_array($forum_cache)) {
@@ -3048,7 +3110,7 @@ if (!$action) {
     $form = null; // Form больше не нужна - hidden-поля теперь вызываются напрямую,
     // а сам <form>-тег для этого раздела прописан вручную ниже в HTML.
 
-    stdhead('Forum Management');
+    stdhead($L['title_forum_management']);
     fm_head_assets();
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css">';
@@ -3070,7 +3132,10 @@ if (!$action) {
     }
 
     // Крошки: раньше выводились ДВЕ цепочки (mgmt_render_breadcrumb + nav.breadcrumb)
-    $crumbs = '<a href="index.php?act=management"><i class="fa-solid fa-sitemap me-1"></i>Forums</a>';
+    // Все строки ланга для вывода в HTML (текстовые узлы и атрибуты)
+    $t = array_map('htmlspecialchars_uni', $L);
+
+    $crumbs = '<a href="index.php?act=management"><i class="fa-solid fa-sitemap me-1"></i>' . $t['crumb_forums'] . '</a>';
     if ($cur) {
         foreach (array_filter(array_map('intval', explode(',', (string)($cur['parentlist'] ?? '')))) as $pfid) {
             if ($pfid === $fid || !isset($forum_cache[$pfid])) continue;
@@ -3080,9 +3145,9 @@ if (!$action) {
     }
 
     $head_actions = $cur
-        ? '<a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-pen me-1"></i>Edit</a>'
-          . '<a href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add child</a>'
-        : '<a href="index.php?act=management&amp;action=add" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add Forum</a>';
+        ? '<a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-pen me-1"></i>' . $t['btn_edit'] . '</a>'
+          . '<a href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>' . $t['btn_add_child'] . '</a>'
+        : '<a href="index.php?act=management&amp;action=add" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>' . $t['btn_add_forum'] . '</a>';
 
     $is_cat = $cur && ($cur['type'] ?? '') === 'c';
 
@@ -3095,10 +3160,10 @@ if (!$action) {
     <div class="fm2-card mb-3"><div class="fm2-head">
         <span class="fm2-head-icon ' . ($cur ? ($is_cat ? 'ic-amber' : 'ic-blue') : 'ic-purple') . '"><i class="fa-solid ' . ($cur ? ($is_cat ? 'fa-folder-open' : 'fa-comments') : 'fa-sitemap') . '"></i></span>
         <div style="min-width:0">
-            <h1 class="fm2-title">' . ($cur ? $forum_name_esc : 'Forum Management') . '</h1>
+            <h1 class="fm2-title">' . ($cur ? $forum_name_esc : $t['title_forum_management']) . '</h1>
             <div class="fm2-sub">' . ($cur
-                ? '<span class="fm2-gid">FID ' . $fid . '</span> · ' . ($is_cat ? 'Category' : 'Forum') . ' — sub-forums, permissions and moderators'
-                : 'Categories, forums and their display order') . '</div>
+                ? ags_fmt($t['hdr_view_sub'], '<span class="fm2-gid">' . ags_fmt($t['lbl_fid'], $fid) . '</span>', ($is_cat ? $t['lbl_type_category'] : $t['lbl_type_forum']))
+                : $t['hdr_main_sub']) . '</div>
         </div>
         <div class="ms-auto d-flex flex-wrap gap-2">' . $head_actions . '</div>
     </div></div>';
@@ -3106,10 +3171,10 @@ if (!$action) {
     if (!$cur) {
         echo '<div class="row g-3 mb-3">';
         foreach ([
-            ['fa-folder',        'ic-amber',  'Categories', ts_nf($n_cat)],
-            ['fa-comments',      'ic-blue',   'Forums',     ts_nf($n_forum)],
-            ['fa-file-lines',    'ic-green',  'Threads',    ts_nf($n_threads)],
-            ['fa-eye-slash',     'ic-slate',  'Inactive',   ts_nf($n_inactive)],
+            ['fa-folder',        'ic-amber',  $t['stat_categories'], ts_nf($n_cat)],
+            ['fa-comments',      'ic-blue',   $t['stat_forums'],     ts_nf($n_forum)],
+            ['fa-file-lines',    'ic-green',  $t['stat_threads'],    ts_nf($n_threads)],
+            ['fa-eye-slash',     'ic-slate',  $t['stat_inactive'],   ts_nf($n_inactive)],
         ] as [$ic, $cls, $label, $val]) {
             echo '<div class="col-6 col-md-3"><div class="fm2-card fm2-stat"><span class="fm2-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
                . '<div><div class="fm2-stat-label">' . $label . '</div><div class="fm2-stat-value">' . $val . '</div></div></div></div>';
@@ -3121,10 +3186,10 @@ if (!$action) {
     // на них ссылается существующий код и JS.
     echo '
     <ul class="nav fm2-tabs" id="forumTabs" role="tablist">
-        <li class="nav-item" role="presentation"><button class="nav-link active" id="subforums-tab" data-bs-toggle="tab" data-bs-target="#subforums" type="button" role="tab"><i class="fa-solid fa-folder-tree"></i>' . ($fid ? 'Sub-forums' : 'All forums') . '</button></li>'
+        <li class="nav-item" role="presentation"><button class="nav-link active" id="subforums-tab" data-bs-toggle="tab" data-bs-target="#subforums" type="button" role="tab"><i class="fa-solid fa-folder-tree"></i>' . ($fid ? $t['tab_subforums'] : $t['tab_all_forums']) . '</button></li>'
       . ($fid ? '
-        <li class="nav-item" role="presentation"><button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab"><i class="fa-solid fa-shield-halved"></i>Permissions</button></li>
-        <li class="nav-item" role="presentation"><button class="nav-link" id="moderators-tab" data-bs-toggle="tab" data-bs-target="#moderators" type="button" role="tab"><i class="fa-solid fa-user-shield"></i>Moderators</button></li>' : '') . '
+        <li class="nav-item" role="presentation"><button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab"><i class="fa-solid fa-shield-halved"></i>' . $t['tab_permissions'] . '</button></li>
+        <li class="nav-item" role="presentation"><button class="nav-link" id="moderators-tab" data-bs-toggle="tab" data-bs-target="#moderators" type="button" role="tab"><i class="fa-solid fa-user-shield"></i>' . $t['tab_moderators'] . '</button></li>' : '') . '
     </ul>
 
     <div class="card border-0 bg-transparent"><div class="card-body p-0">
@@ -3137,17 +3202,17 @@ if (!$action) {
 
                 <div class="fm2-card overflow-hidden">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom">
-                        <span class="fw-bold"><i class="fa-solid fa-list-ol me-2 text-body-secondary"></i>Structure</span>
+                        <span class="fw-bold"><i class="fa-solid fa-list-ol me-2 text-body-secondary"></i>' . $t['sec_structure'] . '</span>
                         <div class="position-relative fm2-search"><i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="search" class="form-control form-control-sm" id="fm2Filter" placeholder="Filter forums…"></div>
+                            <input type="search" class="form-control form-control-sm" id="fm2Filter" placeholder="' . $t['ph_filter_forums'] . '"></div>
                     </div>
                     <div class="table-responsive">
                     <table class="table fm2-table">
                         <thead><tr>
-                            <th><i class="fa-solid fa-comments"></i>Forum</th>
-                            <th class="text-center"><i class="fa-solid fa-chart-simple"></i>Content</th>
-                            <th class="text-center"><i class="fa-solid fa-arrow-down-1-9"></i>Order</th>
-                            <th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>
+                            <th><i class="fa-solid fa-comments"></i>' . $t['col_forum'] . '</th>
+                            <th class="text-center"><i class="fa-solid fa-chart-simple"></i>' . $t['col_content'] . '</th>
+                            <th class="text-center"><i class="fa-solid fa-arrow-down-1-9"></i>' . $t['col_order'] . '</th>
+                            <th class="text-end"><i class="fa-solid fa-bolt"></i>' . $t['col_actions'] . '</th>
                         </tr></thead>
                         <tbody>';
 
@@ -3155,12 +3220,12 @@ if (!$action) {
 
     if ($mgmt_row_count === 0) {
         echo '<tr><td colspan="4"><div class="fm2-empty"><i class="fa-solid fa-inbox"></i>
-                <div class="fw-semibold">' . ($fid ? 'No sub-forums yet' : 'No forums yet') . '</div>
-                <a href="index.php?act=management&amp;action=add' . ($fid ? '&amp;pid=' . $fid : '') . '" class="btn btn-sm btn-primary rounded-pill px-3 mt-2"><i class="fa-solid fa-plus me-1"></i>Add ' . ($fid ? 'child forum' : 'forum') . '</a>
+                <div class="fw-semibold">' . ($fid ? $t['empty_no_subforums'] : $t['empty_no_forums']) . '</div>
+                <a href="index.php?act=management&amp;action=add' . ($fid ? '&amp;pid=' . $fid : '') . '" class="btn btn-sm btn-primary rounded-pill px-3 mt-2"><i class="fa-solid fa-plus me-1"></i>' . ($fid ? $t['act_add_child_forum'] : $t['btn_add_forum']) . '</a>
               </div></td></tr>';
     }
 
-    echo '<tr id="fm2NoMatch" hidden><td colspan="4"><div class="fm2-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">No matches</div></div></td></tr>';
+    echo '<tr id="fm2NoMatch" hidden><td colspan="4"><div class="fm2-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">' . $t['empty_no_matches'] . '</div></div></td></tr>';
     echo '      </tbody>
                     </table>
                     </div>';
@@ -3168,10 +3233,10 @@ if (!$action) {
     if ($mgmt_row_count > 0) {
         echo '
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
-                        <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>' . $mgmt_row_count . ' item(s) · change the numbers and save to reorder</span>
+                        <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($t['hint_order_count'], $mgmt_row_count) . '</span>
                         <div class="d-flex gap-2">
-                            <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
-                            <button type="submit" name="save_forum_orders" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-floppy-disk me-1"></i>Save order</button>
+                            <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . $t['btn_reset'] . '</button>
+                            <button type="submit" name="save_forum_orders" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-floppy-disk me-1"></i>' . $t['btn_save_order'] . '</button>
                         </div>
                     </div>';
     }
@@ -3205,19 +3270,19 @@ if (!$action) {
                     <div class="card fm2-perm">
                         <div class="fm2-hdr">
                             <span class="fm2-hdr-icon ic-amber"><i class="fas fa-shield-halved"></i></span>
-                            <div style="min-width:0"><h1>Forum Permissions</h1><p>Access rights in <strong>' . $forum_name_esc . '</strong> · drag a permission between the lists</p></div>
+                            <div style="min-width:0"><h1>' . $t['title_forum_permissions'] . '</h1><p>' . ags_fmt($t['hdr_perms_sub'], '<strong>' . $forum_name_esc . '</strong>') . '</p></div>
                             <div class="ms-auto d-flex flex-wrap gap-2 fm2-legend">
-                                <span class="fm2-tag t-on"><i class="fa-solid fa-users"></i>' . count($usergroups22) . ' groups</span>
-                                <span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>' . $n_custom . ' custom</span>
+                                <span class="fm2-tag t-on"><i class="fa-solid fa-users"></i>' . ags_fmt($t['tag_groups_count'], count($usergroups22)) . '</span>
+                                <span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>' . ags_fmt($t['tag_custom_count'], $n_custom) . '</span>
                             </div>
                         </div>
                         <div class="table-responsive">
                         <table class="table fm2-table fm2-perm-table align-middle mb-0">
                             <thead><tr>
-                                <th style="width:24%"><i class="fa-solid fa-users"></i>User group</th>
-                                <th><i class="fa-solid fa-key"></i>Permissions</th>
-                                <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i>Source</th>
-                                <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i>Actions</th>
+                                <th style="width:24%"><i class="fa-solid fa-users"></i>' . $t['col_user_group'] . '</th>
+                                <th><i class="fa-solid fa-key"></i>' . $t['col_permissions'] . '</th>
+                                <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i>' . $t['col_source'] . '</th>
+                                <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i>' . $t['col_actions'] . '</th>
                             </tr></thead>
                             <tbody>';
 
@@ -3234,10 +3299,10 @@ if (!$action) {
                         </table>
                         </div>
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
-                            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Changed rows become “Custom” after saving; <i class="fa-solid fa-rotate-left mx-1"></i>returns a group to inherited</span>
+                            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($t['hint_perms_footer'], '<i class="fa-solid fa-rotate-left mx-1"></i>') . '</span>
                             <div class="d-flex gap-2">
-                                <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fas fa-rotate-left me-1"></i>Reset</button>
-                                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fas fa-floppy-disk me-1"></i>Save permissions</button>
+                                <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fas fa-rotate-left me-1"></i>' . $t['btn_reset'] . '</button>
+                                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fas fa-floppy-disk me-1"></i>' . $t['btn_save_permissions'] . '</button>
                             </div>
                         </div>
                     </div>
@@ -3267,39 +3332,39 @@ if (!$action) {
                         <div class="card fm2-perm">
                             <div class="fm2-hdr">
                                 <span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-shield"></i></span>
-                                <div style="min-width:0"><h1>Moderators</h1><p>Users and groups that moderate <strong>' . $forum_name_esc . '</strong></p></div>
+                                <div style="min-width:0"><h1>' . $t['tab_moderators'] . '</h1><p>' . ags_fmt($t['hdr_moderators_sub'], '<strong>' . $forum_name_esc . '</strong>') . '</p></div>
                                 <div class="ms-auto fm2-legend"><span class="fm2-tag t-on"><i class="fa-solid fa-user-shield"></i>' . count($current_moderators) . '</span></div>
                             </div>
                             <div class="table-responsive">
                             <table class="table fm2-table align-middle mb-0">
                                 <thead><tr>
-                                    <th><i class="fa-solid fa-user"></i>Moderator</th>
-                                    <th class="text-center"><i class="fa-solid fa-tag"></i>Type</th>
-                                    <th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>
+                                    <th><i class="fa-solid fa-user"></i>' . $t['col_moderator'] . '</th>
+                                    <th class="text-center"><i class="fa-solid fa-tag"></i>' . $t['col_type'] . '</th>
+                                    <th class="text-end"><i class="fa-solid fa-bolt"></i>' . $t['col_actions'] . '</th>
                                 </tr></thead>
                                 <tbody>';
 
         if (empty($current_moderators)) {
-            echo '<tr><td colspan="3"><div class="fm2-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">No moderators yet</div><div class="small">Add a user or a whole group on the right</div></div></td></tr>';
+            echo '<tr><td colspan="3"><div class="fm2-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">' . $t['empty_no_moderators'] . '</div><div class="small">' . $t['empty_no_moderators_hint'] . '</div></div></td></tr>';
         } else {
             foreach ($current_moderators as $moderator) {
                 $is_group = (int)$moderator['isgroup'] === 1;
                 $mod_name = htmlspecialchars_uni(($is_group ? $moderator['title'] : $moderator['username']) ?? '');
                 $display  = ($is_group || !function_exists('format_name')) ? $mod_name : format_name($mod_name, (int)($moderator['usergroup'] ?? 0));
                 $type     = $is_group
-                    ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-users"></i>Group</span>'
-                    : '<span class="fm2-tag t-forum"><i class="fa-solid fa-user"></i>User</span>';
+                    ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-users"></i>' . $t['tag_group'] . '</span>'
+                    : '<span class="fm2-tag t-forum"><i class="fa-solid fa-user"></i>' . $t['tag_user'] . '</span>';
 
                 echo '
                                 <tr>
                                     <td><div class="d-flex align-items-center gap-3">
                                         <span class="fm2-gicon ' . ($is_group ? 'ic-teal' : 'ic-blue') . '"><i class="fas ' . ($is_group ? 'fa-users' : 'fa-user') . '"></i></span>
-                                        <div><div class="fw-bold">' . ($mod_name !== '' ? $display : '<em class="text-body-secondary">deleted</em>') . '</div><div class="fm2-gid">' . ($is_group ? 'GID ' : 'UID ') . (int)$moderator['id'] . '</div></div>
+                                        <div><div class="fw-bold">' . ($mod_name !== '' ? $display : '<em class="text-body-secondary">' . $t['lbl_deleted'] . '</em>') . '</div><div class="fm2-gid">' . ags_fmt($is_group ? $t['lbl_gid'] : $t['lbl_uid'], (int)$moderator['id']) . '</div></div>
                                     </div></td>
                                     <td class="text-center">' . $type . '</td>
                                     <td class="text-end text-nowrap">
-                                        <a href="index.php?act=management&amp;action=editmod&amp;mid=' . (int)$moderator['mid'] . '" class="fm2-act" title="Edit moderator permissions"><i class="fas fa-pen"></i></a>
-                                        <a href="#" class="fm2-act text-danger delete-moderator-btn" title="Remove moderator"
+                                        <a href="index.php?act=management&amp;action=editmod&amp;mid=' . (int)$moderator['mid'] . '" class="fm2-act" title="' . $t['tip_edit_mod_perms'] . '"><i class="fas fa-pen"></i></a>
+                                        <a href="#" class="fm2-act text-danger delete-moderator-btn" title="' . $t['tip_remove_mod'] . '"
                                            data-mid="' . (int)$moderator['id'] . '" data-fid="' . $fid . '" data-isgroup="' . (int)$moderator['isgroup'] . '"
                                            data-post-key="' . $mybb->post_code . '"><i class="fas fa-trash"></i></a>
                                     </td>
@@ -3309,7 +3374,7 @@ if (!$action) {
 
         $group_options = '';
         foreach ($user_groups as $group) {
-            $group_options .= '<option value="' . (int)$group['gid'] . '">' . htmlspecialchars_uni($group['title']) . ' (GID ' . (int)$group['gid'] . ')</option>';
+            $group_options .= '<option value="' . (int)$group['gid'] . '">' . htmlspecialchars_uni($group['title']) . ' (' . ags_fmt($t['lbl_gid'], (int)$group['gid']) . ')</option>';
         }
 
         echo '
@@ -3323,29 +3388,29 @@ if (!$action) {
                         <div class="fm2-sticky">
                             <div class="card fm2-perm mb-3">
                                 <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-blue" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-user-plus"></i></span>
-                                    <div><h1 style="font-size:1.05rem">Add user</h1><p style="font-size:.85rem">A single member moderates this forum</p></div></div>
+                                    <div><h1 style="font-size:1.05rem">' . $t['hdr_add_user'] . '</h1><p style="font-size:.85rem">' . $t['hdr_add_user_sub'] . '</p></div></div>
                                 <form method="post" action="index.php?act=management" class="p-3">
                                     <input type="hidden" name="fid" value="' . $fid . '">
                                     <input type="hidden" name="add" value="moderators">
                                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                    <label class="form-label" for="fm2ModUser"><i class="fa-solid fa-user me-1 text-body-secondary"></i>Username</label>
-                                    <input type="text" id="fm2ModUser" name="username" class="form-control mb-3" placeholder="Start typing…" required autocomplete="off"
+                                    <label class="form-label" for="fm2ModUser"><i class="fa-solid fa-user me-1 text-body-secondary"></i>' . $t['lbl_username'] . '</label>
+                                    <input type="text" id="fm2ModUser" name="username" class="form-control mb-3" placeholder="' . $t['ph_start_typing'] . '" required autocomplete="off"
                                            data-autocomplete-url="../xmlhttp.php?action=get_users">
-                                    <button type="submit" class="btn btn-primary rounded-pill w-100"><i class="fas fa-user-plus me-1"></i>Add user</button>
+                                    <button type="submit" class="btn btn-primary rounded-pill w-100"><i class="fas fa-user-plus me-1"></i>' . $t['btn_add_user'] . '</button>
                                 </form>
                             </div>
                             <div class="card fm2-perm">
                                 <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-teal" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-users"></i></span>
-                                    <div><h1 style="font-size:1.05rem">Add group</h1><p style="font-size:.85rem">Every member of the group moderates</p></div></div>
+                                    <div><h1 style="font-size:1.05rem">' . $t['hdr_add_group'] . '</h1><p style="font-size:.85rem">' . $t['hdr_add_group_sub'] . '</p></div></div>
                                 <form method="post" action="index.php?act=management" class="p-3">
                                     <input type="hidden" name="fid" value="' . $fid . '">
                                     <input type="hidden" name="add" value="moderators">
                                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                    <label class="form-label" for="fm2ModGroup"><i class="fa-solid fa-users me-1 text-body-secondary"></i>User group</label>
+                                    <label class="form-label" for="fm2ModGroup"><i class="fa-solid fa-users me-1 text-body-secondary"></i>' . $t['lbl_user_group'] . '</label>
                                     <select id="fm2ModGroup" name="usergroup" class="form-select mb-3" required>
-                                        <option value="">— Select group —</option>' . $group_options . '
+                                        <option value="">' . $t['opt_select_group'] . '</option>' . $group_options . '
                                     </select>
-                                    <button type="submit" class="btn btn-outline-primary rounded-pill w-100"><i class="fas fa-plus me-1"></i>Add group</button>
+                                    <button type="submit" class="btn btn-outline-primary rounded-pill w-100"><i class="fas fa-plus me-1"></i>' . $t['btn_add_group'] . '</button>
                                 </form>
                             </div>
                         </div>
@@ -3365,7 +3430,7 @@ if (!$action) {
 </div>';
 
     $plugins->run_hooks('admin_forum_management_start_graph');
-    echo '<script src="scripts/deleteForum.js"></script>';
+    echo '<script src="scripts/deleteForum.js?ver=2112"></script>';
     // Поповеры, открытие вкладки по #tab_… и фильтр списка — в scripts/forum_management.js
 	stdfoot();
 	exit;
@@ -3428,6 +3493,8 @@ function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid = 0, $depth = 
     global $mybb, $lang, $db, $sub_forums;
     static $forums_by_parent;
 
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
     if (!is_array($forums_by_parent)) {
         $forum_cache = cache_forums();
         foreach ($forum_cache as $forum) {
@@ -3485,17 +3552,17 @@ function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid = 0, $depth = 
             $children_n = isset($forums_by_parent[$fid]) ? subforums_count2($forums_by_parent[$fid]) : 0;
 
             $tags = $is_cat
-                ? '<span class="fm2-tag t-cat"><i class="fa-solid fa-folder"></i>Category</span>'
-                : '<span class="fm2-tag t-forum"><i class="fa-solid fa-comments"></i>Forum</span>';
-            if ($inactive) $tags .= ' <span class="fm2-tag t-off"><i class="fa-solid fa-eye-slash"></i>Inactive</span>';
-            if ($closed)   $tags .= ' <span class="fm2-tag t-closed"><i class="fa-solid fa-lock"></i>Closed</span>';
+                ? '<span class="fm2-tag t-cat"><i class="fa-solid fa-folder"></i>' . $t['lbl_type_category'] . '</span>'
+                : '<span class="fm2-tag t-forum"><i class="fa-solid fa-comments"></i>' . $t['lbl_type_forum'] . '</span>';
+            if ($inactive) $tags .= ' <span class="fm2-tag t-off"><i class="fa-solid fa-eye-slash"></i>' . $t['tag_inactive'] . '</span>';
+            if ($closed)   $tags .= ' <span class="fm2-tag t-closed"><i class="fa-solid fa-lock"></i>' . $t['tag_closed'] . '</span>';
             if ($children_n) $tags .= ' <span class="fm2-tag t-sub"><i class="fa-solid fa-sitemap"></i>' . $children_n . '</span>';
 
             $cnt     = fm_forum_counts()[$fid] ?? [];
             $content = $is_cat
                 ? '<span class="fm2-muted">—</span>'
-                : '<div class="fm2-counts"><span title="Threads"><i class="fa-solid fa-file-lines"></i>' . number_format((int)($cnt['threads'] ?? 0)) . '</span>'
-                  . '<span title="Posts"><i class="fa-solid fa-comment"></i>' . number_format((int)($cnt['posts'] ?? 0)) . '</span></div>';
+                : '<div class="fm2-counts"><span title="' . $t['tip_threads'] . '"><i class="fa-solid fa-file-lines"></i>' . number_format((int)($cnt['threads'] ?? 0)) . '</span>'
+                  . '<span title="' . $t['tip_posts'] . '"><i class="fa-solid fa-comment"></i>' . number_format((int)($cnt['posts'] ?? 0)) . '</span></div>';
 
             $icon = $is_cat
                 ? '<span class="fm2-ficon ic-amber"><i class="fa-solid fa-folder' . ($inactive ? '' : '-open') . '"></i></span>'
@@ -3522,7 +3589,7 @@ function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid = 0, $depth = 
                 </td>
                 <td class="text-center">' . $content . '</td>
                 <td class="text-center">
-                    <input type="number" name="disporder[' . $fid . ']" value="' . (int)$forum['disporder'] . '" min="0" class="form-control form-control-sm fm2-order" aria-label="Display order">
+                    <input type="number" name="disporder[' . $fid . ']" value="' . (int)$forum['disporder'] . '" min="0" class="form-control form-control-sm fm2-order" aria-label="' . $t['aria_display_order'] . '">
                 </td>
                 <td class="text-end text-nowrap">' . generate_forum_actions($forum) . '</td>
             </tr>';
@@ -3539,22 +3606,25 @@ function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid = 0, $depth = 
  */
 function generate_forum_actions($forum)
 {
+    global $lang;
+    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
+
     $fid  = (int)$forum['fid'];
     $name = htmlspecialchars_uni((string)$forum['name']);
 
     return '
     <div class="fm2-actions">
-        <a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="fm2-act" data-bs-toggle="popover" data-bs-content="Edit"><i class="fa-solid fa-pen"></i></a>
-        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_permissions" class="fm2-act" data-bs-toggle="popover" data-bs-content="Permissions"><i class="fa-solid fa-shield-halved"></i></a>
-        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_moderators" class="fm2-act" data-bs-toggle="popover" data-bs-content="Moderators"><i class="fa-solid fa-user-shield"></i></a>
+        <a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['btn_edit'] . '"><i class="fa-solid fa-pen"></i></a>
+        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_permissions" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['tab_permissions'] . '"><i class="fa-solid fa-shield-halved"></i></a>
+        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_moderators" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['tab_moderators'] . '"><i class="fa-solid fa-user-shield"></i></a>
         <div class="dropdown d-inline-block">
-            <button class="fm2-act" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+            <button class="fm2-act" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="' . $t['aria_more'] . '"><i class="fa-solid fa-ellipsis-vertical"></i></button>
             <ul class="dropdown-menu dropdown-menu-end shadow-sm border">
-                <li><a class="dropdown-item" href="index.php?act=management&amp;fid=' . $fid . '"><i class="fa-solid fa-sitemap fa-fw me-2"></i>Open / sub-forums</a></li>
-                <li><a class="dropdown-item" href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '"><i class="fa-solid fa-circle-plus fa-fw me-2"></i>Add child forum</a></li>
-                <li><a class="dropdown-item" href="index.php?act=management&amp;action=copy&amp;fid=' . $fid . '"><i class="fa-solid fa-copy fa-fw me-2"></i>Copy forum</a></li>
+                <li><a class="dropdown-item" href="index.php?act=management&amp;fid=' . $fid . '"><i class="fa-solid fa-sitemap fa-fw me-2"></i>' . $t['act_open_subforums'] . '</a></li>
+                <li><a class="dropdown-item" href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '"><i class="fa-solid fa-circle-plus fa-fw me-2"></i>' . $t['act_add_child_forum'] . '</a></li>
+                <li><a class="dropdown-item" href="index.php?act=management&amp;action=copy&amp;fid=' . $fid . '"><i class="fa-solid fa-copy fa-fw me-2"></i>' . $t['act_copy_forum'] . '</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-danger delete_employee" href="javascript:void(0)" data-emp-id="' . $fid . '" data-forum-name="' . $name . '"><i class="fa-solid fa-trash fa-fw me-2"></i>Delete forum</a></li>
+                <li><a class="dropdown-item text-danger delete_employee" href="javascript:void(0)" data-emp-id="' . $fid . '" data-forum-name="' . $name . '"><i class="fa-solid fa-trash fa-fw me-2"></i>' . $t['act_delete_forum'] . '</a></li>
             </ul>
         </div>
     </div>';

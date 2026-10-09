@@ -27,6 +27,25 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once $rootpath . 'global.php';
+$lang->load('staffpanel');
+
+/**
+ * Подстановка {1}, {2}… в строку ланга.
+ * $lang->load() превращает {N} в %N$s, поэтому заменяем оба формата.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string) $arg;
+            $map['%' . $n . '$s'] = (string) $arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 gzip();
 
 maxsysop();
@@ -57,7 +76,7 @@ if (totp_is_enabled($admin_uid)) {
             ];
             unset($_SESSION['admin_2fa_fail_count']);
         } else {
-            $admin_2fa_err = 'Invalid or expired code. Please try again.';
+            $admin_2fa_err = $lang->staffpanel['err_2fa_invalid'];
 
             $_SESSION['admin_2fa_fail_count'] = ($_SESSION['admin_2fa_fail_count'] ?? 0) + 1;
 
@@ -79,11 +98,11 @@ if (totp_is_enabled($admin_uid)) {
     if (!$ok) {
         $base = rtrim($BASEURL, '/');
         echo '<!DOCTYPE html>
-<html lang="en">
+<html lang="' . htmlspecialchars($lang->staffpanel['html_lang']) . '">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>' . htmlspecialchars($SITENAME) . ' — Admin 2FA</title>
+    <title>' . htmlspecialchars($SITENAME) . ' — ' . htmlspecialchars($lang->staffpanel['title_2fa']) . '</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -93,17 +112,17 @@ if (totp_is_enabled($admin_uid)) {
             <div class="card-header bg-dark text-white text-center">
                 <h5 class="mb-0">
                     <i class="fa-solid fa-shield-halved me-2"></i>
-                    Admin Panel — Two-Factor Authentication
+                    ' . htmlspecialchars($lang->staffpanel['head_2fa']) . '
                 </h5>
             </div>
             <div class="card-body">
                 ' . ($admin_2fa_err ? '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($admin_2fa_err) . '</div>' : '') . '
                 <p class="text-muted small mb-3">
-                    Enter the 6-digit code from your authenticator app.
+                    ' . htmlspecialchars($lang->staffpanel['hint_2fa_enter']) . '
                 </p>
                 <form method="post" action="">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Authentication Code</label>
+                        <label class="form-label fw-bold">' . htmlspecialchars($lang->staffpanel['lbl_2fa_code']) . '</label>
                         <input type="text" name="admin_totp_code"
                                class="form-control form-control-lg text-center fw-bold"
                                style="letter-spacing:.3rem"
@@ -113,17 +132,17 @@ if (totp_is_enabled($admin_uid)) {
                     </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-right-to-bracket me-2"></i>Verify & Enter
+                            <i class="fa-solid fa-right-to-bracket me-2"></i>' . htmlspecialchars($lang->staffpanel['btn_2fa_verify']) . '
                         </button>
                     </div>
                 </form>
             </div>
             <div class="card-footer text-center">
                 <a href="' . $base . '/index.php" class="small text-muted">
-                    <i class="fa-solid fa-arrow-left me-1"></i>Back to site
+                    <i class="fa-solid fa-arrow-left me-1"></i>' . htmlspecialchars($lang->staffpanel['lnk_back_to_site']) . '
                 </a>
                 &nbsp;&bull;&nbsp;
-                <small class="text-muted">Logged in as <strong>' . htmlspecialchars($CURUSER['username']) . '</strong></small>
+                <small class="text-muted">' . ags_fmt($lang->staffpanel['logged_in_as'], htmlspecialchars($CURUSER['username'])) . '</small>
             </div>
         </div>
     </div>
@@ -138,12 +157,17 @@ if (totp_is_enabled($admin_uid)) {
     // until 2FA is set up; there is no bypass.
     $base = rtrim($BASEURL, '/');
 
+    $usercp_link = '<a href="' . $base . '/usercp.php?action=2fa" target="_blank">'
+                 . '<i class="fa-solid fa-shield-halved me-1"></i>'
+                 . htmlspecialchars($lang->staffpanel['lnk_2fa_usercp'])
+                 . '</a>';
+
     echo '<!DOCTYPE html>
-<html lang="en">
+<html lang="' . htmlspecialchars($lang->staffpanel['html_lang']) . '">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>' . htmlspecialchars($SITENAME) . ' — Admin Security Warning</title>
+    <title>' . htmlspecialchars($SITENAME) . ' — ' . htmlspecialchars($lang->staffpanel['title_2fa_required']) . '</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -153,27 +177,23 @@ if (totp_is_enabled($admin_uid)) {
             <div class="card-header bg-danger text-white text-center">
                 <h5 class="mb-0">
                     <i class="fa-solid fa-shield-halved me-2"></i>
-                    2FA Required
+                    ' . htmlspecialchars($lang->staffpanel['head_2fa_required']) . '
                 </h5>
             </div>
             <div class="card-body">
                 <div class="alert alert-danger">
-                    <strong>Two-Factor Authentication is required for admin access.</strong><br>
-                    <small>Your account does not have 2FA enabled. For security reasons, the admin panel cannot be accessed until you set it up.</small>
+                    <strong>' . htmlspecialchars($lang->staffpanel['msg_2fa_required']) . '</strong><br>
+                    <small>' . htmlspecialchars($lang->staffpanel['msg_2fa_not_enabled']) . '</small>
                 </div>
                 <p class="text-muted small">
-                    Set up 2FA in your
-                    <a href="' . $base . '/usercp.php?action=2fa" target="_blank">
-                        <i class="fa-solid fa-shield-halved me-1"></i>User Control Panel
-                    </a>,
-                    then return to this page.
+                    ' . ags_fmt(htmlspecialchars($lang->staffpanel['hint_2fa_setup']), $usercp_link) . '
                 </p>
                 <a href="' . $base . '/usercp.php?action=2fa" class="btn btn-danger w-100">
-                    <i class="fa-solid fa-shield-halved me-2"></i>Enable 2FA Now
+                    <i class="fa-solid fa-shield-halved me-2"></i>' . htmlspecialchars($lang->staffpanel['btn_2fa_enable']) . '
                 </a>
             </div>
             <div class="card-footer text-center">
-                <small class="text-muted">Logged in as <strong>' . htmlspecialchars($CURUSER['username']) . '</strong></small>
+                <small class="text-muted">' . ags_fmt($lang->staffpanel['logged_in_as'], htmlspecialchars($CURUSER['username'])) . '</small>
             </div>
         </div>
     </div>
@@ -190,16 +210,28 @@ flash_message();
 
 /**
  * Подключает staff.css + staff.js один раз за запрос.
+ * Перед скриптом выводит AGS_LANG — все ключи js_* ланга без префикса.
  * Вызывать после stdhead().
  */
 function enqueue_staff_assets(): void
 {
-    global $BASEURL;
+    global $BASEURL, $lang;
     static $done = false;
     if ($done) return;
     $done = true;
+
+    $js_lang = [];
+    foreach ($lang->staffpanel as $k => $v) {
+        if (str_starts_with((string) $k, 'js_')) {
+            $js_lang[substr((string) $k, 3)] = $v;
+        }
+    }
+
     echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staff.css">' . "\n";
-    echo '<script defer src="'           . $BASEURL . '/admin/scripts/staff.js"></script>' . "\n";
+    echo '<script>const AGS_LANG = '
+       . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+       . ';</script>' . "\n";
+    echo '<script defer src="'           . $BASEURL . '/admin/scripts/staff.js?ver=2"></script>' . "\n";
     echo '<div class="sp-root">' . "\n";
 }
 
@@ -249,7 +281,14 @@ exit();
 
 function render_floating_bar(): void
 {
-    global $BASEURL;
+    global $BASEURL, $lang;
+
+    $fb_badge     = htmlspecialchars($lang->staffpanel['fb_badge']);
+    $fb_title     = htmlspecialchars($lang->staffpanel['fb_title']);
+    $fb_subtitle  = htmlspecialchars($lang->staffpanel['fb_subtitle']);
+    $fb_dashboard = htmlspecialchars($lang->staffpanel['fb_dashboard']);
+    $fb_close     = htmlspecialchars($lang->staffpanel['fb_close'], ENT_QUOTES);
+
     // Только минимальный инлайн CSS для floating bar —
     // staff.css не подключаем чтобы не конфликтовать с Bootstrap на динамических страницах
     echo <<<HTML
@@ -275,19 +314,19 @@ HTML;
     echo <<<HTML
 <div id="adminFloatingBar" class="admin-floating-bar">
     <div class="floating-bar-pulse"></div>
-    <div class="floating-bar-badge">ADMIN</div>
+    <div class="floating-bar-badge">{$fb_badge}</div>
     <div class="floating-bar-content">
         <div class="floating-bar-icon"><i class="fas fa-user-shield"></i></div>
         <div class="floating-bar-text">
-            <strong>Staff Panel</strong>
-            <div style="font-size:11px;opacity:.9">Administrative Access</div>
+            <strong>{$fb_title}</strong>
+            <div style="font-size:11px;opacity:.9">{$fb_subtitle}</div>
         </div>
         <div class="floating-bar-actions">
             <a href="{$BASEURL}/admin/index.php" class="floating-bar-link">
-                <i class="fas fa-tachometer-alt"></i> Dashboard
+                <i class="fas fa-tachometer-alt"></i> {$fb_dashboard}
             </a>
         </div>
-        <button class="floating-bar-close" title="Close"><i class="fas fa-times"></i></button>
+        <button class="floating-bar-close" title="{$fb_close}" aria-label="{$fb_close}"><i class="fas fa-times"></i></button>
     </div>
 </div>
 <script>
@@ -310,19 +349,19 @@ HTML;
 
 function render_stafftools_page(): void
 {
-    global $thispath;
-	
+    global $thispath, $lang;
+
 	require_once $thispath . 'include/stafftoolsfunctions.php';
-   
-	
-	stdhead('Staff Tools');
+
+
+	stdhead($lang->staffpanel['page_stafftools']);
     enqueue_staff_assets();
     menu('stafftools');
-	
+
     echo '<div class="container mt-3">';
       get_list();
     echo '</div>';
-	
+
     echo '</td></tr></table>';
     stdfoot();
 }
@@ -334,10 +373,10 @@ function render_stafftools_page(): void
 
 function handle_managestafftools(): void
 {
-    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb;
-    
+    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb, $lang;
+
 	require_once $thispath . 'include/stafftoolsfunctions.php';
-	
+
 	_access_check_();
 
     // CSRF - раньше отсутствовал вообще везде в этом блоке. save_tool()
@@ -360,24 +399,25 @@ function handle_managestafftools(): void
     if ($do === 'edit'     && $id !== null) { render_tool_form('edit', fetch_tool($id)); return; }
     if ($do === 'savetool' && $id !== null) { save_tool('edit', $id);                   return; }
 
-  
-    
+
+
 
    // Список инструментов
-    stdhead('Manage Staff Tools');
+    stdhead($lang->staffpanel['page_manage']);
     enqueue_staff_assets();
     menu('managestafftools');
-    $add_btn = '<p align="right"><input type="button" class="hoptobutton" value="Add New Tool"'
+    $add_btn = '<p align="right"><input type="button" class="hoptobutton" value="'
+             . htmlspecialchars($lang->staffpanel['btn_add_tool'], ENT_QUOTES) . '"'
              . ' onClick="jumpto(\'' . $_this_script_no_act . '?act=managestafftools&do=newtool\')"></p>';
     echo $add_btn;
-    
+
 	echo '
-	
+
 	<div class="container mt-3">
 	<table align="center" border="0" class="tborder" cellpadding="0" cellspacing="0" width="100%">
-    <tbody><tr><td><table class="tback" border="0" cellpadding="6" cellspacing="0" width="100%"><tbody><tr><td class="thead" colspan="6" align="center">Manage Staff Tools</td></tr>';
-	
-	
+    <tbody><tr><td><table class="tback" border="0" cellpadding="6" cellspacing="0" width="100%"><tbody><tr><td class="thead" colspan="6" align="center">' . htmlspecialchars($lang->staffpanel['thead_manage']) . '</td></tr>';
+
+
     get_list2();
     echo '</table></tbody></td></tr></table></tbody></div></td></tr></table>';
     echo '</div>';
@@ -389,15 +429,15 @@ function handle_managestafftools(): void
 
 function fetch_tool(int $id): array
 {
-    global $db;
+    global $db, $lang;
     $sql = $db->sql_query_prepared('SELECT * FROM staffpanel WHERE id = ?', [$id]);
-    if (!$sql || $db->num_rows($sql) === 0) { stderr('Error! Tool not found.'); exit(); }
+    if (!$sql || $db->num_rows($sql) === 0) { stderr($lang->staffpanel['err_tool_not_found']); exit(); }
     return $db->fetch_array($sql);
 }
 
 function save_tool(string $mode, int $id = 0): void
 {
-    global $db, $thispath;
+    global $db, $thispath, $lang;
 
     $name        = htmlspecialchars_uni($_POST['name']        ?? '');
     $description = htmlspecialchars_uni($_POST['description'] ?? '');
@@ -405,11 +445,10 @@ function save_tool(string $mode, int $id = 0): void
     $groups      = !empty($_POST['gid']) ? implode(',', $_POST['gid']) : '';
 
     if (empty($name) || empty($description) || empty($groups)) {
-        stderr("Error! Don't leave any fields blank!"); return;
+        stderr($lang->staffpanel['err_fields_blank']); return;
     }
     if (!file_exists($thispath . $filename)) {
-        stderr('Error: File <b>' . htmlspecialchars($thispath . 'admin/' . $filename)
-             . '</b> does not exist.', false); return;
+        stderr(ags_fmt($lang->staffpanel['err_file_missing'], htmlspecialchars($thispath . 'admin/' . $filename)), false); return;
     }
 
     $data = [
@@ -426,27 +465,27 @@ function save_tool(string $mode, int $id = 0): void
             "INSERT INTO staffpanel (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
             array_values($data)
         );
-        redirect('admin/index.php?act=' . $name, 'The new tool has been added.');
+        redirect('admin/index.php?act=' . $name, $lang->staffpanel['flash_tool_added']);
     } else {
         $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($data)));
         $params = array_values($data);
         $params[] = $id;
         $db->sql_query_prepared("UPDATE staffpanel SET {$set} WHERE id = ?", $params);
-        redirect('index.php?act=managestafftools', 'The tool has been updated.');
+        redirect('index.php?act=managestafftools', $lang->staffpanel['flash_tool_updated']);
     }
 }
 
 function render_delete_confirm(int $id): void
 {
-    global $_this_script_, $mybb;
+    global $_this_script_, $mybb, $lang;
 
-    stdhead('Confirm Delete');
+    stdhead($lang->staffpanel['page_confirm_delete']);
     echo '<div class="container mt-4"><div class="alert alert-warning">
-        <p>Are you sure you want to delete this tool?</p>
+        <p>' . htmlspecialchars($lang->staffpanel['del_question']) . '</p>
         <form method="post" action="' . $_this_script_ . '&do=delete&id=' . $id . '">
             <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-            <button type="submit" class="btn btn-danger">Yes, delete it</button>
-            <a href="' . $_this_script_ . '" class="btn btn-secondary">No, go back</a>
+            <button type="submit" class="btn btn-danger">' . htmlspecialchars($lang->staffpanel['btn_del_yes']) . '</button>
+            <a href="' . $_this_script_ . '" class="btn btn-secondary">' . htmlspecialchars($lang->staffpanel['btn_del_no']) . '</a>
         </form>
     </div></div>';
     stdfoot();
@@ -454,25 +493,25 @@ function render_delete_confirm(int $id): void
 
 function delete_tool(int $id): void
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $lang;
 
     $db->sql_query_prepared('DELETE FROM staffpanel WHERE id = ?', [$id]);
-    redirect('admin/index.php?act=managestafftools', 'The tool has been deleted.');
+    redirect('admin/index.php?act=managestafftools', $lang->staffpanel['flash_tool_deleted']);
 }
 
 function render_tool_form(string $mode, ?array $tool = null): void
 {
-    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb;
-	
+    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb, $lang;
+
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
     $is_edit     = $mode === 'edit';
-    $title       = $is_edit ? 'Edit Tool'   : 'Create New Tool';
+    $title       = $is_edit ? $lang->staffpanel['form_title_edit'] : $lang->staffpanel['form_title_create'];
     $accent      = $is_edit ? '#f59e0b'     : '#3b82f6';
     $accent_hov  = $is_edit ? '#d97706'     : '#1d4ed8';
     $icon        = $is_edit ? 'fa-edit'     : 'fa-plus-circle';
     $btn_class   = $is_edit ? 'btn-warning' : 'btn-primary';
-    $btn_label   = $is_edit ? 'Update Tool' : 'Create Tool';
+    $btn_label   = htmlspecialchars($is_edit ? $lang->staffpanel['btn_update'] : $lang->staffpanel['btn_create']);
     $form_action = $is_edit
         ? $_this_script_ . '&do=savetool&id=' . $tool['id']
         : $_this_script_ . '&do=savenewtool';
@@ -483,11 +522,29 @@ function render_tool_form(string $mode, ?array $tool = null): void
     $tool_groups = $is_edit ? explode(',', $tool['usergroups'])       : [];
     $post_key    = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
 
+    // Тексты формы (чистый текст из ланга → экранируем)
+    $t_title        = htmlspecialchars($title);
+    $t_subtitle     = htmlspecialchars($lang->staffpanel['form_subtitle']);
+    $t_lbl_name     = htmlspecialchars($lang->staffpanel['lbl_tool_name']);
+    $t_ph_name      = htmlspecialchars($lang->staffpanel['ph_tool_name'], ENT_QUOTES);
+    $t_lbl_desc     = htmlspecialchars($lang->staffpanel['lbl_description']);
+    $t_ph_desc      = htmlspecialchars($lang->staffpanel['ph_description'], ENT_QUOTES);
+    $t_lbl_file     = htmlspecialchars($lang->staffpanel['lbl_filename']);
+    $t_hint_file    = htmlspecialchars($lang->staffpanel['hint_filename']);
+    $t_lbl_perms    = htmlspecialchars($lang->staffpanel['lbl_permissions']);
+    $t_badge_def    = htmlspecialchars($lang->staffpanel['badge_default']);
+    $t_check_all    = htmlspecialchars($lang->staffpanel['btn_check_all']);
+    $t_uncheck_all  = htmlspecialchars($lang->staffpanel['btn_uncheck_all']);
+    $t_lbl_id       = htmlspecialchars($lang->staffpanel['lbl_id']);
+    $t_lbl_created  = htmlspecialchars($lang->staffpanel['lbl_created']);
+    $t_back         = htmlspecialchars($lang->staffpanel['btn_back']);
+    $t_reset        = htmlspecialchars($lang->staffpanel['btn_reset']);
+
     stdhead($title);
     enqueue_staff_assets();
-	
-	
-	
+
+
+
     echo "<style>:root{--staff-accent:{$accent};--staff-accent-hover:{$accent_hov};}</style>\n";
     menu('managestafftools');
 
@@ -500,31 +557,31 @@ function render_tool_form(string $mode, ?array $tool = null): void
              style="background:linear-gradient(135deg,var(--staff-accent),var(--staff-accent-hover))">
           <div class="staff-header-icon"><i class="fas {$icon}"></i></div>
           <div>
-            <h4 class="mb-1 fw-bold">{$title}</h4>
-            <p class="mb-0" style="opacity:.8;font-size:.9em">Manage staff tool settings and permissions</p>
+            <h4 class="mb-1 fw-bold">{$t_title}</h4>
+            <p class="mb-0" style="opacity:.8;font-size:.9em">{$t_subtitle}</p>
           </div>
         </div>
         <div class="p-4">
           <form method="post" action="{$form_action}" class="needs-validation" novalidate>
             <input type="hidden" name="my_post_key" value="{$post_key}">
             <div class="mb-4">
-              <label class="fw-semibold mb-1">Tool Name</label>
+              <label class="fw-semibold mb-1">{$t_lbl_name}</label>
               <input type="text" class="form-control staff-form-control" id="toolName" name="name"
-                     value="{$val_name}" placeholder="e.g. User Manager" required>
+                     value="{$val_name}" placeholder="{$t_ph_name}" required>
             </div>
             <div class="mb-4">
-              <label class="fw-semibold mb-1">Description</label>
+              <label class="fw-semibold mb-1">{$t_lbl_desc}</label>
               <input type="text" class="form-control staff-form-control" name="description"
-                     value="{$val_desc}" placeholder="What does this tool do?" required>
+                     value="{$val_desc}" placeholder="{$t_ph_desc}" required>
             </div>
             <div class="mb-4">
-              <label class="fw-semibold mb-1">File Name</label>
+              <label class="fw-semibold mb-1">{$t_lbl_file}</label>
               <input type="text" class="form-control staff-form-control" id="toolFilename"
                      name="filename" value="{$val_file}" placeholder="tool.php" required>
-              <div class="form-text text-muted">PHP file name without path.</div>
+              <div class="form-text text-muted">{$t_hint_file}</div>
             </div>
             <div class="mb-4">
-              <label class="fw-semibold mb-2">Access Permissions</label>
+              <label class="fw-semibold mb-2">{$t_lbl_perms}</label>
               <div class="staff-permissions">
 HTML;
 
@@ -534,11 +591,11 @@ HTML;
             ? in_array('[' . $g['gid'] . ']', $tool_groups)
             : $g['gid'] == UC_SYSOP) ? 'checked' : '';
         //$label   = get_user_color($g['title'], $g['namestyle']);
-		
+
 		$label = str_replace('{username}', $g['title'], $g['namestyle']);
-		
+
         $default = (!$is_edit && $g['gid'] == UC_SYSOP)
-            ? ' <span class="badge bg-primary ms-1" style="font-size:.7em">Default</span>' : '';
+            ? ' <span class="badge bg-primary ms-1" style="font-size:.7em">' . $t_badge_def . '</span>' : '';
         echo <<<HTML
                 <div class="form-check">
                   <input class="form-check-input perm-cb" type="checkbox"
@@ -552,10 +609,10 @@ HTML;
               </div>
               <div class="mt-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="setPerms(true)">
-                  <i class="fas fa-check-double me-1"></i>Check All
+                  <i class="fas fa-check-double me-1"></i>{$t_check_all}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPerms(false)">
-                  <i class="fas fa-times me-1"></i>Uncheck All
+                  <i class="fas fa-times me-1"></i>{$t_uncheck_all}
                 </button>
               </div>
             </div>
@@ -566,7 +623,7 @@ HTML;
         echo <<<HTML
             <div class="alert alert-info border-0 rounded-3 mb-4">
               <i class="fas fa-info-circle me-2"></i>
-              <strong>ID:</strong> {$tool['id']} &nbsp;|&nbsp; <strong>Created:</strong> {$created}
+              <strong>{$t_lbl_id}</strong> {$tool['id']} &nbsp;|&nbsp; <strong>{$t_lbl_created}</strong> {$created}
             </div>
 HTML;
     }
@@ -574,11 +631,11 @@ HTML;
     echo <<<HTML
             <div class="d-flex justify-content-between align-items-center pt-3 border-top">
               <a href="{$_this_script_no_act}?act=managestafftools" class="btn btn-outline-secondary staff-btn">
-                <i class="fas fa-arrow-left me-1"></i> Back
+                <i class="fas fa-arrow-left me-1"></i> {$t_back}
               </a>
               <div class="d-flex gap-2">
                 <button type="reset" class="btn btn-outline-danger staff-btn">
-                  <i class="fas fa-undo me-1"></i> Reset
+                  <i class="fas fa-undo me-1"></i> {$t_reset}
                 </button>
                 <button type="submit" class="btn {$btn_class} staff-btn px-4">
                   <i class="fas fa-save me-1"></i> {$btn_label}
@@ -607,25 +664,25 @@ function handle_securitycheck(): void
 {
     global $db, $BASEURL, $iv, $securelogin, $bannedclientdetect, $maxloginattempts,
            $privatetrackerpatch, $disablerightclick, $trackerlog,
-           $thispath, $accountlockout, $disallowjavascript, $SITEURL, $check__10;
+           $thispath, $accountlockout, $disallowjavascript, $SITEURL, $check__10, $lang;
 
     require_once $thispath . 'include/stafftoolsfunctions.php';
-	
+
 	_access_check_();
-    stdhead('Security Console');
-	
-	
-	
+    stdhead($lang->staffpanel['page_security']);
+
+
+
     enqueue_staff_assets();
     menu('securitycheck');
 
-    
+
 
     // ── Проверки ──────────────────────────────────────────────────
     $cfg_dir  = @file_get_contents($BASEURL . '/config/DATABASE', 'r');
     $cfg_file = @file_get_contents($BASEURL . '/include/config.php', 'r');
 
-    
+
 
     $empty_pw_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM users WHERE password='' OR password IS NULL");
     $empty_pw = $empty_pw_q ? (int) $db->fetch_array($empty_pw_q)['c'] : 0;
@@ -635,76 +692,76 @@ function handle_securitycheck(): void
 
     $mysql_ver_q = $db->sql_query_prepared("SELECT VERSION() AS v");
     $mysql_ver = $mysql_ver_q ? $db->fetch_array($mysql_ver_q)['v'] : '0.0.0';
-	
+
 	$safeTableName = $db->escape_string('users');
     $tables_q = $db->sql_query_prepared("SHOW TABLES LIKE '{$safeTableName}'");
     $has_default_table = $tables_q && $db->num_rows($tables_q) > 0;
-	
-	
+
+
 
     $https             = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
 
-    // [label, risk, passed, notice]
+    // [label, risk, passed, notice] — label/notice выводятся как есть (HTML из ланга)
     $checks = [
-        ['Directory Protection (Config Folder)',   3, !str_contains((string)$cfg_dir, 'mysql_pass'),
-            'Config folder is publicly readable.'],
-        ['Directory Protection (Important Files)', 3,
+        [$lang->staffpanel['chk_cfg_dir'],          3, !str_contains((string)$cfg_dir, 'mysql_pass'),
+            $lang->staffpanel['chk_cfg_dir_fail']],
+        [$lang->staffpanel['chk_cfg_files'],        3,
             $cfg_file === '<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>',
-            'Important files are directly accessible.'],
-        ['Virtual Keyboard',                       2, !empty($check__10),
-            'Enable Virtual Keyboard against keyloggers.'],
-        ['Image Verification (CAPTCHA)',            2, $iv === 'yes',
-            'Enable Image Verification.'],
-        ['Secure Login',                            2, $securelogin === 'yes',
-            'Enable Secure Login.'],
-        ['Banned Client Detection',                 2, $bannedclientdetect === 'yes',
-            'Enable banned client detection.'],
-        ['Failed Login Attempts ≤ 7',               2, $maxloginattempts <= 7,
-            'Keep login attempts ≤ 7.'],
-        ['Private Tracker Patch',                   2, $privatetrackerpatch === 'yes',
-            'Enable Private Tracker Patch.'],
-        ['Right-Click Disabled',                    1, $disablerightclick === 'yes',
-            'Enable to prevent content copying.'],
-        ['Config File Permissions (644)',           3, substr(sprintf('%o', @fileperms('config.php')), -4) === '0644',
-            'config.php must not be writable by group/others.'],
-        ['No Backup Files in Web Root',             3, !file_exists('backup.sql') && !file_exists('database_backup.zip'),
-            'Remove backup files from web root.'],
-        ['Install Directory Removed',               3, !is_dir('install') && !is_dir('setup'),
-            'Delete install/setup directory.'],
-        ['No Debug Files',                          2, !file_exists('phpinfo.php') && !file_exists('test.php'),
-            'Remove phpinfo.php / test.php.'],
-        ['PHP Error Display Off',                   2, ini_get('display_errors') === '0' || ini_get('display_errors') === '',
-            'Set display_errors=Off in production.'],
-        ['PHP Error Logging Enabled',               1, ini_get('log_errors') === '1',
-            'Enable error logging.'],
-        ['PHP Version ≥ 7.4',                       2, version_compare(PHP_VERSION, '7.4.0', '>='),
-            'Upgrade to PHP 7.4+.'],
-        ['No Default Table Names',                  2, !$has_default_table,
-            'Use table prefixes.'],
-        ['No Empty Passwords',                      3, $empty_pw === 0,
-            'Some users have empty passwords.'],
-        ['No Weak Passwords',                       2, $weak_pw === 0,
-            'Some users have passwords < 6 chars.'],
-        ['HTTPS Active',                            2, $https,
-            'Serve the site over HTTPS.'],
-        ['Site URL Uses HTTPS',                     1, str_starts_with((string)$SITEURL, 'https://'),
-            'Update SITEURL to https://.'],
-        ['Login Attempt Limit ≤ 5',                 2, $maxloginattempts <= 5,
-            'Reduce max login attempts to 5.'],
-        ['Account Lockout Enabled',                 2, ($accountlockout ?? '') === 'yes',
-            'Enable account lockout.'],
-        ['CSRF Protection',                         2, function_exists('csrf_token') || $securelogin === 'yes',
-            'Implement CSRF tokens.'],
-        ['JavaScript Restriction',                  2, ($disallowjavascript ?? '') === 'yes',
-            'Restrict user-submitted JS.'],
-        ['MySQL Version ≥ 5.7',                     2, version_compare($mysql_ver, '5.7.0', '>='),
-            'Upgrade to MySQL 5.7+.'],
-        ['Access Logging Enabled',                  1, ($trackerlog ?? '') === 'yes',
-            'Enable access logging.'],
-        ['HTTPOnly Session Cookies',                2, ini_get('session.cookie_httponly') === '1',
-            'Set session.cookie_httponly=1.'],
-        ['Secure Session Cookies',                  2, ini_get('session.cookie_secure') === '1' || $https,
-            'Set session.cookie_secure=1.'],
+            $lang->staffpanel['chk_cfg_files_fail']],
+        [$lang->staffpanel['chk_vkeyboard'],        2, !empty($check__10),
+            $lang->staffpanel['chk_vkeyboard_fail']],
+        [$lang->staffpanel['chk_captcha'],          2, $iv === 'yes',
+            $lang->staffpanel['chk_captcha_fail']],
+        [$lang->staffpanel['chk_securelogin'],      2, $securelogin === 'yes',
+            $lang->staffpanel['chk_securelogin_fail']],
+        [$lang->staffpanel['chk_bannedclient'],     2, $bannedclientdetect === 'yes',
+            $lang->staffpanel['chk_bannedclient_fail']],
+        [$lang->staffpanel['chk_loginattempts7'],   2, $maxloginattempts <= 7,
+            $lang->staffpanel['chk_loginattempts7_fail']],
+        [$lang->staffpanel['chk_ptpatch'],          2, $privatetrackerpatch === 'yes',
+            $lang->staffpanel['chk_ptpatch_fail']],
+        [$lang->staffpanel['chk_rightclick'],       1, $disablerightclick === 'yes',
+            $lang->staffpanel['chk_rightclick_fail']],
+        [$lang->staffpanel['chk_cfgperms'],         3, substr(sprintf('%o', @fileperms('config.php')), -4) === '0644',
+            $lang->staffpanel['chk_cfgperms_fail']],
+        [$lang->staffpanel['chk_backups'],          3, !file_exists('backup.sql') && !file_exists('database_backup.zip'),
+            $lang->staffpanel['chk_backups_fail']],
+        [$lang->staffpanel['chk_installdir'],       3, !is_dir('install') && !is_dir('setup'),
+            $lang->staffpanel['chk_installdir_fail']],
+        [$lang->staffpanel['chk_debugfiles'],       2, !file_exists('phpinfo.php') && !file_exists('test.php'),
+            $lang->staffpanel['chk_debugfiles_fail']],
+        [$lang->staffpanel['chk_displayerrors'],    2, ini_get('display_errors') === '0' || ini_get('display_errors') === '',
+            $lang->staffpanel['chk_displayerrors_fail']],
+        [$lang->staffpanel['chk_logerrors'],        1, ini_get('log_errors') === '1',
+            $lang->staffpanel['chk_logerrors_fail']],
+        [$lang->staffpanel['chk_phpver'],           2, version_compare(PHP_VERSION, '7.4.0', '>='),
+            $lang->staffpanel['chk_phpver_fail']],
+        [$lang->staffpanel['chk_tableprefix'],      2, !$has_default_table,
+            $lang->staffpanel['chk_tableprefix_fail']],
+        [$lang->staffpanel['chk_emptypw'],          3, $empty_pw === 0,
+            $lang->staffpanel['chk_emptypw_fail']],
+        [$lang->staffpanel['chk_weakpw'],           2, $weak_pw === 0,
+            $lang->staffpanel['chk_weakpw_fail']],
+        [$lang->staffpanel['chk_https'],            2, $https,
+            $lang->staffpanel['chk_https_fail']],
+        [$lang->staffpanel['chk_siteurl'],          1, str_starts_with((string)$SITEURL, 'https://'),
+            $lang->staffpanel['chk_siteurl_fail']],
+        [$lang->staffpanel['chk_loginattempts5'],   2, $maxloginattempts <= 5,
+            $lang->staffpanel['chk_loginattempts5_fail']],
+        [$lang->staffpanel['chk_lockout'],          2, ($accountlockout ?? '') === 'yes',
+            $lang->staffpanel['chk_lockout_fail']],
+        [$lang->staffpanel['chk_csrf'],             2, function_exists('csrf_token') || $securelogin === 'yes',
+            $lang->staffpanel['chk_csrf_fail']],
+        [$lang->staffpanel['chk_jsrestrict'],       2, ($disallowjavascript ?? '') === 'yes',
+            $lang->staffpanel['chk_jsrestrict_fail']],
+        [$lang->staffpanel['chk_mysqlver'],         2, version_compare($mysql_ver, '5.7.0', '>='),
+            $lang->staffpanel['chk_mysqlver_fail']],
+        [$lang->staffpanel['chk_accesslog'],        1, ($trackerlog ?? '') === 'yes',
+            $lang->staffpanel['chk_accesslog_fail']],
+        [$lang->staffpanel['chk_httponly'],         2, ini_get('session.cookie_httponly') === '1',
+            $lang->staffpanel['chk_httponly_fail']],
+        [$lang->staffpanel['chk_securecookie'],     2, ini_get('session.cookie_secure') === '1' || $https,
+            $lang->staffpanel['chk_securecookie_fail']],
     ];
 
     $passed       = array_sum(array_column($checks, 2));
@@ -713,16 +770,28 @@ function handle_securitycheck(): void
     $failed       = $total - $passed;
 
     $level_map = [
-        90 => ['Excellent', 'success', 'fas fa-shield-alt'],
-        70 => ['Good',      'info',    'fas fa-check-circle'],
-        50 => ['Fair',      'warning', 'fas fa-exclamation-triangle'],
-         0 => ['Poor',      'danger',  'fas fa-radiation-alt'],
+        90 => [$lang->staffpanel['level_excellent'], 'success', 'fas fa-shield-alt'],
+        70 => [$lang->staffpanel['level_good'],      'info',    'fas fa-check-circle'],
+        50 => [$lang->staffpanel['level_fair'],      'warning', 'fas fa-exclamation-triangle'],
+         0 => [$lang->staffpanel['level_poor'],      'danger',  'fas fa-radiation-alt'],
     ];
     $level = $level_map[0];
     foreach ($level_map as $threshold => $data) {
         if ($score >= $threshold) { $level = $data; break; }
     }
     [$level_name, $level_color, $level_icon] = $level;
+    $level_name = htmlspecialchars($level_name);
+
+    $t_sec_title   = htmlspecialchars($lang->staffpanel['sec_title']);
+    $t_sec_score   = htmlspecialchars($lang->staffpanel['sec_score']);
+    $t_sec_passed  = htmlspecialchars(ags_fmt($lang->staffpanel['sec_passed'], $passed));
+    $t_sec_failed  = htmlspecialchars(ags_fmt($lang->staffpanel['sec_failed'], $failed));
+    $t_sec_total   = htmlspecialchars(ags_fmt($lang->staffpanel['sec_total'], $total));
+    $t_sec_head    = htmlspecialchars(ags_fmt($lang->staffpanel['sec_checks_head'], $total));
+    $t_check_ok    = htmlspecialchars($lang->staffpanel['sec_check_ok']);
+    $t_notice      = htmlspecialchars($lang->staffpanel['notice_title']);
+    $t_notice_text = htmlspecialchars($lang->staffpanel['notice_text']);
+    $t_remember    = $lang->staffpanel['notice_remember']; // содержит <strong>
 
     echo <<<HTML
 <div class="container mt-3">
@@ -735,41 +804,45 @@ function handle_securitycheck(): void
                   box-shadow:0 8px 25px rgba(59,130,246,.3)">
         <i class="fas fa-shield-alt"></i>
       </div>
-      <h2 class="fw-bold mb-3">Security Console</h2>
+      <h2 class="fw-bold mb-3">{$t_sec_title}</h2>
       <div style="display:inline-block;background:conic-gradient(#10b981 {$score}%,#e2e8f0 0);
                   width:100px;height:100px;border-radius:50%;position:relative;margin-bottom:.75rem">
         <div style="position:absolute;inset:10px;background:#fff;border-radius:50%;
                     display:flex;flex-direction:column;align-items:center;justify-content:center">
           <span style="font-size:1.2em;font-weight:700">{$score}%</span>
-          <span style="font-size:.65em;color:#64748b">Score</span>
+          <span style="font-size:.65em;color:#64748b">{$t_sec_score}</span>
         </div>
       </div><br>
       <span class="badge bg-{$level_color} fs-6 mb-3">
         <i class="{$level_icon} me-1"></i>{$level_name}
       </span>
       <div class="d-flex justify-content-center gap-4 mt-2">
-        <span><i class="fas fa-check-circle text-success me-1"></i>{$passed} Passed</span>
-        <span><i class="fas fa-times-circle text-danger me-1"></i>{$failed} Failed</span>
-        <span><i class="fas fa-list-alt text-primary me-1"></i>{$total} Total</span>
+        <span><i class="fas fa-check-circle text-success me-1"></i>{$t_sec_passed}</span>
+        <span><i class="fas fa-times-circle text-danger me-1"></i>{$t_sec_failed}</span>
+        <span><i class="fas fa-list-alt text-primary me-1"></i>{$t_sec_total}</span>
       </div>
     </div>
   </div>
 
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-light border-0 py-3">
-      <h5 class="mb-0"><i class="fas fa-tasks me-2 text-primary"></i>Security Checks ({$total} performed)</h5>
+      <h5 class="mb-0"><i class="fas fa-tasks me-2 text-primary"></i>{$t_sec_head}</h5>
     </div>
     <div class="card-body p-0">
 HTML;
 
     $risk_colors = [1 => 'success', 2 => 'warning', 3 => 'danger'];
-    $risk_labels = [1 => 'Low Risk', 2 => 'Medium Risk', 3 => 'High Risk'];
+    $risk_labels = [
+        1 => htmlspecialchars($lang->staffpanel['risk_low']),
+        2 => htmlspecialchars($lang->staffpanel['risk_medium']),
+        3 => htmlspecialchars($lang->staffpanel['risk_high']),
+    ];
     $risk_icons  = [1 => 'fas fa-shield-alt', 2 => 'fas fa-exclamation-triangle', 3 => 'fas fa-radiation-alt'];
 
     foreach ($checks as [$label, $risk, $ok, $notice]) {
         $status   = $ok ? 'fas fa-check-circle text-success' : 'fas fa-times-circle text-danger';
         $msg      = $ok
-            ? '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Passed — no issues found.</span>'
+            ? '<span class="text-success"><i class="fas fa-check-circle me-1"></i>' . $t_check_ok . '</span>'
             : '<span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>' . $notice . '</span>';
         $row_cls  = $ok ? '' : ' failed';
         echo <<<HTML
@@ -796,8 +869,8 @@ HTML;
     <div class="card-body d-flex align-items-start gap-3">
       <i class="fas fa-exclamation-triangle text-warning fs-4 mt-1"></i>
       <div>
-        <h6 class="text-warning mb-1">Important Notice</h6>
-        <p class="text-muted mb-1">These checks are not a guarantee of full security. Always keep the following up-to-date:</p>
+        <h6 class="text-warning mb-1">{$t_notice}</h6>
+        <p class="text-muted mb-1">{$t_notice_text}</p>
         <div>
           <span class="badge bg-light text-dark me-1">TS Special Edition</span>
           <span class="badge bg-light text-dark me-1">Apache</span>
@@ -805,7 +878,7 @@ HTML;
           <span class="badge bg-light text-dark me-1">MySQL</span>
           <span class="badge bg-light text-dark">phpMyAdmin</span>
         </div>
-        <p class="text-muted mb-0 mt-2"><strong>Remember:</strong> Perfect security on the Internet does not exist.</p>
+        <p class="text-muted mb-0 mt-2">{$t_remember}</p>
       </div>
     </div>
   </div>
@@ -823,8 +896,8 @@ HTML;
 
 function render_dashboard(): void
 {
-    global $db, $CURUSER, $SITENAME, $thispath, $BASEURL;
-	
+    global $db, $CURUSER, $SITENAME, $thispath, $BASEURL, $lang;
+
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
     $cut  = TIMENOW - 86400;
@@ -848,7 +921,7 @@ function render_dashboard(): void
     $ratio    = $dl > 0 ? round($ul / $dl, 2) : '∞';
 
     $username = htmlspecialchars_uni($CURUSER['username']);
-    $date_str = date('d M Y');
+    $date_str = date($lang->staffpanel['fmt_date_short']);
     $time_str = date('H:i:s');
 
     // Системные метрики
@@ -871,23 +944,36 @@ function render_dashboard(): void
 </div>
 HTML;
 
-    $col_total    = $sc('fa-user-plus text-primary',      'Total Users',  ts_nf($totalusers));
-    $col_new      = $sc('fa-user-clock text-success',     'New Today',    ts_nf($newuserstoday),  'text-success');
-    $col_pending  = $sc('fa-user-times text-warning',     'Unconfirmed',  ts_nf($pendingusers),   'text-warning');
-    $col_active   = $sc('fa-eye text-info',               'Active Users', ts_nf($todayvisits),    'text-info');
-    $col_comments = $sc('fa-comment-dots text-secondary', 'Comments',     ts_nf($todaycomments),  'text-secondary');
-    $col_peers    = $sc('fa-users text-danger',           'Peers',        ts_nf($peers),          'text-danger');
-    $col_seeders  = $sc('fa-arrow-up text-success',       'Seeders',      ts_nf($seeders),        'text-success');
-    $col_leechers = $sc('fa-arrow-down text-primary',     'Leechers',     ts_nf($leechers),       'text-primary');
-    $col_torrents = $sc('fa-file-alt text-info',          'Torrents',     ts_nf($totaltorrents),  'text-info');
-    $col_ul       = $sc('fa-upload text-success',         'Uploaded',     $ul_disp,               'text-success');
-    $col_dl       = $sc('fa-download text-danger',        'Downloaded',   $dl_disp,               'text-danger');
-    $col_ratio    = $sc('fa-balance-scale text-warning',  'Ratio',        $ratio,                 'text-warning');
-	
+    $col_total    = $sc('fa-user-plus text-primary',      htmlspecialchars($lang->staffpanel['stat_total_users']),  ts_nf($totalusers));
+    $col_new      = $sc('fa-user-clock text-success',     htmlspecialchars($lang->staffpanel['stat_new_today']),    ts_nf($newuserstoday),  'text-success');
+    $col_pending  = $sc('fa-user-times text-warning',     htmlspecialchars($lang->staffpanel['stat_unconfirmed']),  ts_nf($pendingusers),   'text-warning');
+    $col_active   = $sc('fa-eye text-info',               htmlspecialchars($lang->staffpanel['stat_active_users']), ts_nf($todayvisits),    'text-info');
+    $col_comments = $sc('fa-comment-dots text-secondary', htmlspecialchars($lang->staffpanel['stat_comments']),     ts_nf($todaycomments),  'text-secondary');
+    $col_peers    = $sc('fa-users text-danger',           htmlspecialchars($lang->staffpanel['stat_peers']),        ts_nf($peers),          'text-danger');
+    $col_seeders  = $sc('fa-arrow-up text-success',       htmlspecialchars($lang->staffpanel['stat_seeders']),      ts_nf($seeders),        'text-success');
+    $col_leechers = $sc('fa-arrow-down text-primary',     htmlspecialchars($lang->staffpanel['stat_leechers']),     ts_nf($leechers),       'text-primary');
+    $col_torrents = $sc('fa-file-alt text-info',          htmlspecialchars($lang->staffpanel['stat_torrents']),     ts_nf($totaltorrents),  'text-info');
+    $col_ul       = $sc('fa-upload text-success',         htmlspecialchars($lang->staffpanel['stat_uploaded']),     $ul_disp,               'text-success');
+    $col_dl       = $sc('fa-download text-danger',        htmlspecialchars($lang->staffpanel['stat_downloaded']),   $dl_disp,               'text-danger');
+    $col_ratio    = $sc('fa-balance-scale text-warning',  htmlspecialchars($lang->staffpanel['stat_ratio']),        $ratio,                 'text-warning');
+
+    $t_welcome    = ags_fmt(htmlspecialchars($lang->staffpanel['dash_welcome']), $SITENAME);
+    $t_tagline    = htmlspecialchars($lang->staffpanel['dash_tagline']);
+    $t_user_stats = htmlspecialchars($lang->staffpanel['card_user_stats']);
+    $t_activity   = htmlspecialchars($lang->staffpanel['card_activity']);
+    $t_peers      = $lang->staffpanel['card_peers']; // содержит &amp;
+    $t_traffic    = htmlspecialchars($lang->staffpanel['card_traffic']);
+    $t_health     = htmlspecialchars($lang->staffpanel['card_health']);
+    $t_recent     = htmlspecialchars($lang->staffpanel['card_recent']);
+    $t_load       = htmlspecialchars($lang->staffpanel['lbl_server_load']);
+    $t_db_size    = htmlspecialchars($lang->staffpanel['lbl_db_size']);
+    $t_disk_free  = htmlspecialchars($lang->staffpanel['lbl_disk_free']);
+    $t_memory     = htmlspecialchars($lang->staffpanel['lbl_memory']);
+    $t_view_logs  = htmlspecialchars($lang->staffpanel['btn_view_logs']);
 
 
 
-    stdhead('Staff Panel Dashboard');
+    stdhead($lang->staffpanel['page_dashboard']);
     enqueue_staff_assets();
     menu('welcome');
 
@@ -900,8 +986,8 @@ HTML;
       <div class="row align-items-center">
         <div class="col-md-8">
           <h3 class="fw-bold mb-1"><i class="fas fa-user-shield me-2"></i>{$username}</h3>
-          <h5 class="mb-2">Welcome to {$SITENAME} Staff Panel</h5>
-          <p class="mb-0 opacity-75">Manage your tracker quickly and efficiently.</p>
+          <h5 class="mb-2">{$t_welcome}</h5>
+          <p class="mb-0 opacity-75">{$t_tagline}</p>
         </div>
         <div class="col-md-4 text-md-end mt-3 mt-md-0">
           <div class="bg-white bg-opacity-25 rounded-3 p-3 d-inline-block text-center">
@@ -919,7 +1005,7 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-primary text-white">
-          <h6 class="mb-0"><i class="fas fa-users me-2"></i>User Statistics</h6>
+          <h6 class="mb-0"><i class="fas fa-users me-2"></i>{$t_user_stats}</h6>
         </div>
         <div class="card-body">
           <div class="row text-center g-3">{$col_total}{$col_new}{$col_pending}</div>
@@ -929,7 +1015,7 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-success text-white">
-          <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Activity Today</h6>
+          <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>{$t_activity}</h6>
         </div>
         <div class="card-body">
           <div class="row text-center g-3">{$col_active}{$col_comments}</div>
@@ -943,7 +1029,7 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-warning text-dark">
-          <h6 class="mb-0"><i class="fas fa-download me-2"></i>Peers &amp; Torrents</h6>
+          <h6 class="mb-0"><i class="fas fa-download me-2"></i>{$t_peers}</h6>
         </div>
         <div class="card-body">
           <div class="row text-center g-3">{$col_peers}{$col_seeders}{$col_leechers}{$col_torrents}</div>
@@ -953,7 +1039,7 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-info text-white">
-          <h6 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Total Traffic</h6>
+          <h6 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>{$t_traffic}</h6>
         </div>
         <div class="card-body">
           <div class="row text-center g-3">{$col_ul}{$col_dl}{$col_ratio}</div>
@@ -967,12 +1053,12 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-danger text-white">
-          <h6 class="mb-0"><i class="fas fa-heartbeat me-2"></i>System Health</h6>
+          <h6 class="mb-0"><i class="fas fa-heartbeat me-2"></i>{$t_health}</h6>
         </div>
         <div class="card-body">
           <div class="row align-items-center mb-3">
             <div class="col-8">
-              <h6 class="mb-1">Server Load</h6>
+              <h6 class="mb-1">{$t_load}</h6>
               <div class="progress" style="height:8px">
                 <div class="progress-bar {$load_bar}" style="width:{$load_pct}%"></div>
               </div>
@@ -982,17 +1068,17 @@ HTML;
           <div class="row text-center">
             <div class="col-md-4 mb-3">
               <i class="fas fa-database text-primary fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">DB Size</h6>
+              <h6 class="text-muted mb-1 mt-1">{$t_db_size}</h6>
               <small class="fw-bold">{$dbsize}</small>
             </div>
             <div class="col-md-4 mb-3">
               <i class="fas fa-hdd text-info fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">Disk Free</h6>
+              <h6 class="text-muted mb-1 mt-1">{$t_disk_free}</h6>
               <small class="fw-bold">{$diskfree}</small>
             </div>
             <div class="col-md-4 mb-3">
               <i class="fas fa-memory text-success fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">Memory</h6>
+              <h6 class="text-muted mb-1 mt-1">{$t_memory}</h6>
               <small class="fw-bold">{$memory_display}</small>
             </div>
           </div>
@@ -1002,13 +1088,13 @@ HTML;
     <div class="col-lg-6">
       <div class="card shadow-sm border-0 h-100">
         <div class="card-header bg-secondary text-white">
-          <h6 class="mb-0"><i class="fas fa-history me-2"></i>Recent Staff Activity</h6>
+          <h6 class="mb-0"><i class="fas fa-history me-2"></i>{$t_recent}</h6>
         </div>
         <div class="card-body d-flex flex-column">
           <div class="flex-grow-1">{$recentactivity}</div>
           <div class="text-center mt-3">
             <a href="index.php?act=log" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-list me-1"></i>View All Logs
+              <i class="fas fa-list me-1"></i>{$t_view_logs}
             </a>
           </div>
         </div>
@@ -1021,7 +1107,7 @@ HTML;
 HTML;
 
     echo '</div></td></tr></table>';
-    
+
 	stdfoot();
 }
 
@@ -1038,7 +1124,7 @@ HTML;
 
 function getDbSize(): string
 {
-    global $db, $config;
+    global $db, $config, $lang;
     $dbname = $config['database']['database'] ?? null;
     if (!$dbname) return '—';
     $r = $db->sql_query_prepared(
@@ -1046,20 +1132,23 @@ function getDbSize(): string
          FROM information_schema.tables
          WHERE table_schema = ?", [$dbname]);
     if (!$r) return '—';
-    return ($db->fetch_array($r)['mb'] ?? 0) . ' MB';
+    return ($db->fetch_array($r)['mb'] ?? 0) . ' ' . $lang->staffpanel['unit_mb'];
 }
 
 function getDiskFree(): string
 {
+    global $lang;
     $free = disk_free_space(defined('TSDIR') ? TSDIR : __DIR__);
     if ($free === false) return '—';
     $gb = $free / (1024 ** 3);
-    return $gb >= 1 ? round($gb, 1) . ' GB' : round($free / (1024 ** 2)) . ' MB';
+    return $gb >= 1
+        ? round($gb, 1) . ' ' . $lang->staffpanel['unit_gb']
+        : round($free / (1024 ** 2)) . ' ' . $lang->staffpanel['unit_mb'];
 }
 
 function getRecentActivity(int $limit = 5): string
 {
-    global $db;
+    global $db, $lang;
     $r = $db->sql_query_prepared(
         "SELECT l.*, u.username FROM sitelog l
          LEFT JOIN users u ON l.uid=u.id
@@ -1067,12 +1156,13 @@ function getRecentActivity(int $limit = 5): string
 
     if (!$r || $db->num_rows($r) === 0) {
         return '<div class="text-center text-muted py-3">'
-             . '<i class="fas fa-history opacity-50 me-1"></i>No recent activity</div>';
+             . '<i class="fas fa-history opacity-50 me-1"></i>'
+             . htmlspecialchars($lang->staffpanel['no_recent_activity']) . '</div>';
     }
 
     $html = '<ul class="list-unstyled mb-0">';
     while ($r && ($row = $db->fetch_array($r))) {
-        $user   = htmlspecialchars($row['username'] ?? 'System');
+        $user   = htmlspecialchars($row['username'] ?? $lang->staffpanel['user_system']);
         $action = htmlspecialchars($row['txt']      ?? '');
         $time   = date('d.m H:i', (int)($row['added'] ?? 0));
         $html  .= "<li class='d-flex align-items-start gap-2 mb-2'>"

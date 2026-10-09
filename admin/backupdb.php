@@ -15,6 +15,30 @@ if(!defined("IN_MYBB"))
 
 define('ADMIN_DIR', TSDIR.'/admin/');
 
+// Язык: languages/<lang>/backupdb.lang.php → $lang->backupdb[...]
+$lang->load('backupdb');
+
+// Подстановка {1}, {2}… (а также %1$s, %2$s…) в строки ланга
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
+
+/** Экранирование чистого текста из ланга для вывода в HTML / атрибут */
+function bk_h(string $s): string
+{
+    return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+
 foreach(array('action', 'do', 'module') as $input)
 {
     if(!isset($mybb->input[$input]))
@@ -25,12 +49,12 @@ foreach(array('action', 'do', 'module') as $input)
 
 function render_inline_error($error="", $title="")
 {
-    global $plugins;
+    global $plugins, $lang;
 
     $error = $plugins->run_hooks("error", $error);
     if(!$error)
     {
-        $error = 'unknown_error';
+        $error = $lang->backupdb['err_unknown'];
     }
 
     echo '
@@ -40,10 +64,10 @@ function render_inline_error($error="", $title="")
                 <div class="error-icon">
                     <i class="fas fa-exclamation-circle"></i>
                 </div>
-                <h3 class="card-title text-danger mb-3">Error</h3>
+                <h3 class="card-title text-danger mb-3">'.bk_h($lang->backupdb['err_title']).'</h3>
                 <p class="card-text">'.$error.'</p>
                 <a href="javascript:history.back()" class="btn btn-primary mt-3">
-                    <i class="fas fa-arrow-left me-2"></i>Go Back
+                    <i class="fas fa-arrow-left me-2"></i>'.bk_h($lang->backupdb['btn_go_back']).'
                 </a>
             </div>
         </div>
@@ -80,18 +104,31 @@ function bk_styles(): void
 /** Скрипты страницы (выбор таблиц + модалка удаления) */
 function bk_scripts(): void
 {
-    global $BASEURL;
+    global $BASEURL, $lang;
 
     $v = (int)@filemtime(ADMIN_DIR . 'templates/backupdb.js');
-    echo '<script src="' . $BASEURL . '/admin/scripts/backupdb.js?v=' . $v . '" defer></script>';
+
+    // js_* строки ланга → AGS_LANG (ключи без префикса js_), выводим до подключения скрипта
+    $js = [];
+    foreach ($lang->backupdb as $k => $val) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $js[substr((string)$k, 3)] = $val;
+        }
+    }
+    echo '<script>const AGS_LANG = '
+       . (json_encode($js, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}')
+       . ';</script>';
+    echo '<script src="' . $BASEURL . '/admin/scripts/backupdb.js?ver=2&amp;v=' . $v . '" defer></script>';
 }
 
 /** Шапка страницы */
 function bk_hero(string $sub, string $right = ''): void
 {
+    global $lang;
+
     echo '<div class="bk-card mb-3"><div class="bk-head">'
        . '<span class="bk-head-icon"><i class="fa-solid fa-database"></i></span>'
-       . '<div style="min-width:0"><h1 class="bk-title">Database Backups</h1><div class="bk-sub">' . $sub . '</div></div>'
+       . '<div style="min-width:0"><h1 class="bk-title">' . bk_h($lang->backupdb['title_main']) . '</h1><div class="bk-sub">' . $sub . '</div></div>'
        . ($right !== '' ? '<div class="ms-auto d-flex flex-wrap gap-2">' . $right . '</div>' : '')
        . '</div></div>';
 }
@@ -156,12 +193,12 @@ if($mybb->input['action'] == "dlbackup")
 {
     if(empty($mybb->input['file']))
     {
-        flash_message('You did not specify a database backup to download', 'error');
+        flash_message($lang->backupdb['flash_no_file_dl'], 'error');
         redirect($_this_script_);
     }
 
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        flash_message('Invalid or expired link. Please try downloading again from this page.', 'error');
+        flash_message($lang->backupdb['flash_link_expired'], 'error');
         admin_redirect($_this_script_);
     }
 
@@ -192,7 +229,7 @@ if($mybb->input['action'] == "dlbackup")
     }
     else
     {
-        flash_message('The back up file you selected is either invalid or does not exist', 'error');
+        flash_message($lang->backupdb['flash_file_invalid'], 'error');
         admin_redirect($_this_script_);
     }
 }
@@ -211,7 +248,7 @@ if($mybb->input['action'] == "delete")
 
     if(!trim($mybb->input['file']) || !file_exists(ADMIN_DIR.'backup/'.$file) || filetype(ADMIN_DIR.'backup/'.$file) != 'file' || ($ext != 'gz' && $ext != 'sql'))
     {
-        flash_message('The specified backup does not exist', 'error');
+        flash_message($lang->backupdb['flash_not_exist'], 'error');
         admin_redirect($_this_script_);
     }
 
@@ -221,7 +258,7 @@ if($mybb->input['action'] == "delete")
     {
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            die('Invalid security token');
+            die($lang->backupdb['err_security_token']);
         }
 
         $delete = @unlink(ADMIN_DIR.'backup/'.$file);
@@ -233,29 +270,29 @@ if($mybb->input['action'] == "delete")
             // Log admin action
             log_admin_action($file);
 
-            flash_message('The backup has been deleted successfully', 'success');
+            flash_message($lang->backupdb['flash_deleted'], 'success');
             admin_redirect($_this_script_);
         }
         else
         {
-            flash_message('The backup has not been deleted', 'error');
+            flash_message($lang->backupdb['flash_not_deleted'], 'error');
             admin_redirect($_this_script_);
         }
     }
     else
     {
-        stdhead('Delete backup');
+        stdhead($lang->backupdb['title_delete']);
         bk_styles();
         $fileE = htmlspecialchars($file, ENT_QUOTES);
         echo '<div class="container mt-3 mb-4 bk"><div class="bk-card bk-confirm">'
            . '<span class="bk-confirm-icon"><i class="fa-solid fa-trash-can"></i></span>'
-           . '<h2 class="h4 fw-bold mb-1">Delete this backup?</h2>'
-           . '<div class="text-body-secondary">The file is removed from the server. This can\'t be undone.</div>'
+           . '<h2 class="h4 fw-bold mb-1">' . bk_h($lang->backupdb['confirm_title']) . '</h2>'
+           . '<div class="text-body-secondary">' . bk_h($lang->backupdb['hint_irreversible']) . '</div>'
            . '<div class="bk-target"><i class="fa-solid fa-file-zipper me-2 text-body-secondary"></i>' . $fileE . '</div>'
            . '<form action="' . $_this_script_ . '&amp;action=delete&amp;file=' . rawurlencode($file) . '" method="post" class="d-flex flex-wrap justify-content-center gap-2">'
            . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
-           . '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>'
-           . '<button type="submit" class="btn btn-danger px-4"><i class="fa-solid fa-trash me-1"></i>Yes, delete</button>'
+           . '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>' . bk_h($lang->backupdb['btn_cancel']) . '</a>'
+           . '<button type="submit" class="btn btn-danger px-4"><i class="fa-solid fa-trash me-1"></i>' . bk_h($lang->backupdb['btn_confirm_delete']) . '</button>'
            . '</form></div></div>';
         stdfoot();
         exit;
@@ -274,7 +311,7 @@ if($mybb->input['action'] == "backup")
     {
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            die('Invalid security token');
+            die($lang->backupdb['err_security_token']);
         }
 
         $mybb->input['method']          = $mybb->get_input('method') === 'disk' ? 'disk' : 'download';
@@ -284,7 +321,7 @@ if($mybb->input['action'] == "backup")
 
         if(empty($mybb->input['tables']) || !is_array($mybb->input['tables']))
         {
-            flash_message('You did not select any tables to backup', 'error');
+            flash_message($lang->backupdb['flash_no_tables'], 'error');
             admin_redirect('' . $_this_script_ . '&action=backup');
         }
 
@@ -305,7 +342,7 @@ if($mybb->input['action'] == "backup")
             {
                 if(!function_exists('gzopen'))
                 {
-                    flash_message('The zlib library for PHP is not enabled - you cannot create GZIP compressed backups', 'error');
+                    flash_message($lang->backupdb['flash_no_zlib'], 'error');
                     admin_redirect('' . $_this_script_ . '&action=backup');
                 }
 
@@ -323,7 +360,7 @@ if($mybb->input['action'] == "backup")
             {
                 if(!function_exists('gzopen'))
                 {
-                    flash_message('The zlib library for PHP is not enabled - you cannot create GZIP compressed backups', 'error');
+                    flash_message($lang->backupdb['flash_no_zlib'], 'error');
                     admin_redirect('' . $_this_script_ . '&action=backup');
                 }
 
@@ -475,11 +512,11 @@ flash_message('
         <i class="fas fa-check-circle fa-2x"></i>
     </div>
     <div>
-        <h6 class="mb-1 fw-semibold text-success">Backup created successfully</h6>
-        <p class="mb-2 small text-muted">The backup file has been saved to:</p>
+        <h6 class="mb-1 fw-semibold text-success">' . bk_h($lang->backupdb['flash_created_title']) . '</h6>
+        <p class="mb-2 small text-muted">' . bk_h($lang->backupdb['flash_created_path']) . '</p>
         <code class="d-block mb-2 text-break">' . htmlspecialchars($file . $ext) . '</code>
         <a href="' . $file_from_admindir . '" class="btn btn-sm btn-success">
-            <i class="fas fa-download me-1"></i> Download
+            <i class="fas fa-download me-1"></i> ' . bk_h($lang->backupdb['btn_download']) . '
         </a>
     </div>
 </div>
@@ -520,7 +557,7 @@ flash_message('
         exit;
     }
 
-    stdhead('New database backup');
+    stdhead($lang->backupdb['title_new']);
     bk_styles();
 
     $cannot_write = !is_writable(ADMIN_DIR . 'backup');
@@ -541,13 +578,13 @@ flash_message('
     $db_size = array_sum(array_map(fn($t) => (int)$t['size'], $tables));
 
     echo '<div class="container mt-3 mb-4 bk">';
-    bk_hero('Choose tables and options, then create a backup', '<a href="' . $_this_script_ . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back to list</a>');
+    bk_hero(bk_h($lang->backupdb['hero_sub_new']), '<a href="' . $_this_script_ . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>' . bk_h($lang->backupdb['btn_back_to_list']) . '</a>');
 
     if ($cannot_write) {
-        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>The <code>admin/backup</code> folder is not writable — backups can only be <strong>downloaded</strong>, not saved on the server.</div></div>';
+        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>' . $lang->backupdb['alert_readonly_dl_html'] . '</div></div>';
     }
     if (!$has_gzip) {
-        echo '<div class="alert alert-info d-flex gap-2 rounded-4"><i class="fa-solid fa-circle-info mt-1"></i><div>PHP zlib is not enabled — GZIP compression is unavailable.</div></div>';
+        echo '<div class="alert alert-info d-flex gap-2 rounded-4"><i class="fa-solid fa-circle-info mt-1"></i><div>' . bk_h($lang->backupdb['alert_no_zlib']) . '</div></div>';
     }
 
     echo '<form action="' . $_this_script_ . '&amp;action=backup" method="post" id="table_selection">
@@ -557,11 +594,11 @@ flash_message('
                 <div class="bk-card overflow-hidden h-100">
                     <div class="bk-sec-head">
                         <span class="bk-sec-icon ic-blue"><i class="fa-solid fa-table-list"></i></span>
-                        <div><h2 class="bk-sec-title">Tables</h2><div class="bk-muted"><span id="bkSel">0</span> of ' . count($tables) . ' selected · <span id="bkSelSize">0 B</span></div></div>
+                        <div><h2 class="bk-sec-title">' . bk_h($lang->backupdb['sec_tables']) . '</h2><div class="bk-muted">' . ags_fmt($lang->backupdb['lbl_selected'], '<span id="bkSel">0</span>', count($tables), '<span id="bkSelSize">0 B</span>') . '</div></div>
                         <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
-                            <div class="position-relative bk-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="form-control form-control-sm" id="bkFilter" placeholder="Filter tables…"></div>
-                            <button type="button" class="btn btn-sm btn-outline-primary" data-sel="all"><i class="fa-solid fa-check-double me-1"></i>All</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-sel="none"><i class="fa-solid fa-xmark me-1"></i>None</button>
+                            <div class="position-relative bk-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="form-control form-control-sm" id="bkFilter" placeholder="' . bk_h($lang->backupdb['ph_filter']) . '"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-sel="all"><i class="fa-solid fa-check-double me-1"></i>' . bk_h($lang->backupdb['btn_all']) . '</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-sel="none"><i class="fa-solid fa-xmark me-1"></i>' . bk_h($lang->backupdb['btn_none']) . '</button>
                         </div>
                     </div>
                     <div class="bk-tables">';
@@ -571,7 +608,7 @@ flash_message('
         echo '<label class="bk-trow" data-name="' . strtolower($nE) . '">'
            . '<input type="checkbox" class="form-check-input" name="tables[]" value="' . $nE . '" data-size="' . (int)$t['size'] . '" checked>'
            . '<span class="n">' . $nE . '</span>'
-           . ($t['rows'] !== null ? '<span class="s">' . number_format((int)$t['rows']) . ' rows</span><span class="s">' . mksize((float)$t['size']) . '</span>' : '')
+           . ($t['rows'] !== null ? '<span class="s">' . bk_h(ags_fmt($lang->backupdb['lbl_rows'], number_format((int)$t['rows']))) . '</span><span class="s">' . mksize((float)$t['size']) . '</span>' : '')
            . '</label>';
     }
     echo '      </div>
@@ -579,34 +616,34 @@ flash_message('
             </div>
             <div class="col-lg-5">
                 <div class="bk-card h-100 p-3">
-                    <div class="bk-grp"><i class="fa-solid fa-file-zipper me-1"></i>File type</div>
+                    <div class="bk-grp"><i class="fa-solid fa-file-zipper me-1"></i>' . bk_h($lang->backupdb['grp_filetype']) . '</div>
                     <div class="row g-2">
-                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="gzip" ' . ($has_gzip ? 'checked' : 'disabled') . '><i class="fa-solid fa-file-zipper"></i><b>GZIP</b><small>Compressed · much smaller</small></label></div>
-                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="plain" ' . ($has_gzip ? '' : 'checked') . '><i class="fa-solid fa-file-code"></i><b>Plain SQL</b><small>Readable text file</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="gzip" ' . ($has_gzip ? 'checked' : 'disabled') . '><i class="fa-solid fa-file-zipper"></i><b>GZIP</b><small>' . bk_h($lang->backupdb['opt_gzip_desc']) . '</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="plain" ' . ($has_gzip ? '' : 'checked') . '><i class="fa-solid fa-file-code"></i><b>' . bk_h($lang->backupdb['opt_plain']) . '</b><small>' . bk_h($lang->backupdb['opt_plain_desc']) . '</small></label></div>
                     </div>
-                    <div class="bk-grp"><i class="fa-solid fa-floppy-disk me-1"></i>Save to</div>
+                    <div class="bk-grp"><i class="fa-solid fa-floppy-disk me-1"></i>' . bk_h($lang->backupdb['grp_save']) . '</div>
                     <div class="row g-2">
-                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="download" checked><i class="fa-solid fa-download"></i><b>Download</b><small>Straight to your computer</small></label></div>
-                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="disk" ' . ($cannot_write ? 'disabled' : '') . '><i class="fa-solid fa-server"></i><b>Server</b><small>admin/backup folder</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="download" checked><i class="fa-solid fa-download"></i><b>' . bk_h($lang->backupdb['opt_method_download']) . '</b><small>' . bk_h($lang->backupdb['opt_method_download_desc']) . '</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="disk" ' . ($cannot_write ? 'disabled' : '') . '><i class="fa-solid fa-server"></i><b>' . bk_h($lang->backupdb['opt_method_server']) . '</b><small>' . bk_h($lang->backupdb['opt_method_server_desc']) . '</small></label></div>
                     </div>
-                    <div class="bk-grp"><i class="fa-solid fa-layer-group me-1"></i>Contents</div>
+                    <div class="bk-grp"><i class="fa-solid fa-layer-group me-1"></i>' . bk_h($lang->backupdb['grp_contents']) . '</div>
                     <div class="row g-2">
-                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="both" checked><i class="fa-solid fa-cubes"></i><b>Full</b><small>Structure + data</small></label></div>
-                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="structure"><i class="fa-solid fa-sitemap"></i><b>Structure</b><small>Tables only</small></label></div>
-                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="data"><i class="fa-solid fa-table"></i><b>Data</b><small>Rows only</small></label></div>
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="both" checked><i class="fa-solid fa-cubes"></i><b>' . bk_h($lang->backupdb['opt_contents_full']) . '</b><small>' . bk_h($lang->backupdb['opt_contents_full_desc']) . '</small></label></div>
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="structure"><i class="fa-solid fa-sitemap"></i><b>' . bk_h($lang->backupdb['opt_contents_structure']) . '</b><small>' . bk_h($lang->backupdb['opt_contents_structure_desc']) . '</small></label></div>
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="data"><i class="fa-solid fa-table"></i><b>' . bk_h($lang->backupdb['opt_contents_data']) . '</b><small>' . bk_h($lang->backupdb['opt_contents_data_desc']) . '</small></label></div>
                     </div>
-                    <div class="bk-grp"><i class="fa-solid fa-broom me-1"></i>Maintenance</div>
+                    <div class="bk-grp"><i class="fa-solid fa-broom me-1"></i>' . bk_h($lang->backupdb['grp_maint']) . '</div>
                     <label class="d-flex align-items-center gap-2 p-2 rounded-3" style="border:1px solid var(--bs-border-color-translucent);cursor:pointer">
                         <input type="hidden" name="analyzeoptimize" value="0">
                         <input class="form-check-input m-0" type="checkbox" role="switch" name="analyzeoptimize" value="1" checked style="width:2.5em;height:1.35em">
-                        <span><b class="d-block">Analyze &amp; optimize</b><small class="bk-muted">Runs OPTIMIZE / ANALYZE on each selected table first</small></span>
+                        <span><b class="d-block">' . bk_h($lang->backupdb['opt_optimize']) . '</b><small class="bk-muted">' . bk_h($lang->backupdb['opt_optimize_desc']) . '</small></span>
                     </label>
                 </div>
             </div>
         </div>
         <div class="bk-card bk-savebar">
-            <span class="bk-muted"><i class="fa-solid fa-circle-info me-1"></i>Large databases can take a while — keep the page open</span>
-            <button type="submit" class="btn btn-primary px-4" id="bkGo"><i class="fa-solid fa-play me-1"></i>Create backup</button>
+            <span class="bk-muted"><i class="fa-solid fa-circle-info me-1"></i>' . bk_h($lang->backupdb['hint_savebar']) . '</span>
+            <button type="submit" class="btn btn-primary px-4" id="bkGo"><i class="fa-solid fa-play me-1"></i>' . bk_h($lang->backupdb['btn_create']) . '</button>
         </div>
     </form>
     </div>';
@@ -619,7 +656,7 @@ flash_message('
 // Main page - list backups
 if(!$mybb->input['action'])
 {
-    stdhead('Database Backups');
+    stdhead($lang->backupdb['title_main']);
     bk_styles();
     $plugins->run_hooks("admin_tools_backupdb_start");
 
@@ -630,19 +667,19 @@ if(!$mybb->input['action'])
     $age_cls   = !$latest ? 'ic-slate' : ((TIMENOW - $latest) < 7 * 86400 ? 'ic-green' : ((TIMENOW - $latest) < 30 * 86400 ? 'ic-amber' : 'ic-purple'));
 
     echo '<div class="container mt-3 mb-4 bk">';
-    bk_hero('Create, download and remove SQL backups of the tracker database',
-        '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>New backup</a>');
+    bk_hero(bk_h($lang->backupdb['hero_sub_list']),
+        '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>' . bk_h($lang->backupdb['btn_new_backup']) . '</a>');
 
     if (!$writable) {
-        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>The <code>admin/backup</code> folder is not writable — new backups can only be downloaded.</div></div>';
+        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>' . $lang->backupdb['alert_readonly_list_html'] . '</div></div>';
     }
 
     echo '<div class="row g-3 mb-3">';
     foreach ([
-        ['fa-box-archive', 'ic-blue',  'Backups',      number_format(count($backups))],
-        ['fa-hard-drive',  'ic-teal',  'Space used',   mksize((float)$total)],
-        ['fa-clock',       $age_cls,   'Latest',       $latest ? my_datee('relative', $latest) : 'never'],
-        ['fa-folder-open', $writable ? 'ic-green' : 'ic-amber', 'Folder', $writable ? 'Writable' : 'Read-only'],
+        ['fa-box-archive', 'ic-blue',  bk_h($lang->backupdb['kpi_backups']), number_format(count($backups))],
+        ['fa-hard-drive',  'ic-teal',  bk_h($lang->backupdb['kpi_space']),   mksize((float)$total)],
+        ['fa-clock',       $age_cls,   bk_h($lang->backupdb['kpi_latest']),  $latest ? my_datee('relative', $latest) : bk_h($lang->backupdb['kpi_never'])],
+        ['fa-folder-open', $writable ? 'ic-green' : 'ic-amber', bk_h($lang->backupdb['kpi_folder']), bk_h($writable ? $lang->backupdb['kpi_writable'] : $lang->backupdb['kpi_readonly'])],
     ] as [$ic, $cls, $label, $val]) {
         echo '<div class="col-6 col-lg-3"><div class="bk-card bk-kpi"><span class="bk-kpi-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
            . '<div style="min-width:0"><div class="bk-kpi-label">' . $label . '</div><div class="bk-kpi-value">' . $val . '</div></div></div></div>';
@@ -650,15 +687,15 @@ if(!$mybb->input['action'])
     echo '</div>';
 
     if (!$backups) {
-        echo '<div class="bk-card"><div class="bk-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">No backups yet</div>'
-           . '<div class="small mb-3">Backups saved to the server show up here.</div>'
-           . '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>Create the first backup</a></div></div>';
+        echo '<div class="bk-card"><div class="bk-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">' . bk_h($lang->backupdb['empty_title']) . '</div>'
+           . '<div class="small mb-3">' . bk_h($lang->backupdb['empty_hint']) . '</div>'
+           . '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>' . bk_h($lang->backupdb['btn_create_first']) . '</a></div></div>';
     } else {
         echo '<div class="bk-card overflow-hidden"><div class="bk-sec-head"><span class="bk-sec-icon ic-slate"><i class="fa-solid fa-list"></i></span>'
-           . '<h2 class="bk-sec-title">Saved backups</h2></div>'
+           . '<h2 class="bk-sec-title">' . bk_h($lang->backupdb['sec_saved']) . '</h2></div>'
            . '<div class="table-responsive"><table class="table bk-table"><thead><tr>'
-           . '<th><i class="fa-solid fa-file"></i>File</th><th><i class="fa-solid fa-weight-hanging"></i>Size</th>'
-           . '<th><i class="fa-solid fa-clock"></i>Created</th><th class="text-end"><i class="fa-solid fa-bolt"></i></th>'
+           . '<th><i class="fa-solid fa-file"></i>' . bk_h($lang->backupdb['th_file']) . '</th><th><i class="fa-solid fa-weight-hanging"></i>' . bk_h($lang->backupdb['th_size']) . '</th>'
+           . '<th><i class="fa-solid fa-clock"></i>' . bk_h($lang->backupdb['th_created']) . '</th><th class="text-end"><i class="fa-solid fa-bolt"></i></th>'
            . '</tr></thead><tbody>';
         foreach ($backups as $i => $b) {
             $dl    = $_this_script_ . '&amp;action=dlbackup&amp;file=' . rawurlencode($b['file']) . '&amp;my_post_key=' . $mybb->post_code;
@@ -668,14 +705,14 @@ if(!$mybb->input['action'])
                . '<td><div class="d-flex align-items-center gap-3"><span class="bk-ficon ' . ($gz ? 'ic-amber' : 'ic-teal') . '"><i class="fa-solid ' . ($gz ? 'fa-file-zipper' : 'fa-file-code') . '"></i></span>'
                . '<div style="min-width:0"><a href="' . $dl . '" class="bk-fname">' . $fileE . '</a>'
                . '<div class="mt-1"><span class="bk-tag ' . ($gz ? 't-gz' : 't-sql') . '">' . ($gz ? 'GZIP' : 'SQL') . '</span>'
-               . ($i === 0 ? ' <span class="bk-tag t-new"><i class="fa-solid fa-star"></i>latest</span>' : '') . '</div></div></div></td>'
+               . ($i === 0 ? ' <span class="bk-tag t-new"><i class="fa-solid fa-star"></i>' . bk_h($lang->backupdb['tag_latest']) . '</span>' : '') . '</div></div></div></td>'
                . '<td class="text-nowrap fw-semibold">' . mksize((float)$b['size']) . '</td>'   // раньше — голое число байт
                . '<td class="text-nowrap bk-muted" title="' . htmlspecialchars(date('Y-m-d H:i:s', $b['time'])) . '">' . ($b['time'] ? my_datee('relative', $b['time']) : '—') . '</td>'
                . '<td class="text-end text-nowrap">'
-               . '<a href="' . $dl . '" class="bk-act" title="Download"><i class="fa-solid fa-download"></i></a>'
+               . '<a href="' . $dl . '" class="bk-act" title="' . bk_h($lang->backupdb['tip_download']) . '"><i class="fa-solid fa-download"></i></a>'
                // data-атрибуты вместо id с именем файла: точки в «backup_….sql.gz»
                // ломали селектор data-bs-target="#deleteModal…", и модалка не открывалась
-               . '<button type="button" class="bk-act danger bk-del" title="Delete" data-file="' . $fileE . '" data-url="' . $_this_script_ . '&amp;action=delete&amp;file=' . rawurlencode($b['file']) . '"><i class="fa-solid fa-trash"></i></button>'
+               . '<button type="button" class="bk-act danger bk-del" title="' . bk_h($lang->backupdb['tip_delete']) . '" data-file="' . $fileE . '" data-url="' . $_this_script_ . '&amp;action=delete&amp;file=' . rawurlencode($b['file']) . '"><i class="fa-solid fa-trash"></i></button>'
                . '</td></tr>';
         }
         echo '</tbody></table></div></div>';
@@ -687,18 +724,18 @@ if(!$mybb->input['action'])
       <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
         <div class="modal-header">
           <span class="bk-mh-icon"><i class="fa-solid fa-trash-can"></i></span>
-          <h5 class="modal-title fw-bold" id="bkDelTitle">Delete backup?</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <h5 class="modal-title fw-bold" id="bkDelTitle">' . bk_h($lang->backupdb['modal_title']) . '</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . bk_h($lang->backupdb['aria_close']) . '"></button>
         </div>
         <div class="modal-body">
           <div class="font-monospace p-2 rounded-3 bg-body-tertiary text-break" id="bkDelFile"></div>
-          <div class="text-body-secondary small mt-2"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>The file is removed from the server. This can\'t be undone.</div>
+          <div class="text-body-secondary small mt-2"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>' . bk_h($lang->backupdb['hint_irreversible']) . '</div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+          <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>' . bk_h($lang->backupdb['btn_cancel']) . '</button>
           <form method="post" action="" id="bkDelForm" class="d-inline">
             <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-            <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+            <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>' . bk_h($lang->backupdb['btn_delete']) . '</button>
           </form>
         </div>
       </div></div>

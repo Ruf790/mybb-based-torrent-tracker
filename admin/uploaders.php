@@ -64,7 +64,7 @@ if ($total_count === 0 && $type === 1) {
     }
 }
 
-$perpage = 25;
+$perpage = max(1, (int)($ts_perpage ?? 25));
 $page    = max(1, (int)($mybb->input['page'] ?? 1));
 $pages   = $total_count > 0 ? (int)ceil($total_count / $perpage) : 1;
 if ($page > $pages) $page = 1;

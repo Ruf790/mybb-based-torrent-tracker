@@ -9,6 +9,8 @@ if (!defined('STAFF_PANEL')) {
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
 
+$lang->load('manage_vip');
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -25,12 +27,12 @@ const VIP_SORT_FIELDS = [
     'invites'   => ['sql' => 'u.invites',   'dir' => 'DESC'],
 ];
 
-/** Bulk actions: label, unit for the amount, icon, upper limit, colour tone */
+/** Bulk actions: icon, upper limit, colour tone (label/unit come from the lang: opt_<key>, unit_<key>) */
 const VIP_ACTIONS = [
-    'donoruntil' => ['label' => 'Extend VIP',        'unit' => 'weeks',   'icon' => 'fa-calendar-plus', 'max' => 520,      'tone' => 'primary'],
-    'seedbonus'  => ['label' => 'Give bonus points', 'unit' => 'points',  'icon' => 'fa-coins',         'max' => 10000000, 'tone' => 'warning'],
-    'invites'    => ['label' => 'Give invites',      'unit' => 'invites', 'icon' => 'fa-envelope',      'max' => 1000,     'tone' => 'info'],
-    'remove_vip' => ['label' => 'Remove VIP',        'unit' => '',        'icon' => 'fa-user-slash',    'max' => 0,        'tone' => 'danger'],
+    'donoruntil' => ['icon' => 'fa-calendar-plus', 'max' => 520,      'tone' => 'primary'],
+    'seedbonus'  => ['icon' => 'fa-coins',         'max' => 10000000, 'tone' => 'warning'],
+    'invites'    => ['icon' => 'fa-envelope',      'max' => 1000,     'tone' => 'info'],
+    'remove_vip' => ['icon' => 'fa-user-slash',    'max' => 0,        'tone' => 'danger'],
 ];
 
 /** Base WHERE shared by every query: VIP group, no staff groups */
@@ -45,6 +47,34 @@ const VIP_BASE_WHERE = "u.usergroup = ?
 function vipH(mixed $value): string
 {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+if (!function_exists('ags_fmt')) {
+    /** Fills {1}, {2}… placeholders (and %1$s… as produced by $lang->load()) */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string) $arg;
+            $map['%' . $n . '$s'] = (string) $arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/** Translated label of a bulk action */
+function vipActionLabel(string $key): string
+{
+    global $lang;
+    return (string) ($lang->manage_vip['opt_' . $key] ?? $key);
+}
+
+/** Translated amount unit of a bulk action ('' for remove_vip) */
+function vipActionUnit(string $key): string
+{
+    global $lang;
+    return (string) ($lang->manage_vip['unit_' . $key] ?? '');
 }
 
 /** Raw (not HTML-escaped) URL: base + query, empty values dropped */
@@ -84,7 +114,7 @@ function getVipUserPopoverContent(array $user): string
 {
     global $lang, $dateformat, $timeformat;
 
-    $lang->load('tsf_forums');
+    $L = $lang->manage_vip;
 
     $lastseen   = my_datee($dateformat, $user['lastactive']) . ' ' . my_datee($timeformat, $user['lastactive']);
     $downloaded = mksize($user['downloaded']);
@@ -102,7 +132,7 @@ function getVipUserPopoverContent(array $user): string
 
     $stat = static fn(string $icon, string $label, string $value, string $extra = ''): string =>
         '<div class="vp-stat">'
-        . '<span class="vp-stat-label"><i class="fa-solid ' . $icon . '"></i>' . $label . '</span>'
+        . '<span class="vp-stat-label"><i class="fa-solid ' . $icon . '"></i>' . vipH($label) . '</span>'
         . '<span class="vp-stat-value ' . $extra . '">' . $value . '</span>'
         . '</div>';
 
@@ -111,20 +141,20 @@ function getVipUserPopoverContent(array $user): string
     $html .= vipAvatar($user, 64);
     $html .= '<div class="vp-id">';
     $html .= '<div class="vp-name">' . vipH($user['username'] ?? '') . '</div>';
-    $html .= '<div class="vp-title">' . vipH($user['title'] ?? 'VIP Member') . '</div>';
+    $html .= '<div class="vp-title">' . vipH($user['title'] ?? $L['lbl_vip_member']) . '</div>';
     $html .= $isOnline
-        ? '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-circle vp-dot"></i>Online</span>'
-        : '<span class="vm-pill vm-tone-secondary"><i class="fa-regular fa-circle vp-dot"></i>Offline</span>';
+        ? '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-circle vp-dot"></i>' . vipH($L['pop_online']) . '</span>'
+        : '<span class="vm-pill vm-tone-secondary"><i class="fa-regular fa-circle vp-dot"></i>' . vipH($L['pop_offline']) . '</span>';
     $html .= '</div></div>';
 
     $html .= '<div class="vp-grid">';
-    $html .= $stat('fa-calendar-plus', 'Joined', my_datee($dateformat, $user['added']));
-    $html .= $stat('fa-clock', 'Last seen', $lastseen);
-    $html .= $stat('fa-scale-balanced', 'Ratio', (string) $ratio, 'vm-text-' . $ratioTone);
-    $html .= $stat('fa-coins', 'Bonus points', ts_nf($user['seedbonus'] ?? 0));
-    $html .= $stat('fa-arrow-up', 'Uploaded', $uploaded, 'vm-text-success');
-    $html .= $stat('fa-arrow-down', 'Downloaded', $downloaded, 'vm-text-danger');
-    $html .= $stat('fa-envelope', 'Invites', ts_nf($user['invites'] ?? 0) . ' available');
+    $html .= $stat('fa-calendar-plus', $L['pop_joined'], my_datee($dateformat, $user['added']));
+    $html .= $stat('fa-clock', $L['pop_last_seen'], $lastseen);
+    $html .= $stat('fa-scale-balanced', $L['pop_ratio'], (string) $ratio, 'vm-text-' . $ratioTone);
+    $html .= $stat('fa-coins', $L['pop_seedbonus'], ts_nf($user['seedbonus'] ?? 0));
+    $html .= $stat('fa-arrow-up', $L['pop_uploaded'], $uploaded, 'vm-text-success');
+    $html .= $stat('fa-arrow-down', $L['pop_downloaded'], $downloaded, 'vm-text-danger');
+    $html .= $stat('fa-envelope', $L['pop_invites'], vipH(ags_fmt($L['pop_invites_value'], ts_nf($user['invites'] ?? 0))));
     $html .= '</div></div>';
 
     return $html;
@@ -132,10 +162,12 @@ function getVipUserPopoverContent(array $user): string
 
 function getVipUntilDisplay(?int $vipUntil): string
 {
-    global $dateformat;
+    global $lang, $dateformat;
+
+    $L = $lang->manage_vip;
 
     if (empty($vipUntil)) {
-        return '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-infinity"></i>Unlimited</span>';
+        return '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-infinity"></i>' . vipH($L['lbl_unlimited']) . '</span>';
     }
 
     $timeLeft = $vipUntil - TIMENOW;
@@ -149,8 +181,8 @@ function getVipUntilDisplay(?int $vipUntil): string
     };
 
     $sub = $timeLeft > 0
-        ? mkprettytime($timeLeft) . ' left'
-        : 'Expired, waiting for cron';
+        ? ags_fmt(vipH($L['hint_time_left']), mkprettytime($timeLeft))
+        : vipH($L['hint_expired']);
 
     return '<div class="vm-until">'
         . '<span class="vm-pill vm-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i>' . my_datee($dateformat, $vipUntil) . '</span>'
@@ -302,16 +334,22 @@ $flashN   = max(0, (int) ($_GET['n'] ?? 0));
 $flashAmt = max(0, (int) ($_GET['amt'] ?? 0));
 $flashAct = (string) ($_GET['act'] ?? '');
 
+$L = $lang->manage_vip;
+
+$badAmountUnit = isset(VIP_ACTIONS[$flashAct]) ? vipActionUnit($flashAct) : '';
+$badAmountText = $badAmountUnit !== ''
+    ? ags_fmt($L['flash_bad_amount'], ts_nf(VIP_ACTIONS[$flashAct]['max']), $badAmountUnit)
+    : ags_fmt($L['flash_bad_amount_nu'], ts_nf(VIP_ACTIONS[$flashAct]['max'] ?? 1));
+
 $flash = match ($flashKey) {
-    'donoruntil'    => ['success', 'fa-calendar-check', 'VIP extended by ' . ts_nf($flashAmt) . ' week(s) for ' . ts_nf($flashN) . ' account(s).'],
-    'seedbonus'     => ['success', 'fa-coins',          ts_nf($flashAmt) . ' bonus points given to ' . ts_nf($flashN) . ' account(s).'],
-    'invites'       => ['success', 'fa-envelope-circle-check', ts_nf($flashAmt) . ' invite(s) given to ' . ts_nf($flashN) . ' account(s).'],
-    'remove_vip'    => ['success', 'fa-user-check',     'VIP removed from ' . ts_nf($flashN) . ' account(s). Their previous group was restored.'],
-    'none_selected' => ['warning', 'fa-hand-pointer',   'Nothing was changed: select at least one VIP account in the table.'],
-    'bad_amount'    => ['warning', 'fa-hashtag',        'Nothing was changed: enter an amount from 1 to '
-                            . ts_nf(VIP_ACTIONS[$flashAct]['max'] ?? 1) . (isset(VIP_ACTIONS[$flashAct]) ? ' ' . VIP_ACTIONS[$flashAct]['unit'] : '') . '.'],
-    'bad_action'    => ['danger',  'fa-circle-xmark',   'Nothing was changed: unknown action.'],
-    'csrf'          => ['danger',  'fa-shield-halved',  'Nothing was changed: the form has expired. Reload the page and try again.'],
+    'donoruntil'    => ['success', 'fa-calendar-check',        ags_fmt($L['flash_donoruntil'], ts_nf($flashAmt), ts_nf($flashN))],
+    'seedbonus'     => ['success', 'fa-coins',                 ags_fmt($L['flash_seedbonus'], ts_nf($flashAmt), ts_nf($flashN))],
+    'invites'       => ['success', 'fa-envelope-circle-check', ags_fmt($L['flash_invites'], ts_nf($flashAmt), ts_nf($flashN))],
+    'remove_vip'    => ['success', 'fa-user-check',            ags_fmt($L['flash_remove_vip'], ts_nf($flashN))],
+    'none_selected' => ['warning', 'fa-hand-pointer',          $L['flash_none_selected']],
+    'bad_amount'    => ['warning', 'fa-hashtag',               $badAmountText],
+    'bad_action'    => ['danger',  'fa-circle-xmark',          $L['flash_bad_action']],
+    'csrf'          => ['danger',  'fa-shield-halved',         $L['flash_csrf']],
     default         => null,
 };
 
@@ -400,14 +438,22 @@ $sortLink = static function (string $field, string $label, string $icon, string 
 
     return '<a href="' . vipH($href) . '" class="vm-sort' . ($active ? ' is-active' : '') . ($align ? ' ' . $align : '') . '"'
         . ($active ? ' aria-sort="' . ($sortOrder === 'ASC' ? 'ascending' : 'descending') . '"' : '') . '>'
-        . '<i class="fa-solid ' . $icon . '"></i><span>' . $label . '</span>'
+        . '<i class="fa-solid ' . $icon . '"></i><span>' . vipH($label) . '</span>'
         . '<i class="fa-solid ' . $caret . ' vm-caret"></i></a>';
 };
 
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
-stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts found)');
+/** JS strings: js_* keys without the prefix */
+$jsLang = [];
+foreach ($L as $key => $value) {
+    if (str_starts_with((string) $key, 'js_')) {
+        $jsLang[substr((string) $key, 3)] = (string) $value;
+    }
+}
+
+stdhead(ags_fmt($L['page_title'], ts_nf($totalUsers)));
 ?>
 <link rel="stylesheet" href="<?= vipH($BASEURL) ?>/include/templates/default/style/sweetalert2.min.css">
 
@@ -418,10 +464,10 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
         <div class="card-body d-flex align-items-center gap-3 flex-wrap">
             <span class="vm-icon-square vm-tone-warning"><i class="fa-solid fa-crown"></i></span>
             <div class="flex-grow-1">
-                <h1 class="vm-title">Manage VIP accounts</h1>
-                <p class="vm-subtitle mb-0">Extend VIP time, give bonus points or invites, or remove VIP from selected members.</p>
+                <h1 class="vm-title"><?= vipH($L['sec_title']) ?></h1>
+                <p class="vm-subtitle mb-0"><?= vipH($L['sec_subtitle']) ?></p>
             </div>
-            <span class="vm-pill vm-tone-secondary" title="Module version"><i class="fa-solid fa-code-branch"></i><?= vipH(M_VIP_VERSION) ?></span>
+            <span class="vm-pill vm-tone-secondary" title="<?= vipH($L['tip_version']) ?>"><i class="fa-solid fa-code-branch"></i><?= vipH(M_VIP_VERSION) ?></span>
         </div>
     </div>
 
@@ -429,10 +475,10 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
     <div class="row g-3 mb-3">
         <?php
         $tiles = [
-            ['primary', 'fa-users',               $kpi['total'],     'VIP accounts'],
-            ['success', 'fa-infinity',            $kpi['unlimited'], 'Unlimited'],
-            ['warning', 'fa-hourglass-end',       $kpi['expiring'],  'Expire within 7 days'],
-            ['danger',  'fa-circle-exclamation',  $kpi['expired'],   'Expired, waiting for cron'],
+            ['primary', 'fa-users',               $kpi['total'],     $L['kpi_total']],
+            ['success', 'fa-infinity',            $kpi['unlimited'], $L['kpi_unlimited']],
+            ['warning', 'fa-hourglass-end',       $kpi['expiring'],  $L['kpi_expiring']],
+            ['danger',  'fa-circle-exclamation',  $kpi['expired'],   $L['kpi_expired']],
         ];
         foreach ($tiles as [$tone, $icon, $value, $label]): ?>
         <div class="col-6 col-lg-3">
@@ -441,7 +487,7 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                     <span class="vm-icon-square vm-icon-square-sm vm-tone-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></span>
                     <div class="min-w-0">
                         <div class="vm-kpi-value"><?= ts_nf($value) ?></div>
-                        <div class="vm-kpi-label"><?= $label ?></div>
+                        <div class="vm-kpi-label"><?= vipH($label) ?></div>
                     </div>
                 </div>
             </div>
@@ -453,7 +499,7 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
     <div class="vm-flash vm-tone-<?= $fTone ?> mb-3" role="<?= $fTone === 'success' ? 'status' : 'alert' ?>">
         <i class="fa-solid <?= $fIcon ?>"></i>
         <span class="flex-grow-1"><?= vipH($fText) ?></span>
-        <button type="button" class="vm-flash-close" aria-label="Dismiss" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>
+        <button type="button" class="vm-flash-close" aria-label="<?= vipH($L['flash_dismiss']) ?>" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <?php endif; ?>
 
@@ -468,22 +514,22 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                 <div class="vm-search">
                     <i class="fa-solid fa-magnifying-glass vm-search-icon"></i>
                     <input type="search" class="form-control vm-input" id="username" name="username"
-                           value="<?= vipH($username) ?>" placeholder="Find a VIP by username"
-                           autocomplete="off" aria-label="Username">
+                           value="<?= vipH($username) ?>" placeholder="<?= vipH($L['hint_search']) ?>"
+                           autocomplete="off" aria-label="<?= vipH($L['lbl_username']) ?>">
                 </div>
-                <button type="submit" class="btn btn-primary vm-btn"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button>
+                <button type="submit" class="btn btn-primary vm-btn"><i class="fa-solid fa-magnifying-glass me-1"></i><?= vipH($L['btn_search']) ?></button>
                 <?php if ($username !== ''): ?>
                 <a href="<?= vipH(vipUrl($baseUrl, ['sortby' => $state['sortby'], 'type' => $state['type']])) ?>" class="btn btn-outline-secondary vm-btn">
-                    <i class="fa-solid fa-xmark me-1"></i>Clear
+                    <i class="fa-solid fa-xmark me-1"></i><?= vipH($L['btn_clear']) ?>
                 </a>
                 <?php endif; ?>
 
                 <span class="vm-range ms-auto">
                     <i class="fa-solid fa-list-ol"></i>
                     <?php if ($totalUsers > 0): ?>
-                        <?= ts_nf($shownFrom) ?>–<?= ts_nf($shownTo) ?> of <?= ts_nf($totalUsers) ?>
+                        <?= vipH(ags_fmt($L['lbl_range'], ts_nf($shownFrom), ts_nf($shownTo), ts_nf($totalUsers))) ?>
                     <?php else: ?>
-                        0 found
+                        <?= vipH($L['lbl_none_found']) ?>
                     <?php endif; ?>
                 </span>
             </form>
@@ -491,7 +537,7 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
     </div>
 
     <?php if ($multipage !== ''): ?>
-    <nav class="vm-pager mb-3" aria-label="VIP users pagination"><?= $multipage ?></nav>
+    <nav class="vm-pager mb-3" aria-label="<?= vipH($L['lbl_pager_top']) ?>"><?= $multipage ?></nav>
     <?php endif; ?>
 
     <!-- VIP table + sticky action bar -->
@@ -510,13 +556,13 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                         <tr>
                             <th class="vm-col-check">
                                 <input class="form-check-input" type="checkbox" checkall="group" id="vmCheckAll"
-                                       aria-label="Select all on this page"
+                                       aria-label="<?= vipH($L['lbl_select_all']) ?>"
                                        onclick="if (typeof select_deselectAll === 'function') select_deselectAll('update', this, 'group')">
                             </th>
-                            <th><?= $sortLink('username', 'Member', 'fa-user') ?></th>
-                            <th><?= $sortLink('vip_until', 'VIP until', 'fa-crown') ?></th>
-                            <th class="text-end"><?= $sortLink('seedbonus', 'Bonus points', 'fa-coins', 'justify-content-end') ?></th>
-                            <th class="text-end"><?= $sortLink('invites', 'Invites', 'fa-envelope', 'justify-content-end') ?></th>
+                            <th><?= $sortLink('username', $L['col_member'], 'fa-user') ?></th>
+                            <th><?= $sortLink('vip_until', $L['col_vip_until'], 'fa-crown') ?></th>
+                            <th class="text-end"><?= $sortLink('seedbonus', $L['col_seedbonus'], 'fa-coins', 'justify-content-end') ?></th>
+                            <th class="text-end"><?= $sortLink('invites', $L['col_invites'], 'fa-envelope', 'justify-content-end') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -527,7 +573,7 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                             <td class="vm-col-check">
                                 <input class="form-check-input" type="checkbox" name="userids[]" value="<?= $uid ?>"
                                        checkme="group" id="vmUser<?= $uid ?>"
-                                       aria-label="Select <?= vipH($vip['username'] ?? '') ?>">
+                                       aria-label="<?= vipH(ags_fmt($L['lbl_select_user'], (string) ($vip['username'] ?? ''))) ?>">
                             </td>
                             <td>
                                 <div class="vm-member">
@@ -541,7 +587,7 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                                            data-bs-content="<?= vipH(getVipUserPopoverContent($vip)) ?>"
                                            data-bs-placement="auto"
                                            data-bs-trigger="hover focus"><?= format_name(htmlspecialchars_uni((string) ($vip['username'] ?? '')), (int) ($vip['usergroup'] ?? 0)) ?></a>
-                                        <div class="vm-member-title"><?= vipH($vip['title'] ?? 'VIP Member') ?></div>
+                                        <div class="vm-member-title"><?= vipH($vip['title'] ?? $L['lbl_vip_member']) ?></div>
                                     </div>
                                 </div>
                             </td>
@@ -559,12 +605,12 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
                             <td colspan="5" class="vm-empty">
                                 <span class="vm-icon-square vm-tone-secondary mb-3"><i class="fa-solid <?= $username !== '' ? 'fa-magnifying-glass' : 'fa-crown' ?>"></i></span>
                                 <?php if ($username !== ''): ?>
-                                    <h2 class="vm-empty-title">No VIP account matches “<?= vipH($username) ?>”</h2>
-                                    <p class="mb-3">Check the spelling or search for part of the name.</p>
-                                    <a href="<?= vipH($baseUrl) ?>" class="btn btn-outline-secondary vm-btn"><i class="fa-solid fa-xmark me-1"></i>Clear search</a>
+                                    <h2 class="vm-empty-title"><?= vipH(ags_fmt($L['sec_empty_search'], $username)) ?></h2>
+                                    <p class="mb-3"><?= vipH($L['hint_empty_search']) ?></p>
+                                    <a href="<?= vipH($baseUrl) ?>" class="btn btn-outline-secondary vm-btn"><i class="fa-solid fa-xmark me-1"></i><?= vipH($L['btn_clear_search']) ?></a>
                                 <?php else: ?>
-                                    <h2 class="vm-empty-title">There are no VIP accounts yet</h2>
-                                    <p class="mb-0">Members appear here once they buy VIP or staff move them into the VIP group.</p>
+                                    <h2 class="vm-empty-title"><?= vipH($L['sec_empty']) ?></h2>
+                                    <p class="mb-0"><?= vipH($L['hint_empty']) ?></p>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -576,43 +622,46 @@ stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts foun
 
         <?php if ($vipRows): ?>
         <div class="vm-actionbar" id="vmActionBar">
-            <span class="vm-selected" title="Selected accounts">
-                <i class="fa-solid fa-check-double"></i><span id="selectedCount">0</span> selected
+            <span class="vm-selected" title="<?= vipH($L['tip_selected']) ?>">
+                <i class="fa-solid fa-check-double"></i><?= ags_fmt(vipH($L['lbl_selected']), '<span id="selectedCount">0</span>') ?>
             </span>
 
-            <div class="vm-seg" role="radiogroup" aria-label="Action">
+            <div class="vm-seg" role="radiogroup" aria-label="<?= vipH($L['lbl_action']) ?>">
                 <?php $first = true; foreach (VIP_ACTIONS as $key => $a): ?>
                 <input type="radio" class="btn-check" name="add" id="vmAct_<?= $key ?>" value="<?= $key ?>"
-                       data-unit="<?= vipH($a['unit']) ?>" data-max="<?= (int) $a['max'] ?>" data-label="<?= vipH($a['label']) ?>"
+                       data-unit="<?= vipH(vipActionUnit($key)) ?>" data-max="<?= (int) $a['max'] ?>" data-label="<?= vipH(vipActionLabel($key)) ?>"
                        autocomplete="off"<?= $first ? ' checked' : '' ?>>
                 <label class="vm-seg-btn vm-tone-<?= $a['tone'] ?>" for="vmAct_<?= $key ?>">
-                    <i class="fa-solid <?= $a['icon'] ?>"></i><span><?= vipH($a['label']) ?></span>
+                    <i class="fa-solid <?= $a['icon'] ?>"></i><span><?= vipH(vipActionLabel($key)) ?></span>
                 </label>
                 <?php $first = false; endforeach; ?>
             </div>
 
             <div class="vm-amount" id="limitFormGroup">
                 <input type="number" class="form-control vm-input" id="limit" name="limit" min="1"
-                       max="<?= (int) VIP_ACTIONS['donoruntil']['max'] ?>" placeholder="Amount" required aria-label="Amount">
-                <span class="vm-unit" id="vmUnit"><?= vipH(VIP_ACTIONS['donoruntil']['unit']) ?></span>
+                       max="<?= (int) VIP_ACTIONS['donoruntil']['max'] ?>" placeholder="<?= vipH($L['hint_amount']) ?>" required aria-label="<?= vipH($L['hint_amount']) ?>">
+                <span class="vm-unit" id="vmUnit"><?= vipH(vipActionUnit('donoruntil')) ?></span>
             </div>
 
             <button type="submit" class="btn btn-primary vm-btn ms-auto" id="vmSubmit" disabled>
-                <i class="fa-solid fa-bolt me-1"></i>Apply to selected
+                <i class="fa-solid fa-bolt me-1"></i><?= vipH($L['btn_apply']) ?>
             </button>
         </div>
         <?php endif; ?>
     </form>
 
     <?php if ($multipage !== ''): ?>
-    <nav class="vm-pager mt-3" aria-label="VIP users pagination bottom"><?= $multipage ?></nav>
+    <nav class="vm-pager mt-3" aria-label="<?= vipH($L['lbl_pager_bottom']) ?>"><?= $multipage ?></nav>
     <?php endif; ?>
 </div>
 
 <script src="<?= vipH($BASEURL) ?>/scripts/popover.js"></script>
 <script src="<?= vipH($BASEURL) ?>/scripts/sweetalert2.min.js"></script>
 
-<script src="<?= vipH($BASEURL) ?>/admin/scripts/manage_vip.js?ver=336"></script>
+<script>
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<script src="<?= vipH($BASEURL) ?>/admin/scripts/manage_vip.js?ver=337"></script>
 
 <link rel="stylesheet" href="<?= vipH($BASEURL) ?>/admin/templates/manage_vip.css?ver=336">
 

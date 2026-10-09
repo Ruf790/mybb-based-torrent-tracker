@@ -7,11 +7,29 @@ if (!defined('IN_ADMIN_PANEL'))
     exit('<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('manage_avatars');
+
 define('M_AVATARS', 'v.3.2');
 define('AVATARS_PER_PAGE', 24);
 
 require_once INC_PATH . '/functions_multipage.php';
 
+
+/**
+ * Substitute {1}, {2}… (and %1$s, %2$s… produced by $lang->load()) in a lang string
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $v) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$v;
+            $map['%' . $n . '$s'] = (string)$v;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
 
 /**
  * Normalize an avatar path from DB or disk to a lookup key
@@ -71,7 +89,13 @@ function get_image_contents(string $file): array|false
  */
 function format_file_size(int|float $bytes): string
 {
-    $units = ['B', 'KB', 'MB', 'GB'];
+    global $lang;
+    $units = [
+        $lang->manage_avatars['unit_b'],
+        $lang->manage_avatars['unit_kb'],
+        $lang->manage_avatars['unit_mb'],
+        $lang->manage_avatars['unit_gb'],
+    ];
     $i = 0;
     while ($bytes >= 1024 && $i < count($units) - 1) {
         $bytes /= 1024;
@@ -106,7 +130,7 @@ while ($res && ($row = $db->fetch_array($res))) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action_type'] ?? '') === 'delete') {
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        exit('Invalid security token');
+        exit($e($lang->manage_avatars['err_invalid_token']));
     }
 
     $ok = $skipped_shared = $not_found = $unlink_failed = [];
@@ -272,18 +296,26 @@ foreach ($avatars_page as $avatar) {
     }
 }
 
+// JS strings: js_* keys without the prefix
+$js_lang = [];
+foreach ((array)$lang->manage_avatars as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $js_lang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
-stdhead('Manage Avatars - ' . M_AVATARS);
+stdhead(ags_fmt($lang->manage_avatars['page_title'], M_AVATARS));
 
 require_once INC_PATH . '/modals_images.php';
 
 echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">';
 echo '<script src="' . $e($BASEURL) . '/scripts/sweetalert2.min.js"></script>';
 echo '<script src="' . $e($BASEURL) . '/scripts/details_modal.js"></script>';
-echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_avatars.css?v=' . $asset_v('/include/templates/default/style/manage_avatars.css') . '">';
+echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_avatars.css?v=' . $asset_v('/admin/templates/manage_avatars.css') . '">';
 
 ?>
 
@@ -295,12 +327,12 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
         <div class="d-flex align-items-center gap-3">
             <div class="ma-header-icon ma-tone-primary"><i class="fa-solid fa-user-astronaut"></i></div>
             <div>
-                <h1 class="ma-title">Manage Avatars</h1>
-                <div class="ma-subtitle">Review uploaded avatar files, find orphaned or suspicious ones and delete them</div>
+                <h1 class="ma-title"><?= $e($lang->manage_avatars['sec_title']) ?></h1>
+                <div class="ma-subtitle"><?= $e($lang->manage_avatars['sec_subtitle']) ?></div>
             </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <span class="ma-range"><i class="fa-solid fa-layer-group me-1"></i><?= $from ?>–<?= $to ?> of <?= $total ?></span>
+            <span class="ma-range"><i class="fa-solid fa-layer-group me-1"></i><?= $e(ags_fmt($lang->manage_avatars['lbl_range'], $from, $to, $total)) ?></span>
             <span class="ma-chip ma-tone-muted"><i class="fa-solid fa-code-branch"></i><?= $e(M_AVATARS) ?></span>
         </div>
     </div>
@@ -312,7 +344,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                 <div class="ma-kpi-icon ma-tone-primary"><i class="fa-solid fa-images"></i></div>
                 <div>
                     <div class="ma-kpi-value"><?= number_format($total) ?></div>
-                    <div class="ma-kpi-label">Avatar files</div>
+                    <div class="ma-kpi-label"><?= $e($lang->manage_avatars['kpi_files']) ?></div>
                 </div>
             </div>
         </div>
@@ -321,7 +353,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                 <div class="ma-kpi-icon ma-tone-info"><i class="fa-solid fa-hard-drive"></i></div>
                 <div>
                     <div class="ma-kpi-value"><?= $e(format_file_size($total_bytes)) ?></div>
-                    <div class="ma-kpi-label">Disk usage</div>
+                    <div class="ma-kpi-label"><?= $e($lang->manage_avatars['kpi_disk']) ?></div>
                 </div>
             </div>
         </div>
@@ -330,7 +362,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                 <div class="ma-kpi-icon ma-tone-warning"><i class="fa-solid fa-user-slash"></i></div>
                 <div>
                     <div class="ma-kpi-value"><?= number_format($orphans_total) ?></div>
-                    <div class="ma-kpi-label">Orphaned files</div>
+                    <div class="ma-kpi-label"><?= $e($lang->manage_avatars['kpi_orphans']) ?></div>
                 </div>
             </div>
         </div>
@@ -341,7 +373,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                 </div>
                 <div>
                     <div class="ma-kpi-value"><?= $counts['flagged'] ?></div>
-                    <div class="ma-kpi-label">Flagged on this page</div>
+                    <div class="ma-kpi-label"><?= $e($lang->manage_avatars['kpi_flagged']) ?></div>
                 </div>
             </div>
         </div>
@@ -349,17 +381,17 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
 
     <?php if ($result):
         $rows = [
-            ['ok',             'fa-circle-check',         'ma-tone-success', 'Deleted'],
-            ['skipped_shared', 'fa-share-nodes',          'ma-tone-warning', 'Skipped, used by several accounts'],
-            ['not_found',      'fa-magnifying-glass',     'ma-tone-info',    'Not found'],
-            ['unlink_failed',  'fa-triangle-exclamation', 'ma-tone-danger',  'Could not delete, check folder permissions'],
+            ['ok',             'fa-circle-check',         'ma-tone-success', $lang->manage_avatars['flash_deleted']],
+            ['skipped_shared', 'fa-share-nodes',          'ma-tone-warning', $lang->manage_avatars['flash_skipped_shared']],
+            ['not_found',      'fa-magnifying-glass',     'ma-tone-info',    $lang->manage_avatars['flash_not_found']],
+            ['unlink_failed',  'fa-triangle-exclamation', 'ma-tone-danger',  $lang->manage_avatars['flash_unlink_failed']],
         ];
     ?>
     <div class="ma-result mb-4" role="status">
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong><i class="fa-solid fa-clipboard-check me-2"></i>Deletion result</strong>
+            <strong><i class="fa-solid fa-clipboard-check me-2"></i><?= $e($lang->manage_avatars['sec_result']) ?></strong>
             <?php if (!empty($result['cleared'])): ?>
-            <span class="ma-chip ma-tone-muted"><i class="fa-solid fa-user-xmark"></i><?= (int)$result['cleared'] ?> profile(s) cleared</span>
+            <span class="ma-chip ma-tone-muted"><i class="fa-solid fa-user-xmark"></i><?= $e(ags_fmt($lang->manage_avatars['flash_profiles_cleared'], (int)$result['cleared'])) ?></span>
             <?php endif; ?>
         </div>
         <?php foreach ($rows as [$key, $icon, $tone, $label]):
@@ -369,7 +401,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
         <div class="ma-result-row">
             <div class="ma-kpi-icon <?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></div>
             <div class="min-w-0">
-                <div class="fw-semibold"><?= $label ?> (<?= count($list) ?>)</div>
+                <div class="fw-semibold"><?= $e($label) ?> (<?= count($list) ?>)</div>
                 <div class="ma-result-files">
                     <?= implode(', ', array_map($e, array_slice($list, 0, 8))) ?><?= count($list) > 8 ? ', …' : '' ?>
                 </div>
@@ -388,20 +420,20 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
         <div class="ma-toolbar">
             <label class="ma-selectall" for="select_all">
                 <input class="form-check-input" type="checkbox" id="select_all">
-                <i class="fa-solid fa-check-double"></i> Select all shown
+                <i class="fa-solid fa-check-double"></i> <?= $e($lang->manage_avatars['lbl_select_all']) ?>
             </label>
-            <div class="ma-filters" role="group" aria-label="Filter avatars">
+            <div class="ma-filters" role="group" aria-label="<?= $e($lang->manage_avatars['aria_filters']) ?>">
                 <button type="button" class="ma-filter active" data-filter="all">
-                    <i class="fa-solid fa-border-all"></i>All <span class="ma-count"><?= $counts['all'] ?></span>
+                    <i class="fa-solid fa-border-all"></i><?= $e($lang->manage_avatars['opt_all']) ?> <span class="ma-count"><?= $counts['all'] ?></span>
                 </button>
                 <button type="button" class="ma-filter" data-filter="owned">
-                    <i class="fa-solid fa-user-check"></i>In use <span class="ma-count"><?= $counts['owned'] ?></span>
+                    <i class="fa-solid fa-user-check"></i><?= $e($lang->manage_avatars['opt_owned']) ?> <span class="ma-count"><?= $counts['owned'] ?></span>
                 </button>
                 <button type="button" class="ma-filter" data-filter="orphan">
-                    <i class="fa-solid fa-user-slash"></i>Orphaned <span class="ma-count"><?= $counts['orphan'] ?></span>
+                    <i class="fa-solid fa-user-slash"></i><?= $e($lang->manage_avatars['opt_orphan']) ?> <span class="ma-count"><?= $counts['orphan'] ?></span>
                 </button>
                 <button type="button" class="ma-filter" data-filter="flagged">
-                    <i class="fa-solid fa-shield-virus"></i>Flagged <span class="ma-count"><?= $counts['flagged'] ?></span>
+                    <i class="fa-solid fa-shield-virus"></i><?= $e($lang->manage_avatars['opt_flagged']) ?> <span class="ma-count"><?= $counts['flagged'] ?></span>
                 </button>
             </div>
         </div>
@@ -431,19 +463,19 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                                    id="cb_<?= $it['hash'] ?>"
                                    value="<?= $e($it['file']) ?>"
                                    class="form-check-input"
-                                   aria-label="Select <?= $e($it['file']) ?>">
+                                   aria-label="<?= $e(ags_fmt($lang->manage_avatars['aria_select'], $it['file'])) ?>">
                         </div>
 
                         <div class="ma-badges">
                             <?php if (!$it['is_image']): ?>
-                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-file-circle-xmark"></i>Not an image</span>
+                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-file-circle-xmark"></i><?= $e($lang->manage_avatars['chip_not_image']) ?></span>
                             <?php elseif (!$it['clean']): ?>
-                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-bug"></i>Suspicious</span>
+                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-bug"></i><?= $e($lang->manage_avatars['chip_suspicious']) ?></span>
                             <?php endif; ?>
                             <?php if ($it['owners'] > 1): ?>
-                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-share-nodes"></i>Shared ×<?= $it['owners'] ?></span>
+                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-share-nodes"></i><?= $e(ags_fmt($lang->manage_avatars['chip_shared'], $it['owners'])) ?></span>
                             <?php elseif (!$it['owners']): ?>
-                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-user-slash"></i>Orphaned</span>
+                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-user-slash"></i><?= $e($lang->manage_avatars['chip_orphaned']) ?></span>
                             <?php endif; ?>
                         </div>
 
@@ -451,7 +483,7 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                                 data-bs-toggle="modal"
                                 data-bs-target="#universalImageModal"
                                 data-img-src="<?= $e($it['url']) ?>"
-                                title="Open full size" aria-label="Open full size">
+                                title="<?= $e($lang->manage_avatars['tip_zoom']) ?>" aria-label="<?= $e($lang->manage_avatars['tip_zoom']) ?>">
                             <i class="fa-solid fa-magnifying-glass-plus"></i>
                         </button>
                     </div>
@@ -462,11 +494,11 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                         </div>
 
                         <div class="ma-meta">
-                            <span title="File size"><i class="fa-solid fa-weight-hanging"></i><?= $e($it['size']) ?></span>
-                            <span title="Dimensions"><i class="fa-solid fa-expand"></i><?= $it['dims'] ? $e($it['dims']) : 'N/A' ?></span>
-                            <span title="Type"><i class="fa-solid fa-file-code"></i><?= $e($it['type']) ?></span>
+                            <span title="<?= $e($lang->manage_avatars['tip_size']) ?>"><i class="fa-solid fa-weight-hanging"></i><?= $e($it['size']) ?></span>
+                            <span title="<?= $e($lang->manage_avatars['tip_dims']) ?>"><i class="fa-solid fa-expand"></i><?= $e($it['dims'] ?? $lang->manage_avatars['lbl_na']) ?></span>
+                            <span title="<?= $e($lang->manage_avatars['tip_type']) ?>"><i class="fa-solid fa-file-code"></i><?= $e($it['type']) ?></span>
                             <?php if ($it['clean'] && $it['is_image']): ?>
-                            <span class="text-success-emphasis" title="Content scan passed"><i class="fa-solid fa-shield-halved"></i>Clean</span>
+                            <span class="text-success-emphasis" title="<?= $e($lang->manage_avatars['tip_scan_ok']) ?>"><i class="fa-solid fa-shield-halved"></i><?= $e($lang->manage_avatars['lbl_clean']) ?></span>
                             <?php endif; ?>
                         </div>
 
@@ -475,11 +507,11 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
                                 <span class="ma-owner-icon ma-tone-primary"><i class="fa-solid fa-user"></i></span>
                                 <?= $it['owner_html'] ?>
                                 <?php if ($it['owners'] > 1): ?>
-                                    <span class="text-body-secondary small text-nowrap">+<?= $it['owners'] - 1 ?> more</span>
+                                    <span class="text-body-secondary small text-nowrap"><?= $e(ags_fmt($lang->manage_avatars['lbl_more'], $it['owners'] - 1)) ?></span>
                                 <?php endif; ?>
                             <?php else: ?>
                                 <span class="ma-owner-icon ma-tone-muted"><i class="fa-solid fa-user-slash"></i></span>
-                                <span class="text-body-secondary">No owner</span>
+                                <span class="text-body-secondary"><?= $e($lang->manage_avatars['lbl_no_owner']) ?></span>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -490,24 +522,24 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
 
         <div class="ma-empty mt-3 d-none" id="filterEmpty">
             <div class="ma-header-icon ma-tone-muted"><i class="fa-solid fa-filter-circle-xmark"></i></div>
-            <div class="fw-semibold mb-1">Nothing matches this filter on this page</div>
-            <div class="small">Switch to <strong>All</strong> or go to another page.</div>
+            <div class="fw-semibold mb-1"><?= $e($lang->manage_avatars['empty_filter_title']) ?></div>
+            <div class="small"><?= $lang->manage_avatars['empty_filter_hint'] ?></div>
         </div>
 
         <!-- Sticky action bar -->
         <div class="ma-actionbar">
             <div class="ma-actionbar-count">
-                <i class="fa-solid fa-list-check me-2"></i><span id="selectedCount">0</span> selected
+                <i class="fa-solid fa-list-check me-2"></i><?= ags_fmt($e($lang->manage_avatars['lbl_selected']), '<span id="selectedCount">0</span>') ?>
             </div>
             <div class="d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-outline-warning rounded-pill px-3" id="selectOrphans" <?= $counts['orphan'] ? '' : 'disabled' ?>>
-                    <i class="fa-solid fa-user-slash me-2"></i>Select orphaned
+                    <i class="fa-solid fa-user-slash me-2"></i><?= $e($lang->manage_avatars['btn_select_orphans']) ?>
                 </button>
                 <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="clearSelection" disabled>
-                    <i class="fa-solid fa-xmark me-2"></i>Clear
+                    <i class="fa-solid fa-xmark me-2"></i><?= $e($lang->manage_avatars['btn_clear']) ?>
                 </button>
                 <button type="submit" class="btn btn-danger rounded-pill px-4" id="deleteSelected" disabled>
-                    <i class="fa-solid fa-trash-can me-2"></i>Delete selected
+                    <i class="fa-solid fa-trash-can me-2"></i><?= $e($lang->manage_avatars['btn_delete']) ?>
                 </button>
             </div>
         </div>
@@ -515,8 +547,8 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
         <?php else: ?>
         <div class="ma-empty">
             <div class="ma-header-icon ma-tone-muted"><i class="fa-solid fa-folder-open"></i></div>
-            <div class="fw-semibold mb-1">No avatar files in /uploads/avatars/</div>
-            <div class="small">Avatars appear here as soon as members upload them.</div>
+            <div class="fw-semibold mb-1"><?= $e(ags_fmt($lang->manage_avatars['empty_title'], '/uploads/avatars/')) ?></div>
+            <div class="small"><?= $e($lang->manage_avatars['empty_hint']) ?></div>
         </div>
         <?php endif; ?>
     </form>
@@ -528,6 +560,9 @@ echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_a
     <?php endif; ?>
 </div>
 
-<script src="<?= $e($BASEURL) ?>/admin/scripts/manage_avatars.js?v=<?= $asset_v('/scripts/manage_avatars.js') ?>"></script>
+<script>
+const AGS_LANG = <?= json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}' ?>;
+</script>
+<script src="<?= $e($BASEURL) ?>/admin/scripts/manage_avatars.js?v=<?= $asset_v('/admin/scripts/manage_avatars.js') ?>.2"></script>
 
 <?php stdfoot(); ?>

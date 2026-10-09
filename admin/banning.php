@@ -8,25 +8,57 @@ if (!defined('STAFF_PANEL')) {
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
 
+global $lang; // no-op at file scope, needed if admin/index.php includes us from a function
+
+$lang->load('banning');
+
 // DAY_IN_SECONDS is not defined in the admin panel context
 defined('DAY_IN_SECONDS') || define('DAY_IN_SECONDS', 86400);
+
+// ── ags_fmt: {1}, {2}… placeholders ($lang->load() turns them into %1$s) ─────
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+// ── JS strings: js_* keys without the prefix ──────────────────────────────────
+function ban_js_lang(): array
+{
+    global $lang;
+    $out = [];
+    foreach ($lang->banning as $key => $val) {
+        if (str_starts_with((string)$key, 'js_')) {
+            $out[substr((string)$key, 3)] = (string)$val;
+        }
+    }
+    return $out;
+}
 
 // ── fetch_ban_times ───────────────────────────────────────────────────────────
 function fetch_ban_times(): array
 {
-    global $plugins;
+    global $plugins, $lang;
+    $l = $lang->banning;
 
     $ban_times = [
-        '1-0-0'  => '1 Day',   '2-0-0'  => '2 Days',  '3-0-0'  => '3 Days',
-        '4-0-0'  => '4 Days',  '5-0-0'  => '5 Days',  '6-0-0'  => '6 Days',
-        '7-0-0'  => '1 Week',  '14-0-0' => '2 Weeks', '21-0-0' => '3 Weeks',
-        '0-1-0'  => '1 Month', '0-2-0'  => '2 Months','0-3-0'  => '3 Months',
-        '0-4-0'  => '4 Months','0-5-0'  => '5 Months','0-6-0'  => '6 Months',
-        '0-0-1'  => '1 Year',  '0-0-2'  => '2 Years',
+        '1-0-0'  => $l['opt_bt_1d'],  '2-0-0'  => $l['opt_bt_2d'],  '3-0-0'  => $l['opt_bt_3d'],
+        '4-0-0'  => $l['opt_bt_4d'],  '5-0-0'  => $l['opt_bt_5d'],  '6-0-0'  => $l['opt_bt_6d'],
+        '7-0-0'  => $l['opt_bt_1w'],  '14-0-0' => $l['opt_bt_2w'],  '21-0-0' => $l['opt_bt_3w'],
+        '0-1-0'  => $l['opt_bt_1m'],  '0-2-0'  => $l['opt_bt_2m'],  '0-3-0'  => $l['opt_bt_3m'],
+        '0-4-0'  => $l['opt_bt_4m'],  '0-5-0'  => $l['opt_bt_5m'],  '0-6-0'  => $l['opt_bt_6m'],
+        '0-0-1'  => $l['opt_bt_1y'],  '0-0-2'  => $l['opt_bt_2y'],
     ];
 
     $ban_times          = $plugins->run_hooks('functions_fetch_ban_times', $ban_times);
-    $ban_times['---']   = 'Permanent';
+    $ban_times['---']   = $l['opt_bt_perm'];
     return $ban_times;
 }
 
@@ -50,8 +82,9 @@ function ban_date2timestamp(string $date, int $stamp = 0): int
 // ── CSRF: silent check + flash/redirect instead of a bare 403 page ─────────────
 function ban_require_post_key(object $mybb, string $back): void
 {
+    global $lang;
     if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
-        flash_message('Security check failed. Please try again.', 'error');
+        flash_message($lang->banning['flash_csrf'], 'error');
         admin_redirect($back);
         exit;
     }
@@ -83,32 +116,37 @@ function ban_ip_matches(string $filter, string $ip): bool
 }
 
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
-const BAN_NAV = [
-    'ips' => [
-        'title'       => 'Banned IPs',
-        'link'        => 'index.php?act=banning',
-        'description' => 'Manage IP addresses banned from accessing your board.',
-        'icon'        => 'fa-solid fa-network-wired',
-    ],
-    'users' => [
-        'title'       => 'Banned Accounts',
-        'link'        => 'index.php?act=banning&type=users',
-        'description' => 'Manage user accounts that are currently banned.',
-        'icon'        => 'fa-solid fa-user-lock',
-    ],
-    'usernames' => [
-        'title'       => 'Disallowed Usernames',
-        'link'        => 'index.php?act=banning&type=usernames',
-        'description' => 'Manage usernames that cannot be registered.',
-        'icon'        => 'fa-solid fa-user-slash',
-    ],
-    'emails' => [
-        'title'       => 'Disallowed Emails',
-        'link'        => 'index.php?act=banning&type=emails',
-        'description' => 'Manage email addresses that cannot be used for registration.',
-        'icon'        => 'fa-solid fa-envelope',
-    ],
-];
+function ban_nav(): array
+{
+    global $lang;
+    $l = $lang->banning;
+    return [
+        'ips' => [
+            'title'       => $l['nav_ips'],
+            'link'        => 'index.php?act=banning',
+            'description' => $l['nav_ips_desc'],
+            'icon'        => 'fa-solid fa-network-wired',
+        ],
+        'users' => [
+            'title'       => $l['nav_users'],
+            'link'        => 'index.php?act=banning&type=users',
+            'description' => $l['nav_users_desc'],
+            'icon'        => 'fa-solid fa-user-lock',
+        ],
+        'usernames' => [
+            'title'       => $l['nav_usernames'],
+            'link'        => 'index.php?act=banning&type=usernames',
+            'description' => $l['nav_usernames_desc'],
+            'icon'        => 'fa-solid fa-user-slash',
+        ],
+        'emails' => [
+            'title'       => $l['nav_emails'],
+            'link'        => 'index.php?act=banning&type=emails',
+            'description' => $l['nav_emails_desc'],
+            'icon'        => 'fa-solid fa-envelope',
+        ],
+    ];
+}
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 $ban_type = $mybb->get_input('type') ?: 'ips';
@@ -124,7 +162,7 @@ if ($ban_type === 'users') {
 // ═════════════════════════════════════════════════════════════════════════════
 final class BanView
 {
-    public const ASSET_VER = 1;
+    public const ASSET_VER = 2;
 
     private const TONES = [
         'ips'       => 'danger',
@@ -141,6 +179,7 @@ final class BanView
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/banning.css?ver=<?= $v ?>">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script>const AGS_LANG = <?= json_encode(ban_js_lang(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script src="<?= $BASEURL ?>/admin/scripts/banning.js?ver=<?= $v ?>" defer></script>
         <?php
     }
@@ -148,7 +187,8 @@ final class BanView
     /** Opens the page wrapper: assets, header card, nav tabs. Close with BanView::close(). */
     public static function open(string $section, string $postKey): void
     {
-        $nav  = BAN_NAV[$section] ?? BAN_NAV['ips'];
+        $navs = ban_nav();
+        $nav  = $navs[$section] ?? $navs['ips'];
         $tone = self::TONES[$section] ?? 'danger';
         self::assets();
         ?>
@@ -162,7 +202,7 @@ final class BanView
       </div>
     </header>
         <?php
-        output_nav_tabs(BAN_NAV, $section);
+        output_nav_tabs($navs, $section);
     }
 
     public static function close(): void
@@ -243,6 +283,7 @@ final class BanView
         string $okLabel,
         string $okIcon
     ): void {
+        global $lang;
         self::assets();
         ?>
 <div class="bn-page bn-t-<?= $tone ?>" data-cancel-url="<?= htmlspecialchars_uni($cancelUrl) ?>">
@@ -258,7 +299,7 @@ final class BanView
     </dl>
     <div class="bn-confirm-actions">
       <a href="<?= htmlspecialchars_uni($cancelUrl) ?>" class="btn btn-outline-secondary rounded-pill px-4">
-        <i class="fa-solid fa-xmark me-2"></i>Cancel
+        <i class="fa-solid fa-xmark me-2"></i><?= htmlspecialchars_uni($lang->banning['btn_cancel']) ?>
       </a>
       <form action="<?= htmlspecialchars_uni($actionUrl) ?>" method="post" class="d-inline">
         <input type="hidden" name="my_post_key" value="<?= htmlspecialchars_uni($postKey) ?>">
@@ -280,17 +321,27 @@ class BanManager
 {
     private const BAN_TYPES = ['ips' => 1, 'usernames' => 2, 'emails' => 3];
 
-    private const TYPE_CONFIGS = [
-        1 => ['title' => 'Banned IP Addresses',        'redirect' => '',          'icon' => 'fa-network-wired',              'color' => 'danger'],
-        2 => ['title' => 'Disallowed Usernames',        'redirect' => 'usernames', 'icon' => 'fa-user-slash',                 'color' => 'warning'],
-        3 => ['title' => 'Disallowed Email Addresses',  'redirect' => 'emails',    'icon' => 'fa-envelope-circle-exclamation','color' => 'info'],
-    ];
+    private static function typeConfigs(): array
+    {
+        global $lang;
+        $l = $lang->banning;
+        return [
+            1 => ['title' => $l['sec_list_ips'],       'redirect' => '',          'icon' => 'fa-network-wired',              'color' => 'danger'],
+            2 => ['title' => $l['sec_list_usernames'], 'redirect' => 'usernames', 'icon' => 'fa-user-slash',                 'color' => 'warning'],
+            3 => ['title' => $l['sec_list_emails'],    'redirect' => 'emails',    'icon' => 'fa-envelope-circle-exclamation','color' => 'info'],
+        ];
+    }
 
-    private const FORM_CONFIGS = [
-        1 => ['title' => 'Ban IP Address',         'label' => 'IP Address',     'description' => 'To ban a range use * (Ex: 127.0.0.*) or CIDR (Ex: 127.0.0.0/8)', 'button' => 'Ban IP Address',         'icon' => 'fa-ban',       'input_icon' => 'fa-location-crosshairs', 'placeholder' => 'Enter IP address or range...'],
-        2 => ['title' => 'Disallow Username',       'label' => 'Username',       'description' => 'Use * for wildcard (Ex: admin*, *bot)',                             'button' => 'Disallow Username',      'icon' => 'fa-user-lock', 'input_icon' => 'fa-user',                'placeholder' => 'Enter username pattern...'],
-        3 => ['title' => 'Disallow Email Address',  'label' => 'Email Address',  'description' => 'Use * for wildcard (Ex: *@spam.com)',                               'button' => 'Disallow Email Address', 'icon' => 'fa-envelope',  'input_icon' => 'fa-at',                  'placeholder' => 'Enter email pattern...'],
-    ];
+    private static function formConfigs(): array
+    {
+        global $lang;
+        $l = $lang->banning;
+        return [
+            1 => ['title' => $l['sec_form_ips'],       'label' => $l['lbl_ip'],       'description' => $l['hint_ip'],       'button' => $l['btn_ban_ip'],            'icon' => 'fa-ban',       'input_icon' => 'fa-location-crosshairs', 'placeholder' => $l['ph_ip']],
+            2 => ['title' => $l['sec_form_usernames'], 'label' => $l['lbl_username'], 'description' => $l['hint_username'], 'button' => $l['btn_disallow_username'], 'icon' => 'fa-user-lock', 'input_icon' => 'fa-user',                'placeholder' => $l['ph_username_pattern']],
+            3 => ['title' => $l['sec_form_emails'],    'label' => $l['lbl_email'],    'description' => $l['hint_email'],    'button' => $l['btn_disallow_email'],    'icon' => 'fa-envelope',  'input_icon' => 'fa-at',                  'placeholder' => $l['ph_email_pattern']],
+        ];
+    }
 
     private const PER_PAGE = 20;
 
@@ -312,10 +363,11 @@ class BanManager
 
     private function handleAdd(): void
     {
+        global $lang;
         $this->plugins->run_hooks('admin_config_banning_add');
 
         if ($this->mybb->request_method !== 'post') {
-            flash_message('Invalid request method', 'error');
+            flash_message($lang->banning['flash_bad_method'], 'error');
             admin_redirect('index.php?act=banning');
         }
 
@@ -327,8 +379,8 @@ class BanManager
 
         if (empty($errors)) {
             $this->addBanFilter($filter, $type);
-            $cfg = self::TYPE_CONFIGS[$type];
-            flash_message('Ban added successfully', 'success');
+            $cfg = self::typeConfigs()[$type];
+            flash_message($lang->banning['flash_ban_added'], 'success');
             admin_redirect('index.php?act=banning' . ($cfg['redirect'] ? '&type=' . $cfg['redirect'] : ''));
         }
 
@@ -338,11 +390,12 @@ class BanManager
 
     private function handleDelete(): void
     {
+        global $lang;
         $fid    = $this->mybb->get_input('fid', MyBB::INPUT_INT);
         $filter = $this->getFilterById($fid);
 
         if (!$filter) {
-            flash_message('The specified filter does not exist', 'error');
+            flash_message($lang->banning['flash_filter_missing'], 'error');
             admin_redirect('index.php?act=banning');
         }
 
@@ -360,7 +413,7 @@ class BanManager
             $this->updateCaches((int)$filter['type']);
             log_admin_action((int)$filter['fid'], $filter['filter'], (int)$filter['type']);
             write_log("Removed ban filter '{$filter['filter']}' (type {$filter['type']}) by " . $GLOBALS['CURUSER']['username']);
-            flash_message('Ban deleted successfully', 'success');
+            flash_message($lang->banning['flash_ban_deleted'], 'success');
             admin_redirect('index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']));
         } else {
             $this->showDeleteConfirmation($filter);
@@ -370,31 +423,33 @@ class BanManager
     private function displayInterface(array $errors = [], string $value = '', int $type = 0): void
     {
         $this->plugins->run_hooks('admin_config_banning_start');
-        $typeConfig = $type > 0 && isset(self::TYPE_CONFIGS[$type])
-            ? self::TYPE_CONFIGS[$type] + ['type' => $type, 'name' => $this->getTypeName($type)]
+        $typeConfig = $type > 0 && isset(self::typeConfigs()[$type])
+            ? self::typeConfigs()[$type] + ['type' => $type, 'name' => $this->getTypeName($type)]
             : $this->getCurrentTypeConfig();
         $this->renderInterface($typeConfig, $errors, $value);
     }
 
     private function validateAdd(string $filter, int $type): array
     {
+        global $lang;
+        $l      = $lang->banning;
         $errors = [];
-        if (!isset(self::TYPE_CONFIGS[$type]))                 return ['Invalid ban type'];
-        if (empty(trim($filter)))                              $errors[] = 'Please enter a value to ban';
-        if ($this->isDuplicateFilter($filter, $type))          $errors[] = 'This filter already exists';
-        if ($type === 1 && !$this->isValidIPFilter($filter))   $errors[] = 'Please enter a valid IP address or range';
-        if ($type === 3 && !$this->isValidEmailFilter($filter)) $errors[] = 'Please enter a valid email pattern';
+        if (!isset(self::typeConfigs()[$type]))                 return [$l['err_bad_type']];
+        if (empty(trim($filter)))                              $errors[] = $l['err_empty_value'];
+        if ($this->isDuplicateFilter($filter, $type))          $errors[] = $l['err_duplicate'];
+        if ($type === 1 && !$this->isValidIPFilter($filter))   $errors[] = $l['err_bad_ip'];
+        if ($type === 3 && !$this->isValidEmailFilter($filter)) $errors[] = $l['err_bad_email'];
 
         // "*", "*.*.*.*", "*@*" and the like would block everyone
         if ($filter !== '' && preg_match('~^[*.:@]+$~', $filter)) {
-            $errors[] = 'This pattern matches everything. Use a narrower one.';
+            $errors[] = $l['err_matches_all'];
         }
 
         // Never let staff lock themselves out
         if ($type === 1 && empty($errors)) {
             $myIp = (string)get_ip();
             if (ban_ip_matches($filter, $myIp)) {
-                $errors[] = "This range includes your own IP ({$myIp}).";
+                $errors[] = ags_fmt($l['err_own_ip'], $myIp);
             }
         }
         return $errors;
@@ -466,9 +521,9 @@ class BanManager
     private function getCurrentTypeConfig(): array
     {
         return match ($this->mybb->get_input('type')) {
-            'emails'    => self::TYPE_CONFIGS[3] + ['type' => 3, 'name' => 'emails'],
-            'usernames' => self::TYPE_CONFIGS[2] + ['type' => 2, 'name' => 'usernames'],
-            default     => self::TYPE_CONFIGS[1] + ['type' => 1, 'name' => 'ips'],
+            'emails'    => self::typeConfigs()[3] + ['type' => 3, 'name' => 'emails'],
+            'usernames' => self::typeConfigs()[2] + ['type' => 2, 'name' => 'usernames'],
+            default     => self::typeConfigs()[1] + ['type' => 1, 'name' => 'ips'],
         };
     }
 
@@ -495,17 +550,19 @@ class BanManager
 
     private function renderInterface(array $tc, array $errors = [], string $value = ''): void
     {
+        global $lang;
+        $l     = $lang->banning;
         $stats = $this->getStats($tc['type']);
 
         stdhead($tc['title']);
         BanView::open($tc['name'], (string)$this->mybb->post_code);
 
         BanView::kpis([
-            ['icon' => $tc['icon'],            'label' => $tc['type'] === 1 ? 'Banned addresses' : 'Blocked patterns', 'value' => $stats['total']],
-            ['icon' => 'fa-calendar-plus',     'label' => 'Added in the last 7 days', 'value' => $stats['recent'],    'tone' => 'success'],
-            ['icon' => 'fa-bolt',              'label' => 'Triggered at least once',  'value' => $stats['triggered'], 'tone' => 'warning'],
-            ['icon' => 'fa-clock-rotate-left', 'label' => $tc['type'] === 1 ? 'Last blocked access' : 'Last blocked attempt',
-             'value' => $stats['lastuse'] > 0 ? my_datee('relative', $stats['lastuse']) : 'Never', 'raw' => true, 'tone' => 'secondary'],
+            ['icon' => $tc['icon'],            'label' => $tc['type'] === 1 ? $l['kpi_banned_addresses'] : $l['kpi_blocked_patterns'], 'value' => $stats['total']],
+            ['icon' => 'fa-calendar-plus',     'label' => $l['kpi_added_7d'], 'value' => $stats['recent'],    'tone' => 'success'],
+            ['icon' => 'fa-bolt',              'label' => $l['kpi_triggered'], 'value' => $stats['triggered'], 'tone' => 'warning'],
+            ['icon' => 'fa-clock-rotate-left', 'label' => $tc['type'] === 1 ? $l['kpi_last_access'] : $l['kpi_last_attempt'],
+             'value' => $stats['lastuse'] > 0 ? my_datee('relative', $stats['lastuse']) : htmlspecialchars_uni($l['lbl_never']), 'raw' => true, 'tone' => 'secondary'],
         ]);
 
         BanView::errors($errors);
@@ -518,7 +575,8 @@ class BanManager
 
     private function outputAddForm(array $tc, string $value = ''): void
     {
-        $cfg   = self::FORM_CONFIGS[$tc['type']];
+        global $lang;
+        $cfg   = self::formConfigs()[$tc['type']];
         $color = $tc['color'];
         ?>
     <form action="index.php?act=banning&amp;action=add" method="post" class="bn-panel bn-t-<?= $color ?>" data-bn-form>
@@ -529,7 +587,7 @@ class BanManager
         <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid <?= $cfg['icon'] ?>"></i></span>
         <div>
           <h2><?= htmlspecialchars_uni($cfg['title']) ?></h2>
-          <p>Takes effect immediately after saving.</p>
+          <p><?= htmlspecialchars_uni($lang->banning['sec_form_hint']) ?></p>
         </div>
       </div>
 
@@ -561,6 +619,8 @@ class BanManager
 
     private function outputBanList(array $tc, int $total): void
     {
+        global $lang;
+        $l     = $lang->banning;
         $page  = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
         $start = ($page - 1) * self::PER_PAGE;
         $q     = $this->db->sql_query_prepared(
@@ -575,21 +635,21 @@ class BanManager
         }
 
         [$colValue, $colDate, $colLast, $valueIcon] = match ($tc['type']) {
-            2       => ['Username', 'Disallowed', 'Last attempt', 'fa-user'],
-            3       => ['Email',    'Disallowed', 'Last attempt', 'fa-at'],
-            default => ['IP address / range', 'Banned', 'Last access', 'fa-location-crosshairs'],
+            2       => [$l['col_username'], $l['col_disallowed'], $l['col_last_attempt'], 'fa-user'],
+            3       => [$l['col_email'],    $l['col_disallowed'], $l['col_last_attempt'], 'fa-at'],
+            default => [$l['col_ip'],       $l['col_banned'],     $l['col_last_access'],  'fa-location-crosshairs'],
         };
 
         $deleteText = match ($tc['type']) {
-            2       => '%s can be registered again.',
-            3       => '%s can be used to register again.',
-            default => '%s will be able to access the site again.',
+            2       => $l['cf_del_username'],
+            3       => $l['cf_del_email'],
+            default => $l['cf_del_ip'],
         };
 
         $emptyText = match ($tc['type']) {
-            2       => 'Add a username pattern above to stop it being registered.',
-            3       => 'Add an email pattern above to stop it being used for sign-up.',
-            default => 'Add an IP address or range above to block it.',
+            2       => $l['empty_usernames'],
+            3       => $l['empty_emails'],
+            default => $l['empty_ips'],
         };
 
         ?>
@@ -597,20 +657,20 @@ class BanManager
       <div class="bn-panel-head">
         <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid <?= $tc['icon'] ?>"></i></span>
         <div><h2><?= htmlspecialchars_uni($tc['title']) ?></h2></div>
-        <span class="bn-count" title="Total"><?= number_format($total) ?></span>
+        <span class="bn-count" title="<?= htmlspecialchars_uni($l['lbl_total']) ?>"><?= number_format($total) ?></span>
       </div>
 
       <?php if (empty($filters)): ?>
-        <?= BanView::emptyState($tc['icon'], 'Nothing blocked yet', $emptyText) ?>
+        <?= BanView::emptyState($tc['icon'], $l['empty_filters_title'], $emptyText) ?>
       <?php else: ?>
       <div class="table-responsive">
         <table class="table bn-table mb-0">
           <thead>
             <tr>
-              <th scope="col"><i class="fa-solid <?= $valueIcon ?>" aria-hidden="true"></i><?= $colValue ?></th>
-              <th scope="col"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i><?= $colDate ?></th>
-              <th scope="col"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><?= $colLast ?></th>
-              <th scope="col" class="text-end"><span class="visually-hidden">Actions</span></th>
+              <th scope="col"><i class="fa-solid <?= $valueIcon ?>" aria-hidden="true"></i><?= htmlspecialchars_uni($colValue) ?></th>
+              <th scope="col"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i><?= htmlspecialchars_uni($colDate) ?></th>
+              <th scope="col"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><?= htmlspecialchars_uni($colLast) ?></th>
+              <th scope="col" class="text-end"><span class="visually-hidden"><?= htmlspecialchars_uni($l['col_actions']) ?></span></th>
             </tr>
           </thead>
           <tbody>
@@ -623,22 +683,22 @@ class BanManager
             <tr>
               <td>
                 <?= BanView::pattern($raw, $f['type']) ?>
-                <?php if ($isNew): ?><span class="bn-tag bn-t-success ms-2"><i class="fa-solid fa-star" aria-hidden="true"></i>New</span><?php endif; ?>
+                <?php if ($isNew): ?><span class="bn-tag bn-t-success ms-2"><i class="fa-solid fa-star" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_new']) ?></span><?php endif; ?>
               </td>
               <td class="bn-muted"><?= $date ?></td>
               <td class="bn-muted">
                 <?php if ($f['lastuse'] > 0): ?>
                   <span class="bn-hit"><i class="fa-solid fa-bolt" aria-hidden="true"></i><?= my_datee('relative', $f['lastuse']) ?></span>
                 <?php else: ?>
-                  Never
+                  <?= htmlspecialchars_uni($l['lbl_never']) ?>
                 <?php endif; ?>
               </td>
               <td class="text-end">
                 <a href="<?= htmlspecialchars_uni($delUrl) ?>" class="bn-icon-btn bn-t-danger"
-                   title="Delete" aria-label="Delete <?= htmlspecialchars_uni($raw) ?>"
-                   data-bn-confirm data-tone="danger" data-ok="Delete"
-                   data-title="Delete this ban?"
-                   data-text="<?= htmlspecialchars_uni(sprintf($deleteText, '“' . $raw . '”')) ?>">
+                   title="<?= htmlspecialchars_uni($l['btn_delete']) ?>" aria-label="<?= htmlspecialchars_uni(ags_fmt($l['aria_delete'], $raw)) ?>"
+                   data-bn-confirm data-tone="danger" data-ok="<?= htmlspecialchars_uni($l['btn_delete']) ?>"
+                   data-title="<?= htmlspecialchars_uni($l['cf_delete_title']) ?>"
+                   data-text="<?= htmlspecialchars_uni(ags_fmt($deleteText, $raw)) ?>">
                   <i class="fa-solid fa-trash-can"></i>
                 </a>
               </td>
@@ -651,7 +711,7 @@ class BanManager
     </section>
         <?php
         if ($total > self::PER_PAGE) {
-            echo '<nav class="bn-pager" aria-label="Pages">'
+            echo '<nav class="bn-pager" aria-label="' . htmlspecialchars_uni($l['lbl_pages']) . '">'
                . multipage($total, self::PER_PAGE, $page, "index.php?act=banning&type={$tc['name']}&page={page}")
                . '</nav>';
         }
@@ -659,21 +719,23 @@ class BanManager
 
     private function showDeleteConfirmation(array $filter): void
     {
-        $tc      = self::TYPE_CONFIGS[$filter['type']] ?? self::TYPE_CONFIGS[1];
+        global $lang;
+        $l       = $lang->banning;
+        $tc      = self::typeConfigs()[$filter['type']] ?? self::typeConfigs()[1];
         $postKey = (string)$this->mybb->post_code;
         $delUrl  = "index.php?act=banning&action=delete&fid={$filter['fid']}";
         $canUrl  = 'index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']);
 
-        stdhead('Confirm Deletion');
+        stdhead($l['title_confirm_delete']);
         BanView::confirmPage(
             $postKey, 'danger', 'fa-trash-can',
-            'Delete this ban?',
-            'The filter will stop blocking right away.',
+            $l['cf_delete_title'],
+            $l['cf_delete_text'],
             [
-                'Filter' => BanView::pattern((string)$filter['filter'], (int)$filter['type']),
-                'List'   => '<i class="fa-solid ' . $tc['icon'] . ' me-1"></i>' . htmlspecialchars_uni($tc['title']),
+                $l['lbl_filter'] => BanView::pattern((string)$filter['filter'], (int)$filter['type']),
+                $l['lbl_list']   => '<i class="fa-solid ' . $tc['icon'] . ' me-1"></i>' . htmlspecialchars_uni($tc['title']),
             ],
-            $delUrl, $canUrl, 'Delete', 'fa-trash-can'
+            $delUrl, $canUrl, $l['btn_delete'], 'fa-trash-can'
         );
         stdfoot();
         exit;
@@ -733,6 +795,8 @@ class BannedAccountsManager
 
     private function handlePrune(): void
     {
+        global $lang;
+        $l = $lang->banning;
         if ($this->mybb->get_input('no')) {
             admin_redirect('index.php?act=banning&type=users');
         }
@@ -741,12 +805,12 @@ class BannedAccountsManager
         $ban = $this->getBanByUserId($uid);
 
         if (!$ban || !($user = get_user($ban['uid']))) {
-            flash_message('Invalid ban specified', 'error');
+            flash_message($l['flash_invalid_ban'], 'error');
             admin_redirect('index.php?act=banning&type=users');
         }
 
         if (is_super_admin((int)$user['id']) && !$this->canModifySuperAdmin()) {
-            flash_message('You cannot perform this action on a super administrator', 'error');
+            flash_message($l['flash_super_admin'], 'error');
             admin_redirect('index.php?act=banning&type=users');
         }
 
@@ -765,21 +829,23 @@ class BannedAccountsManager
 
             log_admin_action((int)$user['id'], $user['username']);
             write_log("Pruned all content of {$user['username']} (UID {$user['id']}) by " . $GLOBALS['CURUSER']['username']);
-            flash_message('User content pruned successfully', 'success');
+            flash_message($l['flash_pruned'], 'success');
             admin_redirect('index.php?act=banning&type=users');
         } else {
             $this->showConfirmation($user,
                 "index.php?act=banning&type=users&action=prune&uid={$user['id']}",
                 'index.php?act=banning&type=users',
-                'Prune all content?',
-                'Every thread and post by this user will be deleted. This cannot be undone.',
-                'danger', 'fa-broom', 'Prune content'
+                $l['cf_prune_title'],
+                $l['cf_prune_text'],
+                'danger', 'fa-broom', $l['btn_prune']
             );
         }
     }
 
     private function handleLift(): void
     {
+        global $lang;
+        $l = $lang->banning;
         if ($this->mybb->get_input('no')) {
             admin_redirect('index.php?act=banning&type=users');
         }
@@ -788,12 +854,12 @@ class BannedAccountsManager
         $ban = $this->getBanByUserId($uid);
 
         if (!$ban || !($user = get_user($ban['uid']))) {
-            flash_message('Invalid ban specified', 'error');
+            flash_message($l['flash_invalid_ban'], 'error');
             admin_redirect('index.php?act=banning&type=users');
         }
 
         if (is_super_admin((int)$ban['uid']) && !$this->canModifySuperAdmin()) {
-            flash_message('You cannot perform this action on a super administrator', 'error');
+            flash_message($l['flash_super_admin'], 'error');
             admin_redirect('index.php?act=banning&type=users');
         }
 
@@ -810,26 +876,28 @@ class BannedAccountsManager
             $this->plugins->run_hooks('admin_user_banning_lift_commit');
             log_admin_action($ban['uid'], $user['username']);
             write_log("Lifted ban of {$user['username']} (UID {$ban['uid']}) by " . $GLOBALS['CURUSER']['username']);
-            flash_message('Ban lifted successfully', 'success');
+            flash_message($l['flash_lifted'], 'success');
             admin_redirect('index.php?act=banning&type=users');
         } else {
             $this->showConfirmation($user,
                 "index.php?act=banning&type=users&action=lift&uid={$ban['uid']}",
                 'index.php?act=banning&type=users',
-                'Lift this ban?',
-                'The user will be moved back to their previous group.',
-                'success', 'fa-lock-open', 'Lift ban'
+                $l['cf_lift_title'],
+                $l['cf_lift_text'],
+                'success', 'fa-lock-open', $l['btn_lift_ban']
             );
         }
     }
 
     private function handleEdit(): void
     {
+        global $lang;
+        $l = $lang->banning;
         $uid  = $this->mybb->get_input('uid', MyBB::INPUT_INT);
         $ban  = $this->getBanByUserId($uid);
 
         if (!$ban || !($user = get_user($ban['uid']))) {
-            flash_message('Invalid ban specified', 'error');
+            flash_message($l['flash_invalid_ban'], 'error');
             admin_redirect('index.php?act=banning&type=users');
         }
 
@@ -843,15 +911,15 @@ class BannedAccountsManager
             ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
             if (empty($ban['uid'])) {
-                $errors[] = 'Invalid user';
+                $errors[] = $l['err_invalid_user'];
             } elseif (is_super_admin($ban['uid']) && !$this->canModifySuperAdmin()) {
-                $errors[] = 'You do not have permission to edit this ban';
+                $errors[] = $l['err_no_perm_edit'];
             }
 
             $bantime = $this->inputBanTime($banTimes);
             $gid     = $this->inputBannedGroup($bannedGroups);
-            if ($bantime === null) $errors[] = 'Please choose a valid ban length';
-            if ($gid === null)     $errors[] = 'Please choose a valid banned group';
+            if ($bantime === null) $errors[] = $l['err_bad_length'];
+            if ($gid === null)     $errors[] = $l['err_bad_group'];
 
             if (empty($errors)) {
                 // Length counts from the ORIGINAL ban date, so dateline stays untouched
@@ -871,7 +939,7 @@ class BannedAccountsManager
                 $this->plugins->run_hooks('admin_user_banning_edit_commit');
                 log_admin_action($ban['uid'], $user['username']);
                 write_log("Edited ban of {$user['username']} (UID {$ban['uid']}): {$bantime} by " . $GLOBALS['CURUSER']['username']);
-                flash_message('Ban updated successfully', 'success');
+                flash_message($l['flash_ban_updated'], 'success');
                 admin_redirect('index.php?act=banning&type=users');
             }
         }
@@ -946,25 +1014,28 @@ class BannedAccountsManager
 
     private function processBanAction(array $bannedGroups): array
     {
+        global $lang;
+        $l = $lang->banning;
+
         if (isset($this->mybb->input['search'])) return [];
 
         $user = get_user_by_username($this->mybb->get_input('username'), [
             'fields' => ['username','usergroup','additionalgroups','displaygroup'],
         ]);
 
-        if (!$user) return ['The username you entered is invalid and does not exist'];
+        if (!$user) return [$l['err_user_not_found']];
 
         $uid    = (int)$user['id'];
         $errors = [];
 
-        if (is_super_admin($uid) && !$this->canModifySuperAdmin()) $errors[] = 'You do not have permission to ban this user';
-        elseif ($this->isUserAlreadyBanned($uid))                   $errors[] = 'This user is already banned';
-        elseif ($uid === $this->getCurrentUserId())                  $errors[] = 'You cannot ban yourself';
+        if (is_super_admin($uid) && !$this->canModifySuperAdmin()) $errors[] = $l['err_no_perm_ban'];
+        elseif ($this->isUserAlreadyBanned($uid))                   $errors[] = $l['err_already_banned'];
+        elseif ($uid === $this->getCurrentUserId())                  $errors[] = $l['err_ban_self'];
 
         $bantime = $this->inputBanTime(fetch_ban_times());
         $gid     = $this->inputBannedGroup($bannedGroups);
-        if ($bantime === null) $errors[] = 'Please choose a valid ban length';
-        if ($gid === null)     $errors[] = 'Please choose a valid banned group';
+        if ($bantime === null) $errors[] = $l['err_bad_length'];
+        if ($gid === null)     $errors[] = $l['err_bad_group'];
 
         if (empty($errors)) {
             $lifted  = $bantime === '---' ? 0 : ban_date2timestamp($bantime);
@@ -996,7 +1067,7 @@ class BannedAccountsManager
             $this->plugins->run_hooks('admin_user_banning_start_commit');
             log_admin_action($uid, $user['username'], $lifted);
             write_log("Banned {$user['username']} (UID {$uid}) for {$bantime} by " . $GLOBALS['CURUSER']['username']);
-            flash_message('User banned successfully', 'success');
+            flash_message($l['flash_user_banned'], 'success');
             admin_redirect('index.php?act=banning&type=users');
         }
 
@@ -1035,13 +1106,14 @@ class BannedAccountsManager
 
     private function renderEditForm(array $ban, array $user, array $bannedGroups, array $banTimes, array $errors): void
     {
-        global $dateformat;
+        global $dateformat, $lang;
+        $l       = $lang->banning;
 
         $isPerm  = $ban['lifted'] === 0 || in_array($ban['bantime'], ['perm', '---'], true);
         $name    = htmlspecialchars_uni((string)$user['username']);
-        $length  = $banTimes[$ban['bantime']] ?? ($isPerm ? 'Permanent' : (string)$ban['bantime']);
+        $length  = $banTimes[$ban['bantime']] ?? ($isPerm ? $l['lbl_permanent'] : (string)$ban['bantime']);
 
-        stdhead('Edit Ban');
+        stdhead($l['title_edit_ban']);
         BanView::open('users', (string)$this->mybb->post_code);
         BanView::errors($errors);
         ?>
@@ -1051,34 +1123,34 @@ class BannedAccountsManager
       <div class="bn-panel-head">
         <span class="bn-avatar" aria-hidden="true"><?= htmlspecialchars_uni(mb_strtoupper(mb_substr((string)$user['username'], 0, 1))) ?></span>
         <div>
-          <h2>Edit ban for <?= $name ?></h2>
-          <p>UID <?= (int)$user['id'] ?></p>
+          <h2><?= htmlspecialchars_uni(ags_fmt($l['sec_edit_ban'], (string)$user['username'])) ?></h2>
+          <p><?= htmlspecialchars_uni(ags_fmt($l['lbl_uid'], (int)$user['id'])) ?></p>
         </div>
       </div>
 
       <div class="bn-panel-body">
         <div class="bn-facts">
-          <span class="bn-tag bn-t-secondary"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i>Banned <?= my_datee($dateformat, $ban['dateline']) ?></span>
+          <span class="bn-tag bn-t-secondary"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i><?= ags_fmt(htmlspecialchars_uni($l['lbl_banned_on']), my_datee($dateformat, $ban['dateline'])) ?></span>
           <span class="bn-tag bn-t-<?= $isPerm ? 'danger' : 'info' ?>">
             <i class="fa-solid <?= $isPerm ? 'fa-infinity' : 'fa-hourglass-half' ?>" aria-hidden="true"></i>
-            <?= $isPerm ? 'Permanent' : 'Lifts ' . my_datee($dateformat, $ban['lifted']) ?>
+            <?= $isPerm ? htmlspecialchars_uni($l['lbl_permanent']) : ags_fmt(htmlspecialchars_uni($l['lbl_lifts_on']), my_datee($dateformat, $ban['lifted'])) ?>
           </span>
           <span class="bn-tag bn-t-secondary"><i class="fa-solid fa-ruler-horizontal" aria-hidden="true"></i><?= htmlspecialchars_uni($length) ?></span>
         </div>
 
         <div class="row g-3">
           <div class="<?= count($bannedGroups) > 1 ? 'col-md-6' : 'col-12' ?>">
-            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Ban length</label>
+            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_ban_length']) ?></label>
             <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? ($isPerm ? '---' : $ban['bantime']), 'bn-bantime') ?>
           </div>
           <?php if (count($bannedGroups) > 1): ?>
           <div class="col-md-6">
-            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i>Banned group</label>
+            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_banned_group']) ?></label>
             <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? $ban['gid'], 'bn-usergroup') ?>
           </div>
           <?php endif; ?>
           <div class="col-12">
-            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i>Reason</label>
+            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_reason']) ?></label>
             <textarea id="bn-reason" name="reason" class="form-control" rows="4" maxlength="255"
                       data-bn-count="bn-reason-count"><?= htmlspecialchars_uni($this->mybb->input['reason'] ?? $ban['reason']) ?></textarea>
             <div class="bn-counter" id="bn-reason-count" aria-live="polite"></div>
@@ -1087,9 +1159,9 @@ class BannedAccountsManager
       </div>
 
       <div class="bn-actionbar">
-        <span class="bn-actionbar-note"><i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i>The new length counts from the original ban date.</span>
-        <a href="index.php?act=banning&amp;type=users" class="btn btn-outline-secondary rounded-pill"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>
-        <button type="submit" class="btn btn-warning rounded-pill" data-bn-submit><i class="fa-solid fa-floppy-disk me-2"></i>Update ban</button>
+        <span class="bn-actionbar-note"><i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i><?= htmlspecialchars_uni($l['hint_edit_length']) ?></span>
+        <a href="index.php?act=banning&amp;type=users" class="btn btn-outline-secondary rounded-pill"><i class="fa-solid fa-xmark me-2"></i><?= htmlspecialchars_uni($l['btn_cancel']) ?></a>
+        <button type="submit" class="btn btn-warning rounded-pill" data-bn-submit><i class="fa-solid fa-floppy-disk me-2"></i><?= htmlspecialchars_uni($l['btn_update_ban']) ?></button>
       </div>
     </form>
         <?php
@@ -1099,16 +1171,18 @@ class BannedAccountsManager
 
     private function renderMainInterface(array $bannedGroups, array $banTimes, array $errors): void
     {
+        global $lang;
+        $l     = $lang->banning;
         $stats = $this->getStats();
 
-        stdhead('Banned Accounts');
+        stdhead($l['nav_users']);
         BanView::open('users', (string)$this->mybb->post_code);
 
         BanView::kpis([
-            ['icon' => 'fa-user-lock',    'label' => 'Banned accounts',          'value' => $stats['total']],
-            ['icon' => 'fa-infinity',     'label' => 'Permanent',                'value' => $stats['perm'],   'tone' => 'danger'],
-            ['icon' => 'fa-hourglass-end','label' => 'Lifting within 24 hours',  'value' => $stats['soon'],   'tone' => 'warning'],
-            ['icon' => 'fa-calendar-plus','label' => 'Banned in the last 7 days','value' => $stats['recent'], 'tone' => 'info'],
+            ['icon' => 'fa-user-lock',    'label' => $l['kpi_banned_accounts'], 'value' => $stats['total']],
+            ['icon' => 'fa-infinity',     'label' => $l['kpi_permanent'],       'value' => $stats['perm'],   'tone' => 'danger'],
+            ['icon' => 'fa-hourglass-end','label' => $l['kpi_lifting_24h'],     'value' => $stats['soon'],   'tone' => 'warning'],
+            ['icon' => 'fa-calendar-plus','label' => $l['kpi_banned_7d'],       'value' => $stats['recent'], 'tone' => 'info'],
         ]);
 
         BanView::errors($errors);
@@ -1119,48 +1193,48 @@ class BannedAccountsManager
       <div class="bn-panel-head">
         <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid fa-gavel"></i></span>
         <div>
-          <h2>Ban a user</h2>
-          <p>Moves the account into a banned group and clears its subscriptions.</p>
+          <h2><?= htmlspecialchars_uni($l['sec_ban_user']) ?></h2>
+          <p><?= htmlspecialchars_uni($l['sec_ban_user_hint']) ?></p>
         </div>
       </div>
 
       <div class="bn-panel-body">
         <div class="row g-3">
           <div class="col-md-6">
-            <label for="username" class="bn-label"><i class="fa-solid fa-user" aria-hidden="true"></i>Username <span class="bn-req" aria-hidden="true">*</span></label>
+            <label for="username" class="bn-label"><i class="fa-solid fa-user" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_username']) ?> <span class="bn-req" aria-hidden="true">*</span></label>
             <div class="bn-suggest-wrap">
               <div class="input-group bn-input">
                 <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="text" name="username" id="username" class="form-control" autocomplete="off" spellcheck="false" required
                        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="usernameSuggestions"
                        value="<?= htmlspecialchars_uni($this->mybb->get_input('username')) ?>"
-                       placeholder="Start typing a username…">
+                       placeholder="<?= htmlspecialchars_uni($l['ph_username']) ?>">
               </div>
               <div id="usernameSuggestions" class="bn-suggest" role="listbox"></div>
             </div>
           </div>
           <div class="col-md-6">
-            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Ban length</label>
+            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_ban_length']) ?></label>
             <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? '---', 'bn-bantime') ?>
           </div>
           <?php if (count($bannedGroups) > 1): ?>
           <div class="col-12">
-            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i>Banned group</label>
+            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_banned_group']) ?></label>
             <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? array_key_first($bannedGroups), 'bn-usergroup') ?>
           </div>
           <?php endif; ?>
           <div class="col-12">
-            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i>Reason</label>
+            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_reason']) ?></label>
             <textarea id="bn-reason" name="reason" class="form-control" rows="3" maxlength="255"
                       data-bn-count="bn-reason-count"
-                      placeholder="Shown to the user on their ban notice"><?= htmlspecialchars_uni($this->mybb->get_input('reason')) ?></textarea>
+                      placeholder="<?= htmlspecialchars_uni($l['ph_reason']) ?>"><?= htmlspecialchars_uni($this->mybb->get_input('reason')) ?></textarea>
             <div class="bn-counter" id="bn-reason-count" aria-live="polite"></div>
           </div>
         </div>
       </div>
 
       <div class="bn-actionbar">
-        <button type="submit" name="ban" value="1" class="btn btn-danger rounded-pill" data-bn-submit><i class="fa-solid fa-ban me-2"></i>Ban user</button>
+        <button type="submit" name="ban" value="1" class="btn btn-danger rounded-pill" data-bn-submit><i class="fa-solid fa-ban me-2"></i><?= htmlspecialchars_uni($l['btn_ban_user']) ?></button>
       </div>
     </form>
         <?php
@@ -1171,7 +1245,8 @@ class BannedAccountsManager
 
     private function outputBannedUsersList(): void
     {
-        global $dateformat;
+        global $dateformat, $lang;
+        $l         = $lang->banning;
 
         $username  = $this->mybb->get_input('username');
         $userWhere = '';
@@ -1193,21 +1268,21 @@ class BannedAccountsManager
     <section class="bn-panel bn-panel-table">
       <div class="bn-panel-head">
         <span class="bn-chip-icon bn-t-danger" aria-hidden="true"><i class="fa-solid fa-users-slash"></i></span>
-        <div><h2>Banned accounts</h2></div>
-        <span class="bn-count bn-t-danger" title="Total"><?= number_format($banCount) ?></span>
+        <div><h2><?= htmlspecialchars_uni($l['sec_banned_accounts']) ?></h2></div>
+        <span class="bn-count bn-t-danger" title="<?= htmlspecialchars_uni($l['lbl_total']) ?>"><?= number_format($banCount) ?></span>
       </div>
 
       <?php if ($banCount === 0): ?>
-        <?= BanView::emptyState('fa-users-slash', 'No banned accounts', 'Use the form above to ban a user.') ?>
+        <?= BanView::emptyState('fa-users-slash', $l['empty_accounts_title'], $l['empty_accounts']) ?>
       <?php else: ?>
       <div class="table-responsive">
         <table class="table bn-table mb-0">
           <thead>
             <tr>
-              <th scope="col"><i class="fa-solid fa-user" aria-hidden="true"></i>User</th>
-              <th scope="col"><i class="fa-solid fa-user-shield" aria-hidden="true"></i>Banned by</th>
-              <th scope="col"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Time left</th>
-              <th scope="col" class="text-end"><span class="visually-hidden">Actions</span></th>
+              <th scope="col"><i class="fa-solid fa-user" aria-hidden="true"></i><?= htmlspecialchars_uni($l['col_user']) ?></th>
+              <th scope="col"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><?= htmlspecialchars_uni($l['col_banned_by']) ?></th>
+              <th scope="col"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><?= htmlspecialchars_uni($l['col_time_left']) ?></th>
+              <th scope="col" class="text-end"><span class="visually-hidden"><?= htmlspecialchars_uni($l['col_actions']) ?></span></th>
             </tr>
           </thead>
           <tbody>
@@ -1227,7 +1302,8 @@ class BannedAccountsManager
               $ban['dateline'] = (int)$ban['dateline'];
               $ban['lifted']   = (int)$ban['lifted'];
               $rawName         = (string)($ban['username'] ?? '');
-              $name            = htmlspecialchars_uni($rawName !== '' ? $rawName : 'Deleted user');
+              $plainName       = $rawName !== '' ? $rawName : $l['lbl_deleted_user'];
+              $name            = htmlspecialchars_uni($plainName);
               $initial         = htmlspecialchars_uni(mb_strtoupper(mb_substr($rawName !== '' ? $rawName : '?', 0, 1)));
               $isPerm          = $ban['lifted'] === 0 || in_array($ban['bantime'], ['perm','---'], true);
               $remaining       = $ban['lifted'] - TIMENOW;
@@ -1262,38 +1338,38 @@ class BannedAccountsManager
                 </div>
               </td>
               <td>
-                <div class="bn-by"><?= !empty($ban['adminuser']) ? htmlspecialchars_uni($ban['adminuser']) : '<span class="bn-muted">System</span>' ?></div>
+                <div class="bn-by"><?= !empty($ban['adminuser']) ? htmlspecialchars_uni($ban['adminuser']) : '<span class="bn-muted">' . htmlspecialchars_uni($l['lbl_system']) . '</span>' ?></div>
                 <div class="bn-muted small"><?= my_datee($dateformat, $ban['dateline']) ?></div>
               </td>
               <td>
                 <div class="bn-remain bn-t-<?= $tone ?>">
                   <?php if ($isPerm): ?>
-                    <div class="bn-remain-top"><strong><i class="fa-solid fa-infinity me-1" aria-hidden="true"></i>Permanent</strong><span>Never lifts</span></div>
+                    <div class="bn-remain-top"><strong><i class="fa-solid fa-infinity me-1" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_permanent']) ?></strong><span><?= htmlspecialchars_uni($l['lbl_never_lifts']) ?></span></div>
                   <?php elseif ($remaining <= 0): ?>
-                    <div class="bn-remain-top"><strong><i class="fa-solid fa-hourglass-end me-1" aria-hidden="true"></i>Expired</strong><span>Awaiting lift</span></div>
+                    <div class="bn-remain-top"><strong><i class="fa-solid fa-hourglass-end me-1" aria-hidden="true"></i><?= htmlspecialchars_uni($l['lbl_expired']) ?></strong><span><?= htmlspecialchars_uni($l['lbl_awaiting_lift']) ?></span></div>
                   <?php else: ?>
                     <div class="bn-remain-top"><strong><?= mkprettytime($remaining) ?></strong><span><?= my_datee($dateformat, $ban['lifted']) ?></span></div>
                   <?php endif; ?>
-                  <div class="bn-bar<?= $isPerm ? ' is-perm' : '' ?>" role="progressbar" aria-label="Ban served" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $pct ?>">
+                  <div class="bn-bar<?= $isPerm ? ' is-perm' : '' ?>" role="progressbar" aria-label="<?= htmlspecialchars_uni($l['lbl_ban_served']) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $pct ?>">
                     <span style="width:<?= $pct ?>%"></span>
                   </div>
                 </div>
               </td>
               <td class="text-end">
                 <div class="bn-actions">
-                  <a href="<?= htmlspecialchars_uni($editUrl) ?>" class="bn-icon-btn bn-t-primary" title="Edit ban" aria-label="Edit ban for <?= $name ?>">
+                  <a href="<?= htmlspecialchars_uni($editUrl) ?>" class="bn-icon-btn bn-t-primary" title="<?= htmlspecialchars_uni($l['act_edit_ban']) ?>" aria-label="<?= htmlspecialchars_uni(ags_fmt($l['aria_edit_ban'], $plainName)) ?>">
                     <i class="fa-solid fa-pen-to-square"></i>
                   </a>
-                  <a href="<?= htmlspecialchars_uni($liftUrl) ?>" class="bn-icon-btn bn-t-success" title="Lift ban" aria-label="Lift ban for <?= $name ?>"
-                     data-bn-confirm data-tone="success" data-ok="Lift ban"
-                     data-title="Lift ban for <?= $name ?>?"
-                     data-text="The user will be moved back to their previous group.">
+                  <a href="<?= htmlspecialchars_uni($liftUrl) ?>" class="bn-icon-btn bn-t-success" title="<?= htmlspecialchars_uni($l['btn_lift_ban']) ?>" aria-label="<?= htmlspecialchars_uni(ags_fmt($l['aria_lift_ban'], $plainName)) ?>"
+                     data-bn-confirm data-tone="success" data-ok="<?= htmlspecialchars_uni($l['btn_lift_ban']) ?>"
+                     data-title="<?= htmlspecialchars_uni(ags_fmt($l['cf_lift_user_title'], $plainName)) ?>"
+                     data-text="<?= htmlspecialchars_uni($l['cf_lift_text']) ?>">
                     <i class="fa-solid fa-lock-open"></i>
                   </a>
-                  <a href="<?= htmlspecialchars_uni($pruneUrl) ?>" class="bn-icon-btn bn-t-danger" title="Prune content" aria-label="Prune content of <?= $name ?>"
-                     data-bn-confirm data-tone="danger" data-ok="Prune content"
-                     data-title="Prune all content by <?= $name ?>?"
-                     data-text="Every thread and post by this user will be deleted. This cannot be undone.">
+                  <a href="<?= htmlspecialchars_uni($pruneUrl) ?>" class="bn-icon-btn bn-t-danger" title="<?= htmlspecialchars_uni($l['btn_prune']) ?>" aria-label="<?= htmlspecialchars_uni(ags_fmt($l['aria_prune'], $plainName)) ?>"
+                     data-bn-confirm data-tone="danger" data-ok="<?= htmlspecialchars_uni($l['btn_prune']) ?>"
+                     data-title="<?= htmlspecialchars_uni(ags_fmt($l['cf_prune_user_title'], $plainName)) ?>"
+                     data-text="<?= htmlspecialchars_uni($l['cf_prune_text']) ?>">
                     <i class="fa-solid fa-broom"></i>
                   </a>
                 </div>
@@ -1307,7 +1383,7 @@ class BannedAccountsManager
     </section>
         <?php
         if ($banCount > $perPage) {
-            echo '<nav class="bn-pager" aria-label="Pages">'
+            echo '<nav class="bn-pager" aria-label="' . htmlspecialchars_uni($l['lbl_pages']) . '">'
                . multipage($banCount, $perPage, $page, 'index.php?act=banning&type=users&page={page}')
                . '</nav>';
         }
@@ -1321,14 +1397,18 @@ class BannedAccountsManager
         string $message,
         string $tone   = 'danger',
         string $icon   = 'fa-triangle-exclamation',
-        string $okLabel = 'Yes, continue'
+        string $okLabel = ''
     ): void {
-        stdhead('Confirm Action');
+        global $lang;
+        $l = $lang->banning;
+        if ($okLabel === '') $okLabel = $l['btn_yes_continue'];
+
+        stdhead($l['title_confirm_action']);
         BanView::confirmPage(
             (string)$this->mybb->post_code, $tone, $icon, $title, $message,
             [
-                'User' => htmlspecialchars_uni((string)$user['username'])
-                        . ' <span class="bn-muted">UID ' . (int)$user['id'] . '</span>',
+                $l['lbl_user'] => htmlspecialchars_uni((string)$user['username'])
+                        . ' <span class="bn-muted">' . htmlspecialchars_uni(ags_fmt($l['lbl_uid'], (int)$user['id'])) . '</span>',
             ],
             $actionUrl, $cancelUrl, $okLabel, $icon
         );

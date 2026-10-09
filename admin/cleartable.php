@@ -10,6 +10,31 @@ if (!defined('STAFF_PANEL')) {
 
 //define('CT_VERSION', '1.0');
 
+// ── Language ────────────────────────────────────────────────────────────────
+// global.php уже подключён панелью; здесь только грузим языковой файл страницы.
+global $lang;
+
+
+$lang->load('cleartable');
+
+
+// Подстановка {1}, {2}… (а также %1$s, %2$s…) в строки ланга
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
+
+
+
 /**
  * MySQL Tables Truncation Manager Class
  */
@@ -116,12 +141,12 @@ class TableTruncationManager
 
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Invalid security token']);
+            echo json_encode(['success' => false, 'message' => $this->t('flash_bad_token')]);
             exit;
         }
 
         if (!$this->validateTableName($table)) {
-            echo json_encode(['success' => false, 'message' => 'Invalid table name']);
+            echo json_encode(['success' => false, 'message' => $this->t('flash_bad_table')]);
             exit;
         }
 
@@ -147,7 +172,7 @@ class TableTruncationManager
         $tables = $this->getSelectedTables();
         
         if (empty($tables)) {
-            $this->showError('No tables selected for truncation.');
+            $this->showError($this->t('flash_none_selected'));
             return;
         }
         
@@ -160,7 +185,7 @@ class TableTruncationManager
         global $mybb;
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            $this->showError('Invalid or missing security token. Please use the confirmation button below instead of a direct link.');
+            $this->showError($this->t('flash_bad_token_page'));
             return;
         }
         
@@ -202,7 +227,7 @@ class TableTruncationManager
      */
     private function showError($message)
     {
-        stdhead('TRUNCATE MySQL Tables');
+        stdhead($this->t('title_page'));
         echo $this->getStyles();
         echo $this->getAlertHtml('danger', $message);
         echo $this->getJavaScript();
@@ -221,11 +246,11 @@ class TableTruncationManager
         <div class="ct-wrap fade-in" id="ctError" data-type="{$type}" data-message="{$msg}" data-back="{$back}">
             <div class="ct-panel">
                 <div class="ct-titlebar">
-                    <h1><i class="fas fa-exclamation-triangle"></i> Truncate Database Tables</h1>
+                    <h1><i class="fas fa-exclamation-triangle"></i> {$this->h('pane_form')}</h1>
                 </div>
                 <div class="ct-notice"><strong>{$msg}</strong></div>
                 <div class="ct-body">
-                    <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Go back</a>
+                    <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">{$this->h('btn_go_back')}</a>
                 </div>
             </div>
         </div>
@@ -251,13 +276,12 @@ HTML;
         <div class="ct-wrap fade-in">
             <div class="ct-panel">
                 <div class="ct-titlebar">
-                    <h1><i class="fas fa-shield-alt"></i> Confirm Truncation</h1>
-                    <span class="ct-optag">STEP 2 OF 2</span>
+                    <h1><i class="fas fa-shield-alt"></i> {$this->h('pane_confirm')}</h1>
+                    <span class="ct-optag">{$this->h('tag_step2')}</span>
                 </div>
 
                 <div class="ct-notice">
-                    <strong>You are about to permanently delete all data in {$count} table(s).</strong>
-                    This cannot be undone — make sure you have a backup before continuing.
+                    {$this->h('hint_confirm_warn_html', $count)}
                 </div>
 
                 <div class="ct-body">
@@ -270,17 +294,17 @@ HTML;
                             <input type="hidden" name="my_post_key" value="{$this->escapeHtml($mybb->post_code)}">
                             <input type="hidden" name="tablehash" value="{$this->escapeHtml($tableHash)}">
                             <button type="submit" class="ct-btn ct-btn-danger">
-                                <i class="fas fa-check-circle"></i> Yes, truncate these tables
+                                <i class="fas fa-check-circle"></i> {$this->h('btn_confirm_yes')}
                             </button>
                         </form>
-                        <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Go back</a>
+                        <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">{$this->h('btn_go_back')}</a>
                     </div>
                 </div>
             </div>
         </div>
 HTML;
         
-        stdhead('TRUNCATE MySQL Tables');
+        stdhead($this->t('title_page'));
         echo $this->getStyles();
         echo $confirmationHtml;
         stdfoot();
@@ -334,7 +358,7 @@ HTML;
      */
     private function showResults($success, $failed)
     {
-        stdhead('TRUNCATE MySQL Tables - Results');
+        stdhead($this->t('title_results'));
         echo $this->getStyles();
         echo $this->getJavaScript();
 
@@ -367,7 +391,7 @@ HTML;
         $items .= '
         <div class="ct-success-item" id="row_' . $escaped . '">
             <span class="ct-check-sq"><i class="fas fa-check"></i></span>
-            ' . $escaped . ' - successfully truncated!
+            ' . $this->h('lbl_table_truncated', $table) . '
             <span id="opt_status_' . $escaped . '" class="ms-2"></span>
         </div>';
     }
@@ -379,16 +403,16 @@ HTML;
     return '
     <div class="ct-success-panel" id="ctSuccessPanel" data-tables="' . $tablesAttr . '" data-post-key="' . $postKeyAttr . '" data-url="' . $this->escapeHtml((string)$this->scriptUrl) . '">
         <div class="ct-success-header">
-            <span class="ct-check-circle"><i class="fas fa-check"></i></span> Success
+            <span class="ct-check-circle"><i class="fas fa-check"></i></span> ' . $this->h('pane_success') . '
         </div>
         <div class="ct-success-box">
             <div class="ct-success-lead">
-                <span class="ct-check-sq"><i class="fas fa-check"></i></span> Operation completed successfully!
+                <span class="ct-check-sq"><i class="fas fa-check"></i></span> ' . $this->h('lbl_success_lead') . '
             </div>
-            <div class="ct-success-sub">The following tables have been truncated:</div>
+            <div class="ct-success-sub">' . $this->h('lbl_success_sub') . '</div>
             <div class="ct-success-list">' . $items . '</div>
             <div class="ct-success-total">
-                Total truncated: <span class="ct-pill">' . $count . '</span> table(s)
+                ' . $this->h('lbl_total_html', '<span class="ct-pill">' . $count . '</span>') . '
             </div>
         </div>
 
@@ -397,21 +421,21 @@ HTML;
                 <div class="progress" style="height:6px;border-radius:4px;">
                     <div id="opt_bar" class="progress-bar bg-warning" style="width:0%"></div>
                 </div>
-                <div class="mt-2" style="font-size:.82rem;color:var(--text-dim)" id="opt_label">Optimizing…</div>
+                <div class="mt-2" style="font-size:.82rem;color:var(--text-dim)" id="opt_label">' . $this->h('lbl_optimizing') . '</div>
             </div>
 
             <div id="opt_done" style="display:none;color:#1e8e4f;font-weight:600;margin-bottom:1rem;">
-                <i class="bi bi-lightning-charge-fill"></i> All tables optimized.
+                <i class="bi bi-lightning-charge-fill"></i> ' . $this->h('lbl_opt_done') . '
             </div>
 
             <i class="bi bi-database-fill ct-db-icon"></i>
-            <h4>Don\'t forget to optimize your tables!</h4>
+            <h4>' . $this->h('lbl_opt_reminder') . '</h4>
             <div class="ct-actions" style="justify-content:center">
                 <button type="button" id="btnOptimize" class="ct-btn ct-btn-blue">
-                    <i class="fas fa-rocket"></i> Optimize Tables
+                    <i class="fas fa-rocket"></i> ' . $this->h('btn_optimize') . '
                 </button>
                 <a href="' . $this->scriptUrl . '" class="ct-btn ct-btn-blue">
-                    <i class="bi bi-arrow-left"></i> Back
+                    <i class="bi bi-arrow-left"></i> ' . $this->h('btn_back') . '
                 </a>
             </div>
         </div>
@@ -437,10 +461,10 @@ HTML;
         return <<<HTML
         <div class="ct-panel" id="ctFailed" data-tables="{$failedAttr}">
             <div class="ct-titlebar">
-                <h1><i class="fas fa-exclamation-triangle"></i> Failed</h1>
+                <h1><i class="fas fa-exclamation-triangle"></i> {$this->h('pane_failed')}</h1>
             </div>
             <div class="ct-notice">
-                <strong>Failed to truncate the following table(s):</strong>
+                <strong>{$this->h('lbl_failed_intro')}</strong>
             </div>
             <div class="ct-body">
                 <div class="ct-table-list">{$items}</div>
@@ -459,7 +483,7 @@ HTML;
         $tables = $this->getAllTables();
         $options = $this->generateTableOptions($tables);
         
-        stdhead('TRUNCATE MySQL Tables');
+        stdhead($this->t('title_page'));
         
         echo $this->getStyles();
         echo $this->getFormHtml($options);
@@ -485,7 +509,7 @@ HTML;
             <label class="ct-row ct-locked" data-name="{$escaped}">
                 <input type="checkbox" disabled>
                 <span class="ct-tname">{$escaped}</span>
-                <span class="ct-lock-tag"><i class="bi bi-lock-fill"></i> protected</span>
+                <span class="ct-lock-tag"><i class="bi bi-lock-fill"></i> {$this->h('tag_protected')}</span>
             </label>
 HTML;
         } else {
@@ -525,33 +549,34 @@ HTML;
         $postKey = $this->escapeHtml((string)$mybb->post_code);
         $protectedList = implode(', ', self::PROTECTED_TABLES);
         $totalProtected = $this->countProtected();
+        // Число выбранных таблиц обновляет JS через #ctCount (textContent) - обёртка остаётся в PHP.
+        $selectedLabel = $this->h('lbl_selected_html', '<strong id="ctCount">0</strong>');
 
         return <<<HTML
         <div class="ct-wrap fade-in">
             <div class="ct-panel">
                 <div class="ct-titlebar">
-                    <h1><i class="fas fa-database"></i> Truncate Database Tables</h1>
-                    <span class="ct-optag">IRREVERSIBLE</span>
+                    <h1><i class="fas fa-database"></i> {$this->h('pane_form')}</h1>
+                    <span class="ct-optag">{$this->h('tag_irreversible')}</span>
                 </div>
 
                 <div class="ct-notice">
-                    <strong>TRUNCATE deletes every row in the tables you select. There is no undo.</strong>
-                    Take a database backup before continuing.
+                    {$this->h('hint_form_warn_html')}
                 </div>
 
                 <div class="ct-body">
                     <form method="post" action="{$this->scriptUrl}&do=clear" id="truncateForm" data-post-key="{$postKey}">
 
                         <div class="ct-toolbar">
-                            <div class="ct-count"><strong id="ctCount">0</strong> table(s) selected</div>
+                            <div class="ct-count">{$selectedLabel}</div>
                             <div class="ct-search-wrap">
                                 <i class="bi bi-search ct-search-icon"></i>
-                                <input type="text" id="ctSearch" class="ct-search" placeholder="Filter tables…">
+                                <input type="text" id="ctSearch" class="ct-search" placeholder="{$this->h('lbl_filter_placeholder')}">
                             </div>
                             <div style="display:flex;gap:.5rem;">
-                                <button type="button" id="ctAll" class="ct-side-btn"><i class="bi bi-check2-all"></i> All</button>
-                                <button type="button" id="ctNone" class="ct-side-btn"><i class="bi bi-x-lg"></i> Clear</button>
-                                <button type="button" id="ctInvert" class="ct-side-btn"><i class="bi bi-arrow-left-right"></i> Invert</button>
+                                <button type="button" id="ctAll" class="ct-side-btn"><i class="bi bi-check2-all"></i> {$this->h('lbl_all')}</button>
+                                <button type="button" id="ctNone" class="ct-side-btn"><i class="bi bi-x-lg"></i> {$this->h('lbl_clear')}</button>
+                                <button type="button" id="ctInvert" class="ct-side-btn"><i class="bi bi-arrow-left-right"></i> {$this->h('lbl_invert')}</button>
                             </div>
                         </div>
 
@@ -560,7 +585,7 @@ HTML;
                         </div>
 
                         <div class="ct-notice" style="border-radius:10px;margin-top:1rem;">
-                            <i class="bi bi-lock-fill"></i> {$totalProtected} table(s) are locked and cannot be truncated from here:
+                            <i class="bi bi-lock-fill"></i> {$this->h('hint_locked', $totalProtected)}
                             <span class="ct-mono">{$this->escapeHtml($protectedList)}</span>
                         </div>
 
@@ -568,9 +593,9 @@ HTML;
 
                         <div class="ct-actions">
                             <button type="submit" class="ct-btn ct-btn-danger">
-                                <i class="fas fa-trash-alt"></i> Truncate selected tables
+                                <i class="fas fa-trash-alt"></i> {$this->h('btn_truncate_selected')}
                             </button>
-                            <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Cancel</a>
+                            <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">{$this->h('btn_cancel')}</a>
                         </div>
 
                     </form>
@@ -585,8 +610,20 @@ HTML;
      */
 	private function getJavaScript(): string
     {
-        return '<script src="' . $this->baseUrl . '/scripts/sweetalert2.min.js"></script>' . "\n"
-             . '<script src="' . $this->baseUrl . '/admin/scripts/cleartable.js?ver=21"></script>' . "\n";
+        global $lang;
+
+        // Ключи js_* -> массив без префикса -> const AGS_LANG (до подключения скрипта)
+        $arr = [];
+        foreach ($lang->cleartable as $key => $value) {
+            if (str_starts_with((string)$key, 'js_')) {
+                $arr[substr((string)$key, 3)] = $value;
+            }
+        }
+        $json = json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+        return '<script>const AGS_LANG = ' . ($json !== false ? $json : '{}') . ';</script>' . "\n"
+             . '<script src="' . $this->baseUrl . '/scripts/sweetalert2.min.js"></script>' . "\n"
+             . '<script src="' . $this->baseUrl . '/admin/scripts/cleartable.js?ver=222"></script>' . "\n";
     }
     
     /**
@@ -595,6 +632,37 @@ HTML;
     private function escapeHtml($text)
     {
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    /**
+     * Строка из ланга как обычный текст (для stdhead, JSON, сообщений об ошибках).
+     * Отсутствующий ключ = null = TypeError (strict_types) - так и задумано.
+     */
+    private function t(string $key, string|int|float ...$args): string
+    {
+        global $lang;
+        return ags_fmt($lang->cleartable[$key], ...$args);
+    }
+
+    /**
+     * Строка из ланга для вывода в HTML.
+     *  - обычные ключи: текст и аргументы экранируются;
+     *  - ключи *_html: шаблон выводится как есть, аргументы - как есть
+     *    (вызывающий код гарантирует, что в них нет пользовательского ввода).
+     */
+    private function h(string $key, string|int|float ...$args): string
+    {
+        global $lang;
+        $tpl = $lang->cleartable[$key];
+
+        if (str_ends_with($key, '_html')) {
+            return ags_fmt($tpl, ...$args);
+        }
+
+        return ags_fmt(
+            $this->escapeHtml($tpl),
+            ...array_map(fn($a) => $this->escapeHtml((string)$a), $args)
+        );
     }
 
     private function countProtected(): int

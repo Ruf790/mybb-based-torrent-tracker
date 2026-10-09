@@ -6,6 +6,23 @@ if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
+$lang->load('useractivity');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitutes {1}, {2}… (and %1$s, %2$s… — $lang->load() converts {N} to that form).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 function sanitize_date(string $date_str): bool
 {
@@ -77,7 +94,18 @@ $js_avg         = json_encode($data['avg_time_per_user'], JSON_UNESCAPED_UNICODE
 $h_start        = htmlspecialchars($start_date, ENT_QUOTES, 'UTF-8');
 $h_end          = htmlspecialchars($end_date,   ENT_QUOTES, 'UTF-8');
 
-stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
+// Lang strings are plain text — always escape on output.
+$h = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+// js_* keys → AGS_LANG (without the prefix)
+$js_lang = [];
+foreach ($lang->useractivity as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $js_lang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
+stdhead(ags_fmt($lang->useractivity['page_title'], $h_start, $h_end));
 
 ?>
 <div class="container my-4">
@@ -85,16 +113,16 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
     <div class="card mb-4 shadow-sm">
         <div class="card-body d-flex justify-content-around flex-wrap gap-3">
             <div class="text-center">
-                <div class="text-muted small">Total unique users</div>
+                <div class="text-muted small"><?= $h($lang->useractivity['kpi_total_users']) ?></div>
                 <div class="fs-4 fw-bold"><?= number_format($total_users) ?></div>
             </div>
             <div class="text-center">
-                <div class="text-muted small">Avg time online / day (hrs)</div>
+                <div class="text-muted small"><?= $h($lang->useractivity['kpi_avg_time_day']) ?></div>
                 <div class="fs-4 fw-bold"><?= $avg_time_total ?></div>
             </div>
             <div class="text-center">
-                <div class="text-muted small">Period</div>
-                <div class="fs-4 fw-bold"><?= $days ?> days</div>
+                <div class="text-muted small"><?= $h($lang->useractivity['kpi_period']) ?></div>
+                <div class="fs-4 fw-bold"><?= $h(ags_fmt($lang->useractivity['kpi_days'], $days)) ?></div>
             </div>
         </div>
     </div>
@@ -102,64 +130,64 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
     <form method="GET" autocomplete="off" class="row g-3 align-items-center mb-4 flex-wrap">
         <input type="hidden" name="act" value="<?= htmlspecialchars($_GET['act'] ?? '') ?>">
         <div class="col-auto">
-            <label for="start" class="col-form-label fw-semibold">From</label>
+            <label for="start" class="col-form-label fw-semibold"><?= $h($lang->useractivity['lbl_from']) ?></label>
         </div>
         <div class="col-auto">
             <input type="date" id="start" name="start" class="form-control" value="<?= $h_start ?>">
         </div>
         <div class="col-auto">
-            <label for="end" class="col-form-label fw-semibold">To</label>
+            <label for="end" class="col-form-label fw-semibold"><?= $h($lang->useractivity['lbl_to']) ?></label>
         </div>
         <div class="col-auto">
             <input type="date" id="end" name="end" class="form-control" value="<?= $h_end ?>">
         </div>
         <div class="col-auto">
-            <select id="datePreset" class="form-select" aria-label="Date range preset">
-                <option value="">— Preset —</option>
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="this_month">This month</option>
-                <option value="last_month">Last month</option>
+            <select id="datePreset" class="form-select" aria-label="<?= $h($lang->useractivity['aria_date_preset']) ?>">
+                <option value=""><?= $h($lang->useractivity['opt_preset']) ?></option>
+                <option value="7"><?= $h($lang->useractivity['opt_last_7']) ?></option>
+                <option value="30"><?= $h($lang->useractivity['opt_last_30']) ?></option>
+                <option value="this_month"><?= $h($lang->useractivity['opt_this_month']) ?></option>
+                <option value="last_month"><?= $h($lang->useractivity['opt_last_month']) ?></option>
             </select>
         </div>
         <div class="col-auto d-flex gap-2">
             <button type="submit" class="btn btn-primary">
-                <i class="fas fa-chart-line me-1"></i>Show
+                <i class="fas fa-chart-line me-1"></i><?= $h($lang->useractivity['btn_show']) ?>
             </button>
             <a href="<?= $_this_script_ ?>" class="btn btn-outline-secondary">
-                <i class="fas fa-undo me-1"></i>Reset
+                <i class="fas fa-undo me-1"></i><?= $h($lang->useractivity['btn_reset']) ?>
             </a>
         </div>
     </form>
 
     <div class="card shadow-sm mb-4">
         <div class="card-header fw-semibold">
-            Active users: <?= $h_start ?> – <?= $h_end ?>
+            <?= $h(ags_fmt($lang->useractivity['sec_chart'], $start_date, $end_date)) ?>
         </div>
         <div class="card-body position-relative">
             <div id="loadingSpinner" class="position-absolute top-50 start-50 translate-middle d-none" style="z-index:10;">
                 <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading…</span>
+                    <span class="visually-hidden"><?= $h($lang->useractivity['msg_loading']) ?></span>
                 </div>
             </div>
             <div id="userChart" style="width:100%; height:400px;"></div>
         </div>
         <div class="card-footer d-flex flex-wrap gap-2">
-            <button id="toggleUsersCount" class="btn btn-sm btn-outline-warning">Toggle Users</button>
-            <button id="toggleTotalTime"  class="btn btn-sm btn-outline-primary">Toggle Time</button>
-            <button id="toggleAvgTime"    class="btn btn-sm btn-outline-info">Toggle Avg</button>
-            <button id="toggleChartType"  class="btn btn-sm btn-outline-secondary">Bar / Line</button>
+            <button id="toggleUsersCount" class="btn btn-sm btn-outline-warning"><?= $h($lang->useractivity['btn_toggle_users']) ?></button>
+            <button id="toggleTotalTime"  class="btn btn-sm btn-outline-primary"><?= $h($lang->useractivity['btn_toggle_time']) ?></button>
+            <button id="toggleAvgTime"    class="btn btn-sm btn-outline-info"><?= $h($lang->useractivity['btn_toggle_avg']) ?></button>
+            <button id="toggleChartType"  class="btn btn-sm btn-outline-secondary"><?= $h($lang->useractivity['btn_chart_type']) ?></button>
             <button id="refreshChart"     class="btn btn-sm btn-outline-primary">
-                <i class="fas fa-sync-alt me-1"></i>Refresh
+                <i class="fas fa-sync-alt me-1"></i><?= $h($lang->useractivity['btn_refresh']) ?>
             </button>
             <button id="exportCsv"    class="btn btn-sm btn-outline-success ms-auto">
-                <i class="fas fa-file-csv me-1"></i>CSV
+                <i class="fas fa-file-csv me-1"></i><?= $h($lang->useractivity['btn_csv']) ?>
             </button>
             <button id="exportPng"    class="btn btn-sm btn-outline-info">
-                <i class="fas fa-image me-1"></i>PNG
+                <i class="fas fa-image me-1"></i><?= $h($lang->useractivity['btn_png']) ?>
             </button>
             <button id="downloadJson" class="btn btn-sm btn-outline-dark">
-                <i class="fas fa-code me-1"></i>JSON
+                <i class="fas fa-code me-1"></i><?= $h($lang->useractivity['btn_json']) ?>
             </button>
         </div>
     </div>
@@ -167,7 +195,7 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
     <?php if ($clicked_date): ?>
     <div class="card shadow-sm">
         <div class="card-header fw-semibold">
-            Users active on <?= htmlspecialchars($clicked_date, ENT_QUOTES, 'UTF-8') ?>
+            <?= $h(ags_fmt($lang->useractivity['sec_users_on_date'], (string)$clicked_date)) ?>
             <span class="badge bg-primary ms-2"><?= count($active_usernames) ?></span>
         </div>
         <div class="card-body p-0">
@@ -178,7 +206,7 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
                 <?php endforeach; ?>
             </ul>
             <?php else: ?>
-            <p class="text-muted fst-italic p-3 mb-0">No users active on this date.</p>
+            <p class="text-muted fst-italic p-3 mb-0"><?= $h($lang->useractivity['msg_no_users']) ?></p>
             <?php endif; ?>
         </div>
     </div>
@@ -189,13 +217,30 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
 <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/highcharts.js"></script>
 <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/exporting.js"></script>
 <script>
+const AGS_LANG = <?= json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<script>
 (function () {
     'use strict';
+
+    // t(key, fallback, ...args) — AGS_LANG string or English fallback, {1}/%1$s substitution
+    var L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    function t(key, fallback) {
+        var s    = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        var args = Array.prototype.slice.call(arguments, 2);
+        return String(s).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            var i = parseInt(a || b, 10) - 1;
+            return i < args.length ? String(args[i]) : m;
+        });
+    }
 
     var labels   = <?= $js_labels ?>;
     var counts   = <?= $js_counts ?>;
     var activity = <?= $js_activity ?>;
     var avgTime  = <?= $js_avg ?>;
+
+    var sfxUsers = ' ' + t('suffix_users', 'users');
+    var sfxHrs   = ' ' + t('suffix_hrs', 'hrs');
 
     var userChart = Highcharts.chart('userChart', {
         chart: {
@@ -211,13 +256,13 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
         yAxis: [
             {
                 // yLeft - время (часы)
-                title: { text: 'Time (hrs)' },
+                title: { text: t('axis_time', 'Time (hrs)') },
                 min: 0,
                 allowDecimals: false
             },
             {
                 // yRight - количество пользователей
-                title: { text: 'Users Count' },
+                title: { text: t('axis_users', 'Users Count') },
                 min: 0,
                 allowDecimals: false,
                 opposite: true,
@@ -244,31 +289,31 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
         },
         series: [
             {
-                name: 'Users Count',
+                name: t('series_users', 'Users Count'),
                 type: 'column',
                 data: counts,
                 yAxis: 1,
                 color: 'rgba(255,159,64,0.7)',
-                tooltip: { valueSuffix: ' users' }
+                tooltip: { valueSuffix: sfxUsers }
             },
             {
-                name: 'Total Time Online (hrs)',
+                name: t('series_total_time', 'Total Time Online (hrs)'),
                 type: 'line',
                 data: activity,
                 yAxis: 0,
                 color: 'rgba(54,162,235,1)',
                 marker: { radius: 4 },
-                tooltip: { valueSuffix: ' hrs' }
+                tooltip: { valueSuffix: sfxHrs }
             },
             {
-                name: 'Avg Time per User (hrs)',
+                name: t('series_avg_time', 'Avg Time per User (hrs)'),
                 type: 'line',
                 data: avgTime,
                 yAxis: 0,
                 color: 'rgba(75,192,192,1)',
                 marker: { radius: 3 },
                 fillOpacity: 0.15,
-                tooltip: { valueSuffix: ' hrs' }
+                tooltip: { valueSuffix: sfxHrs }
             }
         ]
     });
@@ -304,10 +349,22 @@ stdhead('Active Users — ' . $h_start . ' – ' . $h_end);
         URL.revokeObjectURL(url);
     }
 
+    // CSV-поле: в кавычки, если есть запятая/кавычка/перевод строки
+    function csvCell(v) {
+        var s = String(v);
+        return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
     document.getElementById('exportCsv').addEventListener('click', function () {
-        var csv = 'Date,Users,Total Time (hrs),Avg Time (hrs)\n';
+        // BOM — чтобы Excel открыл кириллицу в заголовках как UTF-8
+        var csv = '﻿' + [
+            t('csv_date', 'Date'),
+            t('csv_users', 'Users'),
+            t('csv_total_time', 'Total Time (hrs)'),
+            t('csv_avg_time', 'Avg Time (hrs)')
+        ].map(csvCell).join(',') + '\n';
         labels.forEach(function (l, i) { csv += l + ',' + counts[i] + ',' + activity[i] + ',' + avgTime[i] + '\n'; });
-        downloadBlob(csv, 'active_users.csv', 'text/csv');
+        downloadBlob(csv, 'active_users.csv', 'text/csv;charset=utf-8');
     });
 
     document.getElementById('exportPng').addEventListener('click', function () {

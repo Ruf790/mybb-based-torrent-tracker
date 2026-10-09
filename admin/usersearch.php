@@ -18,6 +18,24 @@ require_once INC_PATH . '/functions_multipage.php';
 
 require_once INC_PATH . '/functions_icons.php';
 
+$lang->load('usersearch');
+
+// ── ags_fmt ───────────────────────────────────────────────────────────────────
+// Подстановка {1}, {2}… в строки ланга. $lang->load() превращает {1} в %1$s,
+// поэтому подставляем оба формата.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 
 
 // ── ban_date2timestamp ────────────────────────────────────────────────────────
@@ -58,30 +76,30 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     // auth
     $user_uid = (int)($CURUSER['id'] ?? 0);
     if ($user_uid <= 0) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Не авторизован'], 401) : exit('Error: вы не авторизованы.');
+        $is_ajax ? $json(['ok'=>false,'error'=>$lang->usersearch['err_av_not_logged']], 401) : exit(ags_fmt($lang->usersearch['err_prefix'], $lang->usersearch['err_av_not_logged']));
     }
 
     // target uid
     $uid = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
     if ($uid <= 0) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Не указан uid профиля'], 400) : exit('Error: не указан uid профиля.');
+        $is_ajax ? $json(['ok'=>false,'error'=>$lang->usersearch['err_av_no_uid']], 400) : exit(ags_fmt($lang->usersearch['err_prefix'], $lang->usersearch['err_av_no_uid']));
     }
 
     // permissions: in admin/staff context allow staff; otherwise only owner
     $is_staff_ctx = defined('IN_ADMINCP') || defined('STAFF_PANEL');
     if (!$is_staff_ctx && $user_uid !== $uid) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Нет прав менять этот аватар'], 403) : exit('Error: нет прав менять этот аватар.');
+        $is_ajax ? $json(['ok'=>false,'error'=>$lang->usersearch['err_av_no_perm']], 403) : exit(ags_fmt($lang->usersearch['err_prefix'], $lang->usersearch['err_av_no_perm']));
     }
 
     // file present
     if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Файл не загружен'], 400) : exit('Error: file is not uploaded.');
+        $is_ajax ? $json(['ok'=>false,'error'=>$lang->usersearch['err_av_no_file']], 400) : exit(ags_fmt($lang->usersearch['err_prefix'], $lang->usersearch['err_av_no_file']));
     }
 
     // CSRF
     $post_key = $_POST['my_post_key'] ?? '';
     if ($post_key === '' || !verify_post_check($post_key)) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Security check failed'], 403) : exit('Error: security check failed.');
+        $is_ajax ? $json(['ok'=>false,'error'=>$lang->usersearch['err_security']], 403) : exit(ags_fmt($lang->usersearch['err_prefix'], $lang->usersearch['err_security']));
     }
 
     // Вся валидация (расширение, реальный MIME через getimagesize(), размер
@@ -94,7 +112,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     if (!empty($avatarResult['error'])) {
         $is_ajax
             ? $json(['ok'=>false,'error'=>$avatarResult['error']], 415)
-            : exit('Ошибка: ' . $avatarResult['error']);
+            : exit(ags_fmt($lang->usersearch['err_prefix'], (string)$avatarResult['error']));
     }
 
     $width  = (int)$avatarResult['width'];
@@ -124,7 +142,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
             'href'    => $abs_url,       // абсолютный URL
             'width'   => $width,
             'height'  => $height,
-            'message' => 'Аватар обновлён'
+            'message' => $lang->usersearch['msg_av_updated']
         ]);
     }
 
@@ -158,8 +176,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
 
 
 
-$lang->load('usersearch');
-
 
 
 
@@ -173,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
     header('Content-Type: application/json');
 
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
-        echo json_encode(['success' => false, 'error' => 'Security check failed. Please refresh the page and try again.']);
+        echo json_encode(['success' => false, 'error' => $lang->usersearch['err_security_refresh']]);
         exit;
     }
 
@@ -182,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
     $user_ids = array_filter($user_ids);
 
     if (empty($user_ids)) {
-        echo json_encode(['success' => false, 'error' => 'No users selected']);
+        echo json_encode(['success' => false, 'error' => $lang->usersearch['err_no_users']]);
         exit;
     }
 
@@ -260,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 		
     }
 
-    echo json_encode(['success' => true, 'message' => count($user_ids) . ' users banned']);
+    echo json_encode(['success' => true, 'message' => ags_fmt($lang->usersearch['flash_banned'], count($user_ids))]);
     break;
 	   
 	   
@@ -312,7 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
     }
 
     $cache->update_moderators();
-    echo json_encode(['success' => true, 'message' => $unbanned . ' users unbanned']);
+    echo json_encode(['success' => true, 'message' => ags_fmt($lang->usersearch['flash_unbanned'], $unbanned)]);
     break;  
         
 			
@@ -323,7 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
             $pm_message = trim($_POST['pm_message'] ?? '');
 
             if ($pm_subject === '' || $pm_message === '') {
-                echo json_encode(['success' => false, 'error' => 'Subject and message are required']);
+                echo json_encode(['success' => false, 'error' => $lang->usersearch['err_pm_required']]);
                 exit;
             }
 
@@ -345,11 +361,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
                 'Bulk PM sent to ' . $pm_sent . ' user(s): "' . $pm_subject . '"'
             );
 
-            echo json_encode(['success' => true, 'message' => $pm_sent . ' PM(s) sent']);
+            echo json_encode(['success' => true, 'message' => ags_fmt($lang->usersearch['flash_pm_sent'], $pm_sent)]);
             break;
         case 'changegroup':
             $gid = (int)($_POST['group_id'] ?? 0);
-            if ($gid <= 0) { echo json_encode(['success' => false, 'error' => 'Invalid group']); exit; }
+            if ($gid <= 0) { echo json_encode(['success' => false, 'error' => $lang->usersearch['err_invalid_group']]); exit; }
 
             $safe_ids = array_filter(
                 $user_ids,
@@ -357,7 +373,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
             );
 
             if (empty($safe_ids)) {
-                echo json_encode(['success' => false, 'error' => 'No eligible users (super admins and your own account are protected)']);
+                echo json_encode(['success' => false, 'error' => $lang->usersearch['err_no_eligible']]);
                 exit;
             }
 
@@ -371,8 +387,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 
             echo json_encode([
                 'success' => true,
-                'message' => count($safe_ids) . ' user(s) moved to group ' . $gid
-                    . (count($safe_ids) < count($user_ids) ? ' (some were skipped: super admin or your own account)' : '')
+                'message' => ags_fmt($lang->usersearch['flash_group_changed'], count($safe_ids), $gid)
+                    . (count($safe_ids) < count($user_ids) ? ' ' . $lang->usersearch['flash_group_skipped'] : '')
             ]);
             break;
         case 'delete':
@@ -393,11 +409,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
                 'Bulk deleted ' . $delete_result['deleted_users'] . ' user(s)'
             );
 
-            $msg = $delete_result['deleted_users'] . ' user(s) deleted';
+            $msg = ags_fmt($lang->usersearch['flash_deleted'], (int)$delete_result['deleted_users']);
             if ($had_super_admin) {
-                $msg .= ' (you do not have permission to delete a super administrator account)';
+                $msg .= ' ' . $lang->usersearch['flash_del_super'];
             } elseif ($delete_result['deleted_users'] < count($user_ids)) {
-                $msg .= ' (some were skipped: your own account)';
+                $msg .= ' ' . $lang->usersearch['flash_del_self'];
             }
 
             if ($delete_result['deleted_users'] === 0) {
@@ -408,7 +424,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
             }
             break;
         default:
-            echo json_encode(['success' => false, 'error' => 'Unknown action']);
+            echo json_encode(['success' => false, 'error' => $lang->usersearch['err_unknown_action']]);
     }
     exit;
 }
@@ -423,7 +439,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 
 
 
-stdhead('User Search', true, 'collapse');
+stdhead($lang->usersearch['page_title'], true, 'collapse');
 
 
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
@@ -605,11 +621,11 @@ echo '<div class="container mt-4">';
 
 echo '
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h1 class="m-0">User Search</h1>
+    <h1 class="m-0">'.$lang->usersearch['page_title'].'</h1>
     <form method="get" action="'.htmlspecialchars($_SERVER['PHP_SELF']).'" class="m-0">
       <input type="hidden" name="act" value="usersearch">
       <input type="hidden" name="latest" value="1">
-      <button type="submit" class="btn btn-outline-primary"><i class="bi bi-clock-history me-1"></i> Latest Users</button>
+      <button type="submit" class="btn btn-outline-primary"><i class="bi bi-clock-history me-1"></i> '.$lang->usersearch['btn_latest'].'</button>
     </form>
   </div>
 ';
@@ -649,7 +665,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-primary">'.$stat_total.'</div>
-                <div class="small text-muted"><i class="bi bi-people me-1"></i>Total Users</div>
+                <div class="small text-muted"><i class="bi bi-people me-1"></i>'.$lang->usersearch['stat_total'].'</div>
             </div>
         </div>
     </div>
@@ -657,7 +673,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-success">'.$stat_active.'</div>
-                <div class="small text-muted"><i class="bi bi-check-circle me-1"></i>Active</div>
+                <div class="small text-muted"><i class="bi bi-check-circle me-1"></i>'.$lang->usersearch['stat_active'].'</div>
             </div>
         </div>
     </div>
@@ -665,7 +681,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-danger">'.$stat_banned.'</div>
-                <div class="small text-muted"><i class="bi bi-ban me-1"></i>Banned</div>
+                <div class="small text-muted"><i class="bi bi-ban me-1"></i>'.$lang->usersearch['stat_banned'].'</div>
             </div>
         </div>
     </div>
@@ -673,7 +689,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-info">'.$stat_new7.'</div>
-                <div class="small text-muted"><i class="bi bi-calendar-week me-1"></i>New (7d)</div>
+                <div class="small text-muted"><i class="bi bi-calendar-week me-1"></i>'.$lang->usersearch['stat_new7'].'</div>
             </div>
         </div>
     </div>
@@ -681,7 +697,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-warning">'.$stat_today.'</div>
-                <div class="small text-muted"><i class="bi bi-calendar-day me-1"></i>New Today</div>
+                <div class="small text-muted"><i class="bi bi-calendar-day me-1"></i>'.$lang->usersearch['stat_today'].'</div>
             </div>
         </div>
     </div>
@@ -689,7 +705,7 @@ echo '
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
                 <div class="fs-2 fw-bold text-success">'.$stat_online.'</div>
-                <div class="small text-muted"><i class="bi bi-circle-fill text-success me-1" style="font-size:8px;"></i>Online (15m)</div>
+                <div class="small text-muted"><i class="bi bi-circle-fill text-success me-1" style="font-size:8px;"></i>'.$lang->usersearch['stat_online'].'</div>
             </div>
         </div>
     </div>
@@ -697,21 +713,21 @@ echo '
 
 <!-- Быстрые фильтры -->
 <div class="d-flex flex-wrap gap-2 mb-4">
-    <span class="text-muted small align-self-center me-1"><i class="bi bi-lightning me-1"></i>Quick filters:</span>
+    <span class="text-muted small align-self-center me-1"><i class="bi bi-lightning me-1"></i>'.$lang->usersearch['qf_title'].'</span>
     <a href="?act=usersearch&enabled=no" class="btn btn-sm btn-outline-danger">
-        <i class="bi bi-ban me-1"></i>Banned ('.$stat_banned.')
+        <i class="bi bi-ban me-1"></i>'.$lang->usersearch['qf_banned'].' ('.$stat_banned.')
     </a>
     <a href="?act=usersearch&added='.date('Y-m-d', TIMENOW - 86400).'" class="btn btn-sm btn-outline-warning">
-        <i class="bi bi-calendar-day me-1"></i>New Today ('.$stat_today.')
+        <i class="bi bi-calendar-day me-1"></i>'.$lang->usersearch['qf_today'].' ('.$stat_today.')
     </a>
     <a href="?act=usersearch&added='.date('Y-m-d', TIMENOW - 604800).'" class="btn btn-sm btn-outline-info">
-        <i class="bi bi-calendar-week me-1"></i>New 7 Days ('.$stat_new7.')
+        <i class="bi bi-calendar-week me-1"></i>'.$lang->usersearch['qf_new7'].' ('.$stat_new7.')
     </a>
     <a href="?act=usersearch&latest=1" class="btn btn-sm btn-outline-primary">
-        <i class="bi bi-clock-history me-1"></i>Latest 10
+        <i class="bi bi-clock-history me-1"></i>'.$lang->usersearch['qf_latest10'].'
     </a>
     <a href="?act=usersearch&enabled=yes" class="btn btn-sm btn-outline-success">
-        <i class="bi bi-check-circle me-1"></i>Active ('.$stat_active.')
+        <i class="bi bi-check-circle me-1"></i>'.$lang->usersearch['qf_active'].' ('.$stat_active.')
     </a>
 </div>
 ';
@@ -738,17 +754,17 @@ echo '
 
     <div class="row g-2">
         <div class="col-md-3">
-            <label class="form-label">Username</label>
-            <input type="text" name="username" class="form-control" value="'.htmlspecialchars_uni($_GET['username'] ?? '').'" placeholder="Username">
+            <label class="form-label">'.$lang->usersearch['lbl_username'].'</label>
+            <input type="text" name="username" class="form-control" value="'.htmlspecialchars_uni($_GET['username'] ?? '').'" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_username']).'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Email</label>
-            <input type="text" name="email" class="form-control" value="'.htmlspecialchars_uni($_GET['email'] ?? '').'" placeholder="Email">
+            <label class="form-label">'.$lang->usersearch['lbl_email'].'</label>
+            <input type="text" name="email" class="form-control" value="'.htmlspecialchars_uni($_GET['email'] ?? '').'" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_email']).'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Group</label>
+            <label class="form-label">'.$lang->usersearch['lbl_group'].'</label>
             <select name="usergroup" class="form-select">
-                <option value="-1">All groups</option>';
+                <option value="-1">'.$lang->usersearch['opt_all_groups'].'</option>';
                 $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups");
                 while ($q && ($g = $db->fetch_array($q))) 
                 {
@@ -758,32 +774,32 @@ echo '
 echo '      </select>
         </div>
         <div class="col-md-3">
-            <label class="form-label">Status</label>
+            <label class="form-label">'.$lang->usersearch['lbl_status'].'</label>
             <select name="enabled" class="form-select">
-                <option value="-1">All</option>
-                <option value="yes"'.(($_GET['enabled'] ?? '') === 'yes' ? ' selected' : '').'>Active</option>
-                <option value="no"'.(($_GET['enabled'] ?? '') === 'no' ? ' selected' : '').'>Banned</option>
+                <option value="-1">'.$lang->usersearch['opt_all'].'</option>
+                <option value="yes"'.(($_GET['enabled'] ?? '') === 'yes' ? ' selected' : '').'>'.$lang->usersearch['opt_active'].'</option>
+                <option value="no"'.(($_GET['enabled'] ?? '') === 'no' ? ' selected' : '').'>'.$lang->usersearch['opt_banned'].'</option>
             </select>
         </div>
     </div>
 
     <div class="row g-2 mt-3">
         <div class="col-md-3">
-            <label class="form-label">Reg IP</label>
-            <input type="text" name="regip" class="form-control" value="'.htmlspecialchars_uni($_GET['regip'] ?? '').'" placeholder="Reg IP">
+            <label class="form-label">'.$lang->usersearch['lbl_regip'].'</label>
+            <input type="text" name="regip" class="form-control" value="'.htmlspecialchars_uni($_GET['regip'] ?? '').'" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_regip']).'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Last IP</label>
-            <input type="text" name="lastip" class="form-control" value="'.htmlspecialchars_uni($_GET['lastip'] ?? '').'" placeholder="Last IP">
+            <label class="form-label">'.$lang->usersearch['lbl_lastip'].'</label>
+            <input type="text" name="lastip" class="form-control" value="'.htmlspecialchars_uni($_GET['lastip'] ?? '').'" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_lastip']).'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Country</label>
-            <input type="text" name="country" class="form-control" value="'.htmlspecialchars_uni($_GET['country'] ?? '').'" placeholder="Country">
+            <label class="form-label">'.$lang->usersearch['lbl_country'].'</label>
+            <input type="text" name="country" class="form-control" value="'.htmlspecialchars_uni($_GET['country'] ?? '').'" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_country']).'">
         </div>
         <div class="col-md-3 d-flex align-items-end">
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="exactmatch" value="1" '.(isset($_GET['exactmatch']) ? 'checked' : '').'>
-                <label class="form-check-label ms-2">Exact match username</label>
+                <label class="form-check-label ms-2">'.$lang->usersearch['lbl_exactmatch'].'</label>
             </div>
         </div>
     </div>
@@ -793,38 +809,38 @@ echo '      </select>
    
    <div class="row g-2 mt-3">
   <div class="col-md-3">
-    <label class="form-label">Reg Date From</label>
+    <label class="form-label">'.$lang->usersearch['lbl_reg_from'].'</label>
     <div class="input-group">
       <span class="input-group-text"><i class="bi bi-calendar-event"></i></span>
-      <input type="text" id="added" name="added" class="form-control" placeholder="YYYY-MM-DD">
-      <button class="btn btn-outline-secondary" type="button" data-clear="#added" aria-label="Clear"><i class="bi bi-x-lg"></i></button>
+      <input type="text" id="added" name="added" class="form-control" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_date']).'">
+      <button class="btn btn-outline-secondary" type="button" data-clear="#added" aria-label="'.htmlspecialchars_uni($lang->usersearch['tip_clear']).'"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
 
   <div class="col-md-3">
-    <label class="form-label">Reg Date To</label>
+    <label class="form-label">'.$lang->usersearch['lbl_reg_to'].'</label>
     <div class="input-group">
       <span class="input-group-text"><i class="bi bi-calendar-event"></i></span>
-      <input type="text" id="reg_to" name="reg_to" class="form-control" placeholder="YYYY-MM-DD">
-      <button class="btn btn-outline-secondary" type="button" data-clear="#reg_to" aria-label="Clear"><i class="bi bi-x-lg"></i></button>
+      <input type="text" id="reg_to" name="reg_to" class="form-control" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_date']).'">
+      <button class="btn btn-outline-secondary" type="button" data-clear="#reg_to" aria-label="'.htmlspecialchars_uni($lang->usersearch['tip_clear']).'"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
 
   <div class="col-md-3">
-    <label class="form-label">Last Active From</label>
+    <label class="form-label">'.$lang->usersearch['lbl_active_from'].'</label>
     <div class="input-group">
       <span class="input-group-text"><i class="bi bi-calendar-check"></i></span>
-      <input type="text" id="active_from" name="active_from" class="form-control" placeholder="YYYY-MM-DD">
-      <button class="btn btn-outline-secondary" type="button" data-clear="#active_from" aria-label="Clear"><i class="bi bi-x-lg"></i></button>
+      <input type="text" id="active_from" name="active_from" class="form-control" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_date']).'">
+      <button class="btn btn-outline-secondary" type="button" data-clear="#active_from" aria-label="'.htmlspecialchars_uni($lang->usersearch['tip_clear']).'"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
 
   <div class="col-md-3">
-    <label class="form-label">Last Active To</label>
+    <label class="form-label">'.$lang->usersearch['lbl_active_to'].'</label>
     <div class="input-group">
       <span class="input-group-text"><i class="bi bi-calendar-check"></i></span>
-      <input type="text" id="active_to" name="active_to" class="form-control" placeholder="YYYY-MM-DD">
-      <button class="btn btn-outline-secondary" type="button" data-clear="#active_to" aria-label="Clear"><i class="bi bi-x-lg"></i></button>
+      <input type="text" id="active_to" name="active_to" class="form-control" placeholder="'.htmlspecialchars_uni($lang->usersearch['ph_date']).'">
+      <button class="btn btn-outline-secondary" type="button" data-clear="#active_to" aria-label="'.htmlspecialchars_uni($lang->usersearch['tip_clear']).'"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
 </div>
@@ -837,47 +853,47 @@ echo '      </select>
 
     <div class="row g-2 mt-3">
         <div class="col-md-3">
-            <label class="form-label">Min Uploaded (MB)</label>
+            <label class="form-label">'.$lang->usersearch['lbl_min_up'].'</label>
             <input type="number" name="min_uploaded" class="form-control" value="'.htmlspecialchars_uni($_GET['min_uploaded'] ?? '').'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Max Uploaded (MB)</label>
+            <label class="form-label">'.$lang->usersearch['lbl_max_up'].'</label>
             <input type="number" name="max_uploaded" class="form-control" value="'.htmlspecialchars_uni($_GET['max_uploaded'] ?? '').'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Min Ratio</label>
+            <label class="form-label">'.$lang->usersearch['lbl_min_ratio'].'</label>
             <input type="number" step="0.01" name="min_ratio" class="form-control" value="'.htmlspecialchars_uni($_GET['min_ratio'] ?? '').'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Max Ratio</label>
+            <label class="form-label">'.$lang->usersearch['lbl_max_ratio'].'</label>
             <input type="number" step="0.01" name="max_ratio" class="form-control" value="'.htmlspecialchars_uni($_GET['max_ratio'] ?? '').'">
         </div>
     </div>
 
     <div class="row g-2 mt-3">
         <div class="col-md-3">
-            <label class="form-label">Warnings</label>
+            <label class="form-label">'.$lang->usersearch['lbl_warnings'].'</label>
             <input type="number" name="warnings" class="form-control" value="'.htmlspecialchars_uni($_GET['warnings'] ?? '').'">
         </div>
         <div class="col-md-3">
-            <label class="form-label">Order by</label>
+            <label class="form-label">'.$lang->usersearch['lbl_orderby'].'</label>
             <select name="orderby1" class="form-select">
-                <option value="username"'.(($_GET['orderby1'] ?? '') === 'username' ? ' selected' : '').'>Username</option>
-                <option value="email"'.(($_GET['orderby1'] ?? '') === 'email' ? ' selected' : '').'>Email</option>
-                <option value="id"'.(($_GET['orderby1'] ?? '') === 'id' ? ' selected' : '').'>ID</option>
+                <option value="username"'.(($_GET['orderby1'] ?? '') === 'username' ? ' selected' : '').'>'.$lang->usersearch['opt_username'].'</option>
+                <option value="email"'.(($_GET['orderby1'] ?? '') === 'email' ? ' selected' : '').'>'.$lang->usersearch['opt_email'].'</option>
+                <option value="id"'.(($_GET['orderby1'] ?? '') === 'id' ? ' selected' : '').'>'.$lang->usersearch['opt_id'].'</option>
             </select>
         </div>
         <div class="col-md-3">
-            <label class="form-label">Direction</label>
+            <label class="form-label">'.$lang->usersearch['lbl_direction'].'</label>
             <select name="orderby2" class="form-select">
-                <option value="ASC"'.(($_GET['orderby2'] ?? '') === 'ASC' ? ' selected' : '').'>ASC</option>
-                <option value="DESC"'.(($_GET['orderby2'] ?? '') === 'DESC' ? ' selected' : '').'>DESC</option>
+                <option value="ASC"'.(($_GET['orderby2'] ?? '') === 'ASC' ? ' selected' : '').'>'.$lang->usersearch['opt_asc'].'</option>
+                <option value="DESC"'.(($_GET['orderby2'] ?? '') === 'DESC' ? ' selected' : '').'>'.$lang->usersearch['opt_desc'].'</option>
             </select>
         </div>
         
         <div class="col-md-3 d-flex align-items-end gap-2">
-            <button type="submit" class="btn btn-primary w-100">Search</button>
-            <a href="?act=usersearch" class="btn btn-outline-secondary">Clear</a>
+            <button type="submit" class="btn btn-primary w-100">'.$lang->usersearch['btn_search'].'</button>
+            <a href="?act=usersearch" class="btn btn-outline-secondary">'.$lang->usersearch['btn_clear'].'</a>
         </div>
 
 
@@ -899,7 +915,7 @@ echo '      </select>
 if (isset($_GET['latest'])) {
     // Latest Users
     $latest_res = $db->sql_query_prepared("SELECT id, username, usergroup, added, avatar, avatardimensions, email, lastactive FROM users ORDER BY id DESC LIMIT 10");
-    echo '<div class="card mb-4"><div class="card-header fw-bold">Latest Users</div>';
+    echo '<div class="card mb-4"><div class="card-header fw-bold">'.$lang->usersearch['sec_latest'].'</div>';
     echo '<div class="table-responsive"><table class="table table-striped table-hover align-middle mb-0">';
    echo '<thead><tr>
     <th>
@@ -907,20 +923,20 @@ if (isset($_GET['latest'])) {
             <input class="form-check-input" type="checkbox" id="checkAll">
         </div>
     </th>
-    <th>ID</th><th>Avatar</th><th>Username</th><th>Email</th><th>Group</th>
-    <th>Reg IP/Last IP</th><th>Upl/Down</th><th>Ratio</th><th>Actions</th>
+    <th>'.$lang->usersearch['th_id'].'</th><th>'.$lang->usersearch['th_avatar'].'</th><th>'.$lang->usersearch['th_username'].'</th><th>'.$lang->usersearch['th_email'].'</th><th>'.$lang->usersearch['th_group'].'</th>
+    <th>'.$lang->usersearch['th_ips'].'</th><th>'.$lang->usersearch['th_updown'].'</th><th>'.$lang->usersearch['th_ratio'].'</th><th>'.$lang->usersearch['th_actions'].'</th>
 </tr></thead>';
     while ($latest_res && ($user = $db->fetch_array($latest_res))) {
         $profile_url = $BASEURL . '/' . get_profile_link($user['id']);
         $av = format_avatar($user['avatar'], $user['avatardimensions'], '80|80');
         $avClass = !empty($av['is_placeholder']) ? 'avatar-ring' : 'rounded';
-        $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="avatar">';
+        $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="'.htmlspecialchars_uni($lang->usersearch['alt_avatar']).'">';
         $formattedname = format_name($user['username'], $user['usergroup']);
         $joined = my_datee($dateformat, $user['added']) . ' ' . my_datee($timeformat, $user['added']);
         $isOnline = ((int)($user['lastactive'] ?? 0)) >= (TIMENOW - 900);
         $onlineDot = $isOnline
-            ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="Online now"></i>'
-            : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="Last seen '.htmlspecialchars_uni(my_datee($dateformat, (int)($user['lastactive'] ?? 0))).'"></i>';
+            ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="'.htmlspecialchars_uni($lang->usersearch['tip_online']).'"></i>'
+            : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="'.htmlspecialchars_uni(ags_fmt($lang->usersearch['tip_last_seen'], my_datee($dateformat, (int)($user['lastactive'] ?? 0)))).'"></i>';
         echo '<tr>';
 		
 		
@@ -942,7 +958,7 @@ echo '<td>
         echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a>'.$onlineDot.'</td>';
         echo '<td>'.htmlspecialchars_uni($user['email']).'</td>';
         echo '<td>'.$joined.'</td>';
-        echo '<td><a class="delete_employee" data-emp-id="'.$user['id'].'" href="javascript:void(0)" title="Delete">
+        echo '<td><a class="delete_employee" data-emp-id="'.$user['id'].'" href="javascript:void(0)" title="'.htmlspecialchars_uni($lang->usersearch['tip_delete']).'">
                 <i class="fa-solid fa-trash-can fa-xl" style="color:#eb0f0f;"></i></a></td>';		
 				
 				
@@ -964,7 +980,7 @@ $count_result = $db->sql_query_prepared($sql_count, $params);
 
 // Проверка ошибок
 if (!$count_result) {
-    die('Ошибка запроса подсчета: ' . $db->error());
+    die(ags_fmt($lang->usersearch['err_count_query'], (string)$db->error()));
 }
 
 // Теперь передаем объект напрямую в fetch_array!
@@ -986,7 +1002,7 @@ $query_result = $db->sql_query_prepared($sql_data, $params_for_data);
 
 // Проверка ошибок
 if (!$query_result) {
-    die('Ошибка запроса данных: ' . $db->error());
+    die(ags_fmt($lang->usersearch['err_data_query'], (string)$db->error()));
 }
 
 // Теперь передаем объект напрямую в num_rows!
@@ -1015,36 +1031,36 @@ $num = $db->num_rows($query_result);
     <div class="d-flex align-items-center gap-3 flex-wrap">
         <span class="fw-bold text-primary">
             <i class="bi bi-check2-square me-1"></i>
-            Selected: <span id="selectedCount">0</span> users
+            '.ags_fmt($lang->usersearch['bulk_selected'], '<span id="selectedCount">0</span>').'
         </span>
         <div class="vr"></div>
         <button type="button" class="btn btn-sm btn-warning" onclick="bulkAction(\'ban\')">
-            <i class="bi bi-ban me-1"></i>Ban
+            <i class="bi bi-ban me-1"></i>'.$lang->usersearch['btn_ban'].'
         </button>
         <button type="button" class="btn btn-sm btn-success" onclick="bulkAction(\'unban\')">
-            <i class="bi bi-check-circle me-1"></i>Unban
+            <i class="bi bi-check-circle me-1"></i>'.$lang->usersearch['btn_unban'].'
         </button>
         <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkAction(\'pm\')">
-            <i class="bi bi-envelope me-1"></i>Send PM
+            <i class="bi bi-envelope me-1"></i>'.$lang->usersearch['btn_pm'].'
         </button>
         <div class="input-group input-group-sm" style="width:auto;">
             <select class="form-select form-select-sm" id="bulkGroupSelect">
-                <option value="">Change group...</option>';
+                <option value="">'.$lang->usersearch['opt_change_group'].'</option>';
                 $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups ORDER BY title ASC");
                 while ($q && ($g = $db->fetch_array($q))) {
                     echo '<option value="'.(int)$g['gid'].'">'.htmlspecialchars_uni($g['title']).'</option>';
                 }
 echo '      </select>
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkAction(\'changegroup\')">
-                <i class="bi bi-people me-1"></i>Apply
+                <i class="bi bi-people me-1"></i>'.$lang->usersearch['btn_apply'].'
             </button>
         </div>
         <div class="vr"></div>
         <button type="button" class="btn btn-sm btn-danger" onclick="bulkAction(\'delete\')">
-            <i class="bi bi-trash me-1"></i>Delete
+            <i class="bi bi-trash me-1"></i>'.$lang->usersearch['btn_delete'].'
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="clearSelection()">
-            <i class="bi bi-x me-1"></i>Clear
+            <i class="bi bi-x me-1"></i>'.$lang->usersearch['btn_clear_sel'].'
         </button>
     </div>
 </div>
@@ -1070,7 +1086,7 @@ echo '      </select>
 		
 		
 		
-		echo '<div class="card mb-4"><div class="card-header fw-bold">Users found: '.$total.'</div>';
+		echo '<div class="card mb-4"><div class="card-header fw-bold">'.ags_fmt($lang->usersearch['sec_found'], $total).'</div>';
         echo '<div class="table-responsive"><table class="table table-hover align-middle mb-0">';
 
         // ── Кликабельная сортировка колонок ─────────────────────────────
@@ -1096,19 +1112,19 @@ echo '      </select>
         };
 
 	  echo '<thead><tr>
-    <th>'.$sortLink('id', 'ID').'</th>
-    <th>Avatar</th>
-    <th>'.$sortLink('username', 'Username').'</th>
-    <th>'.$sortLink('email', 'Email').'</th>
-    <th>Group</th>
-    <th>Reg IP/Last IP</th>
-    <th>Upl/Down</th>
+    <th>'.$sortLink('id', $lang->usersearch['th_id']).'</th>
+    <th>'.$lang->usersearch['th_avatar'].'</th>
+    <th>'.$sortLink('username', $lang->usersearch['th_username']).'</th>
+    <th>'.$sortLink('email', $lang->usersearch['th_email']).'</th>
+    <th>'.$lang->usersearch['th_group'].'</th>
+    <th>'.$lang->usersearch['th_ips'].'</th>
+    <th>'.$lang->usersearch['th_updown'].'</th>
 
-    <th>Info</th>
+    <th>'.$lang->usersearch['th_info'].'</th>
     <th class="text-center" style="width:80px;">
-        Actions
+        '.$lang->usersearch['th_actions'].'
         <div class="mt-1">
-            <input class="form-check-input" type="checkbox" id="checkAll" title="Select all">
+            <input class="form-check-input" type="checkbox" id="checkAll" title="'.htmlspecialchars_uni($lang->usersearch['tip_select_all']).'">
         </div>
     </th>
 </tr></thead><tbody>';
@@ -1123,7 +1139,7 @@ echo '      </select>
 
             $av = format_avatar($u['avatar'], $u['avatardimensions'], '100|100');
             $avClass = !empty($av['is_placeholder']) ? 'avatar-ring' : 'rounded';
-            $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="avatar">';
+            $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="'.htmlspecialchars_uni($lang->usersearch['alt_avatar']).'">';
 		   
 
             $regip         = my_inet_ntop($u['regip']);
@@ -1135,8 +1151,8 @@ echo '      </select>
             // что уже используется в карточке статистики "Online (15m)" выше.
             $isOnline = ((int)($u['lastactive'] ?? 0)) >= (TIMENOW - 900);
             $onlineDot = $isOnline
-                ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="Online now"></i>'
-                : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="Last seen '.htmlspecialchars_uni(my_datee($dateformat, (int)($u['lastactive'] ?? 0))).'"></i>';
+                ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="'.htmlspecialchars_uni($lang->usersearch['tip_online']).'"></i>'
+                : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="'.htmlspecialchars_uni(ags_fmt($lang->usersearch['tip_last_seen'], my_datee($dateformat, (int)($u['lastactive'] ?? 0)))).'"></i>';
 
             // display group/title
 		   if($u['usergroup'])
@@ -1181,7 +1197,7 @@ echo '      </select>
 			
 			
            
-            echo '<td data-avatar-cell="1" data-uid="'.(int)$u['id'].'" title="Click to change avatar">'.$avatar_img.'</td>';
+            echo '<td data-avatar-cell="1" data-uid="'.(int)$u['id'].'" title="'.htmlspecialchars_uni($lang->usersearch['tip_change_avatar']).'">'.$avatar_img.'</td>';
 			
 			
 			
@@ -1209,11 +1225,11 @@ echo '<td>
                 '.substr($u['passkey'], 0, 8).'...
             </span>
             <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
-                    onclick="togglePasskey(this)" title="Show/Hide">
+                    onclick="togglePasskey(this)" title="'.htmlspecialchars_uni($lang->usersearch['tip_toggle_passkey']).'">
                 <i class="bi bi-eye" style="font-size:0.7rem;"></i>
             </button>
             <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
-                    onclick="copyPasskey(this)" title="Copy">
+                    onclick="copyPasskey(this)" title="'.htmlspecialchars_uni($lang->usersearch['tip_copy_passkey']).'">
                 <i class="bi bi-clipboard" style="font-size:0.7rem;"></i>
             </button>
         </div>
@@ -1224,8 +1240,8 @@ echo '<td>
             &nbsp;|&nbsp;
             <i class="bi bi-star text-warning me-1"></i>'.number_format((float)$u['seedbonus'], 1).'
         </small>
-        '.($u['warned'] === 'yes' ? '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Warned x'.$u['timeswarned'].'</span>' : '').'
-        '.($u['donor'] === 'yes'  ? '<span class="badge bg-success ms-1"><i class="bi bi-heart me-1"></i>Donor</span>' : '').'
+        '.($u['warned'] === 'yes' ? '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>'.ags_fmt($lang->usersearch['badge_warned'], (int)$u['timeswarned']).'</span>' : '').'
+        '.($u['donor'] === 'yes'  ? '<span class="badge bg-success ms-1"><i class="bi bi-heart me-1"></i>'.$lang->usersearch['badge_donor'].'</span>' : '').'
     </div>
 </td>';
 
@@ -1257,7 +1273,7 @@ echo $multipage;
 		
 
     } elseif (!empty($_GET)) {
-        echo '<div class="alert alert-danger">No users found.</div>';
+        echo '<div class="alert alert-danger">'.$lang->usersearch['msg_no_users'].'</div>';
     }
 }
 
@@ -1274,6 +1290,16 @@ echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*" 
 ?>
 
 <script>window.myPostKey = "<?= $mybb->post_code ?>";</script>
+<?php
+    // Строки для usersearch.js: ключи js_* из ланга без префикса
+    $usersearchJsLang = [];
+    foreach ($lang->usersearch as $usersearchKey => $usersearchVal) {
+        if (str_starts_with((string)$usersearchKey, 'js_')) {
+            $usersearchJsLang[substr((string)$usersearchKey, 3)] = (string)$usersearchVal;
+        }
+    }
+?>
+<script>const AGS_LANG = <?= json_encode($usersearchJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <?php
     // FIX: cache-busting через filemtime() - при каждой правке usersearch.js
     // версия в URL меняется автоматически, браузер/reverse-proxy не сможет

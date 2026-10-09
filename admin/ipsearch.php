@@ -8,6 +8,22 @@ if (!defined('STAFF_PANEL')) {
 
 define('IPS_VERSION', 'v0.3');
 
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… (и %1$s — в него $lang->load() превращает {1}).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 /**
  * IP Search Manager (users.regip = varbinary(16), login_log.ip = varchar(45))
  */
@@ -74,8 +90,8 @@ final class IPSearchManager
     private function ipScope(string $ip): string
     {
         return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false
-            ? 'Private / reserved'
-            : 'Public';
+            ? self::t('opt_scope_private')
+            : self::t('opt_scope_public');
     }
 
     /**
@@ -115,7 +131,7 @@ final class IPSearchManager
             $date->setTimezone(new DateTimeZone(date_default_timezone_get()));
             return $date->format($format);
         } catch (Exception) {
-            return 'Invalid date';
+            return self::t('err_invalid_date');
         }
     }
 
@@ -131,6 +147,13 @@ final class IPSearchManager
     private static function e(string $s): string
     {
         return htmlspecialchars_uni($s);
+    }
+
+    /** Строка из ланга ipsearch (чистый текст / как задано в ланге). */
+    private static function t(string $key): string
+    {
+        global $lang;
+        return $lang->ipsearch[$key];
     }
 
     private function postKey(): string
@@ -246,8 +269,8 @@ final class IPSearchManager
         }
 
         if (!$this->validateIp($ip)) {
-            $html .= $this->renderAlert('danger', 'fa-triangle-exclamation', 'Invalid IP address',
-                'Please enter a valid IPv4 or IPv6 address.');
+            $html .= $this->renderAlert('danger', 'fa-triangle-exclamation', self::t('err_invalid_title'),
+                self::t('err_invalid_text'));
             return $html . $this->renderSearchCard($ip, true);
         }
 
@@ -261,12 +284,12 @@ final class IPSearchManager
             $html .= $this->renderEmptyState($norm);
         } else {
             $html .= $this->renderUserTable(
-                $results['registered'], 'Registered from this IP', 'fa-user-plus', 'primary', $norm,
-                'Nobody registered from this IP.'
+                $results['registered'], self::t('sec_registered'), 'fa-user-plus', 'primary', $norm,
+                self::t('sec_registered_empty')
             );
             $html .= $this->renderUserTable(
-                $results['logins'], 'Logged in from this IP', 'fa-right-to-bracket', 'success', $norm,
-                'No logins from this IP in the log.'
+                $results['logins'], self::t('sec_logins'), 'fa-right-to-bracket', 'success', $norm,
+                self::t('sec_logins_empty')
             );
         }
 
@@ -276,12 +299,14 @@ final class IPSearchManager
     private function renderHeader(): string
     {
         $version = self::e(IPS_VERSION);
+        $title   = self::e(self::t('pane_title'));
+        $sub     = self::e(self::t('pane_sub'));
         return <<<HTML
             <div class="ips-card ips-header">
                 <div class="ips-header__icon"><i class="fa-solid fa-magnifying-glass-location"></i></div>
                 <div class="ips-header__text">
-                    <h1 class="ips-header__title">IP Address Search</h1>
-                    <div class="ips-header__sub">Find accounts by registration IP and login history &middot; IPv4 &amp; IPv6</div>
+                    <h1 class="ips-header__title">{$title}</h1>
+                    <div class="ips-header__sub">{$sub}</div>
                 </div>
                 <span class="ips-pill ips-tone-secondary"><i class="fa-solid fa-code-branch"></i> {$version}</span>
             </div>
@@ -291,10 +316,10 @@ final class IPSearchManager
     private function renderFlash(): string
     {
         return match ($_GET['reset'] ?? '') {
-            'ok'   => $this->renderAlert('success', 'fa-circle-check', 'Passkey reset',
-                        'A new passkey was generated. The user has to re-download their .torrent files.'),
-            'fail' => $this->renderAlert('danger', 'fa-triangle-exclamation', 'Passkey was not reset',
-                        'Security token expired or the user no longer exists. Please try again.'),
+            'ok'   => $this->renderAlert('success', 'fa-circle-check', self::t('flash_reset_ok'),
+                        self::t('flash_reset_ok_txt')),
+            'fail' => $this->renderAlert('danger', 'fa-triangle-exclamation', self::t('flash_reset_fail'),
+                        self::t('flash_reset_fail_txt')),
             default => '',
         };
     }
@@ -315,13 +340,16 @@ final class IPSearchManager
     {
         $action   = self::e($this->scriptName);
         $value    = self::e($currentIp);
+        $ph       = self::e(self::t('lbl_placeholder'));
+        $btn      = self::e(self::t('btn_search'));
         $examples = '';
 
         if ($withExamples) {
+            $hint     = self::e(self::t('hint_searched'));
             $examples = <<<HTML
                 <div class="ips-hint">
                     <i class="fa-solid fa-circle-info"></i>
-                    Registration IP (users) and login history (login_log) are searched. Try:
+                    {$hint}
                     <button type="button" class="ips-chip ips-tone-primary" data-ip="192.168.1.1"><i class="fa-solid fa-4"></i> 192.168.1.1</button>
                     <button type="button" class="ips-chip ips-tone-info" data-ip="2001:db8::1"><i class="fa-solid fa-6"></i> 2001:db8::1</button>
                 </div>
@@ -335,10 +363,10 @@ final class IPSearchManager
                     <label class="ips-search__field" for="ip-address">
                         <i class="fa-solid fa-network-wired"></i>
                         <input type="text" id="ip-address" name="ip" value="{$value}"
-                               placeholder="Enter IPv4 or IPv6 address" autocomplete="off" spellcheck="false" required>
+                               placeholder="{$ph}" autocomplete="off" spellcheck="false" required>
                     </label>
                     <button type="submit" class="ips-btn ips-btn--primary">
-                        <i class="fa-solid fa-magnifying-glass"></i><span>Search</span>
+                        <i class="fa-solid fa-magnifying-glass"></i><span>{$btn}</span>
                     </button>
                 </form>
                 {$examples}
@@ -354,20 +382,23 @@ final class IPSearchManager
         $unique = count(array_unique($ids));
         $type   = self::e($this->ipType($ip));
         $scope  = self::e($this->ipScope($ip));
+        $lReg   = self::e(self::t('kpi_registered'));
+        $lLog   = self::e(self::t('kpi_logins'));
+        $lUniq  = self::e(self::t('kpi_unique'));
 
         return <<<HTML
             <div class="ips-kpis">
                 <div class="ips-card ips-kpi">
                     <div class="ips-kpi__icon ips-tone-primary"><i class="fa-solid fa-user-plus"></i></div>
-                    <div><div class="ips-kpi__value">{$reg}</div><div class="ips-kpi__label">Registered from IP</div></div>
+                    <div><div class="ips-kpi__value">{$reg}</div><div class="ips-kpi__label">{$lReg}</div></div>
                 </div>
                 <div class="ips-card ips-kpi">
                     <div class="ips-kpi__icon ips-tone-success"><i class="fa-solid fa-right-to-bracket"></i></div>
-                    <div><div class="ips-kpi__value">{$logins}</div><div class="ips-kpi__label">Logged in from IP</div></div>
+                    <div><div class="ips-kpi__value">{$logins}</div><div class="ips-kpi__label">{$lLog}</div></div>
                 </div>
                 <div class="ips-card ips-kpi">
                     <div class="ips-kpi__icon ips-tone-warning"><i class="fa-solid fa-users"></i></div>
-                    <div><div class="ips-kpi__value">{$unique}</div><div class="ips-kpi__label">Unique accounts</div></div>
+                    <div><div class="ips-kpi__value">{$unique}</div><div class="ips-kpi__label">{$lUniq}</div></div>
                 </div>
                 <div class="ips-card ips-kpi">
                     <div class="ips-kpi__icon ips-tone-info"><i class="fa-solid fa-globe"></i></div>
@@ -379,12 +410,14 @@ final class IPSearchManager
 
     private function renderEmptyState(string $ip): string
     {
-        $ip = self::e($ip);
+        $title = self::e(self::t('sec_empty_title'));
+        // HTML из ланга (<code>) выводится как есть, IP экранирован заранее
+        $text  = ags_fmt(self::t('sec_empty_text'), self::e($ip));
         return <<<HTML
             <div class="ips-card ips-empty">
                 <div class="ips-empty__icon"><i class="fa-solid fa-user-slash"></i></div>
-                <h3>No accounts found</h3>
-                <p>Nobody registered or logged in from <code>{$ip}</code>.</p>
+                <h3>{$title}</h3>
+                <p>{$text}</p>
             </div>
         HTML;
     }
@@ -401,6 +434,15 @@ final class IPSearchManager
         $postKey   = self::e($this->postKey());
         $dtFormat  = trim("{$dateformat} {$timeformat}") ?: 'Y-m-d H:i';
         $body      = '';
+
+        $tipSame   = self::e(self::t('tip_same_ip'));
+        $tipSearch = self::e(self::t('tip_search_ip'));
+        $tipCopy   = self::e(self::t('tip_copy_passkey'));
+        $tipReset  = self::e(self::t('tip_reset_passkey'));
+        $th        = [];
+        foreach (['username', 'email', 'last_ip', 'passkey', 'last_seen', 'registered', 'uploaded', 'downloaded', 'ratio'] as $k) {
+            $th[$k] = self::e(self::t('lbl_' . $k));
+        }
 
         if ($rows === []) {
             $body = <<<HTML
@@ -431,10 +473,10 @@ final class IPSearchManager
                     $typeText = self::e($this->ipType($lastIpRaw));
                     $isMatch  = $this->normalizeIp($lastIpRaw) === $searchIp;
                     $match    = $isMatch
-                        ? '<span class="ips-badge ips-tone-success" title="Same as searched IP"><i class="fa-solid fa-equals"></i></span>'
+                        ? '<span class="ips-badge ips-tone-success" title="' . $tipSame . '"><i class="fa-solid fa-equals"></i></span>'
                         : '';
                     $ipLink   = $this->validateIp($lastIpRaw) && !$isMatch
-                        ? '<a class="ips-icon-btn" href="' . self::e(self::url($this->selfUrl, ['ip' => $lastIpRaw])) . '" title="Search this IP"><i class="fa-solid fa-magnifying-glass"></i></a>'
+                        ? '<a class="ips-icon-btn" href="' . self::e(self::url($this->selfUrl, ['ip' => $lastIpRaw])) . '" title="' . $tipSearch . '"><i class="fa-solid fa-magnifying-glass"></i></a>'
                         : '';
                     $ipCell = <<<HTML
                         <div class="ips-inline">
@@ -449,7 +491,7 @@ final class IPSearchManager
                 $passkey      = self::e($passkeyRaw);
                 $passkeyShort = $passkeyRaw !== '' ? self::e(substr($passkeyRaw, 0, 8)) . '…' : '—';
                 $copyBtn      = $passkeyRaw !== ''
-                    ? "<button type=\"button\" class=\"ips-icon-btn\" data-copy=\"{$passkey}\" title=\"Copy passkey\"><i class=\"fa-solid fa-copy\"></i></button>"
+                    ? "<button type=\"button\" class=\"ips-icon-btn\" data-copy=\"{$passkey}\" title=\"{$tipCopy}\"><i class=\"fa-solid fa-copy\"></i></button>"
                     : '';
 
                 $lastSeen   = self::e($this->formatDateTime($user['lastactive'] ?? null, $dtFormat));
@@ -480,7 +522,7 @@ final class IPSearchManager
                                     <input type="hidden" name="uid" value="{$id}">
                                     <input type="hidden" name="ip" value="{$ipAttr}">
                                     <input type="hidden" name="my_post_key" value="{$postKey}">
-                                    <button type="submit" class="ips-icon-btn ips-icon-btn--danger" title="Reset passkey"><i class="fa-solid fa-rotate"></i></button>
+                                    <button type="submit" class="ips-icon-btn ips-icon-btn--danger" title="{$tipReset}"><i class="fa-solid fa-rotate"></i></button>
                                 </form>
                             </div>
                         </td>
@@ -505,15 +547,15 @@ final class IPSearchManager
                     <table class="ips-table">
                         <thead>
                             <tr>
-                                <th><i class="fa-solid fa-user"></i> Username</th>
-                                <th><i class="fa-solid fa-envelope"></i> Email</th>
-                                <th><i class="fa-solid fa-location-dot"></i> Last IP</th>
-                                <th><i class="fa-solid fa-key"></i> Passkey</th>
-                                <th><i class="fa-solid fa-clock"></i> Last seen</th>
-                                <th><i class="fa-solid fa-calendar-plus"></i> Registered</th>
-                                <th><i class="fa-solid fa-cloud-arrow-up"></i> Uploaded</th>
-                                <th><i class="fa-solid fa-cloud-arrow-down"></i> Downloaded</th>
-                                <th><i class="fa-solid fa-scale-balanced"></i> Ratio</th>
+                                <th><i class="fa-solid fa-user"></i> {$th['username']}</th>
+                                <th><i class="fa-solid fa-envelope"></i> {$th['email']}</th>
+                                <th><i class="fa-solid fa-location-dot"></i> {$th['last_ip']}</th>
+                                <th><i class="fa-solid fa-key"></i> {$th['passkey']}</th>
+                                <th><i class="fa-solid fa-clock"></i> {$th['last_seen']}</th>
+                                <th><i class="fa-solid fa-calendar-plus"></i> {$th['registered']}</th>
+                                <th><i class="fa-solid fa-cloud-arrow-up"></i> {$th['uploaded']}</th>
+                                <th><i class="fa-solid fa-cloud-arrow-down"></i> {$th['downloaded']}</th>
+                                <th><i class="fa-solid fa-scale-balanced"></i> {$th['ratio']}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -530,6 +572,8 @@ final class IPSearchManager
         $newUrl  = self::e($this->selfUrl);
         $ipAttr  = self::e($ip);
         $infoUrl = self::e('https://ipinfo.io/' . rawurlencode($ip));
+        $copyTxt = self::e(self::t('btn_copy_ip'));
+        $newTxt  = self::e(self::t('btn_new_search'));
 
         return <<<HTML
             <div class="ips-actionbar">
@@ -539,13 +583,13 @@ final class IPSearchManager
                 </div>
                 <div class="ips-actionbar__buttons">
                     <button type="button" class="ips-btn ips-btn--soft" data-copy="{$ipAttr}">
-                        <i class="fa-solid fa-copy"></i><span>Copy IP</span>
+                        <i class="fa-solid fa-copy"></i><span>{$copyTxt}</span>
                     </button>
                     <a href="{$infoUrl}" target="_blank" rel="noopener noreferrer" class="ips-btn ips-btn--soft">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i><span>ipinfo.io</span>
                     </a>
                     <a href="{$newUrl}" class="ips-btn ips-btn--primary">
-                        <i class="fa-solid fa-magnifying-glass-plus"></i><span>New search</span>
+                        <i class="fa-solid fa-magnifying-glass-plus"></i><span>{$newTxt}</span>
                     </a>
                 </div>
             </div>
@@ -556,7 +600,10 @@ final class IPSearchManager
 // Main execution
 function main(): void
 {
-    global $db, $BASEURL, $_this_script_;
+    global $db, $BASEURL, $_this_script_, $lang;
+
+    $lang->load('ipsearch');
+    $L = $lang->ipsearch;
 
     $scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '');
     $selfUrl    = html_entity_decode((string)($_this_script_ ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -571,7 +618,15 @@ function main(): void
         $manager->handlePasskeyReset();
     }
 
-    stdhead('IP Search');
+    stdhead($L['page_title']);
+
+    // js_* -> AGS_LANG без префикса
+    $jsLang = [];
+    foreach ($L as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $jsLang[substr((string)$k, 3)] = (string)$v;
+        }
+    }
     ?>
     <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
     <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/ipsearch.css?ver=1">
@@ -584,13 +639,16 @@ function main(): void
     } catch (Throwable $e) {
         echo '<div class="ips-alert ips-tone-danger" role="alert">'
             . '<i class="fa-solid fa-triangle-exclamation ips-alert__icon"></i>'
-            . '<div><strong>Error</strong><div>' . htmlspecialchars_uni($e->getMessage()) . '</div></div>'
+            . '<div><strong>' . htmlspecialchars_uni($L['err_title']) . '</strong><div>' . htmlspecialchars_uni($e->getMessage()) . '</div></div>'
             . '</div>';
     }
     ?>
     </div>
 
-    <script src="<?= $BASEURL ?>/admin/scripts/ipsearch.js?ver=1"></script>
+    <script>
+    const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    </script>
+    <script src="<?= $BASEURL ?>/admin/scripts/ipsearch.js?ver=2"></script>
     <?php
     stdfoot();
 }

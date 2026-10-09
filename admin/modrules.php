@@ -26,7 +26,7 @@ class RuleManager
 {
     private array $errors = [];
 
-    public function __construct(private $db, private $lang, private array $usergroups, private string $actor) {}
+    public function __construct(private $db, private $lang, private array $usergroups, private string $actor, private int $actorId = 0) {}
 
     private function l(string $key, string $fallback): string
     {
@@ -70,6 +70,9 @@ class RuleManager
         $id    = (int)($data['id'] ?? 0);
         $title = trim((string)($data['title'] ?? ''));
         $text  = trim((string)($data['text'] ?? ''));
+        // Russian version is optional: empty => NULL => the English one is shown
+        $titleRu = trim((string)($data['title_ru'] ?? ''));
+        $textRu  = trim((string)($data['text_ru'] ?? ''));
 
         if ($title === '' || $text === '') {
             $this->errors[] = $this->l('error', 'Title and text are required');
@@ -80,7 +83,10 @@ class RuleManager
         $ruleData = [
             "title"      => $title,
             "text"       => $text,
-            "usergroups" => $this->parseUsergroups(is_array($groups) ? $groups : [])
+            "title_ru"   => $titleRu !== '' ? mb_substr($titleRu, 0, 255) : null,
+            "text_ru"    => $textRu !== '' ? $textRu : null,
+            "usergroups" => $this->parseUsergroups(is_array($groups) ? $groups : []),
+            "last_updated_by" => $this->actorId > 0 ? $this->actorId : null,
         ];
 
         if ($id > 0) {
@@ -91,7 +97,6 @@ class RuleManager
             write_log("Rule #{$id} ({$title}) was updated by {$this->actor}");
             $this->flash('updated_success', 'Rule updated successfully');
         } else {
-            $ruleData['created_at'] = TIMENOW;
             $columns      = array_keys($ruleData);
             $placeholders = implode(',', array_fill(0, count($columns), '?'));
             $this->db->sql_query_prepared(
@@ -157,6 +162,16 @@ class RuleManager
     }
 }
 
+// created_at is a MySQL TIMESTAMP ('Y-m-d H:i:s'); also accepts a unix int
+function mr_ts(mixed $v): int
+{
+    if (is_int($v) || (is_string($v) && ctype_digit($v))) {
+        return (int)$v;
+    }
+    $t = is_string($v) && $v !== '' ? strtotime($v) : false;
+    return $t === false ? 0 : $t;
+}
+
 // Helper function to get usergroups list
 function getUsergroupsList($db): array
 {
@@ -192,9 +207,30 @@ function mr_group_picker(array $groups, string $selected, string $prefix): strin
 
 $L = static fn(string $key, string $fallback): string => (string)($lang->modrules[$key] ?? $fallback);
 
+// Renders the optional Russian title/text block for a form
+function mr_ru_fields(callable $L, string $prefix, string $titleRu, string $textRu, bool $big = false): string
+{
+    $h = static fn(string $v): string => htmlspecialchars_uni($v);
+    return '<div class="border rounded-3 p-3 mb-3 bg-body-tertiary">'
+         . '<div class="d-flex flex-wrap align-items-center gap-2 mb-2">'
+         . '<span class="badge text-bg-secondary">RU</span>'
+         . '<b>' . $h($L('sec_ru_version', 'Russian version')) . '</b>'
+         . '<span class="form-text m-0"><i class="fa-solid fa-circle-info me-1"></i>' . $h($L('hint_ru_fallback', 'Optional. Leave empty and the English version is shown.')) . '</span>'
+         . '</div>'
+         . '<div class="mb-3">'
+         . '<label for="' . $prefix . '_title_ru" class="form-label"><i class="fa-solid fa-heading me-1"></i> ' . $h($L('lbl_title_ru', 'Title (Russian)')) . '</label>'
+         . '<input type="text" class="form-control' . ($big ? ' form-control-lg' : '') . '" id="' . $prefix . '_title_ru" name="title_ru" maxlength="255" lang="ru" value="' . $h($titleRu) . '">'
+         . '</div>'
+         . '<div>'
+         . '<label for="' . $prefix . '_text_ru" class="form-label"><i class="fa-solid fa-align-left me-1"></i> ' . $h($L('lbl_text_ru', 'Text (Russian)')) . '</label>'
+         . '<textarea class="form-control" id="' . $prefix . '_text_ru" name="text_ru" rows="8" lang="ru">' . $h($textRu) . '</textarea>'
+         . '</div>'
+         . '</div>';
+}
+
 $usergroups2 = getUsergroupsList($db);
 $actor       = htmlspecialchars_uni((string)($CURUSER['username'] ?? 'unknown'));
-$ruleManager = new RuleManager($db, $lang, $usergroups2, $actor);
+$ruleManager = new RuleManager($db, $lang, $usergroups2, $actor, (int)($CURUSER['id'] ?? 0));
 
 $selfUrl  = (string)$_this_script_;
 $redirect = html_entity_decode($selfUrl, ENT_QUOTES);
@@ -239,7 +275,13 @@ foreach ($rules as $r) {
     if (RuleManager::isForAll((string)$r['usergroups'])) {
         $statAll++;
     }
-    $lastCreate = max($lastCreate, (int)($r['created_at'] ?? 0));
+    $lastCreate = max($lastCreate, mr_ts($r['created_at'] ?? null));
+}
+$statNoRu = 0;
+foreach ($rules as $r) {
+    if (trim((string)($r['title_ru'] ?? '')) === '' || trim((string)($r['text_ru'] ?? '')) === '') {
+        $statNoRu++;
+    }
 }
 $statLimited = $statTotal - $statAll;
 $lastText    = $lastCreate > 0 ? date('d.m.Y', $lastCreate) : '—';
@@ -334,6 +376,8 @@ stdhead($lang->modrules['title']);
                     <div class="form-text"><i class="fa-solid fa-code me-1"></i> <?= $L('formatting_hint', 'BBCode and HTML allowed') ?></div>
                 </div>
 
+                <?= mr_ru_fields($L, 'new', (string)($newVals['title_ru'] ?? ''), (string)($newVals['text_ru'] ?? ''), true) ?>
+
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                     <label class="form-label mb-0"><i class="fa-solid fa-users me-1"></i> <?= $lang->modrules['title4'] ?></label>
                     <div class="d-flex gap-2">
@@ -379,6 +423,12 @@ stdhead($lang->modrules['title']);
         <i class="fa-solid fa-magnifying-glass"></i>
         <input type="search" class="form-control" id="mrSearch" placeholder="<?= htmlspecialchars_uni($L('search', 'Search rules…')) ?>" autocomplete="off">
     </div>
+    <?php if ($statNoRu > 0): ?>
+    <div class="alert alert-warning mr-alert d-flex align-items-center gap-2">
+        <i class="fa-solid fa-language"></i>
+        <span><?= htmlspecialchars_uni(str_replace(['{1}', '%1$s'], (string)$statNoRu, $L('flash_ru_missing', 'Rules without a Russian version: {1}. The English text is shown for them.'))) ?></span>
+    </div>
+    <?php endif; ?>
     <div class="mr-nothing text-body-secondary text-center py-4" id="mrNothing" hidden>
         <i class="fa-solid fa-filter-circle-xmark me-1"></i> <?= $L('search_empty', 'No rules match your search') ?>
     </div>
@@ -390,15 +440,23 @@ stdhead($lang->modrules['title']);
             $ugStr   = (string)$rule['usergroups'];
             $forAll  = RuleManager::isForAll($ugStr);
             $rGroups = $forAll ? [] : $ruleManager->getRuleGroups($ugStr);
-            $created = (int)($rule['created_at'] ?? 0);
+            $created = mr_ts($rule['created_at'] ?? null);
+            $titleRu = (string)($rule['title_ru'] ?? '');
+            $textRu  = (string)($rule['text_ru'] ?? '');
+            $hasRu   = trim($titleRu) !== '' && trim($textRu) !== '';
         ?>
         <div class="card mr-rule <?= $forAll ? 'mr-rule--all' : 'mr-rule--limited' ?> mb-3" id="rule-<?= $rid ?>"
-             data-search="<?= htmlspecialchars_uni(mb_strtolower($rule['title'] . ' ' . strip_tags((string)$rule['text']))) ?>">
+             data-search="<?= htmlspecialchars_uni(mb_strtolower($rule['title'] . ' ' . strip_tags((string)$rule['text']) . ' ' . $titleRu . ' ' . strip_tags($textRu))) ?>">
             <div class="card-header d-flex align-items-center gap-2">
                 <span class="mr-chip-icon <?= $forAll ? 'mr-chip-icon--success' : 'mr-chip-icon--warning' ?>">
                     <i class="fa-solid <?= $forAll ? 'fa-book-open' : 'fa-lock' ?>"></i>
                 </span>
                 <h5 class="mr-rule-title flex-grow-1"><?= $parser->parse_message($rule['title'], $parser_options) ?></h5>
+                <?php if ($hasRu): ?>
+                <span class="badge rounded-pill text-bg-success" title="<?= htmlspecialchars_uni($L('tip_ru_ok', 'Russian version is filled in')) ?>"><i class="fa-solid fa-language me-1"></i>RU</span>
+                <?php else: ?>
+                <span class="badge rounded-pill text-bg-warning" title="<?= htmlspecialchars_uni($L('tip_ru_missing', 'No Russian version — the English one is shown')) ?>"><i class="fa-solid fa-language me-1"></i>RU —</span>
+                <?php endif; ?>
                 <span class="mr-id">#<?= $rid ?></span>
                 <div class="mr-tools">
                     <button type="button" class="btn btn-sm mr-tool mr-tool--edit" data-mr="edit" data-id="<?= $rid ?>" title="<?= htmlspecialchars_uni($lang->modrules['edit']) ?>">
@@ -446,6 +504,8 @@ stdhead($lang->modrules['title']);
                             <label class="form-label" for="e<?= $rid ?>_text"><i class="fa-solid fa-align-left me-1"></i> <?= $lang->modrules['title3'] ?></label>
                             <textarea class="form-control" id="e<?= $rid ?>_text" name="text" rows="8" required><?= htmlspecialchars_uni($rule['text']) ?></textarea>
                         </div>
+
+                        <?= mr_ru_fields($L, 'e' . $rid, $titleRu, $textRu) ?>
 
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                             <label class="form-label mb-0"><i class="fa-solid fa-users me-1"></i> <?= $lang->modrules['title4'] ?></label>

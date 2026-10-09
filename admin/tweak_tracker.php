@@ -13,13 +13,53 @@ const TT_BATCH        = 1000;
 const TT_LOCK_NAME    = 'ag_tweak_tracker';
 const TT_NAMES_SHOWN  = 10;               // сколько имён файлов показывать в отчёте
 const TT_MIN_FILE_AGE = 3600;             // файлы моложе часа на диске не трогаем (гонка upload -> INSERT)
-const TT_ASSET_VER    = 1;
+const TT_ASSET_VER    = 2;
 
 // Служебные файлы, которые сканер диска не удаляет никогда.
 const TT_PROTECTED_FILES = ['index.html', 'index.htm', 'index.php', '.htaccess', 'web.config', '.gitkeep'];
 
 if (!defined('ADMIN_DIR')) {
     define('ADMIN_DIR', TSDIR . '/admin/');
+}
+
+global $lang;
+$lang->load('tweak_tracker');
+
+// {1}, {2}... и %1$s (во что $lang->load() превращает {1}) -> аргументы.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $a) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$a;
+            $map['%' . $n . '$s'] = (string)$a;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
+/** Строка из ланга tweak_tracker с подстановкой {1}, {2}... */
+function tt_t(string $key, string|int|float ...$args): string
+{
+    global $lang;
+    return ags_fmt((string)($lang->tweak_tracker[$key] ?? $key), ...$args);
+}
+
+/**
+ * Отложенный перевод: в отчёт пишется ключ + аргументы, текст собирается
+ * при выводе на языке того, кто смотрит страницу.
+ */
+function tt_msg(string $key, string|int|float ...$args): array
+{
+    return ['k' => $key, 'a' => array_values($args)];
+}
+
+/** Текст подписи/примечания шага: tt_msg()-массив или готовая строка (ошибки, имена файлов, старые отчёты). */
+function tt_text(array|string $m): string
+{
+    if (is_string($m)) return $m;
+    return tt_t((string)($m['k'] ?? ''), ...array_values((array)($m['a'] ?? [])));
 }
 
 // ── Настройки ─────────────────────────────────────────────
@@ -38,44 +78,44 @@ $TT_CFG = [
 $TT_GROUPS = [
     'db_orphans' => [
         'icon'    => 'fa-link-slash',
-        'title'   => 'Orphaned database records',
-        'desc'    => 'Rows that point to deleted users, torrents, threads, comments or posts.',
+        'title'   => tt_t('grp_db_orphans_title'),
+        'desc'    => tt_t('grp_db_orphans_desc'),
         'default' => true,
     ],
     'file_records' => [
         'icon'    => 'fa-paperclip',
-        'title'   => 'Orphaned attachments and screenshots',
-        'desc'    => 'Records whose owner is gone, plus their files. Includes unposted drafts older than 48 hours.',
+        'title'   => tt_t('grp_file_records_title'),
+        'desc'    => tt_t('grp_file_records_desc'),
         'default' => true,
     ],
     'disk_scan' => [
         'icon'    => 'fa-hard-drive',
-        'title'   => 'Files with no database record',
-        'desc'    => 'Files in uploads, avatars, screens, posters and torrents that nothing references. Service files and files younger than 1 hour are kept.',
+        'title'   => tt_t('grp_disk_scan_title'),
+        'desc'    => tt_t('grp_disk_scan_desc'),
         'default' => true,
     ],
     'time_cleanup' => [
         'icon'    => 'fa-clock-rotate-left',
-        'title'   => 'Expired records',
-        'desc'    => 'Old sessions, search log, login attempts, 2FA tokens, captcha and mail errors.',
+        'title'   => tt_t('grp_time_cleanup_title'),
+        'desc'    => tt_t('grp_time_cleanup_desc'),
         'default' => true,
     ],
     'backups' => [
         'icon'    => 'fa-box-archive',
-        'title'   => 'Old database backups',
-        'desc'    => 'Backup files older than ' . $TT_CFG['backup_keep_days'] . ' days.',
+        'title'   => tt_t('grp_backups_title'),
+        'desc'    => tt_t('grp_backups_desc', $TT_CFG['backup_keep_days']),
         'default' => true,
     ],
     'recount' => [
         'icon'    => 'fa-calculator',
-        'title'   => 'Recount comment counters',
-        'desc'    => 'Sets torrents.comments to the real number of comments.',
+        'title'   => tt_t('grp_recount_title'),
+        'desc'    => tt_t('grp_recount_desc'),
         'default' => true,
     ],
     'optimize' => [
         'icon'    => 'fa-gauge-high',
-        'title'   => 'Optimize tables',
-        'desc'    => 'Rebuilds tables with more than 10 MB of free space. Large tables are locked while this runs.',
+        'title'   => tt_t('grp_optimize_title'),
+        'desc'    => tt_t('grp_optimize_desc'),
         'default' => false,
     ],
 ];
@@ -141,12 +181,18 @@ $TT_TIME_RULES = [
 //  Хелперы
 // ═════════════════════════════════════════════════════════
 
-function tt_size(int $bytes): string
+/** $localized = false - английские единицы для write_log(). */
+function tt_size(int $bytes, bool $localized = true): string
 {
-    if ($bytes >= 1073741824) return round($bytes / 1073741824, 2) . ' GB';
-    if ($bytes >= 1048576)    return round($bytes / 1048576, 2) . ' MB';
-    if ($bytes >= 1024)       return round($bytes / 1024, 2) . ' KB';
-    return $bytes . ' B';
+    [$num, $unit] = match (true) {
+        $bytes >= 1073741824 => [round($bytes / 1073741824, 2), 'gb'],
+        $bytes >= 1048576    => [round($bytes / 1048576, 2), 'mb'],
+        $bytes >= 1024       => [round($bytes / 1024, 2), 'kb'],
+        default              => [$bytes, 'b'],
+    };
+    return $localized
+        ? tt_t('unit_' . $unit, $num)
+        : $num . ' ' . strtoupper($unit);
 }
 
 function tt_e(string $s): string
@@ -154,7 +200,7 @@ function tt_e(string $s): string
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
 
-function tt_step(string $group, string $label, int $rows = 0, int $bytes = 0, string $status = 'ok', string $note = ''): array
+function tt_step(string $group, array|string $label, int $rows = 0, int $bytes = 0, string $status = 'ok', array|string $note = ''): array
 {
     return compact('group', 'label', 'rows', 'bytes', 'status', 'note');
 }
@@ -270,30 +316,31 @@ function tt_scan_dir(string $dir, callable $isKept, bool $dry): array
 }
 
 /** "a.jpg, b.jpg (+3 more)" для колонки Status. */
-function tt_names_note(array $names, int $total): string
+function tt_names_note(array $names, int $total): array|string
 {
     if (!$names) return '';
+    $list = implode(', ', $names);
     $more = $total - count($names);
-    return implode(', ', $names) . ($more > 0 ? " (+{$more} more)" : '');
+    return $more > 0 ? tt_msg('note_names_more', $list, $more) : $list;
 }
 
 /** Скан папки как шаг отчёта: отсутствующая папка - Skipped, а не "0, OK". */
-function tt_scan_step(string $label, string $dir, callable $isKept, bool $dry): array
+function tt_scan_step(array $label, string $dir, callable $isKept, bool $dry): array
 {
     if (!is_dir($dir)) {
-        return tt_step('disk_scan', $label, 0, 0, 'skip', 'folder not found: ' . $dir);
+        return tt_step('disk_scan', $label, 0, 0, 'skip', tt_msg('note_folder_not_found', $dir));
     }
     [$n, $b, $names] = tt_scan_dir($dir, $isKept, $dry);
     return tt_step('disk_scan', $label, $n, $b, 'ok', tt_names_note($names, $n));
 }
 
 /** FROM ... WHERE ... для правила сирот, либо null + причина пропуска. */
-function tt_orphan_sql(array $rule, string &$skip): ?string
+function tt_orphan_sql(array $rule, array &$skip): ?string
 {
     [$table, $refs] = $rule;
     $mode = $rule[2] ?? 'any';
 
-    if (!tt_has($table)) { $skip = 'table not found'; return null; }
+    if (!tt_has($table)) { $skip = tt_msg('note_table_not_found'); return null; }
 
     $joins = [];
     $conds = [];
@@ -301,8 +348,8 @@ function tt_orphan_sql(array $rule, string &$skip): ?string
         [$col, $rt, $rc] = $ref;
         $zeroOk = $ref[3] ?? false;
 
-        if (!tt_has($table, $col)) { $skip = "column {$col} not found"; return null; }
-        if (!tt_has($rt, $rc))     { $skip = "{$rt}.{$rc} not found";   return null; }
+        if (!tt_has($table, $col)) { $skip = tt_msg('note_column_not_found', $col); return null; }
+        if (!tt_has($rt, $rc))     { $skip = tt_msg('note_ref_not_found', $rt, $rc); return null; }
 
         $a       = "r{$i}";
         $joins[] = "LEFT JOIN `{$rt}` {$a} ON {$a}.`{$rc}` = x.`{$col}`";
@@ -342,8 +389,8 @@ function tt_run_db_orphans(array $rules, bool $dry): array
 
     foreach ($rules as $rule) {
         $table = $rule[0];
-        $label = "Orphans in {$table}";
-        $skip  = '';
+        $label = tt_msg('lbl_orphans_in', $table);
+        $skip  = [];
         $fw    = tt_orphan_sql($rule, $skip);
 
         if ($fw === null) {
@@ -420,10 +467,10 @@ function tt_run_file_records(array $cfg, bool $dry): array
                 fn(array $r) => [(string)$r['file_path']],
                 $dry
             );
-            $out[] = tt_step('file_records', 'Orphaned comment_files records', $n, $b);
+            $out[] = tt_step('file_records', tt_msg('lbl_comment_files'), $n, $b);
         }
     } else {
-        $out[] = tt_step('file_records', 'Orphaned comment_files records', 0, 0, 'skip', 'table not found');
+        $out[] = tt_step('file_records', tt_msg('lbl_comment_files'), 0, 0, 'skip', tt_msg('note_table_not_found'));
     }
 
     // ── attachments ──
@@ -441,7 +488,7 @@ function tt_run_file_records(array $cfg, bool $dry): array
              WHERE pid = 0 AND comment_id = 0 AND dateuploaded < ?',
             [TIMENOW - $cfg['draft_max_age']], 'attachments', 'aid', $attachPaths, $dry
         );
-        $out[] = tt_step('file_records', 'Abandoned draft attachments (older than 48h)', $n, $b);
+        $out[] = tt_step('file_records', tt_msg('lbl_draft_attach'), $n, $b);
 
         // Привязаны к удалённому посту или комментарию
         [$n, $b] = tt_purge_with_files(
@@ -451,9 +498,9 @@ function tt_run_file_records(array $cfg, bool $dry): array
              WHERE (a.pid > 0 AND p.pid IS NULL) OR (a.comment_id > 0 AND c.id IS NULL)',
             [], 'attachments', 'aid', $attachPaths, $dry
         );
-        $out[] = tt_step('file_records', 'Attachments of deleted posts and comments', $n, $b);
+        $out[] = tt_step('file_records', tt_msg('lbl_attach_deleted'), $n, $b);
     } else {
-        $out[] = tt_step('file_records', 'Orphaned attachments', 0, 0, 'skip', 'attachments.comment_id not found');
+        $out[] = tt_step('file_records', tt_msg('lbl_attach_orphaned'), 0, 0, 'skip', tt_msg('note_ref_not_found', 'attachments', 'comment_id'));
     }
 
     // ── screenshots ──
@@ -467,7 +514,7 @@ function tt_run_file_records(array $cfg, bool $dry): array
             fn(array $r) => empty($r['filename']) ? [] : [$dir . '/' . basename((string)$r['filename'])],
             $dry
         );
-        $out[] = tt_step('file_records', 'Screenshots of deleted torrents', $n, $b);
+        $out[] = tt_step('file_records', tt_msg('lbl_screens_deleted'), $n, $b);
     }
 
     return $out;
@@ -485,7 +532,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
         while ($r = $db->fetch_array($q)) {
             if (!empty($r['file_path'])) $keep[basename((string)$r['file_path'])] = true;
         }
-        $out[] = tt_scan_step('uploads/ files with no comment_files record', TSDIR . '/uploads', fn(string $f) => isset($keep[$f]), $dry);
+        $out[] = tt_scan_step(tt_msg('lbl_scan_uploads'), TSDIR . '/uploads', fn(string $f) => isset($keep[$f]), $dry);
     }
 
     // uploads/attachments/ и uploads/YYYYMM/ <- attachments.attachname / thumbnail
@@ -505,7 +552,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
             $b += $mb;
             foreach ($mnames as $mf) $names[] = $prefix . $mf;
         }
-        $out[] = tt_step('disk_scan', 'Attachment files with no attachments record', $n, $b, 'ok',
+        $out[] = tt_step('disk_scan', tt_msg('lbl_scan_attach'), $n, $b, 'ok',
             tt_names_note(array_slice($names, 0, TT_NAMES_SHOWN), $n));
     }
 
@@ -520,7 +567,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
             if (preg_match('~^https?://~i', $av)) continue;
             $keep[basename((string)strtok($av, '?'))] = true;
         }
-        $out[] = tt_scan_step('Avatars of users that no longer exist', TSDIR . '/uploads/avatars', fn(string $f) => isset($keep[$f]), $dry);
+        $out[] = tt_scan_step(tt_msg('lbl_scan_avatars'), TSDIR . '/uploads/avatars', fn(string $f) => isset($keep[$f]), $dry);
     }
 
     // torrents/screens/ <- screenshots.filename
@@ -530,7 +577,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
         while ($r = $db->fetch_array($q)) {
             if (!empty($r['filename'])) $keep[basename((string)$r['filename'])] = true;
         }
-        $out[] = tt_scan_step('Screenshot files with no screenshots record', $cfg['screens_dir'], fn(string $f) => isset($keep[$f]), $dry);
+        $out[] = tt_scan_step(tt_msg('lbl_scan_screens'), $cfg['screens_dir'], fn(string $f) => isset($keep[$f]), $dry);
     }
 
     // torrents/images/ <- torrents.t_image / t_image2
@@ -552,7 +599,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
             }
         }
         $out[] = tt_scan_step(
-            'Poster images no torrent references',
+            tt_msg('lbl_scan_posters'),
             $cfg['images_dir'],
             fn(string $f) => isset($keep[strtolower($f)]),
             $dry
@@ -566,7 +613,7 @@ function tt_run_disk_scan(array $cfg, bool $dry): array
     while ($r = $db->fetch_array($q)) $keep[(int)$r['id']] = true;
 
     $out[] = tt_scan_step(
-        '.torrent files of deleted torrents',
+        tt_msg('lbl_scan_torrents'),
         $cfg['torrent_dir'],
         fn(string $f) => !preg_match('~^(\d+)\.torrent$~i', $f, $m) || isset($keep[(int)$m[1]]),
         $dry
@@ -581,11 +628,13 @@ function tt_run_time_cleanup(array $rules, bool $dry): array
     $out = [];
 
     foreach ($rules as [$table, $col, $days]) {
-        $label = $days === 0
-            ? "{$table}: expired"
-            : "{$table}: older than {$days} day" . ($days === 1 ? '' : 's');
+        $label = match (true) {
+            $days === 0 => tt_msg('lbl_time_expired', $table),
+            $days === 1 => tt_msg('lbl_time_older_1', $table, $days),
+            default     => tt_msg('lbl_time_older_n', $table, $days),
+        };
         if (!tt_has($table, $col)) {
-            $out[] = tt_step('time_cleanup', $label, 0, 0, 'skip', "{$table}.{$col} not found");
+            $out[] = tt_step('time_cleanup', $label, 0, 0, 'skip', tt_msg('note_ref_not_found', $table, $col));
             continue;
         }
         $cutoff = TIMENOW - $days * TT_DAY;
@@ -604,9 +653,9 @@ function tt_run_backups(array $cfg, bool $dry): array
 {
     $dir    = $cfg['backup_dir'];
     $cutoff = TIMENOW - $cfg['backup_keep_days'] * TT_DAY;
-    $label  = "Backups older than {$cfg['backup_keep_days']} days";
+    $label  = tt_msg('lbl_backups_older', $cfg['backup_keep_days']);
 
-    if (!is_dir($dir)) return [tt_step('backups', $label, 0, 0, 'skip', 'backup folder not found')];
+    if (!is_dir($dir)) return [tt_step('backups', $label, 0, 0, 'skip', tt_msg('note_backup_folder'))];
 
     $n = 0;
     $b = 0;
@@ -623,10 +672,9 @@ function tt_run_backups(array $cfg, bool $dry): array
 function tt_run_recount(bool $dry): array
 {
     global $db;
-    $label = 'torrents.comments counter';
 
     if (!tt_has('torrents', 'comments') || !tt_has('comments', 'torrent')) {
-        return [tt_step('recount', $label, 0, 0, 'skip', 'column not found')];
+        return [tt_step('recount', tt_msg('lbl_recount'), 0, 0, 'skip', tt_msg('note_column_missing'))];
     }
 
     $sub = 'LEFT JOIN (SELECT torrent, COUNT(*) AS cnt FROM comments GROUP BY torrent) x ON x.torrent = t.id';
@@ -636,7 +684,7 @@ function tt_run_recount(bool $dry): array
         $db->sql_query_prepared("UPDATE torrents t {$sub} SET t.comments = COALESCE(x.cnt, 0) WHERE t.comments <> COALESCE(x.cnt, 0)");
         $n = (int)$db->affected_rows();
     }
-    return [tt_step('recount', $label . ' (torrents fixed)', $n)];
+    return [tt_step('recount', tt_msg('lbl_recount_fixed'), $n)];
 }
 
 function tt_run_optimize(array $tables, array $cfg, bool $dry): array
@@ -663,10 +711,10 @@ function tt_run_optimize(array $tables, array $cfg, bool $dry): array
         $f = $free[$t] ?? 0;
         if ($f < $cfg['optimize_min_free']) continue;
         if (!$dry) $db->sql_query_prepared("OPTIMIZE TABLE `{$t}`");
-        $out[] = tt_step('optimize', "Optimize {$t}", 0, $f, 'ok', 'reclaimable space (estimate)');
+        $out[] = tt_step('optimize', tt_msg('lbl_optimize_table', $t), 0, $f, 'ok', tt_msg('note_reclaimable'));
     }
     if (!$out) {
-        $out[] = tt_step('optimize', 'No table has more than ' . tt_size($cfg['optimize_min_free']) . ' free', 0, 0, 'skip', 'nothing to optimize');
+        $out[] = tt_step('optimize', tt_msg('lbl_optimize_none', tt_size($cfg['optimize_min_free'])), 0, 0, 'skip', tt_msg('note_nothing_to_optimize'));
     }
     return $out;
 }
@@ -674,12 +722,12 @@ function tt_run_optimize(array $tables, array $cfg, bool $dry): array
 // ═════════════════════════════════════════════════════════
 //  POST: выполнение -> отчёт в файл -> редирект (PRG)
 // ═════════════════════════════════════════════════════════
-global $mybb, $db, $BASEURL;
+global $mybb, $db, $BASEURL, $lang;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['tt_action'] ?? '') === 'run') {
     if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
         http_response_code(403);
-        stderr('Error', 'Invalid security token. Please go back and try again.');
+        stderr(tt_t('err_title'), tt_t('err_token'));
     }
 
     // mode_js ставит JS после подтверждения; без JS приходит значение кнопки.
@@ -692,12 +740,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['tt_action'] ?? '') === 'ru
         array_map('strval', (array)($_POST['groups'] ?? []))
     ));
     if (!$selected) {
-        stderr('Error', 'Select at least one operation.');
+        stderr(tt_t('err_title'), tt_t('err_no_groups'));
     }
 
     $lock = $db->fetch_array($db->sql_query_prepared('SELECT GET_LOCK(?, 0) AS l', [TT_LOCK_NAME]));
     if ((int)($lock['l'] ?? 0) !== 1) {
-        stderr('Error', 'Cleanup is already running. Wait for it to finish and reload the page.');
+        stderr(tt_t('err_title'), tt_t('err_locked'));
     }
 
     set_time_limit(0);
@@ -727,7 +775,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['tt_action'] ?? '') === 'ru
                     ),
                 });
             } catch (Throwable $e) {
-                $steps[] = tt_step($g, $TT_GROUPS[$g]['title'], 0, 0, 'error', $e->getMessage());
+                $steps[] = tt_step($g, tt_msg('grp_' . $g . '_title'), 0, 0, 'error', $e->getMessage());
             }
         }
     } finally {
@@ -755,7 +803,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['tt_action'] ?? '') === 'ru
     if (!$dry) {
         write_log(sprintf(
             'Tweak Tracker run by %s: %d records, %s on disk, %d tables optimized, %.2fs (%s)',
-            $report['by'], $rows, tt_size((int)$bytes), $opt, $report['duration'], implode(', ', $selected)
+            $report['by'], $rows, tt_size((int)$bytes, false), $opt, $report['duration'], implode(', ', $selected)
         ));
     }
 
@@ -773,6 +821,12 @@ $isDry   = ($report['mode'] ?? '') === 'dry';
 stdhead();
 
 $v = TT_ASSET_VER;
+
+// js_* -> массив без префикса для AGS_LANG
+$ttJsLang = [];
+foreach ((array)$lang->tweak_tracker as $k => $val) {
+    if (str_starts_with((string)$k, 'js_')) $ttJsLang[substr((string)$k, 3)] = (string)$val;
+}
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/tweak_tracker.css?ver=<?= $v ?>">
@@ -782,8 +836,8 @@ $v = TT_ASSET_VER;
     <div class="tt-head">
         <div class="tt-head-icon"><i class="fa-solid fa-broom"></i></div>
         <div class="tt-head-text">
-            <h1>Tracker cleanup</h1>
-            <p>Removes orphaned records and files, rotates backups and optimizes tables. Preview first with a dry run.</p>
+            <h1><?= tt_e(tt_t('page_title')) ?></h1>
+            <p><?= tt_e(tt_t('page_subtitle')) ?></p>
         </div>
         <span class="tt-version">v<?= TT_VERSION ?></span>
     </div>
@@ -792,22 +846,22 @@ $v = TT_ASSET_VER;
         <div class="tt-kpi">
             <div class="tt-kpi-icon tt-c-primary"><i class="fa-solid fa-database"></i></div>
             <div><div class="tt-kpi-val"><?= $report ? number_format($report['rows']) : '—' ?></div>
-                 <div class="tt-kpi-lbl"><?= $isDry ? 'Records to delete' : 'Records deleted' ?></div></div>
+                 <div class="tt-kpi-lbl"><?= tt_e(tt_t($isDry ? 'kpi_rows_dry' : 'kpi_rows_run')) ?></div></div>
         </div>
         <div class="tt-kpi">
             <div class="tt-kpi-icon tt-c-success"><i class="fa-solid fa-hard-drive"></i></div>
-            <div><div class="tt-kpi-val"><?= $report ? tt_size($report['bytes']) : '—' ?></div>
-                 <div class="tt-kpi-lbl"><?= $isDry ? 'Disk space to free' : 'Disk space freed' ?></div></div>
+            <div><div class="tt-kpi-val"><?= $report ? tt_e(tt_size((int)$report['bytes'])) : '—' ?></div>
+                 <div class="tt-kpi-lbl"><?= tt_e(tt_t($isDry ? 'kpi_bytes_dry' : 'kpi_bytes_run')) ?></div></div>
         </div>
         <div class="tt-kpi">
             <div class="tt-kpi-icon tt-c-warning"><i class="fa-solid fa-stopwatch"></i></div>
-            <div><div class="tt-kpi-val"><?= $report ? $report['duration'] . ' s' : '—' ?></div>
-                 <div class="tt-kpi-lbl">Duration</div></div>
+            <div><div class="tt-kpi-val"><?= $report ? tt_e(tt_t('unit_sec', $report['duration'])) : '—' ?></div>
+                 <div class="tt-kpi-lbl"><?= tt_e(tt_t('kpi_duration')) ?></div></div>
         </div>
         <div class="tt-kpi">
             <div class="tt-kpi-icon tt-c-info"><i class="fa-solid fa-gauge-high"></i></div>
             <div><div class="tt-kpi-val"><?= $report ? (int)$report['optimized'] : '—' ?></div>
-                 <div class="tt-kpi-lbl"><?= $isDry ? 'Tables to optimize' : 'Tables optimized' ?></div></div>
+                 <div class="tt-kpi-lbl"><?= tt_e(tt_t($isDry ? 'kpi_opt_dry' : 'kpi_opt_run')) ?></div></div>
         </div>
     </div>
 
@@ -816,45 +870,46 @@ $v = TT_ASSET_VER;
         <div class="tt-report-head">
             <div>
                 <?php if ($isDry): ?>
-                    <span class="tt-badge tt-badge-dry"><i class="fa-solid fa-eye me-1"></i>Dry run, nothing was deleted</span>
+                    <span class="tt-badge tt-badge-dry"><i class="fa-solid fa-eye me-1"></i><?= tt_e(tt_t('badge_dry')) ?></span>
                 <?php else: ?>
-                    <span class="tt-badge tt-badge-run"><i class="fa-solid fa-check me-1"></i>Cleanup finished</span>
+                    <span class="tt-badge tt-badge-run"><i class="fa-solid fa-check me-1"></i><?= tt_e(tt_t('badge_run')) ?></span>
                 <?php endif; ?>
                 <span class="tt-meta">
-                    <?= tt_e(date('Y-m-d H:i', (int)$report['at'])) ?>, by <?= tt_e((string)$report['by']) ?>
+                    <?= tt_e(tt_t('meta_run_at', date('Y-m-d H:i', (int)$report['at']), (string)$report['by'])) ?>
                 </span>
             </div>
             <label class="tt-switch">
-                <input type="checkbox" id="ttShowAll"> Show steps with nothing to do
+                <input type="checkbox" id="ttShowAll"> <?= tt_e(tt_t('lbl_show_empty')) ?>
             </label>
         </div>
         <?php if ($isDry): ?>
-            <p class="tt-note">Counts for later steps don't include rows that earlier steps would remove (for example, votes on requests that are about to be deleted). A real run may remove slightly more.</p>
+            <p class="tt-note"><?= tt_e(tt_t('hint_dry_counts')) ?></p>
         <?php endif; ?>
         <div class="tt-table-wrap">
             <table class="tt-table">
-                <thead><tr><th>Action</th><th class="text-end">Records</th><th class="text-end">Size</th><th>Status</th></tr></thead>
+                <thead><tr><th><?= tt_e(tt_t('th_action')) ?></th><th class="text-end"><?= tt_e(tt_t('th_records')) ?></th><th class="text-end"><?= tt_e(tt_t('th_size')) ?></th><th><?= tt_e(tt_t('th_status')) ?></th></tr></thead>
                 <tbody>
                 <?php foreach ($report['steps'] as $s):
                     $empty = $s['status'] === 'ok' && $s['rows'] === 0 && $s['bytes'] === 0;
                     $cls   = $s['status'] !== 'ok' ? ' tt-row-' . $s['status'] : ($empty ? ' tt-row-empty' : '');
+                    $note  = tt_text($s['note']);
                 ?>
                     <tr class="tt-row<?= $cls ?>">
                         <td>
                             <i class="fa-solid <?= tt_e($TT_GROUPS[$s['group']]['icon'] ?? 'fa-circle') ?> tt-row-icon"></i>
-                            <?= tt_e($s['label']) ?>
+                            <?= tt_e(tt_text($s['label'])) ?>
                         </td>
                         <td class="text-end"><?= $s['rows'] ? number_format($s['rows']) : '—' ?></td>
-                        <td class="text-end"><?= $s['bytes'] ? tt_size($s['bytes']) : '—' ?></td>
+                        <td class="text-end"><?= $s['bytes'] ? tt_e(tt_size((int)$s['bytes'])) : '—' ?></td>
                         <td>
                             <?php if ($s['status'] === 'skip'): ?>
-                                <span class="tt-status tt-status-skip">Skipped</span>
+                                <span class="tt-status tt-status-skip"><?= tt_e(tt_t('status_skip')) ?></span>
                             <?php elseif ($s['status'] === 'error'): ?>
-                                <span class="tt-status tt-status-error">Error</span>
+                                <span class="tt-status tt-status-error"><?= tt_e(tt_t('status_error')) ?></span>
                             <?php else: ?>
-                                <span class="tt-status tt-status-ok">OK</span>
+                                <span class="tt-status tt-status-ok"><?= tt_e(tt_t('status_ok')) ?></span>
                             <?php endif; ?>
-                            <?php if ($s['note'] !== ''): ?><span class="tt-status-note"><?= tt_e($s['note']) ?></span><?php endif; ?>
+                            <?php if ($note !== ''): ?><span class="tt-status-note"><?= tt_e($note) ?></span><?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -871,9 +926,9 @@ $v = TT_ASSET_VER;
 
         <div class="tt-card">
             <div class="tt-groups-head">
-                <h2>Operations</h2>
+                <h2><?= tt_e(tt_t('sec_operations')) ?></h2>
                 <button type="button" class="tt-btn tt-btn-ghost" id="ttToggleAll">
-                    <i class="fa-solid fa-list-check me-1"></i><span>Select all</span>
+                    <i class="fa-solid fa-list-check me-1"></i><span><?= tt_e(tt_t('btn_select_all')) ?></span>
                 </button>
             </div>
             <div class="tt-groups">
@@ -893,13 +948,13 @@ $v = TT_ASSET_VER;
         </div>
 
         <div class="tt-actionbar">
-            <span class="tt-actionbar-hint"><i class="fa-solid fa-triangle-exclamation me-1"></i>Back up the database before a real run.</span>
+            <span class="tt-actionbar-hint"><i class="fa-solid fa-triangle-exclamation me-1"></i><?= tt_e(tt_t('hint_backup')) ?></span>
             <div class="tt-actionbar-btns">
                 <button type="submit" name="mode" value="dry" class="tt-btn tt-btn-outline" id="ttDry">
-                    <i class="fa-solid fa-eye me-1"></i>Dry run
+                    <i class="fa-solid fa-eye me-1"></i><?= tt_e(tt_t('btn_dry')) ?>
                 </button>
                 <button type="submit" name="mode" value="run" class="tt-btn tt-btn-danger" id="ttRun">
-                    <i class="fa-solid fa-broom me-1"></i>Run cleanup
+                    <i class="fa-solid fa-broom me-1"></i><?= tt_e(tt_t('btn_run')) ?>
                 </button>
             </div>
         </div>
@@ -907,6 +962,7 @@ $v = TT_ASSET_VER;
 </div>
 
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script>const AGS_LANG = <?= json_encode($ttJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script src="<?= $BASEURL ?>/admin/scripts/tweak_tracker.js?ver=<?= $v ?>"></script>
 <?php
 stdfoot();

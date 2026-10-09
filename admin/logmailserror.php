@@ -13,6 +13,25 @@ if (!defined('STAFF_PANEL')) {
     </div>');
 }
 
+$lang->load('logmailserror');
+
+/**
+ * Placeholder substitution: supports both {1} and %1$s
+ * ($lang->load() converts {N} to %N$s)
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 // Initialize parser
 $parser = new postParser();
 $parser_options = [
@@ -25,7 +44,7 @@ $parser_options = [
 ];
 
 // Page title
-stdhead('System Email Error Logs');
+stdhead($lang->logmailserror['page_title']);
 
 // Handle actions
 handleMailErrorActions();
@@ -52,11 +71,22 @@ renderMailErrorLogsTable($error_logs, $total_count, $multipage, $parser, $parser
 stdfoot();
 
 /**
+ * JS string literal safe for an HTML attribute (onclick="return confirm(...)")
+ */
+function lme_js_attr(string $str): string
+{
+    return htmlspecialchars(
+        (string)json_encode($str, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
+        ENT_QUOTES
+    );
+}
+
+/**
  * Handle mail error actions
  */
 function handleMailErrorActions(): void
 {
-    global $db, $usergroups;
+    global $db, $usergroups, $lang;
     
     if (!($usergroups['cansettingspanel'] ?? false)) {
         return;
@@ -64,7 +94,7 @@ function handleMailErrorActions(): void
     
     if (($_POST['clear'] ?? '') === 'yes') {
         $db->sql_query_prepared('TRUNCATE TABLE mailerrors');
-        showAlert('success', '<i class="fas fa-trash"></i> Error log table has been completely cleared!');
+        showAlert('success', '<i class="fas fa-trash"></i> ' . htmlspecialchars($lang->logmailserror['flash_cleared']));
         return;
     }
     
@@ -74,9 +104,13 @@ function handleMailErrorActions(): void
             $ids = implode(', ', array_map('intval', $log_ids));
             $db->sql_query_prepared("DELETE FROM mailerrors WHERE eid IN ($ids)");
             $deleted = $db->affected_rows();
+            $L = $lang->logmailserror;
             showAlert('success', 
-                '<i class="fas fa-check-circle"></i> Successfully deleted ' . $deleted . ' ' . 
-                pluralize($deleted, ['error entry', 'error entries', 'error entries']) . '!'
+                '<i class="fas fa-check-circle"></i> ' . htmlspecialchars(ags_fmt(
+                    $L['flash_deleted'],
+                    $deleted,
+                    pluralize($deleted, [$L['plural_entry_1'], $L['plural_entry_2'], $L['plural_entry_5']])
+                ))
             );
         }
     }
@@ -107,14 +141,15 @@ function showAlert(string $type, string $message): void
  */
 function renderSearchForm(): void
 {
-    global $_this_script_no_act;
+    global $_this_script_no_act, $lang;
+    $L = $lang->logmailserror;
     $searchstr = htmlspecialchars($_GET['query'] ?? '');
     
     echo '<div class="container mt-4">
         <div class="card shadow-sm border-0">
             <div class="card-body">
                 <h4 class="card-title mb-4">
-                    <i class="fas fa-search me-2 text-danger"></i>Search Email Error Logs
+                    <i class="fas fa-search me-2 text-danger"></i>' . htmlspecialchars($L['sec_search']) . '
                 </h4>
                 <form method="get" action="' . htmlspecialchars(($_this_script_no_act ?? '') . '?act=searchlog') . '" class="row g-3">
                     <div class="col-md-8">
@@ -125,13 +160,13 @@ function renderSearchForm(): void
                             <input type="text" 
                                    name="query" 
                                    class="form-control border-start-0" 
-                                   placeholder="Search by email, error message, or content..."
+                                   placeholder="' . htmlspecialchars($L['ph_search']) . '"
                                    value="' . $searchstr . '">
                         </div>
                     </div>
                     <div class="col-md-4">
                         <button type="submit" class="btn btn-danger w-100">
-                            <i class="fas fa-search me-1"></i> Search Errors
+                            <i class="fas fa-search me-1"></i> ' . htmlspecialchars($L['btn_search']) . '
                         </button>
                     </div>
                 </form>
@@ -139,20 +174,19 @@ function renderSearchForm(): void
                     <form method="post" class="d-inline">
                         <input type="hidden" name="clear" value="yes">
                         <button type="submit" class="btn btn-outline-danger btn-sm" 
-                                onclick="return confirm(\'Are you sure you want to clear all error logs?\')">
-                            <i class="fas fa-trash-alt me-1"></i> Clear All Error Logs
+                                onclick="return confirm(' . lme_js_attr($L['confirm_clear_all']) . ')">
+                            <i class="fas fa-trash-alt me-1"></i> ' . htmlspecialchars($L['btn_clear_all']) . '
                         </button>
                     </form>
                     <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" 
                             data-bs-target="#helpSection">
-                        <i class="fas fa-question-circle me-1"></i> Help
+                        <i class="fas fa-question-circle me-1"></i> ' . htmlspecialchars($L['btn_help']) . '
                     </button>
                 </div>
                 <div class="collapse mt-3" id="helpSection">
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-circle me-2"></i>
-                        <strong>Search capabilities:</strong> Email addresses, error messages, and email content. 
-                        Shows only failed email delivery attempts.
+                        ' . $L['hint_search_html'] . '
                     </div>
                 </div>
             </div>
@@ -200,7 +234,8 @@ function getMailErrorLogs(int $start, int $perpage): array
  */
 function renderMailErrorLogsTable(array $logs, int $total_count, string $multipage, $parser, array $parser_options): void
 {
-    global $_this_script_, $usergroups, $page, $perpage;
+    global $_this_script_, $usergroups, $page, $perpage, $lang;
+    $L = $lang->logmailserror;
     
     echo '<div class="container mt-4">
         <!-- Statistics -->
@@ -213,7 +248,7 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                 <i class="fas fa-exclamation-triangle fa-2x"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-0">Total Errors</h5>
+                                <h5 class="card-title mb-0">' . htmlspecialchars($L['kpi_total_errors']) . '</h5>
                                 <h2 class="mb-0">' . number_format($total_count) . '</h2>
                             </div>
                         </div>
@@ -228,7 +263,7 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                 <i class="fas fa-envelope fa-2x"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-0">Failed Emails</h5>
+                                <h5 class="card-title mb-0">' . htmlspecialchars($L['kpi_failed_emails']) . '</h5>
                                 <h2 class="mb-0">' . number_format($total_count) . '</h2>
                             </div>
                         </div>
@@ -243,8 +278,8 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                 <i class="fas fa-clock fa-2x"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-0">Last Check</h5>
-                                <h6 class="mb-0 text-muted">' . date('m/d/Y H:i:s') . '</h6>
+                                <h5 class="card-title mb-0">' . htmlspecialchars($L['kpi_last_check']) . '</h5>
+                                <h6 class="mb-0 text-muted">' . htmlspecialchars(date($L['fmt_last_check'])) . '</h6>
                             </div>
                         </div>
                     </div>
@@ -259,8 +294,12 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">
                         <i class="fas fa-exclamation-circle me-1 text-danger"></i>
-                        Showing ' . (count($logs) > 0 ? (($page - 1) * $perpage + 1) : 0) . '-' . 
-                        min(($page - 1) * $perpage + count($logs), $total_count) . ' of ' . $total_count . ' errors
+                        ' . htmlspecialchars(ags_fmt(
+                            $L['lbl_showing'],
+                            (count($logs) > 0 ? (($page - 1) * $perpage + 1) : 0),
+                            min(($page - 1) * $perpage + count($logs), $total_count),
+                            $total_count
+                        )) . '
                     </small>
                     <div class="pagination pagination-sm mb-0">
                         ' . $multipage . '
@@ -275,12 +314,12 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
             <div class="card-header bg-danger text-white border-0 py-3">
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
-                        <i class="fas fa-fire me-2"></i>Email Delivery Failures
+                        <i class="fas fa-fire me-2"></i>' . htmlspecialchars($L['sec_failures']) . '
                     </h5>';
     
     if (!empty($logs) && ($usergroups['cansettingspanel'] ?? false)) {
         echo '<button type="button" class="btn btn-outline-light btn-sm" id="selectAllBtn">
-                <i class="fas fa-check-square me-1"></i> Select All
+                <i class="fas fa-check-square me-1"></i> ' . htmlspecialchars($L['btn_select_all']) . '
             </button>';
     }
     
@@ -296,8 +335,8 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
         echo '<div class="text-center py-5">
                 <div class="py-4">
                     <i class="fas fa-check-circle fa-4x text-success opacity-50 mb-3"></i>
-                    <h4 class="text-success">No Email Errors Found</h4>
-                    <p class="text-muted mb-0">Great! All emails are being delivered successfully.</p>
+                    <h4 class="text-success">' . htmlspecialchars($L['empty_title']) . '</h4>
+                    <p class="text-muted mb-0">' . htmlspecialchars($L['empty_text']) . '</p>
                 </div>
             </div>';
     } else {
@@ -308,13 +347,13 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                             <input type="checkbox" class="form-check-input" id="selectAll">
                         </th>
                         <th style="width: 180px;">
-                            <i class="fas fa-calendar-exclamation me-1"></i>Date & Time
+                            <i class="fas fa-calendar-exclamation me-1"></i>' . htmlspecialchars($L['th_datetime']) . '
                         </th>
                         <th>
-                            <i class="fas fa-envelope-open-text me-1"></i>Error Details
+                            <i class="fas fa-envelope-open-text me-1"></i>' . htmlspecialchars($L['th_details']) . '
                         </th>
                         <th style="width: 100px;" class="text-center">
-                            <i class="fas fa-cog me-1"></i>Actions
+                            <i class="fas fa-cog me-1"></i>' . htmlspecialchars($L['th_actions']) . '
                         </th>
                     </tr>
                 </thead>
@@ -329,10 +368,10 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
             // Determine error severity
             $error_severity = getErrorSeverity($log['error']);
             $severity_badge = match($error_severity) {
-                'critical' => '<span class="badge bg-danger">CRITICAL</span>',
-                'high' => '<span class="badge bg-warning text-dark">HIGH</span>',
-                'medium' => '<span class="badge bg-info">MEDIUM</span>',
-                default => '<span class="badge bg-secondary">LOW</span>'
+                'critical' => '<span class="badge bg-danger">' . htmlspecialchars($L['sev_critical']) . '</span>',
+                'high' => '<span class="badge bg-warning text-dark">' . htmlspecialchars($L['sev_high']) . '</span>',
+                'medium' => '<span class="badge bg-info">' . htmlspecialchars($L['sev_medium']) . '</span>',
+                default => '<span class="badge bg-secondary">' . htmlspecialchars($L['sev_low']) . '</span>'
             };
             
             echo '<tr class="error-log-row" data-severity="' . $error_severity . '">
@@ -366,11 +405,11 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                             <div class="mb-3">
                                 <div class="d-flex align-items-center mb-2">
                                     <span class="badge bg-light text-dark me-2">
-                                        <i class="fas fa-paper-plane me-1"></i>From: ' . 
+                                        <i class="fas fa-paper-plane me-1"></i>' . htmlspecialchars($L['lbl_from']) . ' ' . 
                                         htmlspecialchars($log['fromaddress']) . '
                                     </span>
                                     <span class="badge bg-light text-dark">
-                                        <i class="fas fa-inbox me-1"></i>To: ' . 
+                                        <i class="fas fa-inbox me-1"></i>' . htmlspecialchars($L['lbl_to']) . ' ' . 
                                         htmlspecialchars($log['toaddress']) . '
                                     </span>
                                 </div>
@@ -383,7 +422,7 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                         <i class="fas fa-exclamation-circle"></i>
                                     </div>
                                     <div>
-                                        <div class="fw-medium mb-1">Error Message</div>
+                                        <div class="fw-medium mb-1">' . htmlspecialchars($L['lbl_error_message']) . '</div>
                                         <div class="alert alert-danger py-2 px-3 mb-0">
                                             <div class="d-flex justify-content-between align-items-start">
                                                 <div class="error-message-text">' . $error_message . '</div>
@@ -401,12 +440,12 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                         <i class="fas fa-envelope"></i>
                                     </div>
                                     <div style="flex: 1;">
-                                        <div class="fw-medium mb-1">Email Content</div>
+                                        <div class="fw-medium mb-1">' . htmlspecialchars($L['lbl_email_content']) . '</div>
                                         <div class="email-content-preview" style="max-height: 150px; overflow: hidden;">
                                             ' . $message . '
                                         </div>
                                         <button type="button" class="btn btn-link btn-sm p-0 mt-1 show-email-btn">
-                                            <i class="fas fa-chevron-down me-1"></i>Show Full Email
+                                            <i class="fas fa-chevron-down me-1"></i>' . htmlspecialchars($L['js_show_full']) . '
                                         </button>
                                     </div>
                                 </div>
@@ -422,19 +461,19 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
                                     data-date="' . htmlspecialchars($full_date) . '"
                                     data-error="' . htmlspecialchars($log['error']) . '"
                                     data-message="' . htmlspecialchars($log['message']) . '"
-                                    title="View Details">
+                                    title="' . htmlspecialchars($L['title_view']) . '">
                                 <i class="fas fa-eye"></i>
                             </button>
                             <button type="button" class="btn btn-outline-danger delete-single-error" 
                                     data-id="' . (int)$log['eid'] . '"
-                                    title="Delete Entry">
+                                    title="' . htmlspecialchars($L['title_delete']) . '">
                                 <i class="fas fa-trash"></i>
                             </button>
                             <button type="button" class="btn btn-outline-warning retry-email-btn" 
                                     data-from="' . htmlspecialchars($log['fromaddress']) . '"
                                     data-to="' . htmlspecialchars($log['toaddress']) . '"
                                     data-message="' . htmlspecialchars($log['message']) . '"
-                                    title="Retry Sending">
+                                    title="' . htmlspecialchars($L['title_retry']) . '">
                                 <i class="fas fa-redo"></i>
                             </button>
                         </div>
@@ -450,17 +489,17 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
             echo '<div class="card-footer bg-light border-danger border-top py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="text-muted small" id="selectedCount">Selected: 0</span>
+                            <span class="text-muted small" id="selectedCount">' . htmlspecialchars(ags_fmt($L['js_selected_count'], 0)) . '</span>
                             <span class="ms-3 text-danger small" id="errorStats"></span>
                         </div>
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="filterCriticalBtn">
-                                <i class="fas fa-filter me-1"></i> Show Critical Only
+                                <i class="fas fa-filter me-1"></i> ' . htmlspecialchars($L['js_show_critical']) . '
                             </button>
                             <button type="submit" class="btn btn-danger" 
-                                    onclick="return confirm(\'Delete selected error entries?\')"
+                                    onclick="return confirm(' . lme_js_attr($L['confirm_delete_selected']) . ')"
                                     disabled id="deleteSelectedBtn">
-                                <i class="fas fa-trash me-1"></i> Delete Selected
+                                <i class="fas fa-trash me-1"></i> ' . htmlspecialchars($L['btn_delete_selected']) . '
                             </button>
                         </div>
                     </div>
@@ -487,25 +526,62 @@ function renderMailErrorLogsTable(array $logs, int $total_count, string $multipa
             <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Email Error Details
+                        <i class="fas fa-exclamation-triangle me-2"></i>' . htmlspecialchars($L['modal_title']) . '
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="errorDetailsContent">
                     <div class="text-center py-4">
                         <i class="fas fa-spinner fa-spin fa-2x text-danger"></i>
-                        <p class="mt-3">Loading error details...</p>
+                        <p class="mt-3">' . htmlspecialchars($L['modal_loading']) . '</p>
                     </div>
                 </div>
             </div>
         </div>
     </div>';
     
+    // JS strings: js_* keys -> array without prefix
+    $js_lang = [];
+    foreach ($L as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $js_lang[substr((string)$k, 3)] = $v;
+        }
+    }
     
     ?>
+<script>
+const AGS_LANG = <?= json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
 	<!-- JavaScript -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+    // Translation helper: AGS_LANG[key] or English fallback, {1}/%1$s substitution
+    function t(key, fallback, ...args) {
+        let s = (typeof AGS_LANG === "object" && AGS_LANG && typeof AGS_LANG[key] === "string")
+            ? AGS_LANG[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split("{" + n + "}").join(String(a)).split("%" + n + "$s").join(String(a));
+        });
+        return s;
+    }
+    
+    // HTML escape for values inserted into innerHTML templates
+    function esc(v) {
+        return String(v ?? "").replace(/[&<>"']/g, c => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[c]);
+    }
+    
+    // Replace button content with icon + text node
+    function setIconLabel(el, iconClass, text) {
+        el.textContent = "";
+        const i = document.createElement("i");
+        i.className = iconClass;
+        el.appendChild(i);
+        el.appendChild(document.createTextNode(text));
+    }
+    
     // Select all checkboxes
     const selectAll = document.getElementById("selectAll");
     const selectAllBtn = document.getElementById("selectAllBtn");
@@ -542,7 +618,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const errorStats = document.getElementById("errorStats");
         
         if (selectedCount) {
-            selectedCount.textContent = "Selected: " + selected;
+            selectedCount.textContent = t("selected_count", "Selected: {1}", selected);
         }
         
         if (deleteBtn) {
@@ -554,7 +630,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const critical = Array.from(document.querySelectorAll(".error-checkbox:checked"))
                 .filter(cb => cb.closest("tr").dataset.severity === "critical").length;
             if (critical > 0) {
-                errorStats.textContent = "⚠ " + critical + " critical";
+                errorStats.textContent = t("critical_selected", "⚠ {1} critical", critical);
             } else {
                 errorStats.textContent = "";
             }
@@ -571,10 +647,10 @@ document.addEventListener("DOMContentLoaded", function() {
             const content = this.closest("td").querySelector(".email-content-preview");
             if (content.style.maxHeight) {
                 content.style.maxHeight = null;
-                this.innerHTML = '<i class="fas fa-chevron-down me-1"></i>Show Full Email';
+                setIconLabel(this, "fas fa-chevron-down me-1", t("show_full", "Show Full Email"));
             } else {
                 content.style.maxHeight = "none";
-                this.innerHTML = '<i class="fas fa-chevron-up me-1"></i>Collapse Email';
+                setIconLabel(this, "fas fa-chevron-up me-1", t("collapse", "Collapse Email"));
             }
         });
     });
@@ -582,7 +658,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // Delete single entry
     document.querySelectorAll(".delete-single-error").forEach(btn => {
         btn.addEventListener("click", function() {
-            if (confirm("Delete this error entry?")) {
+            if (confirm(t("confirm_delete_one", "Delete this error entry?"))) {
                 const form = document.getElementById("mailErrorLogsForm");
                 const checkbox = document.createElement("input");
                 checkbox.type = "hidden";
@@ -597,7 +673,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // Retry email sending
     document.querySelectorAll(".retry-email-btn").forEach(btn => {
         btn.addEventListener("click", function() {
-            if (confirm("Attempt to resend this email?")) {
+            if (confirm(t("confirm_retry", "Attempt to resend this email?"))) {
                 // AJAX call to resend email
                 fetch('?act=retryemail', {
                     method: 'POST',
@@ -613,44 +689,43 @@ document.addEventListener("DOMContentLoaded", function() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert("Email resent successfully!");
+                        alert(t("resend_ok", "Email resent successfully!"));
                     } else {
-                        alert("Failed to resend: " + data.error);
+                        alert(t("resend_failed", "Failed to resend: {1}", data.error));
                     }
                 })
                 .catch(error => {
-                    alert("Error: " + error);
+                    alert(t("error", "Error: {1}", error));
                 });
             }
         });
     });
     
-    // View error details - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // View error details (all inserted values are escaped)
     document.querySelectorAll(".view-error-btn").forEach(btn => {
         btn.addEventListener("click", function() {
             const modal = new bootstrap.Modal(document.getElementById("errorDetailsModal"));
             const content = document.getElementById("errorDetailsContent");
             
-            // Создаем HTML контент безопасным способом
             const modalContent = `
 <div class="row mb-4">
     <div class="col-md-6">
         <div class="card border-danger">
             <div class="card-header bg-danger bg-opacity-10 text-danger">
-                <i class="fas fa-paper-plane me-2"></i>Sender
+                <i class="fas fa-paper-plane me-2"></i>${esc(t("modal_sender", "Sender"))}
             </div>
             <div class="card-body">
-                <code class="text-break">${this.dataset.from}</code>
+                <code class="text-break">${esc(this.dataset.from)}</code>
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card border-danger">
             <div class="card-header bg-danger bg-opacity-10 text-danger">
-                <i class="fas fa-inbox me-2"></i>Recipient
+                <i class="fas fa-inbox me-2"></i>${esc(t("modal_recipient", "Recipient"))}
             </div>
             <div class="card-body">
-                <code class="text-break">${this.dataset.to}</code>
+                <code class="text-break">${esc(this.dataset.to)}</code>
             </div>
         </div>
     </div>
@@ -659,12 +734,12 @@ document.addEventListener("DOMContentLoaded", function() {
     <div class="col-12">
         <div class="card border-danger">
             <div class="card-header bg-danger bg-opacity-10 text-danger">
-                <i class="fas fa-calendar-alt me-2"></i>Error Time
+                <i class="fas fa-calendar-alt me-2"></i>${esc(t("modal_time", "Error Time"))}
             </div>
             <div class="card-body">
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Error occurred at:</strong> ${this.dataset.date}
+                    <strong>${esc(t("modal_occurred", "Error occurred at:"))}</strong> ${esc(this.dataset.date)}
                 </div>
             </div>
         </div>
@@ -674,11 +749,11 @@ document.addEventListener("DOMContentLoaded", function() {
     <div class="col-12">
         <div class="card border-danger">
             <div class="card-header bg-danger bg-opacity-10 text-danger">
-                <i class="fas fa-exclamation-circle me-2"></i>Error Message
+                <i class="fas fa-exclamation-circle me-2"></i>${esc(t("modal_error", "Error Message"))}
             </div>
             <div class="card-body">
                 <div class="alert alert-danger">
-                    <pre class="mb-0" style="white-space: pre-wrap;">${this.dataset.error}</pre>
+                    <pre class="mb-0" style="white-space: pre-wrap;">${esc(this.dataset.error)}</pre>
                 </div>
             </div>
         </div>
@@ -688,11 +763,11 @@ document.addEventListener("DOMContentLoaded", function() {
     <div class="col-12">
         <div class="card border-danger">
             <div class="card-header bg-danger bg-opacity-10 text-danger">
-                <i class="fas fa-envelope me-2"></i>Original Email Content
+                <i class="fas fa-envelope me-2"></i>${esc(t("modal_content", "Original Email Content"))}
             </div>
             <div class="card-body">
                 <div class="bg-light p-3 rounded">
-                    <pre style="white-space: pre-wrap;">${this.dataset.message}</pre>
+                    <pre style="white-space: pre-wrap;">${esc(this.dataset.message)}</pre>
                 </div>
             </div>
         </div>
@@ -702,11 +777,11 @@ document.addEventListener("DOMContentLoaded", function() {
     <div class="col-12">
         <div class="alert alert-info">
             <i class="fas fa-lightbulb me-2"></i>
-            <strong>Troubleshooting tips:</strong><br>
-            1. Check email server configuration<br>
-            2. Verify recipient email address<br>
-            3. Check SMTP authentication settings<br>
-            4. Review email content for invalid characters
+            <strong>${esc(t("tips_title", "Troubleshooting tips:"))}</strong><br>
+            1. ${esc(t("tip_1", "Check email server configuration"))}<br>
+            2. ${esc(t("tip_2", "Verify recipient email address"))}<br>
+            3. ${esc(t("tip_3", "Check SMTP authentication settings"))}<br>
+            4. ${esc(t("tip_4", "Review email content for invalid characters"))}
         </div>
     </div>
 </div>`;
@@ -725,12 +800,12 @@ document.addEventListener("DOMContentLoaded", function() {
             document.querySelectorAll(".error-log-row").forEach(row => {
                 if (showOnlyCritical) {
                     row.style.display = row.dataset.severity === "critical" ? "" : "none";
-                    this.innerHTML = '<i class="fas fa-times me-1"></i> Show All';
+                    setIconLabel(this, "fas fa-times me-1", " " + t("show_all", "Show All"));
                     this.classList.remove("btn-outline-secondary");
                     this.classList.add("btn-outline-danger");
                 } else {
                     row.style.display = "";
-                    this.innerHTML = '<i class="fas fa-filter me-1"></i> Show Critical Only';
+                    setIconLabel(this, "fas fa-filter me-1", " " + t("show_critical", "Show Critical Only"));
                     this.classList.remove("btn-outline-danger");
                     this.classList.add("btn-outline-secondary");
                 }
@@ -807,7 +882,7 @@ function getErrorSeverity(string $error): string
 }
 
 /**
- * Pluralize numbers
+ * Pluralize numbers (forms: [1, 2-4, 5+])
  */
 function pluralize(int $number, array $forms): string
 {

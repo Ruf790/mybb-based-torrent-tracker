@@ -6,12 +6,26 @@ define("IN_MYBB", 1);
 
 require_once $rootpath . 'global.php';
 
+$lang->load('spam');
+
+if (!function_exists('ags_fmt')) {
+    /** Подстановка {1}, {2}… в строку из языкового файла */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $a) {
+            $map['{' . ($i + 1) . '}'] = (string)$a;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 // Только модераторы и выше - это инструмент разбора жалоб, а не обычный
 // просмотр личных сообщений. Раньше эта проверка отсутствовала вообще,
 // позволяя любому читать чужую переписку по прямой ссылке.
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
-    die("Access denied. Staff only.");
+    die(htmlspecialchars($lang->spam['err_access_denied']));
 }
 
 require_once(INC_PATH.'/class_parser.php');
@@ -29,7 +43,7 @@ $parser_options = array(
 $pmid = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if ($pmid <= 0) {
-    die('<div class="alert alert-warning mb-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>Invalid message ID</div>');
+    die('<div class="alert alert-warning mb-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($lang->spam['err_invalid_id']) . '</div>');
 }
 
 // Fetch full message
@@ -44,7 +58,7 @@ $query = "SELECT pm.*,
 $row = $db->fetch_array($db->sql_query_prepared($query, [$pmid]));
 
 if (!$row) {
-    die('<div class="alert alert-secondary mb-0"><i class="fa-solid fa-envelope-circle-check me-2"></i>Message not found</div>');
+    die('<div class="alert alert-secondary mb-0"><i class="fa-solid fa-envelope-circle-check me-2"></i>' . htmlspecialchars($lang->spam['err_not_found']) . '</div>');
 }
 
 // Примечание: раньше здесь было "UPDATE ... SET status = 1 ..." при
@@ -64,9 +78,9 @@ $toid   = (int)$row['toid'];
 
 $sender = [
     'mod'    => 'from',
-    'role'   => 'Sender',
+    'role'   => $lang->spam['role_sender'],
     'icon'   => 'fa-paper-plane',
-    'name'   => $row['sender_name'] ?? ($fromid <= 0 ? 'System' : 'Deleted user #' . $fromid),
+    'name'   => $row['sender_name'] ?? ($fromid <= 0 ? $lang->spam['name_system'] : ags_fmt($lang->spam['name_deleted_user'], $fromid)),
     'email'  => $row['sender_email'] ?? '',
     'avatar' => !empty($row['sender_avatar'])
         ? format_avatar($row['sender_avatar'], $row['sender_avatardimensions'], $max_dimensions)['image']
@@ -76,9 +90,9 @@ $sender = [
 
 $receiver = [
     'mod'    => 'to',
-    'role'   => 'Recipient',
+    'role'   => $lang->spam['role_recipient'],
     'icon'   => 'fa-inbox',
-    'name'   => $row['receiver_name'] ?? 'Deleted user #' . $toid,
+    'name'   => $row['receiver_name'] ?? ags_fmt($lang->spam['name_deleted_user'], $toid),
     'email'  => $row['receiver_email'] ?? '',
     'avatar' => !empty($row['receiver_avatar'])
         ? format_avatar($row['receiver_avatar'], $row['receiver_avatardimensions'], $max_dimensions)['image']
@@ -89,11 +103,11 @@ $receiver = [
 // Статусы MyBB: 0 - не прочитано, 1 - прочитано, 3 - отвечено, 4 - переслано
 $status = (int)($row['status'] ?? 0);
 [$status_label, $status_icon, $status_mod] = match ($status) {
-    0       => ['Unread',    'fa-envelope',        'unread'],
-    1       => ['Read',      'fa-envelope-open',   'read'],
-    3       => ['Replied',   'fa-reply',           'replied'],
-    4       => ['Forwarded', 'fa-share',           'forwarded'],
-    default => ['Status ' . $status, 'fa-circle-question', ''],
+    0       => [$lang->spam['status_unread'],    'fa-envelope',        'unread'],
+    1       => [$lang->spam['status_read'],      'fa-envelope-open',   'read'],
+    3       => [$lang->spam['status_replied'],   'fa-reply',           'replied'],
+    4       => [$lang->spam['status_forwarded'], 'fa-share',           'forwarded'],
+    default => [ags_fmt($lang->spam['status_other'], $status), 'fa-circle-question', ''],
 };
 
 $dateline  = (int)$row['dateline'];
@@ -150,18 +164,18 @@ function pmv_party(array $p): string
     <span class="pmv-chip pmv-chip--status pmv-chip--<?= $status_mod ?>">
       <i class="fa-solid <?= $status_icon ?>"></i><?= $status_label ?>
     </span>
-    <span class="pmv-chip" title="Sent date">
+    <span class="pmv-chip" title="<?= $lang->spam['tip_sent_date'] ?>">
       <i class="fa-solid fa-calendar-days"></i><?= $sent_full ?>
     </span>
-    <span class="pmv-chip" title="Sender IP address">
+    <span class="pmv-chip" title="<?= $lang->spam['tip_sender_ip'] ?>">
       <i class="fa-solid fa-network-wired"></i>
       <?= $ip !== false ? '<code>' . htmlspecialchars($ip) . '</code>' : '<span class="text-body-secondary">—</span>' ?>
     </span>
-    <span class="pmv-chip" title="Message ID">
+    <span class="pmv-chip" title="<?= $lang->spam['tip_message_id'] ?>">
       <i class="fa-solid fa-hashtag"></i><?= (int)$pmid ?>
     </span>
-    <span class="pmv-chip" title="Message length">
-      <i class="fa-solid fa-text-width"></i><?= number_format($message_len, 0, '.', ' ') ?> chars
+    <span class="pmv-chip" title="<?= $lang->spam['tip_message_length'] ?>">
+      <i class="fa-solid fa-text-width"></i><?= ags_fmt($lang->spam['lbl_chars'], number_format($message_len, 0, '.', ' ')) ?>
     </span>
   </div>
 
@@ -171,24 +185,24 @@ function pmv_party(array $p): string
       <li class="nav-item" role="presentation">
         <button class="nav-link active" id="pmv-rendered-tab" data-bs-toggle="tab" data-bs-target="#pmv-rendered"
                 type="button" role="tab" aria-controls="pmv-rendered" aria-selected="true">
-          <i class="fa-solid fa-eye"></i>Rendered
+          <i class="fa-solid fa-eye"></i><?= $lang->spam['tab_rendered'] ?>
         </button>
       </li>
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="pmv-raw-tab" data-bs-toggle="tab" data-bs-target="#pmv-raw"
                 type="button" role="tab" aria-controls="pmv-raw" aria-selected="false">
-          <i class="fa-solid fa-code"></i>Raw
+          <i class="fa-solid fa-code"></i><?= $lang->spam['tab_raw'] ?>
         </button>
       </li>
     </ul>
 
     <div class="pmv-actions">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill"
-              onclick="copyRawMessage()" title="Copy raw text to clipboard">
-        <i class="fa-solid fa-copy"></i>Copy
+              onclick="copyRawMessage()" title="<?= $lang->spam['tip_copy'] ?>">
+        <i class="fa-solid fa-copy"></i><?= $lang->spam['btn_copy'] ?>
       </button>
       <button type="button" class="btn btn-sm btn-outline-primary rounded-pill"
-              onclick="downloadRawMessage()" title="Download as .txt">
+              onclick="downloadRawMessage()" title="<?= $lang->spam['tip_download'] ?>">
         <i class="fa-solid fa-download"></i>.txt
       </button>
     </div>

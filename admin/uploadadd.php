@@ -10,15 +10,31 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3" role="alert"><strong>Access denied.</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('uploadadd');
+
 use function htmlspecialchars as e;
 
-const UM_VERSION    = '1.0';
+const UM_VERSION    = '1.1';
 const GB_IN_BYTES   = 1024 * 1024 * 1024;
 const UM_MAX_SINGLE = 1000;   // GB для одного пользователя
 const UM_MAX_BULK   = 50;     // GB на человека для группы
 
 /** Кого затрагивают действия: только активные подтверждённые аккаунты */
 const UM_ACTIVE = "enabled = 'yes' AND ustatus = 'confirmed'";
+
+if (!function_exists('ags_fmt')) {
+    /** {1}, {2}… — и %1$s, %2$s… (в них их превращает $lang->load()) */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $a) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$a;
+            $map['%' . $n . '$s'] = (string)$a;
+        }
+        return strtr($str, $map);
+    }
+}
 
 function um_op(mixed $v): string { return $v === 'remove' ? 'remove' : 'add'; }
 
@@ -29,11 +45,15 @@ function um_modcomment(string $op, int $gb): string
         gmdate('Y-m-d'), $op === 'add' ? 'Received' : 'Removed', mksize($gb * GB_IN_BYTES), $CURUSER['username'] ?? 'System');
 }
 
-/** (string): get_user_class_name(string) с int давала TypeError в strict_types */
-function um_group_name(int $gid): string
+/**
+ * (string): get_user_class_name(string) с int давала TypeError в strict_types.
+ * $fallback '' — английское "Group N" (для лога); для вывода передаётся перевод.
+ */
+function um_group_name(int $gid, string $fallback = ''): string
 {
     $n = function_exists('get_user_class_name') ? (string)get_user_class_name((string)$gid) : '';
-    return $n !== '' ? $n : 'Group ' . $gid;
+    if ($n !== '') return $n;
+    return $fallback !== '' ? $fallback : 'Group ' . $gid;
 }
 
 /** SQL-выражение для новой отдачи (снятие — никогда ниже нуля) */
@@ -93,7 +113,7 @@ $op    = um_op($_POST['op'] ?? $_GET['op'] ?? ($done['op'] ?? 'add'));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-            throw new InvalidArgumentException('Security check failed. Please refresh the page and try again.');
+            throw new InvalidArgumentException($lang->uploadadd['err_csrf']);
         }
         $op   = um_op($_POST['op'] ?? 'add');
         $verb = $op === 'add' ? 'added' : 'removed';
@@ -103,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $class = ctype_digit((string)($_POST['usergroup'] ?? '')) ? (int)$_POST['usergroup'] : 0;
             $gb    = (int)($_POST['classamount'] ?? 0);
             if ($gb < 1 || $gb > UM_MAX_BULK) {
-                throw new InvalidArgumentException('Please choose an amount between 1 and ' . UM_MAX_BULK . ' GB.');
+                throw new InvalidArgumentException(ags_fmt($lang->uploadadd['err_bulk_amount'], UM_MAX_BULK));
             }
             $bytes = $gb * GB_IN_BYTES;
             $w     = UM_ACTIVE . ($class > 0 ? ' AND usergroup = ?' : '');
@@ -119,29 +139,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "UPDATE users SET " . um_set($op) . ", modcomment = CONCAT(?, modcomment) WHERE {$w}",
                 [...um_set_params($op, $bytes), um_modcomment($op, $gb), ...$wp]
             );
-            if ($ok === false) throw new RuntimeException('Failed to update users.');
+            if ($ok === false) throw new RuntimeException($lang->uploadadd['err_update_users']);
 
+            // Лог — всегда на английском
             $who = $class > 0 ? um_group_name($class) : 'all users';
             write_log(sprintf('Upload Manager: %s %s %d GB %s %s (%d users, %s in total)',
                 $CURUSER['username'] ?? 'staff', $verb, $gb, $op === 'add' ? 'to' : 'from', $who, $n, mksize($total)));
-            $done = ['op' => $op, 'mass' => true, 'gb' => $gb, 'who' => $who, 'n' => $n, 'total' => mksize($total)];
+            $done = ['op' => $op, 'mass' => true, 'gb' => $gb, 'who' => $who, 'gid' => $class, 'n' => $n, 'total' => mksize($total)];
         } else {
             // ── Один пользователь ──
             $username = trim((string)($_POST['username'] ?? ''));
             $gb       = (int)($_POST['uploaded'] ?? 0);
-            if ($username === '') throw new InvalidArgumentException('Please enter a username.');
-            if ($gb < 1 || $gb > UM_MAX_SINGLE) throw new InvalidArgumentException('Amount must be between 1 and ' . UM_MAX_SINGLE . ' GB.');
+            if ($username === '') throw new InvalidArgumentException($lang->uploadadd['err_username']);
+            if ($gb < 1 || $gb > UM_MAX_SINGLE) throw new InvalidArgumentException(ags_fmt($lang->uploadadd['err_single_amount'], UM_MAX_SINGLE));
 
             $uq = $db->sql_query_prepared("SELECT id, username, uploaded FROM users WHERE username = ? AND " . UM_ACTIVE . " LIMIT 1", [$username]);
             $u  = $uq ? $db->fetch_array($uq) : null;
-            if (!$u) throw new RuntimeException('User not found, disabled or not confirmed.');
+            if (!$u) throw new RuntimeException($lang->uploadadd['err_user_not_found']);
 
             $bytes = $gb * GB_IN_BYTES;
             $ok = $db->sql_query_prepared(
                 "UPDATE users SET " . um_set($op) . ", modcomment = CONCAT(?, modcomment) WHERE id = ?",
                 [...um_set_params($op, $bytes), um_modcomment($op, $gb), (int)$u['id']]
             );
-            if ($ok === false) throw new RuntimeException('Failed to update the user.');
+            if ($ok === false) throw new RuntimeException($lang->uploadadd['err_update_user']);
 
             $old = (float)$u['uploaded'];
             $new = $op === 'add' ? $old + $bytes : max(0.0, $old - $bytes);
@@ -158,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (InvalidArgumentException | RuntimeException $ex) {
         $error = $ex->getMessage();
     } catch (Throwable $ex) {
-        $error = 'An unexpected error occurred. Please try again.';
+        $error = $lang->uploadadd['err_unexpected'];
         error_log('Upload Manager error: ' . $ex->getMessage());
     }
 }
@@ -175,7 +196,29 @@ $rq = $db->sql_query_prepared(
 );
 while ($rq && ($r = $db->fetch_array($rq))) $recent[] = $r;
 
-stdhead('Upload Manager');
+// Строки для JS: js_* → без префикса
+$umJsLang = [];
+foreach ($lang->uploadadd as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) $umJsLang[substr((string)$k, 3)] = $v;
+}
+
+// Итог прошлого действия — текст для вывода
+$doneTitle = '';
+if ($done) {
+    $dAdd = $done['op'] === 'add';
+    if (!$done['mass']) {
+        $doneTitle = ags_fmt($lang->uploadadd[$dAdd ? 'flash_single_added' : 'flash_single_removed'], (int)$done['gb'], (string)$done['who']);
+    } elseif (($dGid = (int)($done['gid'] ?? 0)) > 0) {
+        $doneTitle = ags_fmt($lang->uploadadd[$dAdd ? 'flash_group_added' : 'flash_group_removed'], (int)$done['gb'],
+            um_group_name($dGid, ags_fmt($lang->uploadadd['lbl_group_n'], $dGid)));
+    } else {
+        $doneTitle = ags_fmt($lang->uploadadd[$dAdd ? 'flash_all_added' : 'flash_all_removed'], (int)$done['gb']);
+    }
+}
+
+$verbLbl = $lang->uploadadd[$op === 'add' ? 'lbl_verb_add' : 'lbl_verb_remove'];
+
+stdhead($lang->uploadadd['page_title']);
 $self = (string)$_this_script_;
 $key  = e((string)$mybb->post_code);
 ?>
@@ -188,8 +231,8 @@ $key  = e((string)$mybb->post_code);
     <div class="um-card mb-3"><div class="um-head">
         <span class="um-head-icon"><i class="fa-solid fa-cloud-arrow-up" id="umHeadIcon"></i></span>
         <div class="um-min0">
-            <h1 class="um-title">Upload Manager</h1>
-            <div class="um-sub">Add or remove upload credit — for one member or a whole group</div>
+            <h1 class="um-title"><?= e($lang->uploadadd['page_title']) ?></h1>
+            <div class="um-sub"><?= e($lang->uploadadd['page_subtitle']) ?></div>
         </div>
         <span class="ms-auto um-muted"><i class="fa-solid fa-code-branch me-1"></i>v<?= UM_VERSION ?></span>
     </div></div>
@@ -198,37 +241,37 @@ $key  = e((string)$mybb->post_code);
     <div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-circle-exclamation mt-1"></i><div><?= e($error) ?></div></div>
     <?php endif; ?>
 
-    <?php if ($done): $add = $done['op'] === 'add'; ?>
+    <?php if ($done): ?>
     <div class="um-done mb-3"><i class="fa-solid fa-circle-check"></i>
         <div class="flex-grow-1">
-            <div class="fw-bold"><?= $add ? 'Added' : 'Removed' ?> <?= (int)$done['gb'] ?> GB <?= $add ? 'to' : 'from' ?> <?= e($done['who']) ?></div>
+            <div class="fw-bold"><?= e($doneTitle) ?></div>
             <?php if ($done['mass']): ?>
-            <div class="um-muted"><?= number_format((int)$done['n']) ?> user(s) · <?= e($done['total']) ?> in total · noted in mod comments and the site log</div>
+            <div class="um-muted"><?= e(ags_fmt($lang->uploadadd['flash_mass_detail'], number_format((int)$done['n']), (string)$done['total'])) ?></div>
             <?php else: ?>
-            <div class="um-muted">Uploaded <?= e($done['old']) ?> → <strong><?= e($done['new']) ?></strong> · noted in mod comment</div>
+            <div class="um-muted"><?= ags_fmt($lang->uploadadd['flash_single_detail'], e((string)$done['old']), '<strong>' . e((string)$done['new']) . '</strong>') ?></div>
             <?php endif; ?>
         </div>
-        <?php if (!$done['mass']): ?><a href="<?= e($BASEURL . '/' . get_profile_link((int)$done['id'])) ?>" class="btn btn-sm btn-outline-success px-3"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Profile</a><?php endif; ?>
+        <?php if (!$done['mass']): ?><a href="<?= e($BASEURL . '/' . get_profile_link((int)$done['id'])) ?>" class="btn btn-sm btn-outline-success px-3"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i><?= e($lang->uploadadd['btn_profile']) ?></a><?php endif; ?>
     </div>
     <?php endif; ?>
 
     <!-- Режим -->
-    <div class="um-mode mb-3" role="radiogroup" aria-label="Operation">
+    <div class="um-mode mb-3" role="radiogroup" aria-label="<?= e($lang->uploadadd['aria_operation']) ?>">
         <input type="radio" name="um_op" id="opAdd" value="add" <?= $op === 'add' ? 'checked' : '' ?>>
-        <label for="opAdd"><span class="um-sec-icon ic-green"><i class="fa-solid fa-plus"></i></span><span><b class="d-block">Add upload</b><small class="um-muted">Credit extra upload</small></span></label>
+        <label for="opAdd"><span class="um-sec-icon ic-green"><i class="fa-solid fa-plus"></i></span><span><b class="d-block"><?= e($lang->uploadadd['opt_mode_add']) ?></b><small class="um-muted"><?= e($lang->uploadadd['hint_mode_add']) ?></small></span></label>
         <input type="radio" name="um_op" id="opRemove" value="remove" <?= $op === 'remove' ? 'checked' : '' ?>>
-        <label for="opRemove"><span class="um-sec-icon ic-red"><i class="fa-solid fa-minus"></i></span><span><b class="d-block">Remove upload</b><small class="um-muted">Never below zero</small></span></label>
+        <label for="opRemove"><span class="um-sec-icon ic-red"><i class="fa-solid fa-minus"></i></span><span><b class="d-block"><?= e($lang->uploadadd['opt_mode_remove']) ?></b><small class="um-muted"><?= e($lang->uploadadd['hint_mode_remove']) ?></small></span></label>
     </div>
 
     <div class="row g-3 mb-3">
         <?php foreach ([
-            ['fa-users',    'ic-blue',  'Active users',   number_format((int)($st['n'] ?? 0))],
-            ['fa-upload',   'ic-green', 'Total uploaded', mksize((float)($st['up'] ?? 0))],
-            ['fa-download', 'ic-red',   'Total downloaded', mksize((float)($st['down'] ?? 0))],
-            ['fa-scale-balanced', 'ic-amber', 'Site ratio', (float)($st['down'] ?? 0) > 0 ? number_format((float)$st['up'] / (float)$st['down'], 2) : '∞'],
+            ['fa-users',    'ic-blue',  $lang->uploadadd['kpi_users'],      number_format((int)($st['n'] ?? 0))],
+            ['fa-upload',   'ic-green', $lang->uploadadd['kpi_uploaded'],   mksize((float)($st['up'] ?? 0))],
+            ['fa-download', 'ic-red',   $lang->uploadadd['kpi_downloaded'], mksize((float)($st['down'] ?? 0))],
+            ['fa-scale-balanced', 'ic-amber', $lang->uploadadd['kpi_ratio'], (float)($st['down'] ?? 0) > 0 ? number_format((float)$st['up'] / (float)$st['down'], 2) : '∞'],
         ] as [$ic, $cls, $label, $val]): ?>
         <div class="col-6 col-lg-3"><div class="um-card um-kpi"><span class="um-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
-            <div><div class="um-kpi-label"><?= $label ?></div><div class="um-kpi-value"><?= $val ?></div></div></div></div>
+            <div><div class="um-kpi-label"><?= e($label) ?></div><div class="um-kpi-value"><?= $val ?></div></div></div></div>
         <?php endforeach; ?>
     </div>
 
@@ -239,22 +282,22 @@ $key  = e((string)$mybb->post_code);
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
                 <input type="hidden" name="op" value="<?= $op ?>" class="um-op-field">
                 <div class="um-sec-head"><span class="um-sec-icon mode"><i class="fa-solid fa-user"></i></span>
-                    <div><h2 class="um-sec-title">Single user</h2><div class="um-muted">Up to <?= UM_MAX_SINGLE ?> GB</div></div></div>
+                    <div><h2 class="um-sec-title"><?= e($lang->uploadadd['sec_single']) ?></h2><div class="um-muted"><?= e(ags_fmt($lang->uploadadd['hint_single_max'], UM_MAX_SINGLE)) ?></div></div></div>
                 <div class="p-3 p-md-4">
                     <div class="mb-3">
-                        <label for="username" class="form-label"><i class="fa-solid fa-user"></i>Username</label>
-                        <input type="text" class="form-control" name="username" id="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" placeholder="Exact username" required maxlength="64" autocomplete="off">
+                        <label for="username" class="form-label"><i class="fa-solid fa-user"></i><?= e($lang->uploadadd['lbl_username']) ?></label>
+                        <input type="text" class="form-control" name="username" id="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" placeholder="<?= e($lang->uploadadd['ph_username']) ?>" required maxlength="64" autocomplete="off">
                         <div class="um-box mt-2" id="umUser" hidden>
                             <i class="fa-solid fa-upload text-body-secondary"></i>
                             <div class="flex-grow-1 um-min0">
                                 <div class="fw-bold" id="umUName"></div>
-                                <div class="um-muted">Uploaded <span class="v" id="umUNow"></span> → <span class="v res" id="umUAfter"></span></div>
-                                <div class="small text-danger" id="umUInactive" hidden><i class="fa-solid fa-ban me-1"></i>Disabled or not confirmed — can't be changed</div>
+                                <div class="um-muted"><?= e($lang->uploadadd['lbl_uploaded']) ?> <span class="v" id="umUNow"></span> → <span class="v res" id="umUAfter"></span></div>
+                                <div class="small text-danger" id="umUInactive" hidden><i class="fa-solid fa-ban me-1"></i><?= e($lang->uploadadd['hint_inactive']) ?></div>
                             </div>
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label for="uploaded" class="form-label"><i class="fa-solid fa-hashtag"></i><span class="um-verb">Add</span></label>
+                        <label for="uploaded" class="form-label"><i class="fa-solid fa-hashtag"></i><span class="um-verb"><?= e($verbLbl) ?></span></label>
                         <div class="input-group">
                             <input type="number" class="form-control" name="uploaded" id="uploaded" min="1" max="<?= UM_MAX_SINGLE ?>" value="<?= e((string)($_POST['uploaded'] ?? '10')) ?>" required>
                             <span class="input-group-text">GB</span>
@@ -262,7 +305,7 @@ $key  = e((string)$mybb->post_code);
                         <div class="um-chips" data-for="uploaded"><?php foreach ([1, 5, 10, 25, 50, 100] as $v): ?><button type="button" class="um-chip" data-v="<?= $v ?>"><?= $v ?> GB</button><?php endforeach; ?></div>
                     </div>
                     <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn um-go px-4"><i class="fa-solid fa-check me-1"></i><span class="um-verb">Add</span> upload</button>
+                        <button type="submit" class="btn um-go px-4"><i class="fa-solid fa-check me-1"></i><span class="um-verb"><?= e($verbLbl) ?></span> <?= e($lang->uploadadd['btn_single_suffix']) ?></button>
                     </div>
                 </div>
             </form>
@@ -275,27 +318,27 @@ $key  = e((string)$mybb->post_code);
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
                 <input type="hidden" name="op" value="<?= $op ?>" class="um-op-field">
                 <div class="um-sec-head"><span class="um-sec-icon mode"><i class="fa-solid fa-users"></i></span>
-                    <div><h2 class="um-sec-title">Whole group</h2><div class="um-muted">Same amount for every active member</div></div></div>
+                    <div><h2 class="um-sec-title"><?= e($lang->uploadadd['sec_group']) ?></h2><div class="um-muted"><?= e($lang->uploadadd['hint_group']) ?></div></div></div>
                 <div class="p-3 p-md-4">
                     <div class="row g-3 mb-3">
                         <div class="col-sm-7">
-                            <label class="form-label"><i class="fa-solid fa-filter"></i>Group</label>
-                            <div class="um-group"><?= _selectbox_('', 'usergroup', true, 'All users', $_POST['usergroup'] ?? '') ?></div>
+                            <label class="form-label"><i class="fa-solid fa-filter"></i><?= e($lang->uploadadd['lbl_group']) ?></label>
+                            <div class="um-group"><?= _selectbox_('', 'usergroup', true, $lang->uploadadd['opt_all_users'], $_POST['usergroup'] ?? '') ?></div>
                         </div>
                         <div class="col-sm-5">
-                            <label class="form-label" for="classamount"><i class="fa-solid fa-hashtag"></i>Per user</label>
+                            <label class="form-label" for="classamount"><i class="fa-solid fa-hashtag"></i><?= e($lang->uploadadd['lbl_per_user']) ?></label>
                             <select name="classamount" id="classamount" class="form-select" required>
-                                <option value="0">Choose…</option>
+                                <option value="0"><?= e($lang->uploadadd['opt_choose']) ?></option>
                                 <?php for ($i = 1; $i <= UM_MAX_BULK; $i++): ?><option value="<?= $i ?>" <?= (int)($_POST['classamount'] ?? 10) === $i ? 'selected' : '' ?>><?= $i ?> GB</option><?php endfor; ?>
                             </select>
                         </div>
                     </div>
                     <div class="um-box mb-3">
                         <i class="fa-solid fa-calculator text-body-secondary"></i>
-                        <div class="flex-grow-1"><div class="fw-semibold" id="umGWho">All users</div><div class="um-muted" id="umGStat">—</div></div>
+                        <div class="flex-grow-1"><div class="fw-semibold" id="umGWho"><?= e($lang->uploadadd['opt_all_users']) ?></div><div class="um-muted" id="umGStat">—</div></div>
                     </div>
                     <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn um-go px-4" id="umMassBtn"><i class="fa-solid fa-bolt me-1"></i><span class="um-verb">Add</span> for group</button>
+                        <button type="submit" class="btn um-go px-4" id="umMassBtn"><i class="fa-solid fa-bolt me-1"></i><span class="um-verb"><?= e($verbLbl) ?></span> <?= e($lang->uploadadd['btn_group_suffix']) ?></button>
                     </div>
                 </div>
             </form>
@@ -304,7 +347,7 @@ $key  = e((string)$mybb->post_code);
         <div class="col-12">
             <div class="um-card overflow-hidden">
                 <div class="um-sec-head"><span class="um-sec-icon ic-slate"><i class="fa-solid fa-clock-rotate-left"></i></span>
-                    <div><h2 class="um-sec-title">Recent changes</h2><div class="um-muted">From the site log</div></div></div>
+                    <div><h2 class="um-sec-title"><?= e($lang->uploadadd['sec_recent']) ?></h2><div class="um-muted"><?= e($lang->uploadadd['hint_recent']) ?></div></div></div>
                 <?php if ($recent): ?>
                 <ul class="um-log">
                     <?php foreach ($recent as $r):
@@ -316,13 +359,14 @@ $key  = e((string)$mybb->post_code);
                     <?php endforeach; ?>
                 </ul>
                 <?php else: ?>
-                <div class="um-muted px-4 py-3">No changes logged yet.</div>
+                <div class="um-muted px-4 py-3"><?= e($lang->uploadadd['empty_recent']) ?></div>
                 <?php endif; ?>
             </div>
         </div>
     </div>
 </div>
 
+<script>const AGS_LANG = <?= json_encode($umJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/uploadadd.js?v=<?= UM_VERSION ?>"></script>
 <?php

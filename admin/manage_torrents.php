@@ -6,6 +6,23 @@ require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_category.php';
 require_once INC_PATH . '/functions_bookmark.php';
 
+$lang->load('manage_torrents');
+
+// Подстановка {1}, {2}… (а также %1$s, %2$s…) в строки ланга
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        return preg_replace_callback(
+            '/\{(\d+)\}|%(\d+)\$s/',
+            static function (array $m) use ($args): string {
+                $i = (int)($m[1] !== '' ? $m[1] : $m[2]) - 1;
+                return array_key_exists($i, $args) ? (string)$args[$i] : $m[0];
+            },
+            $str
+        ) ?? $str;
+    }
+}
+
 
 class TorrentManager 
 {
@@ -43,24 +60,26 @@ class TorrentManager
 
 
     public function handleUpdate(array $postData): void {
+        global $lang;
+
         $torrentIds = $postData['torrentid'] ?? [];
         $actionType = $postData['actiontype'] ?? '';
         $category = (int)($postData['category'] ?? 0);
 
         if (empty($actionType)) {
-            $this->addError('Please select action type!');
+            $this->addError($lang->manage_torrents['err_no_action']);
             return;
         }
 
         if (!is_array($torrentIds) || count($torrentIds) < 1) {
-            $this->addError('Please select at least one torrent!');
+            $this->addError($lang->manage_torrents['err_no_torrents']);
             return;
         }
 
         // Guard against accidental/malicious mass operations in one request.
         $maxBulkSize = 1000;
         if (count($torrentIds) > $maxBulkSize) {
-            $this->addError('Too many torrents selected at once (max ' . $maxBulkSize . '). Narrow your selection and try again.');
+            $this->addError(ags_fmt($lang->manage_torrents['err_too_many'], $maxBulkSize));
             return;
         }
 
@@ -91,7 +110,7 @@ class TorrentManager
         $dangerousActions = ['delete', 'banned', 'nuke', 'resetrating'];
         if (in_array($actionType, $dangerousActions, true) && function_exists('is_sysop')) {
             if (!is_sysop()) {
-                $this->addError('This action ("' . $actionType . '") requires a higher staff level (sysop).');
+                $this->addError(ags_fmt($lang->manage_torrents['err_sysop_required'], $actionType));
                 return;
             }
         }
@@ -114,16 +133,16 @@ class TorrentManager
                 'torrent',
                 1
             );
-            $_SESSION['action_success'] = 'Action completed successfully! (' . $affectedCount . ' torrent(s) affected)';
+            $_SESSION['action_success'] = ags_fmt($lang->manage_torrents['flash_bulk_done'], $affectedCount);
         } else {
-            $this->addError('Unknown or not-yet-implemented action: ' . htmlspecialchars($actionType));
+            $this->addError(ags_fmt($lang->manage_torrents['err_unknown_action'], htmlspecialchars((string)$actionType)));
         }
     }
 
     private function moveTorrents(string $ids, int $category): ?string {
-        global $db;
+        global $db, $lang;
         if ($category <= 0) {
-            $this->addError('Invalid category selected!');
+            $this->addError($lang->manage_torrents['err_invalid_category']);
             return null;
         }
 
@@ -240,7 +259,7 @@ if (!defined('STAFF_PANEL')) {
     exit('
     <div class="alert-modern alert-modern-danger text-center">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Error!</strong> Direct initialization of this file is not allowed.
+        <strong>' . $lang->manage_torrents['err_direct_title'] . '</strong> ' . $lang->manage_torrents['err_direct_access'] . '
     </div>');
 }
 
@@ -392,7 +411,7 @@ if ($do === 'update') {
     $isAjax      = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
 
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
-        $torrentManager->addError('Security check failed. Please refresh the page and try again.');
+        $torrentManager->addError($lang->manage_torrents['err_security']);
     } else {
         $torrentManager->handleUpdate($_POST);
     }
@@ -415,7 +434,7 @@ if ($do === 'update') {
         echo json_encode([
             'ok'      => empty($errors),
             'message' => empty($errors)
-                ? ($successMsg ?: 'Action completed successfully!')
+                ? ($successMsg ?: $lang->manage_torrents['flash_done'])
                 : strip_tags(implode('; ', $errors)),
         ], JSON_UNESCAPED_UNICODE);
         exit;
@@ -462,7 +481,7 @@ if ($do === 'quick_edit') {
 
     if ($tid > 0 && $name !== '' && $cat > 0) {
         $db->sql_query_prepared("UPDATE torrents SET name = ?, category = ? WHERE id = ?", [$name, $cat, $tid]);
-        $_SESSION['action_success'] = 'Torrent #' . $tid . ' updated successfully!';
+        $_SESSION['action_success'] = ags_fmt($lang->manage_torrents['flash_quick_edit'], $tid);
     }
 
     header('Location: ' . $_this_script_ . '');
@@ -474,7 +493,7 @@ if ($do === 'quick_edit') {
 
 
 
-stdhead('Manage Torrents', true, 'supernote');
+stdhead($lang->manage_torrents['page_title'], true, 'supernote');
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_torrents.css?ver=2">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_torrents_ui.css?ver=1">';
@@ -521,7 +540,7 @@ $sq = $db->sql_query_prepared("
 $sum = $sq ? $db->fetch_array($sq) : [];
 
 require_once INC_PATH . '/functions_category.php';
-$categoryDropdown = ts_category_list('browsecategory', $browsecategory, '<option value="0">All categories</option>');
+$categoryDropdown = ts_category_list('browsecategory', $browsecategory, '<option value="0">' . htmlspecialchars($lang->manage_torrents['opt_all_categories']) . '</option>');
 
 // База для ссылок сортировки. Раньше к $_this_script_ (уже с «?act=…»)
 // дописывалось ещё одно «?act=manage_torrents» — получался «…??act=…».
@@ -534,13 +553,13 @@ $sortTh = static function (string $field, string $icon, string $label, string $c
 };
 
 $filters = [
-    ''              => ['fa-layer-group',  'All',      (int)($sum['total'] ?? 0)],
-    'free'          => ['fa-gift',         'Free',     (int)($sum['free'] ?? 0)],
-    'silver'        => ['fa-star-half-stroke', 'Silver', (int)($sum['silver'] ?? 0)],
-    'thirtypercent' => ['fa-percent',      '30%',      (int)($sum['thirtypercent'] ?? 0)],
-    'doubleuploads' => ['fa-angles-up',    '2× Up',    (int)($sum['doubleuploads'] ?? 0)],
-    'recommend'     => ['fa-thumbtack',    'Sticky',   (int)($sum['recommend'] ?? 0)],
-    'deadonly'      => ['fa-skull',        'Dead',     (int)($sum['deadonly'] ?? 0)],
+    ''              => ['fa-layer-group',  $lang->manage_torrents['flt_all'], (int)($sum['total'] ?? 0)],
+    'free'          => ['fa-gift',         $lang->manage_torrents['flt_free'], (int)($sum['free'] ?? 0)],
+    'silver'        => ['fa-star-half-stroke', $lang->manage_torrents['flt_silver'], (int)($sum['silver'] ?? 0)],
+    'thirtypercent' => ['fa-percent',      $lang->manage_torrents['flt_thirty'], (int)($sum['thirtypercent'] ?? 0)],
+    'doubleuploads' => ['fa-angles-up',    $lang->manage_torrents['flt_double'], (int)($sum['doubleuploads'] ?? 0)],
+    'recommend'     => ['fa-thumbtack',    $lang->manage_torrents['flt_sticky'], (int)($sum['recommend'] ?? 0)],
+    'deadonly'      => ['fa-skull',        $lang->manage_torrents['flt_dead'], (int)($sum['deadonly'] ?? 0)],
 ];
 $filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory . '&amp;' : '') . ($searchword !== '' ? 'searchword=' . urlencode($searchword_raw) . '&amp;' : '');
 ?>
@@ -550,18 +569,18 @@ $filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory
     <div class="mt-card mb-3"><div class="mt-head">
         <span class="mt-head-icon"><i class="fa-solid fa-magnet"></i></span>
         <div class="mt-head-text">
-            <h1 class="mt-title">Manage Torrents</h1>
-            <div class="mt-sub">Search, filter and apply bulk actions to torrents</div>
+            <h1 class="mt-title"><?= $lang->manage_torrents['sec_title'] ?></h1>
+            <div class="mt-sub"><?= $lang->manage_torrents['sec_subtitle'] ?></div>
         </div>
-        <span class="ms-auto mt-muted"><i class="fa-solid fa-gauge-high me-1"></i><?= $queryTime ?> ms</span>
+        <span class="ms-auto mt-muted"><i class="fa-solid fa-gauge-high me-1"></i><?= ags_fmt($lang->manage_torrents['lbl_query_ms'], $queryTime) ?></span>
     </div></div>
 
     <div class="row g-3 mb-3">
         <?php foreach ([
-            ['fa-magnet',     'ic-blue',   'Torrents',    number_format((int)($sum['total'] ?? 0))],
-            ['fa-hard-drive', 'ic-purple', 'Total size',  mksize((float)($sum['bytes'] ?? 0))],
-            ['fa-gift',       'ic-green',  'Freeleech',   number_format((int)($sum['free'] ?? 0))],
-            ['fa-skull',      'ic-red',    'Dead / hidden', number_format((int)($sum['deadonly'] ?? 0))],
+            ['fa-magnet',     'ic-blue',   $lang->manage_torrents['kpi_torrents'],    number_format((int)($sum['total'] ?? 0))],
+            ['fa-hard-drive', 'ic-purple', $lang->manage_torrents['kpi_total_size'],  mksize((float)($sum['bytes'] ?? 0))],
+            ['fa-gift',       'ic-green',  $lang->manage_torrents['kpi_freeleech'],   number_format((int)($sum['free'] ?? 0))],
+            ['fa-skull',      'ic-red',    $lang->manage_torrents['kpi_dead'], number_format((int)($sum['deadonly'] ?? 0))],
         ] as [$ic, $cls, $label, $val]): ?>
         <div class="col-6 col-lg-3"><div class="mt-card mt-kpi"><span class="mt-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
             <div><div class="mt-kpi-label"><?= $label ?></div><div class="mt-kpi-value"><?= $val ?></div></div></div></div>
@@ -574,19 +593,19 @@ $filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory
             <input type="hidden" name="act" value="manage_torrents">
             <?php if ($searchtype !== ''): ?><input type="hidden" name="searchtype" value="<?= htmlspecialchars($searchtype) ?>"><?php endif; ?>
             <div class="col-md-6">
-                <label class="form-label" for="torrent-search"><i class="fa-solid fa-magnifying-glass"></i>Name</label>
+                <label class="form-label" for="torrent-search"><i class="fa-solid fa-magnifying-glass"></i><?= $lang->manage_torrents['lbl_name'] ?></label>
                 <div class="input-group">
-                    <input type="text" class="form-control mt-search-input" name="searchword" value="<?= $searchword ?>" placeholder="Part of the torrent name…" id="torrent-search">
-                    <button type="button" class="btn btn-outline-secondary mt-search-clear" data-mt-call="clearSearch" data-mt-args="[]" title="Clear"><i class="fa-solid fa-xmark"></i></button>
+                    <input type="text" class="form-control mt-search-input" name="searchword" value="<?= $searchword ?>" placeholder="<?= htmlspecialchars($lang->manage_torrents['ph_search']) ?>" id="torrent-search">
+                    <button type="button" class="btn btn-outline-secondary mt-search-clear" data-mt-call="clearSearch" data-mt-args="[]" title="<?= htmlspecialchars($lang->manage_torrents['tip_clear_search']) ?>"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
             <div class="col-md-4">
-                <label class="form-label"><i class="fa-solid fa-folder-tree"></i>Category</label>
+                <label class="form-label"><i class="fa-solid fa-folder-tree"></i><?= $lang->manage_torrents['lbl_category'] ?></label>
                 <?= $categoryDropdown ?>
             </div>
             <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary flex-grow-1" id="searchBtn"><i class="fa-solid fa-filter me-1"></i>Apply</button>
-                <button type="button" class="btn btn-outline-secondary" data-mt-call="resetFilters" data-mt-args="[]" title="Reset"><i class="fa-solid fa-rotate-left"></i></button>
+                <button type="submit" class="btn btn-primary flex-grow-1" id="searchBtn"><i class="fa-solid fa-filter me-1"></i><?= $lang->manage_torrents['btn_apply_filters'] ?></button>
+                <button type="button" class="btn btn-outline-secondary" data-mt-call="resetFilters" data-mt-args="[]" title="<?= htmlspecialchars($lang->manage_torrents['tip_reset']) ?>"><i class="fa-solid fa-rotate-left"></i></button>
             </div>
             <div class="col-12">
                 <!-- Раньше фильтр был выпадающим списком; теперь кнопки со счётчиками -->
@@ -609,9 +628,9 @@ $filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory
                 <div class="d-flex align-items-center gap-3">
                     <div class="form-check form-switch m-0">
                         <input class="form-check-input" type="checkbox" id="selectAll" data-mt-call="toggleAllSelection">
-                        <label class="form-check-label fw-semibold" for="selectAll">Select page</label>
+                        <label class="form-check-label fw-semibold" for="selectAll"><?= $lang->manage_torrents['lbl_select_page'] ?></label>
                     </div>
-                    <span class="mt-muted"><?= number_format($totalTorrents) ?> found · page <?= $page ?></span>
+                    <span class="mt-muted"><?= ags_fmt($lang->manage_torrents['lbl_found'], number_format($totalTorrents), $page) ?></span>
                 </div>
                 <div id="paginationTop"><?= $multipage ?></div>
             </div>
@@ -620,11 +639,11 @@ $filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory
                 <table class="mt-table">
                     <thead><tr>
                         <th class="mt-col-toggle"></th>
-                        <?= $sortTh('name', 'fa-file-lines', 'Torrent') ?>
-                        <th class="mobile-hidden"><i class="fa-solid fa-flag"></i>Status</th>
-                        <?= $sortTh('owner', 'fa-user', 'Uploader') ?>
-                        <?= $sortTh('category', 'fa-folder', 'Category', 'mobile-hidden') ?>
-                        <?= $sortTh('added', 'fa-calendar', 'Added') ?>
+                        <?= $sortTh('name', 'fa-file-lines', $lang->manage_torrents['col_torrent']) ?>
+                        <th class="mobile-hidden"><i class="fa-solid fa-flag"></i><?= $lang->manage_torrents['col_status'] ?></th>
+                        <?= $sortTh('owner', 'fa-user', $lang->manage_torrents['col_uploader']) ?>
+                        <?= $sortTh('category', 'fa-folder', $lang->manage_torrents['col_category'], 'mobile-hidden') ?>
+                        <?= $sortTh('added', 'fa-calendar', $lang->manage_torrents['col_added']) ?>
                         <th class="text-center mt-col-check"><i class="fa-solid fa-square-check"></i></th>
                     </tr></thead>
                     <tbody id="torrentTableBody">
@@ -650,11 +669,11 @@ while ($query && ($torrent = $db->fetch_array($query))) {
     // Ник раньше передавался в format_name() без экранирования
     $owner = $torrent['username'] !== null
         ? '<a href="' . $BASEURL . '/' . get_profile_link((int)$torrent['owner']) . '" class="text-decoration-none fw-semibold">' . format_name(htmlspecialchars((string)$torrent['username']), (int)$torrent['usergroup']) . '</a>'
-        : '<em class="text-body-secondary">deleted user</em>';
+        : '<em class="text-body-secondary">' . $lang->manage_torrents['lbl_deleted_user'] . '</em>';
     ?>
                         <tr class="torrent-row" data-id="<?= $tid ?>" data-size="<?= (float)$torrent['size'] ?>">
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-primary torrent-btn" title="Manage"
+                                <button type="button" class="btn btn-sm btn-outline-primary torrent-btn" title="<?= htmlspecialchars($lang->manage_torrents['tip_manage']) ?>"
                                         data-bs-toggle="modal" data-bs-target="#manageTorrentModal"
                                         data-id="<?= $tid ?>"
                                         data-name="<?= htmlspecialchars((string)$torrent['name']) ?>"
@@ -666,7 +685,7 @@ while ($query && ($torrent = $db->fetch_array($query))) {
                                     <i class="fa-solid fa-gear"></i>
                                 </button>
                             </td>
-                            <td data-label="Torrent">
+                            <td data-label="<?= htmlspecialchars($lang->manage_torrents['col_torrent']) ?>">
                                 <a href="<?= $BASEURL . '/' . get_torrent_link($tid) ?>" class="mt-tname"><?= htmlspecialchars((string)$torrent['name']) ?></a>
                                 <div class="mt-meta">
                                     <span><i class="fa-solid fa-hard-drive me-1"></i><?= mksize((float)$torrent['size']) ?></span>
@@ -676,15 +695,15 @@ while ($query && ($torrent = $db->fetch_array($query))) {
                                 </div>
                                 <div class="mt-flags d-md-none"><?= $flags ?></div>
                             </td>
-                            <td class="mobile-hidden" data-label="Status"><div class="mt-flags mt-0"><?= $flags ?></div></td>
-                            <td data-label="Uploader"><div class="d-flex align-items-center gap-2"><?= $avatar ?><?= $owner ?></div></td>
-                            <td class="mobile-hidden" data-label="Category"><span class="mt-cat"><i class="fa-solid fa-tag"></i><?= htmlspecialchars((string)($torrent['category_name'] ?? '—')) ?></span></td>
-                            <td data-label="Added" class="text-nowrap">
+                            <td class="mobile-hidden" data-label="<?= htmlspecialchars($lang->manage_torrents['col_status']) ?>"><div class="mt-flags mt-0"><?= $flags ?></div></td>
+                            <td data-label="<?= htmlspecialchars($lang->manage_torrents['col_uploader']) ?>"><div class="d-flex align-items-center gap-2"><?= $avatar ?><?= $owner ?></div></td>
+                            <td class="mobile-hidden" data-label="<?= htmlspecialchars($lang->manage_torrents['col_category']) ?>"><span class="mt-cat"><i class="fa-solid fa-tag"></i><?= htmlspecialchars((string)($torrent['category_name'] ?? '—')) ?></span></td>
+                            <td data-label="<?= htmlspecialchars($lang->manage_torrents['col_added']) ?>" class="text-nowrap">
                                 <div><?= my_datee('relative', (int)$torrent['added']) ?></div>
                                 <div class="mt-muted mobile-hidden"><?= my_datee($dateformat, (int)$torrent['added']) ?></div>
                             </td>
-                            <td class="text-center" data-label="Select">
-                                <input type="checkbox" class="form-check-input torrent-checkbox" name="torrentid[]" value="<?= $tid ?>" data-mt-call="updateSelectionCounter" data-mt-args="[]" aria-label="Select">
+                            <td class="text-center" data-label="<?= htmlspecialchars($lang->manage_torrents['col_select']) ?>">
+                                <input type="checkbox" class="form-check-input torrent-checkbox" name="torrentid[]" value="<?= $tid ?>" data-mt-call="updateSelectionCounter" data-mt-args="[]" aria-label="<?= htmlspecialchars($lang->manage_torrents['tip_select']) ?>">
                             </td>
                         </tr>
 <?php
@@ -692,9 +711,9 @@ while ($query && ($torrent = $db->fetch_array($query))) {
 
 if ($torrentCount === 0) {
     // Раньше здесь печатался лишний </table> — таблица закрывалась дважды
-    echo '<tr><td colspan="7"><div class="mt-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">No torrents found</div>'
-       . '<div class="small mb-3">Try other filters</div>'
-       . '<button type="button" class="btn btn-sm btn-outline-primary px-3" data-mt-call="resetFilters" data-mt-args="[]"><i class="fa-solid fa-rotate-left me-1"></i>Reset filters</button></div></td></tr>';
+    echo '<tr><td colspan="7"><div class="mt-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">' . $lang->manage_torrents['empty_title'] . '</div>'
+       . '<div class="small mb-3">' . $lang->manage_torrents['empty_hint'] . '</div>'
+       . '<button type="button" class="btn btn-sm btn-outline-primary px-3" data-mt-call="resetFilters" data-mt-args="[]"><i class="fa-solid fa-rotate-left me-1"></i>' . $lang->manage_torrents['btn_reset_filters'] . '</button></div></td></tr>';
 }
 ?>
                     </tbody>
@@ -705,33 +724,33 @@ if ($torrentCount === 0) {
         <!-- Массовые действия (id/имена — для manage_torrents.js) -->
         <div id="bulkActionsBar">
             <div class="d-flex flex-wrap align-items-center gap-2">
-                <span class="badge rounded-pill text-bg-primary px-3 py-2" id="selectedCounter">0 selected</span>
+                <span class="badge rounded-pill text-bg-primary px-3 py-2" id="selectedCounter"><?= ags_fmt($lang->manage_torrents['lbl_selected_count'], 0) ?></span>
                 <select class="form-select form-select-sm w-auto" name="actiontype" id="actionType" data-mt-call="toggleMoveCategory">
-                    <option value="">— Choose action —</option>
-                    <optgroup label="Organise">
-                        <option value="move">Move to category</option>
-                        <option value="sticky">Toggle sticky</option>
-                        <option value="visible">Toggle visible</option>
-                        <option value="anonymous">Toggle anonymous</option>
+                    <option value=""><?= htmlspecialchars($lang->manage_torrents['opt_choose_action']) ?></option>
+                    <optgroup label="<?= htmlspecialchars($lang->manage_torrents['grp_organise']) ?>">
+                        <option value="move"><?= htmlspecialchars($lang->manage_torrents['opt_move']) ?></option>
+                        <option value="sticky"><?= htmlspecialchars($lang->manage_torrents['opt_sticky']) ?></option>
+                        <option value="visible"><?= htmlspecialchars($lang->manage_torrents['opt_visible']) ?></option>
+                        <option value="anonymous"><?= htmlspecialchars($lang->manage_torrents['opt_anonymous']) ?></option>
                     </optgroup>
-                    <optgroup label="Promotions">
-                        <option value="free">Toggle freeleech</option>
-                        <option value="silver">Toggle silver (50%)</option>
-                        <option value="thirtypercent">Toggle 30% leech</option>
-                        <option value="doubleupload">Toggle 2× upload</option>
+                    <optgroup label="<?= htmlspecialchars($lang->manage_torrents['grp_promotions']) ?>">
+                        <option value="free"><?= htmlspecialchars($lang->manage_torrents['opt_free']) ?></option>
+                        <option value="silver"><?= htmlspecialchars($lang->manage_torrents['opt_silver']) ?></option>
+                        <option value="thirtypercent"><?= htmlspecialchars($lang->manage_torrents['opt_thirty']) ?></option>
+                        <option value="doubleupload"><?= htmlspecialchars($lang->manage_torrents['opt_double']) ?></option>
                     </optgroup>
-                    <optgroup label="Danger">
-                        <option value="banned">Toggle banned</option>
-                        <option value="delete">Delete torrents</option>
+                    <optgroup label="<?= htmlspecialchars($lang->manage_torrents['grp_danger']) ?>">
+                        <option value="banned"><?= htmlspecialchars($lang->manage_torrents['opt_banned']) ?></option>
+                        <option value="delete"><?= htmlspecialchars($lang->manage_torrents['opt_delete']) ?></option>
                     </optgroup>
                 </select>
-                <div id="moveCategory" style="display:none;"><?= ts_category_list('category', 0, '<option value="0">Choose category…</option>') ?></div>
-                <button type="submit" class="btn btn-primary btn-sm px-3" id="executeBtn" disabled><i class="fa-solid fa-play me-1"></i>Apply</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-mt-call="clearSelection" data-mt-args="[]"><i class="fa-solid fa-xmark me-1"></i>Clear</button>
+                <div id="moveCategory" style="display:none;"><?= ts_category_list('category', 0, '<option value="0">' . htmlspecialchars($lang->manage_torrents['opt_choose_category']) . '</option>') ?></div>
+                <button type="submit" class="btn btn-primary btn-sm px-3" id="executeBtn" disabled><i class="fa-solid fa-play me-1"></i><?= $lang->manage_torrents['btn_apply'] ?></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-mt-call="clearSelection" data-mt-args="[]"><i class="fa-solid fa-xmark me-1"></i><?= $lang->manage_torrents['btn_clear'] ?></button>
             </div>
             <div class="mt-muted text-end">
-                <i class="fa-solid fa-list me-1"></i><?= number_format($torrentCount) ?> on page · <?= mksize($totalSize) ?>
-                <span class="ms-2"><i class="fa-solid fa-gauge-high me-1"></i><?= $queryTime ?> ms</span>
+                <i class="fa-solid fa-list me-1"></i><?= ags_fmt($lang->manage_torrents['lbl_page_summary'], number_format($torrentCount), mksize($totalSize)) ?>
+                <span class="ms-2"><i class="fa-solid fa-gauge-high me-1"></i><?= ags_fmt($lang->manage_torrents['lbl_query_ms'], $queryTime) ?></span>
             </div>
         </div>
     </form>
@@ -745,12 +764,12 @@ if ($torrentCount === 0) {
         <div class="modal-content">
             <div class="modal-header">
                 <span class="mt-mh-icon ic-blue"><i class="fa-solid fa-gear"></i></span>
-                <h5 class="modal-title fw-bold">Manage torrent</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold"><?= $lang->manage_torrents['mdl_manage_title'] ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->manage_torrents['tip_close']) ?>"></button>
             </div>
             <div class="modal-body p-4" id="manageTorrentContent">
-                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
-                    <p class="mt-3 text-body-secondary">Loading torrent information…</p></div>
+                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden"><?= $lang->manage_torrents['lbl_loading'] ?></span></div>
+                    <p class="mt-3 text-body-secondary"><?= $lang->manage_torrents['lbl_loading_info'] ?></p></div>
             </div>
         </div>
     </div>
@@ -762,13 +781,13 @@ if ($torrentCount === 0) {
         <div class="modal-content">
             <div class="modal-header">
                 <span class="mt-mh-icon ic-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                <h5 class="modal-title fw-bold" id="bulkConfirmTitle">Are you sure?</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold" id="bulkConfirmTitle"><?= $lang->manage_torrents['mdl_confirm_title'] ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->manage_torrents['tip_close']) ?>"></button>
             </div>
-            <div class="modal-body"><p id="bulkConfirmMessage" class="text-body-secondary mb-0">This action cannot be undone.</p></div>
+            <div class="modal-body"><p id="bulkConfirmMessage" class="text-body-secondary mb-0"><?= $lang->manage_torrents['mdl_confirm_msg'] ?></p></div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
-                <button type="button" class="btn btn-danger px-3" id="bulkConfirmBtn"><i class="fa-solid fa-check me-1"></i>Confirm</button>
+                <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i><?= $lang->manage_torrents['btn_cancel'] ?></button>
+                <button type="button" class="btn btn-danger px-3" id="bulkConfirmBtn"><i class="fa-solid fa-check me-1"></i><?= $lang->manage_torrents['btn_confirm'] ?></button>
             </div>
         </div>
     </div>
@@ -784,10 +803,19 @@ $mtConfig = [
     'successMsg'    => !empty($_SESSION['action_success']) ? (string)$_SESSION['action_success'] : null,
 ];
 unset($_SESSION['action_success']);
+
+// Строки для JS: ключи js_* из ланга, без префикса
+$agsJsLang = [];
+foreach ($lang->manage_torrents as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $agsJsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
 ?>
 <script type="application/json" id="mtConfig"><?= json_encode($mtConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?></script>
-<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents_ui.js?ver=1"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents.js?ver=2"></script>
+<script>const AGS_LANG = <?= json_encode($agsJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents_ui.js?ver=2"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents.js?ver=3"></script>
 
 <?php
 stdfoot();

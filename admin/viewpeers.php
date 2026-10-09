@@ -7,11 +7,27 @@ if (!defined('STAFF_PANEL')) {
 }
 
 define('VP_VERSION', '0.3 by xam');
-const VP_ASSET_VER = 1;
+const VP_ASSET_VER = 2;
 
 /* =========================================================================
  * Helpers
  * ========================================================================= */
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s… produced by $lang->load()) with arguments.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 /**
  * Normalize a DB time value (int timestamp or DATETIME string) to a unix timestamp.
@@ -36,16 +52,18 @@ function vp_ts(mixed $value): int
  */
 function vp_ago(int $ts, int $now): string
 {
+    global $lang;
+
     if ($ts <= 0) {
         return '—';
     }
     $d = max(0, $now - $ts);
 
     return match (true) {
-        $d < 60    => $d . ' sec ago',
-        $d < 3600  => intdiv($d, 60) . ' min ago',
-        $d < 86400 => intdiv($d, 3600) . ' h ago',
-        default    => intdiv($d, 86400) . ' d ago',
+        $d < 60    => ags_fmt($lang->viewpeers['ago_sec'], $d),
+        $d < 3600  => ags_fmt($lang->viewpeers['ago_min'], intdiv($d, 60)),
+        $d < 86400 => ags_fmt($lang->viewpeers['ago_hour'], intdiv($d, 3600)),
+        default    => ags_fmt($lang->viewpeers['ago_day'], intdiv($d, 86400)),
     };
 }
 
@@ -85,7 +103,7 @@ function vp_client(?string $agent, ?string $peer_id): string
         }
     }
 
-    return (string)($lang->global['unknown'] ?? 'Unknown');
+    return $lang->viewpeers['lbl_unknown_client'];
 }
 
 /**
@@ -143,18 +161,20 @@ function vp_datetime(mixed $value): string
  */
 function vp_render_row(array $row, int $now): string
 {
-    global $BASEURL, $dateformat;
+    global $BASEURL, $dateformat, $lang;
+
+    $L = $lang->viewpeers;
 
     // --- User ---
     $username  = (string)($row['username'] ?? '');
     $user_html = $username !== ''
         ? format_name(htmlspecialchars_uni($username), $row['usergroup'] ?? 0, $row['displaygroup'] ?? 0)
-        : '<span class="vp-muted fst-italic">deleted user</span>';
+        : '<span class="vp-muted fst-italic">' . $L['lbl_deleted_user'] . '</span>';
     $initial = $username !== '' ? htmlspecialchars_uni(mb_strtoupper(mb_substr($username, 0, 1))) : '?';
     $profile_link = $BASEURL . '/' . get_profile_link($row['userid'] ?? 0);
 
     // --- Torrent ---
-    $torrent_name = (string)($row['name'] ?? 'Unknown torrent');
+    $torrent_name = (string)($row['name'] ?? $L['lbl_unknown_torrent']);
     $short_name   = htmlspecialchars_uni(cutename($torrent_name, 5));
     $torrent_link = $BASEURL . '/' . get_torrent_link($row['torrent'] ?? 0);
 
@@ -183,7 +203,7 @@ function vp_render_row(array $row, int $now): string
     // --- Address ---
     $ip      = (string)($row['ip'] ?? '');
     $port    = (string)($row['port'] ?? '');
-    $ip_safe = htmlspecialchars_uni($ip !== '' ? $ip : 'N/A');
+    $ip_safe = htmlspecialchars_uni($ip !== '' ? $ip : $L['lbl_na']);
     $is_v6   = $ip !== '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
 
     // --- Traffic ---
@@ -203,16 +223,22 @@ function vp_render_row(array $row, int $now): string
 
     // --- Badges ---
     $connectable = ($row['connectable'] ?? 'no') === 'yes'
-        ? vp_badge('success', 'fa-plug-circle-check', 'yes')
-        : vp_badge('danger', 'fa-plug-circle-xmark', 'no');
+        ? vp_badge('success', 'fa-plug-circle-check', $L['badge_yes'])
+        : vp_badge('danger', 'fa-plug-circle-xmark', $L['badge_no']);
     $status = $is_seed
-        ? vp_badge('success', 'fa-arrow-up-from-bracket', 'seed')
-        : vp_badge('warning', 'fa-arrow-down', 'leech');
+        ? vp_badge('success', 'fa-arrow-up-from-bracket', $L['badge_seed'])
+        : vp_badge('warning', 'fa-arrow-down', $L['badge_leech']);
 
     // --- Activity ---
     $last_ts   = vp_ts($row['last_action'] ?? 0);
     $prev_ts   = vp_ts($row['prev_action'] ?? 0);
     $act_tone  = vp_activity_tone($last_ts, $now);
+
+    // --- Translated attribute texts ---
+    $tip_pct      = htmlspecialchars_uni(ags_fmt($L['tip_complete_pct'], $pct_txt));
+    $tip_copy     = htmlspecialchars_uni($L['tip_copy_ip']);
+    $tip_complete = htmlspecialchars_uni($L['tip_complete']);
+    $port_txt     = htmlspecialchars_uni(ags_fmt($L['lbl_port'], $port !== '' ? $port : $L['lbl_na']));
 
     // --- Search index for client-side filter ---
     $search = htmlspecialchars(mb_strtolower($username . ' ' . $torrent_name . ' ' . $ip . ' ' . vp_client(
@@ -235,7 +261,7 @@ function vp_render_row(array $row, int $now): string
                data-bs-title="' . $popover_title . '"
                data-bs-content="' . $popover_content . '"
                data-bs-html="true">' . $short_name . '</a>
-            <div class="vp-progress-wrap" title="' . $pct_txt . '% complete">
+            <div class="vp-progress-wrap" title="' . $tip_pct . '">
                 <div class="vp-progress vp-tone-' . ($is_seed ? 'success' : 'primary') . '"><span style="width:' . $pct . '%"></span></div>
                 <span class="vp-progress-txt">' . $pct_txt . '%</span>
             </div>
@@ -245,9 +271,9 @@ function vp_render_row(array $row, int $now): string
                 <i class="fa-solid fa-location-dot vp-muted"></i>
                 <span class="font-monospace">' . $ip_safe . '</span>
                 ' . ($is_v6 ? '<span class="vp-tag">v6</span>' : '') . '
-                ' . ($ip !== '' ? '<button type="button" class="vp-copy" data-vp-copy="' . $ip_safe . '" title="Copy IP" aria-label="Copy IP"><i class="fa-solid fa-copy"></i></button>' : '') . '
+                ' . ($ip !== '' ? '<button type="button" class="vp-copy" data-vp-copy="' . $ip_safe . '" title="' . $tip_copy . '" aria-label="' . $tip_copy . '"><i class="fa-solid fa-copy"></i></button>' : '') . '
             </div>
-            <div class="vp-muted small"><i class="fa-solid fa-door-open me-1"></i>port ' . htmlspecialchars_uni($port !== '' ? $port : 'N/A') . '</div>
+            <div class="vp-muted small"><i class="fa-solid fa-door-open me-1"></i>' . $port_txt . '</div>
         </td>
         <td class="text-nowrap">
             <div class="fw-semibold ' . $up_class . '"><i class="fa-solid fa-arrow-up fa-fw"></i> ' . mksize($up) . '</div>
@@ -266,7 +292,7 @@ function vp_render_row(array $row, int $now): string
             <div><i class="fa-solid fa-arrow-up fa-fw"></i> ' . mksize((int)($row['uploadoffset'] ?? 0)) . '</div>
             <div><i class="fa-solid fa-arrow-down fa-fw"></i> ' . mksize((int)($row['downloadoffset'] ?? 0)) . '</div>
         </td>
-        <td class="text-center small text-nowrap">' . ($to_go > 0 ? mksize($to_go) : '<i class="fa-solid fa-check text-success" title="Complete"></i>') . '</td>
+        <td class="text-center small text-nowrap">' . ($to_go > 0 ? mksize($to_go) : '<i class="fa-solid fa-check text-success" title="' . $tip_complete . '"></i>') . '</td>
     </tr>';
 }
 
@@ -274,11 +300,14 @@ function vp_render_row(array $row, int $now): string
  * Page
  * ========================================================================= */
 
-global $BASEURL;
+global $BASEURL, $lang;
 
+$lang->load('viewpeers');
+
+$L   = $lang->viewpeers;
 $now = defined('TIMENOW') ? (int)TIMENOW : time();
 
-stdhead('Peer List');
+stdhead($L['page_title']);
 require_once INC_PATH . '/functions_multipage.php';
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/viewpeers.css?ver=' . VP_ASSET_VER . '">';
@@ -299,7 +328,7 @@ if ($stats_res !== false && ($srow = $db->fetch_array($stats_res))) {
 }
 $total_peers = $stats['cnt'];
 $leechers    = max(0, $total_peers - $stats['seeders']);
-$pct_of      = static fn(int $n): string => $total_peers > 0 ? round($n / $total_peers * 100) . '% of peers' : '—';
+$pct_of      = static fn(int $n): string => $total_peers > 0 ? ags_fmt($L['kpi_pct_of'], round($n / $total_peers * 100)) : '—';
 
 // ---- Pagination ----
 $per_page    = max(20, (int)($ts_perpage ?? 20));
@@ -318,17 +347,17 @@ echo '
     <div class="vp-card vp-head">
         <div class="vp-icon-sq vp-icon-lg vp-tone-primary"><i class="fa-solid fa-network-wired"></i></div>
         <div class="min-w-0">
-            <h4 class="vp-title">Peer List</h4>
-            <div class="vp-sub">Live peer connections on the tracker, newest first</div>
+            <h4 class="vp-title">' . $L['page_title'] . '</h4>
+            <div class="vp-sub">' . $L['page_sub'] . '</div>
         </div>
-        <span class="vp-live ms-auto"><span class="vp-live-dot"></span>Live</span>
+        <span class="vp-live ms-auto"><span class="vp-live-dot"></span>' . $L['lbl_live'] . '</span>
     </div>
 
     <div class="row g-3 mb-3">'
-        . vp_kpi('primary', 'fa-diagram-project', 'Active peers', number_format($total_peers), $total_pages . ' page' . ($total_pages === 1 ? '' : 's'))
-        . vp_kpi('success', 'fa-seedling', 'Seeders', number_format($stats['seeders']), $pct_of($stats['seeders']))
-        . vp_kpi('warning', 'fa-cloud-arrow-down', 'Leechers', number_format($leechers), $pct_of($leechers))
-        . vp_kpi('info', 'fa-users', 'Unique users', number_format($stats['users']), number_format($stats['connectable']) . ' connectable peers')
+        . vp_kpi('primary', 'fa-diagram-project', $L['kpi_active'], number_format($total_peers), ags_fmt($L['kpi_pages'], number_format($total_pages)))
+        . vp_kpi('success', 'fa-seedling', $L['kpi_seeders'], number_format($stats['seeders']), $pct_of($stats['seeders']))
+        . vp_kpi('warning', 'fa-cloud-arrow-down', $L['kpi_leechers'], number_format($leechers), $pct_of($leechers))
+        . vp_kpi('info', 'fa-users', $L['kpi_users'], number_format($stats['users']), ags_fmt($L['kpi_connectable'], number_format($stats['connectable'])))
     . '</div>';
 
 // ---- Toolbar ----
@@ -336,14 +365,14 @@ echo '
     <div class="vp-card vp-toolbar">
         <div class="vp-search">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" id="vp-search" class="form-control" placeholder="Filter this page by user, torrent, IP or client" autocomplete="off">
+            <input type="search" id="vp-search" class="form-control" placeholder="' . htmlspecialchars_uni($L['ph_search']) . '" autocomplete="off">
         </div>
-        <div class="vp-seg" role="group" aria-label="Filter by status">
-            <button type="button" class="vp-pill active" data-vp-filter="all"><i class="fa-solid fa-layer-group"></i>All</button>
-            <button type="button" class="vp-pill" data-vp-filter="seed"><i class="fa-solid fa-seedling"></i>Seeding</button>
-            <button type="button" class="vp-pill" data-vp-filter="leech"><i class="fa-solid fa-cloud-arrow-down"></i>Leeching</button>
+        <div class="vp-seg" role="group" aria-label="' . htmlspecialchars_uni($L['aria_filter']) . '">
+            <button type="button" class="vp-pill active" data-vp-filter="all"><i class="fa-solid fa-layer-group"></i>' . $L['opt_all'] . '</button>
+            <button type="button" class="vp-pill" data-vp-filter="seed"><i class="fa-solid fa-seedling"></i>' . $L['opt_seed'] . '</button>
+            <button type="button" class="vp-pill" data-vp-filter="leech"><i class="fa-solid fa-cloud-arrow-down"></i>' . $L['opt_leech'] . '</button>
         </div>
-        <div class="vp-count ms-lg-auto"><i class="fa-solid fa-eye"></i><span id="vp-visible">0</span> shown on this page</div>
+        <div class="vp-count ms-lg-auto"><i class="fa-solid fa-eye"></i>' . ags_fmt($L['lbl_shown'], '<span id="vp-visible">0</span>') . '</div>
     </div>';
 
 if (!empty($multipage)) {
@@ -367,17 +396,17 @@ if ($result !== false && $db->num_rows($result) > 0) {
             <table class="table table-hover align-middle mb-0 vp-table">
                 <thead>
                     <tr>
-                        <th><i class="fa-solid fa-user"></i>User</th>
-                        <th><i class="fa-solid fa-file-arrow-down"></i>Torrent</th>
-                        <th><i class="fa-solid fa-globe"></i>Address</th>
-                        <th><i class="fa-solid fa-right-left"></i>Traffic</th>
-                        <th><i class="fa-solid fa-desktop"></i>Client</th>
-                        <th class="text-center"><i class="fa-solid fa-plug"></i>Connectable</th>
-                        <th class="text-center"><i class="fa-solid fa-signal"></i>Status</th>
-                        <th class="text-center"><i class="fa-solid fa-play"></i>Started</th>
-                        <th><i class="fa-solid fa-heart-pulse"></i>Activity</th>
-                        <th><i class="fa-solid fa-sliders"></i>Offsets</th>
-                        <th class="text-center"><i class="fa-solid fa-hourglass-half"></i>To go</th>
+                        <th><i class="fa-solid fa-user"></i>' . $L['col_user'] . '</th>
+                        <th><i class="fa-solid fa-file-arrow-down"></i>' . $L['col_torrent'] . '</th>
+                        <th><i class="fa-solid fa-globe"></i>' . $L['col_address'] . '</th>
+                        <th><i class="fa-solid fa-right-left"></i>' . $L['col_traffic'] . '</th>
+                        <th><i class="fa-solid fa-desktop"></i>' . $L['col_client'] . '</th>
+                        <th class="text-center"><i class="fa-solid fa-plug"></i>' . $L['col_connectable'] . '</th>
+                        <th class="text-center"><i class="fa-solid fa-signal"></i>' . $L['col_status'] . '</th>
+                        <th class="text-center"><i class="fa-solid fa-play"></i>' . $L['col_started'] . '</th>
+                        <th><i class="fa-solid fa-heart-pulse"></i>' . $L['col_activity'] . '</th>
+                        <th><i class="fa-solid fa-sliders"></i>' . $L['col_offsets'] . '</th>
+                        <th class="text-center"><i class="fa-solid fa-hourglass-half"></i>' . $L['col_to_go'] . '</th>
                     </tr>
                 </thead>
                 <tbody>';
@@ -389,7 +418,7 @@ if ($result !== false && $db->num_rows($result) > 0) {
     echo '
                     <tr id="vp-no-match" hidden>
                         <td colspan="11" class="text-center py-4 vp-muted">
-                            <i class="fa-solid fa-filter-circle-xmark me-2"></i>No peers on this page match the filter.
+                            <i class="fa-solid fa-filter-circle-xmark me-2"></i>' . $L['msg_no_match'] . '
                         </td>
                     </tr>
                 </tbody>
@@ -400,8 +429,8 @@ if ($result !== false && $db->num_rows($result) > 0) {
     echo '
     <div class="vp-card vp-empty">
         <div class="vp-icon-sq vp-icon-lg vp-tone-secondary mx-auto mb-3"><i class="fa-solid fa-users-slash"></i></div>
-        <h5 class="mb-1">No active peers</h5>
-        <p class="vp-muted mb-0">Peers appear here as soon as a client announces to the tracker.</p>
+        <h5 class="mb-1">' . $L['msg_empty_title'] . '</h5>
+        <p class="vp-muted mb-0">' . $L['msg_empty_text'] . '</p>
     </div>';
 }
 
@@ -411,13 +440,21 @@ if (!empty($multipage)) {
 
 echo '
     <div class="vp-foot vp-muted">
-        <span><span class="vp-dot vp-tone-success"></span>announced ≤ 30 min</span>
-        <span><span class="vp-dot vp-tone-warning"></span>≤ 60 min</span>
-        <span><span class="vp-dot vp-tone-danger"></span>stale</span>
+        <span><span class="vp-dot vp-tone-success"></span>' . $L['legend_fresh'] . '</span>
+        <span><span class="vp-dot vp-tone-warning"></span>' . $L['legend_late'] . '</span>
+        <span><span class="vp-dot vp-tone-danger"></span>' . $L['legend_stale'] . '</span>
         <span class="ms-auto">viewpeers ' . VP_VERSION . '</span>
     </div>
 </div>';
 
+// ---- JS strings ----
+$js_lang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $js_lang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+echo '<script>const AGS_LANG = ' . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
 echo '<script src="' . $BASEURL . '/admin/scripts/viewpeers.js?ver=' . VP_ASSET_VER . '" defer></script>';
 
 stdfoot();

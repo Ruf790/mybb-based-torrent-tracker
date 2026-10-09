@@ -6,16 +6,36 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct access to this file is not allowed.</div>');
 }
 
+$lang->load('viewunbaniprequest');
+
 define('UL_VERSION', '0.9');
 
 // ── Helpers ───────────────────────────────────────────────────
 
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitutes {1}, {2}… (and %1$s, %2$s… produced by $lang->load()) with the given args.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 function auto_redirect(string $url, int $seconds = 2): string
 {
+    global $lang;
     $ms = $seconds * 1000;
     $json_url = json_encode($url);
     return "<script>setTimeout(() => location.href = {$json_url}, {$ms});</script>"
-         . '<p class="text-muted small mt-2"><i class="bi bi-arrow-clockwise me-1"></i>Redirecting in ' . $seconds . ' seconds…</p>';
+         . '<p class="text-muted small mt-2"><i class="bi bi-arrow-clockwise me-1"></i>'
+         . htmlspecialchars(ags_fmt($lang->viewunbaniprequest['redirect_in'], $seconds)) . '</p>';
 }
 
 function display_error(string $title, string $message): void
@@ -44,11 +64,11 @@ if ($action === 'delete') {
     $id = (int)($_GET['id'] ?? 0);
 
     if ($id <= 0) {
-        display_error('Error', 'Invalid request ID');
+        display_error($lang->viewunbaniprequest['err_title'], $lang->viewunbaniprequest['err_invalid_id']);
         exit;
     }
 
-    stdhead('Unban Requests Manager');
+    stdhead($lang->viewunbaniprequest['page_title']);
 
     try {
         // DELETE с использованием prepared statement
@@ -58,16 +78,22 @@ if ($action === 'delete') {
             echo '<div class="container mt-4">
                 <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
                     <i class="bi bi-check-circle-fill me-2"></i>
-                    <strong>Done!</strong> Unban request #' . $id . ' has been deleted.
+                    ' . ags_fmt($lang->viewunbaniprequest['flash_deleted'], $id) . '
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 ' . auto_redirect($_this_script_) . '
             </div>';
         } else {
-            display_error('Delete Failed', 'Unable to delete unban request #' . $id);
+            display_error(
+                $lang->viewunbaniprequest['err_delete_failed_title'],
+                ags_fmt($lang->viewunbaniprequest['err_delete_failed'], $id)
+            );
         }
     } catch (Exception $e) {
-        display_error('Database Error', 'Failed to delete request: ' . $e->getMessage());
+        display_error(
+            $lang->viewunbaniprequest['err_db_title'],
+            ags_fmt($lang->viewunbaniprequest['err_db'], $e->getMessage())
+        );
     }
 
     stdfoot();
@@ -76,7 +102,7 @@ if ($action === 'delete') {
 
 // ── Main page ─────────────────────────────────────────────────
 
-stdhead('Unban Requests Manager');
+stdhead($lang->viewunbaniprequest['page_title']);
 
 
 $perpage      = $ts_perpage ?? 20;
@@ -104,6 +130,16 @@ $result = $db->sql_query_prepared(
     [$perpage, $offset]
 );
 
+// JS strings: js_* keys → AGS_LANG without the prefix
+$ags_js_lang = [];
+foreach ($lang->viewunbaniprequest as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $ags_js_lang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
+$L = static fn(string $key): string => htmlspecialchars((string)$lang->viewunbaniprequest[$key]);
+
 ?>
 
 <!-- ══════════════════ PAGE HEADER ══════════════════ -->
@@ -111,23 +147,23 @@ $result = $db->sql_query_prepared(
     <div class="container">
         <div class="row align-items-center">
             <div class="col-md-8">
-                <nav aria-label="breadcrumb">
+                <nav aria-label="<?= $L('aria_breadcrumb') ?>">
                     <ol class="breadcrumb mb-0">
-                        <li class="breadcrumb-item"><a href="index.php">Staff Panel</a></li>
-                        <li class="breadcrumb-item active">Unban Requests</li>
+                        <li class="breadcrumb-item"><a href="index.php"><?= $L('crumb_staff') ?></a></li>
+                        <li class="breadcrumb-item active"><?= $L('crumb_current') ?></li>
                     </ol>
                 </nav>
                 <h1 class="h2 mb-0 mt-2">
-                    <i class="bi bi-shield-lock me-2"></i>Unban Requests Manager
+                    <i class="bi bi-shield-lock me-2"></i><?= $L('page_title') ?>
                 </h1>
                 <p class="text-muted mb-0">
-                    Manage user requests for IP unbanning
+                    <?= $L('page_subtitle') ?>
                     <span class="badge bg-primary ms-2"><?= UL_VERSION ?></span>
                 </p>
             </div>
             <div class="col-md-4 text-md-end">
                 <span class="badge bg-secondary fs-6">
-                    <i class="bi bi-list-ul me-1"></i><?= number_format($total_count) ?> Requests
+                    <i class="bi bi-list-ul me-1"></i><?= htmlspecialchars(ags_fmt($lang->viewunbaniprequest['badge_total'], number_format($total_count))) ?>
                 </span>
             </div>
         </div>
@@ -142,8 +178,8 @@ $result = $db->sql_query_prepared(
     <div class="card border-0 shadow-sm">
         <div class="card-body text-center py-5">
             <i class="bi bi-inbox fs-1 text-muted opacity-50 d-block mb-3"></i>
-            <h3 class="text-muted mb-2">No Unban Requests</h3>
-            <p class="text-muted mb-0">There are currently no pending unban requests.</p>
+            <h3 class="text-muted mb-2"><?= $L('empty_title') ?></h3>
+            <p class="text-muted mb-0"><?= $L('empty_text') ?></p>
         </div>
     </div>
 
@@ -153,13 +189,13 @@ $result = $db->sql_query_prepared(
 
         <!-- Card header -->
         <div class="card-header bg-light border-0 d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="bi bi-table me-2"></i>Unban Requests</h5>
+            <h5 class="mb-0"><i class="bi bi-table me-2"></i><?= $L('sec_list') ?></h5>
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary" onclick="window.print()">
-                    <i class="bi bi-printer me-1"></i>Print
+                    <i class="bi bi-printer me-1"></i><?= $L('btn_print') ?>
                 </button>
                 <button class="btn btn-outline-secondary" onclick="exportToCSV()">
-                    <i class="bi bi-download me-1"></i>Export
+                    <i class="bi bi-download me-1"></i><?= $L('btn_export') ?>
                 </button>
             </div>
         </div>
@@ -169,13 +205,13 @@ $result = $db->sql_query_prepared(
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width:80px"><i class="bi bi-hash"></i> ID</th>
-                        <th><i class="bi bi-globe me-1"></i>IP Address</th>
-                        <th><i class="bi bi-globe-americas me-1"></i>Real IP</th>
-                        <th><i class="bi bi-envelope me-1"></i>Email</th>
-                        <th><i class="bi bi-chat-text me-1"></i>Comment</th>
-                        <th><i class="bi bi-calendar-plus me-1"></i>Submitted</th>
-                        <th class="text-center" style="width:150px"><i class="bi bi-gear me-1"></i>Actions</th>
+                        <th class="text-center" style="width:80px"><i class="bi bi-hash"></i> <?= $L('col_id') ?></th>
+                        <th><i class="bi bi-globe me-1"></i><?= $L('col_ip') ?></th>
+                        <th><i class="bi bi-globe-americas me-1"></i><?= $L('col_realip') ?></th>
+                        <th><i class="bi bi-envelope me-1"></i><?= $L('col_email') ?></th>
+                        <th><i class="bi bi-chat-text me-1"></i><?= $L('col_comment') ?></th>
+                        <th><i class="bi bi-calendar-plus me-1"></i><?= $L('col_submitted') ?></th>
+                        <th class="text-center" style="width:150px"><i class="bi bi-gear me-1"></i><?= $L('col_actions') ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -186,8 +222,8 @@ $result = $db->sql_query_prepared(
                             <span class="badge bg-dark rounded-pill">#<?= (int)$request['id'] ?></span>
                         </td>
 
-                        <td><code><?= htmlspecialchars((string)($request['ip']     ?? 'N/A')) ?></code></td>
-                        <td><code><?= htmlspecialchars((string)($request['realip'] ?? 'N/A')) ?></code></td>
+                        <td><code><?= htmlspecialchars((string)($request['ip']     ?? $lang->viewunbaniprequest['val_na'])) ?></code></td>
+                        <td><code><?= htmlspecialchars((string)($request['realip'] ?? $lang->viewunbaniprequest['val_na'])) ?></code></td>
 
                         <td>
                             <?php if (!empty($request['email'])): ?>
@@ -195,7 +231,7 @@ $result = $db->sql_query_prepared(
                                     <i class="bi bi-envelope me-1 text-primary"></i><?= htmlspecialchars($request['email']) ?>
                                 </a>
                             <?php else: ?>
-                                <span class="text-muted">Not provided</span>
+                                <span class="text-muted"><?= $L('val_no_email') ?></span>
                             <?php endif; ?>
                         </td>
 
@@ -203,7 +239,7 @@ $result = $db->sql_query_prepared(
                             <div class="text-truncate comment-preview" style="max-width:250px"
                                  data-bs-toggle="tooltip" data-bs-placement="top"
                                  title="<?= htmlspecialchars((string)($request['comment'] ?? '')) ?>">
-                                <?= htmlspecialchars((string)($request['comment'] ?? 'No comment')) ?>
+                                <?= htmlspecialchars((string)($request['comment'] ?? $lang->viewunbaniprequest['val_no_comment'])) ?>
                             </div>
                         </td>
 
@@ -217,13 +253,13 @@ $result = $db->sql_query_prepared(
                                 <?php if ($request['loginaid']): ?>
                                     <a href="<?= $_this_script_no_act ?>?act=maxlogin&action=edit&id=<?= (int)$request['loginaid'] ?>&return=yes"
                                        class="btn btn-outline-primary"
-                                       data-bs-toggle="tooltip" title="Edit Failed Login Attempt">
+                                       data-bs-toggle="tooltip" title="<?= $L('tip_edit_login') ?>">
                                         <i class="bi bi-pencil"></i>
                                     </a>
                                     <a href="<?= $_this_script_no_act ?>?act=maxlogin&action=delete&id=<?= (int)$request['loginaid'] ?>&return=yes"
                                        class="btn btn-outline-warning"
-                                       data-bs-toggle="tooltip" title="Delete Failed Login Attempt"
-                                       onclick="return confirm('Delete this failed login attempt?')">
+                                       data-bs-toggle="tooltip" title="<?= $L('tip_delete_login') ?>"
+                                       onclick="return confirm(t('confirm_delete_login', 'Delete this failed login attempt?'))">
                                         <i class="bi bi-shield-x"></i>
                                     </a>
                                 <?php endif; ?>
@@ -233,8 +269,8 @@ $result = $db->sql_query_prepared(
                                         class="btn btn-outline-danger btn-delete-request"
                                         data-id="<?= (int)$request['id'] ?>"
                                         data-ip="<?= htmlspecialchars((string)($request['ip'] ?? '')) ?>"
-                                        data-email="<?= htmlspecialchars((string)($request['email'] ?? 'N/A')) ?>"
-                                        data-bs-toggle="tooltip" title="Delete Unban Request">
+                                        data-email="<?= htmlspecialchars((string)($request['email'] ?? $lang->viewunbaniprequest['val_na'])) ?>"
+                                        data-bs-toggle="tooltip" title="<?= $L('tip_delete_request') ?>">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>
@@ -275,26 +311,26 @@ $result = $db->sql_query_prepared(
     <!-- Legend -->
     <div class="card border-0 shadow-sm mt-3">
         <div class="card-header bg-light border-0">
-            <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Action Legend</h6>
+            <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i><?= $L('sec_legend') ?></h6>
         </div>
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4 d-flex align-items-center gap-2">
                     <span class="badge bg-primary"><i class="bi bi-pencil"></i></span>
-                    <span class="small">Edit Failed Login Attempt</span>
+                    <span class="small"><?= $L('tip_edit_login') ?></span>
                 </div>
                 <div class="col-md-4 d-flex align-items-center gap-2">
                     <span class="badge bg-warning text-dark"><i class="bi bi-shield-x"></i></span>
-                    <span class="small">Delete Failed Login Attempt</span>
+                    <span class="small"><?= $L('tip_delete_login') ?></span>
                 </div>
                 <div class="col-md-4 d-flex align-items-center gap-2">
                     <span class="badge bg-danger"><i class="bi bi-trash"></i></span>
-                    <span class="small">Delete Unban Request</span>
+                    <span class="small"><?= $L('tip_delete_request') ?></span>
                 </div>
             </div>
             <div class="alert alert-info mt-3 mb-0">
                 <i class="bi bi-lightbulb me-2"></i>
-                <strong>Note:</strong> If no edit button is shown, the IP address could not be found in the failed login attempts database.
+                <?= $lang->viewunbaniprequest['hint_legend_note'] ?>
             </div>
         </div>
     </div>
@@ -316,8 +352,8 @@ $result = $db->sql_query_prepared(
                         <i class="bi bi-trash3-fill text-danger fs-4"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title mb-0 fw-bold" id="deleteModalLabel">Delete Unban Request</h5>
-                        <small class="text-muted">This action cannot be undone</small>
+                        <h5 class="modal-title mb-0 fw-bold" id="deleteModalLabel"><?= $L('modal_title') ?></h5>
+                        <small class="text-muted"><?= $L('modal_subtitle') ?></small>
                     </div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -326,35 +362,35 @@ $result = $db->sql_query_prepared(
             <div class="modal-body pt-3">
                 <div class="alert alert-danger border-0 rounded-3 mb-3">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    You are about to permanently delete this unban request.
+                    <?= $L('modal_warning') ?>
                 </div>
 
                 <!-- Request details -->
                 <div class="bg-light rounded-3 p-3 mb-3">
                     <div class="row g-2 small">
-                        <div class="col-4 text-muted fw-semibold">Request ID</div>
+                        <div class="col-4 text-muted fw-semibold"><?= $L('lbl_request_id') ?></div>
                         <div class="col-8"><span class="badge bg-dark" id="modal-id">—</span></div>
 
-                        <div class="col-4 text-muted fw-semibold">IP Address</div>
+                        <div class="col-4 text-muted fw-semibold"><?= $L('col_ip') ?></div>
                         <div class="col-8"><code id="modal-ip">—</code></div>
 
-                        <div class="col-4 text-muted fw-semibold">Email</div>
+                        <div class="col-4 text-muted fw-semibold"><?= $L('col_email') ?></div>
                         <div class="col-8" id="modal-email">—</div>
                     </div>
                 </div>
 
                 <p class="text-muted small mb-0">
                     <i class="bi bi-info-circle me-1"></i>
-                    The user will <strong>not</strong> be notified about this deletion.
+                    <?= $lang->viewunbaniprequest['hint_modal_no_notify'] ?>
                 </p>
             </div>
 
             <div class="modal-footer border-0 pt-0 gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="bi bi-x-lg me-1"></i>Cancel
+                    <i class="bi bi-x-lg me-1"></i><?= $L('btn_cancel') ?>
                 </button>
                 <a href="#" id="modal-confirm-btn" class="btn btn-danger px-4">
-                    <i class="bi bi-trash3 me-1"></i>Delete Request
+                    <i class="bi bi-trash3 me-1"></i><?= $L('btn_delete_request') ?>
                 </a>
             </div>
         </div>
@@ -363,6 +399,18 @@ $result = $db->sql_query_prepared(
 
 <!-- ══════════════════ JS ══════════════════ -->
 <script>
+const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+// t(key, fallback, ...args) — {1} / %1$s substitution, English fallback
+function t(key, fallback, ...args) {
+    let s = (AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach((a, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+    });
+    return s;
+}
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // Tooltips

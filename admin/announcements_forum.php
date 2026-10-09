@@ -10,6 +10,8 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct access not allowed.</div>');
 }
 
+$lang->load('announcements_forum');
+
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_multipage.php';
@@ -29,6 +31,43 @@ define('AF_VERSION', 'v1.0');
 
 /* ─────────────────────────── Helpers ────────────────────────────── */
 
+if (!function_exists('ags_fmt')) {
+    /** Substitute {1}, {2}… (and %1$s… produced by $lang->load()) in a lang string. */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/** JS strings (js_* keys without prefix) + t() helper, output before page scripts. */
+function af_js_lang(): string
+{
+    global $lang;
+    $arr = [];
+    foreach ($lang->announcements_forum as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $arr[substr((string)$k, 3)] = $v;
+        }
+    }
+    $json = json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    $helper = <<<'JS'
+function t(key, fallback, ...args) {
+    const s = (AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    return s.replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+        const i = parseInt(a ?? b, 10) - 1;
+        return i >= 0 && i < args.length ? String(args[i]) : m;
+    });
+}
+JS;
+    return "<script>\nconst AGS_LANG = {$json};\n{$helper}\n</script>\n";
+}
+
 function af_redirect(string $msg = ''): never
 {
     redirect('admin/index.php?act=announcements_forum', $msg);
@@ -36,7 +75,7 @@ function af_redirect(string $msg = ''): never
 
 function af_get_announcement(int $id): array
 {
-    global $db;
+    global $db, $lang;
     $q = $db->sql_query_prepared(
         "SELECT a.*, u.username AS author_name
          FROM announcements a
@@ -45,14 +84,14 @@ function af_get_announcement(int $id): array
         [$id]
     );
     $row = $q ? $db->fetch_array($q) : null;
-    if (!$row) af_redirect('Announcement not found.');
+    if (!$row) af_redirect($lang->announcements_forum['flash_not_found']);
     return $row;
 }
 
 function af_get_forums(): array
 {
-    global $db;
-    $forums = ['-1' => '🌐 Global (All Forums)'];
+    global $db, $lang;
+    $forums = ['-1' => htmlspecialchars($lang->announcements_forum['opt_global_all'])];
     $q = $db->sql_query_prepared("SELECT fid, name, pid FROM forums ORDER BY disporder ASC");
     while ($q && ($f = $db->fetch_array($q))) {
         $prefix = $f['pid'] > 0 ? '   ↳ ' : '';
@@ -63,7 +102,7 @@ function af_get_forums(): array
 
 function af_parse_dates(array &$errors, int &$startdate, int &$enddate): void
 {
-    global $CURUSER;
+    global $CURUSER, $lang;
 
     $offset   = (float)$CURUSER['timezone'] * 3600 + (int)$CURUSER['dst'] * 3600;
     $months   = ['01','02','03','04','05','06','07','08','09','10','11','12'];
@@ -77,10 +116,10 @@ function af_parse_dates(array &$errors, int &$startdate, int &$enddate): void
     $si = (int)($st[1] ?? 0);
     if (stristr($_POST['starttime_time'] ?? '', 'pm')) { $sh += 12; if ($sh >= 24) $sh = 0; }
 
-    if (!checkdate((int)$sm, $sd, $sy)) { $errors[] = 'Invalid start date.'; }
+    if (!checkdate((int)$sm, $sd, $sy)) { $errors[] = $lang->announcements_forum['err_start_invalid']; }
     else {
         $startdate = (int)gmmktime($sh, $si, 0, (int)$sm, $sd, $sy) - (int)$offset;
-        if ($startdate <= 0) $errors[] = 'Invalid start date.';
+        if ($startdate <= 0) $errors[] = $lang->announcements_forum['err_start_invalid'];
     }
 
     // End date
@@ -97,10 +136,10 @@ function af_parse_dates(array &$errors, int &$startdate, int &$enddate): void
     $ei = (int)($et[1] ?? 0);
     if (stristr($_POST['endtime_time'] ?? '', 'pm')) { $eh += 12; if ($eh >= 24) $eh = 0; }
 
-    if (!checkdate((int)$em, $ed, $ey)) { $errors[] = 'Invalid end date.'; return; }
+    if (!checkdate((int)$em, $ed, $ey)) { $errors[] = $lang->announcements_forum['err_end_invalid']; return; }
     $enddate = (int)gmmktime($eh, $ei, 0, (int)$em, $ed, $ey) - (int)$offset;
-    if ($enddate <= 0) { $errors[] = 'Invalid end date.'; return; }
-    if ($enddate <= $startdate) $errors[] = 'End date must be after start date.';
+    if ($enddate <= 0) { $errors[] = $lang->announcements_forum['err_end_invalid']; return; }
+    if ($enddate <= $startdate) $errors[] = $lang->announcements_forum['err_end_before_start'];
 }
 
 function af_build_date_selects(int $timestamp): array
@@ -118,14 +157,18 @@ function af_build_date_selects(int $timestamp): array
 //function af_build_editor(string $value = ''): string
 function af_build_editor(string $value = '', string $id = 'message'): string
 {
-    global $smilies, $BASEURL;
+    global $smilies, $BASEURL, $lang;
     $editor = insert_bbcode_editor($smilies, $BASEURL, 'message');
     return $editor['toolbar']
         . '<textarea class="form-control" id="message" name="message" rows="12"'
-        . ' placeholder="Write your announcement using BBCode..." required>'
+        . ' placeholder="' . htmlspecialchars($lang->announcements_forum['hint_message']) . '" required>'
         . htmlspecialchars($value) . '</textarea>'
-        . '<div class="form-text text-end"><span id="charCount">'
-        . strlen($value) . '</span> / 5000 characters</div>'
+        . '<div class="form-text text-end">'
+        . ags_fmt(
+            htmlspecialchars($lang->announcements_forum['hint_char_count']),
+            '<span id="charCount">' . strlen($value) . '</span>'
+        )
+        . '</div>'
         . $editor['modal'];
 }
 
@@ -141,12 +184,12 @@ function af_day_options(int $selected): string
 
 function af_month_options(string $selected): string
 {
-    $months = ['01'=>'January','02'=>'February','03'=>'March','04'=>'April',
-               '05'=>'May','06'=>'June','07'=>'July','08'=>'August',
-               '09'=>'September','10'=>'October','11'=>'November','12'=>'December'];
+    global $lang;
+    $months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
     $html = '';
-    foreach ($months as $val => $name) {
+    foreach ($months as $val) {
         $sel   = $selected === $val ? ' selected' : '';
+        $name  = htmlspecialchars($lang->announcements_forum['opt_month_' . $val]);
         $html .= "<option value=\"{$val}\"{$sel}>{$name}</option>";
     }
     return $html;
@@ -154,10 +197,11 @@ function af_month_options(string $selected): string
 
 function af_status_badge(array $row): string
 {
+    global $lang;
     $now = TIMENOW;
-    if ($row['startdate'] > $now) return '<span class="badge bg-secondary">Scheduled</span>';
-    if ($row['enddate'] > 0 && $row['enddate'] < $now) return '<span class="badge bg-danger">Expired</span>';
-    return '<span class="badge bg-success">Active</span>';
+    if ($row['startdate'] > $now) return '<span class="badge bg-secondary">' . htmlspecialchars($lang->announcements_forum['status_scheduled']) . '</span>';
+    if ($row['enddate'] > 0 && $row['enddate'] < $now) return '<span class="badge bg-danger">' . htmlspecialchars($lang->announcements_forum['status_expired']) . '</span>';
+    return '<span class="badge bg-success">' . htmlspecialchars($lang->announcements_forum['status_active']) . '</span>';
 }
 
 /* ─────────────────────────── Router ─────────────────────────────── */
@@ -182,9 +226,9 @@ match ($action) {
 
 function af_handle_list(): void
 {
-    global $db;
+    global $db, $lang;
 
-    stdhead('Forum Announcements ' . AF_VERSION);
+    stdhead($lang->announcements_forum['pane_list'] . ' ' . AF_VERSION);
 
     $total_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type IN ('forum','global')");
     $total   = $total_q ? (int)$db->fetch_array($total_q)['c'] : 0;
@@ -206,28 +250,28 @@ function af_handle_list(): void
     ?>
     <div class="container mt-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="mb-0"><i class="fas fa-newspaper me-2 text-success"></i>Forum Announcements</h3>
+            <h3 class="mb-0"><i class="fas fa-newspaper me-2 text-success"></i><?= htmlspecialchars($lang->announcements_forum['pane_list']) ?></h3>
             <a href="<?= $script ?>?act=announcements_forum&action=add" class="btn btn-success">
-                <i class="fas fa-plus me-1"></i> New Announcement
+                <i class="fas fa-plus me-1"></i> <?= htmlspecialchars($lang->announcements_forum['btn_new']) ?>
             </a>
         </div>
 
         <div class="card shadow-sm border-0">
             <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">Announcements</h6>
-                <span class="badge bg-light text-dark">Total: <?= number_format($total) ?></span>
+                <h6 class="mb-0"><?= htmlspecialchars($lang->announcements_forum['sec_announcements']) ?></h6>
+                <span class="badge bg-light text-dark"><?= htmlspecialchars(ags_fmt($lang->announcements_forum['lbl_total'], number_format($total))) ?></span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0 align-middle">
                     <thead class="table-light">
                         <tr>
-                            <th width="50">ID</th>
-                            <th>Subject</th>
-                            <th width="120">Forum</th>
-                            <th width="100">Status</th>
-                            <th width="100">Start</th>
-                            <th width="100">End</th>
-                            <th width="130" class="text-center">Actions</th>
+                            <th width="50"><?= htmlspecialchars($lang->announcements_forum['col_id']) ?></th>
+                            <th><?= htmlspecialchars($lang->announcements_forum['col_subject']) ?></th>
+                            <th width="120"><?= htmlspecialchars($lang->announcements_forum['col_forum']) ?></th>
+                            <th width="100"><?= htmlspecialchars($lang->announcements_forum['col_status']) ?></th>
+                            <th width="100"><?= htmlspecialchars($lang->announcements_forum['col_start']) ?></th>
+                            <th width="100"><?= htmlspecialchars($lang->announcements_forum['col_end']) ?></th>
+                            <th width="130" class="text-center"><?= htmlspecialchars($lang->announcements_forum['col_actions']) ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -238,18 +282,18 @@ function af_handle_list(): void
                             <td>
                                 <strong><?= htmlspecialchars($row['subject']) ?></strong>
                                 <div class="text-muted small">
-                                    by <?= htmlspecialchars($row['author_name'] ?? 'Unknown') ?>
+                                    <?= htmlspecialchars(ags_fmt($lang->announcements_forum['lbl_by_author'], (string)($row['author_name'] ?? $lang->announcements_forum['lbl_unknown']))) ?>
                                 </div>
                             </td>
                             <td>
                                 <?php $fid = (int)$row['fid']; ?>
                                 <?php if ($fid === -1): ?>
-                                    <span class="badge bg-primary">🌐 Global</span>
+                                    <span class="badge bg-primary"><?= htmlspecialchars($lang->announcements_forum['badge_global']) ?></span>
                                 <?php elseif ($fid === 0): ?>
-                                    <span class="badge bg-secondary">Tracker</span>
+                                    <span class="badge bg-secondary"><?= htmlspecialchars($lang->announcements_forum['badge_tracker']) ?></span>
                                 <?php else: ?>
                                     <span class="badge bg-info text-dark">
-                                        <?= htmlspecialchars($forums[(string)$fid] ?? "Forum #{$fid}") ?>
+                                        <?= htmlspecialchars($forums[(string)$fid] ?? ags_fmt($lang->announcements_forum['lbl_forum_n'], $fid)) ?>
                                     </span>
                                 <?php endif; ?>
                             </td>
@@ -261,14 +305,14 @@ function af_handle_list(): void
                             <td class="text-center">
                                 <div class="btn-group btn-group-sm">
                                     <a href="<?= $script ?>?act=announcements_forum&action=view&id=<?= (int)$row['id'] ?>"
-                                       class="btn btn-outline-info" title="View"><i class="fas fa-eye"></i></a>
+                                       class="btn btn-outline-info" title="<?= htmlspecialchars($lang->announcements_forum['btn_view']) ?>"><i class="fas fa-eye"></i></a>
                                     <a href="<?= $script ?>?act=announcements_forum&action=edit&id=<?= (int)$row['id'] ?>"
-                                       class="btn btn-outline-primary" title="Edit"><i class="fas fa-edit"></i></a>
-                                    <button class="btn btn-outline-warning" title="Duplicate"
+                                       class="btn btn-outline-primary" title="<?= htmlspecialchars($lang->announcements_forum['btn_edit']) ?>"><i class="fas fa-edit"></i></a>
+                                    <button class="btn btn-outline-warning" title="<?= htmlspecialchars($lang->announcements_forum['btn_duplicate']) ?>"
                                             onclick="afDuplicate(<?= (int)$row['id'] ?>)">
                                         <i class="fas fa-copy"></i>
                                     </button>
-                                    <button class="btn btn-outline-danger" title="Delete"
+                                    <button class="btn btn-outline-danger" title="<?= htmlspecialchars($lang->announcements_forum['btn_delete']) ?>"
                                             onclick="afDelete(<?= (int)$row['id'] ?>, '<?= htmlspecialchars(addslashes($row['subject'])) ?>')">
                                         <i class="fas fa-trash"></i>
                                     </button>
@@ -278,7 +322,7 @@ function af_handle_list(): void
                         <?php endwhile; ?>
                     <?php else: ?>
                         <tr><td colspan="7" class="text-center py-5 text-muted">
-                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>No forum announcements yet
+                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i><?= htmlspecialchars($lang->announcements_forum['lbl_empty']) ?>
                         </td></tr>
                     <?php endif; ?>
                     </tbody>
@@ -301,6 +345,7 @@ function af_handle_list(): void
 
     <?= af_delete_modal($script) ?>
 
+    <?= af_js_lang() ?>
     <script>
     function afDelete(id, subject) {
         document.getElementById('deleteTitle').textContent = subject;
@@ -309,7 +354,7 @@ function af_handle_list(): void
         new bootstrap.Modal(document.getElementById('deleteModal')).show();
     }
     function afDuplicate(id) {
-        if (!confirm('Duplicate this announcement?')) return;
+        if (!confirm(t('confirm_duplicate', 'Duplicate this announcement?'))) return;
         fetch('<?= $script ?>?act=announcements_forum&action=duplicate&id=' + id, {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -329,23 +374,23 @@ function af_handle_list(): void
 
 function af_handle_view(int $id): void
 {
-    global $db, $parser, $parser_options;
+    global $db, $parser, $parser_options, $lang;
 
-    if ($id <= 0) af_redirect('Invalid ID.');
+    if ($id <= 0) af_redirect($lang->announcements_forum['flash_invalid_id']);
     $row    = af_get_announcement($id);
     $forums = af_get_forums();
     $script = htmlspecialchars($_SERVER['SCRIPT_NAME']);
 
     $db->sql_query_prepared("UPDATE announcements SET views = views + 1 WHERE id = ?", [$id]);
 
-    stdhead('View: ' . htmlspecialchars($row['subject']));
+    stdhead(ags_fmt($lang->announcements_forum['pane_view'], htmlspecialchars($row['subject'])));
     ?>
     <div class="container mt-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <nav aria-label="breadcrumb">
+            <nav aria-label="<?= htmlspecialchars($lang->announcements_forum['aria_breadcrumb']) ?>">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item">
-                        <a href="<?= $script ?>?act=announcements_forum">Forum Announcements</a>
+                        <a href="<?= $script ?>?act=announcements_forum"><?= htmlspecialchars($lang->announcements_forum['pane_list']) ?></a>
                     </li>
                     <li class="breadcrumb-item active"><?= htmlspecialchars($row['subject']) ?></li>
                 </ol>
@@ -361,22 +406,22 @@ function af_handle_view(int $id): void
                     </div>
                     <div class="card-body">
                         <div class="d-flex flex-wrap gap-3 mb-3 text-muted small border-bottom pb-3">
-                            <span><i class="fas fa-user me-1"></i><?= htmlspecialchars($row['author_name'] ?? 'Unknown') ?></span>
+                            <span><i class="fas fa-user me-1"></i><?= htmlspecialchars((string)($row['author_name'] ?? $lang->announcements_forum['lbl_unknown'])) ?></span>
                             <span><i class="fas fa-calendar me-1"></i><?= my_datee('relative', (int)$row['added']) ?></span>
-                            <span><i class="fas fa-eye me-1"></i><?= (int)$row['views'] + 1 ?> views</span>
+                            <span><i class="fas fa-eye me-1"></i><?= htmlspecialchars(ags_fmt($lang->announcements_forum['lbl_views_count'], (int)$row['views'] + 1)) ?></span>
                             <?php $fid = (int)$row['fid']; ?>
                             <span><i class="fas fa-folder me-1"></i>
-                                <?= $fid === -1 ? '🌐 Global' : htmlspecialchars($forums[(string)$fid] ?? "Forum #{$fid}") ?>
+                                <?= $fid === -1 ? htmlspecialchars($lang->announcements_forum['badge_global']) : htmlspecialchars($forums[(string)$fid] ?? ags_fmt($lang->announcements_forum['lbl_forum_n'], $fid)) ?>
                             </span>
                         </div>
 
                         <?php if ($row['startdate'] || $row['enddate']): ?>
                         <div class="alert alert-info py-2 small mb-3">
                             <i class="fas fa-clock me-1"></i>
-                            <strong>Active:</strong>
-                            <?= $row['startdate'] ? my_datee('d M Y H:i', (int)$row['startdate']) : 'Now' ?>
+                            <strong><?= htmlspecialchars($lang->announcements_forum['lbl_active_period']) ?></strong>
+                            <?= $row['startdate'] ? my_datee('d M Y H:i', (int)$row['startdate']) : htmlspecialchars($lang->announcements_forum['lbl_now']) ?>
                             →
-                            <?= $row['enddate'] ? my_datee('d M Y H:i', (int)$row['enddate']) : '∞ (No end)' ?>
+                            <?= $row['enddate'] ? my_datee('d M Y H:i', (int)$row['enddate']) : htmlspecialchars($lang->announcements_forum['lbl_no_end']) ?>
                         </div>
                         <?php endif; ?>
 
@@ -389,41 +434,45 @@ function af_handle_view(int $id): void
 
             <div class="col-lg-3">
                 <div class="card shadow-sm border-0 mb-3">
-                    <div class="card-header bg-light"><h6 class="mb-0">Actions</h6></div>
+                    <div class="card-header bg-light"><h6 class="mb-0"><?= htmlspecialchars($lang->announcements_forum['sec_actions']) ?></h6></div>
                     <div class="card-body d-grid gap-2">
                         <a href="<?= $script ?>?act=announcements_forum&action=edit&id=<?= (int)$row['id'] ?>"
-                           class="btn btn-primary btn-sm"><i class="fas fa-edit me-1"></i>Edit</a>
+                           class="btn btn-primary btn-sm"><i class="fas fa-edit me-1"></i><?= htmlspecialchars($lang->announcements_forum['btn_edit']) ?></a>
                         <button class="btn btn-warning btn-sm"
                                 onclick="afDuplicate(<?= (int)$row['id'] ?>)">
-                            <i class="fas fa-copy me-1"></i>Duplicate
+                            <i class="fas fa-copy me-1"></i><?= htmlspecialchars($lang->announcements_forum['btn_duplicate']) ?>
                         </button>
                         <button class="btn btn-danger btn-sm"
                                 onclick="afDelete(<?= (int)$row['id'] ?>, '<?= htmlspecialchars(addslashes($row['subject'])) ?>')">
-                            <i class="fas fa-trash me-1"></i>Delete
+                            <i class="fas fa-trash me-1"></i><?= htmlspecialchars($lang->announcements_forum['btn_delete']) ?>
                         </button>
                         <a href="<?= $script ?>?act=announcements_forum" class="btn btn-outline-secondary btn-sm">
-                            <i class="fas fa-arrow-left me-1"></i>Back
+                            <i class="fas fa-arrow-left me-1"></i><?= htmlspecialchars($lang->announcements_forum['btn_back']) ?>
                         </a>
                     </div>
                 </div>
 
                 <div class="card shadow-sm border-0">
-                    <div class="card-header bg-light"><h6 class="mb-0">Details</h6></div>
+                    <div class="card-header bg-light"><h6 class="mb-0"><?= htmlspecialchars($lang->announcements_forum['sec_details']) ?></h6></div>
                     <ul class="list-group list-group-flush small">
                         <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-muted">ID</span><strong>#<?= (int)$row['id'] ?></strong>
+                            <span class="text-muted"><?= htmlspecialchars($lang->announcements_forum['lbl_id']) ?></span><strong>#<?= (int)$row['id'] ?></strong>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-muted">Type</span>
+                            <span class="text-muted"><?= htmlspecialchars($lang->announcements_forum['lbl_type']) ?></span>
                             <span class="badge bg-<?= $row['type'] === 'global' ? 'primary' : 'success' ?>">
-                                <?= $row['type'] ?>
+                                <?= htmlspecialchars(match ((string)$row['type']) {
+                                    'global' => $lang->announcements_forum['opt_type_global'],
+                                    'forum'  => $lang->announcements_forum['opt_type_forum'],
+                                    default  => (string)$row['type'],
+                                }) ?>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-muted">Views</span><strong><?= (int)$row['views'] + 1 ?></strong>
+                            <span class="text-muted"><?= htmlspecialchars($lang->announcements_forum['lbl_views']) ?></span><strong><?= (int)$row['views'] + 1 ?></strong>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-muted">Words</span>
+                            <span class="text-muted"><?= htmlspecialchars($lang->announcements_forum['lbl_words']) ?></span>
                             <strong><?= number_format(str_word_count(strip_tags($row['message']))) ?></strong>
                         </li>
                     </ul>
@@ -434,6 +483,7 @@ function af_handle_view(int $id): void
 
     <?= af_delete_modal($script) ?>
 
+    <?= af_js_lang() ?>
     <script>
     function afDelete(id, subject) {
         document.getElementById('deleteTitle').textContent = subject;
@@ -442,7 +492,7 @@ function af_handle_view(int $id): void
         new bootstrap.Modal(document.getElementById('deleteModal')).show();
     }
     function afDuplicate(id) {
-        if (!confirm('Duplicate this announcement?')) return;
+        if (!confirm(t('confirm_duplicate', 'Duplicate this announcement?'))) return;
         fetch('<?= $script ?>?act=announcements_forum&action=duplicate&id=' + id, {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -462,7 +512,7 @@ function af_handle_view(int $id): void
 
 function af_handle_add(string $do): void
 {
-    global $db, $CURUSER, $cache;
+    global $db, $CURUSER, $cache, $lang;
 
     if ($do === 'save') {
         $subject  = trim($_POST['subject'] ?? '');
@@ -471,8 +521,8 @@ function af_handle_add(string $do): void
         $errors   = [];
         $startdate = $enddate = 0;
 
-        if (empty($subject)) $errors[] = 'Subject is required.';
-        if (empty($message)) $errors[] = 'Message is required.';
+        if (empty($subject)) $errors[] = $lang->announcements_forum['err_subject_required'];
+        if (empty($message)) $errors[] = $lang->announcements_forum['err_message_required'];
 
         af_parse_dates($errors, $startdate, $enddate);
 
@@ -499,7 +549,7 @@ function af_handle_add(string $do): void
             
 			$cache->update_forumsdisplay();
 			
-			af_redirect('Announcement added successfully.');
+			af_redirect($lang->announcements_forum['flash_added']);
         }
 
         // Show form again with errors
@@ -516,9 +566,9 @@ function af_handle_add(string $do): void
 
 function af_handle_edit(int $id, string $do): void
 {
-    global $db, $CURUSER, $cache;
+    global $db, $CURUSER, $cache, $lang;
 
-    if ($id <= 0) af_redirect('Invalid ID.');
+    if ($id <= 0) af_redirect($lang->announcements_forum['flash_invalid_id']);
     $row = af_get_announcement($id);
 
     if ($do === 'save') {
@@ -528,8 +578,8 @@ function af_handle_edit(int $id, string $do): void
         $errors   = [];
         $startdate = $enddate = 0;
 
-        if (empty($subject)) $errors[] = 'Subject is required.';
-        if (empty($message)) $errors[] = 'Message is required.';
+        if (empty($subject)) $errors[] = $lang->announcements_forum['err_subject_required'];
+        if (empty($message)) $errors[] = $lang->announcements_forum['err_message_required'];
 
         af_parse_dates($errors, $startdate, $enddate);
 
@@ -552,7 +602,7 @@ function af_handle_edit(int $id, string $do): void
             
 			$cache->update_forumsdisplay();
 			
-			af_redirect('Announcement updated successfully.');
+			af_redirect($lang->announcements_forum['flash_updated']);
         }
 
         af_render_form('edit', $row, $errors);
@@ -568,17 +618,17 @@ function af_handle_edit(int $id, string $do): void
 
 function af_handle_delete(int $id): void
 {
-    global $db, $cache;
+    global $db, $cache, $lang;
 
     if ($id <= 0 || ($_GET['sure'] ?? '') !== 'yes') {
-        af_redirect('Deletion cancelled.');
+        af_redirect($lang->announcements_forum['flash_delete_cancelled']);
     }
 
     $db->sql_query_prepared("DELETE FROM announcements WHERE id = ? AND type IN ('forum','global')", [$id]);
     
 	$cache->update_forumsdisplay();
 	
-	af_redirect('Announcement deleted.');
+	af_redirect($lang->announcements_forum['flash_deleted']);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -587,12 +637,12 @@ function af_handle_delete(int $id): void
 
 function af_handle_duplicate(int $id): void
 {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $lang;
 
     header('Content-Type: application/json');
 
     if ($id <= 0 || ($_POST['do'] ?? '') !== 'duplicate') {
-        echo json_encode(['success' => false, 'message' => 'Invalid request.']);
+        echo json_encode(['success' => false, 'message' => $lang->announcements_forum['json_invalid_request']]);
         exit;
     }
 
@@ -602,11 +652,11 @@ function af_handle_duplicate(int $id): void
     );
     $row = $q ? $db->fetch_array($q) : null;
     if (!$row) {
-        echo json_encode(['success' => false, 'message' => 'Not found.']);
+        echo json_encode(['success' => false, 'message' => $lang->announcements_forum['json_not_found']]);
         exit;
     }
 
-    $subject = 'Copy of ' . $row['subject'];
+    $subject = ags_fmt($lang->announcements_forum['val_copy_of'], (string)$row['subject']);
     $count_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE subject LIKE ?", [$subject . '%']);
     $count   = $count_q ? (int)$db->fetch_array($count_q)['c'] : 0;
     if ($count > 0) $subject .= ' (' . ($count + 1) . ')';
@@ -634,7 +684,7 @@ function af_handle_duplicate(int $id): void
     $script = htmlspecialchars($_SERVER['SCRIPT_NAME']);
     echo json_encode([
         'success'      => true,
-        'message'      => 'Duplicated successfully.',
+        'message'      => $lang->announcements_forum['json_duplicated'],
         'new_id'       => $new_id,
         'redirect_url' => "{$script}?act=announcements_forum&action=view&id={$new_id}",
     ]);
@@ -647,10 +697,10 @@ function af_handle_duplicate(int $id): void
 
 function af_render_form(string $mode, array $data = [], array $errors = []): void
 {
-    global $BASEURL, $CURUSER, $smilies, $timeformat;
+    global $BASEURL, $CURUSER, $smilies, $timeformat, $lang;
 
     $is_edit   = $mode === 'edit';
-    $title     = $is_edit ? 'Edit Forum Announcement' : 'New Forum Announcement';
+    $title     = $is_edit ? $lang->announcements_forum['pane_edit'] : $lang->announcements_forum['pane_add'];
     $script    = htmlspecialchars($_SERVER['SCRIPT_NAME']);
     $action_url = $script . '?act=announcements_forum&action=' . $mode
         . ($is_edit ? '&id=' . (int)$data['id'] : '');
@@ -679,7 +729,7 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
             <a href="<?= $script ?>?act=announcements_forum" class="btn btn-outline-secondary btn-sm">
                 <i class="fas fa-arrow-left"></i>
             </a>
-            <h4 class="mb-0"><i class="fas fa-newspaper me-2 text-success"></i><?= $title ?></h4>
+            <h4 class="mb-0"><i class="fas fa-newspaper me-2 text-success"></i><?= htmlspecialchars($title) ?></h4>
         </div>
 
         <?php if ($errors): ?>
@@ -693,17 +743,17 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
 
             <!-- Basic Settings -->
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-light fw-semibold">Basic Settings</div>
+                <div class="card-header bg-light fw-semibold"><?= htmlspecialchars($lang->announcements_forum['sec_basic']) ?></div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold">Subject <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->announcements_forum['lbl_subject']) ?> <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" name="subject"
                                    value="<?= htmlspecialchars($data['subject'] ?? '') ?>"
                                    maxlength="120" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold">Forum</label>
+                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->announcements_forum['lbl_forum']) ?></label>
                             <select name="fid" class="form-select">
                                 <?php foreach ($forums as $fid_val => $fname): ?>
                                 <option value="<?= $fid_val ?>"
@@ -719,17 +769,17 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
 
             <!-- Dates -->
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-light fw-semibold">Schedule</div>
+                <div class="card-header bg-light fw-semibold"><?= htmlspecialchars($lang->announcements_forum['sec_schedule']) ?></div>
                 <div class="card-body">
                     <div class="row g-4">
                         <!-- Start Date -->
                         <div class="col-md-6">
                             <label class="form-label fw-semibold text-success">
-                                <i class="fas fa-play me-1"></i>Start Date
+                                <i class="fas fa-play me-1"></i><?= htmlspecialchars($lang->announcements_forum['lbl_start_date']) ?>
                             </label>
                             <div class="input-group mb-2">
                                 <input type="text" class="form-control" name="starttime_time"
-                                       value="<?= $sd['time'] ?>" style="max-width:80px" placeholder="HH:MM">
+                                       value="<?= $sd['time'] ?>" style="max-width:80px" placeholder="<?= htmlspecialchars($lang->announcements_forum['hint_time']) ?>">
                                 <select name="starttime_day" class="form-select" style="max-width:75px">
                                     <?= af_day_options($sd['day']) ?>
                                 </select>
@@ -744,26 +794,26 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
                         <!-- End Date -->
                         <div class="col-md-6">
                             <label class="form-label fw-semibold text-danger">
-                                <i class="fas fa-stop me-1"></i>End Date
+                                <i class="fas fa-stop me-1"></i><?= htmlspecialchars($lang->announcements_forum['lbl_end_date']) ?>
                             </label>
                             <div class="mb-2">
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="endtime_type"
                                            value="2" id="endInfinite" <?= $end_infinite ?>
                                            onchange="document.getElementById('endDateFields').style.display='none'">
-                                    <label class="form-check-label" for="endInfinite">No end (Permanent)</label>
+                                    <label class="form-check-label" for="endInfinite"><?= htmlspecialchars($lang->announcements_forum['opt_end_infinite']) ?></label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="endtime_type"
                                            value="1" id="endFinite" <?= $end_finite ?>
                                            onchange="document.getElementById('endDateFields').style.display='flex'">
-                                    <label class="form-check-label" for="endFinite">Set end date</label>
+                                    <label class="form-check-label" for="endFinite"><?= htmlspecialchars($lang->announcements_forum['opt_end_finite']) ?></label>
                                 </div>
                             </div>
                             <div id="endDateFields" class="input-group"
                                  style="display:<?= $end_finite ? 'flex' : 'none' ?>">
                                 <input type="text" class="form-control" name="endtime_time"
-                                       value="<?= $ed['time'] ?>" style="max-width:80px" placeholder="HH:MM">
+                                       value="<?= $ed['time'] ?>" style="max-width:80px" placeholder="<?= htmlspecialchars($lang->announcements_forum['hint_time']) ?>">
                                 <select name="endtime_day" class="form-select" style="max-width:75px">
                                     <?= af_day_options($ed['day']) ?>
                                 </select>
@@ -780,7 +830,7 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
 
             <!-- Message -->
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-light fw-semibold">Message <span class="text-danger">*</span></div>
+                <div class="card-header bg-light fw-semibold"><?= htmlspecialchars($lang->announcements_forum['sec_message']) ?> <span class="text-danger">*</span></div>
                 <div class="card-body">
                     <?= af_build_editor($data['message'] ?? '') ?>
                 </div>
@@ -788,10 +838,10 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
 
             <div class="d-flex justify-content-between">
                 <a href="<?= $script ?>?act=announcements_forum" class="btn btn-secondary">
-                    <i class="fas fa-times me-1"></i>Cancel
+                    <i class="fas fa-times me-1"></i><?= htmlspecialchars($lang->announcements_forum['btn_cancel']) ?>
                 </a>
                 <button type="submit" class="btn btn-success px-4">
-                    <i class="fas fa-save me-1"></i><?= $is_edit ? 'Update' : 'Publish' ?> Announcement
+                    <i class="fas fa-save me-1"></i><?= htmlspecialchars($is_edit ? $lang->announcements_forum['btn_update'] : $lang->announcements_forum['btn_publish']) ?>
                 </button>
             </div>
         </form>
@@ -810,23 +860,30 @@ function af_render_form(string $mode, array $data = [], array $errors = []): voi
 
 function af_delete_modal(string $script): string
 {
+    global $lang;
+    $t_title  = htmlspecialchars($lang->announcements_forum['modal_delete_title']);
+    $t_text   = htmlspecialchars($lang->announcements_forum['modal_delete_text']);
+    $t_warn   = htmlspecialchars($lang->announcements_forum['modal_delete_warn']);
+    $t_cancel = htmlspecialchars($lang->announcements_forum['btn_cancel']);
+    $t_delete = htmlspecialchars($lang->announcements_forum['btn_delete']);
+    $t_close  = htmlspecialchars($lang->announcements_forum['btn_close']);
     return <<<HTML
 <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-trash me-2"></i>Delete Announcement</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" tabindex="-1"></button>
+                <h5 class="modal-title"><i class="fas fa-trash me-2"></i>{$t_title}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" tabindex="-1" aria-label="{$t_close}"></button>
             </div>
             <div class="modal-body">
-                <p>You are about to delete:</p>
+                <p>{$t_text}</p>
                 <div class="alert alert-warning fw-bold" id="deleteTitle"></div>
-                <p class="text-danger mb-0"><strong>This action cannot be undone.</strong></p>
+                <p class="text-danger mb-0"><strong>{$t_warn}</strong></p>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-secondary" data-bs-dismiss="modal">{$t_cancel}</button>
                 <a href="#" id="deleteConfirmBtn" class="btn btn-danger">
-                    <i class="fas fa-trash me-1"></i>Delete
+                    <i class="fas fa-trash me-1"></i>{$t_delete}
                 </a>
             </div>
         </div>

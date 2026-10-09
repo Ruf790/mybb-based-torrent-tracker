@@ -7,8 +7,23 @@ if (!defined('STAFF_PANEL')) {
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+global $lang;
+$lang->load('country');
+
+if (!function_exists('ags_fmt')) {
+    /** Substitutes {1}, {2}… placeholders in a lang string. */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $a) {
+            $map['{' . ($i + 1) . '}'] = (string)$a;
+        }
+        return strtr($str, $map);
+    }
+}
+
 const CN_VERSION   = 'v.0.3';
-const CN_ASSET_VER = 1;
+const CN_ASSET_VER = 2;
 const CN_NAME_MAX  = 60;
 const CN_FLAG_RE   = '~^[A-Za-z0-9_.-]{1,60}\.(gif|png|jpe?g|webp|svg)$~i';
 
@@ -44,7 +59,7 @@ final class CountryManager
 
     public function handleRequest(): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
         $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'list');
         $id     = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
@@ -52,19 +67,19 @@ final class CountryManager
         // Всё, что меняет данные — только POST + CSRF
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
-                $this->back('Security check failed. Please try again.', 'danger');
+                $this->back($lang->country['flash_security'], 'danger');
             }
             match ($action) {
                 'save'   => $this->save($id),
                 'delete' => $this->delete($id),
-                default  => $this->back('Unknown action.', 'danger'),
+                default  => $this->back($lang->country['flash_unknown'], 'danger'),
             };
             return;
         }
 
         match ($action) {
             'new'   => $this->renderForm(['id' => 0, 'name' => '', 'flagpic' => $this->validFlagOrEmpty((string)($_GET['flag'] ?? ''))]),
-            'edit'  => $this->renderForm($this->find($id) ?? $this->back('Country not found.', 'danger')),
+            'edit'  => $this->renderForm($this->find($id) ?? $this->back($lang->country['flash_not_found'], 'danger')),
             default => $this->renderList(),
         };
     }
@@ -117,21 +132,23 @@ final class CountryManager
 
     private function save(int $id): void
     {
+        global $lang;
+
         $isEdit = $id > 0;
-        if ($isEdit && !$this->find($id)) $this->back('Country not found.', 'danger');
+        if ($isEdit && !$this->find($id)) $this->back($lang->country['flash_not_found'], 'danger');
 
         $name = trim((string)($_POST['name'] ?? ''));
         $flag = basename(trim((string)($_POST['flagpic'] ?? '')));
 
         $errors = [];
-        if ($name === '')                          $errors[] = 'Enter the country name.';
-        elseif (mb_strlen($name) > CN_NAME_MAX)    $errors[] = 'The name is longer than ' . CN_NAME_MAX . ' characters.';
-        if ($flag === '')                          $errors[] = 'Pick a flag.';
-        elseif (!$this->flagExists($flag))         $errors[] = 'That flag file is not in the flags folder.';
+        if ($name === '')                          $errors[] = $lang->country['err_name_empty'];
+        elseif (mb_strlen($name) > CN_NAME_MAX)    $errors[] = ags_fmt($lang->country['err_name_long'], CN_NAME_MAX);
+        if ($flag === '')                          $errors[] = $lang->country['err_flag_empty'];
+        elseif (!$this->flagExists($flag))         $errors[] = $lang->country['err_flag_missing'];
 
         if (!$errors) {
             $dup = $this->db->sql_query_prepared('SELECT id FROM countries WHERE name = ? AND id != ? LIMIT 1', [$name, $id]);
-            if ($dup && $this->db->num_rows($dup) > 0) $errors[] = "“{$name}” is already on the list.";
+            if ($dup && $this->db->num_rows($dup) > 0) $errors[] = ags_fmt($lang->country['err_duplicate'], $name);
         }
 
         if ($errors) {
@@ -142,22 +159,24 @@ final class CountryManager
         if ($isEdit) {
             $this->db->sql_query_prepared('UPDATE countries SET name = ?, flagpic = ? WHERE id = ?', [$name, $flag, $id]);
             write_log("Edited country #{$id} '{$name}' ({$flag}) by " . $this->staff());
-            $this->back("{$name} saved.", 'success', $id);
+            $this->back(ags_fmt($lang->country['flash_saved'], $name), 'success', $id);
         }
 
         $this->db->sql_query_prepared('INSERT INTO countries (name, flagpic) VALUES (?, ?)', [$name, $flag]);
         $newId = (int)$this->db->insert_id();
         write_log("Added country #{$newId} '{$name}' ({$flag}) by " . $this->staff());
-        $this->back("{$name} added.", 'success', $newId);
+        $this->back(ags_fmt($lang->country['flash_added'], $name), 'success', $newId);
     }
 
     private function delete(int $id): void
     {
-        $country = $this->find($id) ?? $this->back('Country not found.', 'danger');
+        global $lang;
+
+        $country = $this->find($id) ?? $this->back($lang->country['flash_not_found'], 'danger');
 
         $this->db->sql_query_prepared('DELETE FROM countries WHERE id = ? LIMIT 1', [$id]);
         write_log("Deleted country #{$id} '{$country['name']}' by " . $this->staff());
-        $this->back("{$country['name']} deleted.", 'success');
+        $this->back(ags_fmt($lang->country['flash_deleted'], (string)$country['name']), 'success');
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -185,14 +204,20 @@ final class CountryManager
 
     private function open(string $title, string $sub, string $icon, string $tone, string $actions = ''): void
     {
-        global $BASEURL, $mybb;
+        global $BASEURL, $mybb, $lang;
         $v = CN_ASSET_VER;
+
+        $jsLang = [];
+        foreach ($lang->country as $k => $val) {
+            if (str_starts_with((string)$k, 'js_')) $jsLang[substr((string)$k, 3)] = $val;
+        }
 
         stdhead($title);
         ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/country.css?ver=<?= $v ?>">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script>const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script src="<?= $BASEURL ?>/admin/scripts/country.js?ver=<?= $v ?>" defer></script>
         <?php
         if (!empty($_SESSION['cn_flash'])):
@@ -224,8 +249,10 @@ final class CountryManager
 
     private function flagImg(string $file, string $alt, string $class = 'cn-flag'): string
     {
+        global $lang;
+
         if (!$this->flagExists($file)) {
-            return '<span class="' . $class . ' is-missing" title="Flag file missing"><i class="fa-solid fa-image"></i></span>';
+            return '<span class="' . $class . ' is-missing" title="' . cn_e($lang->country['tip_flag_missing']) . '"><i class="fa-solid fa-image"></i></span>';
         }
         return '<img src="' . cn_e($this->flagUrl . $file) . '" class="' . $class . '" alt="' . cn_e($alt) . '" loading="lazy">';
     }
@@ -234,7 +261,7 @@ final class CountryManager
 
     private function renderList(): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
         $countries = $this->all();
         $flags     = $this->flagFiles();
@@ -243,40 +270,40 @@ final class CountryManager
         $missing   = count(array_filter($countries, fn($c) => !$this->flagExists($c['flagpic'])));
 
         $this->open(
-            'Countries',
-            'The list members pick from in their profile, with the flag shown next to their name.',
+            $lang->country['pane_title_list'],
+            $lang->country['sub_list'],
             'fa-earth-europe', 'primary',
             '<a href="' . cn_e($this->url(['action' => 'new'])) . '" class="btn btn-primary rounded-pill px-3">'
-            . '<i class="fa-solid fa-plus me-1"></i>Add country</a>'
+            . '<i class="fa-solid fa-plus me-1"></i>' . cn_e($lang->country['btn_add']) . '</a>'
         );
         ?>
     <section class="cn-kpis">
       <div class="cn-kpi" style="<?= cn_tone('primary') ?>">
         <span class="cn-kpi-icon"><i class="fa-solid fa-earth-europe"></i></span>
-        <div><div class="cn-kpi-val"><?= number_format(count($countries)) ?></div><div class="cn-kpi-label">Countries</div></div>
+        <div><div class="cn-kpi-val"><?= number_format(count($countries)) ?></div><div class="cn-kpi-label"><?= cn_e($lang->country['kpi_countries']) ?></div></div>
       </div>
       <div class="cn-kpi" style="<?= cn_tone('success') ?>">
         <span class="cn-kpi-icon"><i class="fa-solid fa-flag"></i></span>
-        <div><div class="cn-kpi-val"><?= number_format(count($flags)) ?></div><div class="cn-kpi-label">Flag files</div></div>
+        <div><div class="cn-kpi-val"><?= number_format(count($flags)) ?></div><div class="cn-kpi-label"><?= cn_e($lang->country['kpi_flag_files']) ?></div></div>
       </div>
       <div class="cn-kpi" style="<?= cn_tone('info') ?>">
         <span class="cn-kpi-icon"><i class="fa-regular fa-flag"></i></span>
-        <div><div class="cn-kpi-val"><?= number_format(count($unused)) ?></div><div class="cn-kpi-label">Flags not used yet</div></div>
+        <div><div class="cn-kpi-val"><?= number_format(count($unused)) ?></div><div class="cn-kpi-label"><?= cn_e($lang->country['kpi_unused']) ?></div></div>
       </div>
       <div class="cn-kpi" style="<?= cn_tone($missing ? 'danger' : 'secondary') ?>">
         <span class="cn-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
-        <div><div class="cn-kpi-val"><?= number_format($missing) ?></div><div class="cn-kpi-label">Missing flag file</div></div>
+        <div><div class="cn-kpi-val"><?= number_format($missing) ?></div><div class="cn-kpi-label"><?= cn_e($lang->country['kpi_missing']) ?></div></div>
       </div>
     </section>
 
     <section class="cn-card">
       <div class="cn-card-head">
-        <h2><i class="fa-solid fa-list me-2"></i>All countries <span class="cn-count"><?= number_format(count($countries)) ?></span></h2>
+        <h2><i class="fa-solid fa-list me-2"></i><?= cn_e($lang->country['sec_all']) ?> <span class="cn-count"><?= number_format(count($countries)) ?></span></h2>
         <?php if ($countries): ?>
         <label class="cn-search">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input type="search" class="form-control form-control-sm" placeholder="Filter by name or file"
-                 aria-label="Filter countries" data-cn-filter="#cn-table tbody tr">
+          <input type="search" class="form-control form-control-sm" placeholder="<?= cn_e($lang->country['ph_filter']) ?>"
+                 aria-label="<?= cn_e($lang->country['aria_filter']) ?>" data-cn-filter="#cn-table tbody tr">
         </label>
         <?php endif; ?>
       </div>
@@ -284,20 +311,20 @@ final class CountryManager
       <?php if (!$countries): ?>
         <div class="cn-empty">
           <div class="cn-empty-icon" style="<?= cn_tone('primary') ?>"><i class="fa-solid fa-earth-europe"></i></div>
-          <h3>No countries yet</h3>
-          <p>Add the first one and members can pick it in their profile.</p>
-          <a href="<?= cn_e($this->url(['action' => 'new'])) ?>" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add country</a>
+          <h3><?= cn_e($lang->country['empty_title']) ?></h3>
+          <p><?= cn_e($lang->country['empty_text']) ?></p>
+          <a href="<?= cn_e($this->url(['action' => 'new'])) ?>" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i><?= cn_e($lang->country['btn_add']) ?></a>
         </div>
       <?php else: ?>
       <div class="table-responsive">
         <table class="table cn-table align-middle mb-0" id="cn-table">
           <thead>
             <tr>
-              <th class="cn-col-flag"><i class="fa-solid fa-flag me-1"></i>Flag</th>
-              <th><i class="fa-solid fa-heading me-1"></i>Name</th>
-              <th class="d-none d-sm-table-cell"><i class="fa-regular fa-file-image me-1"></i>File</th>
-              <th class="cn-col-id text-end">ID</th>
-              <th class="cn-col-act text-end"><span class="visually-hidden">Actions</span></th>
+              <th class="cn-col-flag"><i class="fa-solid fa-flag me-1"></i><?= cn_e($lang->country['th_flag']) ?></th>
+              <th><i class="fa-solid fa-heading me-1"></i><?= cn_e($lang->country['th_name']) ?></th>
+              <th class="d-none d-sm-table-cell"><i class="fa-regular fa-file-image me-1"></i><?= cn_e($lang->country['th_file']) ?></th>
+              <th class="cn-col-id text-end"><?= cn_e($lang->country['th_id']) ?></th>
+              <th class="cn-col-act text-end"><span class="visually-hidden"><?= cn_e($lang->country['th_actions']) ?></span></th>
             </tr>
           </thead>
           <tbody>
@@ -308,15 +335,15 @@ final class CountryManager
               <td class="cn-name"><?= cn_e($c['name']) ?></td>
               <td class="d-none d-sm-table-cell">
                 <code class="cn-file"><?= cn_e($c['flagpic']) ?></code>
-                <?php if (!$ok): ?><span class="cn-tag" style="<?= cn_tone('danger') ?>"><i class="fa-solid fa-triangle-exclamation"></i>Missing</span><?php endif; ?>
+                <?php if (!$ok): ?><span class="cn-tag" style="<?= cn_tone('danger') ?>"><i class="fa-solid fa-triangle-exclamation"></i><?= cn_e($lang->country['tag_missing']) ?></span><?php endif; ?>
               </td>
               <td class="cn-col-id text-end">#<?= $c['id'] ?></td>
               <td class="cn-col-act text-end">
                 <div class="cn-actions">
-                  <a href="<?= cn_e($this->url(['action' => 'edit', 'id' => $c['id']])) ?>" class="cn-icon-btn" title="Edit <?= cn_e($c['name']) ?>">
+                  <a href="<?= cn_e($this->url(['action' => 'edit', 'id' => $c['id']])) ?>" class="cn-icon-btn" title="<?= cn_e(ags_fmt($lang->country['tip_edit'], (string)$c['name'])) ?>">
                     <i class="fa-solid fa-pen-to-square"></i>
                   </a>
-                  <button type="button" class="cn-icon-btn is-danger" title="Delete <?= cn_e($c['name']) ?>"
+                  <button type="button" class="cn-icon-btn is-danger" title="<?= cn_e(ags_fmt($lang->country['tip_delete'], (string)$c['name'])) ?>"
                           data-cn-delete data-id="<?= $c['id'] ?>" data-name="<?= cn_e($c['name']) ?>">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
@@ -327,7 +354,7 @@ final class CountryManager
           </tbody>
         </table>
         <div class="cn-empty cn-empty-sm" id="cn-no-match" hidden>
-          <p><i class="fa-solid fa-magnifying-glass me-1"></i>No country matches that filter.</p>
+          <p><i class="fa-solid fa-magnifying-glass me-1"></i><?= cn_e($lang->country['empty_no_match']) ?></p>
         </div>
       </div>
       <?php endif; ?>
@@ -336,8 +363,8 @@ final class CountryManager
     <?php if ($unused): ?>
     <section class="cn-card cn-unused">
       <div class="cn-card-head">
-        <h2><i class="fa-regular fa-flag me-2"></i>Flags not used yet <span class="cn-count"><?= number_format(count($unused)) ?></span></h2>
-        <span class="cn-muted small">Click a flag to add a country with it.</span>
+        <h2><i class="fa-regular fa-flag me-2"></i><?= cn_e($lang->country['sec_unused']) ?> <span class="cn-count"><?= number_format(count($unused)) ?></span></h2>
+        <span class="cn-muted small"><?= cn_e($lang->country['hint_unused']) ?></span>
       </div>
       <div class="cn-flag-grid">
         <?php foreach ($unused as $f): ?>
@@ -363,7 +390,7 @@ final class CountryManager
 
     private function renderForm(array $c, array $errors = []): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
         $id     = (int)($c['id'] ?? 0);
         $isEdit = $id > 0;
@@ -372,13 +399,13 @@ final class CountryManager
         $flags  = $this->flagFiles();
 
         $this->open(
-            $isEdit ? 'Edit country' : 'Add country',
-            $isEdit ? 'Renaming changes it for every member who picked this country.'
-                    : 'The flag must already be in the flags folder on the server.',
+            $isEdit ? $lang->country['pane_title_edit'] : $lang->country['pane_title_add'],
+            $isEdit ? $lang->country['sub_edit']
+                    : $lang->country['sub_add'],
             $isEdit ? 'fa-pen-to-square' : 'fa-plus',
             $isEdit ? 'warning' : 'primary',
             '<a href="' . cn_e($this->self . ($isEdit ? '#c' . $id : '')) . '" class="btn btn-sm btn-outline-secondary rounded-pill px-3">'
-            . '<i class="fa-solid fa-arrow-left me-1"></i>All countries</a>'
+            . '<i class="fa-solid fa-arrow-left me-1"></i>' . cn_e($lang->country['btn_back']) . '</a>'
         );
 
         if ($errors): ?>
@@ -395,25 +422,25 @@ final class CountryManager
 
       <div class="cn-editor">
         <section class="cn-card cn-panel">
-          <label class="cn-label" for="cn-name"><i class="fa-solid fa-heading"></i>Country name <span class="cn-req">*</span></label>
+          <label class="cn-label" for="cn-name"><i class="fa-solid fa-heading"></i><?= cn_e($lang->country['lbl_name']) ?> <span class="cn-req">*</span></label>
           <input type="text" class="form-control form-control-lg" id="cn-name" name="name" value="<?= cn_e($name) ?>"
-                 maxlength="<?= CN_NAME_MAX ?>" required autocomplete="off" placeholder="Bulgaria">
+                 maxlength="<?= CN_NAME_MAX ?>" required autocomplete="off" placeholder="<?= cn_e($lang->country['ph_name']) ?>">
 
           <div class="cn-picker-head">
-            <label class="cn-label mb-0"><i class="fa-solid fa-flag"></i>Flag <span class="cn-req">*</span></label>
+            <label class="cn-label mb-0"><i class="fa-solid fa-flag"></i><?= cn_e($lang->country['lbl_flag']) ?> <span class="cn-req">*</span></label>
             <label class="cn-search">
               <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-              <input type="search" class="form-control form-control-sm" placeholder="Find a flag file"
-                     aria-label="Find a flag file" data-cn-filter=".cn-picker .cn-pick">
+              <input type="search" class="form-control form-control-sm" placeholder="<?= cn_e($lang->country['ph_find_flag']) ?>"
+                     aria-label="<?= cn_e($lang->country['aria_find_flag']) ?>" data-cn-filter=".cn-picker .cn-pick">
             </label>
           </div>
 
           <?php if (!$flags): ?>
             <div class="cn-empty cn-empty-sm">
-              <p><i class="fa-solid fa-folder-open me-1"></i>No flag images found in <code><?= cn_e(basename(rtrim($this->flagDir, '/'))) ?>/</code>. Upload the files first.</p>
+              <p><i class="fa-solid fa-folder-open me-1"></i><?= ags_fmt(cn_e($lang->country['empty_no_flag_files']), '<code>' . cn_e(basename(rtrim($this->flagDir, '/'))) . '/</code>') ?></p>
             </div>
           <?php else: ?>
-          <div class="cn-picker" role="radiogroup" aria-label="Flag">
+          <div class="cn-picker" role="radiogroup" aria-label="<?= cn_e($lang->country['aria_flag_group']) ?>">
             <?php foreach ($flags as $f): ?>
             <label class="cn-pick" data-cn-text="<?= cn_e(mb_strtolower($f)) ?>" title="<?= cn_e($f) ?>">
               <input type="radio" name="flagpic" value="<?= cn_e($f) ?>" <?= $f === $sel ? 'checked' : '' ?> required
@@ -423,31 +450,31 @@ final class CountryManager
             </label>
             <?php endforeach; ?>
           </div>
-          <div class="cn-empty cn-empty-sm" id="cn-no-flag" hidden><p>No flag file matches.</p></div>
+          <div class="cn-empty cn-empty-sm" id="cn-no-flag" hidden><p><?= cn_e($lang->country['empty_no_flag_match']) ?></p></div>
           <?php endif; ?>
         </section>
 
         <aside class="cn-card cn-panel cn-preview">
-          <h2><i class="fa-solid fa-eye me-2"></i>How members see it</h2>
+          <h2><i class="fa-solid fa-eye me-2"></i><?= cn_e($lang->country['sec_preview']) ?></h2>
           <div class="cn-preview-user">
             <span class="cn-preview-flag" id="cn-preview-flag">
               <?= $sel !== '' ? '<img src="' . cn_e($this->flagUrl . $sel) . '" alt="">' : '<i class="fa-regular fa-flag"></i>' ?>
             </span>
             <div>
-              <strong id="cn-preview-name"><?= $name !== '' ? cn_e($name) : 'Country name' ?></strong>
-              <small id="cn-preview-file"><?= $sel !== '' ? cn_e($sel) : 'No flag picked' ?></small>
+              <strong id="cn-preview-name"><?= $name !== '' ? cn_e($name) : cn_e($lang->country['js_preview_name']) ?></strong>
+              <small id="cn-preview-file"><?= $sel !== '' ? cn_e($sel) : cn_e($lang->country['lbl_no_flag_picked']) ?></small>
             </div>
           </div>
           <?php if ($isEdit): ?>
-          <p class="cn-muted small mb-0"><i class="fa-solid fa-hashtag me-1"></i>Country ID <?= $id ?></p>
+          <p class="cn-muted small mb-0"><i class="fa-solid fa-hashtag me-1"></i><?= cn_e(ags_fmt($lang->country['lbl_country_id'], $id)) ?></p>
           <?php endif; ?>
         </aside>
       </div>
 
       <div class="cn-bar">
-        <a href="<?= cn_e($this->self . ($isEdit ? '#c' . $id : '')) ?>" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+        <a href="<?= cn_e($this->self . ($isEdit ? '#c' . $id : '')) ?>" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i><?= cn_e($lang->country['btn_cancel']) ?></a>
         <button type="submit" class="btn btn-primary rounded-pill px-4" data-cn-submit>
-          <i class="fa-solid <?= $isEdit ? 'fa-floppy-disk' : 'fa-plus' ?> me-1"></i><?= $isEdit ? 'Save changes' : 'Add country' ?>
+          <i class="fa-solid <?= $isEdit ? 'fa-floppy-disk' : 'fa-plus' ?> me-1"></i><?= cn_e($isEdit ? $lang->country['btn_save'] : $lang->country['btn_add']) ?>
         </button>
       </div>
     </form>

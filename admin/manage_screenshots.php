@@ -7,6 +7,9 @@ if (!defined('STAFF_PANEL')) {
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_image_recode.php';
 
+global $lang;
+$lang->load('manage_screenshots');
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -16,6 +19,35 @@ const DAY_IN_SECONDS  = 86400;
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в языковую строку (strtr — без повторной замены).
+     * $lang->load() превращает {N} в %N$s, поэтому подставляем оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
+/**
+ * Языковой массив страницы, заранее экранированный для вывода в HTML/heredoc.
+ */
+function scr_lang_html(): array
+{
+    global $lang;
+    return array_map(
+        static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES),
+        $lang->manage_screenshots
+    );
+}
 
 function get_upload_path(string $filename): string
 {
@@ -42,12 +74,12 @@ function get_next_screenshot_number(int $torrent_id, object $db, int $step = 3):
 
 function scr_verify_csrf(): void
 {
-    global $mybb, $_this_script_;
+    global $mybb, $_this_script_, $lang;
     if (!isset($_POST['my_post_key']) || $_POST['my_post_key'] !== $mybb->post_code) {
         $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']);
         if ($is_ajax) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_csrf']]);
             exit;
         }
         header('Location: ' . $_this_script_ . '&error=csrf');
@@ -74,14 +106,14 @@ function scr_page_params(): array
 // ACTION: MASS DELETE
 // ═══════════════════════════════════════════════════════════
 if (($_GET['action'] ?? '') === 'mass_delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    global $db; // ВАЖНО: добавить эту строку!
+    global $db, $lang; // ВАЖНО: добавить эту строку!
     
     header('Content-Type: application/json');
     scr_verify_csrf();
 
     $ids = array_filter(array_map('intval', (array)($_POST['ids'] ?? [])));
     if (empty($ids)) {
-        echo json_encode(['status' => 'error', 'message' => 'No screenshots selected']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_none_selected']]);
         exit;
     }
 
@@ -125,8 +157,10 @@ if (($_GET['action'] ?? '') === 'mass_delete' && $_SERVER['REQUEST_METHOD'] === 
         'deleted' => $deleted,
         'errors'  => $errors,
         'message' => empty($deleted)
-            ? 'Failed to delete screenshots'
-            : 'Deleted: ' . count($deleted) . (empty($errors) ? '' : ', errors: ' . count($errors)),
+            ? $lang->manage_screenshots['err_mass_failed']
+            : (empty($errors)
+                ? ags_fmt($lang->manage_screenshots['flash_mass_deleted'], count($deleted))
+                : ags_fmt($lang->manage_screenshots['flash_mass_deleted_errors'], count($deleted), count($errors))),
     ]);
     exit;
 }
@@ -137,7 +171,7 @@ if (($_GET['action'] ?? '') === 'mass_delete' && $_SERVER['REQUEST_METHOD'] === 
 // ACTION: AJAX UPLOAD (модалка на странице списка)
 // ═══════════════════════════════════════════════════════════
 if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $lang;
 
     header('Content-Type: application/json');
     scr_verify_csrf();
@@ -147,25 +181,26 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
 
     $torrent_id = (int)($_POST['torrent_id'] ?? 0);
     if ($torrent_id <= 0) {
-        echo json_encode(['status' => 'error', 'message' => 'Valid Torrent ID is required']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_torrent_required']]);
         exit;
     }
 
     $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
     if (!$torrent_check || $db->num_rows($torrent_check) === 0) {
-        echo json_encode(['status' => 'error', 'message' => "Torrent ID {$torrent_id} does not exist"]);
+        echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_screenshots['err_torrent_missing'], $torrent_id)]);
         exit;
     }
 
     if (!isset($_FILES['screenshots']) || empty($_FILES['screenshots']['name'][0] ?? '')) {
-        echo json_encode(['status' => 'error', 'message' => 'No files uploaded']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_no_files']]);
         exit;
     }
 
     $files = $_FILES['screenshots'];
     $fileCount = count($files['name']);
     $uploaded = 0;
-    $errors = [];
+    $errors = [];     // для пользователя (переведено)
+    $log_errors = []; // для write_log (английский)
 
     for ($i = 0; $i < $fileCount; $i++) {
         $name  = $files['name'][$i];
@@ -176,22 +211,26 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
         if ($name === '') continue;
 
         if ($error !== UPLOAD_ERR_OK) {
-            $errors[] = "{$name}: upload error";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_upload'], $name);
+            $log_errors[] = "{$name}: upload error";
             continue;
         }
         if ($size > $max_size) {
-            $errors[] = "{$name}: too large (max 10MB)";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_too_large'], $name);
+            $log_errors[] = "{$name}: too large (max 10MB)";
             continue;
         }
 
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         if (!in_array($ext, $allowed_ext, true)) {
-            $errors[] = "{$name}: invalid format";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_format'], $name);
+            $log_errors[] = "{$name}: invalid format";
             continue;
         }
 
         if (!($info = @getimagesize($tmp))) {
-            $errors[] = "{$name}: not a valid image";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_not_image'], $name);
+            $log_errors[] = "{$name}: not a valid image";
             continue;
         }
 
@@ -200,7 +239,8 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
         $path     = get_upload_path($filename);
 
         if (!move_uploaded_file($tmp, $path)) {
-            $errors[] = "{$name}: failed to save";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_save'], $name);
+            $log_errors[] = "{$name}: failed to save";
             continue;
         }
 
@@ -210,7 +250,8 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
         // анимацию.
         if (recode_image_file($path, $info['mime']) === false) {
             @unlink($path);
-            $errors[] = "{$name}: corrupted or invalid image data";
+            $errors[]     = ags_fmt($lang->manage_screenshots['err_f_corrupt'], $name);
+            $log_errors[] = "{$name}: corrupted or invalid image data";
             continue;
         }
 
@@ -226,12 +267,12 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
     }
 
     if ($uploaded > 0 && empty($errors)) {
-        echo json_encode(['status' => 'success', 'uploaded' => $uploaded, 'message' => "{$uploaded} screenshot(s) uploaded successfully"]);
+        echo json_encode(['status' => 'success', 'uploaded' => $uploaded, 'message' => ags_fmt($lang->manage_screenshots['flash_uploaded'], $uploaded)]);
     } elseif ($uploaded > 0) {
-        echo json_encode(['status' => 'partial', 'uploaded' => $uploaded, 'message' => "{$uploaded} uploaded, errors: " . implode('; ', $errors)]);
+        echo json_encode(['status' => 'partial', 'uploaded' => $uploaded, 'message' => ags_fmt($lang->manage_screenshots['flash_uploaded_partial'], $uploaded, implode('; ', $errors))]);
     } else {
-        write_log("[SCREENSHOT UPLOAD ERROR] Torrent #{$torrent_id} | {$CURUSER['username']} | " . implode('; ', $errors));
-        echo json_encode(['status' => 'error', 'message' => implode('; ', $errors) ?: 'Upload failed']);
+        write_log("[SCREENSHOT UPLOAD ERROR] Torrent #{$torrent_id} | {$CURUSER['username']} | " . implode('; ', $log_errors));
+        echo json_encode(['status' => 'error', 'message' => implode('; ', $errors) ?: $lang->manage_screenshots['err_upload_failed']]);
     }
     exit;
 }
@@ -242,7 +283,7 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
 // ACTION: AJAX EDIT (модалка на странице списка)
 // ═══════════════════════════════════════════════════════════
 if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $lang;
 
     header('Content-Type: application/json');
     scr_verify_csrf();
@@ -254,14 +295,14 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
     $row = $res ? $db->fetch_array($res) : null;
 
     if (!$row) {
-        echo json_encode(['status' => 'error', 'message' => 'Screenshot not found']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_not_found']]);
         exit;
     }
 
     $torrent_id = (int)($_POST['torrent_id'] ?? 0);
     $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
     if ($torrent_id <= 0 || !$torrent_check || $db->num_rows($torrent_check) === 0) {
-        echo json_encode(['status' => 'error', 'message' => "Torrent ID {$torrent_id} does not exist"]);
+        echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_screenshots['err_torrent_missing'], $torrent_id)]);
         exit;
     }
 
@@ -275,12 +316,12 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
     if (isset($_FILES['screenshot']) && $_FILES['screenshot']['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, $allowed_ext, true)) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid format. Allowed: ' . implode(', ', $allowed_ext)]);
+            echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_screenshots['err_format_allowed'], implode(', ', $allowed_ext))]);
             exit;
         }
         $screenshotInfo = @getimagesize($_FILES['screenshot']['tmp_name']);
         if (!$screenshotInfo) {
-            echo json_encode(['status' => 'error', 'message' => 'File is not a valid image']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_not_image']]);
             exit;
         }
 
@@ -290,14 +331,14 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
         $newPath = get_upload_path($newFilename);
 
         if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], $newPath)) {
-            echo json_encode(['status' => 'error', 'message' => 'File upload failed']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_file_upload_failed']]);
             exit;
         }
 
         // Перекодирование — защита от "полиглот"-файлов.
         if (recode_image_file($newPath, $screenshotInfo['mime']) === false) {
             @unlink($newPath);
-            echo json_encode(['status' => 'error', 'message' => 'File is corrupted or is not a valid image']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_corrupt']]);
             exit;
         }
 
@@ -315,7 +356,7 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
         write_log("Screenshot updated: ID:{$id} | " . implode(', ', $changes) . " | {$CURUSER['username']}");
     }
 
-    echo json_encode(['status' => 'success', 'message' => 'Screenshot updated successfully']);
+    echo json_encode(['status' => 'success', 'message' => $lang->manage_screenshots['flash_updated']]);
     exit;
 }
 
@@ -366,7 +407,9 @@ function scr_kpi(string $icon, string $tone, string $value, string $label): stri
 // ═══════════════════════════════════════════════════════════
 function show_list(): void
 {
-    global $db, $_this_script_, $mybb, $BASEURL;
+    global $db, $_this_script_, $mybb, $BASEURL, $lang;
+
+    $h = scr_lang_html();
 
     $search     = trim($_GET['search']     ?? '');
     $torrent_id = trim($_GET['torrent_id'] ?? '');
@@ -412,7 +455,7 @@ function show_list(): void
     $has_rows = $db->num_rows($result) > 0;
     $is_filtered = ($search !== '' || $torrent_id !== '');
 
-    stdhead('Screenshot Management');
+    stdhead($lang->manage_screenshots['title_list']);
 
   
     scr_styles();
@@ -423,18 +466,18 @@ function show_list(): void
     // Header
     scr_header(
         'fa-images',
-        'Screenshot Management',
-        'Upload, replace and remove torrent screenshots',
+        $lang->manage_screenshots['sec_list_title'],
+        $lang->manage_screenshots['sec_list_sub'],
         '<a href="' . $_this_script_ . '&action=add" class="btn btn-primary rounded-pill px-4" id="addNewBtn" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal">'
-        . '<i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload screenshots</a>'
+        . '<i class="fa-solid fa-cloud-arrow-up me-2"></i>' . $h['btn_upload_screenshots'] . '</a>'
     );
 
     // KPI tiles
     echo '<div class="row g-3 mb-4">';
-    echo scr_kpi('fa-images',        'primary', number_format((int)($stats['total'] ?? 0)),    'Total screenshots');
-    echo scr_kpi('fa-magnet',        'info',    number_format((int)($stats['torrents'] ?? 0)), 'Torrents with screenshots');
-    echo scr_kpi('fa-clock',         'success', number_format((int)($stats['day'] ?? 0)),      'Uploaded in 24 hours');
-    echo scr_kpi('fa-calendar-week', 'warning', number_format((int)($stats['week'] ?? 0)),     'Uploaded in 7 days');
+    echo scr_kpi('fa-images',        'primary', number_format((int)($stats['total'] ?? 0)),    $h['kpi_total']);
+    echo scr_kpi('fa-magnet',        'info',    number_format((int)($stats['torrents'] ?? 0)), $h['kpi_torrents']);
+    echo scr_kpi('fa-clock',         'success', number_format((int)($stats['day'] ?? 0)),      $h['kpi_day']);
+    echo scr_kpi('fa-calendar-week', 'warning', number_format((int)($stats['week'] ?? 0)),     $h['kpi_week']);
     echo '</div>';
 
     // Search
@@ -443,18 +486,20 @@ function show_list(): void
     echo '<input type="hidden" name="act" value="manage_screenshots">';
     echo '<div class="col-md-5"><div class="input-group">';
     echo '<span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>';
-    echo '<input type="text" class="form-control" name="search" placeholder="File name" aria-label="Search by file name" value="' . htmlspecialchars($search) . '">';
+    echo '<input type="text" class="form-control" name="search" placeholder="' . $h['ph_filename'] . '" aria-label="' . $h['aria_search'] . '" value="' . htmlspecialchars($search) . '">';
     echo '</div></div>';
     echo '<div class="col-md-3"><div class="input-group">';
     echo '<span class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>';
-    echo '<input type="number" class="form-control" name="torrent_id" placeholder="Torrent ID" aria-label="Torrent ID" value="' . htmlspecialchars($torrent_id) . '">';
+    echo '<input type="number" class="form-control" name="torrent_id" placeholder="' . $h['ph_torrent_id'] . '" aria-label="' . $h['ph_torrent_id'] . '" value="' . htmlspecialchars($torrent_id) . '">';
     echo '</div></div>';
     echo '<div class="col-md-4 d-flex gap-2">';
-    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-filter me-2"></i>Filter</button>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>Reset</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-filter me-2"></i>' . $h['btn_filter'] . '</button>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>' . $h['btn_reset'] . '</a>';
     echo '</div></form>';
     if ($is_filtered) {
-        echo '<div class="scr-meta mt-2"><i class="fa-solid fa-list-check"></i><span>Found: <strong>' . number_format($count) . '</strong></span></div>';
+        echo '<div class="scr-meta mt-2"><i class="fa-solid fa-list-check"></i><span>'
+            . ags_fmt($h['lbl_found'], '<strong>' . number_format($count) . '</strong>')
+            . '</span></div>';
     }
     echo '</div>';
 
@@ -464,14 +509,14 @@ function show_list(): void
         echo '<div class="scr-panel scr-empty">';
         if ($is_filtered) {
             echo '<div class="scr-icon scr-tone-warning"><i class="fa-solid fa-magnifying-glass"></i></div>';
-            echo '<h5 class="fw-semibold">Nothing matches this filter</h5>';
-            echo '<p class="text-body-secondary mb-3">Try another file name or torrent ID.</p>';
-            echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>Reset filter</a>';
+            echo '<h5 class="fw-semibold">' . $h['empty_filter_title'] . '</h5>';
+            echo '<p class="text-body-secondary mb-3">' . $h['empty_filter_text'] . '</p>';
+            echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>' . $h['btn_reset_filter'] . '</a>';
         } else {
             echo '<div class="scr-icon scr-tone-primary"><i class="fa-solid fa-images"></i></div>';
-            echo '<h5 class="fw-semibold">No screenshots yet</h5>';
-            echo '<p class="text-body-secondary mb-3">Upload the first screenshots for a torrent.</p>';
-            echo '<button type="button" class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal"><i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload screenshots</button>';
+            echo '<h5 class="fw-semibold">' . $h['empty_title'] . '</h5>';
+            echo '<p class="text-body-secondary mb-3">' . $h['empty_text'] . '</p>';
+            echo '<button type="button" class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal"><i class="fa-solid fa-cloud-arrow-up me-2"></i>' . $h['btn_upload_screenshots'] . '</button>';
         }
         echo '</div>';
     } else {
@@ -486,7 +531,8 @@ function show_list(): void
             $img      = htmlspecialchars(get_image_path($row['filename']));
             $fname    = htmlspecialchars($row['filename']);
             $ext      = strtoupper(pathinfo($row['filename'], PATHINFO_EXTENSION));
-            $date     = date('M d, Y H:i', (int)$row['uploaded_at']);
+            $date     = date($lang->manage_screenshots['fmt_date'], (int)$row['uploaded_at']);
+            $torrent_label = ags_fmt($h['lbl_torrent'], $tid);
 
             echo '<div class="col-xl-3 col-lg-4 col-sm-6 screenshot-card">';
             echo '<div class="card h-100 scr-card">';
@@ -494,14 +540,14 @@ function show_list(): void
             // Thumbnail
             echo '<div class="position-relative">';
             echo '<div class="form-check scr-check">';
-            echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="' . $id . '" data-img-src="' . $img . '" aria-label="Select screenshot #' . $id . '">';
+            echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="' . $id . '" data-img-src="' . $img . '" aria-label="' . ags_fmt($h['aria_select'], $id) . '">';
             echo '</div>';
             echo '<span class="scr-chip scr-chip-id">#' . $id . '</span>';
             if ($ext !== '') {
                 echo '<span class="scr-chip scr-chip-ext"><i class="fa-solid fa-file-image me-1"></i>' . htmlspecialchars($ext) . '</span>';
             }
-            echo '<a href="#" class="scr-thumb" data-bs-toggle="modal" data-bs-target="#universalImageModal" data-img-src="' . $img . '" data-title="Torrent #' . $tid . '" aria-label="View screenshot #' . $id . '">';
-            echo '<img src="' . $img . '" alt="Screenshot #' . $id . '" loading="lazy">';
+            echo '<a href="#" class="scr-thumb" data-bs-toggle="modal" data-bs-target="#universalImageModal" data-img-src="' . $img . '" data-title="' . $torrent_label . '" aria-label="' . ags_fmt($h['aria_view'], $id) . '">';
+            echo '<img src="' . $img . '" alt="' . ags_fmt($h['alt_screenshot'], $id) . '" loading="lazy">';
             echo '<span class="scr-thumb-zoom"><i class="fa-solid fa-magnifying-glass-plus"></i></span>';
             echo '</a>';
             echo '</div>';
@@ -509,7 +555,7 @@ function show_list(): void
             // Body
             echo '<div class="scr-body">';
             echo '<a class="scr-torrent d-inline-flex align-items-center gap-2 mb-1" href="' . $BASEURL . '/details.php?id=' . $tid . '" target="_blank" rel="noopener">'
-                . '<i class="fa-solid fa-magnet text-primary"></i>Torrent #' . $tid . '</a>';
+                . '<i class="fa-solid fa-magnet text-primary"></i>' . $torrent_label . '</a>';
             echo '<div class="scr-meta" title="' . $fname . '"><i class="fa-solid fa-file-lines"></i><span>' . $fname . '</span></div>';
             echo '<div class="scr-meta"><i class="fa-solid fa-clock"></i><span>' . $date . '</span></div>';
 
@@ -520,13 +566,13 @@ function show_list(): void
                 . ' data-filename="' . $fname . '"'
                 . ' data-img-src="' . $img . '"'
                 . ' data-bs-toggle="modal" data-bs-target="#editScreenshotModal">'
-                . '<i class="fa-solid fa-pen-to-square me-1"></i>Edit</a>';
+                . '<i class="fa-solid fa-pen-to-square me-1"></i>' . $h['btn_edit'] . '</a>';
             echo '<a class="btn btn-sm btn-outline-danger rounded-pill single-delete-btn" href="#"'
                 . ' data-id="' . $id . '"'
                 . ' data-filename="' . $fname . '"'
                 . ' data-bs-toggle="modal" data-bs-target="#singleDeleteModal">'
-                . '<i class="fa-solid fa-trash-can me-1"></i>Delete</a>';
-            echo '<a class="btn btn-sm btn-outline-secondary rounded-pill scr-open" href="' . $img . '" target="_blank" rel="noopener" title="Open original" aria-label="Open original">'
+                . '<i class="fa-solid fa-trash-can me-1"></i>' . $h['btn_delete'] . '</a>';
+            echo '<a class="btn btn-sm btn-outline-secondary rounded-pill scr-open" href="' . $img . '" target="_blank" rel="noopener" title="' . $h['tip_open_original'] . '" aria-label="' . $h['tip_open_original'] . '">'
                 . '<i class="fa-solid fa-up-right-from-square"></i></a>';
             echo '</div>';
 
@@ -537,9 +583,11 @@ function show_list(): void
 
         // Sticky bulk-action bar
         echo '<div class="scr-bar">';
-        echo '<div class="scr-bar-info"><i class="fa-solid fa-square-check"></i><span>Selected: <strong id="scrSelectedCount">0</strong></span></div>';
-        echo '<button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="selectAllBtn"><i class="fa-solid fa-check-double me-2"></i>Select all</button>';
-        echo '<button type="button" class="btn btn-danger rounded-pill px-3" id="deleteSelectedBtn" disabled><i class="fa-solid fa-trash-can me-2"></i>Delete selected</button>';
+        echo '<div class="scr-bar-info"><i class="fa-solid fa-square-check"></i><span>'
+            . ags_fmt($h['lbl_selected'], '<strong id="scrSelectedCount">0</strong>')
+            . '</span></div>';
+        echo '<button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="selectAllBtn"><i class="fa-solid fa-check-double me-2"></i>' . $h['btn_select_all'] . '</button>';
+        echo '<button type="button" class="btn btn-danger rounded-pill px-3" id="deleteSelectedBtn" disabled><i class="fa-solid fa-trash-can me-2"></i>' . $h['btn_delete_selected'] . '</button>';
         echo '</div>';
     }
 
@@ -549,6 +597,9 @@ function show_list(): void
 
     require_once INC_PATH . '/modals_images.php';
 
+    // Заголовок массового удаления: счётчик — <span id="deleteCount">, на него опирается JS
+    $mass_delete_q = ags_fmt($h['lbl_delete_mass_q'], '<span id="deleteCount" class="text-danger">0</span>');
+
     // ── Modals ──────────────────────────────────────────────
 echo <<<HTML
 <!-- Single Delete Modal -->
@@ -557,21 +608,21 @@ echo <<<HTML
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title fw-semibold" id="singleDeleteModalLabel">
-          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>Confirm deletion
+          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>{$h['pane_confirm_delete']}
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$h['btn_close']}"></button>
       </div>
       <div class="modal-body">
         <div class="d-flex align-items-center mb-3">
           <div class="scr-icon scr-tone-danger me-3"><i class="fa-solid fa-trash-can"></i></div>
           <div>
-            <h5 class="fw-bold mb-1" id="singleDeleteTitle">Delete Screenshot?</h5>
+            <h5 class="fw-bold mb-1" id="singleDeleteTitle">{$h['lbl_delete_single_q']}</h5>
             <p class="text-muted mb-0" id="singleDeleteFilename"></p>
           </div>
         </div>
         <div id="singleDeletePreviewContainer" class="single-preview-container mb-3 text-center">
           <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
-            <img id="singleDeleteImage" src="" alt="Preview"
+            <img id="singleDeleteImage" src="" alt="{$h['alt_preview']}"
                  style="max-width: 100%; max-height: 200px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;"
                  onerror="this.style.display='none';">
           </div>
@@ -582,22 +633,22 @@ echo <<<HTML
             <div class="overflow-hidden">
               <div class="fw-bold text-truncate" id="singleDeleteFileName">filename.jpg</div>
               <div class="small text-muted" id="singleDeleteFileInfo">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading...
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> {$h['lbl_loading']}
               </div>
             </div>
           </div>
         </div>
         <div class="alert alert-warning d-flex mb-0">
           <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
-          <div><strong>This can't be undone.</strong> The file and its record will be removed.</div>
+          <div><strong>{$h['warn_undo']}</strong> {$h['warn_single_text']}</div>
         </div>
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
-          <i class="fa-solid fa-xmark me-1"></i> Cancel
+          <i class="fa-solid fa-xmark me-1"></i> {$h['btn_cancel']}
         </button>
         <button type="button" class="btn btn-danger rounded-pill px-4" id="confirmSingleDeleteBtn">
-          <i class="fa-solid fa-trash-can me-1"></i> Delete
+          <i class="fa-solid fa-trash-can me-1"></i> {$h['btn_delete']}
         </button>
       </div>
     </div>
@@ -613,14 +664,14 @@ echo <<<HTML
             <div class="modal-header border-0 p-4 pb-0">
                 <div class="d-flex align-items-center gap-3">
                     <div class="scr-icon scr-icon-sm scr-tone-primary"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                    <h5 class="modal-title fw-semibold mb-0">Upload screenshots</h5>
+                    <h5 class="modal-title fw-semibold mb-0">{$h['btn_upload_screenshots']}</h5>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{$h['btn_close']}"></button>
             </div>
             <div class="modal-body p-4">
                 <div class="mb-4">
-                    <label class="form-label text-body-secondary mb-2" for="scrTorrentId"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
-                    <input type="number" class="form-control form-control-lg bg-body-tertiary" id="scrTorrentId" placeholder="For example, 1542" required>
+                    <label class="form-label text-body-secondary mb-2" for="scrTorrentId"><i class="fa-solid fa-hashtag me-1"></i>{$h['lbl_torrent_id']}</label>
+                    <input type="number" class="form-control form-control-lg bg-body-tertiary" id="scrTorrentId" placeholder="{$h['ph_torrent_example']}" required>
                 </div>
 
                 <div class="upload-area scr-drop p-5 text-center position-relative" id="scrDropArea" style="cursor:pointer">
@@ -634,29 +685,29 @@ echo <<<HTML
                     </div>
                     <div id="scrPlaceholder">
                         <div class="scr-icon scr-tone-primary mx-auto mb-3" style="width:4.5rem;height:4.5rem;font-size:1.8rem;border-radius:50%"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                        <h5 class="fw-semibold">Drop screenshots here</h5>
-                        <p class="text-body-secondary mb-4"><i class="fa-solid fa-file-image me-1"></i>JPG, PNG, GIF or WEBP, up to 10 MB each</p>
+                        <h5 class="fw-semibold">{$h['lbl_drop_title']}</h5>
+                        <p class="text-body-secondary mb-4"><i class="fa-solid fa-file-image me-1"></i>{$h['hint_drop_formats']}</p>
                     </div>
                     <div class="file-count-badge position-absolute top-0 end-0 m-3" id="scrFileCountBadge" style="display:none">
                         <span class="badge bg-primary rounded-pill p-2" id="scrFileCount"></span>
                     </div>
                     <input type="file" class="d-none" id="scrFileInput" multiple accept="image/*">
                     <button class="btn btn-outline-primary btn-lg px-5 rounded-pill" onclick="document.getElementById('scrFileInput').click()" id="scrBrowseBtn">
-                        <i class="fa-solid fa-folder-open me-2"></i>Choose files
+                        <i class="fa-solid fa-folder-open me-2"></i>{$h['btn_choose_files']}
                     </button>
                     <button class="btn btn-link text-danger mt-3 d-none" id="scrClearBtn">
-                        <i class="fa-solid fa-circle-xmark me-1"></i>Clear all
+                        <i class="fa-solid fa-circle-xmark me-1"></i>{$h['btn_clear_all']}
                     </button>
                 </div>
             </div>
             <div class="modal-footer border-0 p-4 pt-0">
                 <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i>Cancel
+                    <i class="fa-solid fa-xmark me-1"></i>{$h['btn_cancel']}
                 </button>
                 <button type="button" class="btn btn-primary rounded-pill px-5 position-relative" id="scrStartUploadBtn" disabled>
-                    <span class="upload-text"><i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload</span>
+                    <span class="upload-text"><i class="fa-solid fa-cloud-arrow-up me-2"></i>{$h['btn_upload']}</span>
                     <span class="upload-loading d-none">
-                        <span class="spinner-border spinner-border-sm me-2"></span>Uploading...
+                        <span class="spinner-border spinner-border-sm me-2"></span>{$h['lbl_uploading']}
                     </span>
                 </button>
             </div>
@@ -673,39 +724,39 @@ echo <<<HTML
             <div class="modal-header border-0 p-4 pb-0">
                 <div class="d-flex align-items-center gap-3">
                     <div class="scr-icon scr-icon-sm scr-tone-primary"><i class="fa-solid fa-pen-to-square"></i></div>
-                    <h5 class="modal-title fw-semibold mb-0">Edit screenshot</h5>
+                    <h5 class="modal-title fw-semibold mb-0">{$h['pane_edit']}</h5>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{$h['btn_close']}"></button>
             </div>
             <div class="modal-body p-4">
                 <input type="hidden" id="editScreenshotId" value="">
                 <div class="row g-4 mb-3">
                     <div class="col-lg-6">
                         <div class="form-floating mb-3">
-                            <input type="number" class="form-control bg-body-tertiary" id="editTorrentId" placeholder="Torrent ID" required>
-                            <label for="editTorrentId"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
+                            <input type="number" class="form-control bg-body-tertiary" id="editTorrentId" placeholder="{$h['lbl_torrent_id']}" required>
+                            <label for="editTorrentId"><i class="fa-solid fa-hashtag me-1"></i>{$h['lbl_torrent_id']}</label>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label text-body-secondary mb-2" for="editScreenshotFile"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>Replace file (optional)</label>
+                            <label class="form-label text-body-secondary mb-2" for="editScreenshotFile"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>{$h['lbl_replace_optional']}</label>
                             <input type="file" class="form-control bg-body-tertiary" id="editScreenshotFile" accept="image/*">
                             <div class="form-text" id="editCurrentFilename"></div>
                         </div>
                     </div>
                     <div class="col-lg-6">
                         <div class="scr-drop p-3 text-center d-grid" style="min-height:220px;place-items:center">
-                            <img id="editImagePreview" src="" class="img-fluid rounded" style="max-height:220px" alt="Preview">
+                            <img id="editImagePreview" src="" class="img-fluid rounded" style="max-height:220px" alt="{$h['alt_preview']}">
                         </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer border-0 p-4 pt-0">
                 <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i>Cancel
+                    <i class="fa-solid fa-xmark me-1"></i>{$h['btn_cancel']}
                 </button>
                 <button type="button" class="btn btn-primary rounded-pill px-5 position-relative" id="editSaveBtn">
-                    <span class="save-text"><i class="fa-solid fa-floppy-disk me-2"></i>Save changes</span>
+                    <span class="save-text"><i class="fa-solid fa-floppy-disk me-2"></i>{$h['btn_save_changes']}</span>
                     <span class="save-loading d-none">
-                        <span class="spinner-border spinner-border-sm me-2"></span>Saving...
+                        <span class="spinner-border spinner-border-sm me-2"></span>{$h['lbl_saving']}
                     </span>
                 </button>
             </div>
@@ -721,40 +772,40 @@ echo <<<HTML
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title fw-semibold" id="massDeleteModalLabel">
-          <i class="fas fa-exclamation-triangle me-2"></i>Confirm deletion
+          <i class="fas fa-exclamation-triangle me-2"></i>{$h['pane_confirm_delete']}
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$h['btn_close']}"></button>
       </div>
 
       <div class="modal-body">
         <div class="d-flex align-items-center mb-3">
           <div class="scr-icon scr-tone-danger me-3"><i class="fa-solid fa-trash-can"></i></div>
           <div>
-            <h5 class="fw-bold mb-1">Delete <span id="deleteCount" class="text-danger">0</span> screenshots?</h5>
-            <p class="text-muted mb-0">Files and records of all selected screenshots will be removed.</p>
+            <h5 class="fw-bold mb-1">{$mass_delete_q}</h5>
+            <p class="text-muted mb-0">{$h['lbl_delete_mass_text']}</p>
           </div>
         </div>
 
         <div id="massDeletePreview" class="selected-previews-container mb-3" style="display: none;">
           <div class="d-flex align-items-center mb-2">
             <i class="fa-solid fa-images text-primary me-2"></i>
-            <span class="fw-medium">Selected screenshots:</span>
+            <span class="fw-medium">{$h['lbl_selected_screens']}</span>
           </div>
           <div id="previewList" class="previews-grid"></div>
         </div>
 
         <div class="alert alert-warning d-flex mt-3 mb-0">
           <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
-          <div><strong>This can't be undone.</strong> Deleted screenshots can't be restored.</div>
+          <div><strong>{$h['warn_undo']}</strong> {$h['warn_mass_text']}</div>
         </div>
       </div>
 
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
-          <i class="fa-solid fa-xmark me-1"></i> Cancel
+          <i class="fa-solid fa-xmark me-1"></i> {$h['btn_cancel']}
         </button>
         <button type="button" class="btn btn-danger rounded-pill px-4" id="confirmDeleteBtn">
-          <i class="fa-solid fa-trash-can me-1"></i> Delete
+          <i class="fa-solid fa-trash-can me-1"></i> {$h['btn_delete']}
         </button>
       </div>
     </div>
@@ -762,9 +813,20 @@ echo <<<HTML
 </div>
 HTML;
 
+    // JS-строки: ключи js_* из ланга → AGS_LANG без префикса
+    $js_lang = [];
+    foreach ($lang->manage_screenshots as $key => $value) {
+        if (str_starts_with($key, 'js_')) {
+            $js_lang[substr($key, 3)] = $value;
+        }
+    }
+    echo '<script>const AGS_LANG = '
+        . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . ';</script>';
+
     echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
     echo '<script src="' . $BASEURL . '/scripts/details_modal.js"></script>';
-    echo '<script src="' . $BASEURL . '/admin/scripts/manage_screenshots.js"></script>';
+    echo '<script src="' . $BASEURL . '/admin/scripts/manage_screenshots.js?ver=31"></script>';
 
     // Счётчик выбранных в нижней панели (не мешает manage_screenshots.js)
     echo <<<'JS'
@@ -799,11 +861,15 @@ JS;
 // ═══════════════════════════════════════════════════════════
 function handle_add(): void
 {
-    global $db, $_this_script_, $CURUSER, $mybb;
+    global $db, $_this_script_, $CURUSER, $mybb, $lang;
+
+    $h = scr_lang_html();
 
     $error   = null;
+    $log_error = ''; // английский вариант $error для write_log
     $success_count = 0;
     $errors  = [];
+    $log_errors = [];
     $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -813,7 +879,8 @@ function handle_add(): void
 
         $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
         if ($torrent_id <= 0 || !$torrent_check || $db->num_rows($torrent_check) === 0) {
-            $error = "Torrent ID {$torrent_id} does not exist";
+            $error     = ags_fmt($lang->manage_screenshots['err_torrent_missing'], $torrent_id);
+            $log_error = "Torrent ID {$torrent_id} does not exist";
         } else {
 
         // Нормализуем $_FILES['screenshot'] в плоский список файлов -
@@ -836,22 +903,26 @@ function handle_add(): void
         }
 
         if (empty($files)) {
-            $error = 'No file uploaded or upload error';
+            $error     = $lang->manage_screenshots['err_no_file'];
+            $log_error = 'No file uploaded or upload error';
         } else {
             foreach ($files as $file) {
                 if ($file['error'] !== UPLOAD_ERR_OK) {
-                    $errors[] = "{$file['name']}: upload error (code {$file['error']})";
+                    $errors[]     = ags_fmt($lang->manage_screenshots['err_f_upload_code'], $file['name'], $file['error']);
+                    $log_errors[] = "{$file['name']}: upload error (code {$file['error']})";
                     continue;
                 }
 
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, $allowed_ext)) {
-                    $errors[] = "{$file['name']}: invalid format. Allowed: " . implode(', ', $allowed_ext);
+                    $errors[]     = ags_fmt($lang->manage_screenshots['err_f_format_allowed'], $file['name'], implode(', ', $allowed_ext));
+                    $log_errors[] = "{$file['name']}: invalid format. Allowed: " . implode(', ', $allowed_ext);
                     continue;
                 }
 
                 if (!($info = getimagesize($file['tmp_name']))) {
-                    $errors[] = "{$file['name']}: not a valid image";
+                    $errors[]     = ags_fmt($lang->manage_screenshots['err_f_not_image'], $file['name']);
+                    $log_errors[] = "{$file['name']}: not a valid image";
                     continue;
                 }
 
@@ -860,14 +931,16 @@ function handle_add(): void
                 $path     = get_upload_path($filename);
 
                 if (!move_uploaded_file($file['tmp_name'], $path)) {
-                    $errors[] = "{$file['name']}: file upload failed";
+                    $errors[]     = ags_fmt($lang->manage_screenshots['err_f_save'], $file['name']);
+                    $log_errors[] = "{$file['name']}: file upload failed";
                     continue;
                 }
 
                 // Перекодирование — защита от "полиглот"-файлов.
                 if (recode_image_file($path, $info['mime']) === false) {
                     @unlink($path);
-                    $errors[] = "{$file['name']}: corrupted or invalid image data";
+                    $errors[]     = ags_fmt($lang->manage_screenshots['err_f_corrupt'], $file['name']);
+                    $log_errors[] = "{$file['name']}: corrupted or invalid image data";
                     continue;
                 }
 
@@ -889,26 +962,28 @@ function handle_add(): void
             }
 
             if ($success_count > 0) {
-                $error = "{$success_count} screenshot(s) uploaded successfully. Errors: " . implode('; ', $errors);
+                $error     = ags_fmt($lang->manage_screenshots['flash_uploaded_with_errors'], $success_count, implode('; ', $errors));
+                $log_error = "{$success_count} screenshot(s) uploaded successfully. Errors: " . implode('; ', $log_errors);
             } else {
-                $error = implode('; ', $errors);
+                $error     = implode('; ', $errors);
+                $log_error = implode('; ', $log_errors);
             }
         }
         } // конец else (torrent_id валиден)
 
         if ($error) {
-            write_log("[SCREENSHOT UPLOAD ERROR] Torrent #{$_POST['torrent_id']} | {$CURUSER['username']} | {$error}");
+            write_log("[SCREENSHOT UPLOAD ERROR] Torrent #{$_POST['torrent_id']} | {$CURUSER['username']} | {$log_error}");
         }
     }
 
-    stdhead('Add Screenshot');
+    stdhead($lang->manage_screenshots['title_add']);
     scr_styles();
     echo '<div class="container mt-3 scr-page">';
     scr_header(
         'fa-circle-plus',
-        'Add screenshots',
-        'Attach one or more images to a torrent',
-        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>'
+        $lang->manage_screenshots['sec_add_title'],
+        $lang->manage_screenshots['sec_add_sub'],
+        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>' . $h['btn_back'] . '</a>'
     );
     if ($error) {
         echo '<div class="alert ' . ($success_count > 0 ? 'alert-warning' : 'alert-danger') . ' d-flex align-items-start">'
@@ -922,12 +997,12 @@ function handle_add(): void
 
     echo '<div class="col-lg-6">';
     echo '<div class="form-floating mb-3">';
-    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="Torrent ID" required>';
-    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label></div>';
+    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="' . $h['lbl_torrent_id'] . '" required>';
+    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>' . $h['lbl_torrent_id'] . '</label></div>';
     echo '<div class="mb-3">';
-    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-file-image me-1 text-primary"></i>Screenshot files</label>';
+    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-file-image me-1 text-primary"></i>' . $h['lbl_files'] . '</label>';
     echo '<input type="file" class="form-control" id="screenshot" name="screenshot[]" accept="image/*" multiple required>';
-    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Allowed: ' . implode(', ', $allowed_ext) . '. You can select several files at once.</div>';
+    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($h['hint_allowed_multi'], implode(', ', $allowed_ext)) . '</div>';
     echo '</div></div>';
 
     echo '<div class="col-lg-6">';
@@ -935,14 +1010,16 @@ function handle_add(): void
     echo '<div id="previewGrid" class="d-flex flex-wrap gap-2 justify-content-center"></div>';
     echo '<div id="placeholderText" class="text-body-secondary">';
     echo '<div class="scr-icon scr-tone-primary mx-auto mb-3" style="border-radius:50%"><i class="fa-solid fa-image"></i></div>';
-    echo '<p class="mb-0">Selected images will be previewed here</p></div></div></div>';
+    echo '<p class="mb-0">' . $h['hint_preview_here'] . '</p></div></div></div>';
 
     echo '</div></div>';
 
     echo '<div class="scr-bar">';
-    echo '<div class="scr-bar-info"><i class="fa-solid fa-images"></i><span>Selected files: <strong id="scrFileTotal">0</strong></span></div>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>';
-    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>Save screenshots</button>';
+    echo '<div class="scr-bar-info"><i class="fa-solid fa-images"></i><span>'
+        . ags_fmt($h['lbl_selected_files'], '<strong id="scrFileTotal">0</strong>')
+        . '</span></div>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>' . $h['btn_cancel'] . '</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>' . $h['btn_save_screenshots'] . '</button>';
     echo '</div>';
     echo '</form>';
 
@@ -982,20 +1059,22 @@ JS;
 // ═══════════════════════════════════════════════════════════
 function handle_edit(): void
 {
-    global $db, $_this_script_, $CURUSER, $mybb;
+    global $db, $_this_script_, $CURUSER, $mybb, $lang;
+
+    $h = scr_lang_html();
 
     $id  = (int)($_GET['id'] ?? 0);
     $res = $db->sql_query_prepared("SELECT * FROM screenshots WHERE id = ?", [$id]);
     $row = $db->fetch_array($res);
 
     if (!$row) {
-        stdhead('Edit Screenshot');
+        stdhead($lang->manage_screenshots['title_edit']);
         scr_styles();
         echo '<div class="container mt-3 scr-page"><div class="scr-panel scr-empty">';
         echo '<div class="scr-icon scr-tone-danger"><i class="fa-solid fa-image"></i></div>';
-        echo '<h5 class="fw-semibold">Screenshot not found</h5>';
-        echo '<p class="text-body-secondary mb-3">It may have been deleted already.</p>';
-        echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>';
+        echo '<h5 class="fw-semibold">' . $h['notfound_title'] . '</h5>';
+        echo '<p class="text-body-secondary mb-3">' . $h['notfound_text'] . '</p>';
+        echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>' . $h['btn_back'] . '</a>';
         echo '</div></div>';
         stdfoot();
         return;
@@ -1013,7 +1092,7 @@ function handle_edit(): void
 
         $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
         if ($torrent_id <= 0 || !$torrent_check || $db->num_rows($torrent_check) === 0) {
-            $error = "Torrent ID {$torrent_id} does not exist";
+            $error = ags_fmt($lang->manage_screenshots['err_torrent_missing'], $torrent_id);
         }
 
         if (!$error && $row['torrent_id'] != $torrent_id) {
@@ -1024,9 +1103,9 @@ function handle_edit(): void
             $ext = strtolower(pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION));
             $screenshotInfo = @getimagesize($_FILES['screenshot']['tmp_name']);
             if (!in_array($ext, $allowed)) {
-                $error = 'Invalid format. Allowed: ' . implode(', ', $allowed);
+                $error = ags_fmt($lang->manage_screenshots['err_format_allowed'], implode(', ', $allowed));
             } elseif (!$screenshotInfo) {
-                $error = 'File is not a valid image';
+                $error = $lang->manage_screenshots['err_not_image'];
             } else {
                 $old      = get_upload_path($row['filename']);
                 $num      = get_next_screenshot_number($torrent_id, $db, 3);
@@ -1034,12 +1113,12 @@ function handle_edit(): void
                 $newPath  = get_upload_path($filename);
 
                 if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], $newPath)) {
-                    $error    = 'File upload failed';
+                    $error    = $lang->manage_screenshots['err_file_upload_failed'];
                     $filename = $row['filename'];
                 } elseif (recode_image_file($newPath, $screenshotInfo['mime']) === false) {
                     // Перекодирование — защита от "полиглот"-файлов.
                     @unlink($newPath);
-                    $error    = 'File is corrupted or is not a valid image';
+                    $error    = $lang->manage_screenshots['err_corrupt'];
                     $filename = $row['filename'];
                 } else {
                     if (file_exists($old)) unlink($old);
@@ -1059,14 +1138,14 @@ function handle_edit(): void
         }
     }
 
-    stdhead('Edit Screenshot');
+    stdhead($lang->manage_screenshots['title_edit']);
     scr_styles();
     echo '<div class="container mt-3 scr-page">';
     scr_header(
         'fa-pen-to-square',
-        'Edit screenshot #' . $id,
-        'Change the torrent or replace the image file',
-        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>'
+        ags_fmt($lang->manage_screenshots['sec_edit_title'], $id),
+        $lang->manage_screenshots['sec_edit_sub'],
+        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>' . $h['btn_back'] . '</a>'
     );
     if ($error) {
         echo '<div class="alert alert-danger d-flex align-items-start"><i class="fa-solid fa-circle-xmark me-2 mt-1"></i><div>' . htmlspecialchars($error) . '</div></div>';
@@ -1078,25 +1157,25 @@ function handle_edit(): void
 
     echo '<div class="col-lg-6">';
     echo '<div class="form-floating mb-3">';
-    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="Torrent ID" value="' . (int)$row['torrent_id'] . '" required>';
-    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label></div>';
+    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="' . $h['lbl_torrent_id'] . '" value="' . (int)$row['torrent_id'] . '" required>';
+    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>' . $h['lbl_torrent_id'] . '</label></div>';
     echo '<div class="mb-3">';
-    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-arrow-right-arrow-left me-1 text-primary"></i>Replace file</label>';
+    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-arrow-right-arrow-left me-1 text-primary"></i>' . $h['lbl_replace_file'] . '</label>';
     echo '<input type="file" class="form-control" id="screenshot" name="screenshot" accept="image/*">';
-    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Leave empty to keep ' . htmlspecialchars($row['filename']) . '</div>';
+    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($h['hint_keep_file'], htmlspecialchars($row['filename'])) . '</div>';
     echo '</div></div>';
 
     echo '<div class="col-lg-6">';
     echo '<div class="scr-drop p-4 text-center d-grid" style="min-height:250px;place-items:center">';
-    echo '<img id="imagePreview" src="' . htmlspecialchars(get_image_path($row['filename'])) . '" class="img-fluid rounded" style="max-height:220px" alt="Preview">';
+    echo '<img id="imagePreview" src="' . htmlspecialchars(get_image_path($row['filename'])) . '" class="img-fluid rounded" style="max-height:220px" alt="' . $h['alt_preview'] . '">';
     echo '</div></div>';
 
     echo '</div></div>';
 
     echo '<div class="scr-bar">';
     echo '<div class="scr-bar-info"><i class="fa-solid fa-file-image"></i><span class="text-truncate">' . htmlspecialchars($row['filename']) . '</span></div>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>';
-    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>Save changes</button>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>' . $h['btn_cancel'] . '</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>' . $h['btn_save_changes'] . '</button>';
     echo '</div>';
     echo '</form>';
 
@@ -1124,14 +1203,14 @@ JS;
 // ═══════════════════════════════════════════════════════════
 function handle_delete(): void
 {
-    global $db, $CURUSER, $_this_script_, $mybb;
+    global $db, $CURUSER, $_this_script_, $mybb, $lang;
 
     $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         if ($is_ajax) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'This action requires a POST request']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_post_required']]);
             exit;
         }
         header('Location: ' . $_this_script_);
@@ -1149,7 +1228,7 @@ function handle_delete(): void
         write_log("[SCREENSHOT] Not found: ID={$id} by {$CURUSER['username']}");
         if ($is_ajax) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Screenshot not found']);
+            echo json_encode(['status' => 'error', 'message' => $lang->manage_screenshots['err_not_found']]);
             exit;
         }
         header('Location: ' . $_this_script_);
@@ -1164,7 +1243,7 @@ function handle_delete(): void
 
     if ($is_ajax) {
         header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'message' => 'Screenshot deleted', 'deleted_id' => $id]);
+        echo json_encode(['status' => 'success', 'message' => $lang->manage_screenshots['flash_deleted'], 'deleted_id' => $id]);
         exit;
     }
 

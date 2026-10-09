@@ -211,6 +211,25 @@ if (!defined("STAFF_PANEL")) {
 
 require_once INC_PATH . '/functions_image_recode.php';
 
+$lang->load('recount_rebuild');
+
+/**
+ * Подстановка {1}, {2}… в строку из ланга. $lang->load() превращает {N} в %N$s,
+ * поэтому заменяем оба формата.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 
 // Initialize missing inputs
 foreach (['action', 'do', 'module'] as $input) {
@@ -224,19 +243,23 @@ foreach (['action', 'do', 'module'] as $input) {
  */
 function rr_tasks(): array
 {
+    global $lang;
+    $L = $lang->recount_rebuild;
+
+    // Последний элемент — английское название для write_log() (логи не переводятся)
     return [
-        'do_rebuildforumcounters'   => ['forums', 'fa-folder-tree',  'ic-blue',   'Forum counters',        'Post/thread counters and last post of every forum.',                         'forumcounters',  50],
-        'do_rebuildthreadcounters'  => ['forums', 'fa-comments',     'ic-blue',   'Thread counters',       'Reply/view counters and last post of every thread.',                         'threadcounters', 500],
-        'do_rebuildpollcounters'    => ['forums', 'fa-chart-pie',    'ic-blue',   'Poll counters',         'Vote counters and totals of every poll.',                                    'pollcounters',   500],
-        'do_recountthreadratings'   => ['forums', 'fa-star',         'ic-amber',  'Thread ratings',        'Average rating and vote count cached on each thread.',                       'threadratings',  500],
-        'do_recountuserposts'       => ['users',  'fa-file-lines',   'ic-green',  'User post counts',      'Post count of each user from the posts in the database.',                    'userposts',      500],
-        'do_recountuserthreads'     => ['users',  'fa-clone',        'ic-green',  'User thread counts',    'Thread count of each user from the threads in the database.',                'userthreads',    500],
-        'do_comments'               => ['users',  'fa-comment',      'ic-green',  'User comment counts',   'Torrent comment count of each user.',                                        'comments',       500],
-        'do_recountprivatemessages' => ['users',  'fa-envelope',     'ic-green',  'Private messages',      'Private message counters of each user.',                                     'privatemessages',500],
-        'do_rebuildattachmentthumbs'        => ['media', 'fa-image',  'ic-purple', 'Attachment thumbnails',         'Regenerate forum attachment thumbnails at the current size.', 'attachmentthumbs',        20],
-        'do_rebuildcommentattachmentthumbs' => ['media', 'fa-images', 'ic-purple', 'Comment attachment thumbnails', 'Regenerate comment attachment thumbnails at the current size.', 'commentattachmentthumbs', 20],
-        'do_recounttorrentcomments' => ['site',   'fa-magnet',       'ic-red',    'Torrent comment counts','Comment count cached on each torrent.',                                      'torrentcomments',500],
-        'do_recountstats'           => ['site',   'fa-chart-column', 'ic-teal',   'Board statistics',      'Totals on the forum index and statistics pages. Runs in one step.',          '',               0],
+        'do_rebuildforumcounters'   => ['forums', 'fa-folder-tree',  'ic-blue',   $L['title_forum_counters'],   $L['desc_forum_counters'],   'forumcounters',  50,  'Forum counters'],
+        'do_rebuildthreadcounters'  => ['forums', 'fa-comments',     'ic-blue',   $L['title_thread_counters'],  $L['desc_thread_counters'],  'threadcounters', 500, 'Thread counters'],
+        'do_rebuildpollcounters'    => ['forums', 'fa-chart-pie',    'ic-blue',   $L['title_poll_counters'],    $L['desc_poll_counters'],    'pollcounters',   500, 'Poll counters'],
+        'do_recountthreadratings'   => ['forums', 'fa-star',         'ic-amber',  $L['title_thread_ratings'],   $L['desc_thread_ratings'],   'threadratings',  500, 'Thread ratings'],
+        'do_recountuserposts'       => ['users',  'fa-file-lines',   'ic-green',  $L['title_user_posts'],       $L['desc_user_posts'],       'userposts',      500, 'User post counts'],
+        'do_recountuserthreads'     => ['users',  'fa-clone',        'ic-green',  $L['title_user_threads'],     $L['desc_user_threads'],     'userthreads',    500, 'User thread counts'],
+        'do_comments'               => ['users',  'fa-comment',      'ic-green',  $L['title_user_comments'],    $L['desc_user_comments'],    'comments',       500, 'User comment counts'],
+        'do_recountprivatemessages' => ['users',  'fa-envelope',     'ic-green',  $L['title_private_messages'], $L['desc_private_messages'], 'privatemessages',500, 'Private messages'],
+        'do_rebuildattachmentthumbs'        => ['media', 'fa-image',  'ic-purple', $L['title_attachment_thumbs'],         $L['desc_attachment_thumbs'],         'attachmentthumbs',        20, 'Attachment thumbnails'],
+        'do_rebuildcommentattachmentthumbs' => ['media', 'fa-images', 'ic-purple', $L['title_comment_attachment_thumbs'], $L['desc_comment_attachment_thumbs'], 'commentattachmentthumbs', 20, 'Comment attachment thumbnails'],
+        'do_recounttorrentcomments' => ['site',   'fa-magnet',       'ic-red',    $L['title_torrent_comments'], $L['desc_torrent_comments'], 'torrentcomments',500, 'Torrent comment counts'],
+        'do_recountstats'           => ['site',   'fa-chart-column', 'ic-teal',   $L['title_stats'],            $L['desc_stats'],            '',               0,   'Board statistics'],
     ];
 }
 
@@ -295,24 +318,32 @@ function check_proceed(
     int $per_page,
     string $name,
     string $name2,
-    ?string $message = null
+    string $message = ''
 ): void {
-    global $mybb, $_this_script_;
+    global $mybb, $lang, $_this_script_;
 
-    $message ??= 'The recount has been completed successfully';
+    $L = $lang->recount_rebuild;
+    if ($message === '') {
+        $message = $L['flash_done'];
+    }
 
     if ($finish >= $current) {
         flash_message($message, 'success');
         admin_redirect("index.php?act=recount_rebuild");
     }
 
-    $task  = rr_tasks()[$name2] ?? ['', 'fa-rotate', 'ic-blue', 'Recount', '', $name, $per_page];
+    $task  = rr_tasks()[$name2] ?? ['', 'fa-rotate', 'ic-blue', $L['title_recount'], '', $name, $per_page];
     $done  = max(0, min($finish, $current));
     $pct   = $current > 0 ? (int)floor($done / $current * 100) : 0;
     $key   = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
     $self  = htmlspecialchars((string)$_this_script_, ENT_QUOTES);
     $nameE = htmlspecialchars($name, ENT_QUOTES);
     $act   = htmlspecialchars($name2, ENT_QUOTES);
+    $titleE = htmlspecialchars($task[3], ENT_QUOTES);
+    $tProc  = htmlspecialchars(ags_fmt($L['lbl_processing'], $next_page, $per_page), ENT_QUOTES);
+    $tStop  = htmlspecialchars($L['btn_stop'], ENT_QUOTES);
+    $tCont  = htmlspecialchars($L['btn_continuing'], ENT_QUOTES);
+    $tKeep  = htmlspecialchars($L['hint_keep_open'], ENT_QUOTES);
 
     stdhead($task[3] . ' — ' . $pct . '%');
     rr_styles();
@@ -320,8 +351,8 @@ function check_proceed(
 <div class="container mt-3 mb-4 rr">
   <div class="rr-card rr-progress">
     <span class="rr-head-icon {$task[2]}"><i class="fa-solid {$task[1]}"></i></span>
-    <h2 class="h4 fw-bold mb-1">{$task[3]}</h2>
-    <div class="rr-muted">Processing batch {$next_page} · {$per_page} per step</div>
+    <h2 class="h4 fw-bold mb-1">{$titleE}</h2>
+    <div class="rr-muted">{$tProc}</div>
     <div class="rr-bar" role="progressbar" aria-valuenow="{$pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:{$pct}%"></span></div>
     <div class="d-flex justify-content-between rr-muted"><span><strong class="text-body">{$done}</strong> / {$current}</span><span><strong class="text-body">{$pct}%</strong></span></div>
 
@@ -331,11 +362,11 @@ function check_proceed(
       <input type="hidden" name="{$nameE}" value="{$per_page}">
       <input type="hidden" name="{$act}" value="Go">
       <div class="d-flex flex-wrap justify-content-center gap-2">
-        <a href="index.php?act=recount_rebuild" class="btn btn-outline-secondary px-3" id="rrStop"><i class="fa-solid fa-stop me-1"></i>Stop</a>
-        <button type="submit" class="btn btn-primary px-4" id="rrGo"><span class="spinner-border spinner-border-sm me-2"></span>Continuing…</button>
+        <a href="index.php?act=recount_rebuild" class="btn btn-outline-secondary px-3" id="rrStop"><i class="fa-solid fa-stop me-1"></i>{$tStop}</a>
+        <button type="submit" class="btn btn-primary px-4" id="rrGo"><span class="spinner-border spinner-border-sm me-2"></span>{$tCont}</button>
       </div>
     </form>
-    <div class="rr-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i>Keep this tab open — the next batch starts automatically.</div>
+    <div class="rr-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i>{$tKeep}</div>
   </div>
 </div>
 <script>
@@ -382,7 +413,7 @@ function acp_rebuild_forum_counters(): void
         rebuild_forum_counters((int)$forum['fid']);
     }
 
-    $message = $lang->success_rebuilt_forum_counters ?? 'The forum counters have been rebuilt successfully';
+    $message = $lang->recount_rebuild['flash_forum_counters'];
     
     check_proceed(
         $num_forums, 
@@ -422,7 +453,7 @@ function acp_rebuild_thread_counters(): void
         rebuild_thread_counters((int)$thread['tid']);
     }
 
-    $message = $lang->success_rebuilt_thread_counters ?? 'The thread counters have been rebuilt successfully';
+    $message = $lang->recount_rebuild['flash_thread_counters'];
     
     check_proceed(
         $num_threads, 
@@ -462,7 +493,7 @@ function acp_rebuild_poll_counters(): void
         rebuild_poll_counters((int)$poll['pid']);
     }
 
-    $message = $lang->success_rebuilt_poll_counters ?? 'The poll counters have been rebuilt successfully';
+    $message = $lang->recount_rebuild['flash_poll_counters'];
     
     check_proceed(
         $num_polls, 
@@ -512,7 +543,7 @@ function acp_recount_thread_ratings(): void
         );
     }
 
-    $message = $lang->success_rebuilt_thread_ratings ?? 'Thread ratings have been recounted successfully';
+    $message = $lang->recount_rebuild['flash_thread_ratings'];
 
     check_proceed(
         $num_threads,
@@ -558,7 +589,7 @@ function acp_recount_torrent_comments(): void
         $db->sql_query_prepared("UPDATE torrents SET comments = ? WHERE id = ?", [$count, $tid]);
     }
 
-    $message = $lang->success_rebuilt_torrent_comments ?? 'Torrent comment counts have been recounted successfully';
+    $message = $lang->recount_rebuild['flash_torrent_comments'];
 
     check_proceed(
         $num_torrents,
@@ -622,7 +653,7 @@ function acp_recount_user_posts(): void
         $db->sql_query_prepared("UPDATE users SET postnum = ? WHERE id = ?", [$num_posts, (int)$user['id']]);
     }
 
-    $message = $lang->success_rebuilt_user_post_counters ?? 'The user posts count have been recounted successfully';
+    $message = $lang->recount_rebuild['flash_user_posts'];
     
     check_proceed(
         $num_users, 
@@ -685,7 +716,7 @@ function acp_recount_user_threads(): void
         $db->sql_query_prepared("UPDATE users SET threadnum = ? WHERE id = ?", [$num_threads, (int)$user['id']]);
     }
 
-    $message = $lang->success_rebuilt_user_thread_counters ?? 'The user threads count have been recounted successfully';
+    $message = $lang->recount_rebuild['flash_user_threads'];
     
     check_proceed(
         $num_users, 
@@ -727,7 +758,7 @@ function acp_recount_private_messages(): void
         update_pm_count((int)$user['id']);
     }
 
-    $message = $lang->success_rebuilt_private_messages ?? 'The user private message count has been recounted successfully';
+    $message = $lang->recount_rebuild['flash_private_messages'];
     
     check_proceed(
         $num_users, 
@@ -772,7 +803,7 @@ function acp_recount_user_comments(): void
         $db->sql_query_prepared("UPDATE users SET comms = ? WHERE id = ?", [$num_posts, (int)$user['id']]);
     }
     
-    $message = $lang->success_rebuilt_user_comments ?? 'The user comment counts have been recounted successfully';
+    $message = $lang->recount_rebuild['flash_user_comments'];
     
     check_proceed(
         $num_users, 
@@ -853,7 +884,7 @@ function acp_rebuild_attachment_thumbnails(): void
         }
     }
 
-    $message = $lang->success_rebuilt_attachment_thumbnails ?? 'The attachment thumbnails have been rebuilt successfully';
+    $message = $lang->recount_rebuild['flash_attachment_thumbs'];
     
     check_proceed(
         $num_attachments, 
@@ -926,7 +957,7 @@ function acp_rebuild_comment_attachment_thumbnails(): void
         }
     }
 
-    $message = $lang->success_rebuilt_comment_attachment_thumbnails ?? 'The comment attachment thumbnails have been rebuilt successfully';
+    $message = $lang->recount_rebuild['flash_comment_attachment_thumbs'];
 
     check_proceed(
         $num_attachments,
@@ -962,7 +993,7 @@ if (!$mybb->input['action']) {
         // 12 мутирующих действий этого файла (foreach ниже + do_recountstats).
         if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
             http_response_code(403);
-            stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
+            stderr($lang->recount_rebuild['err_security_title'], $lang->recount_rebuild['err_security_token']);
         }
 
         $mybb->input['page'] = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -1045,7 +1076,7 @@ if (!$mybb->input['action']) {
 
                 // Пишем в лог один раз - на первой пачке, а не на каждой
                 if ($mybb->input['page'] == 1) {
-                    $taskTitle = rr_tasks()[$action][3] ?? $action;
+                    $taskTitle = rr_tasks()[$action][7] ?? $action;
                     write_log('User ' . ($CURUSER['username'] ?? '') . ' started Recount & Rebuild: ' . $taskTitle);
                 }
 
@@ -1067,37 +1098,47 @@ if (!$mybb->input['action']) {
             // Log admin action
             write_log('User ' . $CURUSER['username'] . ' Recounted and rebuilt statistics');
             
-            flash_message('The forum statistics have been rebuilt successfully', 'success');
+            flash_message($lang->recount_rebuild['flash_stats'], 'success');
             admin_redirect("index.php?act=recount_rebuild");
         }
     }
 
-    stdhead('Recount & Rebuild');
+    $L = $lang->recount_rebuild;
+
+    stdhead($L['page_title']);
     rr_styles();
 
     $sections = [
-        'forums' => ['fa-comments',      'ic-blue',   'Forums & threads'],
-        'users'  => ['fa-users',         'ic-green',  'Users'],
-        'media'  => ['fa-photo-film',    'ic-purple', 'Attachments'],
-        'site'   => ['fa-magnet',        'ic-red',    'Torrents & statistics'],
+        'forums' => ['fa-comments',      'ic-blue',   $L['sec_forums']],
+        'users'  => ['fa-users',         'ic-green',  $L['sec_users']],
+        'media'  => ['fa-photo-film',    'ic-purple', $L['sec_media']],
+        'site'   => ['fa-magnet',        'ic-red',    $L['sec_site']],
     ];
     $tasks = rr_tasks();
     $key   = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
     $self  = htmlspecialchars((string)$_this_script_, ENT_QUOTES);
+
+    // Строки для JS: ключи js_* без префикса
+    $jsLang = [];
+    foreach ($L as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $jsLang[substr((string)$k, 3)] = $v;
+        }
+    }
 ?>
 <div class="container mt-3 mb-4 rr">
 
     <div class="rr-card mb-3"><div class="rr-head">
         <span class="rr-head-icon ic-teal"><i class="fa-solid fa-arrows-rotate"></i></span>
         <div>
-            <h1 class="rr-title">Recount &amp; Rebuild</h1>
-            <div class="rr-sub">Fix counters and caches that drifted out of sync. Big jobs run in batches with a progress bar.</div>
+            <h1 class="rr-title"><?= htmlspecialchars($L['page_title']) ?></h1>
+            <div class="rr-sub"><?= htmlspecialchars($L['page_subtitle']) ?></div>
         </div>
-        <span class="ms-auto rr-muted"><i class="fa-solid fa-layer-group me-1"></i><?= count($tasks) ?> tools</span>
+        <span class="ms-auto rr-muted"><i class="fa-solid fa-layer-group me-1"></i><?= htmlspecialchars(ags_fmt($L['lbl_tools'], count($tasks))) ?></span>
     </div></div>
 
 <?php foreach ($sections as $sec => [$sicon, $scls, $stitle]): ?>
-    <div class="rr-sec"><span class="rr-sec-icon <?= $scls ?>"><i class="fa-solid <?= $sicon ?>"></i></span><?= $stitle ?></div>
+    <div class="rr-sec"><span class="rr-sec-icon <?= $scls ?>"><i class="fa-solid <?= $sicon ?>"></i></span><?= htmlspecialchars($stitle) ?></div>
     <div class="row g-3">
     <?php foreach ($tasks as $action => [$tsec, $icon, $cls, $title, $desc, $input, $default]):
         if ($tsec !== $sec) continue; ?>
@@ -1113,15 +1154,15 @@ if (!$mybb->input['action']) {
                 <p><?= htmlspecialchars($desc) ?></p>
                 <div class="rr-run">
                     <?php if ($input !== ''): ?>
-                    <div class="input-group input-group-sm" title="Items per batch">
-                        <input type="number" class="form-control" name="<?= $input ?>" value="<?= (int)$default ?>" min="1" aria-label="Items per batch">
-                        <span class="input-group-text">/ step</span>
+                    <div class="input-group input-group-sm" title="<?= htmlspecialchars($L['tip_per_batch']) ?>">
+                        <input type="number" class="form-control" name="<?= $input ?>" value="<?= (int)$default ?>" min="1" aria-label="<?= htmlspecialchars($L['tip_per_batch']) ?>">
+                        <span class="input-group-text"><?= htmlspecialchars($L['lbl_per_step']) ?></span>
                     </div>
                     <?php else: ?>
-                    <span class="rr-onestep"><i class="fa-solid fa-bolt"></i>single step</span>
+                    <span class="rr-onestep"><i class="fa-solid fa-bolt"></i><?= htmlspecialchars($L['lbl_single_step']) ?></span>
                     <?php endif; ?>
                     <button type="submit" name="<?= $action ?>" value="Go" class="btn btn-sm btn-primary px-3 ms-auto rr-go">
-                        <i class="fa-solid fa-play me-1"></i>Run
+                        <i class="fa-solid fa-play me-1"></i><?= htmlspecialchars($L['btn_run']) ?>
                     </button>
                 </div>
             </form>
@@ -1130,15 +1171,32 @@ if (!$mybb->input['action']) {
     </div>
 <?php endforeach; ?>
 
-    <div class="rr-muted text-center mt-4"><i class="fa-solid fa-circle-info me-1"></i>Smaller batches are slower but safer on a busy server; thumbnails are the heaviest job.</div>
+    <div class="rr-muted text-center mt-4"><i class="fa-solid fa-circle-info me-1"></i><?= htmlspecialchars($L['hint_footer']) ?></div>
 </div>
 <script>
-document.querySelectorAll('.rr .rr-task').forEach(f => f.addEventListener('submit', function () {
-    const b = f.querySelector('.rr-go');
-    // name/value кнопки нужно сохранить — после disabled браузер его не отправит
-    const h = document.createElement('input'); h.type = 'hidden'; h.name = b.name; h.value = b.value; f.appendChild(h);
-    b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
-}));
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<script>
+(function () {
+    // t(key, fallback, ...args): строка из AGS_LANG с английским fallback; {N} и %N$s → args
+    const t = (key, fallback, ...args) => {
+        let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    };
+
+    document.querySelectorAll('.rr .rr-task').forEach(f => f.addEventListener('submit', function () {
+        const b = f.querySelector('.rr-go');
+        // name/value кнопки нужно сохранить — после disabled браузер его не отправит
+        const h = document.createElement('input'); h.type = 'hidden'; h.name = b.name; h.value = b.value; f.appendChild(h);
+        b.disabled = true;
+        const sp = document.createElement('span'); sp.className = 'spinner-border spinner-border-sm me-1';
+        b.replaceChildren(sp, document.createTextNode(t('starting', 'Starting…')));
+    }));
+})();
 </script>
 <?php
     stdfoot();

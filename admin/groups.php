@@ -40,6 +40,9 @@ if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');
 }
 
+$lang->load('groups');
+
+
 
 
 $plugins->run_hooks('admin_user_groups_begin');
@@ -47,21 +50,36 @@ $plugins->run_hooks('admin_user_groups_begin');
 // SHARED HELPERS
 // ═══════════════════════════════════════════════════════════
 
+/** JS-строки: ключи js_* из ланга без префикса → const AGS_LANG (до подключения скриптов) */
+function ug_js_lang(): void
+{
+    global $lang;
+    $arr = [];
+    foreach ((array)$lang->groups as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $arr[substr((string)$k, 3)] = (string)$v;
+        }
+    }
+    echo '<script>const AGS_LANG = ' . json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+}
+
 function ug_head_assets(): void
 {
     global $BASEURL;
-    $v = '20260926'; // cache-busting: менять при правке usergroups.css / usergroups.js
+    $v = '20261004'; // cache-busting: менять при правке usergroups.css / usergroups.js
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css">';
     echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/usergroups.css?v=' . $v . '">';
+    ug_js_lang();
     echo '<script src="' . $BASEURL . '/admin/scripts/usergroups.js?v=' . $v . '" defer></script>';
 }
 
 function ug_breadcrumb(array $items): void
 {
+    global $lang;
     echo '<nav class="ug-crumbs" aria-label="breadcrumb">';
     echo '<a href="index.php?module=home"><i class="fa-solid fa-house"></i></a><i class="fa-solid fa-chevron-right sep"></i>';
     $last = array_key_last($items);
-    echo '<a href="index.php?act=groups"><i class="fa-solid fa-users me-1"></i>User Groups</a>';
+    echo '<a href="index.php?act=groups"><i class="fa-solid fa-users me-1"></i>' . $lang->groups['crumb_root'] . '</a>';
     foreach ($items as $label => $url) {
         echo '<i class="fa-solid fa-chevron-right sep"></i>';
         echo $url ? '<a href="' . $url . '">' . $label . '</a>' : '<span class="cur">' . $label . '</span>';
@@ -71,8 +89,9 @@ function ug_breadcrumb(array $items): void
 
 function ug_errors(array $errors): void
 {
+    global $lang;
     if (!$errors) return;
-    echo '<div class="alert alert-danger rounded-4 d-flex gap-3"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div><div class="fw-semibold mb-1">Please correct the following errors:</div><ul class="mb-0 ps-3">';
+    echo '<div class="alert alert-danger rounded-4 d-flex gap-3"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div><div class="fw-semibold mb-1">' . htmlspecialchars_uni($lang->groups['err_heading']) . '</div><ul class="mb-0 ps-3">';
     foreach ($errors as $e) echo '<li>' . htmlspecialchars_uni($e) . '</li>';
     echo '</ul></div></div>';
 }
@@ -187,33 +206,34 @@ function ug_switch(string $name, string $label, mixed $checked, string $icon = '
 /** Общие поля «Название / стиль / картинка» для добавления и редактирования */
 function ug_identity_fields(array $v, bool $is_add): void
 {
+    global $lang;
     echo '<div class="row g-3">';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label" for="ug_title"><i class="fa-solid fa-tag"></i>Group title <span class="ug-req">*</span></label>';
-    echo ug_text_box('title', (string)($v['title'] ?? ''), ['id' => 'ug_title', 'placeholder' => 'e.g. Power Users']);
+    echo '<label class="form-label" for="ug_title"><i class="fa-solid fa-tag"></i>' . htmlspecialchars_uni($lang->groups['lbl_title']) . ' <span class="ug-req">*</span></label>';
+    echo ug_text_box('title', (string)($v['title'] ?? ''), ['id' => 'ug_title', 'placeholder' => $lang->groups['ph_title']]);
     echo '</div>';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label" for="ug_desc"><i class="fa-solid fa-align-left"></i>Short description</label>';
-    echo ug_text_box('description', (string)($v['description'] ?? ''), ['id' => 'ug_desc', 'placeholder' => 'Shown on the team page']);
+    echo '<label class="form-label" for="ug_desc"><i class="fa-solid fa-align-left"></i>' . htmlspecialchars_uni($lang->groups['lbl_desc']) . '</label>';
+    echo ug_text_box('description', (string)($v['description'] ?? ''), ['id' => 'ug_desc', 'placeholder' => $lang->groups['ph_desc']]);
     echo '</div>';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label" for="ug_style"><i class="fa-solid fa-palette"></i>Username style</label>';
+    echo '<label class="form-label" for="ug_style"><i class="fa-solid fa-palette"></i>' . htmlspecialchars_uni($lang->groups['lbl_namestyle']) . '</label>';
     echo ug_text_box('namestyle', (string)(($v['namestyle'] ?? '') ?: '{username}'), ['id' => 'ug_style', 'class' => 'font-monospace', 'placeholder' => '<span style="color:#e67e22">{username}</span>']);
-    echo '<span class="ug-help">Must contain <code>{username}</code>, e.g. <code>&lt;b style="color:#e67e22"&gt;{username}&lt;/b&gt;</code></span>';
+    echo '<span class="ug-help">' . $lang->groups['hint_namestyle'] . '</span>';
     echo '</div>';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label" for="ug_usertitle"><i class="fa-solid fa-id-badge"></i>Default user title</label>';
-    echo ug_text_box('usertitle', (string)($v['usertitle'] ?? ''), ['id' => 'ug_usertitle', 'placeholder' => 'e.g. Power User']);
+    echo '<label class="form-label" for="ug_usertitle"><i class="fa-solid fa-id-badge"></i>' . htmlspecialchars_uni($lang->groups['lbl_usertitle']) . '</label>';
+    echo ug_text_box('usertitle', (string)($v['usertitle'] ?? ''), ['id' => 'ug_usertitle', 'placeholder' => $lang->groups['ph_usertitle']]);
     echo '</div>';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label" for="ug_image"><i class="fa-solid fa-image"></i>Group image</label>';
+    echo '<label class="form-label" for="ug_image"><i class="fa-solid fa-image"></i>' . htmlspecialchars_uni($lang->groups['lbl_image']) . '</label>';
     echo ug_text_box('image', (string)($v['image'] ?? ''), ['id' => 'ug_image', 'class' => 'font-monospace', 'placeholder' => '<i class="fa-solid fa-star" style="color:#f59e0b"></i>']);
-    echo '<span class="ug-help">Icon HTML (<code>&lt;i class="fa-solid fa-star"&gt;</code>) or an image path; <code>{lang}</code> = user language</span>';
+    echo '<span class="ug-help">' . $lang->groups['hint_image'] . '</span>';
     echo '</div>';
     echo '<div class="col-md-6">';
-    echo '<label class="form-label"><i class="fa-solid fa-eye"></i>Preview</label>';
-    echo '<div class="ug-preview"><div class="flex-grow-1"><div class="ug-preview-label">Name</div><div id="ugNamePreview" class="fw-semibold">Username</div></div>'
-       . '<div class="text-end"><div class="ug-preview-label">Image</div><div id="ugImagePreview">—</div></div></div>';
+    echo '<label class="form-label"><i class="fa-solid fa-eye"></i>' . htmlspecialchars_uni($lang->groups['lbl_preview']) . '</label>';
+    echo '<div class="ug-preview"><div class="flex-grow-1"><div class="ug-preview-label">' . htmlspecialchars_uni($lang->groups['lbl_preview_name']) . '</div><div id="ugNamePreview" class="fw-semibold">' . htmlspecialchars_uni($lang->groups['lbl_preview_user']) . '</div></div>'
+       . '<div class="text-end"><div class="ug-preview-label">' . htmlspecialchars_uni($lang->groups['lbl_preview_image']) . '</div><div id="ugImagePreview">—</div></div></div>';
     echo '</div>';
     echo '</div>';
 }
@@ -230,11 +250,11 @@ if (($mybb->input['action'] ?? '') === 'add') {
 
         $errors = [];
         if (!trim($mybb->input['title']))
-            $errors[] = 'You did not enter a title for this new user group';
+            $errors[] = $lang->groups['err_no_title_new'];
         if (my_strpos($mybb->input['namestyle'], '{username}') === false)
-            $errors[] = 'The username style must contain {username}';
+            $errors[] = $lang->groups['err_namestyle_username'];
         if (preg_match('#<((m[^a])|(b[^diloru>])|(s[^aemptu >]))(\s*[^>]*)>#si', $mybb->input['namestyle']))
-            $errors[] = 'You cant use script, meta or base tags in the username style';
+            $errors[] = $lang->groups['err_namestyle_tags'];
 
         if (!$errors) {
             $new_usergroup = [
@@ -285,41 +305,41 @@ if (($mybb->input['action'] ?? '') === 'add') {
             $cache->update_forumpermissions();
             log_admin_action($gid, $mybb->input['title']);
 
-            flash_message('User group created successfully', 'success');
+            flash_message($lang->groups['flash_created'], 'success');
             admin_redirect("index.php?act=groups&action=edit&gid={$gid}");
         }
     }
 
-    stdhead('Add New User Group');
+    stdhead($lang->groups['title_add']);
     ug_head_assets();
 
     echo '<div class="container mt-3 mb-4 ug">';
-    ug_breadcrumb(['Add New Group' => '']);
-    ug_hero('fa-user-plus', 'ic-green', 'Add New User Group', 'Create a group, then fine-tune its permissions on the next screen');
+    ug_breadcrumb([$lang->groups['crumb_add'] => '']);
+    ug_hero('fa-user-plus', 'ic-green', $lang->groups['title_add'], $lang->groups['hero_add_sub']);
     ug_errors($errors ?? []);
 
     ug_form_open('index.php?act=groups&action=add', 'addGroupForm');
 
     echo '<div class="ug-card">';
-    ug_sec_open('fa-id-card', 'ic-blue', 'Identity');
+    ug_sec_open('fa-id-card', 'ic-blue', $lang->groups['sec_identity']);
     ug_identity_fields($mybb->input, true);
     ug_sec_close();
 
-    ug_sec_open('fa-copy', 'ic-purple', 'Starting permissions');
-    $options = [0 => 'Default permissions (don\'t copy)'];
+    ug_sec_open('fa-copy', 'ic-purple', $lang->groups['sec_start_perms']);
+    $options = [0 => htmlspecialchars_uni($lang->groups['opt_copy_default'])];
     $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE gid != '1' ORDER BY title");
     while ($q && ($ug = $db->fetch_array($q))) {
         $options[$ug['gid']] = htmlspecialchars_uni($ug['title']);
     }
-    echo '<label class="form-label" for="copyfrom"><i class="fa-solid fa-clone"></i>Copy permissions from</label>';
+    echo '<label class="form-label" for="copyfrom"><i class="fa-solid fa-clone"></i>' . htmlspecialchars_uni($lang->groups['lbl_copyfrom']) . '</label>';
     echo '<div style="max-width:420px">' . ug_select_box('copyfrom', $options, $mybb->get_input('copyfrom'), ['id' => 'copyfrom']) . '</div>';
-    echo '<span class="ug-help">All group permissions and forum permissions are copied from the selected group</span>';
+    echo '<span class="ug-help">' . htmlspecialchars_uni($lang->groups['hint_copyfrom']) . '</span>';
     ug_sec_close();
     echo '</div>';
 
     echo '<div class="d-flex justify-content-end gap-2 mt-3">';
-    echo '<a href="index.php?act=groups" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>';
-    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-circle-plus me-1"></i>Create Group</button>';
+    echo '<a href="index.php?act=groups" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_cancel']) . '</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-circle-plus me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_create']) . '</button>';
     echo '</div>';
 
     ug_form_close();
@@ -340,13 +360,13 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     $usergroup = $q ? $db->fetch_array($q) : null;
 
     if (!$usergroup) {
-        flash_message('You have selected an invalid user group', 'error');
+        flash_message($lang->groups['flash_invalid'], 'error');
         admin_redirect('index.php?act=groups');
     }
 
     $errors = [];
     if (preg_match('#<((m[^a])|(b[^diloru>])|(s[^aemptu >]))(\s*[^>]*)>#si', $mybb->get_input('namestyle'))) {
-        $errors[] = 'You cant use script, meta or base tags in the username style';
+        $errors[] = $lang->groups['err_namestyle_tags'];
         $mybb->input['namestyle'] = $usergroup['namestyle'];
     }
 
@@ -356,11 +376,11 @@ if (($mybb->input['action'] ?? '') === 'edit') {
         verify_post_check($mybb->get_input('my_post_key'));
 
         if (!trim($mybb->get_input('title')))
-            $errors[] = 'You did not enter a title for this user group';
+            $errors[] = $lang->groups['err_no_title'];
         if (my_strpos($mybb->get_input('namestyle'), '{username}') === false)
-            $errors[] = 'The username style must contain {username}';
+            $errors[] = $lang->groups['err_namestyle_username'];
         if ($mybb->get_input('moderate') == 1 && $mybb->get_input('invite') == 1)
-            $errors[] = 'A group can\'t be both "approval required" and "invite only"';
+            $errors[] = $lang->groups['err_moderate_invite'];
 
         if (!$errors) {
             if ($mybb->get_input('joinable') == 1) {
@@ -428,7 +448,7 @@ if (($mybb->input['action'] ?? '') === 'edit') {
             $cache->update_forumpermissions();
             log_admin_action($usergroup['gid'], $mybb->input['title']);
 
-            flash_message('The selected user group has been updated successfully', 'success');
+            flash_message($lang->groups['flash_updated'], 'success');
             admin_redirect('index.php?act=groups');
         }
     } else {
@@ -438,28 +458,28 @@ if (($mybb->input['action'] ?? '') === 'edit') {
         $mybb->input = array_merge($mybb->input, $usergroup);
     }
 
-    stdhead('Edit User Group');
+    stdhead($lang->groups['title_edit']);
     ug_head_assets();
 
     $in  = $mybb->input;
     $gid = (int)$usergroup['gid'];
 
-    $tags = '<span class="ug-tag ' . ((int)$usergroup['type'] === 1 ? 't-default"><i class="fa-solid fa-lock"></i>Default' : 't-custom"><i class="fa-solid fa-wand-magic-sparkles"></i>Custom') . '</span>';
+    $tags = '<span class="ug-tag ' . ((int)$usergroup['type'] === 1 ? 't-default"><i class="fa-solid fa-lock"></i>' . htmlspecialchars_uni($lang->groups['tag_default']) : 't-custom"><i class="fa-solid fa-wand-magic-sparkles"></i>' . htmlspecialchars_uni($lang->groups['tag_custom'])) . '</span>';
 
     echo '<div class="container mt-3 mb-4 ug">';
     ug_breadcrumb([htmlspecialchars_uni($usergroup['title']) => '']);
     ug_hero('fa-users-gear', 'ic-blue',
-        'Edit group: ' . format_name(htmlspecialchars_uni($usergroup['title']), $gid),
-        '<span class="ug-gid">GID ' . $gid . '</span> ' . $tags);
+        ags_fmt($lang->groups['hero_edit_title'], format_name(htmlspecialchars_uni($usergroup['title']), $gid)),
+        '<span class="ug-gid">' . ags_fmt(htmlspecialchars_uni($lang->groups['hero_gid']), $gid) . '</span> ' . $tags);
     ug_errors($errors ?? []);
 
     ug_form_open("index.php?act=groups&action=edit&amp;gid={$gid}", 'userGroupForm');
 
     $tabs = [
-        'general'           => ['fa-gear',          'General'],
-        'forums_posts'      => ['fa-comments',      'Forums & Posts'],
-        'users_permissions' => ['fa-envelope',      'Messaging'],
-        'modcp'             => ['fa-gavel',         'Moderation'],
+        'general'           => ['fa-gear',          $lang->groups['tab_general']],
+        'forums_posts'      => ['fa-comments',      $lang->groups['tab_forums']],
+        'users_permissions' => ['fa-envelope',      $lang->groups['tab_messaging']],
+        'modcp'             => ['fa-gavel',         $lang->groups['tab_moderation']],
     ];
     echo '<ul class="nav ug-tabs" role="tablist">';
     $first = true;
@@ -471,33 +491,33 @@ if (($mybb->input['action'] ?? '') === 'edit') {
 
     // ── General ──────────────────────────────────────────────
     echo '<div class="tab-pane fade show active" id="tab_general" role="tabpanel"><div class="ug-card">';
-    ug_sec_open('fa-id-card', 'ic-blue', 'Identity');
+    ug_sec_open('fa-id-card', 'ic-blue', $lang->groups['sec_identity']);
     ug_identity_fields($in, false);
     ug_sec_close();
 
     echo '<div class="row g-0">';
     echo '<div class="col-lg-6">';
-    ug_sec_open('fa-sliders', 'ic-teal', 'General options');
-    ug_switch('showforumteam', 'Show this group on the team page', $in['showforumteam'] ?? 0, 'fa-people-group');
-    ug_switch('isbannedgroup', 'This is a banned group',           $in['isbannedgroup'] ?? 0, 'fa-ban', true);
-    ug_switch('canviewwolinvis', 'Can see invisible users',        $in['canviewwolinvis'] ?? 0, 'fa-user-ninja');
+    ug_sec_open('fa-sliders', 'ic-teal', $lang->groups['sec_general']);
+    ug_switch('showforumteam', $lang->groups['sw_showforumteam'], $in['showforumteam'] ?? 0, 'fa-people-group');
+    ug_switch('isbannedgroup', $lang->groups['sw_isbannedgroup'],           $in['isbannedgroup'] ?? 0, 'fa-ban', true);
+    ug_switch('canviewwolinvis', $lang->groups['sw_canviewwolinvis'],        $in['canviewwolinvis'] ?? 0, 'fa-user-ninja');
     ug_sec_close();
 
     // Раньше полей joinable/moderate/invite в форме не было, а обработчик их читал —
     // каждое сохранение превращало «открытую» группу (type 3/4/5) в обычную (type 2)
     if ((int)$usergroup['type'] !== 1) {
-        ug_sec_open('fa-door-open', 'ic-green', 'Joining');
-        ug_switch('joinable', 'Users can join this group themselves', $in['joinable'] ?? 0, 'fa-right-to-bracket');
-        ug_switch('moderate', 'Join requests must be approved',      $in['moderate'] ?? 0, 'fa-user-check');
-        ug_switch('invite',   'Invite only',                          $in['invite'] ?? 0,   'fa-envelope-open-text');
+        ug_sec_open('fa-door-open', 'ic-green', $lang->groups['sec_joining']);
+        ug_switch('joinable', $lang->groups['sw_joinable'], $in['joinable'] ?? 0, 'fa-right-to-bracket');
+        ug_switch('moderate', $lang->groups['sw_moderate'],      $in['moderate'] ?? 0, 'fa-user-check');
+        ug_switch('invite',   $lang->groups['sw_invite'],                          $in['invite'] ?? 0,   'fa-envelope-open-text');
         ug_sec_close();
     }
     echo '</div><div class="col-lg-6">';
-    ug_sec_open('fa-shield-halved', 'ic-red', 'Administration');
-    ug_switch('issupermod',       'Users are super moderators', $in['issupermod'] ?? 0,       'fa-user-shield', true);
-    ug_switch('canstaffpanel',    'Can access the Staff Panel', $in['canstaffpanel'] ?? 0,    'fa-screwdriver-wrench', true);
-    ug_switch('cansettingspanel', 'Can access the Settings Panel', $in['cansettingspanel'] ?? 0, 'fa-sliders', true);
-    echo '<div class="ug-help mt-2"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>Red switches grant powerful rights — enable only for trusted staff groups.</div>';
+    ug_sec_open('fa-shield-halved', 'ic-red', $lang->groups['sec_admin']);
+    ug_switch('issupermod',       $lang->groups['sw_issupermod'], $in['issupermod'] ?? 0,       'fa-user-shield', true);
+    ug_switch('canstaffpanel',    $lang->groups['sw_canstaffpanel'], $in['canstaffpanel'] ?? 0,    'fa-screwdriver-wrench', true);
+    ug_switch('cansettingspanel', $lang->groups['sw_cansettingspanel'], $in['cansettingspanel'] ?? 0, 'fa-sliders', true);
+    echo '<div class="ug-help mt-2"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>' . htmlspecialchars_uni($lang->groups['hint_red_switches']) . '</div>';
     ug_sec_close();
     echo '</div></div>';
     echo '</div></div>';
@@ -505,78 +525,78 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     // ── Forums & Posts ───────────────────────────────────────
     echo '<div class="tab-pane fade" id="tab_forums_posts" role="tabpanel"><div class="ug-card"><div class="row g-0">';
     echo '<div class="col-lg-6">';
-    ug_sec_open('fa-eye', 'ic-blue', 'Viewing');
-    ug_switch('canview',            'Can view the board',             $in['canview'] ?? 0,            'fa-house');
-    ug_switch('canviewthreads',     'Can view threads',               $in['canviewthreads'] ?? 0,     'fa-list');
-    ug_switch('cansearch',          'Can search forums',              $in['cansearch'] ?? 0,          'fa-magnifying-glass');
-    ug_switch('candlattachments',   'Can download attachments',       $in['candlattachments'] ?? 0,   'fa-download');
-    ug_switch('canviewboardclosed', 'Can view the board when closed', $in['canviewboardclosed'] ?? 0, 'fa-door-closed');
+    ug_sec_open('fa-eye', 'ic-blue', $lang->groups['sec_viewing']);
+    ug_switch('canview',            $lang->groups['sw_canview'],             $in['canview'] ?? 0,            'fa-house');
+    ug_switch('canviewthreads',     $lang->groups['sw_canviewthreads'],               $in['canviewthreads'] ?? 0,     'fa-list');
+    ug_switch('cansearch',          $lang->groups['sw_cansearch'],              $in['cansearch'] ?? 0,          'fa-magnifying-glass');
+    ug_switch('candlattachments',   $lang->groups['sw_candlattachments'],       $in['candlattachments'] ?? 0,   'fa-download');
+    ug_switch('canviewboardclosed', $lang->groups['sw_canviewboardclosed'], $in['canviewboardclosed'] ?? 0, 'fa-door-closed');
     ug_sec_close();
-    ug_sec_open('fa-paper-plane', 'ic-green', 'Posting');
-    ug_switch('canpostthreads', 'Can post new threads', $in['canpostthreads'] ?? 0, 'fa-square-plus');
-    ug_switch('canpostreplys',  'Can reply to threads', $in['canpostreplys'] ?? 0,  'fa-reply');
+    ug_sec_open('fa-paper-plane', 'ic-green', $lang->groups['sec_posting']);
+    ug_switch('canpostthreads', $lang->groups['sw_canpostthreads'], $in['canpostthreads'] ?? 0, 'fa-square-plus');
+    ug_switch('canpostreplys',  $lang->groups['sw_canpostreplys'], $in['canpostreplys'] ?? 0,  'fa-reply');
     ug_sec_close();
-    ug_sec_open('fa-square-poll-vertical', 'ic-purple', 'Polls');
-    ug_switch('canpostpolls', 'Can create polls',        $in['canpostpolls'] ?? 0, 'fa-chart-simple');
-    ug_switch('canvotepolls', 'Can vote in polls',       $in['canvotepolls'] ?? 0, 'fa-check-to-slot');
-    ug_switch('canundovotes', 'Can undo own poll votes', $in['canundovotes'] ?? 0, 'fa-rotate-left');
+    ug_sec_open('fa-square-poll-vertical', 'ic-purple', $lang->groups['sec_polls']);
+    ug_switch('canpostpolls', $lang->groups['sw_canpostpolls'],        $in['canpostpolls'] ?? 0, 'fa-chart-simple');
+    ug_switch('canvotepolls', $lang->groups['sw_canvotepolls'],       $in['canvotepolls'] ?? 0, 'fa-check-to-slot');
+    ug_switch('canundovotes', $lang->groups['sw_canundovotes'], $in['canundovotes'] ?? 0, 'fa-rotate-left');
     ug_sec_close();
     echo '</div><div class="col-lg-6">';
-    ug_sec_open('fa-pen-to-square', 'ic-amber', 'Editing');
-    ug_switch('caneditposts',       'Can edit own posts',        $in['caneditposts'] ?? 0,       'fa-pen');
-    ug_switch('candeleteposts',     'Can delete own posts',      $in['candeleteposts'] ?? 0,     'fa-eraser');
-    ug_switch('candeletethreads',   'Can delete own threads',    $in['candeletethreads'] ?? 0,   'fa-trash-can');
-    ug_switch('caneditattachments', 'Can edit own attachments',  $in['caneditattachments'] ?? 0, 'fa-file-pen');
+    ug_sec_open('fa-pen-to-square', 'ic-amber', $lang->groups['sec_editing']);
+    ug_switch('caneditposts',       $lang->groups['sw_caneditposts'],        $in['caneditposts'] ?? 0,       'fa-pen');
+    ug_switch('candeleteposts',     $lang->groups['sw_candeleteposts'],      $in['candeleteposts'] ?? 0,     'fa-eraser');
+    ug_switch('candeletethreads',   $lang->groups['sw_candeletethreads'],    $in['candeletethreads'] ?? 0,   'fa-trash-can');
+    ug_switch('caneditattachments', $lang->groups['sw_caneditattachments'],  $in['caneditattachments'] ?? 0, 'fa-file-pen');
     ug_sec_close();
-    ug_sec_open('fa-paperclip', 'ic-teal', 'Attachments & screenshots');
-    ug_switch('canpostattachments', 'Can post attachments', $in['canpostattachments'] ?? 0, 'fa-paperclip');
-    ug_number_row('attachquota', 'fa-hard-drive', 'Attachment quota', $in['attachquota'] ?? 0, '0 = unlimited', 'KB');
-    ug_number_row('max_screenshots', 'fa-camera', 'Screenshots per torrent', $in['max_screenshots'] ?? 3, '0 = not allowed', '', ['max' => 299]);
+    ug_sec_open('fa-paperclip', 'ic-teal', $lang->groups['sec_attach']);
+    ug_switch('canpostattachments', $lang->groups['sw_canpostattachments'], $in['canpostattachments'] ?? 0, 'fa-paperclip');
+    ug_number_row('attachquota', 'fa-hard-drive', htmlspecialchars_uni($lang->groups['lbl_attachquota']), $in['attachquota'] ?? 0, htmlspecialchars_uni($lang->groups['hint_unlimited']), htmlspecialchars_uni($lang->groups['unit_kb']));
+    ug_number_row('max_screenshots', 'fa-camera', htmlspecialchars_uni($lang->groups['lbl_max_screenshots']), $in['max_screenshots'] ?? 3, htmlspecialchars_uni($lang->groups['hint_not_allowed']), '', ['max' => 299]);
     ug_sec_close();
     echo '</div></div></div></div>';
 
     // ── Messaging ────────────────────────────────────────────
     echo '<div class="tab-pane fade" id="tab_users_permissions" role="tabpanel"><div class="ug-card"><div class="row g-0">';
     echo '<div class="col-lg-6">';
-    ug_sec_open('fa-envelope-open-text', 'ic-blue', 'Private messages');
-    ug_switch('canusepms',         'Can use private messaging', $in['canusepms'] ?? 0,         'fa-inbox');
-    ug_switch('cansendpms',        'Can send messages',         $in['cansendpms'] ?? 0,        'fa-paper-plane');
-    ug_switch('cantrackpms',       'Can track messages',        $in['cantrackpms'] ?? 0,       'fa-location-crosshairs');
-    ug_switch('candenypmreceipts', 'Can deny read receipts',    $in['candenypmreceipts'] ?? 0, 'fa-eye-slash');
-    ug_switch('canoverridepm',     'Can bypass PM limits',      $in['canoverridepm'] ?? 0,     'fa-forward-fast', true);
+    ug_sec_open('fa-envelope-open-text', 'ic-blue', $lang->groups['sec_pms']);
+    ug_switch('canusepms',         $lang->groups['sw_canusepms'], $in['canusepms'] ?? 0,         'fa-inbox');
+    ug_switch('cansendpms',        $lang->groups['sw_cansendpms'],         $in['cansendpms'] ?? 0,        'fa-paper-plane');
+    ug_switch('cantrackpms',       $lang->groups['sw_cantrackpms'],        $in['cantrackpms'] ?? 0,       'fa-location-crosshairs');
+    ug_switch('candenypmreceipts', $lang->groups['sw_candenypmreceipts'],    $in['candenypmreceipts'] ?? 0, 'fa-eye-slash');
+    ug_switch('canoverridepm',     $lang->groups['sw_canoverridepm'],      $in['canoverridepm'] ?? 0,     'fa-forward-fast', true);
     ug_sec_close();
     echo '</div><div class="col-lg-6">';
-    ug_sec_open('fa-gauge', 'ic-amber', 'Limits');
-    ug_number_row('pmquota',         'fa-box-archive', 'PM quota',          $in['pmquota'] ?? 0,         '0 = unlimited', 'messages');
-    ug_number_row('maxpmrecipients', 'fa-users',       'Max PM recipients', $in['maxpmrecipients'] ?? 0, 'Per message',   'users');
+    ug_sec_open('fa-gauge', 'ic-amber', $lang->groups['sec_limits']);
+    ug_number_row('pmquota',         'fa-box-archive', htmlspecialchars_uni($lang->groups['lbl_pmquota']), $in['pmquota'] ?? 0, htmlspecialchars_uni($lang->groups['hint_unlimited']), htmlspecialchars_uni($lang->groups['unit_messages']));
+    ug_number_row('maxpmrecipients', 'fa-users',       htmlspecialchars_uni($lang->groups['lbl_maxpmrecipients']), $in['maxpmrecipients'] ?? 0, htmlspecialchars_uni($lang->groups['hint_per_message']), htmlspecialchars_uni($lang->groups['unit_users']));
     ug_sec_close();
-    ug_sec_open('fa-at', 'ic-purple', 'Email');
-    ug_switch('cansendemail',         'Can email other users',       $in['cansendemail'] ?? 0,         'fa-envelope');
-    ug_switch('cansendemailoverride', 'Can bypass email flood check', $in['cansendemailoverride'] ?? 0, 'fa-bolt');
+    ug_sec_open('fa-at', 'ic-purple', $lang->groups['sec_email']);
+    ug_switch('cansendemail',         $lang->groups['sw_cansendemail'],       $in['cansendemail'] ?? 0,         'fa-envelope');
+    ug_switch('cansendemailoverride', $lang->groups['sw_cansendemailoverride'], $in['cansendemailoverride'] ?? 0, 'fa-bolt');
     ug_sec_close();
     echo '</div></div></div></div>';
 
     // ── Moderation ───────────────────────────────────────────
     echo '<div class="tab-pane fade" id="tab_modcp" role="tabpanel"><div class="ug-card"><div class="row g-0">';
     echo '<div class="col-lg-6">';
-    ug_sec_open('fa-hourglass-half', 'ic-amber', 'Require approval for');
-    ug_switch('modposts',       'New posts',       $in['modposts'] ?? 0,       'fa-comment');
-    ug_switch('modthreads',     'New threads',     $in['modthreads'] ?? 0,     'fa-list');
-    ug_switch('mod_edit_posts', 'Edited posts',    $in['mod_edit_posts'] ?? 0, 'fa-pen');
-    ug_switch('modattachments', 'New attachments', $in['modattachments'] ?? 0, 'fa-paperclip');
+    ug_sec_open('fa-hourglass-half', 'ic-amber', $lang->groups['sec_approval']);
+    ug_switch('modposts',       $lang->groups['sw_modposts'],       $in['modposts'] ?? 0,       'fa-comment');
+    ug_switch('modthreads',     $lang->groups['sw_modthreads'],     $in['modthreads'] ?? 0,     'fa-list');
+    ug_switch('mod_edit_posts', $lang->groups['sw_mod_edit_posts'],    $in['mod_edit_posts'] ?? 0, 'fa-pen');
+    ug_switch('modattachments', $lang->groups['sw_modattachments'], $in['modattachments'] ?? 0, 'fa-paperclip');
     ug_sec_close();
     echo '</div><div class="col-lg-6">';
-    ug_sec_open('fa-trash-can', 'ic-red', 'Deletion');
-    ug_switch('candeletetorrent', 'Can delete torrents', $in['candeletetorrent'] ?? 0, 'fa-magnet', true);
+    ug_sec_open('fa-trash-can', 'ic-red', $lang->groups['sec_deletion']);
+    ug_switch('candeletetorrent', $lang->groups['sw_candeletetorrent'], $in['candeletetorrent'] ?? 0, 'fa-magnet', true);
     ug_sec_close();
     echo '</div></div></div></div>';
 
     echo '</div>'; // tab-content
 
     echo '<div class="ug-card ug-savebar">';
-    echo '<span class="ug-muted"><i class="fa-solid fa-circle-info me-1"></i>Changes apply to every member of the group</span>';
-    echo '<div class="d-flex gap-2"><a href="index.php?act=groups" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>';
-    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save Group</button></div>';
+    echo '<span class="ug-muted"><i class="fa-solid fa-circle-info me-1"></i>' . htmlspecialchars_uni($lang->groups['hint_savebar']) . '</span>';
+    echo '<div class="d-flex gap-2"><a href="index.php?act=groups" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_cancel']) . '</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_save']) . '</button></div>';
     echo '</div>';
 
     ug_form_close();
@@ -595,11 +615,11 @@ if (($mybb->input['action'] ?? '') === 'delete') {
     $usergroup = $q ? $db->fetch_array($q) : null;
 
     if (!$usergroup) {
-        flash_message('You have selected an invalid user group', 'error');
+        flash_message($lang->groups['flash_invalid'], 'error');
         admin_redirect('index.php?act=groups');
     }
     if ($usergroup['type'] == 1) {
-        flash_message('Default groups cannot be deleted', 'error');
+        flash_message($lang->groups['flash_default_nodelete'], 'error');
         admin_redirect('index.php?act=groups');
     }
     if ($mybb->get_input('no')) {
@@ -633,7 +653,7 @@ if (($mybb->input['action'] ?? '') === 'delete') {
         $cache->update_forumpermissions();
         log_admin_action($usergroup['gid'], $usergroup['title']);
 
-        echo 'The selected Group has been deleted successfully';
+        echo $lang->groups['msg_deleted'];
         exit;
     }
 }
@@ -653,7 +673,7 @@ if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 
     }
     log_admin_action();
     $plugins->run_hooks('admin_user_groups_disporder_commit');
-    flash_message('The user group display orders have been updated successfully', 'success');
+    flash_message($lang->groups['flash_order_updated'], 'success');
     admin_redirect('index.php?act=groups');
 }
 
@@ -669,14 +689,14 @@ if (!($mybb->input['action'] ?? '')) {
         }
         $plugins->run_hooks('admin_user_groups_start_commit');
         $cache->update_usergroups();
-        flash_message('The user group display orders have been updated successfully', 'success');
+        flash_message($lang->groups['flash_order_updated'], 'success');
         admin_redirect('index.php?act=groups');
     }
 
-    stdhead('Manage User Groups');
+    stdhead($lang->groups['title_manage']);
     ug_head_assets();
 
-    echo '<script src="scripts/deleteGroup.js"></script>';
+    echo '<script src="scripts/deleteGroup.js?ver=22"></script>';
     echo '<script>window.my_post_key = "' . $mybb->post_code . '";</script>';
 
     // Кол-во пользователей: основная группа + дополнительные
@@ -700,15 +720,15 @@ if (!($mybb->input['action'] ?? '')) {
 
     echo '<div class="container mt-3 mb-4 ug">';
     ug_breadcrumb([]);
-    ug_hero('fa-users', 'ic-blue', 'User Groups', 'Permissions, name styles and team-page order for every group',
-        '<a href="index.php?act=groups&amp;action=add" class="btn btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add Group</a>');
+    ug_hero('fa-users', 'ic-blue', $lang->groups['crumb_root'], $lang->groups['hero_main_sub'],
+        '<a href="index.php?act=groups&amp;action=add" class="btn btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_add']) . '</a>');
 
     echo '<div class="row g-3 mb-3">';
     foreach ([
-        ['fa-layer-group',  'ic-blue',   'Groups',       ts_nf(count($groups))],
-        ['fa-wand-magic-sparkles', 'ic-slate', 'Custom', ts_nf($n_custom)],
-        ['fa-user-shield',  'ic-purple', 'Staff groups', ts_nf($n_staff)],
-        ['fa-user',         'ic-green',  'Users',        ts_nf($n_users)],
+        ['fa-layer-group',  'ic-blue',   htmlspecialchars_uni($lang->groups['kpi_groups']), ts_nf(count($groups))],
+        ['fa-wand-magic-sparkles', 'ic-slate', htmlspecialchars_uni($lang->groups['kpi_custom']), ts_nf($n_custom)],
+        ['fa-user-shield',  'ic-purple', htmlspecialchars_uni($lang->groups['kpi_staff']), ts_nf($n_staff)],
+        ['fa-user',         'ic-green',  htmlspecialchars_uni($lang->groups['kpi_users']), ts_nf($n_users)],
     ] as [$ic, $cls, $label, $val]) {
         echo '<div class="col-6 col-md-3"><div class="ug-card ug-stat"><span class="ug-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
            . '<div><div class="ug-stat-label">' . $label . '</div><div class="ug-stat-value">' . $val . '</div></div></div></div>';
@@ -718,11 +738,11 @@ if (!($mybb->input['action'] ?? '')) {
     ug_form_open('index.php?act=groups', 'groupsForm');
 
     echo '<div class="ug-card overflow-hidden"><div class="table-responsive"><table class="table ug-table"><thead><tr>';
-    echo '<th><i class="fa-solid fa-users"></i>Group</th>';
-    echo '<th><i class="fa-solid fa-tags"></i>Flags</th>';
-    echo '<th class="text-center"><i class="fa-solid fa-user"></i>Members</th>';
-    echo '<th class="text-center"><i class="fa-solid fa-arrow-down-1-9"></i>Team order</th>';
-    echo '<th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>';
+    echo '<th><i class="fa-solid fa-users"></i>' . htmlspecialchars_uni($lang->groups['th_group']) . '</th>';
+    echo '<th><i class="fa-solid fa-tags"></i>' . htmlspecialchars_uni($lang->groups['th_flags']) . '</th>';
+    echo '<th class="text-center"><i class="fa-solid fa-user"></i>' . htmlspecialchars_uni($lang->groups['th_members']) . '</th>';
+    echo '<th class="text-center"><i class="fa-solid fa-arrow-down-1-9"></i>' . htmlspecialchars_uni($lang->groups['th_order']) . '</th>';
+    echo '<th class="text-end"><i class="fa-solid fa-bolt"></i>' . htmlspecialchars_uni($lang->groups['th_actions']) . '</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($groups as $ug) {
@@ -731,11 +751,11 @@ if (!($mybb->input['action'] ?? '')) {
         $primary = $primaryusers[$gid] ?? 0;
         $second  = $secondaryusers[$gid] ?? 0;
 
-        $flags = $type === 1 ? '<span class="ug-tag t-default"><i class="fa-solid fa-lock"></i>Default</span>' : '<span class="ug-tag t-custom"><i class="fa-solid fa-wand-magic-sparkles"></i>Custom</span>';
-        if ((int)$ug['issupermod'] === 1 || (int)$ug['canstaffpanel'] === 1) $flags .= ' <span class="ug-tag t-staff"><i class="fa-solid fa-user-shield"></i>Staff</span>';
-        if ((int)$ug['isbannedgroup'] === 1) $flags .= ' <span class="ug-tag t-banned"><i class="fa-solid fa-ban"></i>Banned</span>';
-        if (in_array($type, [3, 4, 5], true)) $flags .= ' <span class="ug-tag t-join"><i class="fa-solid fa-door-open"></i>' . ($type === 5 ? 'Invite' : ($type === 4 ? 'Request' : 'Open')) . '</span>';
-        if ((int)$ug['showforumteam'] === 1) $flags .= ' <span class="ug-tag t-team"><i class="fa-solid fa-people-group"></i>Team page</span>';
+        $flags = $type === 1 ? '<span class="ug-tag t-default"><i class="fa-solid fa-lock"></i>' . htmlspecialchars_uni($lang->groups['tag_default']) . '</span>' : '<span class="ug-tag t-custom"><i class="fa-solid fa-wand-magic-sparkles"></i>' . htmlspecialchars_uni($lang->groups['tag_custom']) . '</span>';
+        if ((int)$ug['issupermod'] === 1 || (int)$ug['canstaffpanel'] === 1) $flags .= ' <span class="ug-tag t-staff"><i class="fa-solid fa-user-shield"></i>' . htmlspecialchars_uni($lang->groups['tag_staff']) . '</span>';
+        if ((int)$ug['isbannedgroup'] === 1) $flags .= ' <span class="ug-tag t-banned"><i class="fa-solid fa-ban"></i>' . htmlspecialchars_uni($lang->groups['tag_banned']) . '</span>';
+        if (in_array($type, [3, 4, 5], true)) $flags .= ' <span class="ug-tag t-join"><i class="fa-solid fa-door-open"></i>' . htmlspecialchars_uni($type === 5 ? $lang->groups['tag_invite'] : ($type === 4 ? $lang->groups['tag_request'] : $lang->groups['tag_open'])) . '</span>';
+        if ((int)$ug['showforumteam'] === 1) $flags .= ' <span class="ug-tag t-team"><i class="fa-solid fa-people-group"></i>' . htmlspecialchars_uni($lang->groups['tag_team']) . '</span>';
 
         $fallback = (int)$ug['isbannedgroup'] === 1 ? 'fa-ban text-danger' : ($type === 1 ? 'fa-user text-primary' : 'fa-users text-secondary');
 
@@ -749,32 +769,32 @@ if (!($mybb->input['action'] ?? '')) {
         echo '<td>' . $flags . '</td>';
 
         echo '<td class="text-center"><span class="ug-users"><i class="fa-solid fa-user"></i>' . ts_nf($primary + $second) . '</span>'
-           . ($second > 0 ? '<div class="ug-muted">' . ts_nf($second) . ' additional</div>' : '') . '</td>';
+           . ($second > 0 ? '<div class="ug-muted">' . ags_fmt(htmlspecialchars_uni($lang->groups['lbl_additional']), ts_nf($second)) . '</div>' : '') . '</td>';
 
         echo '<td class="text-center">';
         echo (int)$ug['showforumteam'] === 1
-            ? '<input type="number" name="disporder[' . $gid . ']" value="' . (int)$ug['disporder'] . '" min="0" class="form-control form-control-sm ug-order" aria-label="Display order">'
-            : '<span class="ug-muted" title="Only groups shown on the team page are ordered">—</span>';
+            ? '<input type="number" name="disporder[' . $gid . ']" value="' . (int)$ug['disporder'] . '" min="0" class="form-control form-control-sm ug-order" aria-label="' . htmlspecialchars_uni($lang->groups['aria_order']) . '">'
+            : '<span class="ug-muted" title="' . htmlspecialchars_uni($lang->groups['tip_order_na']) . '">—</span>';
         echo '</td>';
 
         echo '<td class="text-end text-nowrap">';
-        echo '<a class="ug-act" href="index.php?act=groups&amp;action=edit&amp;gid=' . $gid . '" title="Edit"><i class="fa-solid fa-pen"></i></a>';
-        echo '<a class="ug-act" href="index.php?act=groups&amp;action=search&amp;results=1&amp;conditions[usergroup]=' . $gid . '" title="List users"><i class="fa-solid fa-list-ul"></i></a>';
+        echo '<a class="ug-act" href="index.php?act=groups&amp;action=edit&amp;gid=' . $gid . '" title="' . htmlspecialchars_uni($lang->groups['tip_edit']) . '"><i class="fa-solid fa-pen"></i></a>';
+        echo '<a class="ug-act" href="index.php?act=groups&amp;action=search&amp;results=1&amp;conditions[usergroup]=' . $gid . '" title="' . htmlspecialchars_uni($lang->groups['tip_list_users']) . '"><i class="fa-solid fa-list-ul"></i></a>';
         echo $type > 1
-            ? '<a class="ug-act danger delete_employee" href="javascript:void(0)" data-emp-id="' . $gid . '" title="Delete"><i class="fa-solid fa-trash"></i></a>'
-            : '<span class="ug-act is-locked" title="Default groups cannot be deleted"><i class="fa-solid fa-lock"></i></span>';
+            ? '<a class="ug-act danger delete_employee" href="javascript:void(0)" data-emp-id="' . $gid . '" title="' . htmlspecialchars_uni($lang->groups['tip_delete']) . '"><i class="fa-solid fa-trash"></i></a>'
+            : '<span class="ug-act is-locked" title="' . htmlspecialchars_uni($lang->groups['tip_default_locked']) . '"><i class="fa-solid fa-lock"></i></span>';
         echo '</td>';
         echo '</tr>';
     }
 
     if (!$groups) {
-        echo '<tr><td colspan="5"><div class="ug-empty"><i class="fa-solid fa-users fa-2x mb-2 d-block opacity-50"></i>No user groups found.</div></td></tr>';
+        echo '<tr><td colspan="5"><div class="ug-empty"><i class="fa-solid fa-users fa-2x mb-2 d-block opacity-50"></i>' . htmlspecialchars_uni($lang->groups['empty_groups']) . '</div></td></tr>';
     }
 
     echo '</tbody></table></div>';
     echo '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">';
-    echo '<span class="ug-muted"><i class="fa-solid fa-circle-info me-1"></i>Order applies to groups shown on the team page</span>';
-    echo '<button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-arrow-down-1-9 me-1"></i>Save order</button>';
+    echo '<span class="ug-muted"><i class="fa-solid fa-circle-info me-1"></i>' . htmlspecialchars_uni($lang->groups['hint_order_footer']) . '</span>';
+    echo '<button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-arrow-down-1-9 me-1"></i>' . htmlspecialchars_uni($lang->groups['btn_save_order']) . '</button>';
     echo '</div></div>';
 
     ug_form_close();

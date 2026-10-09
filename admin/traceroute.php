@@ -1,11 +1,33 @@
 <?php
 /**
- * Traceroute Utility v3.0 (AJAX Live)
+ * Traceroute Utility v3.1 (AJAX Live)
  */
 
+declare(strict_types=1);
+
 if (!defined('STAFF_PANEL')) {
-    http_response_code(403);
-    exit('Access denied');
+    exit('<div class="alert alert-light border m-3"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i><b>Error!</b> Direct initialization of this file is not allowed.</div>');
+}
+
+define('TR_VERSION', '3.1');
+
+$lang->load('traceroute');
+
+/**
+ * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+ * so both forms are replaced (strtr, not sprintf: a literal % is safe).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
 }
 
 /* ================= AJAX HANDLER ================= */
@@ -25,9 +47,9 @@ if (
     /* ---- START TRACE ---- */
     if ($action === 'start') {
 
-        $host = preg_replace('/[^a-zA-Z0-9\.\-]/', '', $data['host'] ?? '');
+        $host = preg_replace('/[^a-zA-Z0-9\.\-]/', '', (string)($data['host'] ?? ''));
         if (!$host) {
-            echo json_encode(['error' => 'Invalid host']);
+            echo json_encode(['error' => $lang->traceroute['err_invalid_host']], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
@@ -51,7 +73,7 @@ if (
     /* ---- PROGRESS ---- */
     if ($action === 'progress') {
 
-        $id     = basename($data['id'] ?? '');
+        $id     = basename((string)($data['id'] ?? ''));
         $offset = (int)($data['offset'] ?? 0);
         $file   = $baseDir . $id . '.log';
 
@@ -81,139 +103,79 @@ if (
     }
 }
 
-
-
-
 /* ================= UI ================= */
-stdhead();
+$clientIP = (string)($_SERVER['REMOTE_ADDR'] ?? $lang->traceroute['lbl_unknown_ip']);
 
-$clientIP = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+// JS strings: js_* keys → array without the prefix
+$js_lang = [];
+foreach ($lang->traceroute as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $js_lang[substr((string)$k, 3)] = $v;
+    }
+}
+
+stdhead($lang->traceroute['page_title']);
+
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/traceroute.css?v=' . TR_VERSION . '">';
+?>
+<script>
+const AGS_LANG = <?= json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<?php
+echo '<script src="' . $BASEURL . '/admin/scripts/traceroute.js?v=' . TR_VERSION . '" defer></script>';
 ?>
 
-<div class="container mt-3">
-    <div class="card traceroute-card">
-        <div class="card-header bg-primary text-white">
-            <h1>🌐 Network Traceroute Tool</h1>
-            <p class="subtitle">Live AJAX Traceroute</p>
+<div class="container mt-3 py-4 trc-page">
+
+    <!-- Header -->
+    <div class="trc-card trc-head mb-3">
+        <div class="trc-head__icon"><i class="fa-solid fa-route"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="trc-title"><?= htmlspecialchars($lang->traceroute['sec_title']) ?></h1>
+            <p><?= htmlspecialchars($lang->traceroute['sec_subtitle']) ?></p>
         </div>
+        <span class="trc-badge trc-soft-info d-none d-md-inline-flex"><i class="fa-solid fa-location-dot"></i><?= htmlspecialchars(ags_fmt($lang->traceroute['badge_your_ip'], $clientIP)) ?></span>
+    </div>
 
-        <div class="card-body">
-
-            <form id="traceForm">
-                <div class="form-group">
-                    <label class="form-label">📍 IP / Host</label>
-                    <input type="text" id="host"
-                           class="form-control"
-                           value="<?= htmlspecialchars($clientIP) ?>"
-                           required>
+    <!-- Form -->
+    <div class="trc-card trc-form mb-3">
+        <form id="traceForm">
+            <div class="row g-3 align-items-end">
+                <div class="col">
+                    <label class="form-label" for="host"><i class="fa-solid fa-globe me-1"></i><?= htmlspecialchars($lang->traceroute['lbl_host']) ?></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fa-solid fa-network-wired"></i></span>
+                        <input type="text" id="host"
+                               class="form-control"
+                               value="<?= htmlspecialchars($clientIP, ENT_QUOTES) ?>"
+                               placeholder="<?= htmlspecialchars($lang->traceroute['ph_host'], ENT_QUOTES) ?>"
+                               required>
+                    </div>
                 </div>
+                <div class="col-12 col-md-auto">
+                    <button type="submit" class="btn btn-primary trc-pill w-100">
+                        <i class="fa-solid fa-play me-1"></i><?= htmlspecialchars($lang->traceroute['btn_start']) ?>
+                    </button>
+                </div>
+            </div>
+            <div class="trc-meta mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= htmlspecialchars($lang->traceroute['hint_host']) ?></div>
+        </form>
+    </div>
 
-                <button class="btn btn-primary btn-lg">
-                    🚀 Start Traceroute
-                </button>
-            </form>
-
-            <pre id="output" class="trace-output"></pre>
-
+    <!-- Output -->
+    <div class="trc-card overflow-hidden">
+        <div class="trc-toolbar">
+            <span><i class="fa-solid fa-terminal me-1"></i><?= htmlspecialchars($lang->traceroute['sec_output']) ?></span>
+            <span id="traceStatus" class="trc-badge trc-soft-muted"><i class="fa-solid fa-circle-pause"></i><span class="trc-status-text"><?= htmlspecialchars($lang->traceroute['js_status_ready']) ?></span></span>
         </div>
+
+        <div id="traceEmpty" class="trc-empty">
+            <div class="trc-empty__icon trc-soft-muted"><i class="fa-solid fa-satellite-dish"></i></div>
+            <p class="text-body-secondary mb-0"><?= htmlspecialchars($lang->traceroute['empty_text']) ?></p>
+        </div>
+
+        <pre id="output" class="trace-output" hidden></pre>
     </div>
 </div>
-
-<script>
-let traceId = null;
-let offset = 0;
-let timer = null;
-
-function formatTrace(text) {
-    return text
-        .replace(/\*/g, '<span class="timeout">*</span>')
-        .replace(/^(\s*\d+)/gm, '<span class="hop">$1</span>')
-        .replace(/(\d+\.?\d*\s?ms)/gi, '<span class="time">$1</span>');
-}
-
-document.getElementById('traceForm').addEventListener('submit', e => {
-    e.preventDefault();
-
-    output.innerHTML = '';
-    offset = 0;
-
-    fetch('', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({
-            action: 'start',
-            host: document.getElementById('host').value
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        traceId = data.id;
-        timer = setInterval(loadProgress, 1000);
-    });
-});
-
-function loadProgress() {
-    fetch('', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({
-            action: 'progress',
-            id: traceId,
-            offset: offset
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.chunk) {
-            output.innerHTML += formatTrace(data.chunk);
-            offset = data.size;
-            output.scrollTop = output.scrollHeight;
-        }
-        if (data.done) {
-            clearInterval(timer);
-        }
-    });
-}
-</script>
-
-
-<style>
-.trace-output {
-    background: #f8fafc;            /* светлый фон */
-    color: #1f2937;                 /* тёмно-серый текст */
-    padding: 1.25rem 1.5rem;
-    border-radius: 0.75rem;
-    height: 350px;
-    overflow: auto;
-    margin-top: 1.5rem;
-    font-family: "SF Mono", Monaco, Consolas, monospace;
-    font-size: 0.9rem;
-    line-height: 1.55;
-    border: 1px solid #e5e7eb;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
-    white-space: pre-wrap;
-}
-
-/* Немного стилизации строк */
-.trace-output span.hop {
-    color: #2563eb; /* синий */
-}
-
-.trace-output span.time {
-    color: #059669; /* зелёный */
-}
-
-.trace-output span.timeout {
-    color: #dc2626; /* красный */
-    font-weight: 600;
-}
-</style>
-
 
 <?php stdfoot(); ?>

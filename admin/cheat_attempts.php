@@ -11,6 +11,24 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Direct initialization not allowed.</div>');
 }
 
+$lang->load('cheat_attempts');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitutes {1}, {2}… (and %1$s… produced by $lang->load()) with the given args.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 $eol = PHP_EOL;
 
 /**
@@ -101,7 +119,7 @@ if (($_POST['do'] ?? '') === 'apply') {
                 [$modcomment, $uid]
             );
         }
-        $ca_message = 'Users have been banned';
+        $ca_message = $lang->cheat_attempts['flash_banned'];
     }
 
     // Предупреждение
@@ -124,13 +142,13 @@ if (($_POST['do'] ?? '') === 'apply') {
         $res = $db->sql_query_prepared("SELECT id FROM users WHERE id IN ({$ids_ph})", $ids);
         while ($res && ($arr = $db->fetch_array($res))) {
             send_pm([
-                'subject' => 'Warning: Suspicious Activity Detected',
-                'message' => 'Your account has been flagged for suspicious upload activity. Please contact staff if you believe this is an error.',
+                'subject' => $lang->cheat_attempts['pm_warn_subject'],
+                'message' => $lang->cheat_attempts['pm_warn_message'],
                 'touid'   => (int)$arr['id'],
                 'sender'  => ['uid' => -1],
             ], -1, true);
         }
-        $ca_message = 'Users have been warned';
+        $ca_message = $lang->cheat_attempts['flash_warned'];
     }
 
     // Удаление записей
@@ -138,7 +156,7 @@ if (($_POST['do'] ?? '') === 'apply') {
         $ids = array_map('intval', $_POST['delete']);
         $ids_ph = implode(',', array_fill(0, count($ids), '?'));
         $db->sql_query_prepared("DELETE FROM cheat_attempts WHERE id IN ({$ids_ph})", $ids);
-        $ca_message = 'Records deleted';
+        $ca_message = $lang->cheat_attempts['flash_deleted'];
     }
 
     // Авто-бан: 5+ high severity за последний час
@@ -162,7 +180,7 @@ if (($_POST['do'] ?? '') === 'apply') {
             );
             $banned++;
         }
-        $ca_message = "Auto-ban complete: {$banned} user(s) banned";
+        $ca_message = ags_fmt($lang->cheat_attempts['flash_autoban'], $banned);
     }
 }
 
@@ -197,14 +215,28 @@ $statsQuery = $db->sql_query_prepared(
 );
 $stats = $statsQuery ? $db->fetch_array($statsQuery) : null;
 
-stdhead('Cheat Attempts');
+$severityLabel = [
+    'high'   => $lang->cheat_attempts['opt_severity_high'],
+    'medium' => $lang->cheat_attempts['opt_severity_medium'],
+    'low'    => $lang->cheat_attempts['opt_severity_low'],
+];
+
+// JS strings: js_* keys → AGS_LANG without the prefix
+$ca_js_lang = [];
+foreach ($lang->cheat_attempts as $ca_k => $ca_v) {
+    if (str_starts_with((string)$ca_k, 'js_')) {
+        $ca_js_lang[substr((string)$ca_k, 3)] = $ca_v;
+    }
+}
+
+stdhead($lang->cheat_attempts['page_title']);
 ?>
 
 <div class="container mt-3">
   <div class="card shadow-sm border-0">
 
     <div class="card-header bg-danger text-white py-3 d-flex justify-content-between align-items-center">
-      <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Cheat Attempts</h5>
+      <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i><?= htmlspecialchars($lang->cheat_attempts['pane_title']) ?></h5>
       <?php if ($ca_message): ?>
       <span class="badge bg-white text-danger"><?= htmlspecialchars($ca_message) ?></span>
       <?php endif; ?>
@@ -217,24 +249,24 @@ stdhead('Cheat Attempts');
         <div class="col-md-3">
           <div class="card border-0 bg-light text-center p-3">
             <div class="fs-4 fw-bold"><?= (int)($stats['total'] ?? 0) ?></div>
-            <small class="text-muted">Total Records</small>
+            <small class="text-muted"><?= htmlspecialchars($lang->cheat_attempts['lbl_total_records']) ?></small>
           </div>
         </div>
         <div class="col-md-3">
           <div class="card border-0 bg-danger bg-opacity-10 text-center p-3">
             <div class="fs-4 fw-bold text-danger"><?= (int)($stats['high_count'] ?? 0) ?></div>
-            <small class="text-muted">High Severity</small>
+            <small class="text-muted"><?= htmlspecialchars($lang->cheat_attempts['lbl_high_severity']) ?></small>
           </div>
         </div>
         <div class="col-md-3">
           <div class="card border-0 bg-warning bg-opacity-10 text-center p-3">
             <div class="fs-4 fw-bold text-warning"><?= (int)($stats['medium_count'] ?? 0) ?></div>
-            <small class="text-muted">Medium Severity</small>
+            <small class="text-muted"><?= htmlspecialchars($lang->cheat_attempts['lbl_medium_severity']) ?></small>
           </div>
         </div>
         <div class="col-md-3 d-flex align-items-center gap-2">
-          <a href="<?= $_this_script_ ?>&severity=high"   class="btn btn-sm btn-outline-danger w-50">High only</a>
-          <a href="<?= $_this_script_ ?>"                 class="btn btn-sm btn-outline-secondary w-50">All</a>
+          <a href="<?= $_this_script_ ?>&severity=high"   class="btn btn-sm btn-outline-danger w-50"><?= htmlspecialchars($lang->cheat_attempts['btn_filter_high']) ?></a>
+          <a href="<?= $_this_script_ ?>"                 class="btn btn-sm btn-outline-secondary w-50"><?= htmlspecialchars($lang->cheat_attempts['btn_filter_all']) ?></a>
         </div>
       </div>
 
@@ -248,16 +280,16 @@ stdhead('Cheat Attempts');
           <table class="table table-hover table-sm align-middle">
             <thead class="table-light">
               <tr>
-                <th>User</th>
-                <th>Date</th>
-                <th>Torrent</th>
-                <th>Reason</th>
-                <th>Detail</th>
-                <th>Severity</th>
-                <th>IP</th>
-                <th class="text-center">Ban</th>
-                <th class="text-center">Warn</th>
-                <th class="text-center">Del</th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_user']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_date']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_torrent']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_reason']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_detail']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_severity']) ?></th>
+                <th><?= htmlspecialchars($lang->cheat_attempts['th_ip']) ?></th>
+                <th class="text-center"><?= htmlspecialchars($lang->cheat_attempts['th_ban']) ?></th>
+                <th class="text-center"><?= htmlspecialchars($lang->cheat_attempts['th_warn']) ?></th>
+                <th class="text-center"><?= htmlspecialchars($lang->cheat_attempts['th_delete']) ?></th>
               </tr>
             </thead>
             <tbody>
@@ -283,62 +315,64 @@ stdhead('Cheat Attempts');
             ];
 
             $reasonLabel = [
-                'fake_completed_event'       => '🎭 Fake Complete',
-                'completed_without_download' => '📥 Complete Without Download',
-                'fake_seeding'               => '🌱 Fake Seeding',
-                'peer_id_changed'            => '🔄 Client Changed',
-                'suspicious_peer_id'         => '🕵️ Suspicious Client',
-                'negative_values'            => '➖ Negative Values',
-                'completed_while_seeding'    => '⚡ Already Seeding',
-                'speed_anomaly'              => '🚀 Impossible Speed',
-                'port_changed'               => '🔌 Port Changed',
-                'announce_spam'              => '📢 Announce Spam',
-                'banned_cheat_client'        => '🚫 Banned Client',
-                'instant_stop_after_complete'=> '⏱️ Instant Stop',
-                'impossible_ratio_new_torrent'=> '📊 Impossible Ratio',
-                'extreme_ratio'              => '📈 Extreme Ratio',
-                'empty_user_agent'           => '👻 No User Agent',
-                'seed_with_left'             => '🌱 Seeding Incomplete',
-                'fake_completed_no_data'     => '🎭 Fake Complete (No Data)',
-                'multi_ip_same_peer_id'      => '🌐 Multiple IPs',
-                'too_many_torrents_single_ip'=> '🌊 IP Flood',
+                'fake_completed_event'         => $lang->cheat_attempts['reason_fake_completed_event'],
+                'completed_without_download'   => $lang->cheat_attempts['reason_completed_without_download'],
+                'fake_seeding'                 => $lang->cheat_attempts['reason_fake_seeding'],
+                'peer_id_changed'              => $lang->cheat_attempts['reason_peer_id_changed'],
+                'suspicious_peer_id'           => $lang->cheat_attempts['reason_suspicious_peer_id'],
+                'negative_values'              => $lang->cheat_attempts['reason_negative_values'],
+                'completed_while_seeding'      => $lang->cheat_attempts['reason_completed_while_seeding'],
+                'speed_anomaly'                => $lang->cheat_attempts['reason_speed_anomaly'],
+                'port_changed'                 => $lang->cheat_attempts['reason_port_changed'],
+                'announce_spam'                => $lang->cheat_attempts['reason_announce_spam'],
+                'banned_cheat_client'          => $lang->cheat_attempts['reason_banned_cheat_client'],
+                'instant_stop_after_complete'  => $lang->cheat_attempts['reason_instant_stop_after_complete'],
+                'impossible_ratio_new_torrent' => $lang->cheat_attempts['reason_impossible_ratio_new_torrent'],
+                'extreme_ratio'                => $lang->cheat_attempts['reason_extreme_ratio'],
+                'empty_user_agent'             => $lang->cheat_attempts['reason_empty_user_agent'],
+                'seed_with_left'               => $lang->cheat_attempts['reason_seed_with_left'],
+                'fake_completed_no_data'       => $lang->cheat_attempts['reason_fake_completed_no_data'],
+                'multi_ip_same_peer_id'        => $lang->cheat_attempts['reason_multi_ip_same_peer_id'],
+                'too_many_torrents_single_ip'  => $lang->cheat_attempts['reason_too_many_torrents_single_ip'],
             ];
 
             // Человеческие описания деталей
             function format_cheat_detail(string $reason, string $detail): string {
+                global $lang;
+                $mb = ' ' . $lang->cheat_attempts['unit_mb'];
                 switch ($reason) {
                     case 'announce_spam':
                         preg_match('/Only (\d+)s/', $detail, $m);
-                        return 'Announced again after only ' . ($m[1] ?? '?') . ' seconds (minimum: 30s)';
+                        return ags_fmt($lang->cheat_attempts['detail_announce_spam'], $m[1] ?? '?');
                     case 'speed_anomaly':
                         preg_match('/avg=([\d.]+) MB\/s/', $detail, $m);
-                        return 'Average upload speed: ' . ($m[1] ?? '?') . ' MB/s — physically impossible';
+                        return ags_fmt($lang->cheat_attempts['detail_speed_anomaly'], $m[1] ?? '?');
                     case 'negative_values':
-                        return 'Sent negative upload/download values — possible exploit attempt';
+                        return $lang->cheat_attempts['detail_negative_values'];
                     case 'peer_id_changed':
                         preg_match('/old=(\S+) new=(\S+)/', $detail, $m);
-                        return 'Client changed from ' . htmlspecialchars($m[1] ?? '?') . ' to ' . htmlspecialchars($m[2] ?? '?');
+                        return ags_fmt($lang->cheat_attempts['detail_peer_id_changed'], htmlspecialchars($m[1] ?? '?'), htmlspecialchars($m[2] ?? '?'));
                     case 'fake_completed_event':
                         preg_match('/left=(\d+)/', $detail, $m);
-                        $left = isset($m[1]) ? number_format((int)$m[1] / 1024 / 1024, 1) . ' MB' : '?';
-                        return 'Claimed download complete but still has ' . $left . ' remaining';
+                        $left = isset($m[1]) ? number_format((int)$m[1] / 1024 / 1024, 1) . $mb : '?';
+                        return ags_fmt($lang->cheat_attempts['detail_fake_completed_event'], $left);
                     case 'fake_completed_no_data':
-                        return 'Sent "completed" event but downloaded nothing this session';
+                        return $lang->cheat_attempts['detail_fake_completed_no_data'];
                     case 'fake_seeding':
                         preg_match('/left=(\d+)/', $detail, $m);
-                        $left = isset($m[1]) ? number_format((int)$m[1] / 1024 / 1024, 1) . ' MB' : '?';
-                        return 'Reporting as seeder but file is incomplete (' . $left . ' remaining)';
+                        $left = isset($m[1]) ? number_format((int)$m[1] / 1024 / 1024, 1) . $mb : '?';
+                        return ags_fmt($lang->cheat_attempts['detail_fake_seeding'], $left);
                     case 'multi_ip_same_peer_id':
                         preg_match('/(\d+) different IPs/', $detail, $m);
-                        return 'Same client ID seen from ' . ($m[1] ?? '?') . ' different IP addresses';
+                        return ags_fmt($lang->cheat_attempts['detail_multi_ip_same_peer_id'], $m[1] ?? '?');
                     case 'extreme_ratio':
                         preg_match('/ratio=([\d.]+)/', $detail, $m);
-                        return 'Suspiciously high ratio: ' . number_format((float)($m[1] ?? 0), 1) . ':1';
+                        return ags_fmt($lang->cheat_attempts['detail_extreme_ratio'], number_format((float)($m[1] ?? 0), 1));
                     case 'instant_stop_after_complete':
                         preg_match('/after only (\d+)s/', $detail, $m);
-                        return 'Stopped seeding ' . ($m[1] ?? '?') . ' seconds after completing download';
+                        return ags_fmt($lang->cheat_attempts['detail_instant_stop_after_complete'], $m[1] ?? '?');
                     case 'banned_cheat_client':
-                        return 'Using a known ratio-cheating client';
+                        return $lang->cheat_attempts['detail_banned_cheat_client'];
                     default:
                         return htmlspecialchars($detail);
                 }
@@ -379,7 +413,7 @@ stdhead('Cheat Attempts');
               </td>
               <td>
                 <span class="badge bg-<?= $badgeColor ?>">
-                  <?= ucfirst($arr['severity'] ?? 'medium') ?>
+                  <?= htmlspecialchars($severityLabel[$arr['severity'] ?? 'medium'] ?? ucfirst((string)$arr['severity'])) ?>
                 </span>
               </td>
               <td><code class="small"><?= htmlspecialchars($arr['ip'] ?? '') ?></code></td>
@@ -406,20 +440,20 @@ stdhead('Cheat Attempts');
                 <td colspan="10" class="text-end py-3">
                   <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-outline-danger"   onclick="checkAll('ban[]')">
-                      <i class="fas fa-check-square me-1"></i>All Ban
+                      <i class="fas fa-check-square me-1"></i><?= htmlspecialchars($lang->cheat_attempts['btn_all_ban']) ?>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-warning"  onclick="checkAll('warn[]')">
-                      <i class="fas fa-check-square me-1"></i>All Warn
+                      <i class="fas fa-check-square me-1"></i><?= htmlspecialchars($lang->cheat_attempts['btn_all_warn']) ?>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="checkAll('delete[]')">
-                      <i class="fas fa-check-square me-1"></i>All Delete
+                      <i class="fas fa-check-square me-1"></i><?= htmlspecialchars($lang->cheat_attempts['btn_all_delete']) ?>
                     </button>
                     <button type="submit" class="btn btn-sm btn-success">
-                      <i class="fas fa-check-circle me-1"></i>Apply
+                      <i class="fas fa-check-circle me-1"></i><?= htmlspecialchars($lang->cheat_attempts['btn_apply']) ?>
                     </button>
                     <button type="submit" name="autoban" value="1" class="btn btn-sm btn-dark ms-2"
-                            onclick="return confirm('Auto-ban users with 5+ high violations in last hour?')">
-                      <i class="fas fa-robot me-1"></i>Auto-Ban (5+/h)
+                            onclick="return confirm(t('autoban_confirm', 'Auto-ban users with 5+ high violations in last hour?'))">
+                      <i class="fas fa-robot me-1"></i><?= htmlspecialchars($lang->cheat_attempts['btn_autoban']) ?>
                     </button>
                   </div>
                 </td>
@@ -435,6 +469,17 @@ stdhead('Cheat Attempts');
 </div>
 
 <script>
+const AGS_LANG = <?= json_encode($ca_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+function t(key, fallback, ...args) {
+    let s = (AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach((a, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+    });
+    return s;
+}
+
 function checkAll(name) {
     const boxes = document.querySelectorAll('input[name="' + name + '"]');
     const allChecked = [...boxes].every(b => b.checked);

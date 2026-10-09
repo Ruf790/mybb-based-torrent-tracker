@@ -9,6 +9,20 @@ if (!defined('STAFF_PANEL')) {
 
 require_once INC_PATH . '/functions_multipage.php';
 
+$lang->load('spam');
+
+if (!function_exists('ags_fmt')) {
+    /** Подстановка {1}, {2}… в строку из языкового файла */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $a) {
+            $map['{' . ($i + 1) . '}'] = (string)$a;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 
 // Pagination settings
 $perPage = 25;
@@ -170,11 +184,12 @@ function spam_ip(mixed $bin): string {
 
 /** Статус ЛС (MyBB): [label, fa-иконка, модификатор класса] */
 function spam_status(int $status): array {
+    global $lang;
     return match ($status) {
-        0       => ['Unread',    'fa-envelope',      'unread'],
-        1       => ['Read',      'fa-envelope-open', 'read'],
-        3       => ['Replied',   'fa-reply',         'replied'],
-        4       => ['Forwarded', 'fa-share',         'forwarded'],
+        0       => [$lang->spam['status_unread'],    'fa-envelope',      'unread'],
+        1       => [$lang->spam['status_read'],      'fa-envelope-open', 'read'],
+        3       => [$lang->spam['status_replied'],   'fa-reply',         'replied'],
+        4       => [$lang->spam['status_forwarded'], 'fa-share',         'forwarded'],
         default => ['#' . $status, 'fa-circle-question', ''],
     };
 }
@@ -202,12 +217,21 @@ function spam_name(mixed $name, mixed $group, string $fallback): string {
 $act = isset($_GET['act']) && is_string($_GET['act']) ? $_GET['act'] : 'spam';
 
 
+// Строки для spam.js: ключи js_* уходят в AGS_LANG без префикса
+$agsLang = [];
+foreach ($lang->spam as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $agsLang[substr((string)$k, 3)] = $v;
+    }
+}
+
 stdhead();
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/spam.css?ver=1">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/spam_message.css?ver=1">
-<script src="<?= $BASEURL ?>/admin/scripts/spam.js?ver=1" defer></script>
+<script>const AGS_LANG = <?= json_encode($agsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/spam.js?ver=2" defer></script>
 
 <div class="spam-page container mt-3">
 
@@ -215,8 +239,8 @@ stdhead();
   <div class="sp-card sp-head">
     <div class="sp-head-icon"><i class="fa-solid fa-comments"></i></div>
     <div class="sp-head-text">
-      <h1 class="sp-title">Private Messages</h1>
-      <div class="sp-subtitle">Staff review of user conversations and spam reports</div>
+      <h1 class="sp-title"><?= $lang->spam['pane_title'] ?></h1>
+      <div class="sp-subtitle"><?= $lang->spam['pane_subtitle'] ?></div>
     </div>
   </div>
 
@@ -226,28 +250,28 @@ stdhead();
       <div class="sp-kpi-icon"><i class="fa-solid fa-envelopes-bulk"></i></div>
       <div>
         <div class="sp-kpi-value"><?= ts_nf($kpiTotal) ?></div>
-        <div class="sp-kpi-label">Total messages</div>
+        <div class="sp-kpi-label"><?= $lang->spam['kpi_total'] ?></div>
       </div>
     </div>
     <div class="sp-kpi sp-kpi--warning">
       <div class="sp-kpi-icon"><i class="fa-solid fa-envelope"></i></div>
       <div>
         <div class="sp-kpi-value"><?= ts_nf($kpiUnread) ?></div>
-        <div class="sp-kpi-label">Unread</div>
+        <div class="sp-kpi-label"><?= $lang->spam['kpi_unread'] ?></div>
       </div>
     </div>
     <div class="sp-kpi sp-kpi--success">
       <div class="sp-kpi-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
       <div>
         <div class="sp-kpi-value"><?= ts_nf($kpiLast24) ?></div>
-        <div class="sp-kpi-label">Last 24 hours</div>
+        <div class="sp-kpi-label"><?= $lang->spam['kpi_last24'] ?></div>
       </div>
     </div>
     <div class="sp-kpi sp-kpi--info">
       <div class="sp-kpi-icon"><i class="fa-solid fa-filter"></i></div>
       <div>
         <div class="sp-kpi-value"><?= ts_nf($total) ?></div>
-        <div class="sp-kpi-label"><?= $hasFilters ? 'Matching filters' : 'Shown (no filters)' ?></div>
+        <div class="sp-kpi-label"><?= $hasFilters ? $lang->spam['kpi_matching'] : $lang->spam['kpi_shown_all'] ?></div>
       </div>
     </div>
   </div>
@@ -258,49 +282,49 @@ stdhead();
       <input type="hidden" name="act" value="<?= htmlspecialchars($act, ENT_QUOTES) ?>">
 
       <div class="sp-field sp-field--grow">
-        <label class="sp-label" for="sp-q">Search</label>
+        <label class="sp-label" for="sp-q"><?= $lang->spam['lbl_search'] ?></label>
         <div class="sp-input-icon">
           <i class="fa-solid fa-magnifying-glass"></i>
           <input type="text" id="sp-q" name="q" class="form-control"
-                 placeholder="Subject or message text" value="<?= htmlspecialchars($search, ENT_QUOTES) ?>">
+                 placeholder="<?= $lang->spam['ph_search'] ?>" value="<?= htmlspecialchars($search, ENT_QUOTES) ?>">
         </div>
       </div>
 
       <div class="sp-field">
-        <label class="sp-label" for="sp-from">Sender UID</label>
+        <label class="sp-label" for="sp-from"><?= $lang->spam['lbl_sender_uid'] ?></label>
         <div class="sp-input-icon">
           <i class="fa-solid fa-paper-plane"></i>
           <input type="number" min="0" id="sp-from" name="from" class="form-control"
-                 placeholder="Any" value="<?= $filterFrom > 0 ? $filterFrom : '' ?>">
+                 placeholder="<?= $lang->spam['ph_any'] ?>" value="<?= $filterFrom > 0 ? $filterFrom : '' ?>">
         </div>
       </div>
 
       <div class="sp-field">
-        <label class="sp-label" for="sp-to">Recipient UID</label>
+        <label class="sp-label" for="sp-to"><?= $lang->spam['lbl_recipient_uid'] ?></label>
         <div class="sp-input-icon">
           <i class="fa-solid fa-inbox"></i>
           <input type="number" min="0" id="sp-to" name="to" class="form-control"
-                 placeholder="Any" value="<?= $filterTo > 0 ? $filterTo : '' ?>">
+                 placeholder="<?= $lang->spam['ph_any'] ?>" value="<?= $filterTo > 0 ? $filterTo : '' ?>">
         </div>
       </div>
 
       <div class="sp-field">
-        <label class="sp-label" for="sp-status">Status</label>
+        <label class="sp-label" for="sp-status"><?= $lang->spam['lbl_status'] ?></label>
         <select id="sp-status" name="status" class="form-select">
-          <option value="all"    <?= $filterStatus === 'all'    ? 'selected' : '' ?>>All statuses</option>
-          <option value="unread" <?= $filterStatus === 'unread' ? 'selected' : '' ?>>Unread</option>
-          <option value="read"   <?= $filterStatus === 'read'   ? 'selected' : '' ?>>Read / replied</option>
+          <option value="all"    <?= $filterStatus === 'all'    ? 'selected' : '' ?>><?= $lang->spam['opt_status_all'] ?></option>
+          <option value="unread" <?= $filterStatus === 'unread' ? 'selected' : '' ?>><?= $lang->spam['opt_status_unread'] ?></option>
+          <option value="read"   <?= $filterStatus === 'read'   ? 'selected' : '' ?>><?= $lang->spam['opt_status_read'] ?></option>
         </select>
       </div>
 
       <div class="sp-field sp-field--actions">
         <button type="submit" class="btn btn-primary rounded-pill">
-          <i class="fa-solid fa-filter me-1"></i>Filter
+          <i class="fa-solid fa-filter me-1"></i><?= $lang->spam['btn_filter'] ?>
         </button>
         <?php if ($hasFilters): ?>
           <a href="<?= spam_href(['q' => null, 'from' => null, 'to' => null, 'status' => null, 'page' => null]) ?>"
              class="btn btn-outline-secondary rounded-pill">
-            <i class="fa-solid fa-rotate-left me-1"></i>Reset
+            <i class="fa-solid fa-rotate-left me-1"></i><?= $lang->spam['btn_reset'] ?>
           </a>
         <?php endif; ?>
       </div>
@@ -308,25 +332,25 @@ stdhead();
 
     <?php if ($hasFilters): ?>
       <div class="sp-active">
-        <span class="sp-active-label"><i class="fa-solid fa-sliders"></i>Active:</span>
+        <span class="sp-active-label"><i class="fa-solid fa-sliders"></i><?= $lang->spam['lbl_active'] ?></span>
         <?php if ($search !== ''): ?>
-          <a class="sp-tag" href="<?= spam_href(['q' => null, 'page' => null]) ?>" title="Remove">
-            <i class="fa-solid fa-magnifying-glass"></i>“<?= htmlspecialchars(mb_strimwidth($search, 0, 40, '…')) ?>”<i class="fa-solid fa-xmark sp-tag-x"></i>
+          <a class="sp-tag" href="<?= spam_href(['q' => null, 'page' => null]) ?>" title="<?= $lang->spam['tip_remove'] ?>">
+            <i class="fa-solid fa-magnifying-glass"></i><?= ags_fmt($lang->spam['tag_search'], htmlspecialchars(mb_strimwidth($search, 0, 40, '…'))) ?><i class="fa-solid fa-xmark sp-tag-x"></i>
           </a>
         <?php endif; ?>
         <?php if ($filterFrom > 0): ?>
-          <a class="sp-tag" href="<?= spam_href(['from' => null, 'page' => null]) ?>" title="Remove">
-            <i class="fa-solid fa-paper-plane"></i>From UID <?= $filterFrom ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          <a class="sp-tag" href="<?= spam_href(['from' => null, 'page' => null]) ?>" title="<?= $lang->spam['tip_remove'] ?>">
+            <i class="fa-solid fa-paper-plane"></i><?= ags_fmt($lang->spam['tag_from_uid'], $filterFrom) ?><i class="fa-solid fa-xmark sp-tag-x"></i>
           </a>
         <?php endif; ?>
         <?php if ($filterTo > 0): ?>
-          <a class="sp-tag" href="<?= spam_href(['to' => null, 'page' => null]) ?>" title="Remove">
-            <i class="fa-solid fa-inbox"></i>To UID <?= $filterTo ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          <a class="sp-tag" href="<?= spam_href(['to' => null, 'page' => null]) ?>" title="<?= $lang->spam['tip_remove'] ?>">
+            <i class="fa-solid fa-inbox"></i><?= ags_fmt($lang->spam['tag_to_uid'], $filterTo) ?><i class="fa-solid fa-xmark sp-tag-x"></i>
           </a>
         <?php endif; ?>
         <?php if ($filterStatus !== 'all'): ?>
-          <a class="sp-tag" href="<?= spam_href(['status' => null, 'page' => null]) ?>" title="Remove">
-            <i class="fa-solid fa-circle-half-stroke"></i><?= $filterStatus === 'read' ? 'Read' : 'Unread' ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          <a class="sp-tag" href="<?= spam_href(['status' => null, 'page' => null]) ?>" title="<?= $lang->spam['tip_remove'] ?>">
+            <i class="fa-solid fa-circle-half-stroke"></i><?= $filterStatus === 'read' ? $lang->spam['status_read'] : $lang->spam['status_unread'] ?><i class="fa-solid fa-xmark sp-tag-x"></i>
           </a>
         <?php endif; ?>
       </div>
@@ -338,8 +362,8 @@ stdhead();
     <?php if (!$rows): ?>
       <div class="sp-empty">
         <div class="sp-empty-icon"><i class="fa-solid fa-inbox"></i></div>
-        <div class="sp-empty-title">No messages found</div>
-        <div class="sp-muted"><?= $hasFilters ? 'Try changing or resetting the filters.' : 'There are no private messages yet.' ?></div>
+        <div class="sp-empty-title"><?= $lang->spam['msg_empty_title'] ?></div>
+        <div class="sp-muted"><?= $hasFilters ? $lang->spam['msg_empty_filters'] : $lang->spam['msg_empty_none'] ?></div>
       </div>
     <?php else: ?>
       <div class="table-responsive">
@@ -347,12 +371,12 @@ stdhead();
           <thead>
             <tr>
               <th class="sp-col-id">#</th>
-              <th>Sender</th>
-              <th>Recipient</th>
-              <th>Subject</th>
-              <th class="sp-col-date">Date</th>
-              <th class="sp-col-status">Status</th>
-              <th class="sp-col-ip">IP</th>
+              <th><?= $lang->spam['th_sender'] ?></th>
+              <th><?= $lang->spam['th_recipient'] ?></th>
+              <th><?= $lang->spam['th_subject'] ?></th>
+              <th class="sp-col-date"><?= $lang->spam['th_date'] ?></th>
+              <th class="sp-col-status"><?= $lang->spam['th_status'] ?></th>
+              <th class="sp-col-ip"><?= $lang->spam['th_ip'] ?></th>
               <th class="sp-col-act"></th>
             </tr>
           </thead>
@@ -372,27 +396,27 @@ stdhead();
 
               <td>
                 <a href="<?= spam_href(['from' => $fromid, 'page' => null]) ?>" class="sp-user"
-                   data-bs-toggle="tooltip" title="Show all from this sender">
+                   data-bs-toggle="tooltip" title="<?= $lang->spam['tip_filter_sender'] ?>">
                   <?= spam_avatar($row['sender_avatar'], $row['sender_avatardimensions'], $fromid <= 0) ?>
                   <span class="sp-user-name">
-                    <?= spam_name($row['sender_name'], $row['sender_group'], $fromid <= 0 ? 'System' : 'Deleted #' . $fromid) ?>
+                    <?= spam_name($row['sender_name'], $row['sender_group'], $fromid <= 0 ? $lang->spam['name_system'] : ags_fmt($lang->spam['name_deleted'], $fromid)) ?>
                   </span>
                 </a>
               </td>
 
               <td>
                 <a href="<?= spam_href(['to' => $toid, 'page' => null]) ?>" class="sp-user"
-                   data-bs-toggle="tooltip" title="Show all to this recipient">
+                   data-bs-toggle="tooltip" title="<?= $lang->spam['tip_filter_recipient'] ?>">
                   <?= spam_avatar($row['receiver_avatar'], $row['receiver_avatardimensions']) ?>
                   <span class="sp-user-name">
-                    <?= spam_name($row['receiver_name'], $row['receiver_group'], 'Deleted #' . $toid) ?>
+                    <?= spam_name($row['receiver_name'], $row['receiver_group'], ags_fmt($lang->spam['name_deleted'], $toid)) ?>
                   </span>
                 </a>
               </td>
 
               <td>
                 <div class="sp-subject" title="<?= htmlspecialchars($subject, ENT_QUOTES) ?>">
-                  <?= $subject !== '' ? htmlspecialchars($subject) : '<span class="sp-muted fst-italic">(no subject)</span>' ?>
+                  <?= $subject !== '' ? htmlspecialchars($subject) : '<span class="sp-muted fst-italic">' . htmlspecialchars($lang->spam['lbl_no_subject']) . '</span>' ?>
                 </div>
               </td>
 
@@ -418,7 +442,7 @@ stdhead();
                         data-bs-toggle="modal" data-bs-target="#msgModal"
                         data-pmid="<?= $pmid ?>"
                         data-subject="<?= htmlspecialchars($subject, ENT_QUOTES) ?>">
-                  <i class="fa-solid fa-eye"></i><span class="d-none d-xl-inline ms-1">View</span>
+                  <i class="fa-solid fa-eye"></i><span class="d-none d-xl-inline ms-1"><?= $lang->spam['btn_view'] ?></span>
                 </button>
               </td>
             </tr>
@@ -444,13 +468,13 @@ stdhead();
       <div class="modal-content">
         <div class="modal-header">
           <div class="sp-modal-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
-          <h5 class="modal-title" id="msgModalTitle">Message</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <h5 class="modal-title" id="msgModalTitle"><?= $lang->spam['lbl_modal_title'] ?></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $lang->spam['aria_close'] ?>"></button>
         </div>
         <div class="modal-body" id="msgModalBody"></div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">
-            <i class="fa-solid fa-xmark me-1"></i>Close
+            <i class="fa-solid fa-xmark me-1"></i><?= $lang->spam['btn_close'] ?>
           </button>
         </div>
       </div>
@@ -461,8 +485,8 @@ stdhead();
   <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1080;">
     <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true">
       <div class="d-flex">
-        <div class="toast-body"><i class="fa-solid fa-circle-check me-2"></i><span class="sp-toast-text">Done</span></div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        <div class="toast-body"><i class="fa-solid fa-circle-check me-2"></i><span class="sp-toast-text"><?= $lang->spam['lbl_toast_done'] ?></span></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="<?= $lang->spam['aria_close'] ?>"></button>
       </div>
     </div>
   </div>

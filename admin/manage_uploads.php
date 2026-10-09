@@ -10,10 +10,26 @@ if (!defined('IN_ADMINCP')) {
 }
 
 require_once $rootpath . 'global.php';
+$lang->load('manage_uploads');
 
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
-    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+    exit('<div class="alert alert-danger">' . htmlspecialchars($lang->manage_uploads['err_no_permission']) . '</div>');
+}
+
+// Подстановка {1}, {2}… в строки ланга. $lang->load() превращает {N} в %N$s,
+// поэтому заменяем оба формата.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
 }
 
 
@@ -47,13 +63,13 @@ if (isset($_POST['update']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_token']]);
         exit;
     }
 
     $id = (int)($_POST['id'] ?? 0);
     if ($id <= 0) {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid file ID']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_invalid_id']]);
         exit;
     }
 
@@ -67,13 +83,13 @@ if (isset($_POST['update']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (count($provided) > 1) {
-        echo json_encode(['status' => 'error', 'message' => 'Only one content link (Comment/News/Torrent/Post) can be set at a time']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_one_link']]);
         exit;
     }
 
     foreach ($provided as $type => $cid) {
         if (!cf_target_exists($db, $type, $cid)) {
-            echo json_encode(['status' => 'error', 'message' => ucfirst($type) . " with ID {$cid} does not exist"]);
+            echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_uploads['flash_target_missing'], $lang->manage_uploads['opt_' . $type], $cid)]);
             exit;
         }
     }
@@ -81,7 +97,7 @@ if (isset($_POST['update']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $res  = $db->sql_query_prepared('SELECT * FROM comment_files WHERE id = ?', [$id]);
     $file = $res ? $db->fetch_array($res) : null;
     if (!$file) {
-        echo json_encode(['status' => 'error', 'message' => 'File not found']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_file_not_found']]);
         exit;
     }
 
@@ -135,7 +151,7 @@ if (isset($_POST['update']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $db->sql_query_prepared('UPDATE comment_files SET ' . implode(', ', $set) . ' WHERE id = ?', $params);
     write_log("comment_files updated: ID:{$id} | {$CURUSER['username']}");
-    echo json_encode(['status' => 'success', 'message' => 'File details updated']);
+    echo json_encode(['status' => 'success', 'message' => $lang->manage_uploads['flash_updated']]);
     exit;
 }
 
@@ -145,7 +161,7 @@ if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_token']]);
         exit;
     }
 
@@ -156,19 +172,19 @@ if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $map = cf_content_map();
     if (!isset($map[$contentType])) {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid content type']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_invalid_type']]);
         exit;
     }
 
     if (!cf_target_exists($db, $contentType, $contentId)) {
-        echo json_encode(['status' => 'error', 'message' => ucfirst($contentType) . " with ID {$contentId} does not exist"]);
+        echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_uploads['flash_target_missing'], $lang->manage_uploads['opt_' . $contentType], $contentId)]);
         exit;
     }
 
     $res = $db->sql_query_prepared('SELECT * FROM comment_files WHERE id = ?', [$id]);
     $file = $res ? $db->fetch_array($res) : null;
     if (!$file) {
-        echo json_encode(['status' => 'error', 'message' => 'File not found']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_file_not_found']]);
         exit;
     }
 
@@ -213,7 +229,7 @@ if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     write_log("comment_files moved: ID:{$id} -> {$contentType} #{$contentId} | {$CURUSER['username']}");
-    echo json_encode(['status' => 'success', 'message' => 'File moved successfully']);
+    echo json_encode(['status' => 'success', 'message' => $lang->manage_uploads['flash_moved']]);
     exit;
 }
 
@@ -223,7 +239,7 @@ if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_token']]);
         exit;
     }
 
@@ -234,19 +250,19 @@ if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $map = cf_content_map();
     if (!isset($map[$contentType])) {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid content type']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_invalid_type']]);
         exit;
     }
 
     if (!cf_target_exists($db, $contentType, $contentId)) {
-        echo json_encode(['status' => 'error', 'message' => ucfirst($contentType) . " with ID {$contentId} does not exist"]);
+        echo json_encode(['status' => 'error', 'message' => ags_fmt($lang->manage_uploads['flash_target_missing'], $lang->manage_uploads['opt_' . $contentType], $contentId)]);
         exit;
     }
 
     $res = $db->sql_query_prepared('SELECT * FROM comment_files WHERE id = ?', [$id]);
     $file = $res ? $db->fetch_array($res) : null;
     if (!$file || !is_file($file['file_path'])) {
-        echo json_encode(['status' => 'error', 'message' => 'Source file not found on disk']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_source_missing']]);
         exit;
     }
 
@@ -255,7 +271,7 @@ if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $newPath     = dirname($file['file_path']) . '/' . $newFileName;
 
     if (!@copy($file['file_path'], $newPath)) {
-        echo json_encode(['status' => 'error', 'message' => 'Failed to copy file on disk']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_copy_failed']]);
         exit;
     }
 
@@ -281,7 +297,7 @@ if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     write_log("comment_files copied: ID:{$id} -> new ID:{$newId} -> {$contentType} #{$contentId} | {$CURUSER['username']}");
-    echo json_encode(['status' => 'success', 'message' => 'File copied successfully', 'new_id' => $newId]);
+    echo json_encode(['status' => 'success', 'message' => $lang->manage_uploads['flash_copied'], 'new_id' => $newId]);
     exit;
 }
 
@@ -291,7 +307,7 @@ if (isset($_POST['delete']) && is_numeric($_POST['delete']) && $_SERVER['REQUEST
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_token']]);
         exit;
     }
 
@@ -335,9 +351,9 @@ if (isset($_POST['delete']) && is_numeric($_POST['delete']) && $_SERVER['REQUEST
         }
 
         $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [$file_id]);
-        echo json_encode(['status'=>'success','id'=>$file_id,'message'=>'File deleted']);
+        echo json_encode(['status'=>'success','id'=>$file_id,'message'=>$lang->manage_uploads['flash_deleted']]);
     } else {
-        echo json_encode(['status'=>'error','message'=>'File not found']);
+        echo json_encode(['status'=>'error','message'=>$lang->manage_uploads['flash_file_not_found']]);
     }
     exit;
 }
@@ -348,7 +364,7 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
 
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        echo json_encode(['status' => 'error', 'message' => $lang->manage_uploads['flash_token']]);
         exit;
     }
 
@@ -357,7 +373,7 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
     $ids = array_filter(array_map('intval', (array)$selected));
 
     if (empty($ids)) {
-        echo json_encode(['status'=>'error','message'=>'No files selected']);
+        echo json_encode(['status'=>'error','message'=>$lang->manage_uploads['flash_none_selected']]);
         exit;
     }
 
@@ -407,7 +423,7 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
     }
 
     $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$ids_ph})", $ids);
-    echo json_encode(['status'=>'success','message'=>'Files deleted','deleted_ids'=>$deleted_ids]);
+    echo json_encode(['status'=>'success','message'=>$lang->manage_uploads['flash_files_deleted'],'deleted_ids'=>$deleted_ids]);
     exit;
 }
 
@@ -527,13 +543,13 @@ $storage_pct   = $storage_total > 0 ? min(100.0, round($storage_used / $storage_
 $storage_tone  = $storage_pct > 80 ? 'danger' : ($storage_pct > 50 ? 'warning' : 'success');
 
 $mu_chips = [
-    ''         => ['All files',   'fa-layer-group',   'primary',   $stats['total']    ?? 0],
-    'torrent'  => ['Torrents',    'fa-download',      'info',      $stats['torrent']  ?? 0],
-    'news'     => ['News',        'fa-newspaper',     'warning',   $stats['news']     ?? 0],
-    'comment'  => ['Comments',    'fa-comment',       'success',   $stats['comment']  ?? 0],
-    'post'     => ['Posts',       'fa-file-lines',    'primary',   $stats['post']     ?? 0],
-    'message'  => ['Messages',    'fa-envelope',      'secondary', $stats['message']  ?? 0],
-    'unlinked' => ['Unlinked',    'fa-link-slash',    'danger',    $stats['unlinked'] ?? 0],
+    ''         => [$lang->manage_uploads['filter_all_files'], 'fa-layer-group', 'primary',   $stats['total']    ?? 0],
+    'torrent'  => [$lang->manage_uploads['filter_torrent'],   'fa-download',    'info',      $stats['torrent']  ?? 0],
+    'news'     => [$lang->manage_uploads['filter_news'],      'fa-newspaper',   'warning',   $stats['news']     ?? 0],
+    'comment'  => [$lang->manage_uploads['filter_comment'],   'fa-comment',     'success',   $stats['comment']  ?? 0],
+    'post'     => [$lang->manage_uploads['filter_post'],      'fa-file-lines',  'primary',   $stats['post']     ?? 0],
+    'message'  => [$lang->manage_uploads['filter_message'],   'fa-envelope',    'secondary', $stats['message']  ?? 0],
+    'unlinked' => [$lang->manage_uploads['filter_unlinked'],  'fa-link-slash',  'danger',    $stats['unlinked'] ?? 0],
 ];
 $mu_chip_url = static function (string $type) use ($search): string {
     return 'index.php?act=manage_uploads'
@@ -556,15 +572,15 @@ stdhead();
     <div class="mu-card mu-head mb-4">
         <div class="mu-head-icon mu-tone-primary"><i class="fa-solid fa-photo-film"></i></div>
         <div>
-            <h1>Media Library</h1>
-            <p>Uploaded images and attachments across torrents, news, comments, posts and messages</p>
+            <h1><?= htmlspecialchars($lang->manage_uploads['pane_title']) ?></h1>
+            <p><?= htmlspecialchars($lang->manage_uploads['pane_subtitle']) ?></p>
         </div>
         <div class="mu-head-actions">
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                <i class="fa-solid fa-cloud-arrow-up me-1"></i> Upload
+                <i class="fa-solid fa-cloud-arrow-up me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_upload']) ?>
             </button>
             <button type="button" class="btn btn-outline-primary" id="bulkSelectBtn">
-                <i class="fa-solid fa-square-check me-1"></i> Select files
+                <i class="fa-solid fa-square-check me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_select_files']) ?>
             </button>
         </div>
     </div>
@@ -576,7 +592,7 @@ stdhead();
                 <div class="mu-kpi-icon mu-tone-primary"><i class="fa-solid fa-folder-open"></i></div>
                 <div class="mu-kpi-body">
                     <div class="mu-kpi-value"><?= ts_nf($stats['total'] ?? 0) ?></div>
-                    <div class="mu-kpi-label">Files, <?= mksize($stats['bytes'] ?? 0) ?> in total</div>
+                    <div class="mu-kpi-label"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['kpi_files_total'], mksize($stats['bytes'] ?? 0))) ?></div>
                 </div>
             </div>
         </div>
@@ -585,7 +601,7 @@ stdhead();
                 <div class="mu-kpi-icon mu-tone-<?= $storage_tone ?>"><i class="fa-solid fa-hard-drive"></i></div>
                 <div class="mu-kpi-body">
                     <div class="mu-kpi-value"><?= $storage_pct ?>%</div>
-                    <div class="mu-kpi-label"><?= mksize($storage_used) ?> of <?= mksize($storage_total) ?></div>
+                    <div class="mu-kpi-label"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['kpi_storage_of'], mksize($storage_used), mksize($storage_total))) ?></div>
                     <div class="mu-meter"><span class="bg-<?= $storage_tone ?>" style="width: <?= $storage_pct ?>%"></span></div>
                 </div>
             </div>
@@ -595,7 +611,7 @@ stdhead();
                 <div class="mu-kpi-icon mu-tone-info"><i class="fa-solid fa-image"></i></div>
                 <div class="mu-kpi-body">
                     <div class="mu-kpi-value"><?= ts_nf($stats['images'] ?? 0) ?></div>
-                    <div class="mu-kpi-label">Images</div>
+                    <div class="mu-kpi-label"><?= htmlspecialchars($lang->manage_uploads['lbl_images']) ?></div>
                 </div>
             </div>
         </div>
@@ -604,7 +620,7 @@ stdhead();
                 <div class="mu-kpi-icon mu-tone-warning"><i class="fa-solid fa-bolt"></i></div>
                 <div class="mu-kpi-body">
                     <div class="mu-kpi-value"><?= ts_nf($stats['fresh'] ?? 0) ?></div>
-                    <div class="mu-kpi-label">New in last 24 hours</div>
+                    <div class="mu-kpi-label"><?= htmlspecialchars($lang->manage_uploads['kpi_new_24h']) ?></div>
                 </div>
             </div>
         </div>
@@ -624,7 +640,7 @@ stdhead();
         <form class="mu-search search-box mb-3" id="searchForm">
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" class="form-control form-control-lg mu-input" name="search"
-                   placeholder="Search by file name or MIME type…"
+                   placeholder="<?= htmlspecialchars($lang->manage_uploads['ph_search']) ?>"
                    value="<?= htmlspecialchars($search) ?>" id="searchInput">
         </form>
         <div class="mu-chips">
@@ -632,7 +648,7 @@ stdhead();
                 $active = ($typeFilter === $key); ?>
             <a href="<?= htmlspecialchars($mu_chip_url($key)) ?>" class="mu-chip<?= $active ? ' active' : '' ?>">
                 <i class="fa-solid <?= $icon ?> <?= $active ? '' : 'text-' . $tone ?>"></i>
-                <?= $label ?>
+                <?= htmlspecialchars($label) ?>
                 <span class="mu-chip-count"><?= ts_nf($count) ?></span>
             </a>
             <?php endforeach; ?>
@@ -653,18 +669,18 @@ stdhead();
                 <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                 <div class="d-flex align-items-center gap-2 flex-shrink-0">
                     <span class="mu-ftype mu-tone-primary"><i class="fa-solid fa-list-check"></i></span>
-                    <span><span class="fw-bold" id="selectedCount">0</span> <span class="text-body-secondary">selected</span></span>
+                    <span><span class="fw-bold" id="selectedCount">0</span> <span class="text-body-secondary"><?= htmlspecialchars($lang->manage_uploads['lbl_selected']) ?></span></span>
                 </div>
                 <select name="bulk_action" class="form-select mu-input flex-grow-1" style="border-radius:50rem" required>
-                    <option value="">Choose action…</option>
-                    <option value="delete">Delete selected files</option>
+                    <option value=""><?= htmlspecialchars($lang->manage_uploads['opt_choose_action']) ?></option>
+                    <option value="delete"><?= htmlspecialchars($lang->manage_uploads['opt_delete_selected']) ?></option>
                 </select>
                 <div class="d-flex gap-2 flex-shrink-0">
                     <button type="button" class="btn btn-danger" id="applyBulkAction" disabled>
-                        <i class="fa-solid fa-trash-can me-1"></i> Apply
+                        <i class="fa-solid fa-trash-can me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_apply']) ?>
                     </button>
                     <button type="button" class="btn btn-outline-secondary" id="cancelBulkAction">
-                        <i class="fa-solid fa-xmark me-1"></i> Cancel
+                        <i class="fa-solid fa-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                     </button>
                 </div>
                 <input type="hidden" name="selected_files[]" id="selectedFilesInput">
@@ -680,50 +696,50 @@ stdhead();
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <span class="mu-mhead-icon mu-tone-primary"><i class="fa-solid fa-pen-to-square"></i></span> Edit file details
+                    <span class="mu-mhead-icon mu-tone-primary"><i class="fa-solid fa-pen-to-square"></i></span> <?= htmlspecialchars($lang->manage_uploads['pane_edit']) ?>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="editId">
                 <div class="mb-3">
-                    <label class="form-label" for="editFileName"><i class="fa-solid fa-file-signature"></i>File name</label>
+                    <label class="form-label" for="editFileName"><i class="fa-solid fa-file-signature"></i><?= htmlspecialchars($lang->manage_uploads['lbl_file_name']) ?></label>
                     <input type="text" class="form-control mu-input" id="editFileName">
                 </div>
                 <div class="mu-note mu-tone-info mb-3">
                     <i class="fa-solid fa-circle-info"></i>
-                    <div>Only one link (comment, news, torrent or post) can be set at a time. Leave the rest empty. Changing the link removes the old [img] tag from the previous location, but does not insert one into the new one - use "Move" if you also need that.</div>
+                    <div><?= htmlspecialchars($lang->manage_uploads['hint_edit_link']) ?></div>
                 </div>
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label" for="editCommentId"><i class="fa-solid fa-comment text-success"></i>Comment ID</label>
+                        <label class="form-label" for="editCommentId"><i class="fa-solid fa-comment text-success"></i><?= htmlspecialchars($lang->manage_uploads['lbl_comment_id']) ?></label>
                         <input type="number" class="form-control mu-input" id="editCommentId">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="editNewsId"><i class="fa-solid fa-newspaper text-warning"></i>News ID</label>
+                        <label class="form-label" for="editNewsId"><i class="fa-solid fa-newspaper text-warning"></i><?= htmlspecialchars($lang->manage_uploads['lbl_news_id']) ?></label>
                         <input type="number" class="form-control mu-input" id="editNewsId">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="editTorrentId"><i class="fa-solid fa-download text-info"></i>Torrent ID</label>
+                        <label class="form-label" for="editTorrentId"><i class="fa-solid fa-download text-info"></i><?= htmlspecialchars($lang->manage_uploads['lbl_torrent_id']) ?></label>
                         <input type="number" class="form-control mu-input" id="editTorrentId">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="editPostId"><i class="fa-solid fa-file-lines text-primary"></i>Post ID</label>
+                        <label class="form-label" for="editPostId"><i class="fa-solid fa-file-lines text-primary"></i><?= htmlspecialchars($lang->manage_uploads['lbl_post_id']) ?></label>
                         <input type="number" class="form-control mu-input" id="editPostId">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="editUserId"><i class="fa-solid fa-user"></i>Uploader user ID</label>
+                        <label class="form-label" for="editUserId"><i class="fa-solid fa-user"></i><?= htmlspecialchars($lang->manage_uploads['lbl_uploader_id']) ?></label>
                         <input type="number" class="form-control mu-input" id="editUserId">
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i> Cancel
+                    <i class="fa-solid fa-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                 </button>
                 <button type="button" class="btn btn-primary px-4 position-relative" id="editSaveBtn">
-                    <span class="save-text"><i class="fa-solid fa-check me-1"></i> Save changes</span>
-                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span>Saving…</span>
+                    <span class="save-text"><i class="fa-solid fa-check me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_save']) ?></span>
+                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span><?= htmlspecialchars($lang->manage_uploads['lbl_saving']) ?></span>
                 </button>
             </div>
         </div>
@@ -733,16 +749,16 @@ stdhead();
 <?php
 // Move и Copy отличаются только префиксом id и текстами — рендерим одним шаблоном
 $mu_target_modals = [
-    'move' => ['title' => 'Move file', 'icon' => 'fa-arrows-up-down-left-right', 'tone' => 'primary',
-               'typeLabel' => 'New content type', 'idLabel' => 'New content ID',
-               'insertLabel' => 'Also insert this BBCode tag into the new location',
-               'note' => 'The tag is always removed from the old location.',
-               'btn' => 'Move', 'busy' => 'Moving…'],
-    'copy' => ['title' => 'Copy file', 'icon' => 'fa-copy', 'tone' => 'info',
-               'typeLabel' => 'Target content type', 'idLabel' => 'Target content ID',
-               'insertLabel' => "Also insert this BBCode tag into the target's text",
+    'move' => ['title' => $lang->manage_uploads['pane_move'], 'icon' => 'fa-arrows-up-down-left-right', 'tone' => 'primary',
+               'typeLabel' => $lang->manage_uploads['lbl_move_type'], 'idLabel' => $lang->manage_uploads['lbl_move_id'],
+               'insertLabel' => $lang->manage_uploads['lbl_move_insert'],
+               'note' => $lang->manage_uploads['hint_move_note'],
+               'btn' => $lang->manage_uploads['act_move'], 'busy' => $lang->manage_uploads['lbl_moving']],
+    'copy' => ['title' => $lang->manage_uploads['pane_copy'], 'icon' => 'fa-copy', 'tone' => 'info',
+               'typeLabel' => $lang->manage_uploads['lbl_copy_type'], 'idLabel' => $lang->manage_uploads['lbl_copy_id'],
+               'insertLabel' => $lang->manage_uploads['lbl_copy_insert'],
                'note' => '',
-               'btn' => 'Copy', 'busy' => 'Copying…'],
+               'btn' => $lang->manage_uploads['act_copy'], 'busy' => $lang->manage_uploads['lbl_copying']],
 ];
 foreach ($mu_target_modals as $p => $m): ?>
 <!-- <?= ucfirst($p) ?> Modal -->
@@ -751,54 +767,54 @@ foreach ($mu_target_modals as $p => $m): ?>
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <span class="mu-mhead-icon mu-tone-<?= $m['tone'] ?>"><i class="fa-solid <?= $m['icon'] ?>"></i></span> <?= $m['title'] ?>
+                    <span class="mu-mhead-icon mu-tone-<?= $m['tone'] ?>"><i class="fa-solid <?= $m['icon'] ?>"></i></span> <?= htmlspecialchars($m['title']) ?>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="<?= $p ?>Id">
                 <div class="mu-preview mb-4">
-                    <img id="<?= $p ?>PreviewImg" src="" alt="Preview">
+                    <img id="<?= $p ?>PreviewImg" src="" alt="<?= htmlspecialchars($lang->manage_uploads['alt_preview']) ?>">
                 </div>
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label" for="<?= $p ?>ContentType"><i class="fa-solid fa-tag"></i><?= $m['typeLabel'] ?></label>
+                        <label class="form-label" for="<?= $p ?>ContentType"><i class="fa-solid fa-tag"></i><?= htmlspecialchars($m['typeLabel']) ?></label>
                         <select class="form-select mu-input" id="<?= $p ?>ContentType" required>
-                            <option value="" selected disabled>Choose type…</option>
-                            <option value="comment">💬 Comment</option>
-                            <option value="news">📰 News</option>
-                            <option value="torrent">⬇️ Torrent</option>
-                            <option value="post">📄 Post</option>
-                            <option value="message">✉️ Message</option>
+                            <option value="" selected disabled><?= htmlspecialchars($lang->manage_uploads['opt_choose_type']) ?></option>
+                            <option value="comment">💬 <?= htmlspecialchars($lang->manage_uploads['opt_comment']) ?></option>
+                            <option value="news">📰 <?= htmlspecialchars($lang->manage_uploads['opt_news']) ?></option>
+                            <option value="torrent">⬇️ <?= htmlspecialchars($lang->manage_uploads['opt_torrent']) ?></option>
+                            <option value="post">📄 <?= htmlspecialchars($lang->manage_uploads['opt_post']) ?></option>
+                            <option value="message">✉️ <?= htmlspecialchars($lang->manage_uploads['opt_message']) ?></option>
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="<?= $p ?>ContentId"><i class="fa-solid fa-hashtag"></i><?= $m['idLabel'] ?></label>
-                        <input type="number" class="form-control mu-input" id="<?= $p ?>ContentId" placeholder="Enter ID" required>
+                        <label class="form-label" for="<?= $p ?>ContentId"><i class="fa-solid fa-hashtag"></i><?= htmlspecialchars($m['idLabel']) ?></label>
+                        <input type="number" class="form-control mu-input" id="<?= $p ?>ContentId" placeholder="<?= htmlspecialchars($lang->manage_uploads['ph_enter_id']) ?>" required>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label" for="<?= $p ?>BbcodeTag"><i class="fa-solid fa-code"></i>BBCode tag</label>
+                    <label class="form-label" for="<?= $p ?>BbcodeTag"><i class="fa-solid fa-code"></i><?= htmlspecialchars($lang->manage_uploads['lbl_bbcode_tag']) ?></label>
                     <div class="input-group">
                         <input type="text" class="form-control mu-input font-monospace small" id="<?= $p ?>BbcodeTag" readonly style="border-radius:50rem 0 0 50rem">
-                        <button class="btn btn-outline-secondary" type="button" id="<?= $p ?>CopyBbcodeBtn" title="Copy to clipboard" style="border-radius:0 50rem 50rem 0">
+                        <button class="btn btn-outline-secondary" type="button" id="<?= $p ?>CopyBbcodeBtn" title="<?= htmlspecialchars($lang->manage_uploads['tip_copy_clipboard']) ?>" style="border-radius:0 50rem 50rem 0">
                             <i class="fa-regular fa-clipboard"></i>
                         </button>
                     </div>
                 </div>
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" role="switch" id="<?= $p ?>InsertTag" checked>
-                    <label class="form-check-label" for="<?= $p ?>InsertTag"><?= $m['insertLabel'] ?></label>
-                    <div class="form-text" id="<?= $p ?>InsertTagNote"><?= $m['note'] ?></div>
+                    <label class="form-check-label" for="<?= $p ?>InsertTag"><?= htmlspecialchars($m['insertLabel']) ?></label>
+                    <div class="form-text" id="<?= $p ?>InsertTagNote"><?= htmlspecialchars($m['note']) ?></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i> Cancel
+                    <i class="fa-solid fa-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                 </button>
                 <button type="button" class="btn btn-primary px-4 position-relative" id="<?= $p ?>SaveBtn">
-                    <span class="save-text"><i class="fa-solid <?= $m['icon'] ?> me-1"></i> <?= $m['btn'] ?></span>
-                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span><?= $m['busy'] ?></span>
+                    <span class="save-text"><i class="fa-solid <?= $m['icon'] ?> me-1"></i> <?= htmlspecialchars($m['btn']) ?></span>
+                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span><?= htmlspecialchars($m['busy']) ?></span>
                 </button>
             </div>
         </div>
@@ -816,18 +832,18 @@ foreach ($mu_target_modals as $p => $m): ?>
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <span class="mu-mhead-icon mu-tone-success"><i class="fa-solid fa-cloud-arrow-up"></i></span> Upload new files
+                    <span class="mu-mhead-icon mu-tone-success"><i class="fa-solid fa-cloud-arrow-up"></i></span> <?= htmlspecialchars($lang->manage_uploads['pane_upload']) ?>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <!-- Steps -->
                 <div class="mu-steps">
-                    <?php $mu_steps = [['fa-link', 'Link'], ['fa-folder-open', 'Select'], ['fa-cloud-arrow-up', 'Upload']];
+                    <?php $mu_steps = [['fa-link', $lang->manage_uploads['step_link']], ['fa-folder-open', $lang->manage_uploads['step_select']], ['fa-cloud-arrow-up', $lang->manage_uploads['step_upload']]];
                     foreach ($mu_steps as $i => [$icon, $label]): ?>
                     <div class="mu-step step-item">
                         <span class="mu-step-dot mu-tone-primary step-circle"><i class="fa-solid <?= $icon ?>"></i></span>
-                        <span><?= $i + 1 ?>. <?= $label ?></span>
+                        <span><?= $i + 1 ?>. <?= htmlspecialchars($label) ?></span>
                     </div>
                     <?php if ($i < count($mu_steps) - 1): ?><span class="mu-step-line step-arrow"></span><?php endif; ?>
                     <?php endforeach; ?>
@@ -836,18 +852,18 @@ foreach ($mu_target_modals as $p => $m): ?>
                 <!-- Content type & ID -->
                 <div class="row g-3 mb-4">
                     <div class="col-md-6">
-                        <label class="form-label" for="contentTypeSelect"><i class="fa-solid fa-tag"></i>Content type</label>
+                        <label class="form-label" for="contentTypeSelect"><i class="fa-solid fa-tag"></i><?= htmlspecialchars($lang->manage_uploads['lbl_content_type']) ?></label>
                         <select class="form-select form-select-lg mu-input" id="contentTypeSelect" required>
-                            <option selected disabled>Choose type…</option>
-                            <option value="comment">💬 Comment</option>
-                            <option value="news">📰 News</option>
-                            <option value="torrent">⬇️ Torrent</option>
-                            <option value="post">📄 Post</option>
+                            <option selected disabled><?= htmlspecialchars($lang->manage_uploads['opt_choose_type']) ?></option>
+                            <option value="comment">💬 <?= htmlspecialchars($lang->manage_uploads['opt_comment']) ?></option>
+                            <option value="news">📰 <?= htmlspecialchars($lang->manage_uploads['opt_news']) ?></option>
+                            <option value="torrent">⬇️ <?= htmlspecialchars($lang->manage_uploads['opt_torrent']) ?></option>
+                            <option value="post">📄 <?= htmlspecialchars($lang->manage_uploads['opt_post']) ?></option>
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="contentId"><i class="fa-solid fa-hashtag"></i>Content ID</label>
-                        <input type="number" class="form-control form-control-lg mu-input" id="contentId" placeholder="Enter ID" required>
+                        <label class="form-label" for="contentId"><i class="fa-solid fa-hashtag"></i><?= htmlspecialchars($lang->manage_uploads['lbl_content_id']) ?></label>
+                        <input type="number" class="form-control form-control-lg mu-input" id="contentId" placeholder="<?= htmlspecialchars($lang->manage_uploads['ph_enter_id']) ?>" required>
                     </div>
                 </div>
 
@@ -866,27 +882,27 @@ foreach ($mu_target_modals as $p => $m): ?>
                     <div class="image-preview-container mb-3" id="imagePreviewContainer" style="display:none">
                         <div class="d-flex flex-wrap gap-2 justify-content-center" id="imagePreviewList"></div>
                     </div>
-                    <h5 class="fw-bold mb-1" id="dropAreaTitle">Drag &amp; drop files here</h5>
-                    <p class="text-body-secondary mb-4" id="dropAreaSubtitle">or click to browse</p>
+                    <h5 class="fw-bold mb-1" id="dropAreaTitle"><?= htmlspecialchars($lang->manage_uploads['lbl_drop_title']) ?></h5>
+                    <p class="text-body-secondary mb-4" id="dropAreaSubtitle"><?= htmlspecialchars($lang->manage_uploads['lbl_drop_subtitle']) ?></p>
                     <div class="file-count-badge position-absolute top-0 end-0 m-3" id="fileCountBadge" style="display:none">
                         <span class="badge bg-primary rounded-pill p-2" id="fileCount"></span>
                     </div>
                     <input type="file" class="d-none" id="fileUploadInput" multiple accept="image/*,.pdf,.doc,.docx">
                     <button class="btn btn-outline-primary btn-lg px-5" onclick="document.getElementById('fileUploadInput').click()" id="browseBtn">
-                        <i class="fa-solid fa-folder-open me-2"></i>Browse
+                        <i class="fa-solid fa-folder-open me-2"></i><?= htmlspecialchars($lang->manage_uploads['btn_browse']) ?>
                     </button>
                     <div>
                         <button class="btn btn-link text-danger mt-3 text-decoration-none" id="clearFilesBtn" style="display:none" onclick="clearSelectedFiles()">
-                            <i class="fa-solid fa-circle-xmark me-1"></i>Clear all
+                            <i class="fa-solid fa-circle-xmark me-1"></i><?= htmlspecialchars($lang->manage_uploads['btn_clear_all']) ?>
                         </button>
                     </div>
                 </div>
 
                 <!-- Stats -->
                 <div class="d-flex justify-content-between mt-3 flex-wrap gap-2">
-                    <span class="mu-typecount"><i class="fa-solid fa-image text-primary"></i>Images <span class="badge rounded-pill" id="imageCount">0</span></span>
-                    <span class="mu-typecount"><i class="fa-solid fa-file-pdf text-danger"></i>PDF <span class="badge rounded-pill" id="pdfCount">0</span></span>
-                    <span class="mu-typecount"><i class="fa-solid fa-file-word text-info"></i>Docs <span class="badge rounded-pill" id="docCount">0</span></span>
+                    <span class="mu-typecount"><i class="fa-solid fa-image text-primary"></i><?= htmlspecialchars($lang->manage_uploads['lbl_images']) ?> <span class="badge rounded-pill" id="imageCount">0</span></span>
+                    <span class="mu-typecount"><i class="fa-solid fa-file-pdf text-danger"></i><?= htmlspecialchars($lang->manage_uploads['lbl_type_pdf']) ?> <span class="badge rounded-pill" id="pdfCount">0</span></span>
+                    <span class="mu-typecount"><i class="fa-solid fa-file-word text-info"></i><?= htmlspecialchars($lang->manage_uploads['lbl_type_docs']) ?> <span class="badge rounded-pill" id="docCount">0</span></span>
                     <span class="mu-typecount" id="sizeWarning" style="display:none"><i class="fa-solid fa-triangle-exclamation text-warning"></i><span id="totalSize">0 MB</span></span>
                 </div>
 
@@ -895,7 +911,7 @@ foreach ($mu_target_modals as $p => $m): ?>
                     <div class="mu-filebox d-flex align-items-center justify-content-between mb-3">
                         <div class="d-flex align-items-center">
                             <i class="fa-solid fa-copy text-primary fs-5 me-2"></i>
-                            <span class="fw-bold"><span id="selectedFilesCount">0</span> files ready</span>
+                            <span class="fw-bold"><?= ags_fmt(htmlspecialchars($lang->manage_uploads['lbl_files_ready']), '<span id="selectedFilesCount">0</span>') ?></span>
                         </div>
                         <span class="text-body-secondary small" id="totalSizeDisplay">0 KB</span>
                     </div>
@@ -904,12 +920,12 @@ foreach ($mu_target_modals as $p => $m): ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i>Cancel
+                    <i class="fa-solid fa-xmark me-1"></i><?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                 </button>
                 <button type="button" class="btn btn-success px-5 position-relative" id="startUploadBtn" disabled>
-                    <span class="upload-text"><i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload now</span>
+                    <span class="upload-text"><i class="fa-solid fa-cloud-arrow-up me-2"></i><?= htmlspecialchars($lang->manage_uploads['btn_upload_now']) ?></span>
                     <span class="upload-loading d-none">
-                        <span class="spinner-border spinner-border-sm me-2"></span>Uploading…
+                        <span class="spinner-border spinner-border-sm me-2"></span><?= htmlspecialchars($lang->manage_uploads['lbl_uploading']) ?>
                     </span>
                 </button>
             </div>
@@ -923,7 +939,7 @@ foreach ($mu_target_modals as $p => $m): ?>
         <div class="modal-content">
              <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
-                   <i class="fa-solid fa-triangle-exclamation"></i> Bulk Delete Confirmation
+                   <i class="fa-solid fa-triangle-exclamation"></i> <?= htmlspecialchars($lang->manage_uploads['pane_bulk_delete']) ?>
                 </h5>
 				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -932,14 +948,14 @@ foreach ($mu_target_modals as $p => $m): ?>
 				   
                     <span class="mu-mhead-icon mu-tone-danger"><i class="fa-solid fa-trash-can"></i></span>
                     <div>
-                        <h5 class="fw-bold mb-1">Delete <span id="filesCount" class="text-danger">0</span> selected files?</h5>
-                        <p class="text-body-secondary mb-0 small">Every embed of these images will be replaced with “[Image Deleted]”.</p>
+                        <h5 class="fw-bold mb-1"><?= ags_fmt(htmlspecialchars($lang->manage_uploads['lbl_bulk_delete_q']), '<span id="filesCount" class="text-danger">0</span>') ?></h5>
+                        <p class="text-body-secondary mb-0 small"><?= htmlspecialchars($lang->manage_uploads['lbl_bulk_delete_note']) ?></p>
                     </div>
                 </div>
                 <div class="bulk-preview-grid mu-bulk-grid mb-3" id="bulkPreviewGrid">
                     <div class="text-center py-4 text-body-secondary" id="bulkPreviewPlaceholder">
                         <i class="fa-solid fa-images fa-2x mb-2"></i>
-                        <div class="small">No images selected</div>
+                        <div class="small"><?= htmlspecialchars($lang->manage_uploads['lbl_no_images_selected']) ?></div>
                     </div>
                 </div>
                 <div class="file-details mu-filebox mb-3">
@@ -947,8 +963,8 @@ foreach ($mu_target_modals as $p => $m): ?>
                         <div class="d-flex align-items-center">
                             <span class="mu-mhead-icon mu-tone-success me-3"><i class="fa-solid fa-list-check"></i></span>
                             <div>
-                                <div class="fw-bold" id="selectedFilesSummary">0 files selected</div>
-                                <div class="small text-body-secondary" id="selectedFilesSize">Total size: 0 MB</div>
+                                <div class="fw-bold" id="selectedFilesSummary"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['lbl_files_selected'], 0)) ?></div>
+                                <div class="small text-body-secondary" id="selectedFilesSize"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['lbl_total_size'], '0 MB')) ?></div>
                             </div>
                         </div>
                         <span class="badge rounded-pill bg-danger" id="bulkSelectedCount">0</span>
@@ -956,15 +972,15 @@ foreach ($mu_target_modals as $p => $m): ?>
                 </div>
                 <div class="mu-note mu-tone-warning">
                     <i class="fa-solid fa-circle-exclamation"></i>
-                    <div><strong>This cannot be undone.</strong> Files are removed from disk.</div>
+                    <div><strong><?= htmlspecialchars($lang->manage_uploads['lbl_irreversible']) ?></strong> <?= htmlspecialchars($lang->manage_uploads['lbl_files_removed']) ?></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i> Cancel
+                    <i class="fa-solid fa-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                 </button>
                 <button type="button" class="btn btn-danger" id="confirmBulkDelete">
-                    <i class="fa-solid fa-trash-can me-1"></i> Delete <span id="confirmCount">0</span> files
+                    <i class="fa-solid fa-trash-can me-1"></i> <?= ags_fmt(htmlspecialchars($lang->manage_uploads['btn_delete_n']), '<span id="confirmCount">0</span>') ?>
                 </button>
             </div>
         </div>
@@ -977,7 +993,7 @@ foreach ($mu_target_modals as $p => $m): ?>
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Delete file
+                    <i class="fa-solid fa-triangle-exclamation"></i> <?= htmlspecialchars($lang->manage_uploads['pane_single_delete']) ?>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -985,12 +1001,12 @@ foreach ($mu_target_modals as $p => $m): ?>
                 <div class="mu-danger-hero">
                     <span class="mu-mhead-icon mu-tone-danger"><i class="fa-solid fa-trash-can"></i></span>
                     <div>
-                        <h5 class="fw-bold mb-1" id="singleDeleteTitle">Delete file?</h5>
+                        <h5 class="fw-bold mb-1" id="singleDeleteTitle"><?= htmlspecialchars($lang->manage_uploads['lbl_single_delete_q']) ?></h5>
                         <p class="text-body-secondary mb-0 small" id="singleDeleteFilename"></p>
                     </div>
                 </div>
                 <div class="single-preview-container mu-preview mb-3" id="singlePreviewContainer">
-                    <img id="singleDeleteImage" src="" alt="Preview"
+                    <img id="singleDeleteImage" src="" alt="<?= htmlspecialchars($lang->manage_uploads['alt_preview']) ?>"
                          style="max-width:100%;max-height:200px;display:none"
                          onerror="this.style.display='none'">
                 </div>
@@ -1000,30 +1016,40 @@ foreach ($mu_target_modals as $p => $m): ?>
                         <div class="min-w-0">
                             <div class="fw-bold text-break" id="singleDeleteFileName">filename.jpg</div>
                             <div class="small text-body-secondary" id="singleDeleteFileInfo">
-                                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
+                                <i class="fa-solid fa-spinner fa-spin me-1"></i> <?= htmlspecialchars($lang->manage_uploads['lbl_loading']) ?>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="mu-note mu-tone-warning">
                     <i class="fa-solid fa-circle-exclamation"></i>
-                    <div><strong>This cannot be undone.</strong> The file is removed from disk.</div>
+                    <div><strong><?= htmlspecialchars($lang->manage_uploads['lbl_irreversible']) ?></strong> <?= htmlspecialchars($lang->manage_uploads['lbl_file_removed']) ?></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i> Cancel
+                    <i class="fa-solid fa-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_cancel']) ?>
                 </button>
                 <button type="button" class="btn btn-danger" id="confirmSingleDeleteBtn">
-                    <i class="fa-solid fa-trash-can me-1"></i> Delete
+                    <i class="fa-solid fa-trash-can me-1"></i> <?= htmlspecialchars($lang->manage_uploads['act_delete']) ?>
                 </button>
             </div>
         </div>
     </div>
 </div>
 
+<?php
+// js_* ключи ланга -> AGS_LANG (без префикса) для manage_uploads.js / manage_uploads_actions.js
+$mu_js_lang = [];
+foreach ($lang->manage_uploads as $mu_k => $mu_v) {
+    if (str_starts_with((string)$mu_k, 'js_')) {
+        $mu_js_lang[substr((string)$mu_k, 3)] = $mu_v;
+    }
+}
+?>
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/manage_uploads.js?ver=335"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/manage_uploads_actions.js?ver=1"></script>
+<script>const AGS_LANG = <?= json_encode($mu_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_uploads.js?ver=3362"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_uploads_actions.js?ver=22"></script>
 
-<?php stdfoot(); ?>
+<?php stdfoot(); ?>

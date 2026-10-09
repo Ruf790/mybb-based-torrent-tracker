@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
-    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+    exit('<div class="alert alert-danger">' . htmlspecialchars($lang->manage_uploads['err_no_permission']) . '</div>');
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -62,42 +62,42 @@ if ($mu_pids) {
     <table class="table table-hover align-middle mu-table">
         <thead>
             <tr>
-                <th style="width:44px"><input type="checkbox" id="selectAll" class="form-check-input" title="Select all on this page"></th>
-                <th><i class="fa-solid fa-eye"></i>Preview</th>
+                <th style="width:44px"><input type="checkbox" id="selectAll" class="form-check-input" title="<?= htmlspecialchars($lang->manage_uploads['th_select_all']) ?>"></th>
+                <th><i class="fa-solid fa-eye"></i><?= htmlspecialchars($lang->manage_uploads['th_preview']) ?></th>
                 <th style="min-width:230px">
                     <div class="d-flex flex-column">
-                        <span><i class="fa-solid fa-file"></i>File</span>
-                        <input type="text" class="form-control form-control-sm mu-input mt-2" placeholder="Filter by name" id="nameFilter" style="border-radius:50rem">
+                        <span><i class="fa-solid fa-file"></i><?= htmlspecialchars($lang->manage_uploads['th_file']) ?></span>
+                        <input type="text" class="form-control form-control-sm mu-input mt-2" placeholder="<?= htmlspecialchars($lang->manage_uploads['ph_filter_name']) ?>" id="nameFilter" style="border-radius:50rem">
                     </div>
                 </th>
-                <th><i class="fa-solid fa-expand"></i>Dimensions</th>
+                <th><i class="fa-solid fa-expand"></i><?= htmlspecialchars($lang->manage_uploads['th_dimensions']) ?></th>
                 <th>
                     <div class="d-flex flex-column">
-                        <span><i class="fa-solid fa-link"></i>Linked to</span>
+                        <span><i class="fa-solid fa-link"></i><?= htmlspecialchars($lang->manage_uploads['th_linked']) ?></span>
                         <select class="form-select form-select-sm mu-input mt-2" id="typeFilter" style="border-radius:50rem">
-                            <option value="">All types</option>
-                            <option value="torrent"  <?= $typeFilter === 'torrent'  ? 'selected' : '' ?>>Torrents</option>
-                            <option value="news"     <?= $typeFilter === 'news'     ? 'selected' : '' ?>>News</option>
-                            <option value="comment"  <?= $typeFilter === 'comment'  ? 'selected' : '' ?>>Comments</option>
-                            <option value="post"     <?= $typeFilter === 'post'     ? 'selected' : '' ?>>Posts</option>
-                            <option value="message"  <?= $typeFilter === 'message'  ? 'selected' : '' ?>>Messages</option>
-                            <option value="unlinked" <?= $typeFilter === 'unlinked' ? 'selected' : '' ?>>Unlinked</option>
+                            <option value=""><?= htmlspecialchars($lang->manage_uploads['filter_all_types']) ?></option>
+                            <option value="torrent"  <?= $typeFilter === 'torrent'  ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_torrent']) ?></option>
+                            <option value="news"     <?= $typeFilter === 'news'     ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_news']) ?></option>
+                            <option value="comment"  <?= $typeFilter === 'comment'  ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_comment']) ?></option>
+                            <option value="post"     <?= $typeFilter === 'post'     ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_post']) ?></option>
+                            <option value="message"  <?= $typeFilter === 'message'  ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_message']) ?></option>
+                            <option value="unlinked" <?= $typeFilter === 'unlinked' ? 'selected' : '' ?>><?= htmlspecialchars($lang->manage_uploads['filter_unlinked']) ?></option>
                         </select>
                     </div>
                 </th>
-                <th><i class="fa-solid fa-user"></i>Uploader</th>
+                <th><i class="fa-solid fa-user"></i><?= htmlspecialchars($lang->manage_uploads['th_uploader']) ?></th>
                 <th>
                     <div class="d-flex flex-column">
-                        <span><i class="fa-solid fa-calendar-days"></i>Uploaded</span>
+                        <span><i class="fa-solid fa-calendar-days"></i><?= htmlspecialchars($lang->manage_uploads['th_uploaded']) ?></span>
                         <select class="form-select form-select-sm mu-input mt-2" id="dateFilter" style="border-radius:50rem">
-                            <option value="">All dates</option>
-                            <option value="today">Today</option>
-                            <option value="week">This week</option>
-                            <option value="month">This month</option>
+                            <option value=""><?= htmlspecialchars($lang->manage_uploads['filter_all_dates']) ?></option>
+                            <option value="today"><?= htmlspecialchars($lang->manage_uploads['filter_today']) ?></option>
+                            <option value="week"><?= htmlspecialchars($lang->manage_uploads['filter_week']) ?></option>
+                            <option value="month"><?= htmlspecialchars($lang->manage_uploads['filter_month']) ?></option>
                         </select>
                     </div>
                 </th>
-                <th class="text-end">Actions</th>
+                <th class="text-end"><?= htmlspecialchars($lang->manage_uploads['th_actions']) ?></th>
             </tr>
         </thead>
         <tbody>
@@ -138,14 +138,14 @@ if ($mu_pids) {
                              data-img-src="<?= $f_url ?>"
                              data-title="<?= $f_name ?>">
                     <?php elseif ($is_image): ?>
-                        <div class="mu-thumb-ph mu-tone-danger" title="File is missing on disk">
+                        <div class="mu-thumb-ph mu-tone-danger" title="<?= htmlspecialchars($lang->manage_uploads['tip_missing_on_disk']) ?>">
                             <i class="fa-solid fa-image"></i>
-                            <small>Not found</small>
+                            <small><?= htmlspecialchars($lang->manage_uploads['lbl_not_found']) ?></small>
                         </div>
                     <?php else: ?>
                         <div class="mu-thumb-ph mu-tone-<?= $ftone ?>">
                             <i class="fa-solid <?= $ficon ?>"></i>
-                            <small><?= htmlspecialchars(strtoupper($file_ext ?: 'file')) ?></small>
+                            <small><?= htmlspecialchars($file_ext !== '' ? strtoupper($file_ext) : $lang->manage_uploads['lbl_no_ext']) ?></small>
                         </div>
                     <?php endif; ?>
                 </td>
@@ -185,20 +185,20 @@ if ($mu_pids) {
                     ?>
                         <span class="mu-badge mu-tone-success">
                             <i class="fa-solid fa-comment"></i>
-                            <a href="<?= htmlspecialchars($comment_link) ?>" target="_blank" rel="noopener">Comment #<?= $cid ?></a>
+                            <a href="<?= htmlspecialchars($comment_link) ?>" target="_blank" rel="noopener"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['badge_comment'], $cid)) ?></a>
                         </span>
                     <?php endif; ?>
 
                     <?php if ($file['news_id']): ?>
                         <span class="mu-badge mu-tone-warning">
-                            <i class="fa-solid fa-newspaper"></i> News #<?= (int)$file['news_id'] ?>
+                            <i class="fa-solid fa-newspaper"></i> <?= htmlspecialchars(ags_fmt($lang->manage_uploads['badge_news'], (int)$file['news_id'])) ?>
                         </span>
                     <?php endif; ?>
 
                     <?php if ($file['torrent_id']): ?>
                         <span class="mu-badge mu-tone-info">
                             <i class="fa-solid fa-download"></i>
-                            <a href="<?= htmlspecialchars($BASEURL . '/' . get_torrent_link($file['torrent_id'])) ?>" target="_blank" rel="noopener">Torrent #<?= (int)$file['torrent_id'] ?></a>
+                            <a href="<?= htmlspecialchars($BASEURL . '/' . get_torrent_link($file['torrent_id'])) ?>" target="_blank" rel="noopener"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['badge_torrent'], (int)$file['torrent_id'])) ?></a>
                         </span>
                     <?php endif; ?>
 
@@ -208,19 +208,19 @@ if ($mu_pids) {
                     ?>
                         <span class="mu-badge mu-tone-primary">
                             <i class="fa-solid fa-file-lines"></i>
-                            <a href="<?= htmlspecialchars($post_link) ?>" target="_blank" rel="noopener">Post #<?= $pid ?></a>
+                            <a href="<?= htmlspecialchars($post_link) ?>" target="_blank" rel="noopener"><?= htmlspecialchars(ags_fmt($lang->manage_uploads['badge_post'], $pid)) ?></a>
                         </span>
                     <?php endif; ?>
 
                     <?php if ($file['messages_id']): ?>
                         <span class="mu-badge mu-tone-secondary">
-                            <i class="fa-solid fa-envelope-open-text"></i> Message #<?= (int)$file['messages_id'] ?>
+                            <i class="fa-solid fa-envelope-open-text"></i> <?= htmlspecialchars(ags_fmt($lang->manage_uploads['badge_message'], (int)$file['messages_id'])) ?>
                         </span>
                     <?php endif; ?>
 
                     <?php if ($row_type === ''): ?>
-                        <span class="mu-badge mu-tone-danger" title="Not attached to any content">
-                            <i class="fa-solid fa-link-slash"></i> Unlinked
+                        <span class="mu-badge mu-tone-danger" title="<?= htmlspecialchars($lang->manage_uploads['tip_unlinked']) ?>">
+                            <i class="fa-solid fa-link-slash"></i> <?= htmlspecialchars($lang->manage_uploads['filter_unlinked']) ?>
                         </span>
                     <?php endif; ?>
                     </div>
@@ -241,17 +241,17 @@ if ($mu_pids) {
                             </a>
                         </div>
                     <?php else: ?>
-                        <span class="text-body-secondary small"><i class="fa-solid fa-user-slash me-1"></i>Unknown</span>
+                        <span class="text-body-secondary small"><i class="fa-solid fa-user-slash me-1"></i><?= htmlspecialchars($lang->manage_uploads['lbl_unknown_user']) ?></span>
                     <?php endif; ?>
                 </td>
 
                 <!-- Uploaded -->
                 <td>
                     <?php if (isNewFile($file['uploaded_at'])): ?>
-                        <span class="mu-new mu-tone-danger"><i class="fa-solid fa-bolt me-1"></i>NEW</span>
+                        <span class="mu-new mu-tone-danger"><i class="fa-solid fa-bolt me-1"></i><?= htmlspecialchars($lang->manage_uploads['lbl_new']) ?></span>
                     <?php endif; ?>
                     <div class="mu-date">
-                        <div><i class="fa-regular fa-calendar"></i><?= date('M j, Y', strtotime((string)$file['uploaded_at'])) ?></div>
+                        <div><i class="fa-regular fa-calendar"></i><?= htmlspecialchars(date($lang->manage_uploads['fmt_date'], (int)strtotime((string)$file['uploaded_at']))) ?></div>
                         <div><i class="fa-regular fa-clock"></i><?= date('H:i', strtotime((string)$file['uploaded_at'])) ?></div>
                     </div>
                 </td>
@@ -259,7 +259,7 @@ if ($mu_pids) {
                 <!-- Actions -->
                 <td>
                     <div class="mu-actions">
-                        <a class="btn mu-iconbtn" href="<?= $f_url ?>" target="_blank" rel="noopener" title="Open in new tab">
+                        <a class="btn mu-iconbtn" href="<?= $f_url ?>" target="_blank" rel="noopener" title="<?= htmlspecialchars($lang->manage_uploads['tip_open_tab']) ?>">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i>
                         </a>
                         <div class="dropdown">
@@ -269,7 +269,7 @@ if ($mu_pids) {
                                     data-bs-toggle="dropdown"
                                     data-bs-popper-config='{"strategy":"fixed"}'
                                     aria-expanded="false"
-                                    title="More actions">
+                                    title="<?= htmlspecialchars($lang->manage_uploads['tip_more_actions']) ?>">
                                 <i class="fa-solid fa-ellipsis-vertical"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenu<?= $file['id'] ?>">
@@ -285,7 +285,7 @@ if ($mu_pids) {
                                        data-torrent-id="<?= $file['torrent_id'] ?? '' ?>"
                                        data-post-id="<?= $file['post_id'] ?? '' ?>"
                                        data-user-id="<?= $file['user_id'] ?? '' ?>">
-                                        <i class="fa-solid fa-pen text-warning"></i>Edit
+                                        <i class="fa-solid fa-pen text-warning"></i><?= htmlspecialchars($lang->manage_uploads['act_edit']) ?>
                                     </a>
                                 </li>
                                 <li>
@@ -296,7 +296,7 @@ if ($mu_pids) {
                                        data-id="<?= $file['id'] ?>"
                                        data-file-name="<?= $f_name ?>"
                                        data-file-url="<?= $f_url ?>">
-                                        <i class="fa-solid fa-arrows-up-down-left-right text-primary"></i>Move
+                                        <i class="fa-solid fa-arrows-up-down-left-right text-primary"></i><?= htmlspecialchars($lang->manage_uploads['act_move']) ?>
                                     </a>
                                 </li>
                                 <li>
@@ -307,14 +307,14 @@ if ($mu_pids) {
                                        data-id="<?= $file['id'] ?>"
                                        data-file-name="<?= $f_name ?>"
                                        data-file-url="<?= $f_url ?>">
-                                        <i class="fa-solid fa-copy text-info"></i>Copy
+                                        <i class="fa-solid fa-copy text-info"></i><?= htmlspecialchars($lang->manage_uploads['act_copy']) ?>
                                     </a>
                                 </li>
                                 <li>
                                     <a class="dropdown-item"
                                        href="<?= $f_url ?>"
                                        download="<?= $f_name ?>">
-                                        <i class="fa-solid fa-download text-success"></i>Download
+                                        <i class="fa-solid fa-download text-success"></i><?= htmlspecialchars($lang->manage_uploads['act_download']) ?>
                                     </a>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
@@ -322,7 +322,7 @@ if ($mu_pids) {
                                     <a class="dropdown-item btn-delete text-danger"
                                        href="#"
                                        data-id="<?= htmlspecialchars((string)$file['id']) ?>">
-                                        <i class="fa-solid fa-trash-can"></i>Delete
+                                        <i class="fa-solid fa-trash-can"></i><?= htmlspecialchars($lang->manage_uploads['act_delete']) ?>
                                     </a>
                                 </li>
                             </ul>
@@ -337,14 +337,14 @@ if ($mu_pids) {
                 <td colspan="8">
                     <div class="mu-empty">
                         <div class="mu-empty-icon mu-tone-secondary"><i class="fa-solid fa-images"></i></div>
-                        <h5 class="fw-bold mb-1">No files found</h5>
+                        <h5 class="fw-bold mb-1"><?= htmlspecialchars($lang->manage_uploads['empty_title']) ?></h5>
                         <?php if ($search || $typeFilter): ?>
-                            <p class="text-body-secondary small mb-3">Nothing matches the current search or filter.</p>
+                            <p class="text-body-secondary small mb-3"><?= htmlspecialchars($lang->manage_uploads['empty_filtered']) ?></p>
                             <a href="index.php?act=manage_uploads" class="btn btn-outline-secondary btn-sm" style="border-radius:50rem">
-                                <i class="fa-solid fa-filter-circle-xmark me-1"></i> Clear filters
+                                <i class="fa-solid fa-filter-circle-xmark me-1"></i> <?= htmlspecialchars($lang->manage_uploads['btn_clear_filters']) ?>
                             </a>
                         <?php else: ?>
-                            <p class="text-body-secondary small mb-0">Uploaded files will appear here.</p>
+                            <p class="text-body-secondary small mb-0"><?= htmlspecialchars($lang->manage_uploads['empty_hint']) ?></p>
                         <?php endif; ?>
                     </div>
                 </td>
@@ -364,8 +364,8 @@ $this_script2 = "index.php?act=manage_uploads"
 <div class="mu-pager d-flex flex-wrap align-items-center justify-content-between gap-2">
     <span class="text-body-secondary small">
         <i class="fa-solid fa-layer-group me-1"></i>
-        Page <?= (int)$page ?> of <?= (int)$total_pages ?>, <?= ts_nf((int)$total_files) ?> files
+        <?= htmlspecialchars(ags_fmt($lang->manage_uploads['pager_info'], (int)$page, (int)$total_pages, ts_nf((int)$total_files))) ?>
     </span>
     <div><?= multipage((int)$total_files, (int)$per_page, (int)$page, $this_script2) ?></div>
 </div>
-<?php endif; ?>
+<?php endif; ?>

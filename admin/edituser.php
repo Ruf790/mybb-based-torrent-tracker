@@ -2,6 +2,20 @@
 
 declare(strict_types=1);
 
+// ── i18n helper: подстановка {1}, {2}… (и %1$s… — $lang->load() переводит {N} в %N$s) ──
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 
 // Initialize session
 if (session_status() === PHP_SESSION_NONE) {
@@ -91,10 +105,10 @@ function get_ratio(array $userdata): string
 
   function get_user_class_name ($class = '')
   {
-    //global $cache;
+    global $lang;
     if ($class == 'all')
     {
-      return 'ALL Usergroups';
+      return $lang->edituser['all_usergroups'];
     }
 
     require TSDIR . '/cache/usergroups.php';
@@ -106,7 +120,7 @@ function get_ratio(array $userdata): string
       }
     }
 
-    return 'ALL Usergroups';
+    return $lang->edituser['all_usergroups'];
   }
   
   
@@ -144,6 +158,10 @@ function flash_message(?string $message = null, string $type = 'info'): void
 
     // Если есть сообщения — выводим
     if (!empty($_SESSION['flash'])) {
+        $flashL     = $GLOBALS['lang']->edituser ?? [];
+        $toastTitle = htmlspecialchars($flashL['toast_title'] ?? 'Message');
+        $toastNow   = htmlspecialchars($flashL['toast_now'] ?? 'Now');
+        $toastClose = htmlspecialchars($flashL['toast_close'] ?? 'Close');
         echo '
         <div aria-live="polite" aria-atomic="true" class="position-relative">
             <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">';
@@ -160,9 +178,9 @@ function flash_message(?string $message = null, string $type = 'info'): void
             echo "
             <div class='toast border-0 mb-2' role='alert' aria-live='assertive' aria-atomic='true'>
                 <div class='toast-header {$typeClass}'>
-                    <strong class='me-auto'>Message</strong>
-                    <small>Now</small>
-                    <button type='button' class='btn-close' data-bs-dismiss='toast' aria-label='Close'></button>
+                    <strong class='me-auto'>{$toastTitle}</strong>
+                    <small>{$toastNow}</small>
+                    <button type='button' class='btn-close' data-bs-dismiss='toast' aria-label='{$toastClose}'></button>
                 </div>
                 <div class='toast-body'>
                     {$msg}
@@ -197,6 +215,8 @@ function flash_message(?string $message = null, string $type = 'info'): void
  */
 function admin_redirect(string $url, ?string $message = null): void
 {
+    global $lang;
+
     if ($message) {
         flash_message($message, 'success');
     }
@@ -205,10 +225,11 @@ function admin_redirect(string $url, ?string $message = null): void
         $url = str_replace("&amp;", "&", $url);
         header("Location: {$url}");
     } else {
+        $redirText = htmlspecialchars($lang->edituser['redirecting']);
         echo "
         <div class='redirect-overlay'>
             <div class='redirect-spinner'></div>
-            <p>Redirecting...</p>
+            <p>{$redirText}</p>
         </div>
         <script>
         setTimeout(() => {
@@ -224,27 +245,29 @@ function admin_redirect(string $url, ?string $message = null): void
  */
 function months(): string
 {
+    global $lang;
+
     $months = [
-        '0' => ['text' => '--- Select Duration ---', 'icon' => 'fa-clock'],
-        '1' => ['text' => '1 Week', 'icon' => 'fa-calendar-week'],
-        '2' => ['text' => '2 Weeks', 'icon' => 'fa-calendar-days'], 
-        '3' => ['text' => '3 Weeks', 'icon' => 'fa-calendar-plus'],
-        '4' => ['text' => '1 Month', 'icon' => 'fa-calendar'],
-        '5' => ['text' => '5 Weeks', 'icon' => 'fa-calendar-check'],
-        '6' => ['text' => '6 Weeks', 'icon' => 'fa-calendar-day'],
-        '7' => ['text' => '7 Weeks', 'icon' => 'fa-calendar-alt'], 
-        '8' => ['text' => '2 Months', 'icon' => 'fa-calendar-minus'],
-        '12' => ['text' => '3 Months', 'icon' => 'fa-calendar-xmark'],
-        '16' => ['text' => '4 Months', 'icon' => 'fa-calendar'],
-        '20' => ['text' => '5 Months', 'icon' => 'fa-calendar'],
-        '24' => ['text' => '6 Months', 'icon' => 'fa-calendar'],
-        '28' => ['text' => '7 Months', 'icon' => 'fa-calendar'],
-        '32' => ['text' => '8 Months', 'icon' => 'fa-calendar'], 
-        '36' => ['text' => '9 Months', 'icon' => 'fa-calendar'],
-        '40' => ['text' => '10 Months', 'icon' => 'fa-calendar'],
-        '44' => ['text' => '11 Months', 'icon' => 'fa-calendar'],
-        '48' => ['text' => '12 Months', 'icon' => 'fa-calendar-star'],
-        '255' => ['text' => 'Unlimited', 'icon' => 'fa-infinity']
+        '0' => ['text' => $lang->edituser['opt_dur_select'], 'icon' => 'fa-clock'],
+        '1' => ['text' => $lang->edituser['opt_dur_w1'], 'icon' => 'fa-calendar-week'],
+        '2' => ['text' => $lang->edituser['opt_dur_w2'], 'icon' => 'fa-calendar-days'], 
+        '3' => ['text' => $lang->edituser['opt_dur_w3'], 'icon' => 'fa-calendar-plus'],
+        '4' => ['text' => $lang->edituser['opt_dur_m1'], 'icon' => 'fa-calendar'],
+        '5' => ['text' => $lang->edituser['opt_dur_w5'], 'icon' => 'fa-calendar-check'],
+        '6' => ['text' => $lang->edituser['opt_dur_w6'], 'icon' => 'fa-calendar-day'],
+        '7' => ['text' => $lang->edituser['opt_dur_w7'], 'icon' => 'fa-calendar-alt'], 
+        '8' => ['text' => $lang->edituser['opt_dur_m2'], 'icon' => 'fa-calendar-minus'],
+        '12' => ['text' => $lang->edituser['opt_dur_m3'], 'icon' => 'fa-calendar-xmark'],
+        '16' => ['text' => $lang->edituser['opt_dur_m4'], 'icon' => 'fa-calendar'],
+        '20' => ['text' => $lang->edituser['opt_dur_m5'], 'icon' => 'fa-calendar'],
+        '24' => ['text' => $lang->edituser['opt_dur_m6'], 'icon' => 'fa-calendar'],
+        '28' => ['text' => $lang->edituser['opt_dur_m7'], 'icon' => 'fa-calendar'],
+        '32' => ['text' => $lang->edituser['opt_dur_m8'], 'icon' => 'fa-calendar'], 
+        '36' => ['text' => $lang->edituser['opt_dur_m9'], 'icon' => 'fa-calendar'],
+        '40' => ['text' => $lang->edituser['opt_dur_m10'], 'icon' => 'fa-calendar'],
+        '44' => ['text' => $lang->edituser['opt_dur_m11'], 'icon' => 'fa-calendar'],
+        '48' => ['text' => $lang->edituser['opt_dur_m12'], 'icon' => 'fa-calendar-star'],
+        '255' => ['text' => $lang->edituser['opt_dur_unlimited'], 'icon' => 'fa-infinity']
     ];
     
     return implode('', array_map(
@@ -259,21 +282,23 @@ function months(): string
  */
 function weeks(): string
 {
+    global $lang;
+
     $weeks = [
-        '0' => ['text' => '--- Select Duration ---', 'icon' => 'fa-clock'],
-        '1' => ['text' => '1 Week', 'icon' => 'fa-calendar-week'],
-        '2' => ['text' => '2 Weeks', 'icon' => 'fa-calendar-days'],
-        '3' => ['text' => '3 Weeks', 'icon' => 'fa-calendar-plus'],
-        '4' => ['text' => '4 Weeks', 'icon' => 'fa-calendar'],
-        '5' => ['text' => '5 Weeks', 'icon' => 'fa-calendar-check'],
-        '6' => ['text' => '6 Weeks', 'icon' => 'fa-calendar-day'],
-        '7' => ['text' => '7 Weeks', 'icon' => 'fa-calendar-alt'],
-        '8' => ['text' => '8 Weeks', 'icon' => 'fa-calendar-minus'],
-        '9' => ['text' => '9 Weeks', 'icon' => 'fa-calendar-week'],
-        '10' => ['text' => '10 Weeks', 'icon' => 'fa-calendar-days'],
-        '11' => ['text' => '11 Weeks', 'icon' => 'fa-calendar-plus'],
-        '12' => ['text' => '12 Weeks', 'icon' => 'fa-calendar-star'],
-        '255' => ['text' => 'Unlimited', 'icon' => 'fa-infinity']
+        '0' => ['text' => $lang->edituser['opt_dur_select'], 'icon' => 'fa-clock'],
+        '1' => ['text' => $lang->edituser['opt_dur_w1'], 'icon' => 'fa-calendar-week'],
+        '2' => ['text' => $lang->edituser['opt_dur_w2'], 'icon' => 'fa-calendar-days'],
+        '3' => ['text' => $lang->edituser['opt_dur_w3'], 'icon' => 'fa-calendar-plus'],
+        '4' => ['text' => $lang->edituser['opt_dur_w4'], 'icon' => 'fa-calendar'],
+        '5' => ['text' => $lang->edituser['opt_dur_w5'], 'icon' => 'fa-calendar-check'],
+        '6' => ['text' => $lang->edituser['opt_dur_w6'], 'icon' => 'fa-calendar-day'],
+        '7' => ['text' => $lang->edituser['opt_dur_w7'], 'icon' => 'fa-calendar-alt'],
+        '8' => ['text' => $lang->edituser['opt_dur_w8'], 'icon' => 'fa-calendar-minus'],
+        '9' => ['text' => $lang->edituser['opt_dur_w9'], 'icon' => 'fa-calendar-week'],
+        '10' => ['text' => $lang->edituser['opt_dur_w10'], 'icon' => 'fa-calendar-days'],
+        '11' => ['text' => $lang->edituser['opt_dur_w11'], 'icon' => 'fa-calendar-plus'],
+        '12' => ['text' => $lang->edituser['opt_dur_w12'], 'icon' => 'fa-calendar-star'],
+        '255' => ['text' => $lang->edituser['opt_dur_unlimited'], 'icon' => 'fa-infinity']
     ];
     
     return implode('', array_map(
@@ -288,7 +313,7 @@ function weeks(): string
  */
 function permission_check(): void
 {
-    global $userdata, $usergroups, $CURUSER;
+    global $userdata, $usergroups, $CURUSER, $lang;
     
     if 
 	(
@@ -298,7 +323,7 @@ function permission_check(): void
         $CURUSER['id'] == $userdata['id']
     ) 
 	{
-        print_no_permission (false, true, 'Permission Denied: Protected usergroup!');
+        print_no_permission (false, true, $lang->edituser['err_protected_group']);
     }
 }
 
@@ -363,11 +388,11 @@ function inputbox(string $title, string $name, string $value = '', string $class
  */
 function selectbox(string $title, string $name, string $type, string $class = 'form-select'): string
 {
-    global $userdata, $usergroups, $db;
+    global $userdata, $usergroups, $db, $lang;
     
     $selectId = uniqid('select_');
     
-    $options = "<option value=''>Select usergroup...</option>";
+    $options = "<option value=''>" . $lang->edituser['opt_select_group'] . "</option>";
     
     if ($type === 'trackergroups') {
         $query = $db->sql_query_prepared('SELECT gid, title, cansettingspanel, issupermod, canstaffpanel FROM usergroups ORDER BY title');
@@ -410,6 +435,7 @@ function selectbox(string $title, string $name, string $type, string $class = 'f
 
 function yesno(string $title, string $name, string $value = '1'): string
 {
+    global $lang;
     // Определяем какие поля используют числовые значения
     $numericFields = [
         'moderateposts', 'allownotices', 'hideemail', 'receivepms', 'receivefrombuddy',
@@ -432,6 +458,8 @@ function yesno(string $title, string $name, string $value = '1'): string
     }
     
     $fieldId = uniqid('field_');
+    $yesText = $lang->edituser['yes'];
+    $noText  = $lang->edituser['no'];
     
     $icon = match($name) {
         'donor' => 'fa-heart',
@@ -466,12 +494,12 @@ function yesno(string $title, string $name, string $value = '1'): string
         <div class='btn-group w-100' role='group'>
             <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_yes' value='{$yesValue}' {$yesChecked}>
             <label class='btn btn-outline-success' for='{$fieldId}_yes'>
-                <i class='fas fa-check me-2'></i>Yes
+                <i class='fas fa-check me-2'></i>{$yesText}
             </label>
             
             <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_no' value='{$noValue}' {$noChecked}>
             <label class='btn btn-outline-danger' for='{$fieldId}_no'>
-                <i class='fas fa-times me-2'></i>No
+                <i class='fas fa-times me-2'></i>{$noText}
             </label>
         </div>
     </div>";
@@ -490,7 +518,7 @@ function yesno(string $title, string $name, string $value = '1'): string
  */
 function get_user_data(): void
 {
-    global $userid, $db;
+    global $userid, $db, $lang;
 
     // ► Кэш: если данные уже загружены для того же userid — ничего не делаем
     if (!empty($GLOBALS['userdata']['id']) && (int)$GLOBALS['userdata']['id'] === (int)$userid) {
@@ -546,10 +574,10 @@ function get_user_data(): void
         <div class="user-not-found">
             <div class="error-container text-center py-5">
                 <i class="fas fa-user-slash fa-5x text-muted mb-4"></i>
-                <h3 class="text-danger mb-3">User Not Found</h3>
-                <p class="text-muted mb-4">No user exists with the specified ID.</p>
+                <h3 class="text-danger mb-3">' . $lang->edituser['err_user_not_found_title'] . '</h3>
+                <p class="text-muted mb-4">' . $lang->edituser['err_user_not_found_text'] . '</p>
                 <a href="javascript:history.back()" class="btn btn-primary btn-lg">
-                    <i class="fas fa-arrow-left me-2"></i>Go Back
+                    <i class="fas fa-arrow-left me-2"></i>' . $lang->edituser['btn_go_back'] . '
                 </a>
             </div>
         </div>';
@@ -618,6 +646,8 @@ function insert_message(int $userid, string $message, string $subject): void
 $rootpath = './../';
 include $rootpath . '/global.php';
 
+$lang->load('edituser');
+
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
 define('FORUM_ACTIVE', true);
@@ -659,30 +689,30 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     // Авторизация
     $user_uid = (int)($CURUSER['id'] ?? 0);
     if ($user_uid <= 0) {
-        $is_ajax ? $json(['success'=>false,'error'=>'Not authorized'], 401) : exit('Error: Not authorized.');
+        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_not_authorized']], 401) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_not_authorized']));
     }
 
     // Целевой профиль
     $uid = (int)($_POST['id'] ?? $_GET['id'] ?? ($userdata['id'] ?? 0));
     if ($uid <= 0) {
-        $is_ajax ? $json(['success'=>false,'error'=>'Profile ID not found'], 400) : exit('Error: Profile ID not found.');
+        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_profile']], 400) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_profile']));
     }
 
     // Права: владелец или модератор
     $is_own_profile = ($user_uid === $uid);
     $is_mod = is_mod($usergroups ?? []);
     if (!$is_own_profile && !$is_mod) {
-        $is_ajax ? $json(['success'=>false,'error'=>'No permission'], 403) : exit('Error: No permission to change this avatar.');
+        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_permission']], 403) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_permission_long']));
     }
 
     // CSRF
     if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== generate_post_check()) {
-        $is_ajax ? $json(['success'=>false,'error'=>'CSRF check failed'], 403) : exit('Error: CSRF check failed.');
+        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_csrf']], 403) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_csrf']));
     }
 
     // Файл
     if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
-        $is_ajax ? $json(['success'=>false,'error'=>'File not uploaded'], 400) : exit('Error: File not uploaded.');
+        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_file']], 400) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_file']));
     }
 
     // Вся валидация (расширение, реальный MIME через getimagesize(), размер
@@ -697,7 +727,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     if (!empty($avatarResult['error'])) {
         $is_ajax
             ? $json(['success'=>false,'error'=>$avatarResult['error']], 415)
-            : exit('Error: ' . $avatarResult['error']);
+            : exit(ags_fmt($lang->edituser['err_prefix'], (string)$avatarResult['error']));
     }
 
     $width  = (int)$avatarResult['width'];
@@ -732,7 +762,7 @@ $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
             'url' => $avatar_url,
             'width' => $width,
             'height' => $height,
-            'message' => 'Avatar successfully updated'
+            'message' => $lang->edituser['ajax_avatar_updated']
         ]);
     } else {
         header("Location: edituser.php?action=edituser&userid={$uid}");
@@ -862,7 +892,7 @@ function is_valid_local_avatar(string $avatar): bool
  */
 function handle_avatar_update(): void
 {
-    global $userdata, $db, $modcomment, $mybb;
+    global $userdata, $db, $modcomment, $mybb, $lang;
 
     if (!isset($_POST['avatar'])) return;
 
@@ -885,7 +915,7 @@ function handle_avatar_update(): void
 
     $current_user_id = (int)($userdata['id'] ?? $_POST['userid'] ?? 0);
     if ($current_user_id <= 0) {
-        flash_message("Error: User ID not found", "error");
+        flash_message($lang->edituser['flash_avatar_no_uid'], "error");
         return;
     }
 
@@ -904,7 +934,7 @@ function handle_avatar_update(): void
         $db->sql_query_prepared("UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?", [$current_user_id]);
         $userdata['avatar'] = '';
         modcomment("Avatar removed");
-        flash_message("Avatar successfully removed!", "success");
+        flash_message($lang->edituser['flash_avatar_removed'], "success");
         return;
     }
 
@@ -912,22 +942,30 @@ function handle_avatar_update(): void
         $error = process_avatar_url($new_avatar, $current_user_id);
         if ($error === "") {
             modcomment("Avatar updated via URL");
-            flash_message("Avatar successfully updated!", "success");
+            flash_message($lang->edituser['flash_avatar_updated'], "success");
         } elseif ($error !== "Avatar unchanged") {
             modcomment("Avatar update error: $error");
-            flash_message("Error: $error", "error");
+            // process_avatar_url() возвращает английский текст (он же пишется в modcomment) —
+            // для пользователя показываем перевод
+            $errText = match ($error) {
+                'Invalid user ID'                          => $lang->edituser['avatar_err_invalid_uid'],
+                'URL does not point to a valid image file' => $lang->edituser['avatar_err_not_image'],
+                'Avatar URL too long'                      => $lang->edituser['avatar_err_too_long'],
+                default                                    => $error,
+            };
+            flash_message(ags_fmt($lang->edituser['err_prefix'], $errText), "error");
         }
         return;
     }
 
     if (is_valid_local_avatar($new_avatar)) {
         modcomment("Avatar updated (local)");
-        flash_message("Avatar successfully updated!", "success");
+        flash_message($lang->edituser['flash_avatar_updated'], "success");
         return;
     }
 
     modcomment("Attempt to update avatar: invalid format");
-    flash_message("Invalid avatar format", "error");
+    flash_message($lang->edituser['flash_avatar_invalid'], "error");
 }
 
 
@@ -988,22 +1026,24 @@ match ($action) {
  */
 function get_user_status_badges(array $userdata): string
 {
+    global $lang;
+
     $badges = [];
     
     if ($userdata['donor'] == 'yes') {
-        $badges[] = '<span class="user-badge badge-success"><i class="fas fa-heart me-1"></i>Donor</span>';
+        $badges[] = '<span class="user-badge badge-success"><i class="fas fa-heart me-1"></i>' . $lang->edituser['badge_donor'] . '</span>';
     }
     
     if ($userdata['warned'] == 'yes') {
-        $badges[] = '<span class="user-badge badge-warning"><i class="fas fa-exclamation-triangle me-1"></i>Warned</span>';
+        $badges[] = '<span class="user-badge badge-warning"><i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['badge_warned'] . '</span>';
     }
     
     if ($userdata['enabled'] == 'no') {
-        $badges[] = '<span class="user-badge badge-danger"><i class="fas fa-ban me-1"></i>Banned</span>';
+        $badges[] = '<span class="user-badge badge-danger"><i class="fas fa-ban me-1"></i>' . $lang->edituser['badge_banned'] . '</span>';
     }
     
     if ($userdata['moderateposts'] == 1) {
-        $badges[] = '<span class="user-badge badge-info"><i class="fas fa-eye me-1"></i>Moderated</span>';
+        $badges[] = '<span class="user-badge badge-info"><i class="fas fa-eye me-1"></i>' . $lang->edituser['badge_moderated'] . '</span>';
     }
     
     return implode('', $badges);
@@ -1014,43 +1054,45 @@ function get_user_status_badges(array $userdata): string
  */
 function get_user_stats(array $userdata): string
 {
+    global $lang;
+
     $ratio = get_ratio($userdata);
     $ratioColor = $ratio == '∞' ? 'success' : ($ratio >= 1 ? 'success' : ($ratio >= 0.5 ? 'warning' : 'danger'));
     
     $stats = [
         [
             'icon' => 'fa-calendar',
-            'label' => 'Joined',
+            'label' => $lang->edituser['stat_joined'],
             'value' => my_datee('relative', $userdata['added']),
             'color' => 'primary'
         ],
         [
             'icon' => 'fa-chart-line',
-            'label' => 'Ratio',
+            'label' => $lang->edituser['stat_ratio'],
             'value' => '<span class="text-' . $ratioColor . '">' . $ratio . '</span>',
             'color' => $ratioColor
         ],
         [
             'icon' => 'fa-upload',
-            'label' => 'Uploaded',
+            'label' => $lang->edituser['stat_uploaded'],
             'value' => mksize($userdata['uploaded']),
             'color' => 'info'
         ],
         [
             'icon' => 'fa-download',
-            'label' => 'Downloaded',
+            'label' => $lang->edituser['stat_downloaded'],
             'value' => mksize($userdata['downloaded']),
             'color' => 'warning'
         ],
         [
             'icon' => 'fa-star',
-            'label' => 'Bonus Points',
+            'label' => $lang->edituser['stat_bonus'],
             'value' => ts_nf($userdata['seedbonus']),
             'color' => 'success'
         ],
         [
             'icon' => 'fa-envelope-open',
-            'label' => 'Invites',
+            'label' => $lang->edituser['stat_invites'],
             'value' => $userdata['invites'],
             'color' => 'secondary'
         ]
@@ -1080,7 +1122,7 @@ function get_user_stats(array $userdata): string
  */
 function renderBasicInfoTab(): string
 {
-    global $userdata;
+    global $userdata, $lang;
     
 	
    $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
@@ -1106,26 +1148,26 @@ function renderBasicInfoTab(): string
             <div class="row">
                 <div class="col-md-6">
                    
-				   ' . inputbox('Username', 'username', $userdata['username'], 'form-control', '35', '', '255', true, '', true) . '
+				   ' . inputbox($lang->edituser['lbl_username'], 'username', $userdata['username'], 'form-control', '35', '', '255', true, '', true) . '
 				   
                 </div>
                 <div class="col-md-6">
-                    ' . inputbox('Email Address', 'email', $userdata['email'], 'form-control', '35', '', '255', true, '', true) . '
+                    ' . inputbox($lang->edituser['lbl_email'], 'email', $userdata['email'], 'form-control', '35', '', '255', true, '', true) . '
                 </div>
             </div>
             
             <div class="row">
                 <div class="col-md-6">
-                    ' . inputbox('New Password', 'password', '', 'form-control', '35', '<small class="text-muted">Leave blank to keep current</small>', '255', false) . '
+                    ' . inputbox($lang->edituser['lbl_new_password'], 'password', '', 'form-control', '35', '<small class="text-muted">' . $lang->edituser['hint_password_keep'] . '</small>', '255', false) . '
                 </div>
                 <div class="col-md-6">
-                    ' . inputbox('User Title', 'usertitle', htmlspecialchars_uni($userdata['usertitle']), 'form-control', '35', '', '255', true) . '
+                    ' . inputbox($lang->edituser['lbl_usertitle'], 'usertitle', htmlspecialchars_uni($userdata['usertitle']), 'form-control', '35', '', '255', true) . '
                 </div>
             </div>
             
-             ' . selectbox('Tracker Usergroup', 'usergroup', 'trackergroups', 'form-select') .'
+             ' . selectbox($lang->edituser['lbl_usergroup'], 'usergroup', 'trackergroups', 'form-select') .'
             
-            ' . inputbox('Avatar URL', 'avatar', htmlspecialchars_uni($userdata['avatar']), 'form-control', '35', '<small class="text-muted">Full URL to avatar image</small>', '500', false) . '
+            ' . inputbox($lang->edituser['lbl_avatar_url'], 'avatar', htmlspecialchars_uni($userdata['avatar']), 'form-control', '35', '<small class="text-muted">' . $lang->edituser['hint_avatar_url'] . '</small>', '500', false) . '
 			
 			
 			<input type="hidden" name="avatar_changed" id="avatar_changed" value="0">
@@ -1166,7 +1208,7 @@ function renderBasicInfoTab(): string
 			<div class="col-auto">
   <div class="avatar-ring position-relative hov-soft"
        id="avatar-container"
-       title="Avatar">
+       title="' . $lang->edituser['hdr_avatar_title'] . '">
     <div>
       ' . $avatarHtml . '
     </div>
@@ -1188,7 +1230,7 @@ function renderBasicInfoTab(): string
                 <div class="avatar-actions">
 
 <button type="submit" class="btn btn-outline-danger btn-sm me-2" name="remove_avatar" value="1">
-    <i class="fas fa-trash me-1"></i>Remove
+    <i class="fas fa-trash me-1"></i>' . $lang->edituser['btn_avatar_remove'] . '
 </button>
 		
 					
@@ -1197,15 +1239,15 @@ function renderBasicInfoTab(): string
 					
 					
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testAvatar()">
-                        <i class="fas fa-sync me-1"></i>Test
+                        <i class="fas fa-sync me-1"></i>' . $lang->edituser['btn_avatar_test'] . '
                     </button>
                 </div>
             </div>
             
             <div class="mt-4">
-                <label class="form-label fw-semibold">Signature Preview</label>
+                <label class="form-label fw-semibold">' . $lang->edituser['lbl_sig_preview'] . '</label>
                 <div class="signature-preview p-3 bg-light rounded">
-                    ' . ($userdata['signature'] ? htmlspecialchars_uni($userdata['signature']) : '<em class="text-muted">No signature</em>') . '
+                    ' . ($userdata['signature'] ? htmlspecialchars_uni($userdata['signature']) : '<em class="text-muted">' . $lang->edituser['sig_none'] . '</em>') . '
                 </div>
             </div>
         </div>
@@ -1213,8 +1255,8 @@ function renderBasicInfoTab(): string
     
     <div class="row mt-3">
         <div class="col-12">
-            <label class="form-label fw-semibold">User Signature</label>
-            <textarea name="signature" class="form-control" rows="4" placeholder="Enter user signature...">' . htmlspecialchars_uni($userdata['signature']) . '</textarea>
+            <label class="form-label fw-semibold">' . $lang->edituser['lbl_signature'] . '</label>
+            <textarea name="signature" class="form-control" rows="4" placeholder="' . $lang->edituser['ph_signature'] . '">' . htmlspecialchars_uni($userdata['signature']) . '</textarea>
         </div>
     </div>';
 }
@@ -1224,7 +1266,7 @@ function renderBasicInfoTab(): string
  */
 function renderPermissionsTab(): string
 {
-    global $userdata, $db, $userid;
+    global $userdata, $db, $userid, $lang;
     
     // Get current permissions
    
@@ -1235,19 +1277,19 @@ $candownload = ($userdata['candownload'] ?? 1) == 1 ? 'yes' : 'no';
     $banIpSelect = '
     <div class="mb-4">
         <label class="form-label fw-semibold mb-3">
-            <i class="fas fa-ban me-2 text-danger"></i>IP Ban Action
+            <i class="fas fa-ban me-2 text-danger"></i>' . $lang->edituser['lbl_ipban'] . '
         </label>
         <select name="banip" class="form-select">
-            <option value="no">Do Not Ban IP</option>
-            <option value="yes">Ban Associated IP Address</option>
+            <option value="no">' . $lang->edituser['opt_ipban_no'] . '</option>
+            <option value="yes">' . $lang->edituser['opt_ipban_yes'] . '</option>
         </select>
-        <small class="text-muted">Applies when disabling account</small>
+        <small class="text-muted">' . $lang->edituser['hint_ipban'] . '</small>
     </div>';
 
     $disabledAlert = $userdata['enabled'] == 'no' ? '
     <div class="alert alert-danger">
-        <h6><i class="fas fa-exclamation-triangle me-2"></i>Account Disabled</h6>
-        <p class="mb-0">' . htmlspecialchars_uni($userdata['notifs'] ?? 'No reason provided') . '</p>
+        <h6><i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['alert_disabled_title'] . '</h6>
+        <p class="mb-0">' . htmlspecialchars_uni($userdata['notifs'] ?? $lang->edituser['alert_disabled_noreason']) . '</p>
     </div>' : '';
 
     // Для moderateposts преобразуем числовое значение в строковое для отображения
@@ -1257,25 +1299,25 @@ $candownload = ($userdata['candownload'] ?? 1) == 1 ? 'yes' : 'no';
     <div class="row">
         <div class="col-md-6">
             <div class="permission-section mb-5">
-                <h5 class="mb-4"><i class="fas fa-shield-alt me-2 text-primary"></i>Account Permissions</h5>
+                <h5 class="mb-4"><i class="fas fa-shield-alt me-2 text-primary"></i>' . $lang->edituser['sec_account_perms'] . '</h5>
                 
-                ' . yesno('Account Enabled', 'enabled', $userdata['enabled']) . '
+                ' . yesno($lang->edituser['lbl_enabled'], 'enabled', $userdata['enabled']) . '
                 
-                ' . yesno('Can Post Comments', 'cancomment', $cancomment) . '
+                ' . yesno($lang->edituser['lbl_cancomment'], 'cancomment', $cancomment) . '
                 
-                ' . yesno('Can Upload Torrents', 'canupload', $canupload) . '
+                ' . yesno($lang->edituser['lbl_canupload'], 'canupload', $canupload) . '
                 
-                ' . yesno('Can Download Torrents', 'candownload', $candownload) . '
+                ' . yesno($lang->edituser['lbl_candownload'], 'candownload', $candownload) . '
                 
-                ' . yesno('Moderate User Posts', 'moderateposts', $moderatepostsValue) . '
+                ' . yesno($lang->edituser['lbl_moderateposts'], 'moderateposts', $moderatepostsValue) . '
             </div>
         </div>
         
         <div class="col-md-6">
             <div class="permission-section mb-5">
-                <h5 class="mb-4"><i class="fas fa-gem me-2 text-warning"></i>Special Status</h5>
+                <h5 class="mb-4"><i class="fas fa-gem me-2 text-warning"></i>' . $lang->edituser['sec_special'] . '</h5>
                 
-                ' . yesno('Is Donor', 'donor', $userdata['donor']) . '
+                ' . yesno($lang->edituser['lbl_donor'], 'donor', $userdata['donor']) . '
                 
                 ' . $banIpSelect . '
             </div>
@@ -1290,7 +1332,7 @@ $candownload = ($userdata['candownload'] ?? 1) == 1 ? 'yes' : 'no';
  */
 function renderWarningsTab(): string
 {
-    global $userdata, $db, $BASEURL, $ban_user_limit, $dateformat;
+    global $userdata, $db, $BASEURL, $ban_user_limit, $dateformat, $lang;
     
     $warned = $userdata['warned'] === 'yes';
     $leechwarn = $userdata['leechwarn'] === 'yes';
@@ -1305,9 +1347,9 @@ function renderWarningsTab(): string
             <div class="d-flex align-items-center">
                 <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
                 <div>
-                    <h6 class="alert-heading mb-1">User is Currently Warned</h6>
-                    <p class="mb-1">Expires: ' . ($warneduntil === '0' ? '<strong>Never</strong>' : $warneduntilDate) . '</p>
-                    <small class="text-muted">' . $warneduntil . ' remaining</small>
+                    <h6 class="alert-heading mb-1">' . $lang->edituser['warn_active_title'] . '</h6>
+                    <p class="mb-1">' . ags_fmt($lang->edituser['warn_expires'], ($warneduntil === '0' ? '<strong>' . $lang->edituser['never'] . '</strong>' : $warneduntilDate)) . '</p>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['warn_remaining'], $warneduntil) . '</small>
                 </div>
             </div>
         </div>';
@@ -1323,9 +1365,9 @@ function renderWarningsTab(): string
             <div class="d-flex align-items-center">
                 <i class="fas fa-skull-crossbones fa-2x me-3"></i>
                 <div>
-                    <h6 class="alert-heading mb-1">Auto Leech Warning Active</h6>
-                    <p class="mb-1">Low ratio detected - expires: ' . ($leechuntil === '0' ? '<strong>Never</strong>' : $leechuntilDate) . '</p>
-                    <small class="text-muted">' . $leechuntil . ' remaining</small>
+                    <h6 class="alert-heading mb-1">' . $lang->edituser['leechwarn_title'] . '</h6>
+                    <p class="mb-1">' . ags_fmt($lang->edituser['leechwarn_expires'], ($leechuntil === '0' ? '<strong>' . $lang->edituser['never'] . '</strong>' : $leechuntilDate)) . '</p>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['warn_remaining'], $leechuntil) . '</small>
                 </div>
             </div>
         </div>';
@@ -1338,54 +1380,54 @@ function renderWarningsTab(): string
             ' . $leechWarningInfo . '
             
             <div class="warning-controls">
-                <h5 class="mb-4"><i class="fas fa-exclamation-circle me-2 text-warning"></i>Warning Controls</h5>
+                <h5 class="mb-4"><i class="fas fa-exclamation-circle me-2 text-warning"></i>' . $lang->edituser['sec_warn_controls'] . '</h5>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Warning Status</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_status'] . '</label>
                     <div class="btn-group w-100" role="group">
                         <input type="radio" class="btn-check" name="warned" id="warned_no" value="no" ' . (!$warned ? 'checked' : '') . '>
                         <label class="btn btn-outline-success" for="warned_no">
-                            <i class="fas fa-check me-2"></i>Not Warned
+                            <i class="fas fa-check me-2"></i>' . $lang->edituser['opt_not_warned'] . '
                         </label>
                         
                         <input type="radio" class="btn-check" name="warned" id="warned_yes" value="yes" ' . ($warned ? 'checked' : '') . '>
                         <label class="btn btn-outline-warning" for="warned_yes">
-                            <i class="fas fa-exclamation-triangle me-2"></i>Warned
+                            <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['opt_warned'] . '
                         </label>
                     </div>
                 </div>
                 
                 ' . (!$warned ? '
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Warn Duration</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_duration'] . '</label>
                     <select name="warnlength" class="form-select">' . weeks() . '</select>
                 </div>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Warning Reason</label>
-                    <input type="text" class="form-control" name="warnpm" placeholder="Enter reason for warning...">
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_reason'] . '</label>
+                    <input type="text" class="form-control" name="warnpm" placeholder="' . $lang->edituser['ph_warn_reason'] . '">
                 </div>' : '') . '
             </div>
         </div>
         
         <div class="col-md-6">
             <div class="warning-stats">
-                <h5 class="mb-4"><i class="fas fa-chart-bar me-2 text-info"></i>Warning Statistics</h5>
+                <h5 class="mb-4"><i class="fas fa-chart-bar me-2 text-info"></i>' . $lang->edituser['sec_warn_stats'] . '</h5>
                 
                 <div class="stat-card mb-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <span>Times Warned:</span>
+                        <span>' . $lang->edituser['lbl_times_warned'] . '</span>
                         <span class="badge bg-' . ($userdata['timeswarned'] >= $ban_user_limit ? 'danger' : 'warning') . ' fs-6">
                             ' . $userdata['timeswarned'] . '
                         </span>
                     </div>
-                    <small class="text-muted">Max: ' . $ban_user_limit . ' before automatic ban</small>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_warn_max'], (string)($ban_user_limit ?? '')) . '</small>
                 </div>
                 
                 ' . ($userdata['timeswarned'] > 1 ? '
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" name="reset_timeswarned" value="yes" id="resetWarned">
-                    <label class="form-check-label" for="resetWarned">Reset warning counter</label>
+                    <label class="form-check-label" for="resetWarned">' . $lang->edituser['lbl_reset_warn_counter'] . '</label>
                 </div>' : '') . '
                 
                 ' . get_last_warning_info() . '
@@ -1399,13 +1441,13 @@ function renderWarningsTab(): string
  */
 function get_last_warning_info(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat;
+    global $userdata, $db, $BASEURL, $dateformat, $lang;
     
     if ($userdata['timeswarned'] == 0 || empty($userdata['warnedby'])) {
         return '
         <div class="alert alert-info">
             <i class="fas fa-info-circle me-2"></i>
-            This user hasn\'t been warned yet.
+            ' . $lang->edituser['warn_never'] . '
         </div>';
     }
     
@@ -1414,16 +1456,16 @@ function get_last_warning_info(): string
     if ($userdata['warnedby'] !== 'System' && !empty($userdata['warnedby'])) {
         $res = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ?', [(int)$userdata['warnedby']]);
         $arr = $res ? $db->fetch_array($res) : null;
-        $warnedby = ' by <a href="' . $BASEURL . '/userdetails.php?id=' . $arr['id'] . '" class="text-decoration-none">' . htmlspecialchars_uni($arr['username']) . '</a>';
+        $warnedby = ags_fmt($lang->edituser['last_warn_by_user'], $elapsedlw, '<a href="' . $BASEURL . '/userdetails.php?id=' . $arr['id'] . '" class="text-decoration-none">' . htmlspecialchars_uni($arr['username']) . '</a>');
     } else {
-        $warnedby = ' automatically by System';
+        $warnedby = ags_fmt($lang->edituser['last_warn_by_system'], $elapsedlw);
     }
     
     return '
     <div class="alert alert-secondary">
-        <h6><i class="fas fa-history me-2"></i>Last Warning</h6>
-        <p class="mb-1">' . $elapsedlw . ' ago' . $warnedby . '</p>
-        <small class="text-muted">Last warned: ' . my_datee($dateformat, $userdata['lastwarned']) . '</small>
+        <h6><i class="fas fa-history me-2"></i>' . $lang->edituser['sec_last_warning'] . '</h6>
+        <p class="mb-1">' . $warnedby . '</p>
+        <small class="text-muted">' . ags_fmt($lang->edituser['last_warn_date'], my_datee($dateformat, $userdata['lastwarned'])) . '</small>
     </div>';
 }
 
@@ -1432,7 +1474,7 @@ function get_last_warning_info(): string
  */
 function renderStatisticsTab(): string
 {
-    global $userdata, $usergroups;
+    global $userdata, $usergroups, $lang;
     
     $othervalue = ($usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1') ? '' : 'disabled';
     $disabledAttr = $othervalue ? 'disabled' : '';
@@ -1442,36 +1484,36 @@ function renderStatisticsTab(): string
     <div class="row">
         <div class="col-md-6">
             <div class="statistics-section">
-                <h5 class="mb-4"><i class="fas fa-chart-line me-2 text-success"></i>Traffic Statistics</h5>
+                <h5 class="mb-4"><i class="fas fa-chart-line me-2 text-success"></i>' . $lang->edituser['sec_traffic'] . '</h5>
                 
                 <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">Uploaded Amount</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_uploaded_amount'] . '</label>
                     <input type="text" class="form-control" name="uploaded" value="' . htmlspecialchars_uni((string)$userdata['uploaded']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">Current: ' . mksize($userdata['uploaded']) . '</small>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current'], mksize($userdata['uploaded'])) . '</small>
                 </div>
                 
                 <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">Downloaded Amount</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_downloaded_amount'] . '</label>
                     <input type="text" class="form-control" name="downloaded" value="' . htmlspecialchars_uni((string)$userdata['downloaded']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">Current: ' . mksize($userdata['downloaded']) . '</small>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current'], mksize($userdata['downloaded'])) . '</small>
                 </div>
             </div>
         </div>
         
         <div class="col-md-6">
             <div class="bonus-section">
-                <h5 class="mb-4"><i class="fas fa-gift me-2 text-warning"></i>Bonus & Invites</h5>
+                <h5 class="mb-4"><i class="fas fa-gift me-2 text-warning"></i>' . $lang->edituser['sec_bonus_invites'] . '</h5>
                 
                 <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">Bonus Points</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['stat_bonus'] . '</label>
                     <input type="text" class="form-control" name="seedbonus" value="' . htmlspecialchars_uni($userdata['seedbonus']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">Current: ' . ts_nf($userdata['seedbonus']) . ' points</small>
+                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current_points'], ts_nf($userdata['seedbonus'])) . '</small>
                 </div>
                 
                 <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">Invite Count</label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_invite_count'] . '</label>
                     <input type="text" class="form-control" name="invites" value="' . (int)$userdata['invites'] . '" ' . $disabledAttr . '>
-                    <small class="text-muted">Available invitations</small>
+                    <small class="text-muted">' . $lang->edituser['hint_invites_available'] . '</small>
                 </div>
             </div>
         </div>
@@ -1480,17 +1522,17 @@ function renderStatisticsTab(): string
     ' . ($othervalue ? '
     <div class="alert alert-info mt-4">
         <i class="fas fa-info-circle me-2"></i>
-        <strong>Permission Notice:</strong> You need higher privileges to modify statistics and bonus points.
+        <strong>' . $lang->edituser['perm_notice_title'] . '</strong> ' . $lang->edituser['perm_notice_text'] . '
     </div>' : '') . '
 
     <!-- Charts -->
     <div class="row mt-5">
         <div class="col-12 mb-3">
-            <h5 class="fw-bold"><i class="fas fa-chart-area me-2 text-primary"></i>Upload / Download by Month <small class="text-muted fs-6">(last 12 months, GB)</small></h5>
+            <h5 class="fw-bold"><i class="fas fa-chart-area me-2 text-primary"></i>' . $lang->edituser['chart_traffic'] . ' <small class="text-muted fs-6">' . $lang->edituser['chart_traffic_note'] . '</small></h5>
             <canvas id="trafficChart" height="80"></canvas>
         </div>
         <div class="col-12 mt-4">
-            <h5 class="fw-bold"><i class="fas fa-chart-bar me-2 text-success"></i>Site Activity <small class="text-muted fs-6">(last 30 days)</small></h5>
+            <h5 class="fw-bold"><i class="fas fa-chart-bar me-2 text-success"></i>' . $lang->edituser['chart_activity'] . ' <small class="text-muted fs-6">' . $lang->edituser['chart_activity_note'] . '</small></h5>
             <canvas id="activityChart" height="60"></canvas>
         </div>
     </div>';
@@ -1501,7 +1543,7 @@ function renderStatisticsTab(): string
  */
 function renderAdvancedTab(): string
 {
-    global $userdata, $usergroups;
+    global $userdata, $usergroups, $lang;
     
     $modcomment = htmlspecialchars_uni($userdata['modcomment']);
     $bonuscomment = htmlspecialchars_uni($userdata['bonuscomment']);
@@ -1512,35 +1554,35 @@ function renderAdvancedTab(): string
     <div class="row">
         <div class="col-12">
             <div class="advanced-section">
-                <h5 class="mb-4"><i class="fas fa-cogs me-2 text-primary"></i>Moderator Comments</h5>
+                <h5 class="mb-4"><i class="fas fa-cogs me-2 text-primary"></i>' . $lang->edituser['sec_mod_comments'] . '</h5>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Current Moderation Comments</label>
-                    <textarea name="modcomment" class="form-control" rows="20" ' . $readonlyAttr . ' placeholder="Moderator comments and notes...">' . $modcomment . '</textarea>
-                    ' . ($readonly ? '<small class="text-muted">Read-only - Higher privileges required to edit</small>' : '') . '
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_modcomment'] . '</label>
+                    <textarea name="modcomment" class="form-control" rows="20" ' . $readonlyAttr . ' placeholder="' . $lang->edituser['ph_modcomment'] . '">' . $modcomment . '</textarea>
+                    ' . ($readonly ? '<small class="text-muted">' . $lang->edituser['hint_readonly'] . '</small>' : '') . '
                 </div>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Add New Comment</label>
-                    <textarea name="addcomment" class="form-control" rows="3" placeholder="Add new moderator comment..."></textarea>
-                    <small class="text-muted">This will be prepended to existing comments</small>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_addcomment'] . '</label>
+                    <textarea name="addcomment" class="form-control" rows="3" placeholder="' . $lang->edituser['ph_addcomment'] . '"></textarea>
+                    <small class="text-muted">' . $lang->edituser['hint_addcomment'] . '</small>
                 </div>
             </div>
             
             <div class="system-section mt-5">
-                <h5 class="mb-4"><i class="fas fa-database me-2 text-secondary"></i>System Information</h5>
+                <h5 class="mb-4"><i class="fas fa-database me-2 text-secondary"></i>' . $lang->edituser['sec_system'] . '</h5>
                 
                 <div class="mb-4">
                     <a class="btn btn-outline-primary btn-sm" href="index.php?act=bonuspoints&amp;action=log&amp;user=%23' . (int)$userdata['id'] . '&amp;period=all">
-                        <i class="fas fa-clock-rotate-left me-1"></i>Bonus history
+                        <i class="fas fa-clock-rotate-left me-1"></i>' . $lang->edituser['btn_bonus_history'] . '
                     </a>
-                    <small class="text-muted ms-2">Every change of this user\'s bonus points (Bonus Log)</small>
+                    <small class="text-muted ms-2">' . $lang->edituser['hint_bonus_history'] . '</small>
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Seeding Karma Log <small class="text-muted fw-normal">(old text log)</small></label>
+                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_karma_log'] . ' <small class="text-muted fw-normal">' . $lang->edituser['lbl_karma_log_note'] . '</small></label>
                     <textarea class="form-control" rows="4" readonly>' . $bonuscomment . '</textarea>
-                    <small class="text-muted">System-generated karma log - read only</small>
+                    <small class="text-muted">' . $lang->edituser['hint_karma_log'] . '</small>
                 </div>
                 
                 <div class="system-info">
@@ -1550,7 +1592,7 @@ function renderAdvancedTab(): string
                             <div class="info-icon">
                                 <i class="fas fa-calendar-alt fa-2x text-primary"></i>
                             </div>
-                            <div class="info-label">Registered</div>
+                            <div class="info-label">' . $lang->edituser['info_registered'] . '</div>
                             <div class="info-value">' . my_datee('relative', $userdata['added']) . '</div>
                             <small class="text-muted">' . my_datee('d M Y', $userdata['added']) . '</small>
                         </div>
@@ -1559,27 +1601,27 @@ function renderAdvancedTab(): string
                             <div class="info-icon">
                                 <i class="fas fa-clock fa-2x text-info"></i>
                             </div>
-                            <div class="info-label">Last Active</div>
+                            <div class="info-label">' . $lang->edituser['info_last_active'] . '</div>
                             <div class="info-value">' . my_datee('relative', $userdata['lastactive']) . '</div>
-                            <small class="text-muted">' . ($userdata['lastactive'] ? my_datee('d M Y H:i', $userdata['lastactive']) : 'Never') . '</small>
+                            <small class="text-muted">' . ($userdata['lastactive'] ? my_datee('d M Y H:i', $userdata['lastactive']) : $lang->edituser['never']) . '</small>
                         </div>
                         
                         <div class="info-card">
                             <div class="info-icon">
                                 <i class="fas fa-history fa-2x text-warning"></i>
                             </div>
-                            <div class="info-label">Last Visit</div>
+                            <div class="info-label">' . $lang->edituser['info_last_visit'] . '</div>
                             <div class="info-value">' . my_datee('relative', $userdata['lastvisit']) . '</div>
-                            <small class="text-muted">' . ($userdata['lastvisit'] ? my_datee('d M Y H:i', $userdata['lastvisit']) : 'Never') . '</small>
+                            <small class="text-muted">' . ($userdata['lastvisit'] ? my_datee('d M Y H:i', $userdata['lastvisit']) : $lang->edituser['never']) . '</small>
                         </div>
                         
                         <div class="info-card">
                             <div class="info-icon">
                                 <i class="fas fa-comments fa-2x text-success"></i>
                             </div>
-                            <div class="info-label">Forum Posts</div>
+                            <div class="info-label">' . $lang->edituser['info_forum_posts'] . '</div>
                             <div class="info-value">' . ts_nf($userdata['post_count'] ?? 0) . '</div>
-                            <small class="text-muted">total messages</small>
+                            <small class="text-muted">' . $lang->edituser['info_total_messages'] . '</small>
                         </div>
                     </div>		
 					
@@ -1599,7 +1641,7 @@ function renderAdvancedTab(): string
 
 function renderAccountSettingsTab(): string
 {
-    global $userdata;
+    global $userdata, $lang;
     
     return '
     <div class="row">
@@ -1607,43 +1649,43 @@ function renderAccountSettingsTab(): string
             
 			
 			
-			<h5 class="mb-4"><i class="fas fa-user-shield me-2 text-success"></i>Login, Cookies & Privacy</h5>
+			<h5 class="mb-4"><i class="fas fa-user-shield me-2 text-success"></i>' . $lang->edituser['sec_login_privacy'] . '</h5>
             
-            ' . yesno('Hide from the Who\'s Online list', 'invisible', $userdata['invisible'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_invisible'], 'invisible', $userdata['invisible'] ? '1' : '0') . '
 			
 			
 			
 			
 			
-			<h5 class="mb-4"><i class="fas fa-envelope me-2 text-primary"></i>Email & Privacy Settings</h5>
+			<h5 class="mb-4"><i class="fas fa-envelope me-2 text-primary"></i>' . $lang->edituser['sec_email_privacy'] . '</h5>
             
-            ' . yesno('Receive emails from administrators', 'allownotices', $userdata['allownotices'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_allownotices'], 'allownotices', $userdata['allownotices'] ? '1' : '0') . '
             
-            ' . yesno('Hide email address from other members', 'hideemail', $userdata['hideemail'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_hideemail'], 'hideemail', $userdata['hideemail'] ? '1' : '0') . '
             
-            ' . yesno('Receive private messages from other users', 'receivepms', $userdata['receivepms'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_receivepms'], 'receivepms', $userdata['receivepms'] ? '1' : '0') . '
             
-            ' . yesno('Only receive private messages from buddy list (this setting has no effect unless there is at least one buddy on the list)', 'receivefrombuddy', $userdata['receivefrombuddy'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_receivefrombuddy'], 'receivefrombuddy', $userdata['receivefrombuddy'] ? '1' : '0') . '
         </div>
         
         <div class="col-md-6">
-            <h5 class="mb-4"><i class="fas fa-bell me-2 text-warning"></i>Notification Settings</h5>
+            <h5 class="mb-4"><i class="fas fa-bell me-2 text-warning"></i>' . $lang->edituser['sec_notifications'] . '</h5>
             
-            ' . yesno('Alert with notice when new private message is received', 'pmnotice', $userdata['pmnotice'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_pmnotice'], 'pmnotice', $userdata['pmnotice'] ? '1' : '0') . '
             
-            ' . yesno('Notify by email when new private message is received', 'pmnotify', $userdata['pmnotify'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_pmnotify'], 'pmnotify', $userdata['pmnotify'] ? '1' : '0') . '
             
-            ' . yesno('Receive PM notifications for new buddy requests', 'buddyrequestspm', $userdata['buddyrequestspm'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_buddyrequestspm'], 'buddyrequestspm', $userdata['buddyrequestspm'] ? '1' : '0') . '
             
-            ' . yesno('Automatically accept buddy requests (if the above checkbox is ticked, a PM is sent informing of the new buddy connection)', 'buddyrequestsauto', $userdata['buddyrequestsauto'] ? '1' : '0') . '
+            ' . yesno($lang->edituser['lbl_buddyrequestsauto'], 'buddyrequestsauto', $userdata['buddyrequestsauto'] ? '1' : '0') . '
             
             <div class="mb-4">
-                <label class="form-label fw-semibold">Default thread subscription mode</label>
+                <label class="form-label fw-semibold">' . $lang->edituser['lbl_subscription'] . '</label>
                 <select name="subscriptionmethod" class="form-select">
-                    <option value="0" ' . ($userdata['subscriptionmethod'] == 0 ? 'selected' : '') . '>Do not subscribe</option>
-                    <option value="1" ' . ($userdata['subscriptionmethod'] == 1 ? 'selected' : '') . '>No notification</option>
-                    <option value="2" ' . ($userdata['subscriptionmethod'] == 2 ? 'selected' : '') . '>Instant email notification</option>
-					<option value="3" ' . ($userdata['subscriptionmethod'] == 3 ? 'selected' : '') . '>Instant PM notification</option>
+                    <option value="0" ' . ($userdata['subscriptionmethod'] == 0 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_none'] . '</option>
+                    <option value="1" ' . ($userdata['subscriptionmethod'] == 1 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_nonotify'] . '</option>
+                    <option value="2" ' . ($userdata['subscriptionmethod'] == 2 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_email'] . '</option>
+					<option value="3" ' . ($userdata['subscriptionmethod'] == 3 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_pm'] . '</option>
                 </select>
             </div>
         </div>
@@ -1653,7 +1695,7 @@ function renderAccountSettingsTab(): string
         <div class="col-12">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                <strong>Note:</strong> "Only receive private messages from buddy list" setting will only work if the user has at least one buddy in their buddy list.
+                <strong>' . $lang->edituser['note_title'] . '</strong> ' . $lang->edituser['note_buddy_text'] . '
             </div>
         </div>
     </div>';
@@ -1674,7 +1716,7 @@ function renderAccountSettingsTab(): string
  */
 function renderActivityTab(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat;
+    global $userdata, $db, $BASEURL, $dateformat, $lang;
 
     $uid = (int)$userdata['id'];
 
@@ -1683,8 +1725,8 @@ function renderActivityTab(): string
     $uploads_html = '';
     while ($q && ($row = $db->fetch_array($q))) {
         $badge = $row['seeders'] > 0
-            ? '<span class="badge bg-success">' . (int)$row['seeders'] . 'S</span>'
-            : '<span class="badge bg-danger">Dead</span>';
+            ? '<span class="badge bg-success">' . ags_fmt($lang->edituser['badge_seeders'], (int)$row['seeders']) . '</span>'
+            : '<span class="badge bg-danger">' . $lang->edituser['act_dead'] . '</span>';
         $uploads_html .= '<li class="list-group-item d-flex justify-content-between align-items-center py-2">
             <div>
                 <a href="' . $BASEURL . '/details.php?id=' . (int)$row['id'] . '" class="text-decoration-none small fw-semibold">' . htmlspecialchars_uni($row['name']) . '</a>
@@ -1693,16 +1735,16 @@ function renderActivityTab(): string
             ' . $badge . '
         </li>';
     }
-    if (!$uploads_html) $uploads_html = '<li class="list-group-item text-muted text-center py-3">No uploads</li>';
+    if (!$uploads_html) $uploads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_uploads'] . '</li>';
 
     // Последние скачивания
     $q = $db->sql_query_prepared("SELECT s.torrentid, t.name, s.completedat, s.finished FROM snatched s LEFT JOIN torrents t ON (s.torrentid = t.id) WHERE s.userid = ? ORDER BY s.completedat DESC LIMIT 10", [$uid]);
     $downloads_html = '';
     while ($q && ($row = $db->fetch_array($q))) {
         $fin  = $row['finished'] === 'yes'
-            ? '<span class="badge bg-success">Finished</span>'
-            : '<span class="badge bg-warning text-dark">Incomplete</span>';
-        $name = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">Deleted torrent</em>';
+            ? '<span class="badge bg-success">' . $lang->edituser['act_finished'] . '</span>'
+            : '<span class="badge bg-warning text-dark">' . $lang->edituser['act_incomplete'] . '</span>';
+        $name = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">' . $lang->edituser['deleted_torrent'] . '</em>';
         $downloads_html .= '<li class="list-group-item d-flex justify-content-between align-items-center py-2">
             <div>
                 <span class="small fw-semibold">' . $name . '</span>
@@ -1711,7 +1753,7 @@ function renderActivityTab(): string
             ' . $fin . '
         </li>';
     }
-    if (!$downloads_html) $downloads_html = '<li class="list-group-item text-muted text-center py-3">No downloads</li>';
+    if (!$downloads_html) $downloads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_downloads'] . '</li>';
 
     // Последние комментарии
     $q = $db->sql_query_prepared("SELECT c.id, c.torrent, c.dateline, c.text, t.name FROM comments c LEFT JOIN torrents t ON (c.torrent = t.id) WHERE c.user = ? ORDER BY c.dateline DESC LIMIT 5", [$uid]);
@@ -1727,7 +1769,7 @@ function renderActivityTab(): string
             <div class="small text-muted mt-1">' . htmlspecialchars($txt, ENT_QUOTES, 'UTF-8') . (mb_strlen($row['text'] ?? '') > 80 ? '…' : '') . '</div>
         </li>';
     }
-    if (!$comments_html) $comments_html = '<li class="list-group-item text-muted text-center py-3">No comments</li>';
+    if (!$comments_html) $comments_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_comments'] . '</li>';
 
     // ► Статистика из $userdata — запросов нет
     $seedtime_fmt  = $userdata['snatch_seedtime']  ? mkprettytime((int)$userdata['snatch_seedtime'])  : '—';
@@ -1739,40 +1781,40 @@ function renderActivityTab(): string
             <div class="d-flex flex-wrap gap-3">
                 <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
                     <div class="fw-bold fs-5 text-primary">' . (int)($userdata['snatch_total'] ?? 0) . '</div>
-                    <small class="text-muted">Snatches</small>
+                    <small class="text-muted">' . $lang->edituser['act_snatches'] . '</small>
                 </div>
                 <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
                     <div class="fw-bold fs-5 text-success">' . (int)($userdata['snatch_done'] ?? 0) . '</div>
-                    <small class="text-muted">Completed</small>
+                    <small class="text-muted">' . $lang->edituser['act_completed'] . '</small>
                 </div>
                 <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
                     <div class="fw-bold fs-5 text-info">' . $seedtime_fmt . '</div>
-                    <small class="text-muted">Seed Time</small>
+                    <small class="text-muted">' . $lang->edituser['act_seed_time'] . '</small>
                 </div>
                 <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
                     <div class="fw-bold fs-5 text-warning">' . $leechtime_fmt . '</div>
-                    <small class="text-muted">Leech Time</small>
+                    <small class="text-muted">' . $lang->edituser['act_leech_time'] . '</small>
                 </div>
                 <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
                     <div class="fw-bold fs-5 text-success">' . (int)($userdata['peers_seeding'] ?? 0) . ' / ' . (int)($userdata['peers_total'] ?? 0) . '</div>
-                    <small class="text-muted">Active Peers</small>
+                    <small class="text-muted">' . $lang->edituser['act_active_peers'] . '</small>
                 </div>
             </div>
         </div>
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-upload me-2 text-primary"></i>Last Uploads</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-upload me-2 text-primary"></i>' . $lang->edituser['act_last_uploads'] . '</h6>
             <ul class="list-group list-group-flush border rounded-3" style="max-height:280px;overflow-y:auto">
                 ' . $uploads_html . '
             </ul>
         </div>
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-download me-2 text-success"></i>Last Downloads</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-download me-2 text-success"></i>' . $lang->edituser['act_last_downloads'] . '</h6>
             <ul class="list-group list-group-flush border rounded-3" style="max-height:280px;overflow-y:auto">
                 ' . $downloads_html . '
             </ul>
         </div>
         <div class="col-12">
-            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-warning"></i>Last Comments</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-warning"></i>' . $lang->edituser['act_last_comments'] . '</h6>
             <ul class="list-group list-group-flush border rounded-3">
                 ' . $comments_html . '
             </ul>
@@ -1793,7 +1835,7 @@ function renderActivityTab(): string
  */
 function renderSecurityTab(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat, $timeformat, $mybb;
+    global $userdata, $db, $BASEURL, $dateformat, $timeformat, $mybb, $lang;
 
     $uid      = (int)$userdata['id'];
     $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
@@ -1816,21 +1858,21 @@ function renderSecurityTab(): string
             </div>
         </li>';
     }
-    if (!$sessions_html) $sessions_html = '<li class="list-group-item text-muted text-center py-3">No active sessions</li>';
+    if (!$sessions_html) $sessions_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['sec_no_sessions'] . '</li>';
 
     // IP история
     $regip  = $userdata['regip']  ? htmlspecialchars(my_inet_ntop($db->unescape_binary($userdata['regip'])),  ENT_QUOTES, 'UTF-8') : '—';
     $lastip = $userdata['lastip'] ? htmlspecialchars(my_inet_ntop($db->unescape_binary($userdata['lastip'])), ENT_QUOTES, 'UTF-8') : '—';
     $ip_warn = ($regip !== $lastip && $regip !== '—' && $lastip !== '—')
-        ? '<div class="alert alert-warning py-2 mt-2 small"><i class="fas fa-exclamation-triangle me-1"></i>Registration IP differs from last IP — possible account sharing.</div>'
+        ? '<div class="alert alert-warning py-2 mt-2 small"><i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['sec_ip_differs'] . '</div>'
         : '';
 
     // Login attempts
     $attempts = (int)$userdata['loginattempts'];
     $lockout  = (int)$userdata['loginlockoutexpiry'];
     $lockout_html = ($lockout > time())
-        ? '<span class="badge bg-danger">Locked until ' . my_datee($dateformat, $lockout) . '</span>'
-        : ($attempts > 0 ? '<span class="badge bg-warning text-dark">' . $attempts . ' failed attempt(s)</span>' : '<span class="badge bg-success">OK</span>');
+        ? '<span class="badge bg-danger">' . ags_fmt($lang->edituser['sec_locked_until'], my_datee($dateformat, $lockout)) . '</span>'
+        : ($attempts > 0 ? '<span class="badge bg-warning text-dark">' . ags_fmt($lang->edituser['sec_failed_attempts'], $attempts) . '</span>' : '<span class="badge bg-success">' . $lang->edituser['sec_ok'] . '</span>');
 
     // Passkey
     $passkey = htmlspecialchars($userdata['passkey'], ENT_QUOTES, 'UTF-8');
@@ -1840,32 +1882,32 @@ function renderSecurityTab(): string
 
         <!-- IP Info -->
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-network-wired me-2 text-primary"></i>IP Information</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-network-wired me-2 text-primary"></i>' . $lang->edituser['sec_ip_info'] . '</h6>
             <table class="table table-sm table-bordered">
-                <tr><th class="text-muted" style="width:40%">Registration IP</th><td><code>' . $regip . '</code></td></tr>
-                <tr><th class="text-muted">Last IP</th><td><code>' . $lastip . '</code></td></tr>
+                <tr><th class="text-muted" style="width:40%">' . $lang->edituser['sec_reg_ip'] . '</th><td><code>' . $regip . '</code></td></tr>
+                <tr><th class="text-muted">' . $lang->edituser['sec_last_ip'] . '</th><td><code>' . $lastip . '</code></td></tr>
             </table>
             ' . $ip_warn . '
         </div>
 
         <!-- Login Security -->
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-lock me-2 text-warning"></i>Login Security</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-lock me-2 text-warning"></i>' . $lang->edituser['sec_login_security'] . '</h6>
             <table class="table table-sm table-bordered">
-                <tr><th class="text-muted" style="width:40%">Login Status</th><td>' . $lockout_html . '</td></tr>
-                <tr><th class="text-muted">Last Login</th><td>' . ($userdata['last_login'] ? my_datee($dateformat, (int)$userdata['last_login']) : '—') . '</td></tr>
-                <tr><th class="text-muted">Registered</th><td>' . my_datee($dateformat, (int)$userdata['added']) . '</td></tr>
+                <tr><th class="text-muted" style="width:40%">' . $lang->edituser['sec_login_status'] . '</th><td>' . $lockout_html . '</td></tr>
+                <tr><th class="text-muted">' . $lang->edituser['sec_last_login'] . '</th><td>' . ($userdata['last_login'] ? my_datee($dateformat, (int)$userdata['last_login']) : '—') . '</td></tr>
+                <tr><th class="text-muted">' . $lang->edituser['info_registered'] . '</th><td>' . my_datee($dateformat, (int)$userdata['added']) . '</td></tr>
             </table>
             <!-- Reset lockout -->
             <button type="button" class="btn btn-sm btn-outline-warning mt-2"
         onclick="securityAction(\'reset_lockout\', ' . $uid . ', \'' . $postCode . '\', \'' . $h_script . '\')">
-    <i class="fas fa-unlock me-1"></i>Reset Login Lockout
+    <i class="fas fa-unlock me-1"></i>' . $lang->edituser['btn_reset_lockout'] . '
 </button>
         </div>
 
         <!-- Passkey -->
         <div class="col-12">
-            <h6 class="fw-bold mb-3"><i class="fas fa-key me-2 text-success"></i>Passkey</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-key me-2 text-success"></i>' . $lang->edituser['sec_passkey'] . '</h6>
             <div class="d-flex align-items-center gap-2">
                 <code class="passkey-text border rounded px-3 py-2 bg-body-secondary"
                       id="passkeyText" style="filter:blur(4px);user-select:none;letter-spacing:.1em">
@@ -1883,11 +1925,11 @@ function renderSecurityTab(): string
         <!-- Active Sessions -->
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0"><i class="fas fa-desktop me-2 text-info"></i>Active Sessions</h6>
+                <h6 class="fw-bold mb-0"><i class="fas fa-desktop me-2 text-info"></i>' . $lang->edituser['sec_active_sessions'] . '</h6>
                 
 				<button type="button" class="btn btn-sm btn-outline-danger"
         onclick="securityAction(\'kill_sessions\', ' . $uid . ', \'' . $postCode . '\', \'' . $h_script . '\')">
-    <i class="fas fa-sign-out-alt me-1"></i>Kill All Sessions
+    <i class="fas fa-sign-out-alt me-1"></i>' . $lang->edituser['btn_kill_sessions'] . '
 </button>
 				
             </div>
@@ -1926,7 +1968,11 @@ function renderSecurityTab(): string
         var sendPm   = document.getElementById("banSendPM").checked ? "1" : "";
         var btn      = document.getElementById("quickBanSubmit");
         btn.disabled = true;
-        btn.innerHTML = "<i class=\"fas fa-spinner fa-spin me-1\"></i>Banning…";
+        btn.textContent = "";
+        var spin = document.createElement("i");
+        spin.className = "fas fa-spinner fa-spin me-1";
+        btn.appendChild(spin);
+        btn.appendChild(document.createTextNode(t("ban_banning", "Banning…")));
 
         var data = new FormData();
         data.append("action",       "updateuser");
@@ -1942,8 +1988,12 @@ function renderSecurityTab(): string
             .then(function() { location.reload(); })
             .catch(function(e) {
                 btn.disabled = false;
-                btn.innerHTML = "<i class=\"fas fa-ban me-2\"></i>Ban User";
-                alert("Error: " + e);
+                btn.textContent = "";
+                var ico = document.createElement("i");
+                ico.className = "fas fa-ban me-2";
+                btn.appendChild(ico);
+                btn.appendChild(document.createTextNode(t("ban_user", "Ban User")));
+                alert(t("error", "Error: {1}", e));
             });
     }
 	
@@ -1958,7 +2008,7 @@ function renderSecurityTab(): string
  */
 function renderSendPMModal(): string
 {
-    global $userdata, $mybb, $BASEURL;
+    global $userdata, $mybb, $BASEURL, $lang;
     $uid      = (int)$userdata['id'];
     $username = htmlspecialchars_uni($userdata['username']);
     $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
@@ -1970,7 +2020,7 @@ function renderSendPMModal(): string
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">Send PM to ' . $username . '</h5>
+        <h5 class="modal-title">' . ags_fmt($lang->edituser['pm_title'], $username) . '</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
 	  <form method="post" action="' . $h_script . '">
@@ -1980,36 +2030,36 @@ function renderSendPMModal(): string
         <input type="hidden" name="send_pm"     value="1">
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label fw-semibold">Subject</label>
-            <input type="text" name="pm_subject" class="form-control" required placeholder="PM subject…">
+            <label class="form-label fw-semibold">' . $lang->edituser['pm_subject'] . '</label>
+            <input type="text" name="pm_subject" class="form-control" required placeholder="' . $lang->edituser['ph_pm_subject'] . '">
           </div>
           <div class="mb-2">
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[b]\',\'[/b]\')"><b>B</b></button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[i]\',\'[/i]\')"><i>I</i></button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[u]\',\'[/u]\')"><u>U</u></button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[s]\',\'[/s]\')"><s>S</s></button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[left]\',\'[/left]\')">Left</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[center]\',\'[/center]\')">Center</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[right]\',\'[/right]\')">Right</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[color=red]\',\'[/color]\')">Red</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[size=18]\',\'[/size]\')">Size</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[left]\',\'[/left]\')">' . $lang->edituser['bb_left'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[center]\',\'[/center]\')">' . $lang->edituser['bb_center'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[right]\',\'[/right]\')">' . $lang->edituser['bb_right'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[color=red]\',\'[/color]\')">' . $lang->edituser['bb_red'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[size=18]\',\'[/size]\')">' . $lang->edituser['bb_size'] . '</button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[url]\',\'[/url]\')">URL</button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[img]\',\'[/img]\')">IMG</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[video]\',\'[/video]\')">Video</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[video]\',\'[/video]\')">' . $lang->edituser['bb_video'] . '</button>
             <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[youtube]\',\'[/youtube]\')">YouTube</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[quote]\',\'[/quote]\')">Quote</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[code]\',\'[/code]\')">Code</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list]\n[*]\',\'\n[/list]\')">List</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list=1]\n[*]\',\'\n[/list]\')">#List</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[quote]\',\'[/quote]\')">' . $lang->edituser['bb_quote'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[code]\',\'[/code]\')">' . $lang->edituser['bb_code'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list]\n[*]\',\'\n[/list]\')">' . $lang->edituser['bb_list'] . '</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list=1]\n[*]\',\'\n[/list]\')">' . $lang->edituser['bb_olist'] . '</button>
           </div>
-          <textarea name="pm_message" class="form-control mb-3" rows="6" required placeholder="Your message…"></textarea>
-          <h6>Live Preview</h6>
+          <textarea name="pm_message" class="form-control mb-3" rows="6" required placeholder="' . $lang->edituser['ph_pm_message'] . '"></textarea>
+          <h6>' . $lang->edituser['pm_preview'] . '</h6>
           <div data-bb-preview class="border p-2 bg-light rounded" style="min-height:100px;"></div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">' . $lang->edituser['cancel'] . '</button>
           <button type="submit" class="btn btn-primary">
-            <i class="fas fa-paper-plane me-1"></i>Send PM
+            <i class="fas fa-paper-plane me-1"></i>' . $lang->edituser['btn_send_pm'] . '
           </button>
         </div>
       </form>
@@ -2026,7 +2076,7 @@ function renderSendPMModal(): string
  */
 function renderHitRunTab(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat;
+    global $userdata, $db, $BASEURL, $dateformat, $lang;
 
     $uid       = (int)$userdata['id'];
     $min_hours = 24; // H&R если сидировал меньше N часов после завершения
@@ -2040,7 +2090,7 @@ function renderHitRunTab(): string
     
     $hnr_ratio = $finished > 0 ? round($hnr / $finished * 100, 1) : 0;
     $hnr_color = $hnr_ratio < 10 ? 'success' : ($hnr_ratio < 30 ? 'warning' : 'danger');
-    $hnr_status = $hnr_ratio < 10 ? 'Good' : ($hnr_ratio < 30 ? 'Warning' : 'Critical');
+    $hnr_status = $hnr_ratio < 10 ? $lang->edituser['hnr_good'] : ($hnr_ratio < 30 ? $lang->edituser['hnr_warning'] : $lang->edituser['hnr_critical']);
 
     // Список H&R торрентов
     $q = $db->sql_query_prepared("
@@ -2057,12 +2107,12 @@ function renderHitRunTab(): string
 
     $rows = '';
     while ($q && ($row = $db->fetch_array($q))) {
-        $name     = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">Deleted torrent</em>';
+        $name     = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">' . $lang->edituser['deleted_torrent'] . '</em>';
         $seed_hours = $row['seedtime'] ? round($row['seedtime'] / 3600, 1) : 0;
         $required_hours = $min_hours;
         $missing_hours = round($required_hours - $seed_hours, 1);
         
-        $seedh = $seed_hours . 'h';
+        $seedh = ags_fmt($lang->edituser['unit_hours'], $seed_hours);
         $dl    = mksize((int)$row['downloaded']);
         $date  = $row['completedat'] ? my_datee($dateformat, (int)$row['completedat']) : '—';
         
@@ -2080,7 +2130,7 @@ function renderHitRunTab(): string
                         ' . $name . '
                     </a>
                     <div class="text-muted small mt-1">
-                        <i class="fas fa-clock me-1"></i>Missing: ' . $missing_hours . 'h
+                        <i class="fas fa-clock me-1"></i>' . ags_fmt($lang->edituser['hnr_missing'], ags_fmt($lang->edituser['unit_hours'], $missing_hours)) . '
                     </div>
                 </div>
             </td>
@@ -2092,7 +2142,7 @@ function renderHitRunTab(): string
                              role="progressbar"></div>
                     </div>
                     <div>
-                        <span class="badge bg-' . $badge_color . '">' . $seedh . ' / ' . $required_hours . 'h</span>
+                        <span class="badge bg-' . $badge_color . '">' . $seedh . ' / ' . ags_fmt($lang->edituser['unit_hours'], $required_hours) . '</span>
                     </div>
                 </div>
             </td>
@@ -2112,7 +2162,7 @@ function renderHitRunTab(): string
     if (!$rows) {
         $rows = '<tr><td colspan="4" class="text-center py-5">
             <i class="fas fa-check-circle fa-3x text-success mb-3 d-block"></i>
-            <p class="text-muted mb-0">No Hit & Runs found! Great seeding habits! 🎉</p>
+            <p class="text-muted mb-0">' . $lang->edituser['hnr_none'] . '</p>
         </td></tr>';
     }
 
@@ -2170,7 +2220,7 @@ function renderHitRunTab(): string
                         <i class="fas fa-chart-line fa-2x text-primary"></i>
                     </div>
                     <div class="fw-bold fs-2 text-primary">' . number_format($total) . '</div>
-                    <small class="text-muted">Total Snatches</small>
+                    <small class="text-muted">' . $lang->edituser['hnr_total'] . '</small>
                 </div>
             </div>
         </div>
@@ -2181,7 +2231,7 @@ function renderHitRunTab(): string
                         <i class="fas fa-check-circle fa-2x text-success"></i>
                     </div>
                     <div class="fw-bold fs-2 text-success">' . number_format($finished) . '</div>
-                    <small class="text-muted">Completed</small>
+                    <small class="text-muted">' . $lang->edituser['act_completed'] . '</small>
                 </div>
             </div>
         </div>
@@ -2192,9 +2242,9 @@ function renderHitRunTab(): string
                         <i class="fas fa-exclamation-triangle fa-2x text-danger"></i>
                     </div>
                     <div class="fw-bold fs-2 text-danger">' . number_format($hnr) . '</div>
-                    <small class="text-muted">Hit & Runs</small>
+                    <small class="text-muted">' . $lang->edituser['hnr_count'] . '</small>
                     <div class="text-muted small mt-1">
-                        <i class="fas fa-hourglass-half me-1"></i>&lt;' . $min_hours . 'h seed
+                        <i class="fas fa-hourglass-half me-1"></i>&lt;' . ags_fmt($lang->edituser['hnr_under'], ags_fmt($lang->edituser['unit_hours'], $min_hours)) . '
                     </div>
                 </div>
             </div>
@@ -2206,7 +2256,7 @@ function renderHitRunTab(): string
                         <i class="fas fa-percent fa-2x text-' . $hnr_color . '"></i>
                     </div>
                     <div class="fw-bold fs-2 text-' . $hnr_color . '">' . $hnr_ratio . '%</div>
-                    <small class="text-muted">H&R Ratio</small>
+                    <small class="text-muted">' . $lang->edituser['hnr_ratio'] . '</small>
                     <div class="text-muted small mt-1">
                         <span class="risk-badge bg-' . $hnr_color . ' bg-opacity-10 text-' . $hnr_color . '">
                             <i class="fas fa-chart-simple me-1"></i>' . $hnr_status . '
@@ -2223,25 +2273,25 @@ function renderHitRunTab(): string
         <div class="d-flex align-items-center gap-3">
             <i class="fas fa-exclamation-triangle fa-2x"></i>
             <div>
-                <strong class="d-block">' . ($hnr_ratio >= 30 ? '⚠️ Critical H&R Rate Detected!' : '⚠️ Moderate H&R Rate Detected') . '</strong>
-                <small>' . ($hnr_ratio >= 30 ? 'This user has a high number of incomplete downloads.' : 'User has some incomplete downloads. Monitor activity.') . '</small>
+                <strong class="d-block">' . ($hnr_ratio >= 30 ? $lang->edituser['hnr_alert_critical'] : $lang->edituser['hnr_alert_moderate']) . '</strong>
+                <small>' . ($hnr_ratio >= 30 ? $lang->edituser['hnr_alert_critical_text'] : $lang->edituser['hnr_alert_moderate_text']) . '</small>
             </div>
         </div>
         ' . ($hnr_ratio >= 30 ? '
         <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-warning" onclick="showToast(\'Leech warning issued\', \'warning\')">
-                <i class="fas fa-exclamation-triangle me-1"></i>Issue Warning
+            <button class="btn btn-sm btn-warning" onclick="showToast(t(\'hnr_warn_issued\', \'Leech warning issued\'), \'warning\')">
+                <i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['btn_issue_warning'] . '
             </button>
-            <button class="btn btn-sm btn-danger" onclick="showToast(\'Download rights restricted\', \'error\')">
-                <i class="fas fa-ban me-1"></i>Restrict Downloads
+            <button class="btn btn-sm btn-danger" onclick="showToast(t(\'hnr_dl_restricted\', \'Download rights restricted\'), \'error\')">
+                <i class="fas fa-ban me-1"></i>' . $lang->edituser['btn_restrict_dl'] . '
             </button>
         </div>' : '') . '
     </div>' : '
     <div class="alert alert-success border-0 shadow-sm mb-4 d-flex align-items-center gap-3">
         <i class="fas fa-thumbs-up fa-2x"></i>
         <div>
-            <strong>Good standing!</strong>
-            <small class="d-block">User maintains good seeding habits with &lt;10% H&R ratio.</small>
+            <strong>' . $lang->edituser['hnr_good_title'] . '</strong>
+            <small class="d-block">' . htmlspecialchars($lang->edituser['hnr_good_text']) . '</small>
         </div>
     </div>') . '
 
@@ -2250,9 +2300,9 @@ function renderHitRunTab(): string
         <div class="card-header bg-white border-0 py-3">
             <div class="d-flex justify-content-between align-items-center">
                 <h6 class="fw-bold mb-0">
-                    <i class="fas fa-list me-2 text-danger"></i>Hit & Run Details
+                    <i class="fas fa-list me-2 text-danger"></i>' . $lang->edituser['hnr_details'] . '
                 </h6>
-                <span class="badge bg-secondary">' . $hnr . ' records</span>
+                <span class="badge bg-secondary">' . ags_fmt($lang->edituser['hnr_records'], $hnr) . '</span>
             </div>
         </div>
         <div class="card-body p-0">
@@ -2260,10 +2310,10 @@ function renderHitRunTab(): string
         <table class="table table-hover table-sm align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th><i class="fas fa-torrent me-2"></i>Torrent Name</th>
-                    <th class="text-center" style="width: 180px"><i class="fas fa-clock me-2"></i>Seed Time / Required</th>
-                    <th class="text-center" style="width: 120px"><i class="fas fa-database me-2"></i>Downloaded</th>
-                    <th class="text-center" style="width: 140px"><i class="far fa-calendar-alt me-2"></i>Completed</th>
+                    <th><i class="fas fa-torrent me-2"></i>' . $lang->edituser['th_torrent_name'] . '</th>
+                    <th class="text-center" style="width: 180px"><i class="fas fa-clock me-2"></i>' . $lang->edituser['th_seed_required'] . '</th>
+                    <th class="text-center" style="width: 120px"><i class="fas fa-database me-2"></i>' . $lang->edituser['stat_downloaded'] . '</th>
+                    <th class="text-center" style="width: 140px"><i class="far fa-calendar-alt me-2"></i>' . $lang->edituser['act_completed'] . '</th>
                 </tr>
             </thead>
             <tbody>' . $rows . '</tbody>
@@ -2288,7 +2338,7 @@ function renderHitRunTab(): string
  */
 function renderForumTab(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat;
+    global $userdata, $db, $BASEURL, $dateformat, $lang;
 
     $uid = (int)$userdata['id'];
 
@@ -2330,7 +2380,7 @@ function renderForumTab(): string
             </div>
         </li>';
     }
-    if (!$posts_html) $posts_html = '<li class="list-group-item text-muted text-center py-3">No posts</li>';
+    if (!$posts_html) $posts_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['forum_no_posts'] . '</li>';
 
     // Последние 10 тредов
     $q = $db->sql_query_prepared("
@@ -2355,7 +2405,7 @@ function renderForumTab(): string
                        class="text-decoration-none small fw-semibold">' . $subj . '</a>
                     <div class="text-muted" style="font-size:.72rem">
                         <i class="fas fa-folder me-1"></i>' . $forum . '
-                        <span class="ms-2"><i class="fas fa-reply me-1"></i>' . (int)$row['replies'] . ' replies</span>
+                        <span class="ms-2"><i class="fas fa-reply me-1"></i>' . ags_fmt($lang->edituser['forum_replies'], (int)$row['replies']) . '</span>
                         <span class="ms-2"><i class="fas fa-eye me-1"></i>' . (int)$row['views'] . '</span>
                     </div>
                 </div>
@@ -2363,34 +2413,34 @@ function renderForumTab(): string
             </div>
         </li>';
     }
-    if (!$threads_html) $threads_html = '<li class="list-group-item text-muted text-center py-3">No threads</li>';
+    if (!$threads_html) $threads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['forum_no_threads'] . '</li>';
 
     return '
     <!-- Counts -->
     <div class="d-flex flex-wrap gap-3 mb-4">
         <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
             <div class="fw-bold fs-4 text-primary">' . number_format($post_count) . '</div>
-            <small class="text-muted">Posts</small>
+            <small class="text-muted">' . $lang->edituser['forum_posts'] . '</small>
         </div>
         <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
             <div class="fw-bold fs-4 text-success">' . number_format($thread_count) . '</div>
-            <small class="text-muted">Threads</small>
+            <small class="text-muted">' . $lang->edituser['forum_threads'] . '</small>
         </div>
         <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
             <div class="fw-bold fs-4 text-warning">' . number_format($report_count) . '</div>
-            <small class="text-muted">Reports Filed</small>
+            <small class="text-muted">' . $lang->edituser['forum_reports_filed'] . '</small>
         </div>
     </div>
 
     <div class="row g-4">
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-primary"></i>Last Posts</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-primary"></i>' . $lang->edituser['forum_last_posts'] . '</h6>
             <ul class="list-group list-group-flush border rounded-3" style="max-height:320px;overflow-y:auto">
                 ' . $posts_html . '
             </ul>
         </div>
         <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2 text-success"></i>Last Threads</h6>
+            <h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2 text-success"></i>' . $lang->edituser['forum_last_threads'] . '</h6>
             <ul class="list-group list-group-flush border rounded-3" style="max-height:320px;overflow-y:auto">
                 ' . $threads_html . '
             </ul>
@@ -2400,10 +2450,10 @@ function renderForumTab(): string
 	
 	  <div class="text-center mt-4">
         <a href="' . $BASEURL . '/search.php?action=finduser&uid=' . $uid . '" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-search me-1"></i>View All Posts
+            <i class="fas fa-search me-1"></i>' . $lang->edituser['btn_all_posts'] . '
         </a>
         <a href="' . $BASEURL . '/search.php?action=finduserthreads&uid=' . $uid . '" class="btn btn-outline-success btn-sm ms-2">
-            <i class="fas fa-list me-1"></i>View All Threads
+            <i class="fas fa-list me-1"></i>' . $lang->edituser['btn_all_threads'] . '
         </a>
     </div>
 	
@@ -2477,7 +2527,7 @@ function buildChartData(int $uid, $db): array
  */
 function renderQuickBanModal(bool $is_banned = false): string
 {
-    global $userdata, $mybb, $db, $memperms;
+    global $userdata, $mybb, $db, $memperms, $lang;
     $uid       = (int)$userdata['id'];
     $username  = htmlspecialchars_uni($userdata['username']);
     $postCode  = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
@@ -2492,8 +2542,20 @@ function renderQuickBanModal(bool $is_banned = false): string
     }
 
     $ban_times = fetch_ban_times();
+    // fetch_ban_times() остаётся на английском — эти подписи пишутся в modcomment.
+    // Для селекта показываем перевод; срок, добавленный плагином, — как есть.
+    $ban_label_keys = [
+        '1-0-0'  => 'opt_ban_1d', '2-0-0'  => 'opt_ban_2d', '3-0-0'  => 'opt_ban_3d',
+        '4-0-0'  => 'opt_ban_4d', '5-0-0'  => 'opt_ban_5d', '6-0-0'  => 'opt_ban_6d',
+        '7-0-0'  => 'opt_ban_1w', '14-0-0' => 'opt_ban_2w', '21-0-0' => 'opt_ban_3w',
+        '0-1-0'  => 'opt_ban_1m', '0-2-0'  => 'opt_ban_2m', '0-3-0'  => 'opt_ban_3m',
+        '0-4-0'  => 'opt_ban_4m', '0-5-0'  => 'opt_ban_5m', '0-6-0'  => 'opt_ban_6m',
+        '0-0-1'  => 'opt_ban_1y', '0-0-2'  => 'opt_ban_2y', '---'    => 'opt_ban_perm',
+    ];
     $options   = '';
     foreach ($ban_times as $val => $label) {
+        $val   = (string)$val;
+        $label = isset($ban_label_keys[$val]) ? $lang->edituser[$ban_label_keys[$val]] : (string)$label;
         $sel = ($current_ban && $current_ban['bantime'] === $val) || (!$current_ban && $val === '---')
             ? ' selected' : '';
         $options .= "<option value='" . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . "'{$sel}>"
@@ -2504,10 +2566,11 @@ function renderQuickBanModal(bool $is_banned = false): string
     $banned_group = $q ? $db->fetch_array($q) : null;
     $banned_gid   = $banned_group ? (int)$banned_group['gid'] : 0;
 
-    $modal_title  = $is_banned ? 'Edit Ban: ' : 'Ban User: ';
+    $username_e   = $username;
+    $modal_title  = $is_banned ? ags_fmt($lang->edituser['ban_title_edit'], $username_e) : ags_fmt($lang->edituser['ban_title_new'], $username_e);
     $header_class = $is_banned ? 'bg-warning text-dark' : 'bg-danger text-white';
     $btn_class    = $is_banned ? 'btn-warning' : 'btn-danger';
-    $btn_label    = $is_banned ? 'Update Ban' : 'Ban User';
+    $btn_label    = $is_banned ? $lang->edituser['ban_btn_update'] : $lang->edituser['ban_btn_ban'];
     $btn_icon     = $is_banned ? 'fa-edit' : 'fa-ban';
     $current_reason = htmlspecialchars_uni($current_ban['reason'] ?? '');
 
@@ -2517,37 +2580,37 @@ function renderQuickBanModal(bool $is_banned = false): string
             <div class='modal-content border-0 shadow'>
                 <div class='modal-header {$header_class}'>
                     <h5 class='modal-title'>
-                        <i class='fas {$btn_icon} me-2'></i>{$modal_title}{$username}
+                        <i class='fas {$btn_icon} me-2'></i>{$modal_title}
                     </h5>
                     <button type='button' class='btn-close' data-bs-dismiss='modal'></button>
                 </div>
                 <div class='modal-body'>
                     <div class='mb-3'>
-                        <label class='form-label fw-semibold'>Ban Duration</label>
+                        <label class='form-label fw-semibold'>" . $lang->edituser['ban_duration'] . "</label>
                         <select id='banDuration' class='form-select'>
                             {$options}
                         </select>
                     </div>
                     <div class='mb-3'>
-                        <label class='form-label fw-semibold'>Reason <span class='text-danger'>*</span></label>
+                        <label class='form-label fw-semibold'>" . $lang->edituser['ban_reason'] . " <span class='text-danger'>*</span></label>
                         <textarea id='banReason' class='form-control' rows='3'
-                                  placeholder='Reason for ban...' required>{$current_reason}</textarea>
+                                  placeholder='" . $lang->edituser['ph_ban_reason'] . "' required>{$current_reason}</textarea>
                         <div id='banReasonError' class='text-danger small mt-1 d-none'>
-                            Please provide a reason.
+                            " . $lang->edituser['ban_reason_required'] . "
                         </div>
                     </div>
                     <div class='mb-3'>
                         <div class='form-check'>
                             <input class='form-check-input' type='checkbox' id='banSendPM' " . (!$is_banned ? 'checked' : '') . ">
                             <label class='form-check-label' for='banSendPM'>
-                                Send ban notification PM to user
+                                " . $lang->edituser['ban_send_pm'] . "
                             </label>
                         </div>
                     </div>
                 </div>
                 <div class='modal-footer'>
                     <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>
-                        <i class='fas fa-times me-1'></i>Cancel
+                        <i class='fas fa-times me-1'></i>" . $lang->edituser['cancel'] . "
                     </button>
                     <button type='button' class='btn {$btn_class}' id='quickBanSubmit'
                             onclick=\"quickBan({$uid}, {$banned_gid}, '{$postCode}', '{$h_script}')\">
@@ -2571,7 +2634,7 @@ function renderQuickBanModal(bool $is_banned = false): string
  */
 function renderAuditTab(): string
 {
-    global $userdata, $usergroups, $mybb;
+    global $userdata, $usergroups, $mybb, $lang;
 
     $raw = (string)($userdata['modcomment'] ?? '');
     //$isSuperMod = ($usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1');
@@ -2607,28 +2670,29 @@ function renderAuditTab(): string
 
     // ── Определяем тип события → цвет и иконка ───────────────────────────────
     $classify = function(string $action): array {
+        global $lang;
         $a = mb_strtolower($action);
         if (preg_match('/warn|ban|restrict|leechwarn|demot/u', $a))
-            return ['danger',  'fa-exclamation-triangle', 'Warn / Ban'];
+            return ['danger',  'fa-exclamation-triangle', $lang->edituser['audit_cat_ban']];
         if (preg_match('/unlock|unbann|lift|unwarn|removed|reset/u', $a))
-            return ['success', 'fa-unlock',               'Resolved'];
+            return ['success', 'fa-unlock',               $lang->edituser['audit_cat_resolved']];
         if (preg_match('/promot|upgrad/u', $a))
-            return ['success', 'fa-level-up-alt',         'Promotion'];
+            return ['success', 'fa-level-up-alt',         $lang->edituser['audit_cat_promotion']];
         if (preg_match('/usergroup|group/u', $a))
-            return ['primary', 'fa-users',                'Group'];
+            return ['primary', 'fa-users',                $lang->edituser['audit_cat_group']];
         if (preg_match('/avatar/u', $a))
-            return ['info',    'fa-image',                'Avatar'];
+            return ['info',    'fa-image',                $lang->edituser['audit_cat_avatar']];
         if (preg_match('/password/u', $a))
-            return ['warning', 'fa-key',                  'Password'];
+            return ['warning', 'fa-key',                  $lang->edituser['audit_cat_password']];
         if (preg_match('/session|login|lockout/u', $a))
-            return ['warning', 'fa-desktop',              'Session'];
+            return ['warning', 'fa-desktop',              $lang->edituser['audit_cat_session']];
         if (preg_match('/pm sent|message/u', $a))
-            return ['info',    'fa-envelope',             'PM'];
+            return ['info',    'fa-envelope',             $lang->edituser['audit_cat_pm']];
         if (preg_match('/can(upload|download|comment)/u', $a))
-            return ['secondary','fa-toggle-off',          'Permission'];
+            return ['secondary','fa-toggle-off',          $lang->edituser['audit_cat_permission']];
         if (preg_match('/email|username/u', $a))
-            return ['primary', 'fa-edit',                 'Profile'];
-        return ['secondary', 'fa-circle',                 'Change'];
+            return ['primary', 'fa-edit',                 $lang->edituser['audit_cat_profile']];
+        return ['secondary', 'fa-circle',                 $lang->edituser['audit_cat_change']];
     };
 
     // ── Рендер timeline ───────────────────────────────────────────────────────
@@ -2636,7 +2700,7 @@ function renderAuditTab(): string
         $timeline = '
         <div class="text-center text-muted py-5">
             <i class="fas fa-inbox fa-3x mb-3 d-block opacity-25"></i>
-            No audit history found.
+            ' . $lang->edituser['audit_empty'] . '
         </div>';
     } else {
         $items = '';
@@ -2659,7 +2723,7 @@ function renderAuditTab(): string
                         </div>
                         " . ($date ? "<small class='text-muted text-nowrap'><i class='fas fa-clock me-1'></i>{$date}</small>" : '') . "
                     </div>
-                    " . ($by ? "<div class='text-muted small mt-1'><i class='fas fa-user me-1'></i>by <strong>{$by}</strong></div>" : '') . "
+                    " . ($by ? "<div class='text-muted small mt-1'><i class='fas fa-user me-1'></i>" . ags_fmt($lang->edituser['audit_by'], '<strong>' . $by . '</strong>') . "</div>" : '') . "
                 </div>
             </div>";
         }
@@ -2675,13 +2739,13 @@ function renderAuditTab(): string
     
         $clearBtn = "
         <form method='post' action='{$h_script}' class='d-inline'
-              onsubmit=\"return confirm('Clear entire audit history? This cannot be undone.')\">
+              onsubmit=\"return confirm(t('audit_clear_confirm', 'Clear entire audit history? This cannot be undone.'))\">
             <input type='hidden' name='action'       value='updateuser'>
             <input type='hidden' name='userid'       value='{$uid}'>
             <input type='hidden' name='my_post_key'  value='{$postCode}'>
             <input type='hidden' name='clear_modcomment' value='1'>
             <button type='submit' class='btn btn-sm btn-outline-danger'>
-                <i class='fas fa-trash me-1'></i>Clear History
+                <i class='fas fa-trash me-1'></i>" . $lang->edituser['audit_clear'] . "
             </button>
         </form>";
     
@@ -2692,21 +2756,21 @@ function renderAuditTab(): string
     <div class='d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2'>
         <div>
             <h5 class='fw-bold mb-0'>
-                <i class='fas fa-history me-2 text-primary'></i>Audit Log
+                <i class='fas fa-history me-2 text-primary'></i>" . $lang->edituser['tab_audit'] . "
             </h5>
-            <small class='text-muted'>{$count} " . ($count === 1 ? 'entry' : 'entries') . "</small>
+            <small class='text-muted'>" . ags_fmt($lang->edituser['audit_count'], $count) . "</small>
         </div>
         <div class='d-flex gap-2 align-items-center flex-wrap'>
             <!-- Filter -->
             <select id='auditFilter' class='form-select form-select-sm' style='width:auto'
                     onchange='filterAudit(this.value)'>
-                <option value='all'>All events</option>
-                <option value='danger'>Warn / Ban</option>
-                <option value='success'>Resolved</option>
-                <option value='primary'>Profile / Group</option>
-                <option value='warning'>Password / Session</option>
-                <option value='info'>Avatar / PM</option>
-                <option value='secondary'>Permissions</option>
+                <option value='all'>" . $lang->edituser['opt_audit_all'] . "</option>
+                <option value='danger'>" . $lang->edituser['audit_cat_ban'] . "</option>
+                <option value='success'>" . $lang->edituser['audit_cat_resolved'] . "</option>
+                <option value='primary'>" . $lang->edituser['opt_audit_profile_group'] . "</option>
+                <option value='warning'>" . $lang->edituser['opt_audit_password_session'] . "</option>
+                <option value='info'>" . $lang->edituser['opt_audit_avatar_pm'] . "</option>
+                <option value='secondary'>" . $lang->edituser['tab_permissions'] . "</option>
             </select>
             {$clearBtn}
         </div>
@@ -2746,7 +2810,7 @@ function renderAuditTab(): string
  */
 function renderTorrentActivityTab(): string
 {
-    global $userdata, $db, $BASEURL;
+    global $userdata, $db, $BASEURL, $lang;
 
     $uid = (int)$userdata['id'];
 
@@ -2766,12 +2830,12 @@ function renderTorrentActivityTab(): string
     $peer_count = 0;
     while ($q && ($row = $db->fetch_array($q))) {
         $peer_count++;
-        $name      = htmlspecialchars($row['name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
+        $name      = htmlspecialchars($row['name'] ?? $lang->edituser['unknown'], ENT_QUOTES, 'UTF-8');
         $tid       = (int)$row['tid'];
         $seeder    = $row['seeder'] === 'yes';
         $statusBadge = $seeder
-            ? "<span class='badge bg-success'><i class='fas fa-arrow-up me-1'></i>Seeding</span>"
-            : "<span class='badge bg-warning text-dark'><i class='fas fa-arrow-down me-1'></i>Leeching</span>";
+            ? "<span class='badge bg-success'><i class='fas fa-arrow-up me-1'></i>" . $lang->edituser['ta_seeding'] . "</span>"
+            : "<span class='badge bg-warning text-dark'><i class='fas fa-arrow-down me-1'></i>" . $lang->edituser['ta_leeching'] . "</span>";
 
         $ul        = mksize($row['uploaded']);
         $dl        = mksize($row['downloaded']);
@@ -2784,8 +2848,8 @@ function renderTorrentActivityTab(): string
         $last      = $row['last_action'] ? my_datee('relative', $row['last_action']) : '—';
         $agent     = htmlspecialchars($row['agent'] ?? '', ENT_QUOTES, 'UTF-8');
         $conn      = $row['connectable'] === 'yes'
-            ? "<i class='fas fa-plug text-success' title='Connectable'></i>"
-            : "<i class='fas fa-plug text-danger' title='Not connectable'></i>";
+            ? "<i class='fas fa-plug text-success' title='" . $lang->edituser['ta_connectable'] . "'></i>"
+            : "<i class='fas fa-plug text-danger' title='" . $lang->edituser['ta_not_connectable'] . "'></i>";
 
         $progressColor = $progress >= 100 ? 'success' : ($progress >= 50 ? 'info' : 'warning');
 
@@ -2825,8 +2889,8 @@ function renderTorrentActivityTab(): string
             <div class='empty-state-icon mb-3'>
                 <i class='fas fa-satellite-dish fa-4x text-muted opacity-25'></i>
             </div>
-            <h6 class='text-muted'>No Active Connections</h6>
-            <p class='text-muted small'>No active torrents found for this user.</p>
+            <h6 class='text-muted'>" . $lang->edituser['ta_no_conn_title'] . "</h6>
+            <p class='text-muted small'>" . $lang->edituser['ta_no_conn_text'] . "</p>
         </div>";
     } else {
         $peers_html = "
@@ -2834,14 +2898,14 @@ function renderTorrentActivityTab(): string
             <table class='table table-hover'>
                 <thead class='table-light'>
                     <tr>
-                        <th><i class='fas fa-torrent me-2'></i>Torrent</th>
-                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>Status</th>
-                        <th><i class='fas fa-chart-line me-2'></i>Progress</th>
-                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>Uploaded</th>
-                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>Downloaded</th>
-                        <th class='text-center'><i class='fas fa-hourglass-half me-2'></i>Remaining</th>
-                        <th class='text-center'><i class='far fa-clock me-2'></i>Last Seen</th>
-                        <th class='text-center'><i class='fas fa-plug me-2'></i>Conn</th>
+                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
+                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>" . $lang->edituser['th_status'] . "</th>
+                        <th><i class='fas fa-chart-line me-2'></i>" . $lang->edituser['th_progress'] . "</th>
+                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>" . $lang->edituser['stat_uploaded'] . "</th>
+                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>" . $lang->edituser['stat_downloaded'] . "</th>
+                        <th class='text-center'><i class='fas fa-hourglass-half me-2'></i>" . $lang->edituser['th_remaining'] . "</th>
+                        <th class='text-center'><i class='far fa-clock me-2'></i>" . $lang->edituser['th_last_seen'] . "</th>
+                        <th class='text-center'><i class='fas fa-plug me-2'></i>" . $lang->edituser['th_conn'] . "</th>
                     </tr>
                 </thead>
                 <tbody>{$peer_rows}</tbody>
@@ -2873,16 +2937,16 @@ function renderTorrentActivityTab(): string
         $total_ul += (int)$row['uploaded'];
         $total_dl += (int)$row['downloaded'];
 
-        $name     = htmlspecialchars($row['name'] ?? 'Deleted torrent', ENT_QUOTES, 'UTF-8');
+        $name     = htmlspecialchars($row['name'] ?? $lang->edituser['deleted_torrent'], ENT_QUOTES, 'UTF-8');
         $tid      = (int)$row['tid'];
         $finished = $row['finished'] === 'yes';
 
         $finishedBadge = $finished
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check-circle me-1'></i>Complete</span>"
-            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-hourglass-half me-1'></i>Incomplete</span>";
+            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check-circle me-1'></i>" . $lang->edituser['ta_complete'] . "</span>"
+            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-hourglass-half me-1'></i>" . $lang->edituser['act_incomplete'] . "</span>";
 
         $seederBadge = $row['seeder'] === 'yes'
-            ? "<span class='badge bg-primary-subtle text-primary border border-primary ms-1'><i class='fas fa-arrow-up me-1'></i>Seeding</span>"
+            ? "<span class='badge bg-primary-subtle text-primary border border-primary ms-1'><i class='fas fa-arrow-up me-1'></i>" . $lang->edituser['ta_seeding'] . "</span>"
             : '';
 
         $ul       = mksize($row['uploaded']);
@@ -2927,27 +2991,27 @@ function renderTorrentActivityTab(): string
             <div class='empty-state-icon mb-3'>
                 <i class='fas fa-history fa-4x text-muted opacity-25'></i>
             </div>
-            <h6 class='text-muted'>No Snatch History</h6>
-            <p class='text-muted small'>This user hasn't downloaded any torrents yet.</p>
+            <h6 class='text-muted'>" . $lang->edituser['ta_no_snatch_title'] . "</h6>
+            <p class='text-muted small'>" . $lang->edituser['ta_no_snatch_text'] . "</p>
         </div>";
     } else {
         $summary = "
         <div class='stats-summary d-flex flex-wrap gap-3 mb-4 p-3 bg-light rounded-4'>
             <div class='stat-item'>
                 <i class='fas fa-list text-primary me-2'></i>
-                <strong>{$snatch_count}</strong> <span class='text-muted'>snatches</span>
+                " . ags_fmt($lang->edituser['ta_sum_snatches'], $snatch_count) . "
             </div>
             <div class='stat-item'>
                 <i class='fas fa-arrow-up text-success me-2'></i>
-                <strong>" . mksize($total_ul) . "</strong> <span class='text-muted'>uploaded</span>
+                " . ags_fmt($lang->edituser['ta_sum_uploaded'], mksize($total_ul)) . "
             </div>
             <div class='stat-item'>
                 <i class='fas fa-arrow-down text-danger me-2'></i>
-                <strong>" . mksize($total_dl) . "</strong> <span class='text-muted'>downloaded</span>
+                " . ags_fmt($lang->edituser['ta_sum_downloaded'], mksize($total_dl)) . "
             </div>
             <div class='stat-item'>
                 <i class='fas fa-chart-line text-info me-2'></i>
-                <strong>" . ($total_dl > 0 ? round($total_ul / $total_dl, 2) : '∞') . "</strong> <span class='text-muted'>total ratio</span>
+                " . ags_fmt($lang->edituser['ta_sum_ratio'], ($total_dl > 0 ? round($total_ul / $total_dl, 2) : '∞')) . "
             </div>
         </div>";
 
@@ -2956,15 +3020,15 @@ function renderTorrentActivityTab(): string
             <table class='table table-hover'>
                 <thead class='table-light'>
                     <tr>
-                        <th><i class='fas fa-torrent me-2'></i>Torrent</th>
-                        <th><i class='fas fa-flag-checkered me-2'></i>Status</th>
-                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>Uploaded</th>
-                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>Downloaded</th>
-                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>Ratio</th>
-                        <th class='text-center'><i class='fas fa-clock me-2'></i>Seed Time</th>
-                        <th class='text-center'><i class='fas fa-play me-2'></i>Started</th>
-                        <th class='text-center'><i class='fas fa-check me-2'></i>Completed</th>
-                        <th class='text-center'><i class='far fa-clock me-2'></i>Last Active</th>
+                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
+                        <th><i class='fas fa-flag-checkered me-2'></i>" . $lang->edituser['th_status'] . "</th>
+                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>" . $lang->edituser['stat_uploaded'] . "</th>
+                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>" . $lang->edituser['stat_downloaded'] . "</th>
+                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>" . $lang->edituser['stat_ratio'] . "</th>
+                        <th class='text-center'><i class='fas fa-clock me-2'></i>" . $lang->edituser['act_seed_time'] . "</th>
+                        <th class='text-center'><i class='fas fa-play me-2'></i>" . $lang->edituser['th_started'] . "</th>
+                        <th class='text-center'><i class='fas fa-check me-2'></i>" . $lang->edituser['act_completed'] . "</th>
+                        <th class='text-center'><i class='far fa-clock me-2'></i>" . $lang->edituser['info_last_active'] . "</th>
                     </tr>
                 </thead>
                 <tbody>{$snatch_rows}</tbody>
@@ -2987,7 +3051,7 @@ function renderTorrentActivityTab(): string
 
     while ($q3 && ($row = $db->fetch_array($q3))) {
         $upload_count++;
-        $name    = htmlspecialchars($row['name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
+        $name    = htmlspecialchars($row['name'] ?? $lang->edituser['unknown'], ENT_QUOTES, 'UTF-8');
         $tid     = (int)$row['id'];
         $size    = mksize($row['size']);
         $added   = $row['added'] ? my_datee('relative', $row['added']) : '—';
@@ -2996,19 +3060,19 @@ function renderTorrentActivityTab(): string
         $grabs    = (int)$row['times_completed'];
 
         $visibleBadge = $row['visible'] === 'yes'
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-eye me-1'></i>Visible</span>"
-            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-eye-slash me-1'></i>Hidden</span>";
+            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-eye me-1'></i>" . $lang->edituser['ta_visible'] . "</span>"
+            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-eye-slash me-1'></i>" . $lang->edituser['ta_hidden'] . "</span>";
 
         $nukedBadge = $row['isnuked'] === 'yes'
-            ? "<span class='badge bg-danger-subtle text-danger border border-danger ms-1'><i class='fas fa-skull me-1'></i>Nuked</span>"
+            ? "<span class='badge bg-danger-subtle text-danger border border-danger ms-1'><i class='fas fa-skull me-1'></i>" . $lang->edituser['ta_nuked'] . "</span>"
             : '';
 
         $freeBadge = $row['free'] === 'yes'
-            ? "<span class='badge bg-info-subtle text-info border border-info ms-1'><i class='fas fa-gift me-1'></i>Free</span>"
+            ? "<span class='badge bg-info-subtle text-info border border-info ms-1'><i class='fas fa-gift me-1'></i>" . $lang->edituser['ta_free'] . "</span>"
             : '';
 
         $bannedBadge = $row['banned'] === 'yes'
-            ? "<span class='badge bg-dark-subtle text-dark border border-dark ms-1'><i class='fas fa-ban me-1'></i>Banned</span>"
+            ? "<span class='badge bg-dark-subtle text-dark border border-dark ms-1'><i class='fas fa-ban me-1'></i>" . $lang->edituser['ta_banned'] . "</span>"
             : '';
 
         $upload_rows .= "
@@ -3036,8 +3100,8 @@ function renderTorrentActivityTab(): string
             <div class='empty-state-icon mb-3'>
                 <i class='fas fa-upload fa-4x text-muted opacity-25'></i>
             </div>
-            <h6 class='text-muted'>No Uploads</h6>
-            <p class='text-muted small'>This user hasn't uploaded any torrents yet.</p>
+            <h6 class='text-muted'>" . $lang->edituser['ta_no_uploads_title'] . "</h6>
+            <p class='text-muted small'>" . $lang->edituser['ta_no_uploads_text'] . "</p>
         </div>";
     } else {
         $uploads_html = "
@@ -3045,12 +3109,12 @@ function renderTorrentActivityTab(): string
             <table class='table'>
                 <thead class='table-light'>
                     <tr>
-                        <th><i class='fas fa-torrent me-2'></i>Torrent</th>
-                        <th class='text-center'><i class='fas fa-database me-2'></i>Size</th>
-                        <th><i class='fas fa-flag me-2'></i>Status</th>
-                        <th class='text-center'><i class='fas fa-users me-2'></i>Peers</th>
-                        <th class='text-center'><i class='fas fa-download me-2'></i>Grabs</th>
-                        <th class='text-center'><i class='far fa-calendar-alt me-2'></i>Added</th>
+                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
+                        <th class='text-center'><i class='fas fa-database me-2'></i>" . $lang->edituser['th_size'] . "</th>
+                        <th><i class='fas fa-flag me-2'></i>" . $lang->edituser['th_status'] . "</th>
+                        <th class='text-center'><i class='fas fa-users me-2'></i>" . $lang->edituser['th_peers'] . "</th>
+                        <th class='text-center'><i class='fas fa-download me-2'></i>" . $lang->edituser['th_grabs'] . "</th>
+                        <th class='text-center'><i class='far fa-calendar-alt me-2'></i>" . $lang->edituser['th_added'] . "</th>
                     </tr>
                 </thead>
                 <tbody>{$upload_rows}</tbody>
@@ -3065,19 +3129,19 @@ function renderTorrentActivityTab(): string
         <ul class='nav nav-pills mb-4 gap-2' id='torrentActivityTabs' role='tablist'>
             <li class='nav-item' role='presentation'>
                 <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#ta-peers' type='button'>
-                    <i class='fas fa-satellite-dish me-2'></i>Active
+                    <i class='fas fa-satellite-dish me-2'></i>" . $lang->edituser['ta_tab_active'] . "
                     <span class='badge bg-white text-primary ms-2 rounded-pill'>{$peer_count}</span>
                 </button>
             </li>
             <li class='nav-item' role='presentation'>
                 <button class='nav-link' data-bs-toggle='pill' data-bs-target='#ta-snatched' type='button'>
-                    <i class='fas fa-history me-2'></i>Snatched
+                    <i class='fas fa-history me-2'></i>" . $lang->edituser['ta_tab_snatched'] . "
                     <span class='badge bg-white text-secondary ms-2 rounded-pill'>{$snatch_count}</span>
                 </button>
             </li>
             <li class='nav-item' role='presentation'>
                 <button class='nav-link' data-bs-toggle='pill' data-bs-target='#ta-uploads' type='button'>
-                    <i class='fas fa-upload me-2'></i>Uploads
+                    <i class='fas fa-upload me-2'></i>" . $lang->edituser['btn_uploads'] . "
                     <span class='badge bg-white text-secondary ms-2 rounded-pill'>{$upload_count}</span>
                 </button>
             </li>
@@ -3112,7 +3176,7 @@ function renderTorrentActivityTab(): string
  */
 function renderReportsTab(): string
 {
-    global $userdata, $db, $BASEURL;
+    global $userdata, $db, $BASEURL, $lang;
 
     $uid = (int)$userdata['id'];
 
@@ -3152,6 +3216,7 @@ function renderReportsTab(): string
 
     // ── Построение одной строки таблицы (все данные уже в $row из JOIN) ───────
     $buildRow = function(array $row, bool $isIncoming) use ($BASEURL): string {
+        global $lang;
 
         [$typeColor, $typeIcon] = match($row['type']) {
             'torrent'   => ['primary',   'fa-magnet'],
@@ -3161,11 +3226,17 @@ function renderReportsTab(): string
             default     => ['secondary', 'fa-flag'],
         };
         $typeBadge = "<span class='badge bg-{$typeColor}-subtle text-{$typeColor} border border-{$typeColor}'>
-            <i class='fas {$typeIcon} me-1'></i>" . ucfirst($row['type']) . "</span>";
+            <i class='fas {$typeIcon} me-1'></i>" . match($row['type']) {
+            'torrent'   => $lang->edituser['rep_type_torrent'],
+            'user'      => $lang->edituser['rep_type_user'],
+            'comment'   => $lang->edituser['rep_type_comment'],
+            'forumpost' => $lang->edituser['rep_type_forumpost'],
+            default     => ucfirst((string)$row['type']),
+        } . "</span>";
 
         $statusBadge = $row['dealtwith']
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check me-1'></i>Resolved</span>"
-            : "<span class='badge bg-danger-subtle text-danger border border-danger'><i class='fas fa-clock me-1'></i>Open</span>";
+            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check me-1'></i>" . $lang->edituser['rep_resolved'] . "</span>"
+            : "<span class='badge bg-danger-subtle text-danger border border-danger'><i class='fas fa-clock me-1'></i>" . $lang->edituser['rep_open'] . "</span>";
 
         // Subject — данные уже в JOIN, дополнительных запросов не нужно
         $subject = '—';
@@ -3174,7 +3245,7 @@ function renderReportsTab(): string
             $tname  = htmlspecialchars($row['torrent_name'] ?? '', ENT_QUOTES, 'UTF-8');
             $subject = $tname
                 ? "<a href='{$BASEURL}/torrents.php?id={$tid}' class='text-decoration-none'>{$tname}</a>"
-                : "Torrent #{$tid}";
+                : ags_fmt($lang->edituser['rep_torrent_n'], $tid);
         } elseif (in_array($row['type'], ['user', 'comment']) && $row['reported_user_id']) {
             $ruid  = (int)$row['reported_user_id'];
             $rname = htmlspecialchars($row['reported_username'] ?? '', ENT_QUOTES, 'UTF-8');
@@ -3183,7 +3254,7 @@ function renderReportsTab(): string
             }
         } elseif ($row['type'] === 'forumpost' && $row['thread_id']) {
             $tid2    = (int)$row['thread_id'];
-            $subject = "<a href='{$BASEURL}/showthread.php?tid={$tid2}' class='text-decoration-none'>Thread #{$tid2}</a>";
+            $subject = "<a href='{$BASEURL}/showthread.php?tid={$tid2}' class='text-decoration-none'>" . ags_fmt($lang->edituser['rep_thread_n'], $tid2) . "</a>";
         }
 
         // Who column
@@ -3212,7 +3283,7 @@ function renderReportsTab(): string
         $updated     = $row['updated_at'] ? my_datee('relative', $row['updated_at']) : '—';
 
         $ruleBadge = $rule
-            ? "<span class='badge bg-light text-dark border ms-1' title='Rule violation'>{$rule}</span>"
+            ? "<span class='badge bg-light text-dark border ms-1' title='" . $lang->edituser['rep_rule_violation'] . "'>{$rule}</span>"
             : '';
 
         return "
@@ -3232,10 +3303,11 @@ function renderReportsTab(): string
     };
 
     $buildTable = function(string $rows, bool $isIncoming): string {
-        $whoHeader = $isIncoming ? 'Reported By' : 'Reported User';
+        global $lang;
+        $whoHeader = $isIncoming ? $lang->edituser['rep_th_reported_by'] : $lang->edituser['rep_th_reported_user'];
         if (!$rows) {
             $icon = $isIncoming ? 'fa-shield-alt' : 'fa-flag';
-            $msg  = $isIncoming ? 'No reports filed against this user.' : 'This user has not filed any reports.';
+            $msg  = $isIncoming ? $lang->edituser['rep_none_against'] : $lang->edituser['rep_none_by'];
             return "
             <div class='text-center text-muted py-5'>
                 <i class='fas {$icon} fa-2x mb-2 d-block opacity-25'></i>
@@ -3247,9 +3319,9 @@ function renderReportsTab(): string
             <table class='table table-hover table-sm align-middle mb-0'>
                 <thead class='table-light'>
                     <tr>
-                        <th>Type</th><th>Subject</th><th>Reason / Description</th>
-                        <th>{$whoHeader}</th><th>Status</th><th>Dealt By</th>
-                        <th>Reported</th><th>Updated</th>
+                        <th>" . $lang->edituser['rep_th_type'] . "</th><th>" . $lang->edituser['rep_th_subject'] . "</th><th>" . $lang->edituser['rep_th_reason'] . "</th>
+                        <th>{$whoHeader}</th><th>" . $lang->edituser['th_status'] . "</th><th>" . $lang->edituser['rep_th_dealt_by'] . "</th>
+                        <th>" . $lang->edituser['rep_th_reported'] . "</th><th>" . $lang->edituser['rep_th_updated'] . "</th>
                     </tr>
                 </thead>
                 <tbody>{$rows}</tbody>
@@ -3277,9 +3349,9 @@ function renderReportsTab(): string
     }
 
     $incomingOpenBadge = $incoming_open
-        ? "<span class='badge bg-danger ms-1'>{$incoming_open} open</span>" : '';
+        ? "<span class='badge bg-danger ms-1'>" . ags_fmt($lang->edituser['rep_open_count'], $incoming_open) . "</span>" : '';
     $outgoingOpenBadge = $outgoing_open
-        ? "<span class='badge bg-warning text-dark ms-1'>{$outgoing_open} open</span>" : '';
+        ? "<span class='badge bg-warning text-dark ms-1'>" . ags_fmt($lang->edituser['rep_open_count'], $outgoing_open) . "</span>" : '';
 
     $incomingTab = $buildTable($incoming_rows, true);
     $outgoingTab = $buildTable($outgoing_rows, false);
@@ -3287,20 +3359,20 @@ function renderReportsTab(): string
     return "
     <div class='d-flex align-items-center mb-4'>
         <i class='fas fa-flag fa-lg text-danger me-2'></i>
-        <h5 class='fw-bold mb-0'>Reports</h5>
+        <h5 class='fw-bold mb-0'>" . $lang->edituser['tab_reports'] . "</h5>
     </div>
 
     <ul class='nav nav-pills mb-4 gap-2' id='reportsSubTabs' role='tablist'>
         <li class='nav-item' role='presentation'>
             <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#rep-incoming' type='button'>
-                <i class='fas fa-shield-alt me-1'></i>Against This User
+                <i class='fas fa-shield-alt me-1'></i>" . $lang->edituser['rep_tab_against'] . "
                 <span class='badge bg-secondary ms-1'>{$incoming_total}</span>
                 {$incomingOpenBadge}
             </button>
         </li>
         <li class='nav-item' role='presentation'>
             <button class='nav-link' data-bs-toggle='pill' data-bs-target='#rep-outgoing' type='button'>
-                <i class='fas fa-flag me-1'></i>Filed By This User
+                <i class='fas fa-flag me-1'></i>" . $lang->edituser['rep_tab_by'] . "
                 <span class='badge bg-secondary ms-1'>{$outgoing_total}</span>
                 {$outgoingOpenBadge}
             </button>
@@ -3365,6 +3437,7 @@ function buildInviteTree(int $rootUid, $db, string $BASEURL): string
     // Рекурсивная сборка HTML из уже загруженных данных (без запросов)
     $renderNode = null;
     $renderNode = function(int $parentUid, int $depth) use (&$renderNode, &$childrenOf, $BASEURL): string {
+        global $lang;
         if ($depth > 3 || empty($childrenOf[$parentUid])) return '';
 
         $html = '';
@@ -3373,9 +3446,9 @@ function buildInviteTree(int $rootUid, $db, string $BASEURL): string
             $iname = htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8');
 
             $badges = '';
-            if ($row['enabled'] === 'no')  $badges .= "<span class='badge bg-danger ms-1'    style='font-size:0.7em'>Banned</span>";
-            if ($row['warned']  === 'yes') $badges .= "<span class='badge bg-warning text-dark ms-1' style='font-size:0.7em'>Warned</span>";
-            if ($row['donor']   === 'yes') $badges .= "<span class='badge bg-info ms-1'       style='font-size:0.7em'>Donor</span>";
+            if ($row['enabled'] === 'no')  $badges .= "<span class='badge bg-danger ms-1'    style='font-size:0.7em'>" . $lang->edituser['badge_banned'] . "</span>";
+            if ($row['warned']  === 'yes') $badges .= "<span class='badge bg-warning text-dark ms-1' style='font-size:0.7em'>" . $lang->edituser['badge_warned'] . "</span>";
+            if ($row['donor']   === 'yes') $badges .= "<span class='badge bg-info ms-1'       style='font-size:0.7em'>" . $lang->edituser['badge_donor'] . "</span>";
 
             $ul     = mksize($row['uploaded']  ?? 0);
             $dl     = mksize($row['downloaded'] ?? 0);
@@ -3403,7 +3476,7 @@ function buildInviteTree(int $rootUid, $db, string $BASEURL): string
                     <i class='fas fa-user-circle text-secondary me-2'></i>
                     <a href='{$BASEURL}/profile.php?id={$iid}' class='text-decoration-none fw-semibold me-1'>{$iname}</a>
                     {$badges}
-                    <small class='text-muted ms-3'>Joined: {$joined}</small>
+                    <small class='text-muted ms-3'>" . ags_fmt($lang->edituser['inv_joined'], $joined) . "</small>
                     <small class='text-success ms-3'><i class='fas fa-upload'></i> {$ul}</small>
                     <small class='text-danger ms-2'><i class='fas fa-download'></i> {$dl}</small>
                 </div>
@@ -3425,7 +3498,7 @@ function buildInviteTree(int $rootUid, $db, string $BASEURL): string
  */
 function renderInvitesTab(): string
 {
-    global $userdata, $db, $BASEURL;
+    global $userdata, $db, $BASEURL, $lang;
 
     $uid = (int)$userdata['id'];
 
@@ -3452,30 +3525,30 @@ function renderInvitesTab(): string
         <div class='col-6 col-md-3'>
             <div class='rounded-3 bg-light border text-center py-3 px-2'>
                 <div class='fs-4 fw-bold text-primary'>{$total}</div>
-                <small class='text-muted'>Total Sent</small>
+                <small class='text-muted'>" . $lang->edituser['inv_total'] . "</small>
             </div>
         </div>
         <div class='col-6 col-md-3'>
             <div class='rounded-3 bg-success-subtle border border-success text-center py-3 px-2'>
                 <div class='fs-4 fw-bold text-success'>{$used}</div>
-                <small class='text-muted'>Used</small>
+                <small class='text-muted'>" . $lang->edituser['inv_used'] . "</small>
             </div>
         </div>
         <div class='col-6 col-md-3'>
             <div class='rounded-3 bg-warning-subtle border border-warning text-center py-3 px-2'>
                 <div class='fs-4 fw-bold text-warning'>{$pending}</div>
-                <small class='text-muted'>Pending</small>
+                <small class='text-muted'>" . $lang->edituser['inv_pending'] . "</small>
             </div>
         </div>
         <div class='col-6 col-md-3'>
             <div class='rounded-3 bg-secondary-subtle border text-center py-3 px-2'>
                 <div class='fs-4 fw-bold text-secondary'>" . ($expired + $revoked) . "</div>
-                <small class='text-muted'>Expired / Revoked</small>
+                <small class='text-muted'>" . $lang->edituser['inv_expired_revoked'] . "</small>
             </div>
         </div>
     </div>
     <div class='mb-1 text-muted small'>
-        <i class='fas fa-ticket-alt me-1'></i>Available invites in balance:
+        <i class='fas fa-ticket-alt me-1'></i>" . $lang->edituser['inv_balance'] . "
         <strong class='text-dark'>" . (int)($userdata['invites'] ?? 0) . "</strong>
     </div>";
 
@@ -3504,11 +3577,11 @@ function renderInvitesTab(): string
 
         // Status badge
         [$sc, $si, $sl] = match($row['status']) {
-            'used'    => ['success', 'fa-check',      'Used'],
-            'pending' => ['warning', 'fa-clock',      'Pending'],
-            'expired' => ['secondary','fa-hourglass-end','Expired'],
-            'revoked' => ['danger',  'fa-ban',        'Revoked'],
-            default   => ['secondary','fa-question',  $row['status']],
+            'used'    => ['success', 'fa-check',      $lang->edituser['inv_st_used']],
+            'pending' => ['warning', 'fa-clock',      $lang->edituser['inv_st_pending']],
+            'expired' => ['secondary','fa-hourglass-end',$lang->edituser['inv_st_expired']],
+            'revoked' => ['danger',  'fa-ban',        $lang->edituser['inv_st_revoked']],
+            default   => ['secondary','fa-question',  (string)$row['status']],
         };
         $statusBadge = "<span class='badge bg-{$sc}-subtle text-{$sc} border border-{$sc}'>
             <i class='fas {$si} me-1'></i>{$sl}</span>";
@@ -3520,9 +3593,9 @@ function renderInvitesTab(): string
             $ilink  = "<a href='{$BASEURL}/profile.php?id={$iid}' class='text-decoration-none fw-semibold'>{$iname}</a>";
 
             $iBadges = '';
-            if ($row['invitee_warned']  === 'yes') $iBadges .= "<span class='badge bg-warning text-dark ms-1'>Warned</span>";
-            if ($row['invitee_donor']   === 'yes') $iBadges .= "<span class='badge bg-info ms-1'>Donor</span>";
-            if ($row['invitee_enabled'] === 'no')  $iBadges .= "<span class='badge bg-danger ms-1'>Banned</span>";
+            if ($row['invitee_warned']  === 'yes') $iBadges .= "<span class='badge bg-warning text-dark ms-1'>" . $lang->edituser['badge_warned'] . "</span>";
+            if ($row['invitee_donor']   === 'yes') $iBadges .= "<span class='badge bg-info ms-1'>" . $lang->edituser['badge_donor'] . "</span>";
+            if ($row['invitee_enabled'] === 'no')  $iBadges .= "<span class='badge bg-danger ms-1'>" . $lang->edituser['badge_banned'] . "</span>";
 
             $iJoined = $row['invitee_joined'] ? my_datee('relative', $row['invitee_joined']) : '—';
             $iUl     = mksize($row['invitee_ul']  ?? 0);
@@ -3531,14 +3604,14 @@ function renderInvitesTab(): string
             $inviteeCol = "
                 {$ilink}{$iBadges}
                 <div class='text-muted small mt-1'>
-                    Joined: {$iJoined} &nbsp;·&nbsp;
+                    " . ags_fmt($lang->edituser['inv_joined'], $iJoined) . " &nbsp;·&nbsp;
                     <span class='text-success'><i class='fas fa-upload'></i> {$iUl}</span> &nbsp;
                     <span class='text-danger'><i class='fas fa-download'></i> {$iDl}</span>
                 </div>";
         } elseif ($row['email']) {
             $email = htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8');
             $inviteeCol = "<span class='text-muted'><i class='fas fa-envelope me-1'></i>{$email}</span>
-                <div class='text-muted small'>Not registered yet</div>";
+                <div class='text-muted small'>" . $lang->edituser['inv_not_registered'] . "</div>";
         } else {
             $inviteeCol = "<span class='text-muted'>—</span>";
         }
@@ -3571,7 +3644,7 @@ function renderInvitesTab(): string
         $sentTable = "
         <div class='text-center text-muted py-5'>
             <i class='fas fa-ticket-alt fa-2x mb-2 d-block opacity-25'></i>
-            No invites sent yet.
+            " . $lang->edituser['inv_none_sent'] . "
         </div>";
     } else {
         $sentTable = "
@@ -3579,13 +3652,13 @@ function renderInvitesTab(): string
             <table class='table table-hover table-sm align-middle mb-0'>
                 <thead class='table-light'>
                     <tr>
-                        <th>Invitee</th>
-                        <th>Status</th>
-                        <th>Sent</th>
-                        <th>Used At</th>
-                        <th>Expires</th>
-                        <th>IP</th>
-                        <th>Note</th>
+                        <th>" . $lang->edituser['inv_th_invitee'] . "</th>
+                        <th>" . $lang->edituser['th_status'] . "</th>
+                        <th>" . $lang->edituser['inv_th_sent'] . "</th>
+                        <th>" . $lang->edituser['inv_th_used_at'] . "</th>
+                        <th>" . $lang->edituser['inv_th_expires'] . "</th>
+                        <th>" . $lang->edituser['inv_th_ip'] . "</th>
+                        <th>" . $lang->edituser['inv_th_note'] . "</th>
                     </tr>
                 </thead>
                 <tbody>{$sent_rows}</tbody>
@@ -3601,7 +3674,7 @@ function renderInvitesTab(): string
         $treeSection = "
         <div class='text-center text-muted py-5'>
             <i class='fas fa-sitemap fa-2x mb-2 d-block opacity-25'></i>
-            No invite tree — nobody registered via this user's invites yet.
+            " . $lang->edituser['inv_no_tree'] . "
         </div>";
     } else {
         $treeSection = "
@@ -3617,13 +3690,13 @@ function renderInvitesTab(): string
         $iq = $db->sql_query_prepared("SELECT id, username, enabled, donor FROM users WHERE id = ? LIMIT 1", [$invitedBy]);
         if ($iq && ($ir = $db->fetch_array($iq))) {
             $iname   = htmlspecialchars($ir['username'], ENT_QUOTES, 'UTF-8');
-            $ibanned = $ir['enabled'] === 'no' ? "<span class='badge bg-danger ms-1'>Banned</span>" : '';
-            $idonor  = $ir['donor']  === 'yes' ? "<span class='badge bg-info ms-1'>Donor</span>"   : '';
+            $ibanned = $ir['enabled'] === 'no' ? "<span class='badge bg-danger ms-1'>" . $lang->edituser['badge_banned'] . "</span>" : '';
+            $idonor  = $ir['donor']  === 'yes' ? "<span class='badge bg-info ms-1'>" . $lang->edituser['badge_donor'] . "</span>"   : '';
             $inviterSection = "
             <div class='alert alert-light border d-flex align-items-center gap-3 mb-0'>
                 <i class='fas fa-user-plus fa-lg text-primary'></i>
                 <div>
-                    <div class='fw-semibold'>Invited by</div>
+                    <div class='fw-semibold'>" . $lang->edituser['inv_invited_by'] . "</div>
                     <a href='{$BASEURL}/profile.php?id={$invitedBy}' class='text-decoration-none'>{$iname}</a>
                     {$ibanned}{$idonor}
                 </div>
@@ -3632,7 +3705,7 @@ function renderInvitesTab(): string
     } else {
         $inviterSection = "
         <div class='alert alert-light border text-muted mb-0'>
-            <i class='fas fa-user-plus me-2'></i>No inviter — registered without an invite.
+            <i class='fas fa-user-plus me-2'></i>" . $lang->edituser['inv_no_inviter'] . "
         </div>";
     }
 
@@ -3640,7 +3713,7 @@ function renderInvitesTab(): string
     return "
     <div class='d-flex align-items-center mb-4'>
         <i class='fas fa-ticket-alt fa-lg text-primary me-2'></i>
-        <h5 class='fw-bold mb-0'>Invites</h5>
+        <h5 class='fw-bold mb-0'>" . $lang->edituser['tab_invites'] . "</h5>
     </div>
 
     {$statsBar}
@@ -3650,13 +3723,13 @@ function renderInvitesTab(): string
     <ul class='nav nav-pills mb-4 gap-2' id='inviteSubTabs' role='tablist'>
         <li class='nav-item' role='presentation'>
             <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#inv-sent' type='button'>
-                <i class='fas fa-paper-plane me-1'></i>Sent Invites
+                <i class='fas fa-paper-plane me-1'></i>" . $lang->edituser['inv_tab_sent'] . "
                 <span class='badge bg-secondary ms-1'>{$sent_count}</span>
             </button>
         </li>
         <li class='nav-item' role='presentation'>
             <button class='nav-link' data-bs-toggle='pill' data-bs-target='#inv-tree' type='button'>
-                <i class='fas fa-sitemap me-1'></i>Invite Tree
+                <i class='fas fa-sitemap me-1'></i>" . $lang->edituser['inv_tab_tree'] . "
             </button>
         </li>
     </ul>
@@ -3676,11 +3749,11 @@ function renderInvitesTab(): string
 
 function handleEditUser(): void
 {
-    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb, $avatarsize;
+    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb, $avatarsize, $lang;
     
     get_user_data();
     permission_check();
-    stdhead('Edit User: ' . htmlspecialchars_uni($userdata['username']) . ' (UID: ' . $userdata['id'] . ')');
+    stdhead(ags_fmt($lang->edituser['page_title_edit'], htmlspecialchars_uni($userdata['username']), $userdata['id']));
 	
 	$user_avatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
 	
@@ -3703,36 +3776,36 @@ function handleEditUser(): void
     <div class="container mt-4">
         <div class="d-flex flex-wrap gap-3 mb-4">
             <a href="' . $BASEURL . '/' . get_profile_link($userdata['id']) . '" class="btn btn-premium">
-                <i class="fas fa-arrow-left me-2"></i>Back to Profile
+                <i class="fas fa-arrow-left me-2"></i>' . $lang->edituser['btn_back_profile'] . '
             </a>
             <a href="' . $BASEURL . '/search.php?action=finduserthreads&uid=' . $userdata['id'] . '" class="btn btn-outline-primary">
-                <i class="fas fa-file-alt me-2"></i>User Threads
+                <i class="fas fa-file-alt me-2"></i>' . $lang->edituser['btn_user_threads'] . '
             </a>
             <a href="' . $BASEURL . '/search.php?action=finduser&uid=' . $userdata['id'] . '" class="btn btn-outline-primary">
-                <i class="fas fa-comments me-2"></i>User Posts
+                <i class="fas fa-comments me-2"></i>' . $lang->edituser['btn_user_posts'] . '
             </a>
             <a href="' . $BASEURL . '/admin/index.php?act=ip_info&userid=' . $userdata['id'] . '" class="btn btn-outline-warning">
-                <i class="fas fa-network-wired me-2"></i>IP Info
+                <i class="fas fa-network-wired me-2"></i>' . $lang->edituser['btn_ip_info'] . '
             </a>
             <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=resetpasskey&userid=' . $userdata['id'] . '" class="btn btn-outline-info">
-                <i class="fas fa-key me-2"></i>Reset Passkey
+                <i class="fas fa-key me-2"></i>' . $lang->edituser['btn_reset_passkey'] . '
             </a>
             <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userdata['id'] . '" class="btn btn-outline-danger">
-                <i class="fas fa-trash-alt me-2"></i>Delete Account
+                <i class="fas fa-trash-alt me-2"></i>' . $lang->edituser['btn_delete_account'] . '
             </a>
 			
 			<button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#quickBanModal">
-                <i class="fas fa-ban me-2"></i>Quick Ban
+                <i class="fas fa-ban me-2"></i>' . $lang->edituser['btn_quick_ban'] . '
             </button>
 			
             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#sendPMModal">
-                <i class="fas fa-paper-plane me-2"></i>Send PM
+                <i class="fas fa-paper-plane me-2"></i>' . $lang->edituser['btn_send_pm'] . '
             </button>
             <a href="' . $BASEURL . '/admin/index.php?act=usersearch&uploader=' . $userdata['id'] . '" class="btn btn-outline-secondary">
-                <i class="fas fa-upload me-2"></i>Uploads
+                <i class="fas fa-upload me-2"></i>' . $lang->edituser['btn_uploads'] . '
             </a>
             <a href="' . $BASEURL . '/userhistory.php?id=' . $userdata['id'] . '" class="btn btn-outline-secondary">
-                <i class="fas fa-comments me-2"></i>Comments
+                <i class="fas fa-comments me-2"></i>' . $lang->edituser['btn_comments'] . '
             </a>
         </div>
     </div>
@@ -3764,10 +3837,10 @@ function handleEditUser(): void
      data-can-change="'.$can_change_avatar.'"
      data-max-mb="'.round($avatarsize / 1024).'"
      data-upload-url="edituser.php?action=upload_avatar&amp;userid='.$userdata['id'].'"
-     title="Avatar">
+     title="' . $lang->edituser['hdr_avatar_title'] . '">
     <div>
      ' . $user_avatar['html'] . '
-      <span class="avatar-overlay">Change</span>
+      <span class="avatar-overlay">' . $lang->edituser['hdr_avatar_change'] . '</span>
     </div>
 
     <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
@@ -3790,7 +3863,7 @@ function handleEditUser(): void
                     <div class="d-flex align-items-center mb-2">
                         <h2 class="mb-0 me-3">' . htmlspecialchars_uni($userdata['username']) . '</h2>
                         <span class="user-badge badge-premium">
-                            <i class="fas fa-id-card me-1"></i>UID: ' . $userdata['id'] . '
+                            <i class="fas fa-id-card me-1"></i>' . ags_fmt($lang->edituser['hdr_uid'], $userdata['id']) . '
                         </span>
                         ' . get_user_status_badges($userdata) . '
                     </div>
@@ -3826,77 +3899,77 @@ echo '
             <ul class="nav nav-tabs-premium nav-fill p-3" id="userTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button" role="tab">
-                        <i class="fas fa-user me-2"></i>Basic Info
+                        <i class="fas fa-user me-2"></i>' . $lang->edituser['tab_basic'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab">
-                        <i class="fas fa-shield-alt me-2"></i>Permissions
+                        <i class="fas fa-shield-alt me-2"></i>' . $lang->edituser['tab_permissions'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="warning-tab" data-bs-toggle="tab" data-bs-target="#warning" type="button" role="tab">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Warnings
+                        <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['tab_warnings'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab">
-                        <i class="fas fa-chart-bar me-2"></i>Statistics
+                        <i class="fas fa-chart-bar me-2"></i>' . $lang->edituser['tab_stats'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="account-tab" data-bs-toggle="tab" data-bs-target="#account" type="button" role="tab">
-                        <i class="fas fa-cog me-2"></i>Account Settings
+                        <i class="fas fa-cog me-2"></i>' . $lang->edituser['tab_account'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab">
-                        <i class="fas fa-cogs me-2"></i>Advanced
+                        <i class="fas fa-cogs me-2"></i>' . $lang->edituser['tab_advanced'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button" role="tab">
-                        <i class="fas fa-history me-2"></i>Activity
+                        <i class="fas fa-history me-2"></i>' . $lang->edituser['tab_activity'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security" type="button" role="tab">
-                        <i class="fas fa-shield-halved me-2"></i>Security
+                        <i class="fas fa-shield-halved me-2"></i>' . $lang->edituser['tab_security'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="hnr-tab" data-bs-toggle="tab" data-bs-target="#hnr" type="button" role="tab">
-                        <i class="fas fa-exclamation-circle me-2"></i>Hit &amp; Run
+                        <i class="fas fa-exclamation-circle me-2"></i>' . $lang->edituser['tab_hnr'] . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="forum-tab" data-bs-toggle="tab" data-bs-target="#forum" type="button" role="tab">
-                        <i class="fas fa-comments me-2"></i>Forum
+                        <i class="fas fa-comments me-2"></i>' . $lang->edituser['tab_forum'] . '
                     </button>
                 </li>
                 <!-- ДОБАВЛЕНО: Audit Log Tab Button -->
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button" role="tab">
-                        <i class="fas fa-clipboard-list me-2"></i>Audit Log
+                        <i class="fas fa-clipboard-list me-2"></i>' . $lang->edituser['tab_audit'] . '
                     </button>
                 </li>
 				
 				<li class="nav-item" role="presentation">
                    <button class="nav-link" id="torrents-tab" data-bs-toggle="tab" data-bs-target="#torrents" type="button" role="tab">
-                        <i class="fas fa-exchange-alt me-2"></i>Torrent Activity
+                        <i class="fas fa-exchange-alt me-2"></i>' . $lang->edituser['tab_torrents'] . '
                    </button>
                 </li>
 				
 				<li class="nav-item" role="presentation">
                    <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports" type="button" role="tab">
-                        <i class="fas fa-flag me-2"></i>Reports
+                        <i class="fas fa-flag me-2"></i>' . $lang->edituser['tab_reports'] . '
                    </button>
                 </li>
 				
 				
 				<li class="nav-item" role="presentation">
                    <button class="nav-link" id="invites-tab" data-bs-toggle="tab" data-bs-target="#invites" type="button" role="tab">
-                         <i class="fas fa-ticket-alt me-2"></i>Invites
+                         <i class="fas fa-ticket-alt me-2"></i>' . $lang->edituser['tab_invites'] . '
                    </button>
                 </li>
 				
@@ -3981,10 +4054,10 @@ echo '
             <div class="card-footer bg-transparent border-top-0 py-4">
                 <div class="text-center">
                     <button type="submit" class="btn btn-success btn-lg px-5 me-3" name="updateuser">
-                        <i class="fas fa-save me-2"></i>Save Changes
+                        <i class="fas fa-save me-2"></i>' . $lang->edituser['btn_save'] . '
                     </button>
                     <button type="reset" class="btn btn-outline-secondary btn-lg px-5">
-                        <i class="fas fa-undo me-2"></i>Reset
+                        <i class="fas fa-undo me-2"></i>' . $lang->edituser['btn_reset'] . '
                     </button>
                 </div>
             </div>
@@ -4014,9 +4087,18 @@ echo '
         transform: translateY(0);
     }
 }
-</style>
-<script src="'.$BASEURL.'/scripts/toast.js"></script>
-<script src="'.$BASEURL.'/admin/scripts/edituser.js"></script>';
+</style>';
+
+    // ── JS lang: ключи js_* → AGS_LANG без префикса ─────────────────────────
+    $ags_js_lang = [];
+    foreach ($lang->edituser as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $ags_js_lang[substr((string)$k, 3)] = (string)$v;
+        }
+    }
+    echo '<script>const AGS_LANG = ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+    echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>
+<script src="'.$BASEURL.'/admin/scripts/edituser.js?ver=22"></script>';
 	
 
 
@@ -4101,7 +4183,7 @@ function handleUpdateUser(): void
     }
 	
 
-    flash_message("The account ({$userdata['id']}) has been updated successfully!", "success");
+    flash_message(ags_fmt($lang->edituser['flash_user_updated'], $userdata['id']), "success");
     admin_redirect("edituser.php?action=edituser&userid={$userdata['id']}");
 }
 
@@ -4391,7 +4473,7 @@ function updateUserPermissions(): void
  */
 function handleDeleteAccount(): void
 {
-    global $userdata, $usergroups, $mybb, $db, $CURUSER;
+    global $userdata, $usergroups, $mybb, $db, $CURUSER, $lang;
     
     if (($usergroups['issupermod'] != '1' && $usergroups['cansettingspanel'] != '1')) {
         print_no_permission();
@@ -4410,21 +4492,21 @@ function handleDeleteAccount(): void
             <div class="glass-card">
                 <div class="card-header bg-danger text-white text-center py-4">
                     <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                    <h3 class="mb-0">Confirm Account Deletion</h3>
+                    <h3 class="mb-0">' . $lang->edituser['del_title'] . '</h3>
                 </div>
                 <div class="card-body text-center py-5">
-                    <h5 class="text-danger mb-3">Are you sure you want to delete this account?</h5>
+                    <h5 class="text-danger mb-3">' . $lang->edituser['del_question'] . '</h5>
                     <div class="user-info bg-light rounded p-4 mb-4">
                         <h4 class="text-danger">' . $username . '</h4>
-                        <p class="text-muted mb-0">UID: ' . $userid . '</p>
+                        <p class="text-muted mb-0">' . ags_fmt($lang->edituser['hdr_uid'], $userid) . '</p>
                     </div>
-                    <p class="text-muted mb-4">This action cannot be undone. All user data will be permanently removed.</p>
+                    <p class="text-muted mb-4">' . $lang->edituser['del_warning'] . '</p>
                     <div class="d-flex justify-content-center gap-3">
                         <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userid . '&sure=1&my_post_key=' . generate_post_check() . '" class="btn btn-danger btn-lg">
-                            <i class="fas fa-trash me-2"></i>Yes, Delete Account
+                            <i class="fas fa-trash me-2"></i>' . $lang->edituser['del_btn_yes'] . '
                         </a>
                         <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=edituser&userid=' . $userid . '" class="btn btn-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>Cancel
+                            <i class="fas fa-times me-2"></i>' . $lang->edituser['cancel'] . '
                         </a>
                     </div>
                 </div>
@@ -4446,7 +4528,7 @@ function handleDeleteAccount(): void
 
     if (!$userhandler->delete_user([$user['id']])) 
     {
-       stderr('Error', 'Cannot delete user!');
+       stderr($lang->edituser['err_title'], $lang->edituser['err_delete_failed']);
        redirect($_SERVER['SCRIPT_NAME']);
     }
 
@@ -4454,9 +4536,9 @@ function handleDeleteAccount(): void
     
 	
 	stdok(
-    message:  'The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted.',
-    title:    'Account Deleted',
-    subtitle: 'The user has been removed from the system.'
+    message:  ags_fmt($lang->edituser['del_done_msg'], '<strong>' . htmlspecialchars_uni($userdata['username']) . '</strong>'),
+    title:    $lang->edituser['del_done_title'],
+    subtitle: $lang->edituser['del_done_subtitle']
 );
 	
 	
@@ -4499,37 +4581,37 @@ function handleResetPasskey(): void
 
         write_log('Passkey for user: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been reset by ' . $CURUSER['username']);
 
-        flash_message("Passkey has been reset successfully!", "success");
+        flash_message($lang->edituser['flash_passkey_reset'], "success");
         admin_redirect('edituser.php?action=edituser&userid=' . $userdata['id']);
         return;
     }
 
-    stdhead('Reset Passkey for: ' . htmlspecialchars_uni($userdata['username']));
+    stdhead(ags_fmt($lang->edituser['pk_page_title'], htmlspecialchars_uni($userdata['username'])));
 
     echo '
     <div class="container mt-5">
         <div class="glass-card">
             <div class="card-header bg-warning text-dark text-center py-4">
                 <i class="fas fa-key fa-3x mb-3"></i>
-                <h3 class="mb-0">Reset Passkey</h3>
+                <h3 class="mb-0">' . $lang->edituser['btn_reset_passkey'] . '</h3>
             </div>
             <div class="card-body text-center py-5">
-                <h5 class="mb-4">Are you sure you want to reset passkey for user?</h5>
+                <h5 class="mb-4">' . $lang->edituser['pk_question'] . '</h5>
                 <div class="user-info bg-light rounded p-4 mb-4">
                     <h4>' . htmlspecialchars_uni($userdata['username']) . '</h4>
-                    <p class="text-muted mb-0">UID: ' . $userdata['id'] . '</p>
+                    <p class="text-muted mb-0">' . ags_fmt($lang->edituser['hdr_uid'], $userdata['id']) . '</p>
                 </div>
-                <p class="text-muted mb-4">User will receive a notification and will need to update their clients.</p>
+                <p class="text-muted mb-4">' . $lang->edituser['pk_note'] . '</p>
                 <form method="post" action="' . $_SERVER['PHP_SELF'] . '?action=resetpasskey&userid=' . $userdata['id'] . '">
                     <input type="hidden" name="userid" value="' . $userdata['id'] . '" />
                     <input type="hidden" name="sure" value="1" />
                     <input type="hidden" name="my_post_key" value="' . generate_post_check() . '" />
                     <div class="d-flex justify-content-center gap-3">
                         <button type="submit" class="btn btn-warning btn-lg">
-                            <i class="fas fa-key me-2"></i>Yes, Reset Passkey
+                            <i class="fas fa-key me-2"></i>' . $lang->edituser['pk_btn_yes'] . '
                         </button>
                         <a href="edituser.php?action=edituser&userid=' . $userdata['id'] . '" class="btn btn-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>Cancel
+                            <i class="fas fa-times me-2"></i>' . $lang->edituser['cancel'] . '
                         </a>
                     </div>
                 </form>

@@ -8,6 +8,25 @@ if (!defined('STAFF_PANEL')) {
 
 use function htmlspecialchars as e;
 
+global $lang;
+$lang->load('ratio');
+
+/**
+ * Подстановка {1}, {2}… (и %1$s — в такой формат их переводит $lang->load()).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $a) {
+            $n = $i + 1;
+            $map['{' . $n . '}'] = (string)$a;
+            $map['%' . $n . '$s'] = (string)$a;
+        }
+        return strtr($str, $map);
+    }
+}
+
 /**
  * «1.5 GB», «512MB», «1073741824», «2 TiB» → байты. null — если не разобрать.
  * Раньше подсказки в форме обещали ввод с единицами («1GB»), а сервер принимал
@@ -65,7 +84,7 @@ unset($_SESSION['rt_done']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update') {
     try {
         if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-            throw new InvalidArgumentException('Security check failed. Please refresh the page and try again.');
+            throw new InvalidArgumentException($lang->ratio['err_csrf']);
         }
 
         $username = trim((string)($_POST['username'] ?? ''));
@@ -75,21 +94,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
         // Раньше empty() считал «0» пустым значением — обнулить downloaded было невозможно
         if ($username === '') {
-            throw new InvalidArgumentException('Please choose a user.');
+            throw new InvalidArgumentException($lang->ratio['err_no_user']);
         }
         if ($upRaw === '' && $downRaw === '') {
-            throw new InvalidArgumentException('Enter at least one value.');
+            throw new InvalidArgumentException($lang->ratio['err_no_value']);
         }
         $upVal   = $upRaw   === '' ? null : rt_parse_bytes($upRaw);
         $downVal = $downRaw === '' ? null : rt_parse_bytes($downRaw);
         if (($upRaw !== '' && $upVal === null) || ($downRaw !== '' && $downVal === null)) {
-            throw new InvalidArgumentException('Use a number with an optional unit, e.g. 1073741824, 512 MB or 1.5 GB.');
+            throw new InvalidArgumentException($lang->ratio['err_bad_value']);
         }
 
         $bq     = $db->sql_query_prepared("SELECT id, username, uploaded, downloaded FROM users WHERE username = ?", [$username]);
         $before = $bq ? $db->fetch_array($bq) : null;
         if (!$before) {
-            throw new RuntimeException('User not found.');
+            throw new RuntimeException($lang->ratio['err_user_not_found']);
         }
 
         $oldUp   = (int)$before['uploaded'];
@@ -103,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         $newDown = $apply($oldDown, $downVal);
 
         if ($db->sql_query_prepared("UPDATE users SET uploaded = ?, downloaded = ? WHERE id = ?", [$newUp, $newDown, (int)$before['id']]) === false) {
-            throw new RuntimeException('Database update failed.');
+            throw new RuntimeException($lang->ratio['err_db']);
         }
 
         write_log(sprintf(
@@ -125,14 +144,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     } catch (InvalidArgumentException | RuntimeException $ex) {
         $error = $ex->getMessage();
     } catch (Throwable $ex) {
-        $error = 'An unexpected error occurred.';
+        $error = $lang->ratio['err_unexpected'];
         write_log('Ratio Manager error: ' . $ex->getMessage(), 'error');
     }
 }
 
-stdhead('Ratio Manager');
+stdhead($lang->ratio['page_title']);
 $self = (string)$_this_script_;
 $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSDIR . $p) ?: 1) : 1);
+
+// Строки для JS: js_* из ланга → без префикса
+$jsLang = [];
+foreach ((array)$lang->ratio as $k => $val) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = (string)$val;
+    }
+}
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/ratio.css?v=<?= $v('/include/templates/default/style/ratio.css') ?>">
@@ -142,8 +169,8 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
     <div class="rt-card mb-3"><div class="rt-head">
         <span class="rt-head-icon"><i class="fa-solid fa-scale-balanced"></i></span>
         <div style="min-width:0">
-            <h1 class="rt-title">Ratio Manager</h1>
-            <div class="rt-sub">Set, add or subtract a member's uploaded / downloaded traffic</div>
+            <h1 class="rt-title"><?= e($lang->ratio['page_title']) ?></h1>
+            <div class="rt-sub"><?= e($lang->ratio['page_sub']) ?></div>
         </div>
     </div></div>
 
@@ -157,7 +184,7 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
          JS-редирект печатался ещё ДО шапки страницы -->
     <div class="rt-card rt-done mb-3">
         <span class="rt-done-icon"><i class="fa-solid fa-circle-check"></i></span>
-        <h2 class="h5 fw-bold mb-1">Statistics of <?= e($done['username']) ?> updated</h2>
+        <h2 class="h5 fw-bold mb-1"><?= e(ags_fmt($lang->ratio['flash_done'], (string)$done['username'])) ?></h2>
         <div class="rt-muted mb-2">
             <i class="fa-solid fa-upload me-1"></i><?= mksize((float)$done['oldUp']) ?> → <strong><?= mksize((float)$done['newUp']) ?></strong>
             <span class="mx-2">·</span>
@@ -165,7 +192,7 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
             <span class="mx-2">·</span>
             <i class="fa-solid fa-scale-balanced me-1"></i><?= rt_ratio((float)$done['oldUp'], (float)$done['oldDown']) ?> → <strong><?= rt_ratio((float)$done['newUp'], (float)$done['newDown']) ?></strong>
         </div>
-        <a href="<?= e($profile) ?>" class="btn btn-sm btn-outline-primary px-3"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open profile</a>
+        <a href="<?= e($profile) ?>" class="btn btn-sm btn-outline-primary px-3"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i><?= e($lang->ratio['btn_open_profile']) ?></a>
     </div>
     <?php endif; ?>
 
@@ -175,33 +202,33 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="my_post_key" value="<?= e((string)($mybb->post_code ?? '')) ?>">
                 <div class="rt-sec-head"><span class="rt-sec-icon ic-blue"><i class="fa-solid fa-user-pen"></i></span>
-                    <div><h2 class="rt-sec-title">Change traffic</h2><div class="rt-muted">Values accept units: 1073741824, 512 MB, 1.5 GB, 2 TB</div></div></div>
+                    <div><h2 class="rt-sec-title"><?= e($lang->ratio['sec_change']) ?></h2><div class="rt-muted"><?= e($lang->ratio['hint_units']) ?></div></div></div>
                 <div class="p-3 p-md-4">
                     <div class="mb-3 position-relative">
-                        <label for="username" class="form-label"><i class="fa-solid fa-user"></i>User</label>
+                        <label for="username" class="form-label"><i class="fa-solid fa-user"></i><?= e($lang->ratio['lbl_user']) ?></label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                            <input type="text" class="form-control" name="username" id="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" placeholder="Start typing a username…" autocomplete="off" required autofocus>
+                            <input type="text" class="form-control" name="username" id="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" placeholder="<?= e($lang->ratio['ph_user']) ?>" autocomplete="off" required autofocus>
                         </div>
                         <div id="usernameSuggestions" class="list-group position-absolute w-100 d-none"></div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label d-block"><i class="fa-solid fa-sliders"></i>Operation</label>
+                        <label class="form-label d-block"><i class="fa-solid fa-sliders"></i><?= e($lang->ratio['lbl_operation']) ?></label>
                         <div class="rt-seg" role="radiogroup">
                             <?php $m = $_POST['mode'] ?? 'set';
-                            foreach (['set' => ['fa-equals', 'Set to'], 'add' => ['fa-plus', 'Add'], 'sub' => ['fa-minus', 'Subtract']] as $k => [$ic, $lbl]): ?>
-                            <input type="radio" name="mode" id="mode_<?= $k ?>" value="<?= $k ?>" <?= $m === $k ? 'checked' : '' ?>><label for="mode_<?= $k ?>"><i class="fa-solid <?= $ic ?>"></i><?= $lbl ?></label>
+                            foreach (['set' => ['fa-equals', $lang->ratio['opt_mode_set']], 'add' => ['fa-plus', $lang->ratio['opt_mode_add']], 'sub' => ['fa-minus', $lang->ratio['opt_mode_sub']]] as $k => [$ic, $lbl]): ?>
+                            <input type="radio" name="mode" id="mode_<?= $k ?>" value="<?= $k ?>" <?= $m === $k ? 'checked' : '' ?>><label for="mode_<?= $k ?>"><i class="fa-solid <?= $ic ?>"></i><?= e($lbl) ?></label>
                             <?php endforeach; ?>
                         </div>
                     </div>
 
                     <div class="row g-3">
-                        <?php foreach (['uploaded' => ['fa-upload', 'Uploaded', 'text-success'], 'downloaded' => ['fa-download', 'Downloaded', 'text-danger']] as $f => [$ic, $lbl, $cls]): ?>
+                        <?php foreach (['uploaded' => ['fa-upload', $lang->ratio['lbl_uploaded'], 'text-success'], 'downloaded' => ['fa-download', $lang->ratio['lbl_downloaded'], 'text-danger']] as $f => [$ic, $lbl, $cls]): ?>
                         <div class="col-md-6">
-                            <label for="<?= $f ?>" class="form-label"><i class="fa-solid <?= $ic ?> <?= $cls ?>"></i><?= $lbl ?></label>
-                            <input type="text" class="form-control font-monospace" name="<?= $f ?>" id="<?= $f ?>" value="<?= e((string)($_POST[$f] ?? '')) ?>" placeholder="e.g. 10 GB" autocomplete="off">
-                            <div class="rt-hint" id="<?= $f ?>Hint">Empty = leave unchanged</div>
+                            <label for="<?= $f ?>" class="form-label"><i class="fa-solid <?= $ic ?> <?= $cls ?>"></i><?= e($lbl) ?></label>
+                            <input type="text" class="form-control font-monospace" name="<?= $f ?>" id="<?= $f ?>" value="<?= e((string)($_POST[$f] ?? '')) ?>" placeholder="<?= e($lang->ratio['ph_value']) ?>" autocomplete="off">
+                            <div class="rt-hint" id="<?= $f ?>Hint"><?= e($lang->ratio['hint_empty']) ?></div>
                             <div class="rt-chips" data-for="<?= $f ?>">
                                 <?php foreach (['0', '1 GB', '10 GB', '50 GB', '100 GB', '1 TB'] as $v): ?><button type="button" class="rt-chip" data-v="<?= $v ?>"><?= $v ?></button><?php endforeach; ?>
                             </div>
@@ -210,8 +237,8 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
                     </div>
 
                     <div class="d-flex justify-content-end gap-2 mt-4">
-                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
-                        <button type="submit" class="btn btn-primary px-4" id="rtSave"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i><?= e($lang->ratio['btn_reset']) ?></button>
+                        <button type="submit" class="btn btn-primary px-4" id="rtSave"><i class="fa-solid fa-floppy-disk me-1"></i><?= e($lang->ratio['btn_save']) ?></button>
                     </div>
                 </div>
             </form>
@@ -221,25 +248,25 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
         <div class="col-lg-5">
             <div class="rt-card h-100">
                 <div class="rt-sec-head"><span class="rt-sec-icon ic-amber"><i class="fa-solid fa-eye"></i></span>
-                    <div><h2 class="rt-sec-title">Preview</h2><div class="rt-muted">Current values and the result</div></div></div>
+                    <div><h2 class="rt-sec-title"><?= e($lang->ratio['sec_preview']) ?></h2><div class="rt-muted"><?= e($lang->ratio['sec_preview_sub']) ?></div></div></div>
                 <div class="p-3 p-md-4">
-                    <div id="rtEmpty" class="rt-empty"><i class="fa-solid fa-user-large"></i>Choose a user to see their stats</div>
+                    <div id="rtEmpty" class="rt-empty"><i class="fa-solid fa-user-large"></i><?= e($lang->ratio['preview_empty']) ?></div>
                     <div id="rtPreview" hidden>
                         <div class="rt-user">
                             <span class="rt-avatar" id="rtAv">?</span>
                             <div style="min-width:0"><div class="fw-bold" id="rtName"></div><div class="rt-muted" id="rtMeta"></div></div>
                         </div>
                         <div class="rt-cmp">
-                            <span class="l"><i class="fa-solid fa-upload text-success me-1"></i>Up</span><span class="v" id="rtUpOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtUpNew"></span>
-                            <span class="l"><i class="fa-solid fa-download text-danger me-1"></i>Down</span><span class="v" id="rtDownOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtDownNew"></span>
+                            <span class="l"><i class="fa-solid fa-upload text-success me-1"></i><?= e($lang->ratio['lbl_up_short']) ?></span><span class="v" id="rtUpOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtUpNew"></span>
+                            <span class="l"><i class="fa-solid fa-download text-danger me-1"></i><?= e($lang->ratio['lbl_down_short']) ?></span><span class="v" id="rtDownOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtDownNew"></span>
                         </div>
                         <div class="rt-ratio-big">
-                            <div class="text-center"><div class="k">Ratio now</div><div class="n" id="rtRatioOld">—</div></div>
+                            <div class="text-center"><div class="k"><?= e($lang->ratio['lbl_ratio_now']) ?></div><div class="n" id="rtRatioOld">—</div></div>
                             <i class="fa-solid fa-arrow-right-long fa-lg text-body-secondary"></i>
-                            <div class="text-center"><div class="k">After</div><div class="n" id="rtRatioNew">—</div></div>
+                            <div class="text-center"><div class="k"><?= e($lang->ratio['lbl_ratio_after']) ?></div><div class="n" id="rtRatioNew">—</div></div>
                         </div>
                     </div>
-                    <div class="alert alert-warning d-flex gap-2 rounded-4 mt-3 mb-0 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div>Every change is written to the site log with the old and new values.</div></div>
+                    <div class="alert alert-warning d-flex gap-2 rounded-4 mt-3 mb-0 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div><?= e($lang->ratio['note_logged']) ?></div></div>
                 </div>
             </div>
         </div>
@@ -247,6 +274,7 @@ $v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSD
 </div>
 
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/ratio.js?v=2"></script>
+<script>const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/ratio.js?v=3"></script>
 <?php
-stdfoot();
+stdfoot();

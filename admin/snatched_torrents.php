@@ -11,6 +11,25 @@ if (!defined('STAFF_PANEL')) {
 
 define('ST_VERSION', '0.8');
 
+$lang->load('snatched_torrents');
+
+/**
+ * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+ * so both forms are replaced (strtr, not sprintf: a literal % is safe).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 // ---------------------------------------------------------------------
 // Search input
 // ---------------------------------------------------------------------
@@ -105,10 +124,10 @@ $url_without = static function (string $drop) use ($search_params, $_this_script
 };
 
 $filter_labels = [
-    'search_user'       => ['fa-user',          'User'],
-    'search_user_id'    => ['fa-id-badge',      'User ID'],
-    'search_torrent'    => ['fa-file-lines',    'Torrent'],
-    'search_torrent_id' => ['fa-hashtag',       'Torrent ID'],
+    'search_user'       => ['fa-user',          $lang->snatched_torrents['chip_user']],
+    'search_user_id'    => ['fa-id-badge',      $lang->snatched_torrents['chip_user_id']],
+    'search_torrent'    => ['fa-file-lines',    $lang->snatched_torrents['chip_torrent']],
+    'search_torrent_id' => ['fa-hashtag',       $lang->snatched_torrents['chip_torrent_id']],
 ];
 
 // ---------------------------------------------------------------------
@@ -128,7 +147,7 @@ $result = $db->sql_query_prepared(
 );
 $num_rows = (int)$db->num_rows($result);
 
-stdhead('All Snatched Torrents');
+stdhead($lang->snatched_torrents['page_title']);
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/snatched_torrents.css?v=' . ST_VERSION . '">';
 echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
@@ -141,11 +160,11 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
     <div class="stn-card stn-head mb-3">
         <div class="stn-head__icon"><i class="fa-solid fa-cloud-arrow-down"></i></div>
         <div class="flex-grow-1">
-            <h1 class="stn-title">Snatched Torrents</h1>
-            <p>Who downloaded what, how much they transferred and whether they are still seeding.</p>
+            <h1 class="stn-title"><?php echo $lang->snatched_torrents['sec_title']; ?></h1>
+            <p><?php echo $lang->snatched_torrents['sec_subtitle']; ?></p>
         </div>
         <?php if ($has_filter): ?>
-            <span class="stn-badge stn-soft-info d-none d-md-inline-flex"><i class="fa-solid fa-filter"></i>Filtered view</span>
+            <span class="stn-badge stn-soft-info d-none d-md-inline-flex"><i class="fa-solid fa-filter"></i><?php echo $lang->snatched_torrents['badge_filtered']; ?></span>
         <?php endif; ?>
     </div>
 
@@ -156,7 +175,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                 <div class="stn-kpi__icon stn-soft-primary"><i class="fa-solid fa-database"></i></div>
                 <div>
                     <div class="stn-kpi__value"><?php echo number_format($count); ?></div>
-                    <div class="stn-kpi__label">Total snatches</div>
+                    <div class="stn-kpi__label"><?php echo $lang->snatched_torrents['kpi_total']; ?></div>
                 </div>
             </div>
         </div>
@@ -165,7 +184,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                 <div class="stn-kpi__icon stn-soft-success"><i class="fa-solid fa-circle-check"></i></div>
                 <div>
                     <div class="stn-kpi__value"><?php echo number_format($stat_done); ?></div>
-                    <div class="stn-kpi__label">Completed <span class="stn-kpi__sub">(<?php echo $done_pct; ?>%)</span></div>
+                    <div class="stn-kpi__label"><?php echo $lang->snatched_torrents['kpi_completed']; ?> <span class="stn-kpi__sub">(<?php echo $done_pct; ?>%)</span></div>
                 </div>
             </div>
         </div>
@@ -174,7 +193,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                 <div class="stn-kpi__icon stn-soft-info"><i class="fa-solid fa-seedling"></i></div>
                 <div>
                     <div class="stn-kpi__value"><?php echo number_format($stat_seeding); ?></div>
-                    <div class="stn-kpi__label">Seeding now <span class="stn-kpi__sub">(<?php echo $seed_pct; ?>%)</span></div>
+                    <div class="stn-kpi__label"><?php echo $lang->snatched_torrents['kpi_seeding']; ?> <span class="stn-kpi__sub">(<?php echo $seed_pct; ?>%)</span></div>
                 </div>
             </div>
         </div>
@@ -186,7 +205,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                         <i class="fa-solid fa-arrow-up text-success stn-ico-sm"></i> <?php echo mksize($stat_up); ?>
                     </div>
                     <div class="stn-kpi__sub">
-                        <i class="fa-solid fa-arrow-down text-danger"></i> <?php echo mksize($stat_down); ?> downloaded
+                        <i class="fa-solid fa-arrow-down text-danger"></i> <?php echo ags_fmt($lang->snatched_torrents['kpi_downloaded'], mksize($stat_down)); ?>
                     </div>
                 </div>
             </div>
@@ -199,55 +218,55 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
             <input type="hidden" name="act" value="snatched_torrents">
             <div class="row g-3 align-items-end">
                 <div class="col-sm-6 col-lg">
-                    <label class="form-label" for="stn_user"><i class="fa-solid fa-user me-1"></i>Username</label>
+                    <label class="form-label" for="stn_user"><i class="fa-solid fa-user me-1"></i><?php echo $lang->snatched_torrents['lbl_username']; ?></label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
                         <input type="text" class="form-control" id="stn_user" name="search_user"
-                               value="<?php echo htmlspecialchars($search_user, ENT_QUOTES); ?>" placeholder="Username...">
+                               value="<?php echo htmlspecialchars($search_user, ENT_QUOTES); ?>" placeholder="<?php echo htmlspecialchars($lang->snatched_torrents['ph_username'], ENT_QUOTES); ?>">
                     </div>
                 </div>
                 <div class="col-sm-6 col-lg">
-                    <label class="form-label" for="stn_uid"><i class="fa-solid fa-id-badge me-1"></i>User ID</label>
+                    <label class="form-label" for="stn_uid"><i class="fa-solid fa-id-badge me-1"></i><?php echo $lang->snatched_torrents['lbl_user_id']; ?></label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="fa-solid fa-id-badge"></i></span>
                         <input type="number" min="1" class="form-control" id="stn_uid" name="search_user_id"
-                               value="<?php echo $search_user_id ?: ''; ?>" placeholder="User ID...">
+                               value="<?php echo $search_user_id ?: ''; ?>" placeholder="<?php echo htmlspecialchars($lang->snatched_torrents['ph_user_id'], ENT_QUOTES); ?>">
                     </div>
                 </div>
                 <div class="col-sm-6 col-lg">
-                    <label class="form-label" for="stn_tname"><i class="fa-solid fa-file-lines me-1"></i>Torrent name</label>
+                    <label class="form-label" for="stn_tname"><i class="fa-solid fa-file-lines me-1"></i><?php echo $lang->snatched_torrents['lbl_torrent_name']; ?></label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                         <input type="text" class="form-control" id="stn_tname" name="search_torrent"
-                               value="<?php echo htmlspecialchars($search_torrent, ENT_QUOTES); ?>" placeholder="Torrent name...">
+                               value="<?php echo htmlspecialchars($search_torrent, ENT_QUOTES); ?>" placeholder="<?php echo htmlspecialchars($lang->snatched_torrents['ph_torrent_name'], ENT_QUOTES); ?>">
                     </div>
                 </div>
                 <div class="col-sm-6 col-lg">
-                    <label class="form-label" for="stn_tid"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
+                    <label class="form-label" for="stn_tid"><i class="fa-solid fa-hashtag me-1"></i><?php echo $lang->snatched_torrents['lbl_torrent_id']; ?></label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>
                         <input type="number" min="1" class="form-control" id="stn_tid" name="search_torrent_id"
-                               value="<?php echo $search_torrent_id ?: ''; ?>" placeholder="Torrent ID...">
+                               value="<?php echo $search_torrent_id ?: ''; ?>" placeholder="<?php echo htmlspecialchars($lang->snatched_torrents['ph_torrent_id'], ENT_QUOTES); ?>">
                     </div>
                 </div>
                 <div class="col-12 col-lg-auto d-flex gap-2">
                     <button type="submit" class="btn btn-primary stn-pill">
-                        <i class="fa-solid fa-magnifying-glass me-1"></i>Search
+                        <i class="fa-solid fa-magnifying-glass me-1"></i><?php echo $lang->snatched_torrents['btn_search']; ?>
                     </button>
                     <a href="<?php echo $_this_script_; ?>" id="clearSearch" class="btn btn-outline-secondary stn-pill">
-                        <i class="fa-solid fa-rotate-left me-1"></i>Reset
+                        <i class="fa-solid fa-rotate-left me-1"></i><?php echo $lang->snatched_torrents['btn_reset']; ?>
                     </a>
                 </div>
             </div>
 
             <?php if ($has_filter): ?>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
-                <span class="stn-meta"><i class="fa-solid fa-filter me-1"></i>Active filters:</span>
+                <span class="stn-meta"><i class="fa-solid fa-filter me-1"></i><?php echo $lang->snatched_torrents['lbl_active_filters']; ?></span>
                 <?php foreach ($search_params as $key => $val):
                     [$ico, $lbl] = $filter_labels[$key]; ?>
-                    <a class="stn-chip stn-soft-primary" href="<?php echo $url_without($key); ?>" title="Remove filter">
+                    <a class="stn-chip stn-soft-primary" href="<?php echo $url_without($key); ?>" title="<?php echo htmlspecialchars($lang->snatched_torrents['tip_remove_filter'], ENT_QUOTES); ?>" aria-label="<?php echo htmlspecialchars($lang->snatched_torrents['tip_remove_filter'], ENT_QUOTES); ?>">
                         <i class="fa-solid <?php echo $ico; ?>"></i>
-                        <?php echo $lbl; ?>: <b><?php echo htmlspecialchars((string)$val, ENT_QUOTES); ?></b>
+                        <?php echo htmlspecialchars($lbl, ENT_QUOTES); ?>: <b><?php echo htmlspecialchars((string)$val, ENT_QUOTES); ?></b>
                         <i class="fa-solid fa-xmark"></i>
                     </a>
                 <?php endforeach; ?>
@@ -261,7 +280,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
     <?php if ($num_rows > 0): ?>
 
         <div class="stn-toolbar">
-            <span><i class="fa-solid fa-list me-1"></i>Showing <b><?php echo number_format($start + 1); ?>–<?php echo number_format(min($start + $perpage, $count)); ?></b> of <b><?php echo number_format($count); ?></b></span>
+            <span><i class="fa-solid fa-list me-1"></i><?php echo ags_fmt($lang->snatched_torrents['txt_showing'], number_format($start + 1), number_format(min($start + $perpage, $count)), number_format($count)); ?></span>
             <?php if ($count > $perpage) { echo '<div>' . $multipage . '</div>'; } ?>
         </div>
 
@@ -269,15 +288,15 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
             <table class="table stn-table">
                 <thead>
                     <tr>
-                        <th class="sortable" data-type="text"><i class="fa-solid fa-user"></i>User<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable" data-type="text"><i class="fa-solid fa-magnet"></i>Torrent<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-up"></i>Uploaded<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-down"></i>Downloaded<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-scale-balanced"></i>Ratio<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable" data-type="num"><i class="fa-solid fa-play"></i>Started<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable" data-type="num"><i class="fa-solid fa-flag-checkered"></i>Completed<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-seedling"></i>Seeding<i class="fa-solid fa-sort stn-sort-ico"></i></th>
-                        <th class="sortable" data-type="num"><i class="fa-solid fa-bars-progress"></i>Progress<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="text"><i class="fa-solid fa-user"></i><?php echo $lang->snatched_torrents['col_user']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="text"><i class="fa-solid fa-magnet"></i><?php echo $lang->snatched_torrents['col_torrent']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-up"></i><?php echo $lang->snatched_torrents['col_uploaded']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-down"></i><?php echo $lang->snatched_torrents['col_downloaded']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-scale-balanced"></i><?php echo $lang->snatched_torrents['col_ratio']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-play"></i><?php echo $lang->snatched_torrents['col_started']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-flag-checkered"></i><?php echo $lang->snatched_torrents['col_completed']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-seedling"></i><?php echo $lang->snatched_torrents['col_seeding']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-bars-progress"></i><?php echo $lang->snatched_torrents['col_progress']; ?><i class="fa-solid fa-sort stn-sort-ico"></i></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -329,7 +348,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                     $torrent_name   = htmlspecialchars_uni($raw_name);
                     $short_name     = htmlspecialchars_uni(cutename($raw_name));
                     $torrent_link   = $BASEURL . '/' . get_torrent_link((int)$row['torrentid']);
-                    $torrent_added  = !empty($row['added']) ? date('Y-m-d H:i', (int)$row['added']) : 'N/A';
+                    $torrent_added  = !empty($row['added']) ? date('Y-m-d H:i', (int)$row['added']) : htmlspecialchars($lang->snatched_torrents['txt_na'], ENT_QUOTES);
 
                     $popover_title   = htmlspecialchars('<i class="fa-solid fa-folder-open me-1"></i>' . htmlspecialchars_uni(cutename($raw_name, 30)), ENT_QUOTES);
                     $popover_content = htmlspecialchars(
@@ -344,8 +363,8 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                     $progress_content = htmlspecialchars(
                         '<div class="small">'
                         . ($progress >= 100
-                            ? '<i class="fa-solid fa-circle-check text-success me-1"></i>Download completed'
-                            : '<i class="fa-solid fa-spinner text-warning me-1"></i>' . $progress . '% &mdash; ' . mksize($to_go) . ' left')
+                            ? '<i class="fa-solid fa-circle-check text-success me-1"></i>' . htmlspecialchars($lang->snatched_torrents['pop_completed'], ENT_QUOTES)
+                            : '<i class="fa-solid fa-spinner text-warning me-1"></i>' . htmlspecialchars(ags_fmt($lang->snatched_torrents['pop_left'], $progress, mksize($to_go)), ENT_QUOTES))
                         . '</div>',
                         ENT_QUOTES
                     );
@@ -363,7 +382,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                                         <?php echo get_user_icons($row); ?>
                                         <div class="stn-meta"><i class="fa-solid fa-id-badge me-1"></i><?php echo (int)$row['uid']; ?></div>
                                     <?php else: ?>
-                                        <span class="stn-meta"><i class="fa-solid fa-user-slash me-1"></i>Deleted user</span>
+                                        <span class="stn-meta"><i class="fa-solid fa-user-slash me-1"></i><?php echo $lang->snatched_torrents['txt_deleted_user']; ?></span>
                                         <div class="stn-meta">#<?php echo (int)$row['userid']; ?></div>
                                     <?php endif; ?>
                                 </div>
@@ -389,7 +408,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                                 <?php else: ?>
                                     <span class="stn-torrent-ico stn-soft-muted"><i class="fa-solid fa-trash-can"></i></span>
                                     <div class="lh-sm">
-                                        <span class="stn-meta">Deleted torrent</span>
+                                        <span class="stn-meta"><?php echo $lang->snatched_torrents['txt_deleted_torrent']; ?></span>
                                         <div class="stn-meta"><i class="fa-solid fa-hashtag"></i><?php echo (int)$row['torrentid']; ?></div>
                                     </div>
                                 <?php endif; ?>
@@ -425,18 +444,18 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                                 <span class="stn-badge stn-soft-success"><i class="fa-solid fa-flag-checkered"></i><?php echo my_datee($dateformat, $completedat); ?></span>
                                 <div class="stn-meta mt-1 ms-1"><i class="fa-regular fa-clock"></i><?php echo my_datee($timeformat, $completedat); ?></div>
                             <?php elseif ($progress > 0): ?>
-                                <span class="stn-badge stn-soft-warning"><i class="fa-solid fa-hourglass-half"></i>In progress</span>
+                                <span class="stn-badge stn-soft-warning"><i class="fa-solid fa-hourglass-half"></i><?php echo $lang->snatched_torrents['st_in_progress']; ?></span>
                             <?php else: ?>
-                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-pause"></i>Not started</span>
+                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-pause"></i><?php echo $lang->snatched_torrents['st_not_started']; ?></span>
                             <?php endif; ?>
                         </td>
 
                         <!-- Seeding -->
                         <td class="text-center" data-sort="<?php echo $is_seeder ? 1 : 0; ?>">
                             <?php if ($is_seeder): ?>
-                                <span class="stn-badge stn-soft-success"><i class="fa-solid fa-seedling"></i>Yes</span>
+                                <span class="stn-badge stn-soft-success"><i class="fa-solid fa-seedling"></i><?php echo $lang->snatched_torrents['opt_yes']; ?></span>
                             <?php else: ?>
-                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-minus"></i>No</span>
+                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-minus"></i><?php echo $lang->snatched_torrents['opt_no']; ?></span>
                             <?php endif; ?>
                         </td>
 
@@ -444,7 +463,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                         <td data-sort="<?php echo $progress; ?>">
                             <div class="progress stn-progress"
                                  data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
-                                 data-bs-title="<?php echo htmlspecialchars('<i class="fa-solid fa-bars-progress me-1"></i>Download progress', ENT_QUOTES); ?>"
+                                 data-bs-title="<?php echo htmlspecialchars('<i class="fa-solid fa-bars-progress me-1"></i>' . htmlspecialchars($lang->snatched_torrents['pop_progress_title'], ENT_QUOTES), ENT_QUOTES); ?>"
                                  data-bs-content="<?php echo $progress_content; ?>">
                                 <div class="progress-bar <?php echo $progress_class; ?>" role="progressbar"
                                      style="width: <?php echo $progress; ?>%"
@@ -460,7 +479,7 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
 
         <?php if ($count > $perpage): ?>
         <div class="stn-toolbar stn-toolbar--bottom">
-            <span>Page <b><?php echo $page; ?></b> of <b><?php echo $pages; ?></b></span>
+            <span><?php echo ags_fmt($lang->snatched_torrents['txt_page_of'], $page, $pages); ?></span>
             <div><?php echo $multipage; ?></div>
         </div>
         <?php endif; ?>
@@ -471,12 +490,12 @@ echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_
                 <i class="fa-solid <?php echo $has_filter ? 'fa-magnifying-glass-minus' : 'fa-inbox'; ?>"></i>
             </div>
             <?php if ($has_filter): ?>
-                <h4 class="stn-title">No results found</h4>
-                <p class="text-body-secondary mb-3">No snatched torrents match your search criteria.</p>
-                <a href="<?php echo $_this_script_; ?>" class="btn btn-outline-secondary stn-pill"><i class="fa-solid fa-rotate-left me-1"></i>Reset filters</a>
+                <h4 class="stn-title"><?php echo $lang->snatched_torrents['empty_filtered_title']; ?></h4>
+                <p class="text-body-secondary mb-3"><?php echo $lang->snatched_torrents['empty_filtered_text']; ?></p>
+                <a href="<?php echo $_this_script_; ?>" class="btn btn-outline-secondary stn-pill"><i class="fa-solid fa-rotate-left me-1"></i><?php echo $lang->snatched_torrents['btn_reset_filters']; ?></a>
             <?php else: ?>
-                <h4 class="stn-title">No snatched torrents yet</h4>
-                <p class="text-body-secondary mb-0">There are currently no snatched torrents in the database.</p>
+                <h4 class="stn-title"><?php echo $lang->snatched_torrents['empty_title']; ?></h4>
+                <p class="text-body-secondary mb-0"><?php echo $lang->snatched_torrents['empty_text']; ?></p>
             <?php endif; ?>
         </div>
     <?php endif; ?>

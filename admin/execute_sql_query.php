@@ -9,6 +9,23 @@ if (!defined('STAFF_PANEL')) {
           </div>');
 }
 
+$lang->load('execute_sql_query');
+
+// Подстановка {1}, {2}… в строки ланга. $lang->load() превращает {1} в %1$s,
+// поэтому заменяем оба формата.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 // ── Session history ───────────────────────────────────────────────────────────
 if (!isset($_SESSION['query_history'])) {
     $_SESSION['query_history'] = [];
@@ -17,8 +34,8 @@ if (!isset($_SESSION['query_history'])) {
 // Clear history
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_clear_history') {
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
-        stdhead('SQL Query Editor');
-        echo '<div class="container mt-4"><div class="alert alert-danger">Security check failed. Please refresh the page and try again.</div></div>';
+        stdhead($lang->execute_sql_query['page_title']);
+        echo '<div class="container mt-4"><div class="alert alert-danger">' . htmlspecialchars($lang->execute_sql_query['flash_csrf_failed']) . '</div></div>';
         stdfoot();
         exit;
     }
@@ -60,8 +77,8 @@ const DESTRUCTIVE_QUERY_PATTERN = '/^(?:\s+|--[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
-        stdhead('SQL Query Editor');
-        echo '<div class="container mt-4"><div class="alert alert-danger">Security check failed. Please refresh the page and try again.</div></div>';
+        stdhead($lang->execute_sql_query['page_title']);
+        echo '<div class="container mt-4"><div class="alert alert-danger">' . htmlspecialchars($lang->execute_sql_query['flash_csrf_failed']) . '</div></div>';
         stdfoot();
         exit;
     }
@@ -70,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
 
     if (!empty($query) && preg_match(DESTRUCTIVE_QUERY_PATTERN, $query) && ($_POST['confirm_destructive'] ?? '') !== '1') {
         $alert = 'warning';
-        $rows_info = 'This query looks destructive (DROP/DELETE/TRUNCATE/UPDATE/ALTER). Confirm the dialog to run it.';
+        $rows_info = $lang->execute_sql_query['flash_destructive'];
         $needsConfirm = true;
     } elseif (!empty($query)) {
         // Save to history
@@ -95,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
         } elseif ($result instanceof \mysqli_result) {
             $num = $result->num_rows;
             $alert = 'success';
-            $rows_info = "{$num} row(s) returned";
+            $rows_info = ags_fmt($lang->execute_sql_query['flash_rows_returned'], $num);
 
             if ($num > 0) {
                 $table = '<div class="qe-result-scroll"><table class="qe-table" id="qeResultTable">';
@@ -121,16 +138,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
                 $table .= '</tbody></table></div>';
             } else {
                 $alert = 'info';
-                $rows_info = 'Query returned no rows.';
+                $rows_info = $lang->execute_sql_query['flash_no_rows'];
             }
         } else {
             $affected = $mysqli->affected_rows;
             $alert    = 'success';
-            $rows_info = max(0, $affected) . ' row(s) affected';
+            $rows_info = ags_fmt($lang->execute_sql_query['flash_rows_affected'], max(0, $affected));
         }
     } else {
         $alert     = 'warning';
-        $rows_info = 'Empty query — nothing to execute.';
+        $rows_info = $lang->execute_sql_query['flash_empty_query'];
     }
 }
 
@@ -154,7 +171,9 @@ if ($db_ok) {
 }
 
 $qe_bytes = static function (int $b): string {
-    $u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    global $lang;
+    $L = $lang->execute_sql_query;
+    $u = [$L['unit_b'], $L['unit_kb'], $L['unit_mb'], $L['unit_gb'], $L['unit_tb']];
     $i = 0;
     $v = (float)$b;
     while ($v >= 1024 && $i < count($u) - 1) {
@@ -174,15 +193,23 @@ $alertIcon = match ($alert) {
 };
 
 $examples = [
-    ['fa-users',         'All users',     'SELECT * FROM users LIMIT 20;'],
-    ['fa-user-check',    'Active users',  "SELECT id, username, email FROM users WHERE enabled = 'yes' LIMIT 50;"],
-    ['fa-table-list',    'Show tables',   'SHOW TABLES;'],
-    ['fa-microchip',     'Thread status', "SHOW STATUS LIKE 'Threads%';"],
-    ['fa-weight-hanging','Table sizes',   'SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) AS size_mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size_mb DESC;'],
-    ['fa-list-check',    'Process list',  'SHOW FULL PROCESSLIST;'],
+    ['fa-users',         $lang->execute_sql_query['opt_ex_all_users'],     'SELECT * FROM users LIMIT 20;'],
+    ['fa-user-check',    $lang->execute_sql_query['opt_ex_active_users'],  "SELECT id, username, email FROM users WHERE enabled = 'yes' LIMIT 50;"],
+    ['fa-table-list',    $lang->execute_sql_query['opt_ex_show_tables'],   'SHOW TABLES;'],
+    ['fa-microchip',     $lang->execute_sql_query['opt_ex_thread_status'], "SHOW STATUS LIKE 'Threads%';"],
+    ['fa-weight-hanging',$lang->execute_sql_query['opt_ex_table_sizes'],   'SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) AS size_mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size_mb DESC;'],
+    ['fa-list-check',    $lang->execute_sql_query['opt_ex_process_list'],  'SHOW FULL PROCESSLIST;'],
 ];
 
-stdhead('SQL Query Editor');
+// Строки для JS: ключи js_* без префикса
+$qe_js_lang = [];
+foreach ($lang->execute_sql_query as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $qe_js_lang[substr((string)$k, 3)] = $v;
+    }
+}
+
+stdhead($lang->execute_sql_query['page_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/execute_sql_query.css?ver=2">
@@ -193,12 +220,12 @@ stdhead('SQL Query Editor');
     <div class="qe-panel qe-header">
         <div class="qe-header-icon"><i class="fa-solid fa-terminal"></i></div>
         <div class="qe-header-text">
-            <h2>SQL Query Editor</h2>
-            <p>Run SQL against the live database. Every executed query is written to the staff log.</p>
+            <h2><?= htmlspecialchars($lang->execute_sql_query['page_title']) ?></h2>
+            <p><?= htmlspecialchars($lang->execute_sql_query['sub_header']) ?></p>
         </div>
         <span class="qe-conn <?= $db_ok ? 'qe-conn-ok' : 'qe-conn-err' ?>">
             <i class="fa-solid <?= $db_ok ? 'fa-plug-circle-check' : 'fa-plug-circle-xmark' ?>"></i>
-            <?= $db_ok ? 'Connected' : 'Offline' ?>
+            <?= htmlspecialchars($db_ok ? $lang->execute_sql_query['conn_ok'] : $lang->execute_sql_query['conn_off']) ?>
         </span>
     </div>
 
@@ -207,31 +234,31 @@ stdhead('SQL Query Editor');
         <div class="qe-kpi">
             <div class="qe-kpi-icon qe-soft-<?= $db_ok ? 'success' : 'danger' ?>"><i class="fa-solid fa-database"></i></div>
             <div class="qe-kpi-body">
-                <div class="qe-kpi-label">Database</div>
+                <div class="qe-kpi-label"><?= htmlspecialchars($lang->execute_sql_query['lbl_database']) ?></div>
                 <div class="qe-kpi-value" title="<?= htmlspecialchars($db_name) ?>"><?= htmlspecialchars($db_name) ?></div>
             </div>
         </div>
         <div class="qe-kpi">
             <div class="qe-kpi-icon qe-soft-primary"><i class="fa-solid fa-server"></i></div>
             <div class="qe-kpi-body">
-                <div class="qe-kpi-label">MySQL version</div>
+                <div class="qe-kpi-label"><?= htmlspecialchars($lang->execute_sql_query['lbl_mysql_version']) ?></div>
                 <div class="qe-kpi-value"><?= htmlspecialchars($kpi['version']) ?></div>
             </div>
         </div>
         <div class="qe-kpi">
             <div class="qe-kpi-icon qe-soft-info"><i class="fa-solid fa-table"></i></div>
             <div class="qe-kpi-body">
-                <div class="qe-kpi-label">Tables</div>
+                <div class="qe-kpi-label"><?= htmlspecialchars($lang->execute_sql_query['lbl_tables']) ?></div>
                 <div class="qe-kpi-value"><?= number_format($kpi['tables']) ?></div>
-                <div class="qe-kpi-sub">~<?= number_format($kpi['rows']) ?> rows</div>
+                <div class="qe-kpi-sub"><?= htmlspecialchars(ags_fmt($lang->execute_sql_query['sub_rows'], number_format($kpi['rows']))) ?></div>
             </div>
         </div>
         <div class="qe-kpi">
             <div class="qe-kpi-icon qe-soft-warning"><i class="fa-solid fa-hard-drive"></i></div>
             <div class="qe-kpi-body">
-                <div class="qe-kpi-label">Size on disk</div>
-                <div class="qe-kpi-value"><?= $qe_bytes($kpi['size']) ?></div>
-                <div class="qe-kpi-sub">data + indexes</div>
+                <div class="qe-kpi-label"><?= htmlspecialchars($lang->execute_sql_query['lbl_size']) ?></div>
+                <div class="qe-kpi-value"><?= htmlspecialchars($qe_bytes($kpi['size'])) ?></div>
+                <div class="qe-kpi-sub"><?= htmlspecialchars($lang->execute_sql_query['sub_size']) ?></div>
             </div>
         </div>
     </div>
@@ -239,7 +266,7 @@ stdhead('SQL Query Editor');
     <?php if (!$db_ok): ?>
     <div class="qe-msg qe-msg-danger qe-mb">
         <i class="fa-solid fa-circle-xmark"></i>
-        <span>Database connection failed. Check the server log for details.</span>
+        <span><?= htmlspecialchars($lang->execute_sql_query['flash_db_failed']) ?></span>
     </div>
     <?php endif; ?>
 
@@ -257,27 +284,27 @@ stdhead('SQL Query Editor');
             </div>
 
             <textarea name="query" id="query" spellcheck="false"
-                      placeholder="-- Enter your SQL query here&#10;SELECT * FROM users LIMIT 10;"
+                      placeholder="-- <?= htmlspecialchars($lang->execute_sql_query['ph_query']) ?>&#10;SELECT * FROM users LIMIT 10;"
             ><?= htmlspecialchars($query) ?></textarea>
 
             <div class="qe-toolbar">
                 <div class="qe-tool-group">
                     <button type="button" class="qe-btn qe-btn-ghost" id="qeFormat">
-                        <i class="fa-solid fa-align-left"></i> Format
+                        <i class="fa-solid fa-align-left"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_format']) ?>
                     </button>
                     <button type="button" class="qe-btn qe-btn-ghost" id="qeHistory"
                             data-bs-toggle="modal" data-bs-target="#histModal">
-                        <i class="fa-solid fa-clock-rotate-left"></i> History
+                        <i class="fa-solid fa-clock-rotate-left"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_history']) ?>
                         <?php if ($historyCount > 0): ?>
                         <span class="qe-count"><?= $historyCount ?></span>
                         <?php endif; ?>
                     </button>
                     <button type="button" class="qe-btn qe-btn-ghost" id="qeClear">
-                        <i class="fa-solid fa-eraser"></i> Clear
+                        <i class="fa-solid fa-eraser"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_clear']) ?>
                     </button>
                 </div>
                 <button type="submit" class="qe-btn qe-btn-run">
-                    <i class="fa-solid fa-play"></i> Execute
+                    <i class="fa-solid fa-play"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_execute']) ?>
                 </button>
             </div>
         </form>
@@ -285,7 +312,7 @@ stdhead('SQL Query Editor');
 
     <!-- Examples -->
     <div class="qe-panel qe-examples">
-        <div class="qe-section-title"><i class="fa-solid fa-lightbulb"></i> Quick examples</div>
+        <div class="qe-section-title"><i class="fa-solid fa-lightbulb"></i> <?= htmlspecialchars($lang->execute_sql_query['sec_examples']) ?></div>
         <div class="qe-ex-list">
             <?php foreach ($examples as [$icon, $label, $sql]): ?>
             <button type="button" class="qe-ex-btn" data-q="<?= htmlspecialchars($sql) ?>" title="<?= htmlspecialchars($sql) ?>">
@@ -299,20 +326,20 @@ stdhead('SQL Query Editor');
     <?php if (!empty($alert)): ?>
     <div class="qe-panel qe-result">
         <div class="qe-result-head">
-            <div class="qe-section-title"><i class="fa-solid fa-table-cells"></i> Query result</div>
+            <div class="qe-section-title"><i class="fa-solid fa-table-cells"></i> <?= htmlspecialchars($lang->execute_sql_query['sec_result']) ?></div>
             <div class="qe-result-meta">
                 <?php if ($exec_time !== null): ?>
                 <span class="qe-badge qe-soft-secondary">
-                    <i class="fa-solid fa-stopwatch"></i> <?= $exec_time ?> ms
+                    <i class="fa-solid fa-stopwatch"></i> <?= htmlspecialchars(ags_fmt($lang->execute_sql_query['lbl_exec_ms'], $exec_time)) ?>
                 </span>
                 <?php endif; ?>
                 <span class="qe-badge qe-soft-<?= $alert ?>">
                     <i class="fa-solid <?= $alertIcon ?>"></i>
-                    <?= $alert === 'danger' ? 'Error' : htmlspecialchars($rows_info) ?>
+                    <?= htmlspecialchars($alert === 'danger' ? $lang->execute_sql_query['lbl_error'] : $rows_info) ?>
                 </span>
                 <?php if (!empty($table)): ?>
                 <button type="button" class="qe-btn qe-btn-ghost qe-btn-sm" id="qeCopyCsv">
-                    <i class="fa-solid fa-file-csv"></i> Copy as CSV
+                    <i class="fa-solid fa-file-csv"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_copy_csv']) ?>
                 </button>
                 <?php endif; ?>
             </div>
@@ -335,13 +362,13 @@ stdhead('SQL Query Editor');
             <div class="modal-content">
                 <div class="modal-header">
                     <div class="qe-header-icon qe-header-icon-sm"><i class="fa-solid fa-clock-rotate-left"></i></div>
-                    <h5 class="modal-title" id="histModalLabel">Query history</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title" id="histModalLabel"><?= htmlspecialchars($lang->execute_sql_query['sec_history']) ?></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->execute_sql_query['btn_close']) ?>"></button>
                 </div>
                 <div class="modal-body p-0">
                     <?php if ($historyCount > 0): ?>
                         <?php foreach ($_SESSION['query_history'] as $i => $h): ?>
-                        <div class="qe-history-item" data-q="<?= htmlspecialchars($h['query']) ?>" title="Load into editor">
+                        <div class="qe-history-item" data-q="<?= htmlspecialchars($h['query']) ?>" title="<?= htmlspecialchars($lang->execute_sql_query['tip_load_query']) ?>">
                             <div class="qe-history-num">#<?= $historyCount - $i ?></div>
                             <div class="qe-history-main">
                                 <div class="qe-history-meta">
@@ -358,7 +385,7 @@ stdhead('SQL Query Editor');
                     <?php else: ?>
                         <div class="qe-empty">
                             <i class="fa-solid fa-inbox"></i>
-                            <p>No queries yet. Executed queries from this session will appear here.</p>
+                            <p><?= htmlspecialchars($lang->execute_sql_query['hint_history_empty']) ?></p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -368,12 +395,12 @@ stdhead('SQL Query Editor');
                         <input type="hidden" name="do" value="ts_clear_history">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                         <button type="submit" class="qe-btn qe-btn-danger qe-btn-sm">
-                            <i class="fa-solid fa-trash-can"></i> Clear history
+                            <i class="fa-solid fa-trash-can"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_clear_history']) ?>
                         </button>
                     </form>
                     <?php endif; ?>
                     <button type="button" class="qe-btn qe-btn-ghost qe-btn-sm" data-bs-dismiss="modal">
-                        <i class="fa-solid fa-xmark"></i> Close
+                        <i class="fa-solid fa-xmark"></i> <?= htmlspecialchars($lang->execute_sql_query['btn_close']) ?>
                     </button>
                 </div>
             </div>
@@ -382,7 +409,10 @@ stdhead('SQL Query Editor');
 
 </div><!-- /.qe-wrap -->
 
+<script>
+const AGS_LANG = <?= json_encode($qe_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/execute_sql_query.js?ver=2"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/execute_sql_query.js?ver=3"></script>
 
 <?php stdfoot(); ?>

@@ -3,18 +3,38 @@
 declare(strict_types=1);
 
 if (!defined('STAFF_PANEL')) {
-    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit('<div class="alert alert-light border m-3"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('staffmess');
 
 @ini_set('memory_limit', '512M');
 define('SM_VERSION', '0.8 by xam');
+const SM_ASSET_VER = 1; // поднимать при изменении staffmess.css / staffmess.js
 
 require_once INC_PATH . '/datahandler.php';
 require_once(INC_PATH . '/class_parser.php');
 require_once TSDIR .'/cache/smilies.php';
 
 require_once INC_PATH . '/editor.php';
+
+/**
+ * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+ * so both forms are replaced (strtr, not sprintf: a literal % is safe).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 $parser = new postParser;
 
 $parser_options = array(
@@ -26,7 +46,8 @@ $parser_options = array(
     "filter_badwords" => 1
 );
 
-$error = '';
+$error   = '';   // не пусто = отправка заблокирована
+$flash   = null; // ['type' => success|danger|warning, 'icon' => ..., 'text' => ...]
 $checked = [];
 
 $msgtext = trim($_POST['message'] ?? '');
@@ -34,7 +55,7 @@ $subject = trim($_POST['subject'] ?? '');
 
 $useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
 $avatar = '<img src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
-	
+
 if (!empty($_POST['previewpost']) && !empty($msgtext))
 {
     $prvp = '<table border="0" cellspacing="0" cellpadding="4" class="none" width="100%">
@@ -45,24 +66,20 @@ if (!empty($_POST['previewpost']) && !empty($msgtext))
 	</tr></table><br />';
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') 
+if ($_SERVER['REQUEST_METHOD'] == 'POST')
 {
-   
     $csrfOk = !empty($_POST['previewpost']) || verify_post_check($_POST['my_post_key'] ?? '');
 
     if (!$csrfOk) {
-        $error = '
-        <div class="container mt-3">
-            <div class="alert alert-danger">
-                <i class="fas fa-shield-alt me-2"></i>Security check failed. Please refresh the page and try again.
-            </div>
-        </div>';
+        $error = 'csrf';
+        $flash = ['type' => 'danger', 'icon' => 'fa-shield-halved', 'text' => $lang->staffmess['flash_csrf_failed']];
     } else {
         $gids = $_POST['gid'] ?? [];
         $sender_id = ($_POST['sender'] ?? '') === 'system' ? 0 : (int)$CURUSER['id'];
 
         if (empty($msgtext) || empty($subject) || !is_array($gids)) {
-            $error = 'Don\'t leave any fields blank.';
+            $error = 'blank';
+            $flash = ['type' => 'warning', 'icon' => 'fa-triangle-exclamation', 'text' => $lang->staffmess['flash_fields_blank']];
         }
 
         $checked = [];
@@ -102,242 +119,225 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST')
                 ++$qcount;
             }
 
-            $error = '
-            <div class="container mt-3">
-                <div class="alert alert-success alert-dismissible fade show">
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    <i class="fas fa-check-circle me-2"></i><strong>Total&nbsp;' . ts_nf($qcount) . ' message(s) has been sent.</strong>
-                </div>
-            </div>';
+            $flash = ['type' => 'success', 'icon' => 'fa-circle-check', 'text' => ags_fmt($lang->staffmess['flash_sent'], ts_nf($qcount))];
         }
     }
 }
 
-stdhead('Mass Message to all Staff members and/or Users', false);
-?>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-    :root {
-        --sm-accent: var(--bs-primary, #0d6efd);
-        --sm-accent-strong: var(--bs-primary-text-emphasis, #0a58ca);
-        --sm-accent-soft: var(--bs-primary-bg-subtle, rgba(13,110,253,.1));
-    }
-    .sm-masthead {
-        padding: 1.6rem 1.75rem;
-        margin-bottom: 1.5rem;
-        background: var(--bs-body-bg, #fff);
-        border: 1px solid var(--bs-border-color, #e9ecef);
-        border-radius: .9rem;
-    }
-    .sm-masthead__eyebrow {
-        display: inline-block;
-        font-family: 'Oswald', sans-serif;
-        font-weight: 600;
-        font-size: .72rem;
-        letter-spacing: .12em;
-        text-transform: uppercase;
-        color: var(--sm-accent-strong);
-        background: var(--sm-accent-soft);
-        border: 1px solid var(--sm-accent);
-        border-radius: 999px;
-        padding: .3rem .85rem;
-        margin-bottom: .7rem;
-    }
-    .sm-masthead__title {
-        font-family: 'Oswald', sans-serif;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: clamp(1.3rem, 2.8vw, 1.7rem);
-        margin: 0;
-        color: var(--bs-emphasis-color, #212529);
-    }
-    .sm-panel {
-        border: 1px solid var(--bs-border-color, #e9ecef) !important;
-        border-radius: .9rem !important;
-        overflow: hidden;
-    }
-    .sm-panel .card-header {
-        background: var(--bs-tertiary-bg, #f8f9fa) !important;
-        color: var(--bs-emphasis-color, #212529) !important;
-        border-bottom: 1px solid var(--bs-border-color, #e9ecef);
-        border-left: 4px solid var(--sm-accent);
-    }
-    .sm-panel .card-header h5,
-    .sm-panel .card-header legend {
-        font-family: 'Oswald', sans-serif;
-        font-weight: 600;
-        font-size: .95rem;
-        margin: 0;
-    }
-    .sm-form-label {
-        font-family: 'Oswald', sans-serif;
-        font-weight: 500;
-        font-size: .85rem;
-        letter-spacing: .01em;
-    }
-    .group-chip {
-        display: flex;
-        align-items: center;
-        gap: .6rem;
-        border: 1px solid var(--bs-border-color, #e9ecef);
-        border-radius: .6rem;
-        padding: .55rem .8rem;
-        transition: border-color .15s ease, background .15s ease;
-        cursor: pointer;
-        height: 100%;
-    }
-    .group-chip:hover {
-        border-color: var(--sm-accent);
-        background: var(--sm-accent-soft);
-    }
-    .group-chip input:checked ~ .group-chip-label {
-        color: var(--sm-accent-strong);
-        font-weight: 600;
-    }
-    .check-all-link {
-        font-family: 'Oswald', sans-serif;
-        font-size: .78rem;
-        font-weight: 600;
-        letter-spacing: .03em;
-        text-transform: uppercase;
-        color: var(--sm-accent-strong);
-        text-decoration: none;
-    }
-    .check-all-link:hover { text-decoration: underline; }
-
-    .bbcode-toolbar .btn {
-        border-color: var(--bs-border-color, #dee2e6);
-    }
-</style>
-
-<div class="sm-masthead">
-    <span class="sm-masthead__eyebrow">Admin / Communication</span>
-    <h1 class="sm-masthead__title"><i class="fas fa-bullhorn me-2"></i>Mass Message to Staff / Users</h1>
-</div>
-
-<?php
-if (!empty($error) && empty($_POST['previewpost'])) {
-    echo $error;
+// ---------------------------------------------------------------------
+// Usergroups + user counts (для чипов и KPI)
+// ---------------------------------------------------------------------
+$group_counts = [];
+$res_counts = $db->sql_query_prepared("SELECT usergroup, COUNT(*) AS cnt FROM users GROUP BY usergroup");
+while ($res_counts && ($row = $db->fetch_array($res_counts))) {
+    $group_counts[(int)$row['usergroup']] = (int)$row['cnt'];
 }
 
-// Prepare usergroup checkboxes
+$groups = [];
 $query = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups");
-
-$sgids = '
-<div class="card sm-panel shadow-sm mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5><i class="fas fa-users me-2"></i>Select Usergroup(s)</h5>
-        <a href="#" class="check-all-link" onclick="checkAll(document.compose);return false;">
-            <i class="fas fa-check-double me-1"></i>Check All
-        </a>
-    </div>
-    <div class="card-body">
-        <div class="row g-2">';
-
-while ($query && ($gid = $db->fetch_array($query))) {
-    $checkedAttr = (!empty($checked) && in_array($gid['gid'], $checked)) ? ' checked="checked"' : '';
-    $sgids .= '
-            <div class="col-6 col-md-4 col-lg-3">
-                <label class="group-chip w-100 mb-0">
-                    <input class="form-check-input mt-0" type="checkbox"
-                           id="gid_' . $gid['gid'] . '"
-                           name="gid[]"
-                           value="' . $gid['gid'] . '"' . $checkedAttr . '>
-                    <span class="group-chip-label">' . format_name($gid['title'], $gid['gid']) . '</span>
-                </label>
-            </div>';
+while ($query && ($row = $db->fetch_array($query))) {
+    $groups[] = $row;
 }
-$sgids .= '
-        </div>
-    </div>
-</div>';
 
-// Sender select box
-$senderOptions = '
-<div class="card sm-panel shadow-sm mb-3">
-    <div class="card-header">
-        <h5><i class="fas fa-user-tag me-2"></i>Select Sender</h5>
-    </div>
-    <div class="card-body">
-        <select name="sender" class="form-select w-auto">
-            <option value="system"' . (($_POST['sender'] ?? '') === 'system' ? ' selected' : '') . '>Automatic Message By System</option>
-            <option value="' . htmlspecialchars($CURUSER['username']) . '"' . (($_POST['sender'] ?? '') === $CURUSER['username'] ? ' selected' : '') . '>' . htmlspecialchars($CURUSER['username']) . '</option>
-        </select>
-    </div>
-</div>';
+$staff_gids = [
+    defined('UC_MODERATOR')     ? (int)UC_MODERATOR     : 6,
+    defined('UC_ADMINISTRATOR') ? (int)UC_ADMINISTRATOR : 7,
+    defined('UC_SYSOP')         ? (int)UC_SYSOP         : 8,
+];
 
-// The "check all" JS function
-echo <<<JS
-<script>
-function checkAll(form) {
-    var checkboxes = form.querySelectorAll('input[type="checkbox"][name="gid[]"]');
-    var allChecked = Array.from(checkboxes).every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
+$stat_users  = array_sum($group_counts);
+$stat_staff  = 0;
+foreach ($staff_gids as $sg) {
+    $stat_staff += $group_counts[$sg] ?? 0;
 }
-</script>
-JS;
+$stat_groups = count($groups);
+$stat_recipients = 0;
+foreach ($checked as $cg) {
+    $stat_recipients += $group_counts[$cg] ?? 0;
+}
 
-// Output the form with Bootstrap styles, and your custom JS below
-echo '
-<form method="post" name="compose" action="' . htmlspecialchars($_this_script_) . '" class="container-md" id="massMessageForm">
-<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '') . '">
-';
+// JS-строки: ключи js_* без префикса
+$agsJsLang = [];
+foreach ($lang->staffmess as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $agsJsLang[substr((string)$k, 3)] = $v;
+    }
+}
 
-echo $sgids;
-echo $senderOptions;
+$L = static fn(string $key): string => htmlspecialchars($lang->staffmess[$key], ENT_QUOTES);
+
+stdhead($lang->staffmess['page_title'], false);
+
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staffmess.css?ver=' . SM_ASSET_VER . '">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
+echo '<script>const AGS_LANG = ' . json_encode($agsJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js" defer></script>';
+echo '<script src="' . $BASEURL . '/admin/scripts/staffmess.js?ver=' . SM_ASSET_VER . '" defer></script>';
 
 // Общий BBCode-редактор для поля #message (та же логика, что и везде на сайте)
 $editorParts = insert_bbcode_editor($smilies, $BASEURL, 'message');
+?>
 
-echo '
-<div class="card sm-panel shadow-sm mb-3">
-    <div class="card-header">
-        <h5><i class="fas fa-envelope-open-text me-2"></i>Message</h5>
+<div class="container mt-3 py-4 smm-page">
+
+    <!-- Header -->
+    <div class="smm-card smm-head mb-3">
+        <div class="smm-head__icon"><i class="fa-solid fa-bullhorn"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="smm-title"><?= $L('sec_title') ?></h1>
+            <p><?= $L('sec_subtitle') ?></p>
+        </div>
+        <span class="smm-badge smm-soft-primary d-none d-md-inline-flex"><i class="fa-solid fa-tower-broadcast"></i><?= $L('badge_section') ?></span>
     </div>
-    <div class="card-body">
-        <div class="mb-3">
-            <label for="subject" class="sm-form-label form-label">Subject</label>
-            <input type="text" class="form-control" id="subject" name="subject" value="' . htmlspecialchars($subject) . '" required>
+
+    <?php if ($flash !== null && empty($_POST['previewpost'])): ?>
+    <div class="alert alert-dismissible fade show smm-alert smm-soft-<?= $flash['type'] ?>" role="alert">
+        <i class="fa-solid <?= $flash['icon'] ?>"></i>
+        <span><?= htmlspecialchars($flash['text'], ENT_QUOTES) ?></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="<?= $L('lbl_close') ?>"></button>
+    </div>
+    <?php endif; ?>
+
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="smm-card smm-kpi">
+                <div class="smm-kpi__icon smm-soft-primary"><i class="fa-solid fa-users"></i></div>
+                <div>
+                    <div class="smm-kpi__value"><?= ts_nf($stat_users) ?></div>
+                    <div class="smm-kpi__label"><?= $L('kpi_users') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="smm-card smm-kpi">
+                <div class="smm-kpi__icon smm-soft-danger"><i class="fa-solid fa-user-shield"></i></div>
+                <div>
+                    <div class="smm-kpi__value"><?= ts_nf($stat_staff) ?></div>
+                    <div class="smm-kpi__label"><?= $L('kpi_staff') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="smm-card smm-kpi">
+                <div class="smm-kpi__icon smm-soft-info"><i class="fa-solid fa-layer-group"></i></div>
+                <div>
+                    <div class="smm-kpi__value"><?= ts_nf($stat_groups) ?></div>
+                    <div class="smm-kpi__label"><?= $L('kpi_groups') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="smm-card smm-kpi">
+                <div class="smm-kpi__icon smm-soft-success"><i class="fa-solid fa-paper-plane"></i></div>
+                <div>
+                    <div class="smm-kpi__value" id="smmRecipients"><?= ts_nf($stat_recipients) ?></div>
+                    <div class="smm-kpi__label"><?= $L('kpi_recipients') ?></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" name="compose" action="<?= htmlspecialchars($_this_script_) ?>" id="massMessageForm">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '') ?>">
+
+        <div class="row g-3">
+
+            <!-- Recipients & sender -->
+            <div class="col-lg-4 order-1 order-lg-2">
+                <div class="smm-card mb-3">
+                    <div class="smm-card__head">
+                        <h5><i class="fa-solid fa-users"></i><?= $L('sec_groups') ?></h5>
+                        <a href="#" class="smm-link check-all-link" onclick="checkAll(document.compose);return false;">
+                            <i class="fa-solid fa-check-double me-1"></i><?= $L('lbl_check_all') ?>
+                        </a>
+                    </div>
+                    <div class="smm-card__body">
+                        <div class="d-grid gap-2">
+                        <?php foreach ($groups as $g):
+                            $gidInt  = (int)$g['gid'];
+                            $gCount  = $group_counts[$gidInt] ?? 0;
+                            $isOn    = in_array($gidInt, $checked, true); ?>
+                            <label class="smm-group group-chip" for="gid_<?= $gidInt ?>" title="<?= htmlspecialchars(ags_fmt($lang->staffmess['tip_group_users'], ts_nf($gCount)), ENT_QUOTES) ?>">
+                                <input class="form-check-input mt-0" type="checkbox"
+                                       id="gid_<?= $gidInt ?>"
+                                       name="gid[]"
+                                       value="<?= $gidInt ?>"
+                                       data-count="<?= $gCount ?>"<?= $isOn ? ' checked="checked"' : '' ?>>
+                                <span class="smm-group__name group-chip-label"><?= format_name($g['title'], $g['gid']) ?></span>
+                                <span class="smm-count"><?= ts_nf($gCount) ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                        </div>
+                        <div class="smm-hint mt-3"><i class="fa-solid fa-circle-info me-1"></i><?= $L('hint_groups') ?></div>
+                    </div>
+                </div>
+
+                <div class="smm-card">
+                    <div class="smm-card__head">
+                        <h5><i class="fa-solid fa-user-tag"></i><?= $L('sec_sender') ?></h5>
+                    </div>
+                    <div class="smm-card__body">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-signature"></i></span>
+                            <select name="sender" class="form-select" aria-label="<?= $L('sec_sender') ?>">
+                                <option value="system"<?= ($_POST['sender'] ?? '') === 'system' ? ' selected' : '' ?>><?= $L('opt_sender_system') ?></option>
+                                <option value="<?= htmlspecialchars($CURUSER['username']) ?>"<?= ($_POST['sender'] ?? '') === $CURUSER['username'] ? ' selected' : '' ?>><?= htmlspecialchars($CURUSER['username']) ?></option>
+                            </select>
+                        </div>
+                        <div class="smm-hint mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= $L('hint_sender') ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Message -->
+            <div class="col-lg-8 order-2 order-lg-1">
+                <div class="smm-card h-100">
+                    <div class="smm-card__head">
+                        <h5><i class="fa-solid fa-envelope-open-text"></i><?= $L('sec_message') ?></h5>
+                    </div>
+                    <div class="smm-card__body">
+                        <div class="mb-3">
+                            <label for="subject" class="form-label"><i class="fa-solid fa-heading me-1"></i><?= $L('lbl_subject') ?></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fa-solid fa-pen"></i></span>
+                                <input type="text" class="form-control" id="subject" name="subject"
+                                       value="<?= htmlspecialchars($subject) ?>"
+                                       placeholder="<?= $L('ph_subject') ?>" required>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="message" class="form-label"><i class="fa-solid fa-align-left me-1"></i><?= $L('lbl_message') ?></label>
+                            <?= $editorParts['toolbar'] ?>
+                            <textarea class="form-control" id="message" name="message" rows="10" required><?= htmlspecialchars($msgtext) ?></textarea>
+                            <div class="d-flex justify-content-between flex-wrap gap-2 mt-2">
+                                <span class="smm-hint"><i class="fa-solid fa-code me-1"></i><?= $L('hint_bbcode') ?></span>
+                                <span id="charCount" class="form-text smm-hint m-0"><?= htmlspecialchars(ags_fmt($lang->staffmess['lbl_char_count'], 0)) ?></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="mb-3">
-            <label for="message" class="sm-form-label form-label">Message</label>
-            ' . $editorParts['toolbar'] . '
-            <textarea class="form-control" id="message" name="message" rows="8" required>' . htmlspecialchars($msgtext) . '</textarea>
-            <div id="charCount" class="form-text text-end">0 characters</div>
-        </div>
-
-        <div class="d-flex gap-2">
-            <button type="submit" name="submit" class="btn btn-primary px-4">
-                <i class="fas fa-paper-plane me-2"></i>Send Message
+        <!-- Sticky action bar -->
+        <div class="smm-card smm-actionbar mt-3">
+            <span class="smm-meta">
+                <i class="fa-solid fa-user-group me-1"></i><?= $L('lbl_recipients') ?>
+                <b id="smmRecipientsBar"><?= ts_nf($stat_recipients) ?></b>
+            </span>
+            <button type="submit" name="submit" class="btn btn-primary smm-pill px-4">
+                <i class="fa-solid fa-paper-plane me-2"></i><?= $L('btn_send') ?>
             </button>
         </div>
-    </div>
-</div>
-<div id="fileIdsContainer"></div>
-</form>';
 
+        <div id="fileIdsContainer"></div>
+    </form>
+</div>
+
+<?php
 // Модалки редактора (картинка/видео) - ВНЕ формы, как и требует сама функция
 echo $editorParts['modal'];
 
-// JavaScript for char count, preview toggle and modal preview
-echo <<<JS
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const messageEl = document.getElementById('message');
-    const charCountEl = document.getElementById('charCount');
-
-    function updateCharCount() {
-        charCountEl.textContent = messageEl.value.length + ' characters';
-    }
-
-    messageEl.addEventListener('input', updateCharCount);
-    updateCharCount();
-});
-</script>
-JS;
-
 stdfoot();
-?>

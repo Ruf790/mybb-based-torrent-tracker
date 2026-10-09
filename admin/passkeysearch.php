@@ -7,7 +7,27 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('passkeysearch');
+
 define('PS_VERSION', 'v0.2');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в строку из ланга. $lang->load() превращает {N}
+     * в %N$s, поэтому заменяем оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $v) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$v;
+            $map['%' . $n . '$s'] = (string)$v;
+            $map['%' . $n . '$d'] = (string)$v;
+        }
+        return strtr($str, $map);
+    }
+}
 
 $do      = (string)($_POST['do'] ?? $_GET['do'] ?? '0');
 $passkey = '';
@@ -31,55 +51,79 @@ function ps_extract_passkey(string $raw): string
 if ($do === '2') {
     // Сброс — только POST + CSRF
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        $notice = ['danger', 'Invalid request method.', 'fa-ban'];
+        $notice = ['danger', $lang->passkeysearch['flash_bad_method'], 'fa-ban'];
     } elseif (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        $notice = ['danger', 'Security check failed. Please refresh the page and try again.', 'fa-shield-halved'];
+        $notice = ['danger', $lang->passkeysearch['flash_csrf'], 'fa-shield-halved'];
     } else {
         $passkey = ps_extract_passkey((string)($_POST['passkey'] ?? ''));
         if (!preg_match('/^[a-f0-9]{32}$/', $passkey)) {
-            $notice = ['danger', 'Invalid passkey — it must be 32 hexadecimal characters.', 'fa-circle-xmark'];
+            $notice = ['danger', $lang->passkeysearch['flash_reset_invalid'], 'fa-circle-xmark'];
         } else {
             $uq   = $db->sql_query_prepared("SELECT id, username FROM users WHERE passkey = ? LIMIT 1", [$passkey]);
             $user = $uq ? $db->fetch_array($uq) : null;
             $db->sql_query_prepared("UPDATE users SET passkey = '' WHERE passkey = ?", [$passkey]);
             if ($db->affected_rows() > 0) {
                 write_log('Passkey of ' . ($user['username'] ?? 'unknown') . ' reset by ' . ($CURUSER['username'] ?? 'staff') . ' (' . substr($passkey, 0, 8) . '…)', 'security', 1);
-                $notice = ['success', 'The passkey of <strong>' . htmlspecialchars((string)($user['username'] ?? 'the user')) . '</strong> has been reset. They need a new passkey and must re-download their .torrent files.', 'fa-circle-check'];
+                $notice = ['success', ags_fmt($lang->passkeysearch['flash_reset_ok'], htmlspecialchars((string)($user['username'] ?? $lang->passkeysearch['txt_unknown_user']))), 'fa-circle-check'];
                 $passkey = '';
             } else {
-                $notice = ['warning', 'No user has this passkey (maybe it was already reset).', 'fa-user-slash'];
+                $notice = ['warning', $lang->passkeysearch['flash_reset_none'], 'fa-user-slash'];
             }
         }
     }
 } elseif ($do === '1') {
     $passkey = ps_extract_passkey((string)($_POST['passkey'] ?? $_GET['passkey'] ?? ''));
     if ($passkey === '') {
-        $notice = ['danger', 'Please enter a passkey.', 'fa-keyboard'];
+        $notice = ['danger', $lang->passkeysearch['flash_empty'], 'fa-keyboard'];
     } elseif (!preg_match('/^[a-f0-9]{32}$/', $passkey)) {
-        $notice = ['danger', 'Invalid passkey — it must be exactly 32 hexadecimal characters (0-9, a-f).', 'fa-circle-xmark'];
+        $notice = ['danger', $lang->passkeysearch['flash_invalid'], 'fa-circle-xmark'];
     } else {
         $q = $db->sql_query_prepared('SELECT u.*, g.title AS gtitle, g.image AS gimage FROM users u LEFT JOIN usergroups g ON (u.usergroup = g.gid) WHERE u.passkey = ?', [$passkey]);
         $found = ($q && $db->num_rows($q) > 0) ? $db->fetch_array($q) : null;
         if (!$found) {
-            $notice = ['warning', 'No registered user has this passkey.', 'fa-user-slash'];
+            $notice = ['warning', $lang->passkeysearch['flash_not_found'], 'fa-user-slash'];
         }
     }
 }
 
-stdhead('Passkey Search');
+// Строки для JS: ключи js_* без префикса
+$psJsLang = [];
+foreach ($lang->passkeysearch as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $psJsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
+stdhead($lang->passkeysearch['title']);
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 ps_styles();
 
 $self = htmlspecialchars((string)($_this_script_ ?? $_SERVER['SCRIPT_NAME']));
 $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
+$L    = static fn(string $k): string => htmlspecialchars($lang->passkeysearch[$k]);
 ?>
+<script>
+const AGS_LANG = <?= json_encode($psJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+// Перевод с английским fallback; {1} и %1$s (так $lang->load() переписывает плейсхолдеры)
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach((a, i) => { s = s.split('{' + (i + 1) + '}').join(String(a)).split('%' + (i + 1) + '$s').join(String(a)); });
+    return s;
+}
+// Иконка + текст без innerHTML
+function psIconText(el, icon, text) {
+    const i = document.createElement('i');
+    i.className = icon;
+    el.replaceChildren(i, document.createTextNode(text));
+}
+</script>
 <div class="container mt-3 mb-4 ps">
 
     <div class="ps-card mb-3"><div class="ps-head">
         <span class="ps-head-icon"><i class="fa-solid fa-fingerprint"></i></span>
         <div style="min-width:0">
-            <h1 class="ps-title">Passkey Search</h1>
-            <div class="ps-sub">Find the account behind a passkey — paste the key, an announce URL or a .torrent link</div>
+            <h1 class="ps-title"><?= $L('title') ?></h1>
+            <div class="ps-sub"><?= $L('subtitle') ?></div>
         </div>
         <span class="ps-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i><?= PS_VERSION ?></span>
     </div></div>
@@ -90,11 +134,11 @@ $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
         <div class="input-group input-group-lg">
             <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
             <input type="text" id="passkeyInput" name="passkey" class="form-control font-monospace"
-                   placeholder="32-character passkey or announce URL…" value="<?= htmlspecialchars($passkey) ?>" required autocomplete="off" spellcheck="false">
-            <button class="btn btn-outline-secondary" type="button" id="clearForm" title="Clear"><i class="fa-solid fa-xmark"></i></button>
-            <button class="btn btn-primary px-4" type="submit" id="psGo"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button>
+                   placeholder="<?= $L('ph_passkey') ?>" value="<?= htmlspecialchars($passkey) ?>" required autocomplete="off" spellcheck="false">
+            <button class="btn btn-outline-secondary" type="button" id="clearForm" title="<?= $L('btn_clear') ?>" aria-label="<?= $L('btn_clear') ?>"><i class="fa-solid fa-xmark"></i></button>
+            <button class="btn btn-primary px-4" type="submit" id="psGo"><i class="fa-solid fa-magnifying-glass me-1"></i><?= $L('btn_search') ?></button>
         </div>
-        <div class="ps-hint mt-2" id="psHint"><i class="fa-solid fa-circle-info me-1"></i>32 hexadecimal characters (0-9, a-f)</div>
+        <div class="ps-hint mt-2" id="psHint"><i class="fa-solid fa-circle-info me-1"></i><?= $L('hint_format') ?></div>
     </form>
 
 <?php if ($notice): [$ntype, $ntext, $nicon] = $notice; ?>
@@ -128,43 +172,44 @@ $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
     while ($pq && ($p = $db->fetch_array($pq))) {
         if ($p['seeder'] === 'yes') $seed = (int)$p['n']; else $leech = (int)$p['n'];
     }
-    $dt = static fn(int $t): string => $t > 0 ? my_datee('relative', $t) : '<span class="text-body-secondary">never</span>';
+    $never = $L('lbl_never');
+    $dt = static fn(int $t): string => $t > 0 ? my_datee('relative', $t) : '<span class="text-body-secondary">' . $never . '</span>';
 ?>
     <div class="row g-3">
         <div class="col-lg-4">
             <div class="ps-card h-100 ps-profile">
                 <div class="ps-avatar-wrap">
                     <span class="ps-avatar"><?= $avatar ?></span>
-                    <span class="ps-dot <?= $online ? 'on' : '' ?>" title="<?= $online ? 'Online' : 'Offline' ?>"></span>
+                    <span class="ps-dot <?= $online ? 'on' : '' ?>" title="<?= $online ? $L('lbl_online') : $L('lbl_offline') ?>"></span>
                 </div>
                 <div class="ps-name"><?= $nameHtml ?></div>
                 <div class="ps-muted mb-2">
-                    <?= htmlspecialchars((string)($u['gtitle'] ?? 'Member')) ?> · ID <?= $uid ?>
+                    <?= htmlspecialchars((string)($u['gtitle'] ?? $lang->passkeysearch['lbl_member'])) ?> · <?= $L('lbl_id') ?> <?= $uid ?>
                     <?php if (!empty($u['gimage']) && str_starts_with(trim((string)$u['gimage']), '<')): ?><span class="ms-1"><?= $u['gimage'] ?></span><?php endif; ?>
                 </div>
-                <span class="ps-tag <?= $online ? 't-on' : 't-off' ?> mb-3"><i class="fa-solid fa-circle"></i><?= $online ? 'Online now' : 'Last seen ' . strip_tags($dt($last)) ?></span>
-                <a href="<?= htmlspecialchars($profile) ?>" class="btn btn-primary btn-sm px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open profile</a>
+                <span class="ps-tag <?= $online ? 't-on' : 't-off' ?> mb-3"><i class="fa-solid fa-circle"></i><?= $online ? $L('lbl_online_now') : ags_fmt($L('lbl_last_seen'), strip_tags($dt($last))) ?></span>
+                <a href="<?= htmlspecialchars($profile) ?>" class="btn btn-primary btn-sm px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i><?= $L('btn_open_profile') ?></a>
                 <div class="ps-rows mt-3">
-                    <div class="ps-row"><span><i class="fa-solid fa-envelope"></i>Email</span><b title="<?= htmlspecialchars((string)($u['email'] ?? '')) ?>"><?= htmlspecialchars((string)($u['email'] ?? '—')) ?></b></div>
-                    <div class="ps-row"><span><i class="fa-solid fa-network-wired"></i>IP</span><b class="font-monospace"><?= htmlspecialchars((string)($u['ipaddress'] ?? '—')) ?></b></div>
-                    <div class="ps-row"><span><i class="fa-solid fa-user-plus"></i>Joined</span><b><?= $dt((int)($u['added'] ?? 0)) ?></b></div>
-                    <div class="ps-row"><span><i class="fa-solid fa-eye"></i>Last active</span><b><?= $dt($last) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-envelope"></i><?= $L('lbl_email') ?></span><b title="<?= htmlspecialchars((string)($u['email'] ?? '')) ?>"><?= htmlspecialchars((string)($u['email'] ?? '—')) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-network-wired"></i><?= $L('lbl_ip') ?></span><b class="font-monospace"><?= htmlspecialchars((string)($u['ipaddress'] ?? '—')) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-user-plus"></i><?= $L('lbl_joined') ?></span><b><?= $dt((int)($u['added'] ?? 0)) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-eye"></i><?= $L('lbl_last_active') ?></span><b><?= $dt($last) ?></b></div>
                 </div>
             </div>
         </div>
 
         <div class="col-lg-8">
             <div class="row g-3 mb-3">
-                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-green"><i class="fa-solid fa-upload"></i></span><div><div class="ps-kpi-label">Uploaded</div><div class="ps-kpi-value"><?= mksize($up) ?></div></div></div></div>
-                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-red"><i class="fa-solid fa-download"></i></span><div><div class="ps-kpi-label">Downloaded</div><div class="ps-kpi-value"><?= mksize($down) ?></div></div></div></div>
-                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-blue"><i class="fa-solid fa-scale-balanced"></i></span><div><div class="ps-kpi-label">Ratio</div><div class="ps-kpi-value ps-ratio <?= $rcls ?>"><?= $ratio ?></div></div></div></div>
-                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-teal"><i class="fa-solid fa-tower-broadcast"></i></span><div><div class="ps-kpi-label">Active now</div><div class="ps-kpi-value"><?= $seed ?> <small class="ps-muted">seed</small> · <?= $leech ?> <small class="ps-muted">leech</small></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-green"><i class="fa-solid fa-upload"></i></span><div><div class="ps-kpi-label"><?= $L('kpi_uploaded') ?></div><div class="ps-kpi-value"><?= mksize($up) ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-red"><i class="fa-solid fa-download"></i></span><div><div class="ps-kpi-label"><?= $L('kpi_downloaded') ?></div><div class="ps-kpi-value"><?= mksize($down) ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-blue"><i class="fa-solid fa-scale-balanced"></i></span><div><div class="ps-kpi-label"><?= $L('kpi_ratio') ?></div><div class="ps-kpi-value ps-ratio <?= $rcls ?>"><?= $ratio ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-teal"><i class="fa-solid fa-tower-broadcast"></i></span><div><div class="ps-kpi-label"><?= $L('kpi_active') ?></div><div class="ps-kpi-value"><?= $seed ?> <small class="ps-muted"><?= $L('kpi_seed') ?></small> · <?= $leech ?> <small class="ps-muted"><?= $L('kpi_leech') ?></small></div></div></div></div>
             </div>
 
             <div class="ps-card">
                 <div class="ps-sec-head"><span class="ps-sec-icon ic-purple"><i class="fa-solid fa-key"></i></span>
-                    <div><h2 class="ps-sec-title">Passkey</h2><div class="ps-muted">Linked to this account</div></div>
-                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="psCopy" data-key="<?= htmlspecialchars($passkey) ?>"><i class="fa-regular fa-copy me-1"></i>Copy</button></div>
+                    <div><h2 class="ps-sec-title"><?= $L('sec_passkey') ?></h2><div class="ps-muted"><?= $L('sec_passkey_sub') ?></div></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="psCopy" data-key="<?= htmlspecialchars($passkey) ?>"><i class="fa-regular fa-copy me-1"></i><?= $L('btn_copy') ?></button></div>
                 <div class="p-3">
                     <!-- Раньше формат ключа показывался дважды, а статус «Active & Valid» был зашит -->
                     <div class="ps-key"><?= htmlspecialchars(trim(chunk_split($passkey, 8, ' '))) ?></div>
@@ -172,18 +217,19 @@ $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
                     <div class="ps-notice is-warning mt-3 mb-0">
                         <i class="fa-solid fa-triangle-exclamation"></i>
                         <div>
-                            <div class="fw-bold mb-1">Resetting the passkey</div>
+                            <div class="fw-bold mb-1"><?= $L('reset_title') ?></div>
                             <ul class="mb-2 ps-3">
-                                <li>stops every .torrent downloaded with it — <strong><?= $seed + $leech ?></strong> active session(s) right now;</li>
-                                <li>the user needs to re-download their .torrent files;</li>
-                                <li>is logged in the site log.</li>
+                                <li><?= ags_fmt($lang->passkeysearch['reset_li_sessions'], $seed + $leech) ?></li>
+                                <li><?= $L('reset_li_redownload') ?></li>
+                                <li><?= $L('reset_li_logged') ?></li>
                             </ul>
-                            <form method="post" action="<?= $self ?>" id="psResetForm" class="d-inline">
+                            <form method="post" action="<?= $self ?>" id="psResetForm" class="d-inline"
+                                  data-name="<?= htmlspecialchars($name) ?>" data-sessions="<?= $seed + $leech ?>">
                                 <input type="hidden" name="act" value="passkeysearch">
                                 <input type="hidden" name="do" value="2">
                                 <input type="hidden" name="passkey" value="<?= htmlspecialchars($passkey) ?>">
                                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
-                                <button type="submit" class="btn btn-danger btn-sm px-3"><i class="fa-solid fa-rotate me-1"></i>Reset passkey</button>
+                                <button type="submit" class="btn btn-danger btn-sm px-3"><i class="fa-solid fa-rotate me-1"></i><?= $L('btn_reset') ?></button>
                             </form>
                         </div>
                     </div>
@@ -193,25 +239,28 @@ $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
     </div>
     <script>
     document.getElementById('psResetForm').addEventListener('submit', function (e) {
-        // Раньше строка confirm() была экранирована так, что вместо переносов выводилось «\\n»
-        if (!confirm('Reset the passkey of <?= addslashes(htmlspecialchars($name)) ?>?\n\n• All their .torrent files stop working\n• <?= $seed + $leech ?> active session(s) will be dropped')) e.preventDefault();
+        // Ник и число сессий — из data-атрибутов (раньше вставлялись в JS-строку через addslashes)
+        const msg = t('confirm_reset', 'Reset the passkey of {1}?', this.dataset.name) + '\n\n'
+                  + t('confirm_files', '• All their .torrent files stop working') + '\n'
+                  + t('confirm_sessions', '• {1} active session(s) will be dropped', this.dataset.sessions);
+        if (!confirm(msg)) e.preventDefault();
     });
     document.getElementById('psCopy').addEventListener('click', function () {
         navigator.clipboard?.writeText(this.dataset.key).then(() => {
-            this.innerHTML = '<i class="fa-solid fa-check me-1"></i>Copied';
-            setTimeout(() => { this.innerHTML = '<i class="fa-regular fa-copy me-1"></i>Copy'; }, 1500);
+            psIconText(this, 'fa-solid fa-check me-1', t('copied', 'Copied'));
+            setTimeout(() => { psIconText(this, 'fa-regular fa-copy me-1', t('copy', 'Copy')); }, 1500);
         });
     });
     </script>
 <?php elseif (!$notice): ?>
     <div class="row g-3">
         <?php foreach ([
-            ['fa-user-secret',  'ic-blue',  'Who is it?',  'Every account has its own 32-character passkey inside each .torrent it downloads.'],
-            ['fa-link',         'ic-green', 'Paste a URL', 'An announce URL like …/announce.php?passkey=… works too — the key is extracted.'],
-            ['fa-rotate',       'ic-amber', 'Leaked key?', 'Reset it from the result: old .torrent files stop working right away.'],
+            ['fa-user-secret',  'ic-blue',  'intro_who_title',  'intro_who_text'],
+            ['fa-link',         'ic-green', 'intro_url_title',  'intro_url_text'],
+            ['fa-rotate',       'ic-amber', 'intro_leak_title', 'intro_leak_text'],
         ] as [$ic, $cls, $t, $d]): ?>
         <div class="col-md-4"><div class="ps-card ps-kpi align-items-start"><span class="ps-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
-            <div><div class="fw-bold mb-1"><?= $t ?></div><div class="ps-muted"><?= $d ?></div></div></div></div>
+            <div><div class="fw-bold mb-1"><?= $L($t) ?></div><div class="ps-muted"><?= $L($d) ?></div></div></div></div>
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
@@ -230,8 +279,8 @@ $key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
         input.classList.toggle('is-valid', ok);
         input.classList.toggle('is-invalid', k.length > 0 && !ok && k.length >= 32);
         hint.className = 'ps-hint mt-2' + (ok ? ' ok' : '');
-        hint.innerHTML = ok ? '<i class="fa-solid fa-circle-check me-1"></i>Looks like a valid passkey'
-                            : '<i class="fa-solid fa-circle-info me-1"></i>32 hexadecimal characters (0-9, a-f)' + (k ? ' · ' + k.length + '/32' : '');
+        if (ok) psIconText(hint, 'fa-solid fa-circle-check me-1', t('hint_valid', 'Looks like a valid passkey'));
+        else    psIconText(hint, 'fa-solid fa-circle-info me-1', t('hint_format', '32 hexadecimal characters (0-9, a-f)') + (k ? ' · ' + k.length + '/32' : ''));
     }
     input.addEventListener('input', normalize);
     input.addEventListener('paste', () => setTimeout(normalize, 0));

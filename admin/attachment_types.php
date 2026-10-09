@@ -9,14 +9,16 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
 }
 
+global $mybb, $db, $plugins, $cache, $lang;
+
+$lang->load('attachment_types');
+
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
-    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+    exit('<div class="alert alert-danger">' . at_e($lang->attachment_types['err_no_permission']) . '</div>');
 }
 
 require_once INC_PATH . '/functions_multipage.php';
-
-global $mybb, $db, $plugins, $cache, $lang;
 
 const AT_URL          = 'index.php?act=attachment_types';
 const AT_DEFAULT_ICON = 'pic/attachtypes/';
@@ -28,6 +30,20 @@ const AT_DEFAULT_ICON = 'pic/attachtypes/';
 function at_e(mixed $v): string
 {
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+}
+
+if (!function_exists('ags_fmt')) {
+    /** Подстановка {1}, {2}… в строку из ланга (понимает и вид %1$s, если загрузчик ланга его подставил) */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
 }
 
 function generate_numeric_field(string $name, mixed $value = 0, array $options = []): string
@@ -63,8 +79,8 @@ function generate_yes_no_switch(string $name, $value = '1', array $options = [])
     $id      = at_e($options['id'] ?? $name);
     $n       = at_e($name);
     $icon    = at_e($options['icon'] ?? 'fa-toggle-on');
-    $label   = $options['label'] ?? '';
-    $desc    = $options['desc'] ?? '';
+    $label   = at_e($options['label'] ?? '');
+    $desc    = at_e($options['desc'] ?? '');
 
     return <<<HTML
 <label class="at-switch" for="{$id}">
@@ -124,12 +140,15 @@ function render_type_icon(array $type, string $size = '1.35rem'): string
 
 // ── Все / выбранные / никто ───────────────────────────────────
 
-function generate_selection_block(string $field, string $all_label, string $current_value, string $custom_select): string
+function generate_selection_block(string $field, string $all_text, string $current_value, string $custom_select): string
 {
+    global $lang;
+
     $mode = $current_value == -1 ? 'all' : ($current_value !== '' ? 'custom' : 'none');
     $f    = at_e($field);
     $opt  = static function (string $value, string $icon, string $text) use ($f, $mode): string {
-        $chk = $mode === $value ? 'checked' : '';
+        $chk  = $mode === $value ? 'checked' : '';
+        $text = at_e($text);
         return <<<HTML
 <input type="radio" class="btn-check {$f}_forums_groups_check" name="{$f}" id="{$f}_{$value}" value="{$value}" {$chk} autocomplete="off">
 <label class="btn btn-sm btn-outline-secondary rounded-pill px-3" for="{$f}_{$value}"><i class="fa-solid {$icon} me-1"></i>{$text}</label>
@@ -137,41 +156,49 @@ HTML;
     };
 
     return '<div class="d-flex flex-wrap gap-2">'
-         . $opt('all', 'fa-globe', 'All ' . $all_label)
-         . $opt('custom', 'fa-list-check', 'Selected')
-         . $opt('none', 'fa-ban', 'None')
+         . $opt('all', 'fa-globe', $all_text)
+         . $opt('custom', 'fa-list-check', $lang->attachment_types['opt_selected'])
+         . $opt('none', 'fa-ban', $lang->attachment_types['opt_none'])
          . '</div>'
          . '<div class="mt-2 ' . $f . '_forums_groups" id="' . $f . '_forums_groups_custom">'
          . $custom_select
-         . '<div class="at-help mt-1"><i class="fa-solid fa-keyboard me-1"></i>Hold Ctrl (⌘ on Mac) to select several</div>'
+         . '<div class="at-help mt-1"><i class="fa-solid fa-keyboard me-1"></i>' . at_e($lang->attachment_types['hint_multi_select']) . '</div>'
          . '</div>';
 }
 
 function generate_groups_selection(string $current_value, array $selected_ids): string
 {
+    global $lang;
     $select = generate_group_select('select[groups][]', $selected_ids, ['id' => 'groups', 'multiple' => true, 'size' => 6]);
-    return generate_selection_block('groups', 'groups', $current_value, $select);
+    return generate_selection_block('groups', $lang->attachment_types['opt_all_groups'], $current_value, $select);
 }
 
 function generate_forums_selection(string $current_value, array $selected_ids): string
 {
+    global $lang;
     $select = generate_forum_select('select[forums][]', $selected_ids, ['id' => 'forums', 'multiple' => true, 'size' => 6, 'class' => 'form-select']);
-    return generate_selection_block('forums', 'forums', $current_value, $select);
+    return generate_selection_block('forums', $lang->attachment_types['opt_all_forums'], $current_value, $select);
 }
 
 function get_php_upload_limits(): array
 {
+    global $lang;
+
     return array_filter([
-        'Upload max' => (string)@ini_get('upload_max_filesize'),
-        'Post max'   => (string)@ini_get('post_max_size'),
+        $lang->attachment_types['lbl_upload_max'] => (string)@ini_get('upload_max_filesize'),
+        $lang->attachment_types['lbl_post_max']   => (string)@ini_get('post_max_size'),
     ]);
 }
 
 function format_size_kb($maxsize): string
 {
+    global $lang;
+
     $kb = (int)$maxsize;
-    if ($kb <= 0) return 'Unlimited';
-    return $kb >= 1024 ? rtrim(rtrim(number_format($kb / 1024, 1), '0'), '.') . ' MB' : $kb . ' KB';
+    if ($kb <= 0) return at_e($lang->attachment_types['size_unlimited']);
+    return $kb >= 1024
+        ? rtrim(rtrim(number_format($kb / 1024, 1), '0'), '.') . ' ' . at_e($lang->attachment_types['unit_mb'])
+        : $kb . ' ' . at_e($lang->attachment_types['unit_kb']);
 }
 
 // ── Общие стили страницы ──────────────────────────────────────
@@ -198,19 +225,21 @@ function output_admin_resources(): void
 
 function render_attachment_form_fields(array $data, string $form_action, string $title, array $errors = [], bool $is_edit = false): void
 {
-    global $mybb;
+    global $mybb, $lang;
 
-    $name_f    = generate_text_box('name',      (string)($data['name'] ?? ''),      ['id' => 'name', 'placeholder' => 'e.g. PDF Document']);
-    $ext_f     = generate_text_box('extension', (string)($data['extension'] ?? ''), ['id' => 'extension', 'placeholder' => 'pdf', 'autocomplete' => 'off']);
-    $mime_f    = generate_text_box('mimetype',  (string)($data['mimetype'] ?? ''),  ['id' => 'mimetype', 'placeholder' => 'application/pdf', 'autocomplete' => 'off']);
-    $maxsize_f = generate_numeric_field('maxsize', $data['maxsize'] ?? 1024, ['id' => 'maxsize', 'min' => 0, 'placeholder' => '0 = unlimited']);
+    $L = array_map('at_e', $lang->attachment_types);
+
+    $name_f    = generate_text_box('name',      (string)($data['name'] ?? ''),      ['id' => 'name', 'placeholder' => $lang->attachment_types['ph_name']]);
+    $ext_f     = generate_text_box('extension', (string)($data['extension'] ?? ''), ['id' => 'extension', 'placeholder' => $lang->attachment_types['ph_extension'], 'autocomplete' => 'off']);
+    $mime_f    = generate_text_box('mimetype',  (string)($data['mimetype'] ?? ''),  ['id' => 'mimetype', 'placeholder' => $lang->attachment_types['ph_mime'], 'autocomplete' => 'off']);
+    $maxsize_f = generate_numeric_field('maxsize', $data['maxsize'] ?? 1024, ['id' => 'maxsize', 'min' => 0, 'placeholder' => $lang->attachment_types['ph_maxsize']]);
     $icon_val  = (string)($data['icon'] ?? AT_DEFAULT_ICON);
     $icon_f    = generate_text_box('icon', $icon_val, ['id' => 'icon', 'class' => 'font-monospace', 'autocomplete' => 'off']);
     $preview   = render_type_icon(['icon' => $icon_val, 'name' => $data['name'] ?? ''], '2rem');
 
-    $enabled_f  = generate_yes_no_switch('enabled',       $data['enabled'] ?? 1,       ['id' => 'enabled',       'icon' => 'fa-power-off',   'label' => 'Enabled',        'desc' => 'Users can upload this type']);
-    $download_f = generate_yes_no_switch('forcedownload', $data['forcedownload'] ?? 0, ['id' => 'forcedownload', 'icon' => 'fa-download',    'label' => 'Force download', 'desc' => 'Always download instead of opening in the browser']);
-    $avatar_f   = generate_yes_no_switch('avatarfile',    $data['avatarfile'] ?? 0,    ['id' => 'avatarfile',    'icon' => 'fa-circle-user', 'label' => 'Avatar file',    'desc' => 'Allow this type for avatars']);
+    $enabled_f  = generate_yes_no_switch('enabled',       $data['enabled'] ?? 1,       ['id' => 'enabled',       'icon' => 'fa-power-off',   'label' => $lang->attachment_types['lbl_enabled'],        'desc' => $lang->attachment_types['hint_enabled']]);
+    $download_f = generate_yes_no_switch('forcedownload', $data['forcedownload'] ?? 0, ['id' => 'forcedownload', 'icon' => 'fa-download',    'label' => $lang->attachment_types['lbl_force_download'], 'desc' => $lang->attachment_types['hint_force_download']]);
+    $avatar_f   = generate_yes_no_switch('avatarfile',    $data['avatarfile'] ?? 0,    ['id' => 'avatarfile',    'icon' => 'fa-circle-user', 'label' => $lang->attachment_types['lbl_avatar_file'],    'desc' => $lang->attachment_types['hint_avatar_file']]);
 
     $groups_val = (string)($data['groups'] ?? '');
     $groups_sel = generate_groups_selection($groups_val, ($groups_val !== '' && $groups_val != -1) ? explode(',', $groups_val) : []);
@@ -219,22 +248,22 @@ function render_attachment_form_fields(array $data, string $form_action, string 
 
     $limits = '';
     foreach (get_php_upload_limits() as $k => $v) {
-        $limits .= '<span class="at-pill p-size"><i class="fa-solid fa-server"></i>PHP ' . at_e($k) . ': ' . at_e($v) . '</span>';
+        $limits .= '<span class="at-pill p-size"><i class="fa-solid fa-server"></i>' . at_e(ags_fmt($lang->attachment_types['pill_php_limit'], $k, $v)) . '</span>';
     }
 
     $presets = '';
     foreach ([
-        ['fa-file-pdf', '#e74c3c', 'PDF'], ['fa-file-image', '#1abc9c', 'Image'], ['fa-file-zipper', '#e67e22', 'Archive'],
-        ['fa-file-word', '#2b579a', 'Word'], ['fa-file-excel', '#217346', 'Excel'], ['fa-file-powerpoint', '#d24726', 'PowerPoint'],
-        ['fa-file-video', '#8e44ad', 'Video'], ['fa-file-audio', '#2980b9', 'Audio'], ['fa-file-lines', '#7f8c8d', 'Text'],
-        ['fa-file-code', '#34495e', 'Code'],
+        ['fa-file-pdf', '#e74c3c', $lang->attachment_types['preset_pdf']], ['fa-file-image', '#1abc9c', $lang->attachment_types['preset_image']], ['fa-file-zipper', '#e67e22', $lang->attachment_types['preset_archive']],
+        ['fa-file-word', '#2b579a', $lang->attachment_types['preset_word']], ['fa-file-excel', '#217346', $lang->attachment_types['preset_excel']], ['fa-file-powerpoint', '#d24726', $lang->attachment_types['preset_ppt']],
+        ['fa-file-video', '#8e44ad', $lang->attachment_types['preset_video']], ['fa-file-audio', '#2980b9', $lang->attachment_types['preset_audio']], ['fa-file-lines', '#7f8c8d', $lang->attachment_types['preset_text']],
+        ['fa-file-code', '#34495e', $lang->attachment_types['preset_code']],
     ] as [$ic, $col, $lbl]) {
         $code = '<i class="fas ' . $ic . '" style="color:' . $col . ';"></i>';
-        $presets .= '<button type="button" class="at-preset" data-icon="' . at_e($code) . '"><i class="fa-solid ' . $ic . '" style="color:' . $col . '"></i>' . $lbl . '</button>';
+        $presets .= '<button type="button" class="at-preset" data-icon="' . at_e($code) . '"><i class="fa-solid ' . $ic . '" style="color:' . $col . '"></i>' . at_e($lbl) . '</button>';
     }
 
     $post_key  = at_e($mybb->post_code);
-    $btn_label = $is_edit ? 'Save Changes' : 'Create Type';
+    $btn_label = $is_edit ? $L['btn_save'] : $L['btn_create'];
     $title_e   = at_e($title);
     $head_icon = $is_edit ? 'fa-pen-to-square' : 'fa-circle-plus';
 
@@ -245,9 +274,9 @@ function render_attachment_form_fields(array $data, string $form_action, string 
         <span class="at-head-icon"><i class="fa-solid {$head_icon}"></i></span>
         <div>
             <h1 class="at-title">{$title_e}</h1>
-            <div class="at-sub">File type that users are allowed to attach</div>
+            <div class="at-sub">{$L['sub_form']}</div>
         </div>
-        <a href="index.php?act=attachment_types" class="btn btn-sm btn-outline-secondary rounded-pill px-3 ms-auto"><i class="fa-solid fa-arrow-left me-1"></i>Back to list</a>
+        <a href="index.php?act=attachment_types" class="btn btn-sm btn-outline-secondary rounded-pill px-3 ms-auto"><i class="fa-solid fa-arrow-left me-1"></i>{$L['btn_back']}</a>
     </div>
 </div>
 HTML;
@@ -261,40 +290,40 @@ HTML;
         <div class="col-lg-7">
             <div class="at-card">
                 <div class="at-sec">
-                    <div class="at-sec-head"><span class="at-sec-icon ic-blue"><i class="fa-solid fa-file-circle-question"></i></span>File type</div>
+                    <div class="at-sec-head"><span class="at-sec-icon ic-blue"><i class="fa-solid fa-file-circle-question"></i></span>{$L['sec_file_type']}</div>
                     <div class="mb-3">
-                        <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>Name</label>
+                        <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>{$L['lbl_name']}</label>
                         {$name_f}
-                        <span class="at-help">Shown to users, e.g. “PDF Document”</span>
+                        <span class="at-help">{$L['hint_name']}</span>
                     </div>
                     <div class="row g-3">
                         <div class="col-sm-5">
-                            <label for="extension" class="form-label"><i class="fa-solid fa-file-signature"></i>Extension <span class="at-req">*</span></label>
+                            <label for="extension" class="form-label"><i class="fa-solid fa-file-signature"></i>{$L['lbl_extension']} <span class="at-req">*</span></label>
                             <div class="input-group"><span class="input-group-text">.</span>{$ext_f}</div>
-                            <span class="at-help">Without the leading dot</span>
+                            <span class="at-help">{$L['hint_extension']}</span>
                         </div>
                         <div class="col-sm-7">
-                            <label for="mimetype" class="form-label"><i class="fa-solid fa-code"></i>MIME type <span class="at-req">*</span></label>
+                            <label for="mimetype" class="form-label"><i class="fa-solid fa-code"></i>{$L['lbl_mime']} <span class="at-req">*</span></label>
                             {$mime_f}
-                            <span class="at-help">What the server sends, e.g. <code>application/pdf</code></span>
+                            <span class="at-help">{$lang->attachment_types['hint_mime']}</span>
                         </div>
                     </div>
                     <div class="mt-3">
-                        <label for="maxsize" class="form-label"><i class="fa-solid fa-weight-hanging"></i>Maximum size</label>
-                        <div class="input-group at-size-group">{$maxsize_f}<span class="input-group-text">KB</span></div>
-                        <span class="at-help">0 = no limit of its own (the PHP limits still apply)</span>
+                        <label for="maxsize" class="form-label"><i class="fa-solid fa-weight-hanging"></i>{$L['lbl_maxsize']}</label>
+                        <div class="input-group at-size-group">{$maxsize_f}<span class="input-group-text">{$L['unit_kb']}</span></div>
+                        <span class="at-help">{$L['hint_maxsize']}</span>
                         <div class="at-limits">{$limits}</div>
                     </div>
                 </div>
 
                 <div class="at-sec">
-                    <div class="at-sec-head"><span class="at-sec-icon ic-purple"><i class="fa-solid fa-icons"></i></span>Icon</div>
+                    <div class="at-sec-head"><span class="at-sec-icon ic-purple"><i class="fa-solid fa-icons"></i></span>{$L['sec_icon']}</div>
                     <div class="d-flex gap-3 align-items-start">
                         <div id="atIconPreview">{$preview}</div>
                         <div class="flex-grow-1 at-minw0">
-                            <label for="icon" class="form-label">Font Awesome HTML</label>
+                            <label for="icon" class="form-label">{$L['lbl_icon_html']}</label>
                             {$icon_f}
-                            <span class="at-help">For example <code>&lt;i class="fas fa-file-pdf" style="color:#e74c3c;"&gt;&lt;/i&gt;</code></span>
+                            <span class="at-help">{$lang->attachment_types['hint_icon']}</span>
                         </div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 mt-3">{$presets}</div>
@@ -305,17 +334,17 @@ HTML;
         <div class="col-lg-5">
             <div class="at-card mb-3">
                 <div class="at-sec">
-                    <div class="at-sec-head"><span class="at-sec-icon ic-green"><i class="fa-solid fa-sliders"></i></span>Behaviour</div>
+                    <div class="at-sec-head"><span class="at-sec-icon ic-green"><i class="fa-solid fa-sliders"></i></span>{$L['sec_behaviour']}</div>
                     <div class="d-grid gap-2">{$enabled_f}{$download_f}{$avatar_f}</div>
                 </div>
             </div>
             <div class="at-card">
                 <div class="at-sec">
-                    <div class="at-sec-head"><span class="at-sec-icon ic-amber"><i class="fa-solid fa-user-group"></i></span>Available to groups</div>
+                    <div class="at-sec-head"><span class="at-sec-icon ic-amber"><i class="fa-solid fa-user-group"></i></span>{$L['sec_groups']}</div>
                     {$groups_sel}
                 </div>
                 <div class="at-sec">
-                    <div class="at-sec-head"><span class="at-sec-icon ic-slate"><i class="fa-solid fa-comments"></i></span>Available in forums</div>
+                    <div class="at-sec-head"><span class="at-sec-icon ic-slate"><i class="fa-solid fa-comments"></i></span>{$L['sec_forums']}</div>
                     {$forums_sel}
                 </div>
             </div>
@@ -323,7 +352,7 @@ HTML;
     </div>
 
     <div class="d-flex justify-content-end gap-2 mt-3">
-        <a href="index.php?act=attachment_types" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+        <a href="index.php?act=attachment_types" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>{$L['btn_cancel']}</a>
         <button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>{$btn_label}</button>
     </div>
 </form>
@@ -333,22 +362,22 @@ HTML;
 
 function render_add_form(array $errors = []): void
 {
-    global $mybb;
-    stdhead('Attachment Types - Add New');
+    global $mybb, $lang;
+    stdhead($lang->attachment_types['page_title_add']);
     output_admin_resources();
-    render_attachment_form_fields($mybb->input, AT_URL . '&action=add', 'Add Attachment Type', $errors, false);
+    render_attachment_form_fields($mybb->input, AT_URL . '&action=add', $lang->attachment_types['head_add'], $errors, false);
     stdfoot();
 }
 
 function render_edit_form(array $attachment_type, array $errors = []): void
 {
-    global $mybb;
+    global $mybb, $lang;
     $atid = (int)$attachment_type['atid'];
-    stdhead('Attachment Types - Edit');
+    stdhead($lang->attachment_types['page_title_edit']);
     output_admin_resources();
     // После ошибки валидации показываем то, что ввёл пользователь, а не старые данные
     $data = $errors ? array_merge($attachment_type, $mybb->input) : $attachment_type;
-    render_attachment_form_fields($data, AT_URL . '&action=edit&atid=' . $atid, 'Edit Attachment Type', $errors, true);
+    render_attachment_form_fields($data, AT_URL . '&action=edit&atid=' . $atid, $lang->attachment_types['head_edit'], $errors, true);
     stdfoot();
 }
 
@@ -368,10 +397,10 @@ switch ($mybb->input['action'] ?? '') {
 
 function at_require_post_key(): void
 {
-    global $mybb;
+    global $mybb, $lang;
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         http_response_code(403);
-        die('Invalid security token');
+        die(at_e($lang->attachment_types['err_token']));
     }
 }
 
@@ -385,7 +414,7 @@ function at_fetch_type(int $atid): ?array
 
 function handle_add_action(): void
 {
-    global $mybb, $db, $plugins, $cache;
+    global $mybb, $db, $plugins, $cache, $lang;
 
     $plugins->run_hooks('admin_config_attachment_types_add');
     $errors = [];
@@ -401,7 +430,7 @@ function handle_add_action(): void
             );
             $plugins->run_hooks('admin_config_attachment_types_add_commit');
             $cache->update_attachtypes();
-            flash_message('The attachment type has been created.', 'success');
+            flash_message($lang->attachment_types['flash_created'], 'success');
             admin_redirect(AT_URL);
         }
     }
@@ -411,12 +440,12 @@ function handle_add_action(): void
 
 function handle_edit_action(): void
 {
-    global $mybb, $db, $plugins, $cache;
+    global $mybb, $db, $plugins, $cache, $lang;
 
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
     $type = at_fetch_type($atid);
     if (!$type) {
-        flash_message('Invalid attachment type.', 'error');
+        flash_message($lang->attachment_types['flash_invalid'], 'error');
         admin_redirect(AT_URL);
     }
 
@@ -433,7 +462,7 @@ function handle_edit_action(): void
             $db->sql_query_prepared("UPDATE attachtypes SET {$set} WHERE atid = ?", $params);
             $plugins->run_hooks('admin_config_attachment_types_edit_commit');
             $cache->update_attachtypes();
-            flash_message('The attachment type has been updated.', 'success');
+            flash_message($lang->attachment_types['flash_updated'], 'success');
             admin_redirect(AT_URL);
         }
     }
@@ -448,7 +477,7 @@ function handle_edit_action(): void
  */
 function handle_delete_action(): void
 {
-    global $mybb, $db, $plugins, $cache;
+    global $mybb, $db, $plugins, $cache, $lang;
 
     if ($mybb->request_method !== 'post') {
         admin_redirect(AT_URL);
@@ -457,7 +486,7 @@ function handle_delete_action(): void
 
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
     if (!at_fetch_type($atid)) {
-        flash_message('Invalid attachment type.', 'error');
+        flash_message($lang->attachment_types['flash_invalid'], 'error');
         admin_redirect(AT_URL);
     }
 
@@ -465,13 +494,13 @@ function handle_delete_action(): void
     $db->sql_query_prepared('DELETE FROM attachtypes WHERE atid = ?', [$atid]);
     $plugins->run_hooks('admin_config_attachment_types_delete_commit');
     $cache->update_attachtypes();
-    flash_message('The attachment type has been deleted.', 'success');
+    flash_message($lang->attachment_types['flash_deleted'], 'success');
     admin_redirect(AT_URL);
 }
 
 function handle_toggle_status_action(): void
 {
-    global $mybb, $db, $plugins, $cache;
+    global $mybb, $db, $plugins, $cache, $lang;
 
     if ($mybb->request_method !== 'post') {
         admin_redirect(AT_URL);
@@ -481,7 +510,7 @@ function handle_toggle_status_action(): void
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
     $type = at_fetch_type($atid);
     if (!$type) {
-        flash_message('Invalid attachment type.', 'error');
+        flash_message($lang->attachment_types['flash_invalid'], 'error');
         admin_redirect(AT_URL);
     }
 
@@ -491,15 +520,15 @@ function handle_toggle_status_action(): void
     $plugins->run_hooks('admin_config_attachment_types_toggle_status_commit');
     $cache->update_attachtypes();
 
-    flash_message($new_status ? 'The attachment type has been enabled.' : 'The attachment type has been disabled.', 'success');
+    flash_message($new_status ? $lang->attachment_types['flash_enabled'] : $lang->attachment_types['flash_disabled'], 'success');
     admin_redirect(AT_URL . '&page=' . max(1, $mybb->get_input('page', MyBB::INPUT_INT)));
 }
 
 function handle_list_action(): void
 {
-    global $mybb, $db, $plugins;
+    global $mybb, $db, $plugins, $lang;
 
-    stdhead('Attachment Types');
+    stdhead($lang->attachment_types['page_title']);
     output_admin_resources();
     $plugins->run_hooks('admin_config_attachment_types_start');
 
@@ -546,12 +575,14 @@ function validate_attachment_type_input(array $input): array
 {
     // Оба поля обязательны. Раньше условия были перепутаны: ошибка появлялась
     // только если пустые ОБА, и тип без MIME или без расширения сохранялся.
+    global $lang;
+
     $errors = [];
     if (trim((string)($input['extension'] ?? '')) === '' || trim((string)($input['extension'] ?? ''), '. ') === '') {
-        $errors[] = 'You did not enter a file extension for this attachment type';
+        $errors[] = $lang->attachment_types['err_no_extension'];
     }
     if (trim((string)($input['mimetype'] ?? '')) === '') {
-        $errors[] = 'You did not enter a MIME type for this attachment type';
+        $errors[] = $lang->attachment_types['err_no_mime'];
     }
     return $errors;
 }
@@ -603,15 +634,18 @@ function process_selection_field(string $value, $custom_values): string
 
 function render_list_header(): string
 {
+    global $lang;
+    $L = array_map('at_e', $lang->attachment_types);
+
     return <<<HTML
 <div class="at-card mb-3">
     <div class="at-head">
         <span class="at-head-icon"><i class="fa-solid fa-paperclip"></i></span>
         <div>
-            <h1 class="at-title">Attachment Types</h1>
-            <div class="at-sub">File extensions users may attach to posts and comments</div>
+            <h1 class="at-title">{$L['page_title']}</h1>
+            <div class="at-sub">{$L['sub_list']}</div>
         </div>
-        <a href="index.php?act=attachment_types&amp;action=add" class="btn btn-primary rounded-pill px-3 ms-auto"><i class="fa-solid fa-plus me-1"></i>Add Type</a>
+        <a href="index.php?act=attachment_types&amp;action=add" class="btn btn-primary rounded-pill px-3 ms-auto"><i class="fa-solid fa-plus me-1"></i>{$L['btn_add']}</a>
     </div>
 </div>
 HTML;
@@ -619,31 +653,35 @@ HTML;
 
 function render_stats_cards(int $total, int $enabled, int $avatars, int $avgsize): string
 {
+    global $lang;
+
     $cards = [
-        ['fa-layer-group',    'ic-blue',   'Total types', number_format($total)],
-        ['fa-toggle-on',      'ic-green',  'Enabled',     number_format($enabled)],
-        ['fa-toggle-off',     'ic-slate',  'Disabled',    number_format($total - $enabled)],
-        ['fa-weight-hanging', 'ic-amber',  'Avg. limit',  $avgsize > 0 ? format_size_kb($avgsize) : '—'],
+        ['fa-layer-group',    'ic-blue',   $lang->attachment_types['stat_total'],     number_format($total)],
+        ['fa-toggle-on',      'ic-green',  $lang->attachment_types['stat_enabled'],   number_format($enabled)],
+        ['fa-toggle-off',     'ic-slate',  $lang->attachment_types['stat_disabled'],  number_format($total - $enabled)],
+        ['fa-weight-hanging', 'ic-amber',  $lang->attachment_types['stat_avg_limit'], $avgsize > 0 ? format_size_kb($avgsize) : '—'],
     ];
     $html = '<div class="row g-3 mb-3">';
     foreach ($cards as [$ic, $cls, $label, $val]) {
         $html .= '<div class="col-6 col-md-3"><div class="at-card at-stat"><span class="at-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
-               . '<div><div class="at-stat-label">' . $label . '</div><div class="at-stat-value">' . $val . '</div></div></div></div>';
+               . '<div><div class="at-stat-label">' . at_e($label) . '</div><div class="at-stat-value">' . $val . '</div></div></div></div>';
     }
     return $html . '</div>';
 }
 
-function render_scope(string $value, string $what): array
+/** Возвращает [иконка, текст]; текст — «сырой», экранировать при выводе */
+function render_scope(string $value, string $all, string $none, string $count_tpl): array
 {
-    if ($value === '-1') return ['fa-globe', 'All ' . $what];
-    if ($value === '')   return ['fa-ban', 'No ' . $what];
-    $n = count(array_filter(explode(',', $value)));
-    return ['fa-list-check', $n . ' ' . $what];
+    if ($value === '-1') return ['fa-globe', $all];
+    if ($value === '')   return ['fa-ban', $none];
+    return ['fa-list-check', ags_fmt($count_tpl, count(array_filter(explode(',', $value))))];
 }
 
 function render_attachment_types_table(int $start, int $per_page, int $page): string
 {
-    global $db, $mybb;
+    global $db, $mybb, $lang;
+
+    $L = array_map('at_e', $lang->attachment_types);
 
     $query = $db->sql_query_prepared('SELECT * FROM attachtypes ORDER BY extension LIMIT ?, ?', [$start, $per_page]);
     $key   = at_e($mybb->post_code);
@@ -651,23 +689,23 @@ function render_attachment_types_table(int $start, int $per_page, int $page): st
     $html = <<<HTML
 <div class="at-card overflow-hidden">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom">
-        <span class="fw-bold"><i class="fa-solid fa-table-list me-2 text-body-secondary"></i>All types</span>
+        <span class="fw-bold"><i class="fa-solid fa-table-list me-2 text-body-secondary"></i>{$L['sec_all_types']}</span>
         <div class="position-relative at-search">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" class="form-control form-control-sm" id="atFilter" placeholder="Filter by extension, name or MIME…">
+            <input type="search" class="form-control form-control-sm" id="atFilter" placeholder="{$L['ph_filter']}">
         </div>
     </div>
     <div class="table-responsive">
     <table class="table at-table">
         <thead>
             <tr>
-                <th><i class="fa-solid fa-file"></i>Type</th>
-                <th><i class="fa-solid fa-code"></i>MIME</th>
-                <th class="text-center"><i class="fa-solid fa-power-off"></i>Status</th>
-                <th class="text-center"><i class="fa-solid fa-weight-hanging"></i>Max size</th>
-                <th><i class="fa-solid fa-user-group"></i>Access</th>
-                <th class="text-center"><i class="fa-solid fa-flag"></i>Flags</th>
-                <th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>
+                <th><i class="fa-solid fa-file"></i>{$L['th_type']}</th>
+                <th><i class="fa-solid fa-code"></i>{$L['th_mime']}</th>
+                <th class="text-center"><i class="fa-solid fa-power-off"></i>{$L['th_status']}</th>
+                <th class="text-center"><i class="fa-solid fa-weight-hanging"></i>{$L['th_max_size']}</th>
+                <th><i class="fa-solid fa-user-group"></i>{$L['th_access']}</th>
+                <th class="text-center"><i class="fa-solid fa-flag"></i>{$L['th_flags']}</th>
+                <th class="text-end"><i class="fa-solid fa-bolt"></i>{$L['th_actions']}</th>
             </tr>
         </thead>
         <tbody>
@@ -684,22 +722,22 @@ HTML;
         $icon = render_type_icon($type);
         $size = format_size_kb($type['maxsize'] ?? 0);
 
-        [$gi, $gt] = render_scope((string)($type['groups'] ?? ''), 'groups');
-        [$fi, $ft] = render_scope((string)($type['forums'] ?? ''), 'forums');
+        [$gi, $gt] = render_scope((string)($type['groups'] ?? ''), $lang->attachment_types['scope_all_groups'], $lang->attachment_types['scope_none_groups'], $lang->attachment_types['scope_n_groups']);
+        [$fi, $ft] = render_scope((string)($type['forums'] ?? ''), $lang->attachment_types['scope_all_forums'], $lang->attachment_types['scope_none_forums'], $lang->attachment_types['scope_n_forums']);
 
         $status = $on
-            ? '<span class="at-pill p-on"><i class="fa-solid fa-circle-check"></i>Enabled</span>'
-            : '<span class="at-pill p-off"><i class="fa-solid fa-circle-xmark"></i>Disabled</span>';
+            ? '<span class="at-pill p-on"><i class="fa-solid fa-circle-check"></i>' . $L['status_enabled'] . '</span>'
+            : '<span class="at-pill p-off"><i class="fa-solid fa-circle-xmark"></i>' . $L['status_disabled'] . '</span>';
 
         $fd = (int)($type['forcedownload'] ?? 0) === 1;
         $av = (int)($type['avatarfile'] ?? 0) === 1;
         $flags = '<span class="at-flags">'
-               . '<span class="at-flag ic-blue' . ($fd ? '' : ' is-muted') . '" title="' . ($fd ? 'Force download' : 'Opens in browser') . '"><i class="fa-solid fa-download"></i></span>'
-               . '<span class="at-flag ic-purple' . ($av ? '' : ' is-muted') . '" title="' . ($av ? 'Allowed for avatars' : 'Not for avatars') . '"><i class="fa-solid fa-circle-user"></i></span>'
+               . '<span class="at-flag ic-blue' . ($fd ? '' : ' is-muted') . '" title="' . ($fd ? $L['tip_force_download'] : $L['tip_opens_browser']) . '"><i class="fa-solid fa-download"></i></span>'
+               . '<span class="at-flag ic-purple' . ($av ? '' : ' is-muted') . '" title="' . ($av ? $L['tip_avatar_yes'] : $L['tip_avatar_no']) . '"><i class="fa-solid fa-circle-user"></i></span>'
                . '</span>';
 
         $toggle_icon  = $on ? 'fa-toggle-on' : 'fa-toggle-off';
-        $toggle_title = $on ? 'Disable' : 'Enable';
+        $toggle_title = $on ? $L['tip_disable'] : $L['tip_enable'];
         $search = strtolower($ext . ' ' . strip_tags($name) . ' ' . (string)($type['mimetype'] ?? ''));
 
         $html .= '<tr class="' . ($on ? '' : 'is-off') . '" data-search="' . at_e($search) . '">'
@@ -708,25 +746,25 @@ HTML;
             . '<td>' . $mime . '</td>'
             . '<td class="text-center">' . $status . '</td>'
             . '<td class="text-center"><span class="at-pill p-size"><i class="fa-solid fa-hard-drive"></i>' . $size . '</span></td>'
-            . '<td><div class="at-help"><i class="fa-solid ' . $gi . ' me-1"></i>' . $gt . '</div><div class="at-help"><i class="fa-solid ' . $fi . ' me-1"></i>' . $ft . '</div></td>'
+            . '<td><div class="at-help"><i class="fa-solid ' . $gi . ' me-1"></i>' . at_e($gt) . '</div><div class="at-help"><i class="fa-solid ' . $fi . ' me-1"></i>' . at_e($ft) . '</div></td>'
             . '<td class="text-center">' . $flags . '</td>'
             . '<td class="text-end text-nowrap">'
-            .   '<a class="at-act" href="index.php?act=attachment_types&amp;action=edit&amp;atid=' . $atid . '" title="Edit"><i class="fa-solid fa-pen"></i></a>'
+            .   '<a class="at-act" href="index.php?act=attachment_types&amp;action=edit&amp;atid=' . $atid . '" title="' . $L['tip_edit'] . '"><i class="fa-solid fa-pen"></i></a>'
             .   '<form method="post" action="index.php?act=attachment_types&amp;action=toggle_status" class="d-inline">'
             .     '<input type="hidden" name="my_post_key" value="' . $key . '"><input type="hidden" name="atid" value="' . $atid . '"><input type="hidden" name="page" value="' . $page . '">'
             .     '<button type="submit" class="at-act' . ($on ? '' : ' power-on') . '" title="' . $toggle_title . '"><i class="fa-solid ' . $toggle_icon . '"></i></button>'
             .   '</form>'
-            .   '<button type="button" class="at-act danger" title="Delete" data-atid="' . $atid . '" data-ext=".' . $ext . '" data-bs-toggle="modal" data-bs-target="#atDeleteModal"><i class="fa-solid fa-trash"></i></button>'
+            .   '<button type="button" class="at-act danger" title="' . $L['tip_delete'] . '" data-atid="' . $atid . '" data-ext=".' . $ext . '" data-bs-toggle="modal" data-bs-target="#atDeleteModal"><i class="fa-solid fa-trash"></i></button>'
             . '</td></tr>';
     }
 
     if ($rows === 0) {
-        $html .= '<tr><td colspan="7"><div class="at-empty"><i class="fa-solid fa-paperclip"></i><div class="fw-semibold">No attachment types yet</div>'
-               . '<div class="small mb-3">Add the first file type users are allowed to attach.</div>'
-               . '<a href="index.php?act=attachment_types&amp;action=add" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add Type</a></div></td></tr>';
+        $html .= '<tr><td colspan="7"><div class="at-empty"><i class="fa-solid fa-paperclip"></i><div class="fw-semibold">' . $L['empty_title'] . '</div>'
+               . '<div class="small mb-3">' . $L['empty_text'] . '</div>'
+               . '<a href="index.php?act=attachment_types&amp;action=add" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>' . $L['btn_add'] . '</a></div></td></tr>';
     }
 
-    $html .= '<tr id="atNoMatch" hidden><td colspan="7"><div class="at-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">No matches on this page</div></div></td></tr>';
+    $html .= '<tr id="atNoMatch" hidden><td colspan="7"><div class="at-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">' . $L['no_match'] . '</div></div></td></tr>';
     $html .= '</tbody></table></div></div>';
 
     return $html;
@@ -734,8 +772,12 @@ HTML;
 
 function render_delete_modal(): string
 {
-    global $mybb;
+    global $mybb, $lang;
     $key = at_e($mybb->post_code);
+    $L   = array_map('at_e', $lang->attachment_types);
+
+    // Расширение подставляет JS в <span id="atDeleteExt">
+    $delete_q = ags_fmt($L['modal_delete_q'], '<span class="font-monospace" id="atDeleteExt"></span>');
 
     return <<<HTML
 <div class="modal fade at" id="atDeleteModal" tabindex="-1" aria-labelledby="atDeleteModalLabel" aria-hidden="true">
@@ -744,21 +786,21 @@ function render_delete_modal(): string
             <input type="hidden" name="my_post_key" value="{$key}">
             <input type="hidden" name="atid" id="atDeleteId" value="">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="atDeleteModalLabel"><i class="fa-solid fa-trash me-2"></i>Delete attachment type</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="atDeleteModalLabel"><i class="fa-solid fa-trash me-2"></i>{$L['modal_delete_title']}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$L['aria_close']}"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex gap-3 align-items-start">
                     <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger flex-shrink-0 at-del-icon"><i class="fa-solid fa-file-circle-xmark"></i></span>
                     <div>
-                        <div class="fw-semibold">Delete <span class="font-monospace" id="atDeleteExt"></span>?</div>
-                        <div class="small text-body-secondary">Users will no longer be able to upload this file type. Files already attached stay in place.</div>
+                        <div class="fw-semibold">{$delete_q}</div>
+                        <div class="small text-body-secondary">{$L['modal_delete_text']}</div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
-                <button type="submit" class="btn btn-danger rounded-pill px-3"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>{$L['btn_cancel']}</button>
+                <button type="submit" class="btn btn-danger rounded-pill px-3"><i class="fa-solid fa-trash me-1"></i>{$L['btn_delete']}</button>
             </div>
         </form>
     </div>

@@ -19,6 +19,25 @@ if (!defined('STAFF_PANEL')) {
           </div>');
 }
 
+global $lang;
+$lang->load('doubleupload');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… (и %1$s — в него $lang->load() превращает {1})
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $v) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$v;
+            $map['%' . $n . '$s'] = (string)$v;
+        }
+        return strtr($str, $map);
+    }
+}
+
 class TorrentDoubleUploadManager
 {
     private const ALLOWED_ACTIONS = ['main', 'setalldouble', 'setallnormal'];
@@ -110,6 +129,7 @@ private function jsonError(string $message): void
      */
    private function setAllDoubleUpload(): void
 {
+    global $lang;
     $this->validateStaffAccess();
     $this->validateCsrf();
 
@@ -118,21 +138,22 @@ private function jsonError(string $message): void
               WHERE doubleupload = 'no'";
 
     if (!$this->database->sql_query_prepared($query)) {
-        $this->jsonError('Database error');
+        $this->jsonError($lang->doubleupload['err_db']);
     }
 
     $affectedRows = $this->database->affected_rows();
     $this->logAction('double', $affectedRows);
 
     $this->jsonSuccess(
-        'Double Upload Enabled',
-        "Successfully updated {$affectedRows} torrents"
+        $lang->doubleupload['msg_double_title'],
+        ags_fmt($lang->doubleupload['msg_updated'], number_format($affectedRows))
     );
 }
 
 
 private function setAllNormal(): void
 {
+    global $lang;
     $this->validateStaffAccess();
     $this->validateCsrf();
 
@@ -141,15 +162,15 @@ private function setAllNormal(): void
               WHERE doubleupload = 'yes'";
 
     if (!$this->database->sql_query_prepared($query)) {
-        $this->jsonError('Database error');
+        $this->jsonError($lang->doubleupload['err_db']);
     }
 
     $affectedRows = $this->database->affected_rows();
     $this->logAction('normal', $affectedRows);
 
     $this->jsonSuccess(
-        'Normal Upload Restored',
-        "Successfully updated {$affectedRows} torrents"
+        $lang->doubleupload['msg_normal_title'],
+        ags_fmt($lang->doubleupload['msg_updated'], number_format($affectedRows))
     );
 }
 
@@ -165,8 +186,10 @@ private function setAllNormal(): void
      */
     private function showMainInterface(): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
+        $L        = $lang->doubleupload;
+        $e        = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $stats    = $this->getTorrentStats();
         $canAct   = $this->hasStaffAccess();
         $recent   = $this->getRecentActions();
@@ -176,13 +199,23 @@ private function setAllNormal(): void
         $nPct     = round($stats['normal_percent'], 1);
         $mode     = $stats['total'] === 0 ? 'empty' : ($stats['double_count'] === $stats['total'] ? 'double' : ($stats['double_count'] === 0 ? 'normal' : 'mixed'));
         $modeInfo = [
-            'double' => ['fa-rocket',       'du-mode-double', 'Double upload is ON for every torrent'],
-            'normal' => ['fa-circle-check', 'du-mode-normal', 'All torrents use normal upload'],
-            'mixed'  => ['fa-code-branch',  'du-mode-mixed',  'Mixed — some torrents have double upload'],
-            'empty'  => ['fa-inbox',        'du-mode-normal', 'No torrents yet'],
+            'double' => ['fa-rocket',       'du-mode-double', $L['mode_double']],
+            'normal' => ['fa-circle-check', 'du-mode-normal', $L['mode_normal']],
+            'mixed'  => ['fa-code-branch',  'du-mode-mixed',  $L['mode_mixed']],
+            'empty'  => ['fa-inbox',        'du-mode-normal', $L['mode_empty']],
         ][$mode];
 
-        stdhead('Torrent Upload Mode Manager');
+        $nNormal  = '<strong>' . number_format($stats['normal_count']) . '</strong>';
+        $nDouble  = '<strong>' . number_format($stats['double_count']) . '</strong>';
+
+        $jsLang = [];
+        foreach ($L as $k => $v) {
+            if (str_starts_with((string)$k, 'js_')) {
+                $jsLang[substr((string)$k, 3)] = (string)$v;
+            }
+        }
+
+        stdhead($L['page_title']);
         ?>
 <style>
 .du .du-card, .du-modal .modal-content { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
@@ -249,11 +282,11 @@ private function setAllNormal(): void
     <div class="du-card mb-3"><div class="du-head">
         <span class="du-head-icon"><i class="fas fa-bolt"></i></span>
         <div style="min-width:0">
-            <h1 class="du-title">Upload Mode Manager</h1>
-            <div class="du-sub">Turn double upload on or off for the whole tracker in one click</div>
+            <h1 class="du-title"><?= $e($L['pane_title']) ?></h1>
+            <div class="du-sub"><?= $e($L['pane_subtitle']) ?></div>
         </div>
         <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
-            <span class="du-mode <?= $modeInfo[1] ?>"><i class="fas <?= $modeInfo[0] ?>"></i><?= $modeInfo[2] ?></span>
+            <span class="du-mode <?= $modeInfo[1] ?>"><i class="fas <?= $modeInfo[0] ?>"></i><?= $e($modeInfo[2]) ?></span>
             <span class="du-ver"><i class="fas fa-code-branch me-1"></i>v2.1</span>
         </div>
     </div></div>
@@ -261,26 +294,26 @@ private function setAllNormal(): void
     <!-- Статистика -->
     <div class="row g-3 mb-3">
         <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-slate"><i class="fas fa-magnet"></i></span>
-            <div><div class="du-stat-label">Total torrents</div><div class="du-stat-value"><?= number_format($stats['total']) ?></div></div></div></div>
+            <div><div class="du-stat-label"><?= $e($L['lbl_total']) ?></div><div class="du-stat-value"><?= number_format($stats['total']) ?></div></div></div></div>
         <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-blue"><i class="fas fa-upload"></i></span>
-            <div><div class="du-stat-label">Normal upload</div><div class="du-stat-value"><?= number_format($stats['normal_count']) ?></div><div class="du-muted"><?= $nPct ?>%</div></div></div></div>
+            <div><div class="du-stat-label"><?= $e($L['lbl_normal']) ?></div><div class="du-stat-value"><?= number_format($stats['normal_count']) ?></div><div class="du-muted"><?= $nPct ?>%</div></div></div></div>
         <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-amber"><i class="fas fa-angles-up"></i></span>
-            <div><div class="du-stat-label">Double upload ×2</div><div class="du-stat-value"><?= number_format($stats['double_count']) ?></div><div class="du-muted"><?= $dPct ?>%</div></div></div></div>
+            <div><div class="du-stat-label"><?= $e($L['lbl_double']) ?></div><div class="du-stat-value"><?= number_format($stats['double_count']) ?></div><div class="du-muted"><?= $dPct ?>%</div></div></div></div>
     </div>
 
     <div class="du-card p-3 mb-3">
-        <div class="du-split" role="img" aria-label="<?= $nPct ?>% normal, <?= $dPct ?>% double">
+        <div class="du-split" role="img" aria-label="<?= $e(ags_fmt($L['aria_split'], $nPct, $dPct)) ?>">
             <span class="n" style="width:<?= $nPct ?>%"></span><span class="d" style="width:<?= $dPct ?>%"></span>
         </div>
         <div class="du-legend">
-            <span><i class="fas fa-circle text-primary"></i>Normal · <?= number_format($stats['normal_count']) ?></span>
-            <span><i class="fas fa-circle text-warning"></i>Double · <?= number_format($stats['double_count']) ?></span>
+            <span><i class="fas fa-circle text-primary"></i><?= $e($L['lbl_legend_normal']) ?> · <?= number_format($stats['normal_count']) ?></span>
+            <span><i class="fas fa-circle text-warning"></i><?= $e($L['lbl_legend_double']) ?> · <?= number_format($stats['double_count']) ?></span>
         </div>
     </div>
 
     <?php if (!$canAct): ?>
     <div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fas fa-lock mt-1"></i>
-        <div>Only <strong>Administrators</strong> and <strong>Sysops</strong> can change the upload mode — it affects the whole tracker.</div></div>
+        <div><?= $L['hint_no_access'] ?></div></div>
     <?php endif; ?>
 
     <!-- Действия -->
@@ -289,18 +322,18 @@ private function setAllNormal(): void
             <button type="button" class="du-action is-double" data-bs-toggle="modal" data-bs-target="#confirmDoubleModal"
                     <?= (!$canAct || $stats['normal_count'] === 0) ? 'disabled' : '' ?>>
                 <span class="du-act-icon ic-amber"><i class="fas fa-rocket"></i></span>
-                <h3>Enable double upload</h3>
-                <div class="du-muted">Every torrent counts upload ×2. Affects <strong><?= number_format($stats['normal_count']) ?></strong> torrent(s) that are still normal.</div>
-                <span class="du-cta"><?= $stats['normal_count'] === 0 ? '<i class="fas fa-check"></i>Already on everywhere' : '<i class="fas fa-bolt"></i>Activate' ?></span>
+                <h3><?= $e($L['sec_enable']) ?></h3>
+                <div class="du-muted"><?= ags_fmt($L['hint_enable'], $nNormal) ?></div>
+                <span class="du-cta"><?= $stats['normal_count'] === 0 ? '<i class="fas fa-check"></i>' . $e($L['btn_already_on']) : '<i class="fas fa-bolt"></i>' . $e($L['btn_activate']) ?></span>
             </button>
         </div>
         <div class="col-lg-6">
             <button type="button" class="du-action is-normal" data-bs-toggle="modal" data-bs-target="#confirmNormalModal"
                     <?= (!$canAct || $stats['double_count'] === 0) ? 'disabled' : '' ?>>
                 <span class="du-act-icon ic-blue"><i class="fas fa-rotate-left"></i></span>
-                <h3>Revert to normal</h3>
-                <div class="du-muted">Restore the standard upload credit. Affects <strong><?= number_format($stats['double_count']) ?></strong> torrent(s) with double upload.</div>
-                <span class="du-cta"><?= $stats['double_count'] === 0 ? '<i class="fas fa-check"></i>Nothing to revert' : '<i class="fas fa-rotate-left"></i>Revert' ?></span>
+                <h3><?= $e($L['sec_revert']) ?></h3>
+                <div class="du-muted"><?= ags_fmt($L['hint_revert'], $nDouble) ?></div>
+                <span class="du-cta"><?= $stats['double_count'] === 0 ? '<i class="fas fa-check"></i>' . $e($L['btn_nothing']) : '<i class="fas fa-rotate-left"></i>' . $e($L['btn_revert']) ?></span>
             </button>
         </div>
     </div>
@@ -308,20 +341,20 @@ private function setAllNormal(): void
     <div class="row g-3">
         <div class="col-lg-7">
             <div class="du-card h-100">
-                <div class="du-head pb-0"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-circle-info"></i></span><h2 class="h6 fw-bold mb-0">How it works</h2></div>
+                <div class="du-head pb-0"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-circle-info"></i></span><h2 class="h6 fw-bold mb-0"><?= $e($L['sec_how']) ?></h2></div>
                 <div class="du-guide">
-                    <div><i class="fas fa-angles-up text-warning"></i>Double upload: users get 2× upload credit</div>
-                    <div><i class="fas fa-upload text-primary"></i>Normal: standard upload credit</div>
-                    <div><i class="fas fa-globe text-body-secondary"></i>Applies to every torrent at once</div>
-                    <div><i class="fas fa-clipboard-list text-body-secondary"></i>Every switch is written to the site log</div>
-                    <div><i class="fas fa-triangle-exclamation text-warning"></i>Credit already earned is not taken back</div>
-                    <div><i class="fas fa-user-lock text-danger"></i>Admins &amp; Sysops only</div>
+                    <div><i class="fas fa-angles-up text-warning"></i><?= $e($L['guide_double']) ?></div>
+                    <div><i class="fas fa-upload text-primary"></i><?= $e($L['guide_normal']) ?></div>
+                    <div><i class="fas fa-globe text-body-secondary"></i><?= $e($L['guide_all']) ?></div>
+                    <div><i class="fas fa-clipboard-list text-body-secondary"></i><?= $e($L['guide_log']) ?></div>
+                    <div><i class="fas fa-triangle-exclamation text-warning"></i><?= $e($L['guide_keep']) ?></div>
+                    <div><i class="fas fa-user-lock text-danger"></i><?= $e($L['guide_access']) ?></div>
                 </div>
             </div>
         </div>
         <div class="col-lg-5">
             <div class="du-card h-100 overflow-hidden">
-                <div class="du-head pb-2"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-clock-rotate-left"></i></span><h2 class="h6 fw-bold mb-0">Recent switches</h2></div>
+                <div class="du-head pb-2"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-clock-rotate-left"></i></span><h2 class="h6 fw-bold mb-0"><?= $e($L['sec_recent']) ?></h2></div>
                 <?php if ($recent): ?>
                 <ul class="du-log">
                     <?php foreach ($recent as $r):
@@ -332,7 +365,7 @@ private function setAllNormal(): void
                     <?php endforeach; ?>
                 </ul>
                 <?php else: ?>
-                <div class="du-muted px-4 pb-4">No switches logged yet.</div>
+                <div class="du-muted px-4 pb-4"><?= $e($L['hint_no_log']) ?></div>
                 <?php endif; ?>
             </div>
         </div>
@@ -345,24 +378,24 @@ private function setAllNormal(): void
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
         <div class="modal-header">
             <span class="du-mh-icon ic-amber" style="color:#d97706;background:rgba(245,158,11,.14)"><i class="fas fa-rocket"></i></span>
-            <h5 class="modal-title fw-bold" id="duDblTitle">Enable double upload?</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <h5 class="modal-title fw-bold" id="duDblTitle"><?= $e($L['modal_enable_title']) ?></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $e($L['aria_close']) ?>"></button>
         </div>
         <div class="modal-body">
             <div class="du-ba">
-                <div><div class="du-muted">Double now</div><div class="v"><?= number_format($stats['double_count']) ?></div></div>
+                <div><div class="du-muted"><?= $e($L['lbl_double_now']) ?></div><div class="v"><?= number_format($stats['double_count']) ?></div></div>
                 <i class="fas fa-arrow-right-long text-body-secondary"></i>
-                <div><div class="du-muted">Double after</div><div class="v text-warning"><?= number_format($stats['total']) ?></div></div>
+                <div><div class="du-muted"><?= $e($L['lbl_double_after']) ?></div><div class="v text-warning"><?= number_format($stats['total']) ?></div></div>
             </div>
             <div class="du-note warn"><i class="fas fa-triangle-exclamation text-warning mt-1"></i>
-                <div><strong><?= number_format($stats['normal_count']) ?></strong> torrent(s) switch to ×2 upload right away, for every user.</div></div>
+                <div><?= ags_fmt($L['note_enable'], $nNormal) ?></div></div>
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i>Cancel</button>
+            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i><?= $e($L['btn_cancel']) ?></button>
             <form method="post" action="<?= $url ?>" class="d-inline" data-action="setalldouble">
                 <input type="hidden" name="action" value="setalldouble">
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
-                <button type="submit" class="btn btn-warning px-4"><i class="fas fa-bolt me-1"></i>Enable ×2</button>
+                <button type="submit" class="btn btn-warning px-4"><i class="fas fa-bolt me-1"></i><?= $e($L['btn_enable_x2']) ?></button>
             </form>
         </div>
     </div></div>
@@ -373,24 +406,24 @@ private function setAllNormal(): void
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
         <div class="modal-header">
             <span class="du-mh-icon" style="color:var(--bs-primary);background:rgba(var(--bs-primary-rgb),.12)"><i class="fas fa-rotate-left"></i></span>
-            <h5 class="modal-title fw-bold" id="duNrmTitle">Revert to normal upload?</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <h5 class="modal-title fw-bold" id="duNrmTitle"><?= $e($L['modal_revert_title']) ?></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $e($L['aria_close']) ?>"></button>
         </div>
         <div class="modal-body">
             <div class="du-ba">
-                <div><div class="du-muted">Double now</div><div class="v text-warning"><?= number_format($stats['double_count']) ?></div></div>
+                <div><div class="du-muted"><?= $e($L['lbl_double_now']) ?></div><div class="v text-warning"><?= number_format($stats['double_count']) ?></div></div>
                 <i class="fas fa-arrow-right-long text-body-secondary"></i>
-                <div><div class="du-muted">Double after</div><div class="v">0</div></div>
+                <div><div class="du-muted"><?= $e($L['lbl_double_after']) ?></div><div class="v">0</div></div>
             </div>
             <div class="du-note info"><i class="fas fa-circle-info text-primary mt-1"></i>
-                <div>Upload credit returns to normal. Credit already earned stays with users.</div></div>
+                <div><?= $e($L['note_revert']) ?></div></div>
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i>Cancel</button>
+            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i><?= $e($L['btn_cancel']) ?></button>
             <form method="post" action="<?= $url ?>" class="d-inline" data-action="setallnormal">
                 <input type="hidden" name="action" value="setallnormal">
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
-                <button type="submit" class="btn btn-primary px-4"><i class="fas fa-rotate-left me-1"></i>Revert</button>
+                <button type="submit" class="btn btn-primary px-4"><i class="fas fa-rotate-left me-1"></i><?= $e($L['btn_revert']) ?></button>
             </form>
         </div>
     </div></div>
@@ -400,13 +433,19 @@ private function setAllNormal(): void
 <div class="modal fade du-modal" id="successModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content text-center p-4">
         <div class="mx-auto mb-3 d-inline-flex align-items-center justify-content-center rounded-circle" style="width:64px;height:64px;font-size:1.8rem;color:#16a34a;background:rgba(34,197,94,.12)"><i class="fas fa-circle-check"></i></div>
-        <h5 class="fw-bold mb-1" id="successTitle">Done</h5>
+        <h5 class="fw-bold mb-1" id="successTitle"><?= $e($L['js_done']) ?></h5>
         <p class="mb-2" id="successMessage"></p>
-        <small class="text-body-secondary"><i class="fas fa-rotate me-1"></i>Refreshing…</small>
+        <small class="text-body-secondary"><i class="fas fa-rotate me-1"></i><?= $e($L['lbl_refreshing']) ?></small>
     </div></div>
 </div>
 
 <script>
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach((v, i) => { s = s.split('{' + (i + 1) + '}').join(String(v)).split('%' + (i + 1) + '$s').join(String(v)); });
+    return s;
+}
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.du-modal form[data-action]').forEach(form => {
         form.addEventListener('submit', function (e) {
@@ -414,15 +453,16 @@ document.addEventListener('DOMContentLoaded', function () {
             const btn = form.querySelector('button[type="submit"]');
             const html = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working…';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+            btn.appendChild(document.createTextNode(t('working', 'Working…')));
 
             fetch(form.getAttribute('action'), { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
                 // Раньше при ответе 500 текст ошибки сервера терялся («HTTP error! status: 500»)
-                .then(r => r.json().catch(() => ({ status: 'error', message: 'Unexpected server response (' + r.status + ')' })))
+                .then(r => r.json().catch(() => ({ status: 'error', message: t('bad_response', 'Unexpected server response ({1})', r.status) })))
                 .then(data => {
-                    if (data.status !== 'success') throw new Error(data.message || 'Unknown error');
+                    if (data.status !== 'success') throw new Error(data.message || t('unknown_error', 'Unknown error'));
                     bootstrap.Modal.getInstance(form.closest('.modal'))?.hide();
-                    document.getElementById('successTitle').textContent = data.title || 'Done';
+                    document.getElementById('successTitle').textContent = data.title || t('done', 'Done');
                     document.getElementById('successMessage').textContent = data.message || '';
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('successModal')).show();
                     setTimeout(() => location.reload(), 1800);
@@ -490,7 +530,8 @@ document.addEventListener('DOMContentLoaded', function () {
     {
         // Moderator(6) сюда сознательно не входит — действие затрагивает весь трекер
         if (!$this->hasStaffAccess()) {
-            $this->jsonError('Insufficient privileges for this action');
+            global $lang;
+            $this->jsonError($lang->doubleupload['err_no_access']);
         }
     }
 
@@ -506,7 +547,8 @@ document.addEventListener('DOMContentLoaded', function () {
         // Этот эндпоинт всегда отвечает JSON — примешавшийся HTML сломает
         // res.json() на фронте.
         if (!verify_post_check($token, true)) {
-            $this->jsonError('Security check failed. Please refresh the page and try again.');
+            global $lang;
+            $this->jsonError($lang->doubleupload['err_csrf']);
         }
     }
     
@@ -551,10 +593,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         
         // Раньше HTML ошибки печатался без stdhead() и даже в ответ на AJAX-запрос
+        global $lang;
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $this->jsonError('Unexpected error. The issue has been logged.');
+            $this->jsonError($lang->doubleupload['err_unexpected_ajax']);
         }
-        stderr('System Error', 'An unexpected error occurred. The issue has been logged — please try again.');
+        stderr($lang->doubleupload['err_system_title'], $lang->doubleupload['err_unexpected']);
         exit;
     }
 }
@@ -564,11 +607,12 @@ try {
     $manager = new TorrentDoubleUploadManager();
     $manager->execute();
 } catch (Throwable $e) {
-    // Fallback error display
+    // Fallback error display (ланг мог не загрузиться — оставляем английский запасной текст)
     http_response_code(500);
+    $fatalLang = $GLOBALS['lang']->doubleupload ?? [];
     echo '<div class="alert alert-danger m-3" role="alert">
-            <h4><i class="fas fa-exclamation-triangle me-2"></i>Fatal Error</h4>
+            <h4><i class="fas fa-exclamation-triangle me-2"></i>' . htmlspecialchars((string)($fatalLang['err_fatal_title'] ?? 'Fatal Error')) . '</h4>
             <p>' . htmlspecialchars($e->getMessage()) . '</p>
-            <small>Please contact system administrator.</small>
+            <small>' . htmlspecialchars((string)($fatalLang['err_fatal_contact'] ?? 'Please contact system administrator.')) . '</small>
           </div>';
 }

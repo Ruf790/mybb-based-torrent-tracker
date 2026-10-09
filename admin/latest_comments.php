@@ -9,6 +9,8 @@ if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
+$lang->load('latest_comments');
+
 $parser         = new postParser();
 $parser_options = [
     'allow_html'     => 0,
@@ -22,6 +24,31 @@ $parser_options = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Подстановка {1}, {2}… в строку из ланга.
+ * $lang->load() превращает {N} в %N$s — поддерживаем оба формата.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * htmlspecialchars для строк ланга в HTML/атрибутах.
+ */
+function lc_h(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES);
+}
 
 /**
  * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
@@ -47,9 +74,9 @@ function json_exit(array $data, int $status = 200): never
  */
 function require_csrf(): void
 {
-    global $mybb;
+    global $mybb, $lang;
     if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== $mybb->post_code) {
-        json_exit(['error' => 'Invalid security token'], 403);
+        json_exit(['error' => $lang->latest_comments['err_csrf']], 403);
     }
 }
 
@@ -58,8 +85,9 @@ function require_csrf(): void
  */
 function require_post(): void
 {
+    global $lang;
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        json_exit(['error' => 'Method not allowed'], 405);
+        json_exit(['error' => $lang->latest_comments['err_method']], 405);
     }
 }
 
@@ -70,19 +98,20 @@ function require_post(): void
  */
 function decode_comment_ids(mixed $raw): array
 {
+    global $lang;
     if (empty($raw)) {
-        json_exit(['error' => 'No comments selected']);
+        json_exit(['error' => $lang->latest_comments['err_no_selection']]);
     }
 
     $ids = is_array($raw) ? $raw : json_decode((string)$raw, true);
 
     if (!is_array($ids) || empty($ids)) {
-        json_exit(['error' => 'No comments selected']);
+        json_exit(['error' => $lang->latest_comments['err_no_selection']]);
     }
 
     $ids = array_filter(array_map('intval', $ids));
     if (empty($ids)) {
-        json_exit(['error' => 'No valid comment IDs']);
+        json_exit(['error' => $lang->latest_comments['err_no_valid_ids']]);
     }
 
     return array_values($ids);
@@ -175,7 +204,13 @@ function generateCommentsTable(
     int    $offset,
     int    $total_pages
 ): string {
-    global $parser, $parser_options, $BASEURL, $db, $dateformat, $timeformat;
+    global $parser, $parser_options, $BASEURL, $db, $dateformat, $timeformat, $lang;
+
+    // Строки ланга, экранированные один раз для heredoc
+    $t_open_comment   = lc_h($lang->latest_comments['tip_open_comment']);
+    $t_edit_comment   = lc_h($lang->latest_comments['tip_edit_comment']);
+    $t_delete_comment = lc_h($lang->latest_comments['tip_delete_comment']);
+    $t_deleted_user   = lc_h($lang->latest_comments['lbl_deleted_user']);
 
     $rows = '';
     while ($row = $db->fetch_array($res)) {
@@ -220,7 +255,7 @@ function generateCommentsTable(
             HTML;
         } else {
             $user_html = '<div class="lc-user"><span class="lc-avatar lc-avatar-ghost"><i class="fa-solid fa-user-slash"></i></span>'
-                       . '<span class="text-body-secondary fst-italic">Deleted user</span></div>';
+                       . '<span class="text-body-secondary fst-italic">' . $t_deleted_user . '</span></div>';
         }
 
         // Торрент
@@ -232,7 +267,8 @@ function generateCommentsTable(
             </a>
             HTML;
         } else {
-            $torrent_html = "<span class=\"lc-badge lc-soft-danger\"><i class=\"fa-solid fa-triangle-exclamation\"></i> Deleted torrent #{$tid}</span>";
+            $deleted_torrent = lc_h(ags_fmt($lang->latest_comments['lbl_deleted_torrent'], $tid));
+            $torrent_html    = "<span class=\"lc-badge lc-soft-danger\"><i class=\"fa-solid fa-triangle-exclamation\"></i> {$deleted_torrent}</span>";
         }
 
         // Отметка о редактировании
@@ -240,7 +276,8 @@ function generateCommentsTable(
         $edited_at   = (int)($row['editedat'] ?? 0);
         if ($edited_at > 0) {
             $edited_str  = my_datee($dateformat, $edited_at) . ' ' . my_datee($timeformat, $edited_at);
-            $edited_html = "<div class=\"lc-edited\"><i class=\"fa-solid fa-pen\"></i> edited {$edited_str}</div>";
+            $edited_lbl  = lc_h(ags_fmt($lang->latest_comments['lbl_edited'], $edited_str));
+            $edited_html = "<div class=\"lc-edited\"><i class=\"fa-solid fa-pen\"></i> {$edited_lbl}</div>";
         }
 
         $rows .= <<<HTML
@@ -252,7 +289,7 @@ function generateCommentsTable(
                 </div>
             </td>
             <td>
-                <a class="lc-id-pill" href="{$comment_link}#pid{$pid}" target="_blank" rel="noopener" title="Open comment in new tab">
+                <a class="lc-id-pill" href="{$comment_link}#pid{$pid}" target="_blank" rel="noopener" title="{$t_open_comment}">
                     #{$pid} <i class="fa-solid fa-arrow-up-right-from-square"></i>
                 </a>
             </td>
@@ -268,10 +305,10 @@ function generateCommentsTable(
             </td>
             <td class="text-end">
                 <div class="lc-row-actions">
-                    <button type="button" class="lc-icon-btn lc-edit" onclick="editComment({$pid})" title="Edit comment">
+                    <button type="button" class="lc-icon-btn lc-edit" onclick="editComment({$pid})" title="{$t_edit_comment}">
                         <i class="fa-solid fa-pen-to-square"></i>
                     </button>
-                    <button type="button" class="lc-icon-btn lc-delete" onclick="deleteComment({$pid})" title="Delete comment">
+                    <button type="button" class="lc-icon-btn lc-delete" onclick="deleteComment({$pid})" title="{$t_delete_comment}">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
@@ -285,17 +322,35 @@ function generateCommentsTable(
     $total_fmt  = number_format($total_comments);
     $pagination = multipage($total_comments, $limit, $page, '#', false);
 
+    $t_sec_comments  = lc_h($lang->latest_comments['sec_comments']);
+    $t_comments_page = lc_h(ags_fmt($lang->latest_comments['hint_comments_page'], $page, $total_pages));
+    $t_found         = lc_h(ags_fmt($lang->latest_comments['lbl_found'], $total_fmt));
+    $t_select_page   = lc_h($lang->latest_comments['tip_select_all_page']);
+    $t_col_id        = lc_h($lang->latest_comments['col_id']);
+    $t_col_user      = lc_h($lang->latest_comments['col_user']);
+    $t_col_torrent   = lc_h($lang->latest_comments['col_torrent']);
+    $t_col_comment   = lc_h($lang->latest_comments['col_comment']);
+    $t_col_date      = lc_h($lang->latest_comments['col_date']);
+    $t_col_actions   = lc_h($lang->latest_comments['col_actions']);
+    $t_select_all    = lc_h($lang->latest_comments['btn_select_all']);
+    $t_move          = lc_h($lang->latest_comments['btn_move']);
+    $t_copy          = lc_h($lang->latest_comments['btn_copy']);
+    $t_merge         = lc_h($lang->latest_comments['btn_merge']);
+    $t_delete_sel    = lc_h($lang->latest_comments['btn_delete_selected']);
+    // pager_showing_html — HTML-строка ланга, выводится как есть
+    $t_showing       = ags_fmt($lang->latest_comments['pager_showing_html'], $start, $end, $total_fmt);
+
     return <<<HTML
     <div class="lc-card lc-table-card">
         <div class="lc-card-head">
             <div class="d-flex align-items-center gap-3">
                 <span class="lc-icon-sq sm lc-soft-primary"><i class="fa-solid fa-list-ul"></i></span>
                 <div>
-                    <h5 class="lc-card-title">Comments</h5>
-                    <div class="lc-card-sub">Newest first · page {$page} of {$total_pages}</div>
+                    <h5 class="lc-card-title">{$t_sec_comments}</h5>
+                    <div class="lc-card-sub">{$t_comments_page}</div>
                 </div>
             </div>
-            <span class="lc-badge lc-soft-primary"><i class="fa-solid fa-filter"></i> {$total_fmt} found</span>
+            <span class="lc-badge lc-soft-primary"><i class="fa-solid fa-filter"></i> {$t_found}</span>
         </div>
 
         <div class="table-responsive">
@@ -304,15 +359,15 @@ function generateCommentsTable(
                     <tr>
                         <th width="48">
                             <div class="form-check form-switch m-0">
-                                <input class="form-check-input" type="checkbox" id="selectAll" title="Select all on page">
+                                <input class="form-check-input" type="checkbox" id="selectAll" title="{$t_select_page}">
                             </div>
                         </th>
-                        <th width="90"><i class="fa-solid fa-hashtag"></i> ID</th>
-                        <th><i class="fa-solid fa-user"></i> User</th>
-                        <th><i class="fa-solid fa-magnet"></i> Torrent</th>
-                        <th><i class="fa-solid fa-comment"></i> Comment</th>
-                        <th><i class="fa-regular fa-calendar"></i> Date</th>
-                        <th width="110" class="text-end"><i class="fa-solid fa-gear"></i> Actions</th>
+                        <th width="90"><i class="fa-solid fa-hashtag"></i> {$t_col_id}</th>
+                        <th><i class="fa-solid fa-user"></i> {$t_col_user}</th>
+                        <th><i class="fa-solid fa-magnet"></i> {$t_col_torrent}</th>
+                        <th><i class="fa-solid fa-comment"></i> {$t_col_comment}</th>
+                        <th><i class="fa-regular fa-calendar"></i> {$t_col_date}</th>
+                        <th width="110" class="text-end"><i class="fa-solid fa-gear"></i> {$t_col_actions}</th>
                     </tr>
                 </thead>
                 <tbody>{$rows}</tbody>
@@ -321,27 +376,27 @@ function generateCommentsTable(
 
         <div class="lc-actionbar">
             <button id="selectAllBtn" type="button" class="btn btn-sm lc-pill lc-btn-soft">
-                <i class="fa-solid fa-check-double"></i> Select All
+                <i class="fa-solid fa-check-double"></i> {$t_select_all}
             </button>
             <div class="lc-actionbar-group">
                 <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-warning" data-bs-toggle="modal" data-bs-target="#moveCommentsModal">
-                    <i class="fa-solid fa-right-left"></i> Move
+                    <i class="fa-solid fa-right-left"></i> {$t_move}
                 </button>
                 <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-info" data-bs-toggle="modal" data-bs-target="#copyCommentsModal">
-                    <i class="fa-solid fa-copy"></i> Copy
+                    <i class="fa-solid fa-copy"></i> {$t_copy}
                 </button>
                 <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-primary" data-bs-toggle="modal" data-bs-target="#mergeIntoOneModal">
-                    <i class="fa-solid fa-object-group"></i> Merge
+                    <i class="fa-solid fa-object-group"></i> {$t_merge}
                 </button>
                 <button id="bulkDeleteBtn" type="button" class="btn btn-sm lc-pill btn-danger" disabled>
-                    <i class="fa-solid fa-trash-can"></i> Delete Selected (<span id="selectedCount">0</span>)
+                    <i class="fa-solid fa-trash-can"></i> {$t_delete_sel} (<span id="selectedCount">0</span>)
                 </button>
             </div>
         </div>
     </div>
 
     <div class="lc-pager">
-        <div><i class="fa-solid fa-layer-group"></i> Showing <b>{$start}</b> – <b>{$end}</b> of <b>{$total_fmt}</b> comments</div>
+        <div><i class="fa-solid fa-layer-group"></i> {$t_showing}</div>
         {$pagination}
     </div>
     HTML;
@@ -425,8 +480,8 @@ if ($action === 'list') {
     if ($total_comments === 0) {
         echo '<div class="lc-card lc-empty">
             <span class="lc-icon-sq xl lc-soft-secondary"><i class="fa-regular fa-comments"></i></span>
-            <h4 class="lc-card-title">No comments found</h4>
-            <p class="lc-card-sub mb-0">Try changing or resetting the filters.</p>
+            <h4 class="lc-card-title">' . lc_h($lang->latest_comments['sec_empty']) . '</h4>
+            <p class="lc-card-sub mb-0">' . lc_h($lang->latest_comments['hint_empty']) . '</p>
         </div>';
         exit;
     }
@@ -466,7 +521,7 @@ if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $q = $db->sql_query_prepared('SELECT id, text FROM comments WHERE id = ?', [$id]);
     $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
-        json_exit(['error' => 'Comment not found'], 404);
+        json_exit(['error' => $lang->latest_comments['err_not_found']], 404);
     }
     json_exit(['text' => $comment['text']]);
 }
@@ -482,12 +537,12 @@ if ($action === 'save') {
     $q = $db->sql_query_prepared('SELECT id FROM comments WHERE id = ?', [$id]);
     $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
-        json_exit(['success' => false, 'error' => 'Comment not found'], 404);
+        json_exit(['success' => false, 'error' => $lang->latest_comments['err_not_found']], 404);
     }
 
     // Валидация — убираем пробелы и проверяем длину содержательного текста
     if (mb_strlen($text) < 3 || mb_strlen(preg_replace('/\s+/u', '', $text)) < 3) {
-        json_exit(['success' => false, 'error' => 'Comment must contain meaningful text (min 3 chars)']);
+        json_exit(['success' => false, 'error' => $lang->latest_comments['err_text_short']]);
     }
 
     $db->sql_query_prepared(
@@ -513,7 +568,7 @@ if ($action === 'delete') {
     $q = $db->sql_query_prepared('SELECT user, torrent FROM comments WHERE id = ?', [$id]);
     $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
-        json_exit(['success' => false, 'error' => 'Comment not found'], 404);
+        json_exit(['success' => false, 'error' => $lang->latest_comments['err_not_found']], 404);
     }
     $user_id    = (int)$comment['user'];
     $torrent_id = (int)$comment['torrent'];
@@ -614,12 +669,12 @@ if ($action === 'move_comments') {
     $target_tid = max(0, (int)($_POST['target_tid'] ?? 0));
 
     if ($target_tid <= 0) {
-        json_exit(['error' => 'Invalid target torrent ID']);
+        json_exit(['error' => $lang->latest_comments['err_invalid_target']]);
     }
 
     $torrent = validate_torrent_exists($target_tid);
     if (!$torrent) {
-        json_exit(['error' => 'Target torrent not found'], 404);
+        json_exit(['error' => $lang->latest_comments['err_target_not_found']], 404);
     }
 
     $ids_str    = ids_to_sql($ids);
@@ -669,12 +724,12 @@ if ($action === 'copy_comments') {
     $target_tid = max(0, (int)($_POST['target_tid'] ?? 0));
 
     if ($target_tid <= 0) {
-        json_exit(['error' => 'Invalid target torrent ID']);
+        json_exit(['error' => $lang->latest_comments['err_invalid_target']]);
     }
 
     $torrent = validate_torrent_exists($target_tid);
     if (!$torrent) {
-        json_exit(['error' => 'Target torrent not found'], 404);
+        json_exit(['error' => $lang->latest_comments['err_target_not_found']], 404);
     }
 
     $ids_str    = ids_to_sql($ids);
@@ -820,15 +875,15 @@ if ($action === 'merge_comments') {
     $target_tid = max(0, (int)($_POST['target_tid'] ?? 0));
 
     if (count($ids) < 2) {
-        json_exit(['error' => 'Select at least 2 comments to merge']);
+        json_exit(['error' => $lang->latest_comments['err_merge_min']]);
     }
     if ($target_tid <= 0) {
-        json_exit(['error' => 'Invalid target torrent ID']);
+        json_exit(['error' => $lang->latest_comments['err_invalid_target']]);
     }
 
     $torrent = validate_torrent_exists($target_tid);
     if (!$torrent) {
-        json_exit(['error' => 'Target torrent not found'], 404);
+        json_exit(['error' => $lang->latest_comments['err_target_not_found']], 404);
     }
 
     $ids_str = ids_to_sql($ids);
@@ -856,7 +911,7 @@ if ($action === 'merge_comments') {
     }
 
     if ($first_row === null) {
-        json_exit(['error' => 'Comments not found'], 404);
+        json_exit(['error' => $lang->latest_comments['err_comments_not_found']], 404);
     }
 
     $merged_text = implode("\n\n", $texts);
@@ -912,7 +967,7 @@ if ($action === 'merge_comments') {
 }
 
 // Неизвестный action
-json_exit(['error' => 'Unknown action'], 400);
+json_exit(['error' => $lang->latest_comments['err_unknown_action']], 400);
 
 // ---------------------------------------------------------------------------
 // HTML страница
@@ -930,44 +985,52 @@ $lc_q = $db->sql_query_prepared(
 );
 $lc_stats = ($lc_q ? $db->fetch_array($lc_q) : null) ?: [];
 $lc_kpis  = [
-    ['Total comments',       (int)($lc_stats['total']   ?? 0), 'fa-comments',    'primary'],
-    ['Today',                (int)($lc_stats['today']   ?? 0), 'fa-calendar-day', 'success'],
-    ['Last 7 days',          (int)($lc_stats['week']    ?? 0), 'fa-chart-line',  'info'],
-    ['Active authors (30d)', (int)($lc_stats['authors'] ?? 0), 'fa-user-pen',    'warning'],
+    [$lang->latest_comments['kpi_total'],   (int)($lc_stats['total']   ?? 0), 'fa-comments',     'primary'],
+    [$lang->latest_comments['kpi_today'],   (int)($lc_stats['today']   ?? 0), 'fa-calendar-day', 'success'],
+    [$lang->latest_comments['kpi_week'],    (int)($lc_stats['week']    ?? 0), 'fa-chart-line',   'info'],
+    [$lang->latest_comments['kpi_authors'], (int)($lc_stats['authors'] ?? 0), 'fa-user-pen',     'warning'],
 ];
 
 // BBCode-панель: [open, close, icon-html, title]; null = разделитель
 $bbcode_buttons = [
-    ['[b]', '[/b]', '<i class="fa-solid fa-bold"></i>', 'Bold'],
-    ['[i]', '[/i]', '<i class="fa-solid fa-italic"></i>', 'Italic'],
-    ['[u]', '[/u]', '<i class="fa-solid fa-underline"></i>', 'Underline'],
-    ['[s]', '[/s]', '<i class="fa-solid fa-strikethrough"></i>', 'Strikethrough'],
+    ['[b]', '[/b]', '<i class="fa-solid fa-bold"></i>', $lang->latest_comments['bb_bold']],
+    ['[i]', '[/i]', '<i class="fa-solid fa-italic"></i>', $lang->latest_comments['bb_italic']],
+    ['[u]', '[/u]', '<i class="fa-solid fa-underline"></i>', $lang->latest_comments['bb_underline']],
+    ['[s]', '[/s]', '<i class="fa-solid fa-strikethrough"></i>', $lang->latest_comments['bb_strike']],
     null,
-    ['[left]', '[/left]', '<i class="fa-solid fa-align-left"></i>', 'Align left'],
-    ['[center]', '[/center]', '<i class="fa-solid fa-align-center"></i>', 'Align center'],
-    ['[right]', '[/right]', '<i class="fa-solid fa-align-right"></i>', 'Align right'],
+    ['[left]', '[/left]', '<i class="fa-solid fa-align-left"></i>', $lang->latest_comments['bb_left']],
+    ['[center]', '[/center]', '<i class="fa-solid fa-align-center"></i>', $lang->latest_comments['bb_center']],
+    ['[right]', '[/right]', '<i class="fa-solid fa-align-right"></i>', $lang->latest_comments['bb_right']],
     null,
-    ['[color=red]', '[/color]', '<i class="fa-solid fa-palette lc-bb-red"></i>', 'Red color'],
-    ['[size=18]', '[/size]', '<i class="fa-solid fa-text-height"></i>', 'Font size'],
+    ['[color=red]', '[/color]', '<i class="fa-solid fa-palette lc-bb-red"></i>', $lang->latest_comments['bb_color']],
+    ['[size=18]', '[/size]', '<i class="fa-solid fa-text-height"></i>', $lang->latest_comments['bb_size']],
     null,
-    ['[url]', '[/url]', '<i class="fa-solid fa-link"></i>', 'Link'],
-    ['[email]', '[/email]', '<i class="fa-solid fa-envelope"></i>', 'E-mail'],
-    ['[img]', '[/img]', '<i class="fa-solid fa-image"></i>', 'Image'],
-    ['[video]', '[/video]', '<i class="fa-solid fa-film"></i>', 'Video'],
-    ['[youtube]', '[/youtube]', '<i class="fa-brands fa-youtube lc-bb-red"></i>', 'YouTube'],
+    ['[url]', '[/url]', '<i class="fa-solid fa-link"></i>', $lang->latest_comments['bb_url']],
+    ['[email]', '[/email]', '<i class="fa-solid fa-envelope"></i>', $lang->latest_comments['bb_email']],
+    ['[img]', '[/img]', '<i class="fa-solid fa-image"></i>', $lang->latest_comments['bb_img']],
+    ['[video]', '[/video]', '<i class="fa-solid fa-film"></i>', $lang->latest_comments['bb_video']],
+    ['[youtube]', '[/youtube]', '<i class="fa-brands fa-youtube lc-bb-red"></i>', $lang->latest_comments['bb_youtube']],
     null,
-    ['[quote]', '[/quote]', '<i class="fa-solid fa-quote-right"></i>', 'Quote'],
-    ['[code]', '[/code]', '<i class="fa-solid fa-code"></i>', 'Code'],
-    ['[php]', '[/php]', '<i class="fa-brands fa-php"></i>', 'PHP code'],
-    ['[nfo]', '[/nfo]', '<i class="fa-solid fa-file-lines"></i>', 'NFO'],
-    ['[spoiler]', '[/spoiler]', '<i class="fa-solid fa-eye-slash"></i>', 'Spoiler'],
+    ['[quote]', '[/quote]', '<i class="fa-solid fa-quote-right"></i>', $lang->latest_comments['bb_quote']],
+    ['[code]', '[/code]', '<i class="fa-solid fa-code"></i>', $lang->latest_comments['bb_code']],
+    ['[php]', '[/php]', '<i class="fa-brands fa-php"></i>', $lang->latest_comments['bb_php']],
+    ['[nfo]', '[/nfo]', '<i class="fa-solid fa-file-lines"></i>', $lang->latest_comments['bb_nfo']],
+    ['[spoiler]', '[/spoiler]', '<i class="fa-solid fa-eye-slash"></i>', $lang->latest_comments['bb_spoiler']],
     null,
-    ["[list]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ul"></i>', 'Bulleted list'],
-    ["[list=1]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ol"></i>', 'Numbered list'],
-    ['[*]', '', '<i class="fa-solid fa-asterisk"></i>', 'List item'],
+    ["[list]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ul"></i>', $lang->latest_comments['bb_list']],
+    ["[list=1]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ol"></i>', $lang->latest_comments['bb_list_num']],
+    ['[*]', '', '<i class="fa-solid fa-asterisk"></i>', $lang->latest_comments['bb_list_item']],
 ];
 
-stdhead('Comments Admin');
+stdhead($lang->latest_comments['page_title']);
+
+// JS-строки: js_<key> из ланга → AGS_LANG.<key>
+$lc_js_lang = [];
+foreach ($lang->latest_comments as $lc_key => $lc_val) {
+    if (str_starts_with((string)$lc_key, 'js_')) {
+        $lc_js_lang[substr((string)$lc_key, 3)] = (string)$lc_val;
+    }
+}
 ?>
 <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/admin/templates/latest-comments.css?v=1.0">
 
@@ -978,8 +1041,8 @@ stdhead('Comments Admin');
     <div class="lc-card lc-header">
         <span class="lc-icon-sq lg lc-soft-primary"><i class="fa-solid fa-comments"></i></span>
         <div>
-            <h1 class="lc-title">Comments Admin</h1>
-            <p class="lc-subtitle">Moderate, edit, move, copy and merge comments across all torrents</p>
+            <h1 class="lc-title"><?= lc_h($lang->latest_comments['page_title']) ?></h1>
+            <p class="lc-subtitle"><?= lc_h($lang->latest_comments['page_subtitle']) ?></p>
         </div>
     </div>
 
@@ -990,7 +1053,7 @@ stdhead('Comments Admin');
             <span class="lc-icon-sq lc-soft-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></span>
             <div>
                 <div class="lc-kpi-value"><?= number_format($value) ?></div>
-                <div class="lc-kpi-label"><?= $label ?></div>
+                <div class="lc-kpi-label"><?= lc_h($label) ?></div>
             </div>
         </div>
         <?php endforeach; ?>
@@ -1000,32 +1063,32 @@ stdhead('Comments Admin');
     <div class="lc-card lc-filters">
         <form id="filterForm" class="row g-3">
             <div class="col-md-3">
-                <label for="username" class="form-label"><i class="fa-solid fa-user"></i> Username</label>
+                <label for="username" class="form-label"><i class="fa-solid fa-user"></i> <?= lc_h($lang->latest_comments['lbl_username']) ?></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
-                    <input type="text" class="form-control" id="username" name="username" placeholder="Search by user…">
+                    <input type="text" class="form-control" id="username" name="username" placeholder="<?= lc_h($lang->latest_comments['ph_username']) ?>">
                 </div>
             </div>
             <div class="col-md-3">
-                <label for="torrent" class="form-label"><i class="fa-solid fa-magnet"></i> Torrent</label>
+                <label for="torrent" class="form-label"><i class="fa-solid fa-magnet"></i> <?= lc_h($lang->latest_comments['lbl_torrent']) ?></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                    <input type="text" class="form-control" id="torrent" name="torrent" placeholder="Search by torrent…">
+                    <input type="text" class="form-control" id="torrent" name="torrent" placeholder="<?= lc_h($lang->latest_comments['ph_torrent']) ?>">
                 </div>
             </div>
             <div class="col-md-2">
-                <label for="date_from" class="form-label"><i class="fa-regular fa-calendar"></i> Date From</label>
+                <label for="date_from" class="form-label"><i class="fa-regular fa-calendar"></i> <?= lc_h($lang->latest_comments['lbl_date_from']) ?></label>
                 <input type="date" class="form-control" id="date_from" name="date_from">
             </div>
             <div class="col-md-2">
-                <label for="date_to" class="form-label"><i class="fa-regular fa-calendar-check"></i> Date To</label>
+                <label for="date_to" class="form-label"><i class="fa-regular fa-calendar-check"></i> <?= lc_h($lang->latest_comments['lbl_date_to']) ?></label>
                 <input type="date" class="form-control" id="date_to" name="date_to">
             </div>
             <div class="col-md-2 d-flex align-items-end gap-2">
                 <button type="submit" class="btn btn-primary lc-pill flex-grow-1">
-                    <i class="fa-solid fa-filter"></i> Filter
+                    <i class="fa-solid fa-filter"></i> <?= lc_h($lang->latest_comments['btn_filter']) ?>
                 </button>
-                <button type="button" id="resetFilters" class="btn lc-pill lc-btn-soft lc-secondary" title="Reset filters">
+                <button type="button" id="resetFilters" class="btn lc-pill lc-btn-soft lc-secondary" title="<?= lc_h($lang->latest_comments['tip_reset_filters']) ?>">
                     <i class="fa-solid fa-rotate-left"></i>
                 </button>
             </div>
@@ -1036,9 +1099,9 @@ stdhead('Comments Admin');
     <div id="comments-table" class="fade-in">
         <div class="lc-card lc-empty">
             <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading…</span>
+                <span class="visually-hidden"><?= lc_h($lang->latest_comments['lbl_loading']) ?></span>
             </div>
-            <p class="lc-card-sub mt-3 mb-0">Loading comments…</p>
+            <p class="lc-card-sub mt-3 mb-0"><?= lc_h($lang->latest_comments['lbl_loading_comments']) ?></p>
         </div>
     </div>
 </div>
@@ -1051,27 +1114,27 @@ stdhead('Comments Admin');
                 <div class="d-flex align-items-center gap-3">
                     <span class="lc-icon-sq lc-soft-warning"><i class="fa-solid fa-right-left"></i></span>
                     <div>
-                        <h5 class="modal-title" id="moveCommentsTitle">Move Selected Comments</h5>
-                        <div class="lc-card-sub">Reassign comments to another torrent</div>
+                        <h5 class="modal-title" id="moveCommentsTitle"><?= lc_h($lang->latest_comments['sec_move']) ?></h5>
+                        <div class="lc-card-sub"><?= lc_h($lang->latest_comments['hint_move']) ?></div>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= lc_h($lang->latest_comments['tip_close']) ?>"></button>
             </div>
             <div class="modal-body">
-                <label for="targetTorrent" class="form-label">Target Torrent ID</label>
+                <label for="targetTorrent" class="form-label"><?= lc_h($lang->latest_comments['lbl_target_tid']) ?></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
-                    <input type="number" class="form-control" id="targetTorrent" placeholder="Enter target torrent ID">
+                    <input type="number" class="form-control" id="targetTorrent" placeholder="<?= lc_h($lang->latest_comments['ph_target_tid']) ?>">
                 </div>
                 <div class="lc-note lc-soft-warning">
                     <i class="fa-solid fa-circle-info"></i>
-                    <div><strong>Selected:</strong> <span id="moveSelectedCount">0</span> comments.<br>This action cannot be undone.</div>
+                    <div><?= ags_fmt($lang->latest_comments['note_selected_html'], '<span id="moveSelectedCount">0</span>') ?><br><?= lc_h($lang->latest_comments['note_irreversible']) ?></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal"><?= lc_h($lang->latest_comments['btn_cancel']) ?></button>
                 <button id="confirmMoveBtn" type="button" class="btn btn-warning lc-pill">
-                    <i class="fa-solid fa-right-left"></i> Move Comments
+                    <i class="fa-solid fa-right-left"></i> <?= lc_h($lang->latest_comments['btn_move_confirm']) ?>
                 </button>
             </div>
         </div>
@@ -1086,27 +1149,27 @@ stdhead('Comments Admin');
                 <div class="d-flex align-items-center gap-3">
                     <span class="lc-icon-sq lc-soft-info"><i class="fa-solid fa-copy"></i></span>
                     <div>
-                        <h5 class="modal-title" id="copyCommentsTitle">Copy Selected Comments</h5>
-                        <div class="lc-card-sub">Duplicate comments with attachments</div>
+                        <h5 class="modal-title" id="copyCommentsTitle"><?= lc_h($lang->latest_comments['sec_copy']) ?></h5>
+                        <div class="lc-card-sub"><?= lc_h($lang->latest_comments['hint_copy']) ?></div>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= lc_h($lang->latest_comments['tip_close']) ?>"></button>
             </div>
             <div class="modal-body">
-                <label for="copyTargetTorrent" class="form-label">Target Torrent ID</label>
+                <label for="copyTargetTorrent" class="form-label"><?= lc_h($lang->latest_comments['lbl_target_tid']) ?></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
-                    <input type="number" class="form-control" id="copyTargetTorrent" placeholder="Enter target torrent ID">
+                    <input type="number" class="form-control" id="copyTargetTorrent" placeholder="<?= lc_h($lang->latest_comments['ph_target_tid']) ?>">
                 </div>
                 <div class="lc-note lc-soft-info">
                     <i class="fa-solid fa-circle-info"></i>
-                    <div><strong>Selected:</strong> <span id="copySelectedCount">0</span> comments.<br>Originals remain intact.</div>
+                    <div><?= ags_fmt($lang->latest_comments['note_selected_html'], '<span id="copySelectedCount">0</span>') ?><br><?= lc_h($lang->latest_comments['note_copy']) ?></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal"><?= lc_h($lang->latest_comments['btn_cancel']) ?></button>
                 <button id="confirmCopyBtn" type="button" class="btn btn-info lc-pill">
-                    <i class="fa-solid fa-copy"></i> Copy Comments
+                    <i class="fa-solid fa-copy"></i> <?= lc_h($lang->latest_comments['btn_copy_confirm']) ?>
                 </button>
             </div>
         </div>
@@ -1121,32 +1184,30 @@ stdhead('Comments Admin');
                 <div class="d-flex align-items-center gap-3">
                     <span class="lc-icon-sq lc-soft-primary"><i class="fa-solid fa-object-group"></i></span>
                     <div>
-                        <h5 class="modal-title" id="mergeIntoOneTitle">Merge Into One Comment</h5>
-                        <div class="lc-card-sub">Join selected texts chronologically</div>
+                        <h5 class="modal-title" id="mergeIntoOneTitle"><?= lc_h($lang->latest_comments['sec_merge']) ?></h5>
+                        <div class="lc-card-sub"><?= lc_h($lang->latest_comments['hint_merge']) ?></div>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= lc_h($lang->latest_comments['tip_close']) ?>"></button>
             </div>
             <div class="modal-body">
-                <label for="mergeTargetTorrent" class="form-label">Target Torrent ID</label>
+                <label for="mergeTargetTorrent" class="form-label"><?= lc_h($lang->latest_comments['lbl_target_tid']) ?></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
-                    <input type="number" class="form-control" id="mergeTargetTorrent" placeholder="Enter target torrent ID">
+                    <input type="number" class="form-control" id="mergeTargetTorrent" placeholder="<?= lc_h($lang->latest_comments['ph_target_tid']) ?>">
                 </div>
                 <div class="lc-note lc-soft-primary">
                     <i class="fa-solid fa-circle-info"></i>
                     <div>
-                        <strong>Selected:</strong> <span id="mergeIntoOneSelectedCount">0</span> comments.<br>
-                        Texts are joined in chronological order into a single new comment on the target torrent;
-                        the author of the earliest selected comment becomes the author of the merged comment.
-                        Originals are deleted. This action cannot be undone.
+                        <?= ags_fmt($lang->latest_comments['note_selected_html'], '<span id="mergeIntoOneSelectedCount">0</span>') ?><br>
+                        <?= lc_h($lang->latest_comments['note_merge']) ?> <?= lc_h($lang->latest_comments['note_irreversible']) ?>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal"><?= lc_h($lang->latest_comments['btn_cancel']) ?></button>
                 <button id="confirmMergeIntoOneBtn" type="button" class="btn btn-primary lc-pill">
-                    <i class="fa-solid fa-object-group"></i> Merge Comments
+                    <i class="fa-solid fa-object-group"></i> <?= lc_h($lang->latest_comments['btn_merge_confirm']) ?>
                 </button>
             </div>
         </div>
@@ -1161,11 +1222,11 @@ stdhead('Comments Admin');
                 <div class="d-flex align-items-center gap-3">
                     <span class="lc-icon-sq lc-soft-primary"><i class="fa-solid fa-pen-to-square"></i></span>
                     <div>
-                        <h5 class="modal-title" id="editCommentTitle">Edit Comment</h5>
-                        <div class="lc-card-sub">BBCode supported · live preview below</div>
+                        <h5 class="modal-title" id="editCommentTitle"><?= lc_h($lang->latest_comments['sec_edit']) ?></h5>
+                        <div class="lc-card-sub"><?= lc_h($lang->latest_comments['hint_edit']) ?></div>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= lc_h($lang->latest_comments['tip_close']) ?>"></button>
             </div>
             <div class="modal-body">
                 <div class="lc-bb-toolbar">
@@ -1186,31 +1247,31 @@ stdhead('Comments Admin');
                     }
                     ?>
                     <span class="lc-bb-sep"></span>
-                    <button type="button" class="lc-bb lc-bb-wide" id="torrentPanelToggle" title="Insert torrent">
-                        <i class="fa-solid fa-magnet"></i> Torrent
+                    <button type="button" class="lc-bb lc-bb-wide" id="torrentPanelToggle" title="<?= lc_h($lang->latest_comments['tip_insert_torrent']) ?>">
+                        <i class="fa-solid fa-magnet"></i> <?= lc_h($lang->latest_comments['btn_torrent']) ?>
                     </button>
                 </div>
 
                 <!-- Встроенная панель вставки торрента - скрыта, пока не нажата кнопка "Torrent".
                      initTorrentTagPanel() (comments-admin.js) уже слушает эти ID сама. -->
                 <div id="torrentPanel" class="lc-torrent-panel d-none">
-                    <label for="torrentIdInput" class="form-label"><i class="fa-solid fa-magnet"></i> Torrent ID or URL</label>
+                    <label for="torrentIdInput" class="form-label"><i class="fa-solid fa-magnet"></i> <?= lc_h($lang->latest_comments['lbl_torrent_id_url']) ?></label>
                     <div class="input-group input-group-sm">
-                        <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="e.g. 17 or paste the torrent link">
-                        <button type="button" class="btn btn-primary" id="insertTorrentBtn"><i class="fa-solid fa-plus"></i> Insert</button>
+                        <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="<?= lc_h($lang->latest_comments['ph_torrent_id']) ?>">
+                        <button type="button" class="btn btn-primary" id="insertTorrentBtn"><i class="fa-solid fa-plus"></i> <?= lc_h($lang->latest_comments['btn_insert']) ?></button>
                     </div>
                     <div id="torrentPreview" class="mt-2"></div>
                 </div>
 
-                <textarea id="editCommentText" class="form-control lc-editor" rows="7" placeholder="Edit your comment…"></textarea>
+                <textarea id="editCommentText" class="form-control lc-editor" rows="7" placeholder="<?= lc_h($lang->latest_comments['ph_edit_comment']) ?>"></textarea>
 
-                <div class="lc-preview-label"><i class="fa-solid fa-eye"></i> Live Preview</div>
+                <div class="lc-preview-label"><i class="fa-solid fa-eye"></i> <?= lc_h($lang->latest_comments['lbl_live_preview']) ?></div>
                 <div id="bbcodePreview" class="lc-preview"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal"><?= lc_h($lang->latest_comments['btn_cancel']) ?></button>
                 <button id="confirmEditComment" type="button" class="btn btn-primary lc-pill">
-                    <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                    <i class="fa-solid fa-floppy-disk"></i> <?= lc_h($lang->latest_comments['btn_save']) ?>
                 </button>
             </div>
         </div>
@@ -1225,19 +1286,19 @@ stdhead('Comments Admin');
                 <div class="d-flex align-items-center gap-3">
                     <span class="lc-icon-sq lc-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
                     <div>
-                        <h5 class="modal-title" id="bulkDeleteTitle">Confirm Deletion</h5>
-                        <div class="lc-card-sub">Attachments will be removed too</div>
+                        <h5 class="modal-title" id="bulkDeleteTitle"><?= lc_h($lang->latest_comments['sec_bulk_delete']) ?></h5>
+                        <div class="lc-card-sub"><?= lc_h($lang->latest_comments['hint_bulk_delete']) ?></div>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= lc_h($lang->latest_comments['tip_close']) ?>"></button>
             </div>
             <div class="modal-body">
-                <p id="bulkDeleteMessage" class="mb-0">Are you sure you want to delete the selected comments?</p>
+                <p id="bulkDeleteMessage" class="mb-0"><?= lc_h($lang->latest_comments['lbl_bulk_delete']) ?></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal"><?= lc_h($lang->latest_comments['btn_cancel']) ?></button>
                 <button id="confirmBulkDeleteBtn" type="button" class="btn btn-danger lc-pill">
-                    <i class="fa-solid fa-trash-can"></i> Yes, Delete
+                    <i class="fa-solid fa-trash-can"></i> <?= lc_h($lang->latest_comments['btn_yes_delete']) ?>
                 </button>
             </div>
         </div>
@@ -1254,8 +1315,9 @@ stdhead('Comments Admin');
 <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/toast.js"></script>
 <script>
     window.commentsBaseUrl = <?= json_encode($BASEURL) ?>;
+    const AGS_LANG = <?= json_encode($lc_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
-<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/comments-admin.js?v=1.8"></script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/comments-admin.js?v=1.10"></script>
 <script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/latest-comments.js?v=1.0"></script>
 
 <?php stdfoot(); ?>

@@ -13,10 +13,13 @@ if (!defined('STAFF_PANEL'))
     exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
 }
 
+// admin/index.php already required global.php — load the page lang right away
+$lang->load('log');
+
 if (empty($CURUSER['id']) || !is_mod($usergroups)) 
 {
     http_response_code(403);
-    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+    exit('<div class="alert alert-danger">' . htmlspecialchars($lang->log['err_no_permission']) . '</div>');
 }
 
 $parser = new postParser;
@@ -33,104 +36,57 @@ $parser_options = [
 
 
 
-// Admin log language strings
-$admin_log_lang = [
-    // Forum Management
-    'admin_log_forum_management_add'              => 'Added forum #{1} ({2})',
-    'admin_log_forum_management_edit'             => 'Edited forum #{1} ({2})',
-    'admin_log_forum_management_delete'           => 'Deleted forum #{1} ({2})',
-    'admin_log_forum_management_permissions'      => 'Edited group permissions for forum #{1} ({2})',
-    'admin_log_forum_management_quickpermissions' => 'Updated quick permissions for forum #{2} ({3})',
-    'admin_log_forum_management_addmod'           => 'Added moderator #{2} ({3}) to forum #{4} ({5})',
-    'admin_log_forum_management_editmod'          => 'Edited moderator #{3} ({4}) on forum #{1} ({2})',
-    'admin_log_forum_management_deletemod'        => 'Deleted moderator #{1} ({2}) from forum #{3} ({4})',
-    'admin_log_forum_management_copy'             => 'Copied settings from forum #{1} ({2}) to forum #{3} ({4})',
-    'admin_log_forum_management_orders'           => 'Updated root forum orders',
-    'admin_log_forum_management_orders_sub'       => 'Updated forum orders within forum #{2} ({3})',
+// ── Lang helpers ──
+if (!function_exists('ags_fmt'))
+{
+    /**
+     * {1}, {2}... placeholders (also %1$s — $lang->load() converts {n} into %n$s).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
-    // Users
-    'admin_log_user_users_add'                    => 'Created user #{1} ({2})',
-    'admin_log_user_users_edit'                   => 'Edited user #{1} ({2})',
-    'admin_log_user_users_delete'                 => 'Deleted user #{1} ({2})',
-    'admin_log_user_users_merge'                  => 'Merged user #{1} ({2}) into user #{3} ({4})',
-    'admin_log_user_users_activate_user'          => 'Activated user #{1} ({2})',
-    'admin_log_user_users_inline_delete'          => 'Deleted {1} user(s)',
-    'admin_log_user_users_inline_activated'       => 'Activated {1} user(s)',
-    'admin_log_user_users_inline_banned_perm'     => 'Banned {1} user(s) permanently',
-    'admin_log_user_users_inline_banned_temp'     => 'Banned {1} user(s) until {2}',
-    'admin_log_user_users_inline_lift'            => 'Lifted {1} user(s) bans',
+/**
+ * English copy of this page's lang strings.
+ * Badge detection matches English needles, so admin-log text and module labels
+ * are also built in English (for matching only) to keep badges identical in any language.
+ */
+function ags_log_en(): array
+{
+    global $lang;
+    static $en = null;
 
-    // Banning
-    'admin_log_user_banning_add_permanent'        => 'Banned user #{1} ({2}) permanently',
-    'admin_log_user_banning_add_temporary'        => 'Banned user #{1} ({2}) until {3}',
-    'admin_log_user_banning_lift'                 => 'Lifted ban for user #{1} ({2})',
-    'admin_log_user_banning_edit'                 => 'Edited ban for user #{1} ({2})',
+    if ($en !== null) {
+        return $en;
+    }
 
-    // Groups
-    'admin_log_user_groups_add'                   => 'Added usergroup #{1} ({2})',
-    'admin_log_user_groups_edit'                  => 'Edited usergroup #{1} ({2})',
-    'admin_log_user_groups_delete'                => 'Deleted usergroup #{1} ({2})',
+    $en   = [];
+    $file = INC_PATH . '/languages/english/log.lang.php';
+    if (is_file($file)) {
+        $language = [];
+        include $file;
+        $en = (isset($language['log']) && is_array($language['log'])) ? $language['log'] : [];
+    }
+    if (!$en) {
+        $en = (array)$lang->log; // fallback: current language
+    }
+    return $en;
+}
 
-    // Settings
-    'admin_log_config_settings_change'            => 'Changed board settings',
-    'admin_log_config_settings_add'               => 'Added setting #{1} ({2})',
-    'admin_log_config_settings_edit'              => 'Edited setting #{1} ({2})',
-    'admin_log_config_settings_delete'            => 'Deleted setting #{1} ({2})',
+// Admin log descriptions: admin_log_* keys in languages/<lang>/log.lang.php
+$admin_log_lang    = $lang->log;  // display
+$admin_log_lang_en = ags_log_en(); // badge matching
 
-    // Plugins
-    'admin_log_config_plugins_activate'           => 'Activated plugin: {1}',
-    'admin_log_config_plugins_activate_install'   => 'Activated and installed plugin: {1}',
-    'admin_log_config_plugins_deactivate'         => 'Deactivated plugin: {1}',
-    'admin_log_config_plugins_deactivate_uninstall' => 'Deactivated and uninstalled plugin: {1}',
-
-    // Templates
-    'admin_log_style_templates_add_set'           => 'Added template set #{1} ({2})',
-    'admin_log_style_templates_edit_set'          => 'Edited template set #{1} ({2})',
-    'admin_log_style_templates_delete_set'        => 'Deleted template set #{1} ({2})',
-    'admin_log_style_templates_edit_template'     => 'Edited template #{1} ({2}) from set #{3} ({4})',
-    'admin_log_style_templates_edit_template_global' => 'Edited template #{1} ({2}) from global set',
-
-    // Tools
-    'admin_log_tools_adminlog_prune'              => 'Pruned {4} admin logs older than {1} days',
-    'admin_log_tools_modlog_prune'                => 'Pruned {4} mod logs older than {1} days',
-    'admin_log_tools_backupdb_backup'             => 'Created a backup: {2}',
-    'admin_log_tools_backupdb_backup_download'    => 'Downloaded a backup of the database',
-    'admin_log_tools_backupdb_delete'             => 'Deleted a backup: {1}',
-    'admin_log_tools_cache_rebuild'               => 'Rebuilt cache ({1})',
-    'admin_log_tools_cache_rebuild_all'           => 'Rebuilt & reloaded all caches',
-    'admin_log_tools_optimizedb_'                 => 'Optimized database tables: {1}',
-    'admin_log_tools_recount_rebuild_stats'       => 'Recounted and rebuilt statistics',
-    'admin_log_tools_recount_rebuild_forum'       => 'Recounted and rebuilt forum counters',
-    'admin_log_tools_recount_rebuild_userposts'   => 'Recounted and rebuilt user post counts',
-    'admin_log_admin_locked_out'                  => 'Admin login attempt for user #{1} ({2}) locked out',
-	
-	
-	
-	'admin_log_config_banning_add_ip' => "Added IP ban #{1} ({2})",
-    'admin_log_config_banning_add_username' => "Added disallowed username #{1} ({2})",
-    'admin_log_config_banning_add_email' => "Added disallowed email #{1} ({2})",
-    'admin_log_config_banning_delete_ip' => "Removed IP ban #{1} ({2})",
-    'admin_log_config_banning_delete_username' => "Removed disallowed username #{1} ({2})",
-    'admin_log_config_banning_delete_email' => "Removed disallowed email #{1} ({2})",
-	
-	
-	'admin_log_forum_attachments_delete_post' => "Deleted attachment #{1} ({2}) from post #{3}",
-'admin_log_forum_attachments_delete' => "Deleted attachment #{1} ({2})",
-'admin_log_forum_attachments_delete_orphans' => "Deleted orphaned attachments",
-
-'admin_log_user_awaiting_activation_activate_activated' => "Activated {2} user account(s)",
-'admin_log_user_awaiting_activation_activate_deleted' => "Deleted {2} user account(s)",
-
-'awaiting_activation' => "Awaiting Activation",
-'awaiting_activation_desc' => "Here you can manage users who are awaiting activation. Please note any user who is awaiting email activation will not need to confirm their email if they are activated here.",
-
-	
-	
-	
-	
-	
-	
-];
+// HTML-escaped copy of the page strings for markup output
+$L = array_map(static fn($v) => is_string($v) ? htmlspecialchars($v) : $v, $lang->log);
 
 
 
@@ -153,6 +109,7 @@ function format_admin_log($logitem, $admin_log_lang)
             break;
         
 		case 'admin_log_user_banning_':
+		case 'admin_log_user_banning_add':
     if (empty($logitem['data'][2]) || $logitem['data'][2] == 0) {
         $lang_string = 'admin_log_user_banning_add_permanent';
     } else {
@@ -210,10 +167,10 @@ function format_admin_log($logitem, $admin_log_lang)
         $string = $admin_log_lang[$lang_string];
         foreach ($logitem['data'] as $k => $v) {
             $string = str_replace('{' . ($k + 1) . '}', htmlspecialchars((string)$v), $string);
-            $string = str_replace('#{' . ($k + 1) . '}', '#' . htmlspecialchars((string)$v), $string);
+            $string = str_replace('%' . ($k + 1) . '$s', htmlspecialchars((string)$v), $string); // $lang->load() format
         }
-        // Убираем незаполненные плейсхолдеры
-        $string = preg_replace('/\#?\{\d+\}/', '', $string);
+        // Убираем незаполненные плейсхолдеры ({n} и %n$s)
+        $string = preg_replace('/\#?(?:\{\d+\}|%\d+\$s)/', '', $string);
     } else {
         // Fallback — показываем module/action + данные
         $string = htmlspecialchars($module_raw . ' → ' . $logitem['action']);
@@ -395,7 +352,7 @@ if ($log_type === 'both' || $log_type === 'admin') {
 $count_sql = "SELECT SUM(count) as total FROM (" . implode(" UNION ALL ", $count_union) . ") as counts";
 $result = $db->sql_query_prepared($count_sql, $union_params);
 if (!$result) {
-    die('Error: Count query failed: ' . $db->error());
+    die(ags_fmt($lang->log['err_count_query'], (string)$db->error()));
 }
 $row = $db->fetch_array($result);
 $total_count = (int)$row['total'];
@@ -459,7 +416,7 @@ if ($total_count > 0) {
 //error_log("Main query: $main_query"); // Логируем запрос для отладки
 $res = $db->sql_query_prepared($main_query, $main_params);
 if (!$res) {
-    die('Error: Main query failed: ' . $db->error());
+    die(ags_fmt($lang->log['err_main_query'], (string)$db->error()));
 }
 
 
@@ -544,7 +501,7 @@ if (!empty($announcement_ids)) {
     $announcement_ids_str = implode(',', array_map('intval', array_keys($announcement_ids)));
     $result = $db->sql_query_prepared("SELECT id, subject FROM announcements WHERE id IN ($announcement_ids_str)");
     while ($result && ($row = $db->fetch_array($result))) {
-        $announcements_data[$row['aid']] = $row;
+        $announcements_data[$row['id']] = $row;
     }
 }
 
@@ -573,7 +530,7 @@ echo '<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Combined Log System</title>
+    <title>' . $L['title_system'] . '</title>
    
    
         <style>
@@ -748,13 +705,13 @@ echo '<!DOCTYPE html>
 </head>
 <body>';
 if (function_exists('stdhead')) {
-    stdhead('Combined Logs');
+    stdhead($lang->log['title_page']);
 } else {
     echo '<nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center" href="#">
                 <i class="fas fa-clipboard-list fa-2x me-2"></i>
-                <span class="fw-bold">TS Special Edition v.5.6 - Combined Log System</span>
+                <span class="fw-bold">TS Special Edition v.5.6 - ' . $L['title_system'] . '</span>
             </a>
         </div>
     </nav>';
@@ -764,21 +721,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['clear']) && $_POST['clear'] === 'yes' && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            exit('Invalid security token');
+            exit(htmlspecialchars($lang->log['err_invalid_token']));
         }
 
         $result = $db->sql_query_prepared('TRUNCATE TABLE sitelog');
         if ($result) {
-            flash_message('Site log table cleared!', 'success');
+            flash_message($lang->log['flash_cleared'], 'success');
         } else {
-            flash_message('Failed to clear site log: ' . $db->error(), 'danger');
+            flash_message(ags_fmt($lang->log['flash_clear_failed'], (string)$db->error()), 'danger');
         }
         admin_redirect('index.php?act=log&action=combined_logs');
 
     } elseif (isset($_POST['action']) && $_POST['action'] === 'delete' && !empty($_POST['logid']) && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            exit('Invalid security token');
+            exit(htmlspecialchars($lang->log['err_invalid_token']));
         }
 
         $site_log_ids = array_filter((array)$_POST['logid'], function($id) {
@@ -788,15 +745,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ids = implode(',', array_map('intval', $site_log_ids));
             $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE id IN ($ids)");
             if ($result) {
-                flash_message('Deleted ' . $db->affected_rows() . ' site log(s)!', 'warning');
+                flash_message(ags_fmt($lang->log['flash_deleted'], (int)$db->affected_rows()), 'warning');
             } else {
-                flash_message('Delete failed: ' . $db->error(), 'danger');
+                flash_message(ags_fmt($lang->log['flash_delete_failed'], (string)$db->error()), 'danger');
             }
         } else {
-            flash_message('No valid log IDs selected.', 'warning');
+            flash_message($lang->log['flash_no_ids'], 'warning');
         }
         admin_redirect('index.php?act=log&action=combined_logs');
     }
+}
+
+// Event filter: value (English, used in SQL) => lang key
+$event_options = [
+    'Banned User'            => 'opt_event_banned_user',
+    'Lifted User Ban'        => 'opt_event_lifted_ban',
+    'Merged Selective Posts' => 'opt_event_merged_posts',
+    'Deleted User'           => 'opt_event_deleted_user',
+    'Edited Post'            => 'opt_event_edited_post',
+    'Deleted Post'           => 'opt_event_deleted_post',
+    'Moved Thread'           => 'opt_event_moved_thread',
+    'Closed Thread'          => 'opt_event_closed_thread',
+    'Screenshot'             => 'opt_event_screenshot',
+    'Delete Comment'         => 'opt_event_delete_comment',
+    'Torrent Upload'         => 'opt_event_torrent_upload',
+];
+$event_options_html = '<option value="all">' . $L['opt_event_all'] . '</option>';
+foreach ($event_options as $ev_value => $ev_key) {
+    $event_options_html .= "\n                        <option value=\"" . htmlspecialchars($ev_value) . '" '
+        . ($event_filter == $ev_value ? 'selected' : '') . '>' . $L[$ev_key] . '</option>';
 }
 
 echo '
@@ -804,18 +781,18 @@ echo '
     <div class="sticky-header">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="stats-badge">
-                <i class="fas fa-database me-1"></i> Total Logs: ' . $total_count . '
+                <i class="fas fa-database me-1"></i> ' . ags_fmt($L['lbl_total_logs'], $total_count) . '
             </div>
             <div class="action-buttons">
                 <button class="btn btn-danger btn-clear" data-bs-toggle="modal" data-bs-target="#clearModal">
-                    <i class="fas fa-trash me-1"></i> Clear Site Logs
+                    <i class="fas fa-trash me-1"></i> ' . $L['btn_clear_site_logs'] . '
                 </button>
                 <button class="btn btn-primary btn-clear" id="refresh-logs">
-                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                    <i class="fas fa-sync-alt me-1"></i> ' . $L['btn_refresh'] . '
                 </button>
 				
 				<button class="btn btn-secondary btn-clear" id="export-csv">
-                    <i class="fas fa-download me-1"></i> Export CSV
+                    <i class="fas fa-download me-1"></i> ' . $L['btn_export_csv'] . '
                 </button>
 				
 				
@@ -826,64 +803,44 @@ echo '
             <input type="hidden" name="action" value="combined_logs">
             <div class="filter-row">
                 <div class="filter-group">
-                    <label for="search-input"><i class="fas fa-search me-1"></i>Search</label>
+                    <label for="search-input"><i class="fas fa-search me-1"></i>' . $L['lbl_search'] . '</label>
                     <div class="search-box">
                         <i class="fas fa-search"></i>
                         <input type="text" class="form-control" id="search-input" name="query"
-                               placeholder="Search logs..." value="' . htmlspecialchars($searchstr) . '">
+                               placeholder="' . $L['ph_search'] . '" value="' . htmlspecialchars($searchstr) . '">
                     </div>
                 </div>
                 <div class="filter-group">
-                    <label for="log-type"><i class="fas fa-list me-1"></i>Log Type</label>
+                    <label for="log-type"><i class="fas fa-list me-1"></i>' . $L['lbl_log_type'] . '</label>
                     <select class="form-select" id="log-type" name="log_type">
-                        <option value="both" ' . ($log_type == 'both' ? 'selected' : '') . '>Both Logs</option>
-                        <option value="site" ' . ($log_type == 'site' ? 'selected' : '') . '>Site Log Only</option>
-                        <option value="moderator" ' . ($log_type == 'moderator' ? 'selected' : '') . '>Moderator Log Only</option>
-						<option value="admin"     ' . ($log_type == 'admin'     ? 'selected' : '') . '>Admin Only</option>
+                        <option value="both" ' . ($log_type == 'both' ? 'selected' : '') . '>' . $L['opt_log_both'] . '</option>
+                        <option value="site" ' . ($log_type == 'site' ? 'selected' : '') . '>' . $L['opt_log_site'] . '</option>
+                        <option value="moderator" ' . ($log_type == 'moderator' ? 'selected' : '') . '>' . $L['opt_log_moderator'] . '</option>
+						<option value="admin"     ' . ($log_type == 'admin'     ? 'selected' : '') . '>' . $L['opt_log_admin'] . '</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="event-filter"><i class="fas fa-filter me-1"></i>Event Type</label>
+                    <label for="event-filter"><i class="fas fa-filter me-1"></i>' . $L['lbl_event_type'] . '</label>
                     <select class="form-select" id="event-filter" name="event_filter">
-                        <option value="all">All Events</option>
-                        <option value="Banned User" ' . ($event_filter == 'Banned User' ? 'selected' : '') . '>Banned User</option>
-                        <option value="Lifted User Ban" ' . ($event_filter == 'Lifted User Ban' ? 'selected' : '') . '>Lifted User Ban</option>
-                        <option value="Merged Selective Posts" ' . ($event_filter == 'Merged Selective Posts' ? 'selected' : '') . '>Merged Selective Posts</option>
-                        <option value="Deleted User" ' . ($event_filter == 'Deleted User' ? 'selected' : '') . '>Deleted User</option>
-                        <option value="Edited Post" ' . ($event_filter == 'Edited Post' ? 'selected' : '') . '>Edited Post</option>
-                        <option value="Deleted Post" ' . ($event_filter == 'Deleted Post' ? 'selected' : '') . '>Deleted Post</option>
-                        <option value="Moved Thread" ' . ($event_filter == 'Moved Thread' ? 'selected' : '') . '>Moved Thread</option>
-                        <option value="Closed Thread" ' . ($event_filter == 'Closed Thread' ? 'selected' : '') . '>Closed Thread</option>
-                        <option value="Screenshot" ' . ($event_filter == 'Screenshot' ? 'selected' : '') . '>Screenshots</option>
-						
-						<option value="Delete Comment" ' . ($event_filter == 'Delete Comment' ? 'selected' : '') . '>Delete Comment</option>
-						<option value="Torrent Upload" ' . ($event_filter == 'Torrent Upload' ? 'selected' : '') . '>Torrent Upload</option>
-						
+                        ' . $event_options_html . '
                     </select>
                 </div>
                 
 				<div class="filter-group">
-    <label for="date-filter"><i class="fas fa-calendar me-1"></i>Date</label>
+    <label for="date-filter"><i class="fas fa-calendar me-1"></i>' . $L['lbl_date'] . '</label>
     <input type="text" class="form-control" id="date-filter" name="date_filter"
-           value="'.htmlspecialchars($date_filter).'" placeholder="Select a date">
+           value="'.htmlspecialchars($date_filter).'" placeholder="' . $L['ph_date'] . '">
 </div>
 
 
 <link rel="stylesheet" href="'.$BASEURL.'/admin/templates/flatpickr.min.css">
 <script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>
-<script>
-    flatpickr("#date-filter", {
-		dateFormat: "Y-m-d",
-        allowInput: true,
-        defaultDate: "'.htmlspecialchars($date_filter).'"
-    });
-</script>
 				
 				
                 <div class="filter-group">
                     <label>&nbsp;</label>
                     <button type="submit" class="btn btn-success w-100">
-                        <i class="fas fa-filter me-1"></i> Apply Filters
+                        <i class="fas fa-filter me-1"></i> ' . $L['btn_apply_filters'] . '
                     </button>
                 </div>
             </div>
@@ -891,20 +848,29 @@ echo '
     </div>';
 
 $active_filters = [];
-if ($searchstr !== '') $active_filters[] = 'Search: "' . htmlspecialchars($searchstr) . '"';
-if ($event_filter !== 'all') $active_filters[] = 'Event: ' . htmlspecialchars($event_filter);
-if ($date_filter !== '') $active_filters[] = 'Date: ' . htmlspecialchars($date_filter);
-$active_filters[] = 'Log Type: ' . ($log_type === 'both' ? 'Both' : ($log_type === 'site' ? 'Site Only' : 'Moderator Only'));
+if ($searchstr !== '') $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_search'], $searchstr));
+if ($event_filter !== 'all') {
+    $event_label = isset($event_options[$event_filter]) ? $lang->log[$event_options[$event_filter]] : $event_filter;
+    $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_event'], $event_label));
+}
+if ($date_filter !== '') $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_date'], $date_filter));
+$active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_log_type'],
+    match ($log_type) {
+        'both'  => $lang->log['af_type_both'],
+        'site'  => $lang->log['af_type_site'],
+        'admin' => $lang->log['af_type_admin'],
+        default => $lang->log['af_type_moderator'],
+    }));
 if (!empty($active_filters)) {
     echo '<div class="alert alert-info mb-4">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <i class="fas fa-filter me-2"></i>
-                    <strong>Active filters:</strong> ' . implode(', ', $active_filters) . '
-                    <span class="badge bg-primary ms-2">' . $total_count . ' found</span>
+                    <strong>' . $L['lbl_active_filters'] . '</strong> ' . implode(', ', $active_filters) . '
+                    <span class="badge bg-primary ms-2">' . ags_fmt($L['lbl_found'], $total_count) . '</span>
                 </div>
                 <a href="index.php?act=log&action=combined_logs" class="btn btn-sm btn-outline-danger">
-                    <i class="fas fa-times me-1"></i> Clear Filters
+                    <i class="fas fa-times me-1"></i> ' . $L['btn_clear_filters'] . '
                 </a>
             </div>
         </div>';
@@ -928,7 +894,7 @@ if (count($logs) == 0) {
     echo '
     <div class="text-center py-5">
         <i class="fas fa-list fa-4x text-muted mb-3"></i>
-        <h5 class="text-muted">No logs found matching your criteria.</h5>
+        <h5 class="text-muted">' . $L['msg_no_logs'] . '</h5>
     </div>';
 } 
 else 
@@ -938,10 +904,10 @@ else
             <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
             <div class="card card-custom">
                 <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
-                    <h5 class="m-0"><i class="fas fa-history me-2"></i>Combined Event Log</h5>
+                    <h5 class="m-0"><i class="fas fa-history me-2"></i>' . $L['sec_event_log'] . '</h5>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="select-all">
-                        <label class="form-check-label small" for="select-all">Select Site Logs</label>
+                        <label class="form-check-label small" for="select-all">' . $L['lbl_select_site_logs'] . '</label>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -949,14 +915,14 @@ else
                         <table class="table table-hover mb-0">
                             <thead>
                                 <tr>
-                                    <th style="width: 100px">Type</th>
-                                    <th style="width: 120px">Username</th>
-                                    <th style="width: 120px">Date</th>
-                                    <th style="width: 100px">Time</th>
-                                    <th>Action</th>
-                                    <th>Information</th>
-                                    <th style="width: 120px">IP Address</th>
-                                    <th style="width: 80px" class="text-center">Action</th>
+                                    <th style="width: 100px">' . $L['th_type'] . '</th>
+                                    <th style="width: 120px">' . $L['th_username'] . '</th>
+                                    <th style="width: 120px">' . $L['th_date'] . '</th>
+                                    <th style="width: 100px">' . $L['th_time'] . '</th>
+                                    <th>' . $L['th_action'] . '</th>
+                                    <th>' . $L['th_information'] . '</th>
+                                    <th style="width: 120px">' . $L['th_ip'] . '</th>
+                                    <th style="width: 80px" class="text-center">' . $L['th_select'] . '</th>
                                 </tr>
                             </thead>
                             <tbody>';
@@ -972,9 +938,9 @@ else
         $row_class = $is_new ? 'log-entry-new' : '';
         
 		$type_badge = match($entry_type) {
-    'site'      => '<span class="badge bg-primary badge-site log-type-badge"><i class="fas fa-globe me-1"></i> Site</span>',
-    'moderator' => '<span class="badge bg-success badge-moderator log-type-badge"><i class="fas fa-user-shield me-1"></i> Mod</span>',
-    'admin'     => '<span class="badge bg-danger badge-log log-type-badge"><i class="fas fa-crown"></i> Admin</span>',
+    'site'      => '<span class="badge bg-primary badge-site log-type-badge"><i class="fas fa-globe me-1"></i> ' . $L['lbl_type_site'] . '</span>',
+    'moderator' => '<span class="badge bg-success badge-moderator log-type-badge"><i class="fas fa-user-shield me-1"></i> ' . $L['lbl_type_mod'] . '</span>',
+    'admin'     => '<span class="badge bg-danger badge-log log-type-badge"><i class="fas fa-crown"></i> ' . $L['lbl_type_admin'] . '</span>',
     default     => '<span class="log-type-pill badge-site">?</span>',
 };
 		
@@ -1009,7 +975,7 @@ if ($entry_type === 'site') {
     } else {
         // uid = 0 — автоматическая задача
         $username = '<span class="badge bg-info badge-log log-type-badge">'
-              . '<i class="fas fa-sync-alt me-1"></i> Cron'
+              . '<i class="fas fa-sync-alt me-1"></i> ' . $L['lbl_cron']
               . '</span>';
     }
 
@@ -1022,29 +988,30 @@ if ($entry_type === 'site') {
         } else {
             $ipaddress = '<span style="background:#f4f0fd;color:#6a3fc1;padding:2px 8px;'
                        . 'border-radius:6px;font-size:11px;font-weight:700">'
-                       . '<i class="fas fa-robot me-1"></i>Cron'
+                       . '<i class="fas fa-robot me-1"></i>' . $L['lbl_cron']
                        . '</span>';
         }
     }
 
     // Category badge
     $cat_badges = [
-        'general'    => ['#f0f2fa', '#6c7293', 'fa-circle-info',        'General'],
-        'news'       => ['#eaf6ff', '#0a6ebd', 'fa-newspaper',          'News'],
-        'screenshot' => ['#e8f4fd', '#1a7fc1', 'fa-image',              'Screenshot'],
-        'torrent'    => ['#e8f9f0', '#1a8a4a', 'fa-magnet',             'Torrent'],
-        'cron'       => ['#f4f0fd', '#6a3fc1', 'fa-robot',              'Cron'],
-        'error'      => ['#fdecea', '#c0392b', 'fa-triangle-exclamation', 'Error'],
-        'security'   => ['#fdecea', '#8e1a1a', 'fa-shield-halved',      'Security'],
-        'settings'   => ['#fff8e6', '#c07800', 'fa-gear',               'Settings'],
-        'ban'        => ['#fdecea', '#c0392b', 'fa-ban',                'Ban'],
-        'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'Deletion'],
-        'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'Mail'],
-        'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'Warning'],
+        'general'    => ['#f0f2fa', '#6c7293', 'fa-circle-info',        'cat_general'],
+        'news'       => ['#eaf6ff', '#0a6ebd', 'fa-newspaper',          'cat_news'],
+        'screenshot' => ['#e8f4fd', '#1a7fc1', 'fa-image',              'cat_screenshot'],
+        'torrent'    => ['#e8f9f0', '#1a8a4a', 'fa-magnet',             'cat_torrent'],
+        'cron'       => ['#f4f0fd', '#6a3fc1', 'fa-robot',              'cat_cron'],
+        'error'      => ['#fdecea', '#c0392b', 'fa-triangle-exclamation', 'cat_error'],
+        'security'   => ['#fdecea', '#8e1a1a', 'fa-shield-halved',      'cat_security'],
+        'settings'   => ['#fff8e6', '#c07800', 'fa-gear',               'cat_settings'],
+        'ban'        => ['#fdecea', '#c0392b', 'fa-ban',                'cat_ban'],
+        'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'cat_deletion'],
+        'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'cat_mail'],
+        'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'cat_warning'],
     ];
 
     $cat = !empty($arr['category']) ? $arr['category'] : 'general';
-    [$bg, $cl, $icon, $label] = $cat_badges[$cat] ?? $cat_badges['general'];
+    [$bg, $cl, $icon, $label_key] = $cat_badges[$cat] ?? $cat_badges['general'];
+    $label = $lang->log[$label_key];
 
     $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:3px 9px;'
                  . 'border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;'
@@ -1052,6 +1019,8 @@ if ($entry_type === 'site') {
                  . '<i class="fas ' . $icon . '" style="font-size:10px"></i>'
                  . htmlspecialchars($label)
                  . '</span>';
+
+    $match_action = $action; // badge matching on raw (English) log text
 }
 
   
@@ -1073,9 +1042,9 @@ if ($entry_type === 'site') {
 
 
 elseif ($entry_type === 'admin') {
-    $username22  = $arr['username'] ? format_name($arr['username'], $arr['usergroup']) : 'N/A (Deleted)';
+    $username22  = $arr['username'] ? format_name($arr['username'], $arr['usergroup']) : $L['lbl_na_deleted'];
     $username    = '<a href="' . $BASEURL . '/' . get_profile_link($arr['uid']) . '">' . $username22 . '</a>';
-    $ipaddress   = $arr['ipaddress'] ? my_inet_ntop($db->unescape_binary($arr['ipaddress'])) : 'N/A';
+    $ipaddress   = $arr['ipaddress'] ? my_inet_ntop($db->unescape_binary($arr['ipaddress'])) : $L['lbl_na'];
     $information = '';
 
     $logitem = [
@@ -1094,34 +1063,41 @@ elseif ($entry_type === 'admin') {
     }
 
     // Вызываем нашу функцию format_admin_log
-    $action = format_admin_log($logitem, $admin_log_lang);
+    $action    = format_admin_log($logitem, $admin_log_lang);
+    $action_en = format_admin_log($logitem, $admin_log_lang_en); // badge matching only
 
     // Module badge
     $module_raw = str_replace('/', '-', $arr['module'] ?? '');
-    $module_labels = [
-        'forum-management' => 'Forums',
-        'user-management'  => 'Users',
-        'config-settings'  => 'Settings',
-        'config-plugins'   => 'Plugins',
-        'style-templates'  => 'Templates',
-        'style-themes'     => 'Themes',
-        'tools-adminlog'   => 'Admin Log',
-        'tools-modlog'     => 'Mod Log',
-        'tools-backupdb'   => 'Backup',
-        'tools-tasks'      => 'Tasks',
-        'tools-cache'      => 'Cache',
-        'user-groups'      => 'Groups',
-        'user-banning'     => 'Banning',
+    $module_keys = [
+        'forum-management' => 'mod_forums',
+        'user-management'  => 'mod_users',
+        'config-settings'  => 'mod_settings',
+        'config-plugins'   => 'mod_plugins',
+        'style-templates'  => 'mod_templates',
+        'style-themes'     => 'mod_themes',
+        'tools-adminlog'   => 'mod_admin_log',
+        'tools-modlog'     => 'mod_mod_log',
+        'tools-backupdb'   => 'mod_backup',
+        'tools-tasks'      => 'mod_tasks',
+        'tools-cache'      => 'mod_cache',
+        'user-groups'      => 'mod_groups',
+        'user-banning'     => 'mod_banning',
     ];
-    $module_label = $module_labels[$module_raw] 
-        ?? str_replace('-', ' ', ucwords($module_raw));
+    $module_key      = $module_keys[$module_raw] ?? null;
+    $module_fallback = str_replace('-', ' ', ucwords($module_raw));
+    $module_label    = $module_key !== null ? $lang->log[$module_key] : $module_fallback;
+    $module_label_en = $module_key !== null ? (string)($admin_log_lang_en[$module_key] ?? $module_label) : $module_fallback;
+
+    $module_span = static fn(string $label): string =>
+        '<span style="background:#fff0e6;color:#c0392b;padding:2px 8px;'
+        . 'border-radius:6px;font-size:11px;font-weight:700;margin-right:6px">'
+        . htmlspecialchars($label)
+        . '</span> ';
 
     if ($module_label) {
-        $action = '<span style="background:#fff0e6;color:#c0392b;padding:2px 8px;'
-                . 'border-radius:6px;font-size:11px;font-weight:700;margin-right:6px">'
-                . htmlspecialchars($module_label)
-                . '</span> ' . $action;
+        $action = $module_span($module_label) . $action;
     }
+    $match_action = $module_label_en ? $module_span($module_label_en) . $action_en : $action_en;
 }
 
 
@@ -1133,21 +1109,27 @@ elseif ($entry_type === 'admin') {
 		
 		else {
             // Для moderatorlog - ИСПОЛЬЗУЕМ ПРЕДЗАГРУЖЕННЫЕ ДАННЫЕ
-            $username22 = $arr['username'] ? format_name($arr['username'], $arr['usergroup']) : 'N/A (Deleted)';
+            $username22 = $arr['username'] ? format_name($arr['username'], $arr['usergroup']) : $L['lbl_na_deleted'];
             $username = '<a href="'.$BASEURL.'/'.get_profile_link($arr['uid']).'">'.$username22.'</a>';
             
-            $ipaddress = $arr['ipaddress'] ? my_inet_ntop($db->unescape_binary($arr['ipaddress'])) : 'N/A';
+            $ipaddress = $arr['ipaddress'] ? my_inet_ntop($db->unescape_binary($arr['ipaddress'])) : $L['lbl_na'];
             
             // Формируем action с информацией из data
             $action = htmlspecialchars($arr['content']);
+            $match_action = $action;
             $data = my_unserialize($arr['data']);
             
+            $mod_user = null;
             if (!empty($data['username'])) {
-                $action .= ' User: ' . htmlspecialchars($data['username']);
+                $mod_user = (string)$data['username'];
             } elseif (!empty($data['uid']) && isset($users_from_data[$data['uid']])) {
                 // Используем предзагруженные данные вместо запроса
                 $user = $users_from_data[$data['uid']];
-                $action .= ' User: ' . htmlspecialchars($user['username']);
+                $mod_user = (string)$user['username'];
+            }
+            if ($mod_user !== null) {
+                $action       .= ' ' . $L['lbl_user_inline'] . ' ' . htmlspecialchars($mod_user);
+                $match_action .= ' User: ' . htmlspecialchars($mod_user); // English, badge matching only
             }
             
             $information = '';
@@ -1155,23 +1137,23 @@ elseif ($entry_type === 'admin') {
             // Используем предзагруженные данные вместо отдельных запросов
             if ($arr['tid'] && isset($threads_data[$arr['tid']])) {
                 $thread = $threads_data[$arr['tid']];
-                $information .= "<strong>Thread:</strong> <a href=\"../".get_thread_link($arr['tid'])."\" target=\"_blank\">".htmlspecialchars($thread['subject'])."</a><br />";
+                $information .= "<strong>".$L['lbl_thread']."</strong> <a href=\"../".get_thread_link($arr['tid'])."\" target=\"_blank\">".htmlspecialchars($thread['subject'])."</a><br />";
             }
             
             if ($arr['fid'] && isset($forums_data[$arr['fid']])) {
                 $forum = $forums_data[$arr['fid']];
-                $information .= "<strong>Forum:</strong> <a href=\"../".get_forum_link($arr['fid'])."\" target=\"_blank\">".htmlspecialchars($forum['name'])."</a><br />";
+                $information .= "<strong>".$L['lbl_forum']."</strong> <a href=\"../".get_forum_link($arr['fid'])."\" target=\"_blank\">".htmlspecialchars($forum['name'])."</a><br />";
             }
             
             if ($arr['pid'] && isset($posts_data[$arr['pid']])) {
                 $post = $posts_data[$arr['pid']];
-                $information .= "<strong>Post:</strong> <a href=\"../".get_post_link($arr['pid'])."#pid{$arr['pid']}\" target=\"_blank\">".htmlspecialchars($post['subject'])."</a>";
+                $information .= "<strong>".$L['lbl_post']."</strong> <a href=\"../".get_post_link($arr['pid'])."#pid{$arr['pid']}\" target=\"_blank\">".htmlspecialchars($post['subject'])."</a>";
             }
             
             // Если в data есть информация об объявлении
             if (!$information && !empty($data['aid']) && isset($announcements_data[$data['aid']])) {
                 $announcement = $announcements_data[$data['aid']];
-                $information = "<strong>Announcement:</strong> <a href=\"../".get_announcement_link($data['aid'])."\" target=\"_blank\">".htmlspecialchars($announcement['subject'])."</a>";
+                $information = "<strong>".$L['lbl_announcement']."</strong> <a href=\"../".get_announcement_link($data['aid'])."\" target=\"_blank\">".htmlspecialchars($announcement['subject'])."</a>";
             }
         }
 
@@ -1180,126 +1162,128 @@ elseif ($entry_type === 'admin') {
             $parsed_action = $parser->parse_message($action, $parser_options);
         } catch (Exception $e) {
             $parsed_action = htmlspecialchars($action);
-            echo '<div class="alert alert-warning">Parser error: ' . $e->getMessage() . '</div>';
+            echo '<div class="alert alert-warning">' . htmlspecialchars(ags_fmt($lang->log['err_parser'], $e->getMessage())) . '</div>';
         }
 
         // Маппинг бейджей
         $badge_map = [
         // ── Пользователи / баны ──────────────────────────────
-        'Banned User'          => ['danger',  'Ban',        'fa-ban'],
-        'Lifted User Ban'      => ['success', 'Unban',      'fa-unlock'],
-        'Lifted ban for user'  => ['success', 'Unban',      'fa-user-check'],
-        'Deleted User'         => ['danger',  'Delete User','fa-user-times'],
-        'Added disallowed'     => ['danger',  'Blacklist Add', 'fa-ban'],
-        'Removed disallowed'   => ['success', 'Blacklist Del', 'fa-check-circle'],
-        'Added IP ban'         => ['danger',  'IP Ban',        'fa-shield-alt'],
-        'Removed IP ban'       => ['success', 'IP Unban',      'fa-shield-alt'],
-        'Added usergroup'      => ['success', 'User Group Added', 'fa-users'],
-        'Edited usergroup'     => ['warning', 'User Group Edited', 'fa-pencil'],
-        'Promoted users'       => ['success', 'Promotion',  'fa-level-up-alt'],
-        'Demoted users'        => ['warning', 'Demotion',   'fa-level-down-alt'],
-        'Leech-warned users'   => ['warning', 'Leech Warning', 'fa-exclamation-triangle'],
-        'Added moderator'      => ['success', 'Add Mod',    'fa-user-plus'],
-        'Mass Invite'          => ['success', 'Mass Invite','fa-envelope-open-text'],
+        'Banned User'          => ['danger',  'badge_ban',        'fa-ban'],
+        'Lifted User Ban'      => ['success', 'badge_unban',      'fa-unlock'],
+        'Lifted ban for user'  => ['success', 'badge_unban',      'fa-user-check'],
+        'Deleted User'         => ['danger',  'badge_delete_user','fa-user-times'],
+        'Added disallowed'     => ['danger',  'badge_blacklist_add', 'fa-ban'],
+        'Removed disallowed'   => ['success', 'badge_blacklist_del', 'fa-check-circle'],
+        'Added IP ban'         => ['danger',  'badge_ip_ban',        'fa-shield-alt'],
+        'Removed IP ban'       => ['success', 'badge_ip_unban',      'fa-shield-alt'],
+        'Added usergroup'      => ['success', 'badge_group_added', 'fa-users'],
+        'Edited usergroup'     => ['warning', 'badge_group_edited', 'fa-pencil'],
+        'Promoted users'       => ['success', 'badge_promotion',  'fa-level-up-alt'],
+        'Demoted users'        => ['warning', 'badge_demotion',   'fa-level-down-alt'],
+        'Leech-warned users'   => ['warning', 'badge_leech_warning', 'fa-exclamation-triangle'],
+        'Added moderator'      => ['success', 'badge_add_mod',    'fa-user-plus'],
+        'Mass Invite'          => ['success', 'badge_mass_invite','fa-envelope-open-text'],
 
         // ── Посты / темы ──────────────────────────────────────
-        'Merged Selective Posts'  => ['primary', 'Merge Posts', 'fa-compress'],
-        'Edited Post'              => ['primary', 'Edit Post',   'fa-edit'],
-        'Deleted Post'             => ['danger',  'Delete Post', 'fa-trash'],
-        'Moved Thread'             => ['warning', 'Move Thread', 'fa-exchange-alt'],
-        'Closed Thread'            => ['secondary', 'Close Thread', 'fa-lock'],
-        'Threads Deleted'          => ['danger',  'Threads Del', 'fa-trash'],
-        'Deleted Selective Posts'  => ['danger',  'Del Posts',   'fa-object-group'],
-        'was deleted by'           => ['danger',  'Deletion',    'fa-trash'],
-        'has been deleted by'      => ['danger',  'Deletion',    'fa-trash'],
-        'has been edited by'       => ['primary', 'Edit',        'fa-edit'],
-        'has been saved'           => ['primary', 'Saved',       'fa-save'],
+        'Merged Selective Posts'  => ['primary', 'badge_merge_posts', 'fa-compress'],
+        'Edited Post'              => ['primary', 'badge_edit_post',   'fa-edit'],
+        'Deleted Post'             => ['danger',  'badge_delete_post', 'fa-trash'],
+        'Moved Thread'             => ['warning', 'badge_move_thread', 'fa-exchange-alt'],
+        'Closed Thread'            => ['secondary', 'badge_close_thread', 'fa-lock'],
+        'Threads Deleted'          => ['danger',  'badge_threads_del', 'fa-trash'],
+        'Deleted Selective Posts'  => ['danger',  'badge_del_posts',   'fa-object-group'],
+        'was deleted by'           => ['danger',  'badge_deletion',    'fa-trash'],
+        'has been deleted by'      => ['danger',  'badge_deletion',    'fa-trash'],
+        'has been edited by'       => ['primary', 'badge_edit',        'fa-edit'],
+        'has been saved'           => ['primary', 'badge_saved',       'fa-save'],
 
         // ── Комментарии ───────────────────────────────────────
-        'copied'                    => ['primary', 'Copied settings',   'fa-copy'],
-        'moved'                     => ['warning', 'Comment Move',      'fa-arrows-alt'],
-        'deleted a comment (CID'    => ['danger',  'Comment Delete',    'fa-comment'],
-        'deleted comments'          => ['danger',  'Comment Delete',    'fa-comment'],
-        'Mass Comment Delete'       => ['danger',  'Mass Del Comments', 'fa-comment-slash'],
+        'copied'                    => ['primary', 'badge_copied_settings',   'fa-copy'],
+        'moved'                     => ['warning', 'badge_comment_move',      'fa-arrows-alt'],
+        'deleted a comment (CID'    => ['danger',  'badge_comment_delete',    'fa-comment'],
+        'deleted comments'          => ['danger',  'badge_comment_delete',    'fa-comment'],
+        'Mass Comment Delete'       => ['danger',  'badge_mass_del_comments', 'fa-comment-slash'],
 
         // ── Форумы / права ────────────────────────────────────
-        'Added forum'       => ['success', 'Forum Add',   'fa-plus'],
-        'Edited forum'      => ['primary', 'Forum Edit',  'fa-edit'],
-        'Deleted forum'     => ['danger',  'Forum Del',   'fa-trash'],
-        'Updated quick'     => ['warning', 'Permissions', 'fa-key'],
-        'Edited group perm' => ['warning', 'Permissions', 'fa-key'],
+        'Added forum'       => ['success', 'badge_forum_add',   'fa-plus'],
+        'Edited forum'      => ['primary', 'badge_forum_edit',  'fa-edit'],
+        'Deleted forum'     => ['danger',  'badge_forum_del',   'fa-trash'],
+        'Updated quick'     => ['warning', 'badge_permissions', 'fa-key'],
+        'Edited group perm' => ['warning', 'badge_permissions', 'fa-key'],
 
         // ── Скриншоты ─────────────────────────────────────────
-        'Screenshot uploaded:' => ['success', 'Screen Upload', 'fa-image'],
-        'Screenshot deleted:'  => ['danger',  'Screen Delete', 'fa-trash'],
-        'Screenshot updated:'  => ['primary', 'Screen Edit',   'fa-edit'],
-        'Screenshot error'     => ['danger',  'Screen Error',  'fa-exclamation-circle'],
-        'Mass Delete Screens:' => ['danger',  'Mass Screens Delete', 'fa-images'],
-        'for torrent #'        => ['info',    'Torrent Screenshot',  'fa-film'],
+        'Screenshot uploaded:' => ['success', 'badge_screen_upload', 'fa-image'],
+        'Screenshot deleted:'  => ['danger',  'badge_screen_delete', 'fa-trash'],
+        'Screenshot updated:'  => ['primary', 'badge_screen_edit',   'fa-edit'],
+        'Screenshot error'     => ['danger',  'badge_screen_error',  'fa-exclamation-circle'],
+        'Mass Delete Screens:' => ['danger',  'badge_mass_screens_delete', 'fa-images'],
+        'for torrent #'        => ['info',    'badge_torrent_screenshot',  'fa-film'],
 
         // ── Аплоад / скачивание ────────────────────────────────
-        'has been uploaded'       => ['success', 'Upload',       'fa-upload'],
-        'has downloaded'          => ['danger',  'Download',     'fa-download'],
-        'GB upload added to'      => ['success', 'Upload Added', 'fa-upload'],
-        'GB upload added to user' => ['success', 'Upload Added', 'fa-upload'],
-        'Deleted attachment'      => ['danger',  'Attachment Deleted', 'fa-trash-alt'],
+        'has been uploaded'       => ['success', 'badge_upload',       'fa-upload'],
+        'has downloaded'          => ['danger',  'badge_download',     'fa-download'],
+        'GB upload added to'      => ['success', 'badge_upload_added', 'fa-upload'],
+        'GB upload added to user' => ['success', 'badge_upload_added', 'fa-upload'],
+        'Deleted attachment'      => ['danger',  'badge_attachment_deleted', 'fa-trash-alt'],
 
         // ── Продвижения / промо торрентов ────────────────────
-        'Starting torrent promotion expiration cleanup' => ['info',      'Promo Cleanup Start', 'fa-play-circle'],
-        'Finished torrent promotion expiration cleanup' => ['success',   'Promotion Cleanup',   'fa-broom'],
-        'Expired Free Leech promotions'                  => ['success',   'FreeLeech Expired',   'fa-hourglass-end'],
-        'Expired 50% + 2X promotions'                     => ['success',   '50%+2X Expired',      'fa-hourglass-end'],
-        'Expired 30% Leech promotions'                    => ['success',   '30% Leech Expired',   'fa-hourglass-end'],
-        'Expired 2X Upload promotions'                    => ['secondary', '2X Upload Expired',   'fa-stop-circle'],
-        'Expired Free + 2X promotions'                    => ['secondary', 'Free+2X Expired',     'fa-stop-circle'],
-        'Expired 50% Leech promotions'                    => ['secondary', '50% Leech Expired',   'fa-stop-circle'],
-        'Torrents no longer on promotion'                 => ['secondary', 'Promotion Expired',   'fa-minus-circle'],
-        'Torrents promotion changed'                      => ['success',   'Promotion Changed',   'fa-star'],
+        'Starting torrent promotion expiration cleanup' => ['info',      'badge_promo_cleanup_start', 'fa-play-circle'],
+        'Finished torrent promotion expiration cleanup' => ['success',   'badge_promo_cleanup',   'fa-broom'],
+        'Expired Free Leech promotions'                  => ['success',   'badge_freeleech_expired',   'fa-hourglass-end'],
+        'Expired 50% + 2X promotions'                     => ['success',   'badge_50_2x_expired',      'fa-hourglass-end'],
+        'Expired 30% Leech promotions'                    => ['success',   'badge_30_leech_expired',   'fa-hourglass-end'],
+        'Expired 2X Upload promotions'                    => ['secondary', 'badge_2x_upload_expired',   'fa-stop-circle'],
+        'Expired Free + 2X promotions'                    => ['secondary', 'badge_free_2x_expired',     'fa-stop-circle'],
+        'Expired 50% Leech promotions'                    => ['secondary', 'badge_50_leech_expired',   'fa-stop-circle'],
+        'Torrents no longer on promotion'                 => ['secondary', 'badge_promo_expired',   'fa-minus-circle'],
+        'Torrents promotion changed'                      => ['success',   'badge_promo_changed',   'fa-star'],
 
         // ── SeedBonus ─────────────────────────────────────────
-        'Seedbonus cron: Система отключена'         => ['danger',    'Seedbonus',         'fa-ban'],
-        'Seedbonus cron: start'                      => ['info',      'Seedbonus Start',   'fa-play'],
-        'Seedbonus cron: done | no active seeders'   => ['secondary', 'Seedbonus Done',    'fa-stop'],
-        'Seedbonus cron: done | users='              => ['success',   'Seedbonus Done',    'fa-check'],
-        'done | no active seeders'                    => ['success',   'Seed Bonus Awarded','fa-check-circle'],
-        'WARNING: User'                               => ['warning',   'Seedbonus Warning', 'fa-exclamation-triangle'],
+        'Seedbonus cron: Система отключена'         => ['danger',    'badge_seedbonus',         'fa-ban'],
+        'Seedbonus cron: start'                      => ['info',      'badge_seedbonus_start',   'fa-play'],
+        'Seedbonus cron: done | no active seeders'   => ['secondary', 'badge_seedbonus_done',    'fa-stop'],
+        'Seedbonus cron: done | users='              => ['success',   'badge_seedbonus_done',    'fa-check'],
+        'done | no active seeders'                    => ['success',   'badge_seedbonus_awarded','fa-check-circle'],
+        'WARNING: User'                               => ['warning',   'badge_seedbonus_warning', 'fa-exclamation-triangle'],
 
         // ── База данных / кэш / бэкапы ───────────────────────
-        'has been optimized..'                        => ['success', 'Optimization', 'fa-cogs'],
-        'Database check completed'                     => ['success', 'DB Check',     'fa-database'],
-        'Rebuilt cache'                                 => ['success', 'Cache Rebuild','fa-arrows-rotate'],
-        'Database backup completed successfully'        => ['success', 'Database Backup Completed', 'fa-database'],
-        'Created a backup'                              => ['success', 'Database Backup Created',   'fa-database'],
-        'DB Optimized SUCCESS'                          => ['success', 'DB Optimized', 'fa-database'],
-        'optimized successfully'                        => ['success', 'DB Optimized', 'fa-database'],
-        'TRUNCATED table(s):'                           => ['danger',  'Table Truncated', 'fa-eraser'],
-        'FAILED to truncate table(s):'                  => ['danger',  'Truncate Failed',  'fa-times-circle'],
-        '[SQL ERROR]'                                    => ['danger',  'SQL Error', 'fa-exclamation-triangle'],
+        'has been optimized..'                        => ['success', 'badge_optimization', 'fa-cogs'],
+        'Database check completed'                     => ['success', 'badge_db_check',     'fa-database'],
+        'Rebuilt cache'                                 => ['success', 'badge_cache_rebuild','fa-arrows-rotate'],
+        'Database backup completed successfully'        => ['success', 'badge_backup_completed', 'fa-database'],
+        'Created a backup'                              => ['success', 'badge_backup_created',   'fa-database'],
+        'DB Optimized SUCCESS'                          => ['success', 'badge_db_optimized', 'fa-database'],
+        'optimized successfully'                        => ['success', 'badge_db_optimized', 'fa-database'],
+        'TRUNCATED table(s):'                           => ['danger',  'badge_table_truncated', 'fa-eraser'],
+        'FAILED to truncate table(s):'                  => ['danger',  'badge_truncate_failed',  'fa-times-circle'],
+        '[SQL ERROR]'                                    => ['danger',  'badge_sql_error', 'fa-exclamation-triangle'],
 
         // ── Настройки / система ───────────────────────────────
-        'site settings updated by' => ['danger',  'Settings', 'fa-cog'],
-        'settings updated'         => ['primary', 'Settings', 'fa-cogs'],
-        'task successfully ran'    => ['success', 'Task',     'fa-tasks'],
-        'send mail queue'          => ['info',    'Mail Queue', 'fa-paper-plane'],
+        'site settings updated by' => ['danger',  'badge_settings', 'fa-cog'],
+        'settings updated'         => ['primary', 'badge_settings', 'fa-cogs'],
+        'task successfully ran'    => ['success', 'badge_task',     'fa-tasks'],
+        'send mail queue'          => ['info',    'badge_mail_queue', 'fa-paper-plane'],
 
         // ── Безопасность / спам ───────────────────────────────
-        'Attempt'  => ['danger', 'Security', 'fa-shield-alt'],
-        'unwanted' => ['danger', 'Spam',      'fa-ban'],
+        'Attempt'  => ['danger', 'badge_security', 'fa-shield-alt'],
+        'unwanted' => ['danger', 'badge_spam',      'fa-ban'],
         ];
 		
 		
 		
         $color = 'secondary';
-        $badge = 'Log';
+        $badge_key = 'badge_log';
         $icon = 'fa-info-circle';
-        foreach ($badge_map as $needle => [$clr, $lbl, $ico]) {
-            if (stripos($action, $needle) !== false) {
+        // Needles are English: match against the English text, show the translated label
+        foreach ($badge_map as $needle => [$clr, $lbl_key, $ico]) {
+            if (stripos($match_action, $needle) !== false) {
                 $color = $clr;
-                $badge = $lbl;
+                $badge_key = $lbl_key;
                 $icon = $ico;
                 break;
             }
         }
+        $badge = $L[$badge_key];
 		
 		
 		
@@ -1335,7 +1319,7 @@ elseif ($entry_type === 'admin') {
     echo '</tbody></table></div></div>
         <div class="card-footer text-end">
             <button type="submit" class="btn btn-danger btn-sm">
-                <i class="fas fa-trash me-1"></i> Delete2 Selected Site Logs
+                <i class="fas fa-trash me-1"></i> ' . $L['btn_delete_selected_site'] . '
             </button>
         </div>
         </div></form>';
@@ -1355,6 +1339,10 @@ echo '</div></div>';
 
 
 
+$modal_confirm_html = ags_fmt($L['modal_clear_confirm'],
+    '<strong style="color:#e74a3b">' . $L['modal_clear_confirm_strong'] . '</strong>');
+$modal_note_html = $lang->log['modal_clear_note']; // HTML allowed, output as-is
+
 echo <<<HTML
 <div class="modal fade" id="clearModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -1367,18 +1355,18 @@ echo <<<HTML
                 <div style="width:72px;height:72px;background:rgba(255,255,255,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid rgba(255,255,255,0.3)">
                     <i class="fas fa-trash-alt" style="color:#fff;font-size:28px"></i>
                 </div>
-                <h4 style="color:#fff;margin:0;font-weight:700;font-size:20px">Clear Site Logs</h4>
-                <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px">This action is permanent</p>
+                <h4 style="color:#fff;margin:0;font-weight:700;font-size:20px">{$L['modal_clear_title']}</h4>
+                <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px">{$L['modal_clear_sub']}</p>
             </div>
 
             <!-- Тело -->
             <div style="padding:28px;text-align:center;background:#fff">
                 <p style="color:#5a5c69;font-size:15px;margin:0 0 12px;line-height:1.6">
-                    Are you sure you want to <strong style="color:#e74a3b">clear all site logs</strong>?<br>This cannot be undone.
+                    {$modal_confirm_html}<br>{$L['modal_cannot_undo']}
                 </p>
                 <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;text-align:left">
                     <i class="fas fa-exclamation-circle" style="color:#f6c23e;font-size:18px;flex-shrink:0"></i>
-                    <span style="color:#856404;font-size:13px">Moderator logs will <strong>not</strong> be affected by this action.</span>
+                    <span style="color:#856404;font-size:13px">{$modal_note_html}</span>
                 </div>
             </div>
 
@@ -1386,14 +1374,14 @@ echo <<<HTML
             <div style="padding:0 28px 28px;background:#fff;display:flex;gap:12px">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
                     style="flex:1;border-radius:10px;padding:11px;font-weight:600;border:2px solid #e3e6f0;background:#fff;color:#5a5c69">
-                    <i class="fas fa-times me-1"></i> Cancel
+                    <i class="fas fa-times me-1"></i> {$L['btn_cancel']}
                 </button>
                 <form method="post" action="index.php?act=log&action=combined_logs" style="flex:1;margin:0">
                     <input type="hidden" name="clear" value="yes">
                     <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
                     <button type="submit"
                         style="width:100%;border-radius:10px;padding:11px;font-weight:600;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);color:#fff;cursor:pointer">
-                        <i class="fas fa-trash-alt me-1"></i> Clear Logs
+                        <i class="fas fa-trash-alt me-1"></i> {$L['btn_clear_logs']}
                     </button>
                 </form>
             </div>
@@ -1401,149 +1389,20 @@ echo <<<HTML
         </div>
     </div>
 </div>
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const filterForm = document.getElementById("filter-form");
-    if (!filterForm) {
-        console.error("Filter form not found");
-        return;
-    }
-    const selectAllCheckbox = document.getElementById("select-all");
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener("change", function() {
-            document.querySelectorAll(".log-checkbox").forEach(cb => cb.checked = this.checked);
-        });
-    }
-    const eventFilter = document.getElementById("event-filter");
-    const dateFilter = document.getElementById("date-filter");
-    const logTypeFilter = document.getElementById("log-type");
-    [eventFilter, dateFilter, logTypeFilter].forEach(el => {
-        if (el) {
-            el.addEventListener("change", () => filterForm.submit());
-        }
-    });
-    const searchInput = document.getElementById("search-input");
-    let searchTimer;
-    if (searchInput) {
-        searchInput.addEventListener("input", function() {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => filterForm.submit(), 800);
-        });
-    }
-    const refreshBtn = document.getElementById("refresh-logs");
-    if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => window.location.reload());
-    }
-});
-</script>
 HTML;
+
+// JS strings: js_* keys -> AGS_LANG without the prefix
+$ags_js_lang = [];
+foreach ($lang->log as $k => $v) {
+    if (is_string($v) && str_starts_with((string)$k, 'js_')) {
+        $ags_js_lang[substr((string)$k, 3)] = $v;
+    }
+}
 ?>
 <script>
-document.getElementById("export-csv")?.addEventListener("click", function() {
-    const rows = [["Type","Username","Date","Time","Action","IP"]];
-    document.querySelectorAll("tbody tr").forEach(tr => {
-        const cells = tr.querySelectorAll("td");
-        if (cells.length >= 7) {
-            rows.push([
-                cells[0].innerText.trim(),
-                cells[1].innerText.trim(),
-                cells[2].innerText.trim(),
-                cells[3].innerText.trim(),
-                cells[4].innerText.trim(),
-                cells[6].innerText.trim(),
-            ]);
-        }
-    });
-    const csv = rows.map(r => r.map(c => '"' + c.replace(/"/g, '""') + '"').join(',')).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = "logs_" + new Date().toISOString().slice(0,10) + ".csv";
-    a.click();
-});
-
-
-
-function updateDeleteBtn() {
-    const count = document.querySelectorAll('.log-checkbox:checked').length;
-    const btn = document.querySelector('#logs-form [type="submit"].btn-danger');
-    if (btn) {
-        btn.innerHTML = count > 0
-            ? '<i class="fas fa-trash me-1"></i> Delete Selected (' + count + ')'
-            : '<i class="fas fa-trash me-1"></i> Delete Selected';
-        btn.disabled = count === 0;
-    }
-}
-
-function showDeleteModal(count, onConfirm) {
-    const existing = document.getElementById('deleteConfirmModal');
-    if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-    modal.id = 'deleteConfirmModal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeInBg 0.2s ease';
-
-    modal.innerHTML =
-        '<style>' +
-        '@keyframes fadeInBg{from{opacity:0}to{opacity:1}}' +
-        '@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}' +
-        '</style>' +
-        '<div style="background:#fff;border-radius:16px;padding:0;width:420px;max-width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp 0.25s ease;overflow:hidden">' +
-            '<div style="background:linear-gradient(135deg,#e74a3b,#c0392b);padding:24px 28px 20px;text-align:center">' +
-                '<div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">' +
-                    '<i class="fas fa-trash" style="color:#fff;font-size:22px"></i>' +
-                '</div>' +
-                '<h5 style="color:#fff;margin:0;font-size:18px;font-weight:700">Confirm Deletion</h5>' +
-            '</div>' +
-            '<div style="padding:24px 28px;text-align:center">' +
-                '<p style="color:#5a5c69;margin:0 0 6px;font-size:15px">You are about to delete</p>' +
-                '<p style="color:#e74a3b;font-size:28px;font-weight:700;margin:0 0 6px">' + count + '</p>' +
-                '<p style="color:#5a5c69;margin:0 0 20px;font-size:15px">log entr' + (count === 1 ? 'y' : 'ies') + '. This cannot be undone.</p>' +
-                '<div style="display:flex;gap:12px;justify-content:center">' +
-                    '<button id="modalCancel" style="flex:1;padding:11px;border:2px solid #e3e6f0;background:#fff;border-radius:10px;color:#5a5c69;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>' +
-                    '<button id="modalConfirm" style="flex:1;padding:11px;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">' +
-                        '<i class="fas fa-trash me-1"></i> Delete ' + count + ' log' + (count === 1 ? '' : 's') +
-                    '</button>' +
-                '</div>' +
-            '</div>' +
-        '</div>';
-
-    document.body.appendChild(modal);
-
-    document.getElementById('modalCancel').onclick = function() { modal.remove(); };
-    document.getElementById('modalConfirm').onclick = function() { modal.remove(); onConfirm(); };
-    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    updateDeleteBtn();
-
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('log-checkbox')) {
-            updateDeleteBtn();
-        }
-    });
-
-    const selectAll = document.getElementById('select-all');
-    if (selectAll) {
-        selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.log-checkbox').forEach(cb => cb.checked = this.checked);
-            updateDeleteBtn();
-        });
-    }
-
-    const logsForm = document.getElementById('logs-form');
-    if (logsForm) {
-        logsForm.addEventListener('submit', function(e) {
-            const count = document.querySelectorAll('.log-checkbox:checked').length;
-            if (count === 0) { e.preventDefault(); return; }
-            e.preventDefault();
-            showDeleteModal(count, function() {
-                logsForm.submit();
-            });
-        });
-    }
-});
+const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
+<script src="<?= $BASEURL ?>/admin/scripts/log.js?ver=1"></script>
 </body>
 </html>
 <?php

@@ -9,7 +9,26 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('changeusername');
+
 define('CU_VERSION', '0.6');
+
+/**
+ * Подстановка {1}, {2}… в строку из ланга.
+ * $lang->load() превращает {1} в %1$s, поэтому заменяем оба формата.
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 /** Найти пользователя по ID или по текущему нику */
 function cu_find_user(string $idOrName): ?array
@@ -86,7 +105,7 @@ $targetUser         = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'changeusername') {
     if (!verify_post_check($_POST['my_post_key'] ?? '')) {
         http_response_code(403);
-        echo 'Invalid security token';
+        echo htmlspecialchars($lang->changeusername['err_token']);
         exit;
     }
 
@@ -100,21 +119,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'changeus
     $userId     = $targetUser ? (string)(int)$targetUser['id'] : $rawTarget;
 
     if ($rawTarget === '' || $newUsername === '') {
-        $message = 'Please fill in all required fields.';
+        $message = $lang->changeusername['err_required'];
     } elseif (!$targetUser) {
-        $message = 'No user found with this ID or username.';
+        $message = $lang->changeusername['err_not_found'];
     } elseif (!cu_can_edit((int)$targetUser['id'])) {
-        $message = "You do not have permission to change a super administrator's username.";
+        $message = $lang->changeusername['err_super'];
     } elseif (mb_strlen($newUsername) < 3 || mb_strlen($newUsername) > 25) {
-        $message = 'Username must be between 3 and 25 characters.';
+        $message = $lang->changeusername['err_length'];
     } elseif ($newUsername === $targetUser['username']) {
-        $message = 'The new username is the same as the current one.';
+        $message = $lang->changeusername['err_same'];
     } else {
         // Раньше: проверка «ник занят» находила самого пользователя — поменять
         // только регистр («bob» → «Bob») было нельзя. Себя из проверки исключаем.
         $taken = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1', [$newUsername, (int)$targetUser['id']]);
         if ($taken && $db->num_rows($taken) > 0) {
-            $message = 'This username is already taken.';
+            $message = $lang->changeusername['err_taken'];
         } elseif ($sure === 'yes') {
             // Подтверждено — меняем через UserDataHandler (он же проверяет формат по настройкам форума).
             // Раньше до этого шага ещё была проверка ^[a-zA-Z0-9]+$ — ники с «_», «-»,
@@ -128,19 +147,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'changeus
 
                 if (!$userhandler->validate_user()) {
                     $validationErrors = $userhandler->get_friendly_errors();
-                    $message = 'Validation failed.';
+                    $message = $lang->changeusername['err_validation'];
                 } elseif ($userhandler->update_user()) {
                     $success = true;
                     write_log(sprintf(
                         "%s's account name has been changed to %s by %s (Change Username Tool)",
                         $oldUsername, $newUsername, $CURUSER['username'] ?? 'System'
                     ));
-                    $message = 'Username successfully updated.';
+                    $message = $lang->changeusername['flash_success'];
                 } else {
-                    $message = 'Failed to update username using UserDataHandler.';
+                    $message = $lang->changeusername['err_update_failed'];
                 }
             } catch (Throwable $e) {
-                $message = 'System error: ' . $e->getMessage();
+                $message = ags_fmt($lang->changeusername['err_system'], $e->getMessage());
             }
         } else {
             $confirmationNeeded = true;
@@ -153,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'changeus
 // OUTPUT
 // ═══════════════════════════════════════════════════════════════════════
 
-stdhead('Change Username');
+stdhead($lang->changeusername['page_title']);
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/changeusername.css?ver=2">';
 
@@ -163,7 +182,7 @@ $key  = htmlspecialchars((string)$mybb->post_code);
 echo '<div class="container mt-3 mb-4 cu">';
 echo '<div class="cu-card mb-3"><div class="cu-head">'
    . '<span class="cu-head-icon ic-purple"><i class="fa-solid fa-user-pen"></i></span>'
-   . '<div><h1 class="cu-title">Change Username</h1><div class="cu-sub">Rename an account — validated by the forum\'s own user rules</div></div>'
+   . '<div><h1 class="cu-title">' . htmlspecialchars($lang->changeusername['head_title']) . '</h1><div class="cu-sub">' . htmlspecialchars($lang->changeusername['head_sub']) . '</div></div>'
    . '<span class="cu-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i>v' . CU_VERSION . '</span>'
    . '</div></div>';
 
@@ -172,16 +191,16 @@ if ($success) {
     ?>
     <div class="cu-card cu-result is-success">
         <span class="cu-result-icon"><i class="fa-solid fa-circle-check"></i></span>
-        <h2 class="cu-result-title">Username changed</h2>
+        <h2 class="cu-result-title"><?= htmlspecialchars($lang->changeusername['sec_success']) ?></h2>
         <div class="cu-swap">
             <span class="cu-name old"><?= htmlspecialchars($oldUsername) ?></span>
             <i class="fa-solid fa-arrow-right-long"></i>
             <span class="cu-name new"><?= htmlspecialchars($newUsername) ?></span>
         </div>
-        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i>User ID <?= (int)$userId ?> · <i class="fa-solid fa-clipboard-list ms-1 me-1"></i>written to the site log</div>
+        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i><?= htmlspecialchars(ags_fmt($lang->changeusername['lbl_user_id'], (int)$userId)) ?> · <i class="fa-solid fa-clipboard-list ms-1 me-1"></i><?= htmlspecialchars($lang->changeusername['res_logged']) ?></div>
         <div class="d-flex flex-wrap justify-content-center gap-2">
-            <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Change another</a>
-            <a href="<?= htmlspecialchars($profileLink) ?>" class="btn btn-primary px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>View profile</a>
+            <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i><?= htmlspecialchars($lang->changeusername['btn_change_another']) ?></a>
+            <a href="<?= htmlspecialchars($profileLink) ?>" class="btn btn-primary px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i><?= htmlspecialchars($lang->changeusername['btn_view_profile']) ?></a>
         </div>
     </div>
     <?php
@@ -190,24 +209,24 @@ if ($success) {
     ?>
     <div class="cu-card cu-result is-warn">
         <span class="cu-result-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
-        <h2 class="cu-result-title">Confirm the change</h2>
+        <h2 class="cu-result-title"><?= htmlspecialchars($lang->changeusername['sec_confirm']) ?></h2>
         <div class="cu-swap">
             <span class="cu-name old"><?= htmlspecialchars($currentUsername) ?></span>
             <i class="fa-solid fa-arrow-right-long"></i>
             <span class="cu-name new"><?= htmlspecialchars($newUsername) ?></span>
         </div>
-        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i>User ID <?= (int)$userId ?></div>
+        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i><?= htmlspecialchars(ags_fmt($lang->changeusername['lbl_user_id'], (int)$userId)) ?></div>
 
         <?php if ($isSuper): ?>
         <div class="cu-note is-danger mb-3"><i class="fa-solid fa-crown"></i>
-            <div><strong>Super Administrator account.</strong> Double-check before renaming.</div></div>
+            <div><strong><?= htmlspecialchars($lang->changeusername['conf_super_title']) ?></strong> <?= htmlspecialchars($lang->changeusername['conf_super_text']) ?></div></div>
         <?php endif; ?>
 
         <div class="cu-points mb-3">
-            <div><i class="fa-solid fa-right-to-bracket"></i>The user logs in with the new name from now on</div>
-            <div><i class="fa-solid fa-link"></i>Posts, comments and profile show the new name</div>
-            <div><i class="fa-solid fa-clipboard-list"></i>The change is written to the site log</div>
-            <div><i class="fa-solid fa-rotate-left"></i>To undo it, rename the account back manually</div>
+            <div><i class="fa-solid fa-right-to-bracket"></i><?= htmlspecialchars($lang->changeusername['conf_pt_login']) ?></div>
+            <div><i class="fa-solid fa-link"></i><?= htmlspecialchars($lang->changeusername['conf_pt_posts']) ?></div>
+            <div><i class="fa-solid fa-clipboard-list"></i><?= htmlspecialchars($lang->changeusername['conf_pt_log']) ?></div>
+            <div><i class="fa-solid fa-rotate-left"></i><?= htmlspecialchars($lang->changeusername['conf_pt_undo']) ?></div>
         </div>
 
         <form method="post" action="<?= $self ?>" class="text-start">
@@ -218,11 +237,11 @@ if ($success) {
             <input type="hidden" name="sure" value="yes">
             <label class="cu-confirm mb-3">
                 <input type="checkbox" class="form-check-input m-0" name="confirm" value="1" required id="cuConfirm">
-                <span>I've checked the new name and want to rename this account</span>
+                <span><?= htmlspecialchars($lang->changeusername['conf_checkbox']) ?></span>
             </label>
             <div class="d-flex flex-wrap justify-content-center gap-2">
-                <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
-                <button type="submit" class="btn btn-warning px-4" id="cuConfirmBtn" disabled><i class="fa-solid fa-check me-1"></i>Yes, rename</button>
+                <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i><?= htmlspecialchars($lang->changeusername['btn_cancel']) ?></a>
+                <button type="submit" class="btn btn-warning px-4" id="cuConfirmBtn" disabled><i class="fa-solid fa-check me-1"></i><?= htmlspecialchars($lang->changeusername['btn_confirm']) ?></button>
             </div>
         </form>
     </div>
@@ -240,11 +259,18 @@ if ($success) {
     cu_form($self, $key, $formSubmitted ? (string)($_POST['id'] ?? '') : (string)($_GET['id'] ?? ''), $newUsername);
 }
 
-echo '<div class="cu-muted text-center mt-3"><i class="fa-solid fa-shield-halved me-1"></i>Super administrators can only be renamed by another super administrator · every change is logged</div>';
+echo '<div class="cu-muted text-center mt-3"><i class="fa-solid fa-shield-halved me-1"></i>' . htmlspecialchars($lang->changeusername['foot_note']) . '</div>';
 echo '</div>';
 
-
-echo '<script src="' . $BASEURL . '/admin/scripts/changeusername.js"></script>';
+// Строки для JS: ключи js_* без префикса
+$cuJsLang = [];
+foreach ($lang->changeusername as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $cuJsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+echo '<script>const AGS_LANG = ' . json_encode($cuJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+echo '<script src="' . $BASEURL . '/admin/scripts/changeusername.js?ver=2"></script>';
 
 stdfoot();
 
@@ -254,6 +280,7 @@ stdfoot();
 
 function cu_form(string $self, string $key, string $target, string $username): void
 {
+    global $lang;
     ?>
     <form method="post" action="<?= $self ?>" class="cu-card p-3 p-md-4" id="username-change-form" data-self="<?= $self ?>" novalidate>
         <input type="hidden" name="act" value="changeusername">
@@ -261,22 +288,22 @@ function cu_form(string $self, string $key, string $target, string $username): v
 
         <div class="row g-3">
             <div class="col-md-6">
-                <label for="user-id" class="form-label"><i class="fa-solid fa-magnifying-glass"></i>User <span class="text-danger">*</span></label>
+                <label for="user-id" class="form-label"><i class="fa-solid fa-magnifying-glass"></i><?= htmlspecialchars($lang->changeusername['lbl_user']) ?> <span class="text-danger">*</span></label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="fa-solid fa-id-card"></i></span>
                     <input type="text" id="user-id" name="id" value="<?= htmlspecialchars($target) ?>" class="form-control"
-                           placeholder="ID or current username" required autocomplete="off" autofocus>
+                           placeholder="<?= htmlspecialchars($lang->changeusername['ph_user']) ?>" required autocomplete="off" autofocus>
                 </div>
-                <div class="form-text">Numeric ID or the exact current name</div>
+                <div class="form-text"><?= htmlspecialchars($lang->changeusername['hint_user']) ?></div>
             </div>
             <div class="col-md-6">
-                <label for="username" class="form-label"><i class="fa-solid fa-signature"></i>New username <span class="text-danger">*</span></label>
+                <label for="username" class="form-label"><i class="fa-solid fa-signature"></i><?= htmlspecialchars($lang->changeusername['lbl_new']) ?> <span class="text-danger">*</span></label>
                 <div class="input-group has-validation">
                     <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
                     <input type="text" id="username" name="username" value="<?= htmlspecialchars($username) ?>" class="form-control"
-                           placeholder="New name" required minlength="3" maxlength="25" autocomplete="off">
+                           placeholder="<?= htmlspecialchars($lang->changeusername['ph_new']) ?>" required minlength="3" maxlength="25" autocomplete="off">
                 </div>
-                <div class="form-text" id="cuNameHint">3–25 characters; the forum's name rules apply</div>
+                <div class="form-text" id="cuNameHint"><?= htmlspecialchars($lang->changeusername['hint_new']) ?></div>
             </div>
         </div>
 
@@ -295,10 +322,10 @@ function cu_form(string $self, string $key, string $target, string $username): v
         </div>
 
         <div class="d-flex justify-content-end gap-2 mt-4">
-            <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i>Clear</button>
-            <button type="submit" class="btn btn-primary px-4 submit-button"><i class="fa-solid fa-arrow-right me-1"></i>Continue</button>
+            <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i><?= htmlspecialchars($lang->changeusername['btn_clear']) ?></button>
+            <button type="submit" class="btn btn-primary px-4 submit-button"><i class="fa-solid fa-arrow-right me-1"></i><?= htmlspecialchars($lang->changeusername['btn_continue']) ?></button>
         </div>
     </form>
 
     <?php
-}
+}

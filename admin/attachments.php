@@ -80,6 +80,25 @@ if (!defined("IN_MYBB")) {
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
+$lang->load('attachments');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в ланг-строку. $lang->load() превращает {1} в %1$s,
+     * поэтому заменяем оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 
 // Initialize input parameters
 foreach (['action', 'do', 'module'] as $input) {
@@ -97,24 +116,24 @@ $perpage = min(200, max(1, $mybb->get_input('perpage', MyBB::INPUT_INT) ?: $defa
 // Navigation tabs
 $sub_tabs = [
     'find_attachments' => [
-        'title' => 'Find Attachments',
+        'title' => $lang->attachments['tab_find'],
         'link' => "index.php?act=attachments",
-        'description' => 'Using the attachments search system you can search for specific files users have attached to your forums.'
+        'description' => $lang->attachments['tab_find_desc']
     ],
     'find_orphans' => [
-        'title' => 'Find Orphaned Attachments',
+        'title' => $lang->attachments['tab_orphans'],
         'link' => "index.php?act=attachments&action=orphans",
-        'description' => 'Orphaned attachments are attachments which are for some reason missing in the database or the file system.'
+        'description' => $lang->attachments['tab_orphans_desc']
     ],
     'stats' => [
-        'title' => 'Attachment Statistics',
+        'title' => $lang->attachments['tab_stats'],
         'link' => "index.php?act=attachments&action=stats",
-        'description' => 'Below are some general statistics for the attachments currently on your forum'
+        'description' => $lang->attachments['tab_stats_desc']
     ],
     'comment_attachments' => [
-        'title' => 'Comment Attachments',
+        'title' => $lang->attachments['tab_comments'],
         'link' => "index.php?act=attachments&action=comment_attachments",
-        'description' => 'View and manage attachments uploaded to torrent comments.'
+        'description' => $lang->attachments['tab_comments_desc']
     ]
 ];
 
@@ -136,7 +155,7 @@ if ($mybb->input['action'] === "delete") {
         admin_redirect($return_to);
     }
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        flash_message('Security check failed. Please try again.', 'error');
+        flash_message($lang->attachments['flash_csrf'], 'error');
         admin_redirect($return_to);
     }
 
@@ -149,7 +168,7 @@ if ($mybb->input['action'] === "delete") {
         : [];
 
     if (empty($aids) && empty($cf_ids)) {
-        flash_message('No attachments selected for deletion', 'error');
+        flash_message($lang->attachments['flash_none_selected'], 'error');
         admin_redirect($return_to);
     }
 
@@ -201,7 +220,7 @@ while ($query && ($attachment = $db->fetch_array($query))) {
 
 
         $plugins->run_hooks("admin_forum_attachments_delete_commit");
-        flash_message('Selected attachments have been deleted successfully', 'success');
+        flash_message($lang->attachments['flash_deleted'], 'success');
         admin_redirect($return_to);
     }
 }
@@ -230,31 +249,31 @@ if ($mybb->input['action'] === "stats") {
     $comment_count     = (int)($attachment_stats['comment_count'] ?? 0);
     $average_size      = $total_attachments > 0 ? $disk_usage / $total_attachments : 0;
 
-    render_header('Attachments - Attachment Statistics');
+    render_header($lang->attachments['ptitle_stats']);
     output_nav_tabs($sub_tabs, 'stats');
 
     echo '<div class="container mt-3 mb-4 atm">';
-    echo atm_hero('fa-chart-pie', 'ic-purple', 'Attachment Statistics', 'Storage, traffic and the heaviest files across forum and comment attachments');
+    echo atm_hero('fa-chart-pie', 'ic-purple', $lang->attachments['hero_stats_title'], $lang->attachments['hero_stats_sub']);
 
     if ($total_attachments === 0) {
-        echo atm_empty('fa-chart-pie', 'No attachments yet', 'Once something is uploaded, statistics will appear here.');
+        echo atm_empty('fa-chart-pie', $lang->attachments['empty_stats_title'], $lang->attachments['empty_stats_text']);
         echo '</div>';
         stdfoot();
         exit;
     }
 
     echo atm_stats([
-        ['fa-paperclip',       'ic-blue',   'Attachments',     ts_nf($total_attachments), ts_nf($comment_count) . ' in comments'],
-        ['fa-hard-drive',      'ic-green',  'Disk space',      mksize($disk_usage),       'on the server'],
-        ['fa-cloud-arrow-down','ic-teal',   'Bandwidth',       mksize($bandwidthused),    ts_nf($total_downloads) . ' downloads'],
-        ['fa-scale-balanced',  'ic-amber',  'Average size',    mksize($average_size),     'per file'],
+        ['fa-paperclip',       'ic-blue',   $lang->attachments['stat_attachments'], ts_nf($total_attachments), ags_fmt($lang->attachments['stat_in_comments'], ts_nf($comment_count))],
+        ['fa-hard-drive',      'ic-green',  $lang->attachments['stat_disk'],        mksize($disk_usage),       $lang->attachments['stat_on_server']],
+        ['fa-cloud-arrow-down','ic-teal',   $lang->attachments['stat_bandwidth'],   mksize($bandwidthused),    ags_fmt($lang->attachments['stat_downloads_n'], ts_nf($total_downloads))],
+        ['fa-scale-balanced',  'ic-amber',  $lang->attachments['stat_avg'],         mksize($average_size),     $lang->attachments['stat_per_file']],
     ]);
 
     echo '<div class="row g-3">';
     echo '<div class="col-lg-6">';
-    render_top_attachments_section('Most downloaded', 'downloads DESC', 'ic-green', 'fa-trophy', 'downloads');
+    render_top_attachments_section($lang->attachments['sec_most_downloaded'], 'downloads DESC', 'ic-green', 'fa-trophy', 'downloads');
     echo '</div><div class="col-lg-6">';
-    render_top_attachments_section('Largest files', 'filesize DESC', 'ic-red', 'fa-weight-hanging', 'filesize');
+    render_top_attachments_section($lang->attachments['sec_largest'], 'filesize DESC', 'ic-red', 'fa-weight-hanging', 'filesize');
     echo '</div><div class="col-12">';
     render_top_users_section();
     echo '</div></div></div>';
@@ -268,7 +287,7 @@ if ($mybb->input['action'] === "stats") {
  */
 if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "post") {
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        flash_message('Security check failed. Please try again.', 'error');
+        flash_message($lang->attachments['flash_csrf'], 'error');
         admin_redirect('index.php?act=attachments&action=orphans');
     }
 
@@ -352,13 +371,13 @@ if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "po
 
     // Prepare flash message
     if ($error_count > 0 && $success_count > 0) {
-        $message = "Unable to remove {$error_count} attachment(s)<br />{$success_count} attachment(s) removed successfully";
+        $message = ags_fmt($lang->attachments['flash_orphans_partial'], $error_count, $success_count);
         $status = 'error';
     } elseif ($error_count > 0) {
-        $message = "Unable to remove {$error_count} attachment(s)";
+        $message = ags_fmt($lang->attachments['flash_orphans_failed'], $error_count);
         $status = 'error';
     } else {
-        $message = "The selected orphaned attachment(s) have been deleted successfully";
+        $message = $lang->attachments['flash_orphans_deleted'];
         $status = 'success';
     }
 
@@ -453,27 +472,30 @@ function atm_mime(string $mime): string
 /** Прилипающая панель выбора + кнопка удаления (открывает модалку подтверждения) */
 function atm_toolbar(string $label, int $total): string
 {
+    global $lang;
     return '<div class="atm-card atm-toolbar mb-3">'
-         . '<div class="atm-selinfo"><i class="fa-solid fa-square-check me-1"></i>Selected: <b class="atm-selcount">0</b> · ' . $label . ': ' . ts_nf($total) . '</div>'
-         . '<button type="button" class="btn btn-sm btn-danger rounded-pill px-3 atm-del" disabled><i class="fa-solid fa-trash me-1"></i>Delete selected</button>'
+         . '<div class="atm-selinfo"><i class="fa-solid fa-square-check me-1"></i>' . ags_fmt($lang->attachments['tb_selected'], '<b class="atm-selcount">0</b>', $label, ts_nf($total)) . '</div>'
+         . '<button type="button" class="btn btn-sm btn-danger rounded-pill px-3 atm-del" disabled><i class="fa-solid fa-trash me-1"></i>' . $lang->attachments['btn_delete_selected'] . '</button>'
          . '</div>';
 }
 
 function atm_check_all(string $name): string
 {
-    return '<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" data-check-all="' . $name . '" aria-label="Select all"></div>';
+    global $lang;
+    return '<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" data-check-all="' . $name . '" aria-label="' . htmlspecialchars_uni($lang->attachments['aria_select_all']) . '"></div>';
 }
 
 function atm_check(string $name, string $value): string
 {
-    return '<div class="form-check form-switch m-0"><input class="form-check-input atm-cb" type="checkbox" role="switch" name="' . $name . '" value="' . $value . '" aria-label="Select"></div>';
+    global $lang;
+    return '<div class="form-check form-switch m-0"><input class="form-check-input atm-cb" type="checkbox" role="switch" name="' . $name . '" value="' . $value . '" aria-label="' . htmlspecialchars_uni($lang->attachments['aria_select']) . '"></div>';
 }
 
 function atm_user_link(int $uid, string $username, $usergroup = 0): string
 {
-    global $BASEURL;
+    global $BASEURL, $lang;
     if ($uid <= 0 || $username === '') {
-        return '<span class="atm-muted"><i class="fa-solid fa-user-secret me-1"></i>Guest</span>';
+        return '<span class="atm-muted"><i class="fa-solid fa-user-secret me-1"></i>' . $lang->attachments['lbl_guest'] . '</span>';
     }
     // Ник экранируем до format_name() — раньше он вставлялся как есть
     return '<a href="' . $BASEURL . '/' . get_profile_link($uid) . '" target="_blank" class="text-decoration-none fw-semibold">'
@@ -483,14 +505,15 @@ function atm_user_link(int $uid, string $username, $usergroup = 0): string
 /** Где «живёт» вложение: тема форума, комментарий к торренту или черновик */
 function atm_location(array $a): string
 {
+    global $lang;
     if (!empty($a['pid']) && !empty($a['tid'])) {
         return '<a href="../' . get_post_link((int)$a['pid']) . '" target="_blank" class="text-decoration-none"><i class="fa-solid fa-comments me-1 text-body-secondary"></i>'
-             . htmlspecialchars_uni($a['subject'] ?? 'No subject') . '</a>';
+             . htmlspecialchars_uni($a['subject'] ?? $lang->attachments['lbl_no_subject']) . '</a>';
     }
     if (!empty($a['comment_id'])) {
-        return '<span class="atm-muted"><i class="fa-solid fa-comment-dots me-1"></i>Comment #' . (int)$a['comment_id'] . '</span>';
+        return '<span class="atm-muted"><i class="fa-solid fa-comment-dots me-1"></i>' . ags_fmt($lang->attachments['lbl_comment_n'], (int)$a['comment_id']) . '</span>';
     }
-    return '<span class="atm-tag t-draft"><i class="fa-solid fa-file-pen"></i>Draft</span>';
+    return '<span class="atm-tag t-draft"><i class="fa-solid fa-file-pen"></i>' . $lang->attachments['lbl_draft'] . '</span>';
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -498,7 +521,7 @@ function atm_location(array $a): string
 // ═══════════════════════════════════════════════════════════
 
 function handle_comment_attachments(): void {
-    global $mybb, $db, $perpage, $BASEURL;
+    global $mybb, $db, $perpage, $BASEURL, $lang;
 
     // Фильтры собираются отдельно под каждую таблицу — колонки называются по-разному
     $filename_val = $mybb->get_input('filename') ? escape_like_pattern($mybb->input['filename']) : '';
@@ -566,16 +589,16 @@ function handle_comment_attachments(): void {
     ");
     $stats = $stats_query ? $db->fetch_array($stats_query) : null;
 
-    render_header('Attachments - Comment Attachments');
+    render_header($lang->attachments['ptitle_comments']);
     output_nav_tabs($GLOBALS['sub_tabs'], 'comment_attachments');
 
     echo '<div class="container mt-3 mb-4 atm">';
-    echo atm_hero('fa-comment-dots', 'ic-blue', 'Comment Attachments', 'Files attached to torrent comments — both the <code>attachments</code> and <code>comment_files</code> storage');
+    echo atm_hero('fa-comment-dots', 'ic-blue', $lang->attachments['hero_comments_title'], $lang->attachments['hero_comments_sub']);
     echo atm_stats([
-        ['fa-file',        'ic-blue',  'Files',         ts_nf((int)($stats['total_count'] ?? 0))],
-        ['fa-hard-drive',  'ic-green', 'Space used',    mksize((float)($stats['total_size'] ?? 0))],
-        ['fa-download',    'ic-teal',  'Downloads',     ts_nf((int)($stats['total_downloads'] ?? 0))],
-        ['fa-chart-line',  'ic-amber', 'Average size',  mksize((float)($stats['avg_size'] ?? 0))],
+        ['fa-file',        'ic-blue',  $lang->attachments['stat_files'],      ts_nf((int)($stats['total_count'] ?? 0))],
+        ['fa-hard-drive',  'ic-green', $lang->attachments['stat_space_used'], mksize((float)($stats['total_size'] ?? 0))],
+        ['fa-download',    'ic-teal',  $lang->attachments['stat_downloads'],  ts_nf((int)($stats['total_downloads'] ?? 0))],
+        ['fa-chart-line',  'ic-amber', $lang->attachments['stat_avg'],        mksize((float)($stats['avg_size'] ?? 0))],
     ]);
 
     $fv = static fn(string $k): string => htmlspecialchars_uni($mybb->input[$k] ?? '');
@@ -585,18 +608,18 @@ function handle_comment_attachments(): void {
         <input type="hidden" name="act" value="attachments">
         <input type="hidden" name="action" value="comment_attachments">
         <div class="row g-2 align-items-end">
-            <div class="col-md-4"><label class="form-label"><i class="fa-solid fa-file-signature"></i>File name</label><input type="text" class="form-control" name="filename" value="' . $fv('filename') . '" placeholder="contains…"></div>
-            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-user"></i>Username</label><input type="text" class="form-control" name="username" value="' . $fv('username') . '"></div>
-            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-code"></i>MIME type</label><input type="text" class="form-control" name="mimetype" value="' . $fv('mimetype') . '" placeholder="e.g. image/"></div>
+            <div class="col-md-4"><label class="form-label"><i class="fa-solid fa-file-signature"></i>' . $lang->attachments['lbl_file_name'] . '</label><input type="text" class="form-control" name="filename" value="' . $fv('filename') . '" placeholder="' . htmlspecialchars_uni($lang->attachments['ph_contains']) . '"></div>
+            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-user"></i>' . $lang->attachments['lbl_username'] . '</label><input type="text" class="form-control" name="username" value="' . $fv('username') . '"></div>
+            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-code"></i>' . $lang->attachments['lbl_mime'] . '</label><input type="text" class="form-control" name="mimetype" value="' . $fv('mimetype') . '" placeholder="' . htmlspecialchars_uni($lang->attachments['ph_mime']) . '"></div>
             <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary rounded-pill flex-grow-1"><i class="fa-solid fa-magnifying-glass me-1"></i>Filter</button>
-                ' . ($has_filter ? '<a href="index.php?act=attachments&amp;action=comment_attachments" class="btn btn-outline-secondary rounded-pill" title="Reset"><i class="fa-solid fa-xmark"></i></a>' : '') . '
+                <button type="submit" class="btn btn-primary rounded-pill flex-grow-1"><i class="fa-solid fa-magnifying-glass me-1"></i>' . $lang->attachments['btn_filter'] . '</button>
+                ' . ($has_filter ? '<a href="index.php?act=attachments&amp;action=comment_attachments" class="btn btn-outline-secondary rounded-pill" title="' . htmlspecialchars_uni($lang->attachments['tip_reset']) . '"><i class="fa-solid fa-xmark"></i></a>' : '') . '
             </div>
         </div>
     </form>';
 
     if ($num_results === 0) {
-        echo atm_empty('fa-magnifying-glass', 'No comment attachments found', 'Try adjusting the filters.');
+        echo atm_empty('fa-magnifying-glass', $lang->attachments['empty_comments_title'], $lang->attachments['empty_comments_text']);
         echo '</div>';
         stdfoot();
         exit;
@@ -608,16 +631,16 @@ function handle_comment_attachments(): void {
     echo '<form action="index.php?act=attachments&amp;action=delete" method="post" class="atm-selectable">
         <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
         <input type="hidden" name="return" value="comment_attachments">'
-        . atm_toolbar('found', $num_results) . '
+        . atm_toolbar($lang->attachments['lbl_found'], $num_results) . '
         <div class="atm-card overflow-hidden"><div class="table-responsive"><table class="table atm-table">
             <thead><tr>
                 <th style="width:48px">' . atm_check_all('*') . '</th>
-                <th><i class="fa-solid fa-file"></i>File</th>
-                <th class="text-center"><i class="fa-solid fa-weight-hanging"></i>Size</th>
-                <th class="text-center"><i class="fa-solid fa-database"></i>Storage</th>
-                <th><i class="fa-solid fa-user"></i>Uploaded by</th>
-                <th><i class="fa-solid fa-magnet"></i>Torrent</th>
-                <th class="text-end"><i class="fa-solid fa-clock"></i>Date</th>
+                <th><i class="fa-solid fa-file"></i>' . $lang->attachments['col_file'] . '</th>
+                <th class="text-center"><i class="fa-solid fa-weight-hanging"></i>' . $lang->attachments['col_size'] . '</th>
+                <th class="text-center"><i class="fa-solid fa-database"></i>' . $lang->attachments['col_storage'] . '</th>
+                <th><i class="fa-solid fa-user"></i>' . $lang->attachments['col_uploaded_by'] . '</th>
+                <th><i class="fa-solid fa-magnet"></i>' . $lang->attachments['col_torrent'] . '</th>
+                <th class="text-end"><i class="fa-solid fa-clock"></i>' . $lang->attachments['col_date'] . '</th>
             </tr></thead><tbody>';
 
     $query = $db->sql_query_prepared("
@@ -644,18 +667,18 @@ function handle_comment_attachments(): void {
         $meta    = atm_mime((string)$att['filetype']) . ((int)$att['downloads'] > 0 ? ' <span class="ms-1"><i class="fa-solid fa-download me-1"></i>' . ts_nf((int)$att['downloads']) . '</span>' : '');
 
         $storage = $is_cf
-            ? '<span class="atm-tag t-cf" title="comment_files table"><i class="fa-solid fa-box-archive"></i>.attach</span>'
-            : '<span class="atm-tag t-std" title="attachments table"><i class="fa-solid fa-paperclip"></i>standard</span>';
+            ? '<span class="atm-tag t-cf" title="' . htmlspecialchars_uni($lang->attachments['tip_storage_cf']) . '"><i class="fa-solid fa-box-archive"></i>' . $lang->attachments['lbl_storage_cf'] . '</span>'
+            : '<span class="atm-tag t-std" title="' . htmlspecialchars_uni($lang->attachments['tip_storage_std']) . '"><i class="fa-solid fa-paperclip"></i>' . $lang->attachments['lbl_storage_std'] . '</span>';
 
         $user = atm_user_link((int)$att['user_pk'], (string)($att['user_username'] ?? ''), $att['usergroup'] ?? 0)
               . ((int)$att['user_pk'] > 0 ? get_user_icons($att) : '');
 
         $torrent = ($att['comment_id'] && $att['torrent_id'])
             ? '<a href="../details.php?id=' . (int)$att['torrent_id'] . '#pid' . (int)$att['comment_id'] . '" target="_blank" class="atm-link-trunc"><i class="fa-solid fa-magnet text-danger me-1"></i>'
-              . htmlspecialchars_uni($att['torrent_name'] ?? 'Torrent #' . $att['torrent_id']) . '</a>'
+              . htmlspecialchars_uni($att['torrent_name'] ?? ags_fmt($lang->attachments['lbl_torrent_n'], (int)$att['torrent_id'])) . '</a>'
             : '<span class="atm-muted">—</span>';
 
-        $date = $att['dateuploaded_ts'] > 0 ? my_datee('relative', (int)$att['dateuploaded_ts']) : 'Unknown';
+        $date = $att['dateuploaded_ts'] > 0 ? my_datee('relative', (int)$att['dateuploaded_ts']) : $lang->attachments['lbl_unknown'];
 
         echo '<tr>'
            . '<td>' . atm_check($is_cf ? 'cf_ids[]' : 'aids[]', (string)(int)$att['id']) . '</td>'
@@ -688,7 +711,7 @@ function handle_comment_attachments(): void {
 // ═══════════════════════════════════════════════════════════
 
 function handle_attachments_search(): void {
-    global $mybb, $db, $perpage;
+    global $mybb, $db, $perpage, $lang;
 
     $search_sql = '1=1';
 
@@ -748,11 +771,11 @@ function handle_attachments_search(): void {
     $num_results = (int)($counts['num_results'] ?? 0);
 
     if (!$num_results) {
-        render_search_form(['No attachments were found with the specified search criteria']);
+        render_search_form([$lang->attachments['err_no_results']]);
         return;
     }
 
-    render_header('Attachments - Search Results');
+    render_header($lang->attachments['ptitle_results']);
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
 
     $page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -777,22 +800,22 @@ function handle_attachments_search(): void {
     };
 
     echo '<div class="container mt-3 mb-4 atm">';
-    echo atm_hero('fa-magnifying-glass', 'ic-blue', 'Search Results',
-        ts_nf($num_results) . ' attachment(s) · ' . mksize((float)($counts['total_size'] ?? 0)) . ' total',
-        '<a href="index.php?act=attachments" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-sliders me-1"></i>New search</a>');
+    echo atm_hero('fa-magnifying-glass', 'ic-blue', $lang->attachments['hero_results_title'],
+        ags_fmt($lang->attachments['hero_results_sub'], ts_nf($num_results), mksize((float)($counts['total_size'] ?? 0))),
+        '<a href="index.php?act=attachments" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-sliders me-1"></i>' . $lang->attachments['btn_new_search'] . '</a>');
 
     echo '<form action="index.php?act=attachments&amp;action=delete" method="post" class="atm-selectable">
         <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
-        . atm_toolbar('found', $num_results) . '
+        . atm_toolbar($lang->attachments['lbl_found'], $num_results) . '
         <div class="atm-card overflow-hidden"><div class="table-responsive"><table class="table atm-table">
             <thead><tr>
                 <th style="width:48px">' . atm_check_all('aids[]') . '</th>'
-                . $sort_th('filename', 'fa-file', 'Attachment')
-                . $sort_th('filesize', 'fa-weight-hanging', 'Size', 'text-center')
-                . $sort_th('username', 'fa-user', 'Posted by')
-                . '<th><i class="fa-solid fa-location-dot"></i>Location</th>'
-                . $sort_th('downloads', 'fa-download', 'Downloads', 'text-center')
-                . $sort_th('dateuploaded', 'fa-clock', 'Uploaded', 'text-end') . '
+                . $sort_th('filename', 'fa-file', $lang->attachments['col_attachment'])
+                . $sort_th('filesize', 'fa-weight-hanging', $lang->attachments['col_size'], 'text-center')
+                . $sort_th('username', 'fa-user', $lang->attachments['col_posted_by'])
+                . '<th><i class="fa-solid fa-location-dot"></i>' . $lang->attachments['col_location'] . '</th>'
+                . $sort_th('downloads', 'fa-download', $lang->attachments['col_downloads'], 'text-center')
+                . $sort_th('dateuploaded', 'fa-clock', $lang->attachments['col_uploaded'], 'text-end') . '
             </tr></thead><tbody>';
 
     $query = $db->sql_query_prepared("
@@ -818,7 +841,7 @@ function handle_attachments_search(): void {
            . '<td>' . atm_user_link((int)$a['uid'], $username, $a['usergroup'] ?? 0) . '</td>'
            . '<td>' . atm_location($a) . '</td>'
            . '<td class="text-center"><span class="atm-dl"><i class="fa-solid fa-download"></i>' . ts_nf((int)$a['downloads']) . '</span></td>'
-           . '<td class="text-end atm-muted text-nowrap">' . ($a['dateuploaded'] > 0 ? my_datee('relative', (int)$a['dateuploaded']) : 'Unknown') . '</td>'
+           . '<td class="text-end atm-muted text-nowrap">' . ($a['dateuploaded'] > 0 ? my_datee('relative', (int)$a['dateuploaded']) : $lang->attachments['lbl_unknown']) . '</td>'
            . '</tr>';
     }
 
@@ -834,13 +857,13 @@ function handle_attachments_search(): void {
 }
 
 function render_search_form(array $errors = []): void {
-    global $mybb, $db, $perpage;
+    global $mybb, $db, $perpage, $lang;
 
-    render_header('Attachments - Find Attachments');
+    render_header($lang->attachments['ptitle_find']);
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
 
     echo '<div class="container mt-3 mb-4 atm">';
-    echo atm_hero('fa-paperclip', 'ic-blue', 'Find Attachments', 'Search files that users have attached to forum posts and comments');
+    echo atm_hero('fa-paperclip', 'ic-blue', $lang->attachments['hero_find_title'], $lang->attachments['hero_find_sub']);
 
     if (!empty($errors)) {
         echo '<div class="alert alert-warning d-flex align-items-center gap-2 rounded-4"><i class="fa-solid fa-circle-exclamation"></i>' . implode('<br>', array_map('htmlspecialchars_uni', $errors)) . '</div>';
@@ -848,8 +871,14 @@ function render_search_form(array $errors = []): void {
 
     $v = static fn(string $k): string => htmlspecialchars((string)($mybb->input[$k] ?? ''));
 
-    $sort_options = ['filename' => 'File name', 'filesize' => 'File size', 'downloads' => 'Downloads', 'dateuploaded' => 'Date uploaded', 'username' => 'Username'];
-    $user_types   = ['0' => 'User or guest', '1' => 'Users only', '-1' => 'Guests only'];
+    $sort_options = [
+        'filename'     => $lang->attachments['opt_sort_filename'],
+        'filesize'     => $lang->attachments['opt_sort_filesize'],
+        'downloads'    => $lang->attachments['opt_sort_downloads'],
+        'dateuploaded' => $lang->attachments['opt_sort_date'],
+        'username'     => $lang->attachments['opt_sort_username'],
+    ];
+    $user_types = ['0' => $lang->attachments['opt_user_any'], '1' => $lang->attachments['opt_user_users'], '-1' => $lang->attachments['opt_user_guests']];
 
     echo '
     <form action="index.php?act=attachments" method="post">
@@ -857,46 +886,46 @@ function render_search_form(array $errors = []): void {
         <div class="row g-3">
             <div class="col-lg-7">
                 <div class="atm-card h-100">
-                    <div class="atm-sec-head"><span class="atm-sec-icon ic-blue"><i class="fa-solid fa-filter"></i></span>What to look for</div>
+                    <div class="atm-sec-head"><span class="atm-sec-icon ic-blue"><i class="fa-solid fa-filter"></i></span>' . $lang->attachments['sec_what'] . '</div>
                     <div class="p-3 pt-0">
                         <div class="row g-3">
-                            <div class="col-md-6"><label for="filename" class="form-label"><i class="fa-solid fa-file-signature"></i>File name contains</label>
-                                <input type="text" name="filename" value="' . $v('filename') . '" class="form-control" id="filename" placeholder="e.g. screenshot"></div>
-                            <div class="col-md-6"><label for="mimetype" class="form-label"><i class="fa-solid fa-code"></i>File type contains</label>
-                                <input type="text" name="mimetype" value="' . $v('mimetype') . '" class="form-control" id="mimetype" placeholder="e.g. image/ or pdf"></div>
-                            <div class="col-md-6"><label for="username" class="form-label"><i class="fa-solid fa-user"></i>Poster username</label>
+                            <div class="col-md-6"><label for="filename" class="form-label"><i class="fa-solid fa-file-signature"></i>' . $lang->attachments['lbl_filename_contains'] . '</label>
+                                <input type="text" name="filename" value="' . $v('filename') . '" class="form-control" id="filename" placeholder="' . htmlspecialchars_uni($lang->attachments['ph_filename']) . '"></div>
+                            <div class="col-md-6"><label for="mimetype" class="form-label"><i class="fa-solid fa-code"></i>' . $lang->attachments['lbl_filetype_contains'] . '</label>
+                                <input type="text" name="mimetype" value="' . $v('mimetype') . '" class="form-control" id="mimetype" placeholder="' . htmlspecialchars_uni($lang->attachments['ph_filetype']) . '"></div>
+                            <div class="col-md-6"><label for="username" class="form-label"><i class="fa-solid fa-user"></i>' . $lang->attachments['lbl_poster'] . '</label>
                                 <input type="text" name="username" value="' . $v('username') . '" class="form-control" id="username"></div>
-                            <div class="col-md-6"><label for="user_types" class="form-label"><i class="fa-solid fa-user-group"></i>Poster is</label>
+                            <div class="col-md-6"><label for="user_types" class="form-label"><i class="fa-solid fa-user-group"></i>' . $lang->attachments['lbl_poster_is'] . '</label>
                                 ' . generate_select_box('user_types', $user_types, $mybb->input['user_types'] ?? '', ['id' => 'user_types', 'class' => 'form-select']) . '</div>
-                            <div class="col-12"><label for="forum" class="form-label"><i class="fa-solid fa-comments"></i>In forums</label>
+                            <div class="col-12"><label for="forum" class="form-label"><i class="fa-solid fa-comments"></i>' . $lang->attachments['lbl_in_forums'] . '</label>
                                 ' . generate_forum_select('forum[]', $mybb->input['forum'] ?? '', ['multiple' => true, 'size' => 6, 'id' => 'forum', 'class' => 'form-select']) . '
-                                <span class="atm-help"><i class="fa-solid fa-keyboard me-1"></i>Leave empty for all forums · Ctrl-click to select several</span></div>
+                                <span class="atm-help"><i class="fa-solid fa-keyboard me-1"></i>' . $lang->attachments['hint_forums'] . '</span></div>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="col-lg-5">
                 <div class="atm-card h-100 d-flex flex-column">
-                    <div class="atm-sec-head"><span class="atm-sec-icon ic-purple"><i class="fa-solid fa-arrow-down-wide-short"></i></span>Results</div>
+                    <div class="atm-sec-head"><span class="atm-sec-icon ic-purple"><i class="fa-solid fa-arrow-down-wide-short"></i></span>' . $lang->attachments['sec_results'] . '</div>
                     <div class="p-3 pt-0 flex-grow-1">
-                        <div class="mb-3"><label for="sortby" class="form-label"><i class="fa-solid fa-sort"></i>Sort by</label>
+                        <div class="mb-3"><label for="sortby" class="form-label"><i class="fa-solid fa-sort"></i>' . $lang->attachments['lbl_sortby'] . '</label>
                             ' . generate_select_box('sortby', $sort_options, $mybb->input['sortby'] ?? '', ['id' => 'sortby', 'class' => 'form-select']) . '</div>
-                        <div class="mb-3"><label for="order" class="form-label"><i class="fa-solid fa-arrow-up-wide-short"></i>Order</label>
-                            ' . generate_select_box('order', ['asc' => 'Ascending', 'desc' => 'Descending'], $mybb->input['order'] ?? '', ['id' => 'order', 'class' => 'form-select']) . '</div>
-                        <div><label for="perpage" class="form-label"><i class="fa-solid fa-list-ol"></i>Per page</label>
+                        <div class="mb-3"><label for="order" class="form-label"><i class="fa-solid fa-arrow-up-wide-short"></i>' . $lang->attachments['lbl_order'] . '</label>
+                            ' . generate_select_box('order', ['asc' => $lang->attachments['opt_asc'], 'desc' => $lang->attachments['opt_desc']], $mybb->input['order'] ?? '', ['id' => 'order', 'class' => 'form-select']) . '</div>
+                        <div><label for="perpage" class="form-label"><i class="fa-solid fa-list-ol"></i>' . $lang->attachments['lbl_perpage'] . '</label>
                             <input type="number" name="perpage" value="' . (int)$perpage . '" class="form-control" id="perpage" min="1" max="200"></div>
                     </div>
                     <div class="p-3 pt-0">
-                        <button type="submit" class="btn btn-primary rounded-pill w-100 py-2"><i class="fa-solid fa-magnifying-glass me-2"></i>Find Attachments</button>
+                        <button type="submit" class="btn btn-primary rounded-pill w-100 py-2"><i class="fa-solid fa-magnifying-glass me-2"></i>' . $lang->attachments['btn_find'] . '</button>
                     </div>
                 </div>
             </div>
         </div>
     </form>
     <div class="d-flex flex-wrap gap-2 mt-3">
-        <a href="index.php?act=attachments&amp;action=comment_attachments" class="atm-quick"><i class="fa-solid fa-comment-dots text-primary"></i>Comment attachments</a>
-        <a href="index.php?act=attachments&amp;action=orphans" class="atm-quick"><i class="fa-solid fa-broom text-warning"></i>Find orphans</a>
-        <a href="index.php?act=attachments&amp;action=stats" class="atm-quick"><i class="fa-solid fa-chart-pie text-success"></i>Statistics</a>
+        <a href="index.php?act=attachments&amp;action=comment_attachments" class="atm-quick"><i class="fa-solid fa-comment-dots text-primary"></i>' . $lang->attachments['quick_comments'] . '</a>
+        <a href="index.php?act=attachments&amp;action=orphans" class="atm-quick"><i class="fa-solid fa-broom text-warning"></i>' . $lang->attachments['quick_orphans'] . '</a>
+        <a href="index.php?act=attachments&amp;action=stats" class="atm-quick"><i class="fa-solid fa-chart-pie text-success"></i>' . $lang->attachments['quick_stats'] . '</a>
     </div>
     </div>';
 
@@ -908,7 +937,7 @@ function render_search_form(array $errors = []): void {
 // ═══════════════════════════════════════════════════════════
 
 function render_top_attachments_section(string $title, string $order, string $cls, string $icon, string $metric): void {
-    global $db;
+    global $db, $lang;
 
     // $order передаётся только из кода (не из запроса) — whitelisting не нужен
     $query = $db->sql_query_prepared("
@@ -942,13 +971,13 @@ function render_top_attachments_section(string $title, string $order, string $cl
            . '</div>';
     }
     if ($rank === 0) {
-        echo '<div class="atm-muted text-center py-3">Nothing here yet.</div>';
+        echo '<div class="atm-muted text-center py-3">' . $lang->attachments['empty_nothing'] . '</div>';
     }
     echo '</div></div>';
 }
 
 function render_top_users_section(): void {
-    global $db;
+    global $db, $lang;
 
     $query = $db->sql_query_prepared("
         SELECT a.uid, u.username, u.usergroup, SUM(a.filesize) AS totalsize, COUNT(*) AS files
@@ -965,7 +994,7 @@ function render_top_users_section(): void {
     }
     $max = $rows ? max(1.0, (float)$rows[0]['totalsize']) : 1.0;
 
-    echo '<div class="atm-card"><div class="atm-sec-head"><span class="atm-sec-icon ic-amber"><i class="fa-solid fa-users"></i></span>Users using the most disk space</div><div class="px-3 pb-3">';
+    echo '<div class="atm-card"><div class="atm-sec-head"><span class="atm-sec-icon ic-amber"><i class="fa-solid fa-users"></i></span>' . $lang->attachments['sec_top_users'] . '</div><div class="px-3 pb-3">';
     foreach ($rows as $i => $u) {
         $pct  = (int)round((float)$u['totalsize'] / $max * 100);
         $name = (string)($u['username'] ?? '');
@@ -973,13 +1002,13 @@ function render_top_users_section(): void {
            . '<span class="atm-rank r' . min($i + 1, 4) . '">' . ($i + 1) . '</span>'
            . '<div class="flex-grow-1" style="min-width:0">'
            .   '<div class="d-flex justify-content-between gap-2">' . atm_user_link((int)$u['uid'], $name, $u['usergroup'] ?? 0)
-           .   '<a href="index.php?act=attachments&amp;results=1&amp;username=' . urlencode($name) . '" class="atm-size text-decoration-none" title="Show this user\'s attachments">' . mksize((float)$u['totalsize']) . '</a></div>'
+           .   '<a href="index.php?act=attachments&amp;results=1&amp;username=' . urlencode($name) . '" class="atm-size text-decoration-none" title="' . htmlspecialchars_uni($lang->attachments['tip_user_atts']) . '">' . mksize((float)$u['totalsize']) . '</a></div>'
            .   '<div class="atm-bar mt-1"><span style="width:' . $pct . '%"></span></div>'
-           .   '<div class="atm-muted mt-1">' . ts_nf((int)$u['files']) . ' file(s)</div>'
+           .   '<div class="atm-muted mt-1">' . ags_fmt($lang->attachments['lbl_files_n'], ts_nf((int)$u['files'])) . '</div>'
            . '</div></div>';
     }
     if (!$rows) {
-        echo '<div class="atm-muted text-center py-3">Nothing here yet.</div>';
+        echo '<div class="atm-muted text-center py-3">' . $lang->attachments['empty_nothing'] . '</div>';
     }
     echo '</div></div>';
 }
@@ -991,41 +1020,58 @@ function render_top_users_section(): void {
 function render_header(string $title): void {
     stdhead($title);
 
-    global $BASEURL;
-	// CSS и JS вынесены в отдельные файлы; ?v=filemtime — сброс кеша после правок
-    
+    global $BASEURL, $lang;
+	// CSS и JS вынесены в отдельные файлы; ?ver=N — ручной сброс кеша после правок
+
 	echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin_attachments.css?ver=2">';
 
-    echo <<<'HTML'
+    // Ланг-строки модалки: в атрибутах — экранированный текст, в разметке — как есть
+    $m_title    = $lang->attachments['modal_title'];
+    $m_close    = htmlspecialchars_uni($lang->attachments['aria_close']);
+    $m_question = ags_fmt($lang->attachments['modal_question'], '<span id="atmConfirmCount">0</span>');
+    $m_text     = $lang->attachments['modal_text'];
+    $m_cancel   = $lang->attachments['btn_cancel'];
+    $m_delete   = $lang->attachments['btn_delete'];
+
+    echo <<<HTML
 <!-- Подтверждение удаления -->
 <div class="modal fade" id="atmConfirm" tabindex="-1" aria-labelledby="atmConfirmLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4 overflow-hidden">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="atmConfirmLabel"><i class="fa-solid fa-trash me-2"></i>Delete attachments</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="atmConfirmLabel"><i class="fa-solid fa-trash me-2"></i>{$m_title}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$m_close}"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex gap-3 align-items-start">
                     <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger flex-shrink-0" style="width:44px;height:44px"><i class="fa-solid fa-file-circle-xmark"></i></span>
                     <div>
-                        <div class="fw-semibold">Permanently delete <span id="atmConfirmCount">0</span> item(s)?</div>
-                        <div class="small text-body-secondary">Files are removed from the disk together with their database records. This cannot be undone.</div>
+                        <div class="fw-semibold">{$m_question}</div>
+                        <div class="small text-body-secondary">{$m_text}</div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
-                <button type="button" class="btn btn-danger rounded-pill px-3" id="atmConfirmBtn"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>{$m_cancel}</button>
+                <button type="button" class="btn btn-danger rounded-pill px-3" id="atmConfirmBtn"><i class="fa-solid fa-trash me-1"></i>{$m_delete}</button>
             </div>
         </div>
     </div>
 </div>
 HTML;
 
+    // js_* ключи → AGS_LANG без префикса
+    $js_lang = [];
+    foreach ($lang->attachments as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $js_lang[substr((string)$k, 3)] = (string)$v;
+        }
+    }
+    echo '<script>const AGS_LANG = ' . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+
     //echo atm_asset_js('/scripts/admin_attachments.js') . "\n";
-	
-	echo '<script src="' . $BASEURL . '/admin/scripts/admin_attachments.js"></script>';
+
+	echo '<script src="' . $BASEURL . '/admin/scripts/admin_attachments.js?ver=2"></script>';
 }
 
 /** URL статического файла с версией по времени изменения (кеш-бастинг) */
@@ -1291,9 +1337,9 @@ function scan_orphaned_comment_files($db): array
  * Единая страница результатов сканирования сирот
  */
 function handle_orphans_scan(): void {
-    global $mybb, $db;
+    global $mybb, $db, $lang;
 
-    render_header('Orphaned Attachments');
+    render_header($lang->attachments['ptitle_orphans']);
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
 
     $uploadDir = TSDIR . '/uploads/attachments/';
@@ -1311,35 +1357,35 @@ function handle_orphans_scan(): void {
 
     $days_form = '<form method="get" action="index.php" class="d-flex align-items-center gap-2">
         <input type="hidden" name="act" value="attachments"><input type="hidden" name="action" value="orphans">
-        <label class="atm-muted text-nowrap" for="stale_days"><i class="fa-solid fa-hourglass-half me-1"></i>Drafts older than</label>
-        <div class="input-group input-group-sm" style="width:130px"><input type="number" min="1" max="365" class="form-control" id="stale_days" name="stale_days" value="' . $staleDays . '"><span class="input-group-text">days</span></div>
-        <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="fa-solid fa-rotate me-1"></i>Rescan</button>
+        <label class="atm-muted text-nowrap" for="stale_days"><i class="fa-solid fa-hourglass-half me-1"></i>' . $lang->attachments['lbl_drafts_older'] . '</label>
+        <div class="input-group input-group-sm" style="width:130px"><input type="number" min="1" max="365" class="form-control" id="stale_days" name="stale_days" value="' . $staleDays . '"><span class="input-group-text">' . $lang->attachments['lbl_days'] . '</span></div>
+        <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="fa-solid fa-rotate me-1"></i>' . $lang->attachments['btn_rescan'] . '</button>
     </form>';
 
     echo '<div class="container mt-3 mb-4 atm">';
-    echo atm_hero('fa-broom', 'ic-amber', 'Orphaned Attachments', 'Files and records that lost their counterpart — safe candidates for cleanup', $days_form);
+    echo atm_hero('fa-broom', 'ic-amber', $lang->attachments['hero_orphans_title'], $lang->attachments['hero_orphans_sub'], $days_form);
 
     echo atm_stats([
-        ['fa-file-circle-question', 'ic-slate',  'Files w/o record',  ts_nf(count($orphanedFiles))],
-        ['fa-database',             'ic-red',    'Broken records',    ts_nf(count($orphanedRows))],
-        ['fa-box-archive',          'ic-purple', 'comment_files',     ts_nf(count($orphanedCommentFiles))],
-        ['fa-hard-drive',           'ic-green',  'Can be freed',      mksize($reclaim), ts_nf(count($staleDrafts)) . ' stale draft(s)'],
+        ['fa-file-circle-question', 'ic-slate',  $lang->attachments['stat_orph_files'], ts_nf(count($orphanedFiles))],
+        ['fa-database',             'ic-red',    $lang->attachments['stat_broken'],     ts_nf(count($orphanedRows))],
+        ['fa-box-archive',          'ic-purple', $lang->attachments['stat_cf'],         ts_nf(count($orphanedCommentFiles))],
+        ['fa-hard-drive',           'ic-green',  $lang->attachments['stat_freeable'],   mksize($reclaim), ags_fmt($lang->attachments['stat_stale_n'], ts_nf(count($staleDrafts)))],
     ]);
 
     if ($totalFound === 0) {
-        echo atm_empty('fa-circle-check', 'Everything is in sync', 'Files on disk, database records and drafts all match.',
-            '<a href="index.php?act=attachments" class="btn btn-sm btn-primary rounded-pill px-3 mt-3"><i class="fa-solid fa-arrow-left me-1"></i>Back to attachments</a>');
+        echo atm_empty('fa-circle-check', $lang->attachments['empty_sync_title'], $lang->attachments['empty_sync_text'],
+            '<a href="index.php?act=attachments" class="btn btn-sm btn-primary rounded-pill px-3 mt-3"><i class="fa-solid fa-arrow-left me-1"></i>' . $lang->attachments['btn_back'] . '</a>');
         echo '</div>';
         stdfoot();
         return;
     }
 
     $reasons = [
-        'missing_post'    => ['fa-comments',     'Post deleted',    't-red'],
-        'missing_comment' => ['fa-comment-slash','Comment deleted', 't-red'],
-        'missing_torrent' => ['fa-magnet',       'Torrent deleted', 't-red'],
-        'missing_file'    => ['fa-file-circle-exclamation', 'File missing', 't-amber'],
-        'stale_draft'     => ['fa-file-pen',     'Stale draft',     't-draft'],
+        'missing_post'    => ['fa-comments',     $lang->attachments['reason_post'],    't-red'],
+        'missing_comment' => ['fa-comment-slash',$lang->attachments['reason_comment'], 't-red'],
+        'missing_torrent' => ['fa-magnet',       $lang->attachments['reason_torrent'], 't-red'],
+        'missing_file'    => ['fa-file-circle-exclamation', $lang->attachments['reason_file'], 't-amber'],
+        'stale_draft'     => ['fa-file-pen',     $lang->attachments['reason_stale'],   't-draft'],
     ];
     $reason = static function (string $r) use ($reasons): string {
         [$ic, $lbl, $cls] = $reasons[$r] ?? ['fa-question', $r, 't-draft'];
@@ -1347,6 +1393,7 @@ function handle_orphans_scan(): void {
     };
 
     $section = static function (string $icon, string $cls, string $title, string $name, array $rows, callable $row_html, string $empty): string {
+        global $lang;
         $html = '<div class="atm-card overflow-hidden mb-3">'
               . '<div class="atm-sec-head"><span class="atm-sec-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>' . $title
               . '<span class="atm-count atm-tag t-draft">' . count($rows) . '</span></div>';
@@ -1355,7 +1402,7 @@ function handle_orphans_scan(): void {
         }
         $html .= '<div class="table-responsive"><table class="table atm-table"><thead><tr>'
                . '<th style="width:48px">' . atm_check_all($name) . '</th>'
-               . '<th><i class="fa-solid fa-file"></i>File</th><th class="text-center"><i class="fa-solid fa-weight-hanging"></i>Size</th><th class="text-end"><i class="fa-solid fa-circle-info"></i>Reason</th>'
+               . '<th><i class="fa-solid fa-file"></i>' . $lang->attachments['col_file'] . '</th><th class="text-center"><i class="fa-solid fa-weight-hanging"></i>' . $lang->attachments['col_size'] . '</th><th class="text-end"><i class="fa-solid fa-circle-info"></i>' . $lang->attachments['col_reason'] . '</th>'
                . '</tr></thead><tbody>';
         foreach ($rows as $r) {
             $html .= $row_html($r);
@@ -1365,28 +1412,28 @@ function handle_orphans_scan(): void {
 
     echo '<form action="index.php?act=attachments&amp;action=delete_orphans" method="post" class="atm-selectable">
         <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">'
-        . atm_toolbar('orphans found', $totalFound);
+        . atm_toolbar($lang->attachments['lbl_orphans_found'], $totalFound);
 
-    echo $section('fa-database', 'ic-red', 'Attachment records', 'orphaned_attachments[]', $dbRows,
+    echo $section('fa-database', 'ic-red', $lang->attachments['sec_db_rows'], 'orphaned_attachments[]', $dbRows,
         fn(array $r): string => '<tr><td>' . atm_check('orphaned_attachments[]', (string)(int)$r['aid']) . '</td>'
-            . '<td>' . atm_file_cell(atm_file_visual((string)$r['filename'], '', null), htmlspecialchars_uni((string)$r['filename']), 'ID ' . (int)$r['aid']) . '</td>'
+            . '<td>' . atm_file_cell(atm_file_visual((string)$r['filename'], '', null), htmlspecialchars_uni((string)$r['filename']), ags_fmt($lang->attachments['lbl_id'], (int)$r['aid'])) . '</td>'
             . '<td class="text-center"><span class="atm-size">' . mksize((float)$r['filesize']) . '</span></td>'
             . '<td class="text-end">' . $reason((string)$r['reason']) . '</td></tr>',
-        'No broken attachment records.');
+        $lang->attachments['empty_no_broken']);
 
-    echo $section('fa-box-archive', 'ic-purple', 'comment_files records', 'cf_ids[]', $orphanedCommentFiles,
+    echo $section('fa-box-archive', 'ic-purple', $lang->attachments['sec_cf_rows'], 'cf_ids[]', $orphanedCommentFiles,
         fn(array $r): string => '<tr><td>' . atm_check('cf_ids[]', (string)(int)$r['id']) . '</td>'
-            . '<td>' . atm_file_cell(atm_file_visual((string)$r['file_name'], '', null), htmlspecialchars_uni((string)$r['file_name']), 'ID ' . (int)$r['id']) . '</td>'
+            . '<td>' . atm_file_cell(atm_file_visual((string)$r['file_name'], '', null), htmlspecialchars_uni((string)$r['file_name']), ags_fmt($lang->attachments['lbl_id'], (int)$r['id'])) . '</td>'
             . '<td class="text-center"><span class="atm-size">' . mksize((float)$r['file_size']) . '</span></td>'
             . '<td class="text-end">' . $reason((string)$r['reason']) . '</td></tr>',
-        'No broken comment_files records.');
+        $lang->attachments['empty_no_broken_cf']);
 
-    echo $section('fa-file-circle-question', 'ic-slate', 'Files on disk without a record', 'orphaned_files[]', $orphanedFiles,
+    echo $section('fa-file-circle-question', 'ic-slate', $lang->attachments['sec_disk_files'], 'orphaned_files[]', $orphanedFiles,
         fn(array $f): string => '<tr><td>' . atm_check('orphaned_files[]', htmlspecialchars_uni((string)$f['name'])) . '</td>'
             . '<td>' . atm_file_cell(atm_file_visual((string)$f['name'], '', null), '<span class="font-monospace">' . htmlspecialchars_uni((string)$f['name']) . '</span>') . '</td>'
             . '<td class="text-center"><span class="atm-size">' . mksize((float)$f['size']) . '</span></td>'
-            . '<td class="text-end"><span class="atm-tag t-amber"><i class="fa-solid fa-link-slash"></i>No DB record</span></td></tr>',
-        'No orphaned files on disk.');
+            . '<td class="text-end"><span class="atm-tag t-amber"><i class="fa-solid fa-link-slash"></i>' . $lang->attachments['reason_no_record'] . '</span></td></tr>',
+        $lang->attachments['empty_no_orph_files']);
 
     echo '</form></div>';
     stdfoot();

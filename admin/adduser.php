@@ -17,7 +17,23 @@ define('AU_VERSION', '2.0');
 
 
 $lang->load('adduser');
-$lang->load("member");
+
+// Подстановка {1}, {2}… в строки ланга. $lang->load() превращает {1} в %1$s,
+// поэтому заменяем оба формата. strtr за один проход — подставленное значение
+// с «{2}» внутри повторно не раскрывается.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $a) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$a;
+            $map['%' . $n . '$s'] = (string)$a;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 
 
 
@@ -53,19 +69,19 @@ class UserRegistrationHandler
         global $lang, $db, $minnamelength, $maxnamelength, $illegalusernames;
 
         if (mb_strlen($username) < $minnamelength) {
-            $this->errors[] = "Username must be at least {$minnamelength} characters long";
+            $this->errors[] = ags_fmt($lang->adduser['err_name_short'], (int)$minnamelength);
             return false;
         }
 
         if (mb_strlen($username) > $maxnamelength) {
-            $this->errors[] = "Username cannot be longer than {$maxnamelength} characters";
+            $this->errors[] = ags_fmt($lang->adduser['err_name_long'], (int)$maxnamelength);
             return false;
         }
 
         // Раньше — только [a-zA-Z0-9]: ники с «_», «-», «.», кириллицей и т.п.
         // отклонялись, хотя обычная регистрация их принимает
         if (preg_match('/[<>&"\'\\\\\x00-\x1F\x7F]/u', $username)) {
-            $this->errors[] = "Username contains characters that are not allowed";
+            $this->errors[] = $lang->adduser['err_name_chars'];
             return false;
         }
 
@@ -76,13 +92,13 @@ class UserRegistrationHandler
         );
         
         if ($db->num_rows($query) > 0) {
-            $this->errors[] = "Username already exists";
+            $this->errors[] = $lang->adduser['err_name_taken'];
             return false;
         }
 
         // Проверка запрещённых имён (те же wildcard-фильтры banfilters, что и при обычной регистрации)
         if (is_banned_username($username, true)) {
-            $this->errors[] = "Username is not allowed";
+            $this->errors[] = $lang->adduser['err_name_banned'];
             return false;
         }
         
@@ -95,13 +111,13 @@ class UserRegistrationHandler
         global $lang, $db;
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->errors[] = $lang->adduser['invalidemail'];
+            $this->errors[] = $lang->adduser['err_email_invalid'];
             return false;
         }
 
         // Проверка бана email с подготовленным запросом
         if (is_banned_email($email, true)) {
-            $this->errors[] = $lang->adduser['banned_email'];
+            $this->errors[] = $lang->adduser['err_email_banned'];
             return false;
         }
 
@@ -112,7 +128,7 @@ class UserRegistrationHandler
         );
         
         if ($db->num_rows($query) > 0) {
-            $this->errors[] = $lang->adduser['invalidemail3'];
+            $this->errors[] = $lang->adduser['err_email_taken'];
             return false;
         }
 
@@ -124,28 +140,28 @@ class UserRegistrationHandler
         global $lang, $minpasswordlength, $maxpasswordlength, $requirecomplexpasswords;
 
         if ($password !== $confirm_password) {
-            $this->errors[] = $lang->adduser['passe1'];
+            $this->errors[] = $lang->adduser['err_pw_mismatch'];
             return false;
         }
 
         if (strlen($password) < $minpasswordlength) {
-            $this->errors[] = "Password must be at least {$minpasswordlength} characters long";
+            $this->errors[] = ags_fmt($lang->adduser['err_pw_short'], (int)$minpasswordlength);
             return false;
         }
 
         if (strlen($password) > $maxpasswordlength) {
-            $this->errors[] = "Password cannot be longer than {$maxpasswordlength} characters";
+            $this->errors[] = ags_fmt($lang->adduser['err_pw_long'], (int)$maxpasswordlength);
             return false;
         }
 
         if ($password === $username) {
-            $this->errors[] = $lang->adduser['passe4'];
+            $this->errors[] = $lang->adduser['err_pw_same'];
             return false;
         }
 
         // Проверка сложности пароля если требуется
         if ($requirecomplexpasswords && !$this->checkPasswordStrength($password)) {
-            $this->errors[] = "Password must contain both letters and numbers";
+            $this->errors[] = $lang->adduser['err_pw_complex'];
             return false;
         }
 
@@ -166,7 +182,7 @@ class UserRegistrationHandler
         global $lang;
 
         if (!array_key_exists($usergroup, $this->allowed_usergroups)) {
-            $this->errors[] = $lang->adduser['invalidug'];
+            $this->errors[] = $lang->adduser['err_usergroup'];
             return false;
         }
 
@@ -175,6 +191,8 @@ class UserRegistrationHandler
 
     private function validateAvatar(string $avatar_url): array
     {
+        global $lang;
+
         $avatar_data = ['url' => '', 'dimensions' => '0|0'];
 
         if (empty($avatar_url)) {
@@ -188,26 +206,26 @@ class UserRegistrationHandler
         // и реальным запросом — getimagesize($url) на сырой ссылке этой
         // защиты не даёт, PHP резолвит DNS заново в момент запроса).
         if (!$this->isUrlSafeForFetch($avatar_url)) {
-            $this->errors[] = "Invalid avatar URL or image not accessible";
+            $this->errors[] = $lang->adduser['err_avatar_invalid'];
             return $avatar_data;
         }
 
         require_once INC_PATH . '/functions_remote_connect.php';
         $data = fetch_remote_file($avatar_url);
         if ($data === false) {
-            $this->errors[] = "Invalid avatar URL or image not accessible";
+            $this->errors[] = $lang->adduser['err_avatar_invalid'];
             return $avatar_data;
         }
 
         $image_info = @getimagesizefromstring($data);
         if (!$image_info) {
-            $this->errors[] = "Invalid avatar URL or image not accessible";
+            $this->errors[] = $lang->adduser['err_avatar_invalid'];
             return $avatar_data;
         }
 
         $allowed_types = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
         if (!in_array($image_info[2], $allowed_types, true)) {
-            $this->errors[] = "Unsupported avatar image type";
+            $this->errors[] = $lang->adduser['err_avatar_type'];
             return $avatar_data;
         }
 
@@ -442,8 +460,8 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
         require_once INC_PATH . '/functions_pm.php';
         
         $pm = [
-            'subject' => sprintf($lang->adduser['welcomepmsubject'], $SITENAME),
-            'message' => sprintf($lang->adduser['welcomepmbody'], htmlspecialchars_uni($username), $SITENAME, $BASEURL),
+            'subject' => ags_fmt($lang->adduser['pm_welcome_subject'], $SITENAME),
+            'message' => ags_fmt($lang->adduser['pm_welcome_body'], htmlspecialchars_uni($username), $SITENAME, $BASEURL),
             'touid' => $user_id
         ];
         
@@ -452,9 +470,9 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 
         // Отправка логина/пароля на email (по желанию админа)
         if ($send_credentials) {
-            $credentialssubject = sprintf($lang->adduser['credentialsemailsubject'], $SITENAME);
-            $credentialsbody = sprintf(
-                $lang->adduser['credentialsemailbody'],
+            $credentialssubject = ags_fmt($lang->adduser['mail_credentials_subject'], $SITENAME);
+            $credentialsbody = ags_fmt(
+                $lang->adduser['mail_credentials_body'],
                 $username,
                 $SITENAME,
                 $password,
@@ -466,7 +484,7 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
                 // Не блокируем создание аккаунта - он уже создан к этому моменту,
                 // но админ должен явно узнать, что данные не были доставлены,
                 // и передать пароль пользователю каким-то другим способом.
-                $this->errors[] = 'Failed to send login credentials email - please deliver the password to the user manually. Password: ' . $password;
+                $this->errors[] = ags_fmt($lang->adduser['err_credentials_mail'], $password);
             }
         }
 
@@ -487,9 +505,9 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 		   
 		   $cache->update_awaitingactivation();
 		   
-           $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
+           $emailsubject = ags_fmt($lang->adduser['mail_activate_subject'], $SITENAME);
            
-		   $emailmessage = sprintf($lang->member['email_activateaccount'], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
+		   $emailmessage = ags_fmt($lang->adduser['mail_activate_body'], $username, $SITENAME, $BASEURL, (int)$user_id, $activationcode);
 		   
            my_mail($email, $emailsubject, $emailmessage); 
 
@@ -509,7 +527,7 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
         // Аккаунт уже создан к этому моменту - ошибки аватара (если есть)
         // не должны блокировать регистрацию, но админ должен их увидеть.
         if (!empty($this->errors)) {
-            flash_message('Account created, but: ' . implode('; ', $this->errors), 'warning');
+            flash_message(ags_fmt($lang->adduser['flash_created_but'], implode('; ', $this->errors)), 'warning');
         }
 
         return true;
@@ -569,14 +587,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         au_styles();
         echo '<div class="container mt-3 mb-4 au" style="max-width:720px"><div class="au-card au-done">'
            . '<span class="au-done-icon"><i class="fa-solid fa-user-check"></i></span>'
-           . '<h2 class="h4 fw-bold mb-1">Account created</h2>'
-           . '<div class="text-body-secondary mb-3"><strong>' . htmlspecialchars_uni($user_data['username']) . '</strong> can log in now, but something needs your attention:</div>'
+           . '<h2 class="h4 fw-bold mb-1">' . htmlspecialchars_uni($lang->adduser['done_title']) . '</h2>'
+           . '<div class="text-body-secondary mb-3">' . ags_fmt(htmlspecialchars_uni($lang->adduser['done_attention']), '<strong>' . htmlspecialchars_uni($user_data['username']) . '</strong>') . '</div>'
            . '<div class="alert alert-warning text-start rounded-4"><ul class="mb-0 ps-3">';
         foreach ($post_create_err as $e) echo '<li>' . htmlspecialchars_uni((string)$e) . '</li>';
         echo '</ul></div>'
            . '<div class="d-flex flex-wrap justify-content-center gap-2">'
-           . '<a href="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-user-plus me-1"></i>Add another</a>'
-           . '<a href="' . $profile_url . '" class="btn btn-primary px-3"><i class="fa-solid fa-arrow-right me-1"></i>Go to profile</a>'
+           . '<a href="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-user-plus me-1"></i>' . htmlspecialchars_uni($lang->adduser['btn_add_another']) . '</a>'
+           . '<a href="' . $profile_url . '" class="btn btn-primary px-3"><i class="fa-solid fa-arrow-right me-1"></i>' . htmlspecialchars_uni($lang->adduser['btn_go_profile']) . '</a>'
            . '</div></div></div>';
         stdfoot();
         exit();
@@ -602,32 +620,54 @@ function au_styles(): void
 stdhead($lang->adduser['title']);
 au_styles();
 
+$L              = $lang->adduser;
 $errors         = $registration_handler->getErrors();
 $allowed_groups = $registration_handler->getAllowedUsergroups();
 $p              = static fn(string $k, string $d = ''): string => htmlspecialchars_uni((string)($_POST[$k] ?? $d));
+$e              = static fn(string $s): string => htmlspecialchars_uni($s);
 $defaultGroup   = (int)($_d_usergroup ?: 2);
 $defaultUpGb    = (int)($autogigsignup ?? 0);
 $defaultBonus   = (int)($autosbsignup ?? 0);
 $self           = htmlspecialchars($_SERVER['REQUEST_URI']);
+// value => подпись; value остаётся латиницей — на него опирается сервер и JS (units[u])
+$unitLabels     = ['GB' => $L['opt_unit_gb'], 'MB' => $L['opt_unit_mb'], 'TB' => $L['opt_unit_tb'], 'B' => $L['opt_unit_b']];
 $unit           = static fn(string $name, string $sel) => '<select class="form-select" name="' . $name . '" style="max-width:90px">'
-    . implode('', array_map(fn($u) => '<option value="' . $u . '"' . ($sel === $u ? ' selected' : '') . '>' . $u . '</option>', ['GB', 'MB', 'TB', 'B']))
+    . implode('', array_map(fn($u) => '<option value="' . $u . '"' . ($sel === $u ? ' selected' : '') . '>' . htmlspecialchars_uni($unitLabels[$u]) . '</option>', array_keys($unitLabels)))
     . '</select>';
+$optional       = '<span class="au-opt">' . $e($L['lbl_optional']) . '</span>';
+$defaultName    = $allowed_groups[$defaultGroup] ?? $L['opt_default_group_fallback'];
+
+// Строки для JS: ключи js_* без префикса
+$jsLang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = $v;
+    }
+}
+$jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+$jsCfg = [
+    'minName'  => (int)$minnamelength,     'maxName' => (int)$maxnamelength,
+    'minPw'    => (int)$minpasswordlength, 'maxPw'   => (int)$maxpasswordlength,
+    'complex'  => (bool)$requirecomplexpasswords,
+    'defUpGb'  => $defaultUpGb,            'defBonus' => $defaultBonus,
+    'self'     => html_entity_decode($self),
+];
 ?>
 <div class="container mt-3 mb-4 au">
 
     <div class="au-card mb-3"><div class="au-head">
         <span class="au-head-icon"><i class="fa-solid fa-user-plus"></i></span>
         <div style="min-width:0">
-            <h1 class="au-title"><?= htmlspecialchars_uni($lang->adduser['title']) ?></h1>
-            <div class="au-sub">Create an account by hand — it is confirmed immediately unless you ask for email activation</div>
+            <h1 class="au-title"><?= $e($L['title']) ?></h1>
+            <div class="au-sub"><?= $e($L['subtitle']) ?></div>
         </div>
         <span class="ms-auto au-muted"><i class="fa-solid fa-code-branch me-1"></i>v<?= htmlspecialchars(AU_VERSION) ?></span>
     </div></div>
 
     <?php if ($errors): ?>
     <div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-triangle-exclamation mt-1"></i>
-        <div><div class="fw-semibold mb-1">The account was not created:</div><ul class="mb-0 ps-3">
-        <?php foreach ($errors as $e): ?><li><?= htmlspecialchars_uni((string)$e) ?></li><?php endforeach; ?>
+        <div><div class="fw-semibold mb-1"><?= $e($L['err_box_title']) ?></div><ul class="mb-0 ps-3">
+        <?php foreach ($errors as $err): ?><li><?= htmlspecialchars_uni((string)$err) ?></li><?php endforeach; ?>
         </ul></div></div>
     <?php endif; ?>
 
@@ -641,98 +681,99 @@ $unit           = static fn(string $name, string $sel) => '<select class="form-s
 
                     <!-- Аккаунт -->
                     <div class="au-sec" style="border-top:0">
-                        <div class="au-sec-head"><span class="au-sec-icon ic-blue"><i class="fa-solid fa-id-card"></i></span>Account</div>
+                        <div class="au-sec-head"><span class="au-sec-icon ic-blue"><i class="fa-solid fa-id-card"></i></span><?= $e($L['sec_account']) ?></div>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label" for="input_username"><i class="fa-solid fa-user"></i>Username <span class="au-req">*</span></label>
+                                <label class="form-label" for="input_username"><i class="fa-solid fa-user"></i><?= $e($L['lbl_username']) ?> <span class="au-req">*</span></label>
                                 <div class="input-group has-validation">
                                     <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
                                     <input type="text" class="form-control" id="input_username" name="username" value="<?= $p('username') ?>"
-                                           required minlength="<?= (int)$minnamelength ?>" maxlength="<?= (int)$maxnamelength ?>" autocomplete="off" placeholder="New username">
+                                           required minlength="<?= (int)$minnamelength ?>" maxlength="<?= (int)$maxnamelength ?>" autocomplete="off" placeholder="<?= $e($L['ph_username']) ?>">
                                 </div>
-                                <div class="au-hint" id="hint_username"><?= (int)$minnamelength ?>–<?= (int)$maxnamelength ?> characters</div>
+                                <div class="au-hint" id="hint_username"><?= $e(ags_fmt($L['hint_name_length'], (int)$minnamelength, (int)$maxnamelength)) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_email"><i class="fa-solid fa-envelope"></i>Email <span class="au-req">*</span></label>
+                                <label class="form-label" for="input_email"><i class="fa-solid fa-envelope"></i><?= $e($L['lbl_email']) ?> <span class="au-req">*</span></label>
                                 <div class="input-group has-validation">
                                     <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
                                     <input type="email" class="form-control" id="input_email" name="email" value="<?= $p('email') ?>" required autocomplete="off" placeholder="user@example.com">
                                 </div>
-                                <div class="au-hint" id="hint_email">Used for login, notifications and activation</div>
+                                <div class="au-hint" id="hint_email"><?= $e($L['hint_email']) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_usergroup"><i class="fa-solid fa-users"></i>User group <span class="au-opt">(optional)</span></label>
+                                <label class="form-label" for="input_usergroup"><i class="fa-solid fa-users"></i><?= $e($L['lbl_usergroup']) ?> <?= $optional ?></label>
                                 <select class="form-select" id="input_usergroup" name="usergroup">
-                                    <option value="">Default — <?= htmlspecialchars_uni($allowed_groups[$defaultGroup] ?? 'registration group') ?></option>
+                                    <!-- data-name: превью берёт имя группы отсюда, а не вырезает префикс «Default — » из текста (он теперь переводится) -->
+                                    <option value="" data-name="<?= $e((string)$defaultName) ?>"><?= $e(ags_fmt($L['opt_default_group'], (string)$defaultName)) ?></option>
                                     <?php foreach ($allowed_groups as $gid => $title): ?>
                                     <option value="<?= (int)$gid ?>" <?= (string)($_POST['usergroup'] ?? '') === (string)$gid ? 'selected' : '' ?>><?= htmlspecialchars_uni($title) ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="au-hint">Staff groups can't be assigned here</div>
+                                <div class="au-hint"><?= $e($L['hint_usergroup']) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_modcomment"><i class="fa-solid fa-comment-dots"></i>Moderator note <span class="au-opt">(optional)</span></label>
-                                <input type="text" class="form-control" id="input_modcomment" name="modcomment" value="<?= $p('modcomment') ?>" maxlength="255" placeholder="e.g. Invited by forum post #123">
-                                <div class="au-hint">Stored in the user's mod comment with today's date</div>
+                                <label class="form-label" for="input_modcomment"><i class="fa-solid fa-comment-dots"></i><?= $e($L['lbl_modcomment']) ?> <?= $optional ?></label>
+                                <input type="text" class="form-control" id="input_modcomment" name="modcomment" value="<?= $p('modcomment') ?>" maxlength="255" placeholder="<?= $e($L['ph_modcomment']) ?>">
+                                <div class="au-hint"><?= $e($L['hint_modcomment']) ?></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Пароль -->
                     <div class="au-sec">
-                        <div class="au-sec-head"><span class="au-sec-icon ic-purple"><i class="fa-solid fa-key"></i></span>Password
-                            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="generatePassword()"><i class="fa-solid fa-dice me-1"></i>Generate</button></div>
+                        <div class="au-sec-head"><span class="au-sec-icon ic-purple"><i class="fa-solid fa-key"></i></span><?= $e($L['sec_password']) ?>
+                            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="generatePassword()"><i class="fa-solid fa-dice me-1"></i><?= $e($L['btn_generate']) ?></button></div>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label" for="input_password"><i class="fa-solid fa-lock"></i>Password <span class="au-req">*</span></label>
+                                <label class="form-label" for="input_password"><i class="fa-solid fa-lock"></i><?= $e($L['lbl_password']) ?> <span class="au-req">*</span></label>
                                 <div class="input-group">
                                     <input type="password" class="form-control" id="input_password" name="password" required
                                            minlength="<?= (int)$minpasswordlength ?>" maxlength="<?= (int)$maxpasswordlength ?>" autocomplete="new-password">
-                                    <button class="btn btn-outline-secondary" type="button" data-toggle-pw="input_password" aria-label="Show password" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-eye"></i></button>
+                                    <button class="btn btn-outline-secondary" type="button" data-toggle-pw="input_password" aria-label="<?= $e($L['aria_show_password']) ?>" title="<?= $e($L['aria_show_password']) ?>" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-eye"></i></button>
                                 </div>
                                 <div class="au-strength"><span id="au_strength"></span></div>
-                                <div class="au-hint" id="hint_password"><?= (int)$minpasswordlength ?>–<?= (int)$maxpasswordlength ?> characters<?= $requirecomplexpasswords ? ', letters and numbers' : '' ?></div>
+                                <div class="au-hint" id="hint_password"><?= $e(ags_fmt($L[$requirecomplexpasswords ? 'hint_pw_length_complex' : 'hint_pw_length'], (int)$minpasswordlength, (int)$maxpasswordlength)) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_password2"><i class="fa-solid fa-lock"></i>Confirm <span class="au-req">*</span></label>
+                                <label class="form-label" for="input_password2"><i class="fa-solid fa-lock"></i><?= $e($L['lbl_password2']) ?> <span class="au-req">*</span></label>
                                 <input type="password" class="form-control" id="input_password2" name="password2" required
                                        minlength="<?= (int)$minpasswordlength ?>" maxlength="<?= (int)$maxpasswordlength ?>" autocomplete="new-password">
                                 <div class="au-hint" id="hint_password2"></div>
                             </div>
                         </div>
                         <div class="au-genbox" id="generated_password_box" style="display:none">
-                            <span><i class="fa-solid fa-circle-check text-success me-2"></i>Generated: <code id="generated_password_text"></code></span>
-                            <button type="button" class="btn btn-sm btn-outline-success" onclick="copyGeneratedPassword()"><i class="fa-regular fa-copy me-1"></i>Copy</button>
+                            <span><i class="fa-solid fa-circle-check text-success me-2"></i><?= $e($L['lbl_generated']) ?> <code id="generated_password_text"></code></span>
+                            <button type="button" class="btn btn-sm btn-outline-success" onclick="copyGeneratedPassword()"><i class="fa-regular fa-copy me-1"></i><?= $e($L['btn_copy']) ?></button>
                         </div>
                     </div>
 
                     <!-- Трафик и бонусы -->
                     <div class="au-sec">
-                        <div class="au-sec-head"><span class="au-sec-icon ic-teal"><i class="fa-solid fa-arrow-right-arrow-left"></i></span>Traffic &amp; bonus</div>
+                        <div class="au-sec-head"><span class="au-sec-icon ic-teal"><i class="fa-solid fa-arrow-right-arrow-left"></i></span><?= $e($L['sec_traffic']) ?></div>
                         <div class="row g-3">
                             <!-- Раньше трафик вводился только в БАЙТАХ: 10 GB = 10737418240 -->
                             <div class="col-md-6">
-                                <label class="form-label" for="input_uploaded"><i class="fa-solid fa-upload"></i>Uploaded</label>
+                                <label class="form-label" for="input_uploaded"><i class="fa-solid fa-upload"></i><?= $e($L['lbl_uploaded']) ?></label>
                                 <div class="input-group">
-                                    <input type="number" class="form-control" id="input_uploaded" name="uploaded" min="0" step="any" value="<?= $p('uploaded') ?>" placeholder="<?= $defaultUpGb > 0 ? 'Default: ' . $defaultUpGb . ' GB' : '0' ?>">
+                                    <input type="number" class="form-control" id="input_uploaded" name="uploaded" min="0" step="any" value="<?= $p('uploaded') ?>" placeholder="<?= $defaultUpGb > 0 ? $e(ags_fmt($L['ph_default_gb'], $defaultUpGb)) : '0' ?>">
                                     <?= $unit('uploaded_unit', (string)($_POST['uploaded_unit'] ?? 'GB')) ?>
                                 </div>
-                                <div class="au-hint">Empty = site signup bonus<?= $defaultUpGb > 0 ? ' (' . $defaultUpGb . ' GB)' : '' ?></div>
+                                <div class="au-hint"><?= $defaultUpGb > 0 ? $e(ags_fmt($L['hint_signup_bonus_gb'], $defaultUpGb)) : $e($L['hint_signup_bonus']) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_downloaded"><i class="fa-solid fa-download"></i>Downloaded</label>
+                                <label class="form-label" for="input_downloaded"><i class="fa-solid fa-download"></i><?= $e($L['lbl_downloaded']) ?></label>
                                 <div class="input-group">
                                     <input type="number" class="form-control" id="input_downloaded" name="downloaded" min="0" step="any" value="<?= $p('downloaded', '0') ?>">
                                     <?= $unit('downloaded_unit', (string)($_POST['downloaded_unit'] ?? 'GB')) ?>
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_seedbonus"><i class="fa-solid fa-coins"></i>Seed bonus</label>
-                                <input type="number" class="form-control" id="input_seedbonus" name="seedbonus" min="0" value="<?= $p('seedbonus') ?>" placeholder="<?= $defaultBonus > 0 ? 'Default: ' . $defaultBonus : '0' ?>">
-                                <div class="au-hint">Empty = site signup bonus</div>
+                                <label class="form-label" for="input_seedbonus"><i class="fa-solid fa-coins"></i><?= $e($L['lbl_seedbonus']) ?></label>
+                                <input type="number" class="form-control" id="input_seedbonus" name="seedbonus" min="0" value="<?= $p('seedbonus') ?>" placeholder="<?= $defaultBonus > 0 ? $e(ags_fmt($L['ph_default_value'], $defaultBonus)) : '0' ?>">
+                                <div class="au-hint"><?= $e($L['hint_signup_bonus']) ?></div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="input_invites"><i class="fa-solid fa-ticket"></i>Invites</label>
+                                <label class="form-label" for="input_invites"><i class="fa-solid fa-ticket"></i><?= $e($L['lbl_invites']) ?></label>
                                 <input type="number" class="form-control" id="input_invites" name="invites" min="0" value="<?= $p('invites', '0') ?>">
                             </div>
                         </div>
@@ -740,17 +781,17 @@ $unit           = static fn(string $name, string $sel) => '<select class="form-s
 
                     <!-- Аватар -->
                     <div class="au-sec">
-                        <div class="au-sec-head"><span class="au-sec-icon ic-amber"><i class="fa-solid fa-image"></i></span>Avatar <span class="au-opt ms-1">(optional)</span></div>
+                        <div class="au-sec-head"><span class="au-sec-icon ic-amber"><i class="fa-solid fa-image"></i></span><?= $e($L['sec_avatar']) ?> <span class="au-opt ms-1"><?= $e($L['lbl_optional']) ?></span></div>
                         <ul class="nav au-seg" id="avatarTabs">
-                            <li class="nav-item"><button class="nav-link active" id="tab-url" type="button" onclick="switchAvatarTab('url')"><i class="fa-solid fa-link me-1"></i>URL</button></li>
-                            <li class="nav-item"><button class="nav-link" id="tab-file" type="button" onclick="switchAvatarTab('file')"><i class="fa-solid fa-upload me-1"></i>Upload</button></li>
+                            <li class="nav-item"><button class="nav-link active" id="tab-url" type="button" onclick="switchAvatarTab('url')"><i class="fa-solid fa-link me-1"></i><?= $e($L['btn_tab_url']) ?></button></li>
+                            <li class="nav-item"><button class="nav-link" id="tab-file" type="button" onclick="switchAvatarTab('file')"><i class="fa-solid fa-upload me-1"></i><?= $e($L['btn_tab_upload']) ?></button></li>
                         </ul>
                         <div id="avatar-panel-url">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
                                 <input type="url" class="form-control" id="input_avatar" name="avatar_url" value="<?= $p('avatar_url') ?>" placeholder="https://example.com/avatar.jpg">
                             </div>
-                            <div class="au-hint">Direct link to a JPG, PNG, GIF or WEBP image</div>
+                            <div class="au-hint"><?= $e($L['hint_avatar_url']) ?></div>
                         </div>
                         <div id="avatar-panel-file" style="display:none">
                             <div id="avatar-dropzone"
@@ -758,31 +799,31 @@ $unit           = static fn(string $name, string $sel) => '<select class="form-s
                                  ondragleave="this.classList.remove('border-primary')"
                                  ondrop="handleAvatarDrop(event)">
                                 <i class="fa-solid fa-cloud-arrow-up fa-2x text-body-secondary mb-2"></i>
-                                <p class="mb-2 text-body-secondary">Drag &amp; drop an image here or</p>
-                                <label class="btn btn-outline-primary btn-sm mb-0" for="input_avatar_file"><i class="fa-solid fa-folder-open me-1"></i>Choose file</label>
+                                <p class="mb-2 text-body-secondary"><?= $e($L['hint_avatar_drop']) ?></p>
+                                <label class="btn btn-outline-primary btn-sm mb-0" for="input_avatar_file"><i class="fa-solid fa-folder-open me-1"></i><?= $e($L['btn_choose_file']) ?></label>
                                 <input type="file" class="d-none" id="input_avatar_file" name="avatar_file" accept="image/jpeg,image/png,image/gif,image/webp">
                                 <!-- Раньше было «max 500KB», хотя лимит берётся из настроек аватаров -->
-                                <p class="au-muted mt-2 mb-0">JPG, PNG, GIF, WEBP — size limit from the avatar settings</p>
+                                <p class="au-muted mt-2 mb-0"><?= $e($L['hint_avatar_limits']) ?></p>
                                 <p id="avatar-filename" class="text-success mt-1 mb-0 fw-semibold small" style="display:none"></p>
                             </div>
                         </div>
                         <div id="avatar_preview" hidden>
                             <img id="avatar_preview_img" src="" alt="" hidden>
-                            <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="clearAvatar()"><i class="fa-solid fa-xmark me-1"></i>Remove avatar</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="clearAvatar()"><i class="fa-solid fa-xmark me-1"></i><?= $e($L['btn_remove_avatar']) ?></button>
                         </div>
                     </div>
 
                     <!-- Опции -->
                     <div class="au-sec">
-                        <div class="au-sec-head"><span class="au-sec-icon ic-green"><i class="fa-solid fa-sliders"></i></span>Options</div>
+                        <div class="au-sec-head"><span class="au-sec-icon ic-green"><i class="fa-solid fa-sliders"></i></span><?= $e($L['sec_options']) ?></div>
                         <label class="au-switch" for="sendcredentials">
                             <span class="au-sec-icon ic-purple"><i class="fa-solid fa-paper-plane"></i></span>
-                            <span><span class="fw-semibold d-block"><?= htmlspecialchars_uni($lang->adduser['sendcredentials']) ?></span><span class="au-muted">The username and password are emailed to the user</span></span>
+                            <span><span class="fw-semibold d-block"><?= $e($L['opt_sendcredentials']) ?></span><span class="au-muted"><?= $e($L['hint_sendcredentials']) ?></span></span>
                             <input type="checkbox" class="form-check-input" role="switch" name="sendcredentials" id="sendcredentials" value="yes" <?= (($_POST['sendcredentials'] ?? 'yes') === 'yes') ? 'checked' : '' ?>>
                         </label>
                         <label class="au-switch" for="confirm">
                             <span class="au-sec-icon ic-amber"><i class="fa-solid fa-envelope-circle-check"></i></span>
-                            <span><span class="fw-semibold d-block"><?= htmlspecialchars_uni($lang->adduser['o1']) ?></span><span class="au-muted">Account stays “pending” until the user clicks the activation link</span></span>
+                            <span><span class="fw-semibold d-block"><?= $e($L['opt_confirm']) ?></span><span class="au-muted"><?= $e($L['hint_confirm']) ?></span></span>
                             <input type="checkbox" class="form-check-input" role="switch" name="confirm" id="confirm" value="yes" <?= (($_POST['confirm'] ?? '') === 'yes') ? 'checked' : '' ?>>
                         </label>
                     </div>
@@ -794,218 +835,34 @@ $unit           = static fn(string $name, string $sel) => '<select class="form-s
                 <div class="au-card au-preview">
                     <div class="au-pv-top">
                         <div class="au-pv-avatar" id="pvAvatar">?</div>
-                        <div class="au-pv-name" id="pvName">New user</div>
-                        <div class="au-muted" id="pvEmail">no email yet</div>
+                        <div class="au-pv-name" id="pvName"><?= $e($L['pv_new_user']) ?></div>
+                        <div class="au-muted" id="pvEmail"><?= $e($L['pv_no_email']) ?></div>
                     </div>
                     <div class="au-pv-rows">
-                        <div class="au-pv-row"><span><i class="fa-solid fa-users"></i>Group</span><b id="pvGroup"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-upload"></i>Uploaded</span><b id="pvUp"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-download"></i>Downloaded</span><b id="pvDown"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-scale-balanced"></i>Ratio</span><b id="pvRatio"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-coins"></i>Bonus</span><b id="pvBonus"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-ticket"></i>Invites</span><b id="pvInv"></b></div>
-                        <div class="au-pv-row"><span><i class="fa-solid fa-circle-check"></i>Status</span><b id="pvStatus"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-users"></i><?= $e($L['pv_group']) ?></span><b id="pvGroup"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-upload"></i><?= $e($L['pv_uploaded']) ?></span><b id="pvUp"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-download"></i><?= $e($L['pv_downloaded']) ?></span><b id="pvDown"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-scale-balanced"></i><?= $e($L['pv_ratio']) ?></span><b id="pvRatio"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-coins"></i><?= $e($L['pv_bonus']) ?></span><b id="pvBonus"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-ticket"></i><?= $e($L['pv_invites']) ?></span><b id="pvInv"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-circle-check"></i><?= $e($L['pv_status']) ?></span><b id="pvStatus"></b></div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="au-card au-savebar">
-            <span class="au-muted"><i class="fa-solid fa-circle-info me-1"></i>A welcome PM is sent automatically</span>
-            <button type="submit" class="btn btn-success px-4" id="auSubmit"><i class="fa-solid fa-user-plus me-1"></i><?= htmlspecialchars_uni($lang->adduser['title']) ?></button>
+            <span class="au-muted"><i class="fa-solid fa-circle-info me-1"></i><?= $e($L['hint_welcome_pm']) ?></span>
+            <button type="submit" class="btn btn-success px-4" id="auSubmit"><i class="fa-solid fa-user-plus me-1"></i><?= $e($L['title']) ?></button>
         </div>
     </form>
 </div>
 
 <script>
-(function () {
-    'use strict';
-    const cfg = {
-        minName: <?= (int)$minnamelength ?>, maxName: <?= (int)$maxnamelength ?>,
-        minPw: <?= (int)$minpasswordlength ?>, maxPw: <?= (int)$maxpasswordlength ?>,
-        complex: <?= $requirecomplexpasswords ? 'true' : 'false' ?>,
-        defUpGb: <?= $defaultUpGb ?>, defBonus: <?= $defaultBonus ?>,
-        self: <?= json_encode(html_entity_decode($self)) ?>,
-    };
-    const $ = id => document.getElementById(id);
-    const sep = cfg.self.includes('?') ? '&' : '?';
-    const units = { B: 1, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 };
-    const fmt = b => { const u = ['B','KB','MB','GB','TB','PB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(2) : b) + ' ' + u[i]; };
-    const hint = (id, text, cls) => { const h = $(id); if (h) { h.className = 'au-hint' + (cls ? ' ' + cls : ''); h.innerHTML = text; } };
-
-    // ── Bootstrap-валидация ─────────────────────────────────
-    const form = $('auForm');
-    form.addEventListener('submit', e => {
-        if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); form.classList.add('was-validated'); return; }
-        const b = $('auSubmit'); b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creating…';
-    });
-
-    // ── Ник: длина + живая проверка занятости ───────────────
-    // Раньше разрешались только a-z и цифры (и в браузере, и на сервере)
-    let tName, tMail;
-    $('input_username').addEventListener('input', function () {
-        const v = this.value.trim();
-        const len = [...v].length;
-        if (!v) { this.setCustomValidity(''); hint('hint_username', cfg.minName + '–' + cfg.maxName + ' characters'); update(); return; }
-        if (len < cfg.minName || len > cfg.maxName) {
-            this.setCustomValidity('length'); hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>' + cfg.minName + '–' + cfg.maxName + ' characters', 'bad'); update(); return;
-        }
-        if (/[<>&"'\\\x00-\x1f]/.test(v)) {
-            this.setCustomValidity('chars'); hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>Characters &lt; &gt; &amp; " \' \\ are not allowed', 'bad'); update(); return;
-        }
-        this.setCustomValidity('');
-        clearTimeout(tName);
-        tName = setTimeout(() => fetch(cfg.self + sep + 'check_name=' + encodeURIComponent(v), { credentials: 'same-origin' })
-            .then(r => r.json()).then(d => {
-                if ($('input_username').value.trim() !== v) return;
-                if (d.taken)       { $('input_username').setCustomValidity('taken');  hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>Already taken', 'bad'); }
-                else if (d.banned) { $('input_username').setCustomValidity('banned'); hint('hint_username', '<i class="fa-solid fa-ban me-1"></i>Disallowed by a ban filter', 'bad'); }
-                else hint('hint_username', '<i class="fa-solid fa-circle-check me-1"></i>Available', 'ok');
-            }).catch(() => {}), 300);
-        update();
-    });
-
-    // ── Email: формат + занятость + бан ─────────────────────
-    $('input_email').addEventListener('input', function () {
-        const v = this.value.trim();
-        update();
-        if (!v) { hint('hint_email', 'Used for login, notifications and activation'); return; }
-        clearTimeout(tMail);
-        tMail = setTimeout(() => fetch(cfg.self + sep + 'check_email=' + encodeURIComponent(v), { credentials: 'same-origin' })
-            .then(r => r.json()).then(d => {
-                if ($('input_email').value.trim() !== v) return;
-                const bad = !d.valid || d.taken || d.banned;
-                $('input_email').setCustomValidity(bad ? 'bad' : '');
-                hint('hint_email', !d.valid ? '<i class="fa-solid fa-circle-xmark me-1"></i>Not a valid address'
-                    : d.taken  ? '<i class="fa-solid fa-circle-xmark me-1"></i>Used by another account'
-                    : d.banned ? '<i class="fa-solid fa-ban me-1"></i>Disallowed by a ban filter'
-                    : '<i class="fa-solid fa-circle-check me-1"></i>Available', bad ? 'bad' : 'ok');
-            }).catch(() => {}), 350);
-    });
-
-    // ── Пароль: правила + индикатор надёжности ──────────────
-    function checkPw() {
-        const p = $('input_password'), p2 = $('input_password2'), v = p.value;
-        let err = '';
-        if (v.length < cfg.minPw) err = 'At least ' + cfg.minPw + ' characters';
-        else if (v.length > cfg.maxPw) err = 'At most ' + cfg.maxPw + ' characters';
-        else if (cfg.complex && (!/[a-zA-Z]/.test(v) || !/[0-9]/.test(v))) err = 'Needs letters and numbers';
-        else if (v && v === $('input_username').value.trim()) err = 'Must differ from the username';
-        p.setCustomValidity(err);
-
-        let score = 0;
-        if (v.length >= 8) score++; if (v.length >= 12) score++;
-        if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++; if (/\d/.test(v)) score++; if (/[^A-Za-z0-9]/.test(v)) score++;
-        const bar = $('au_strength'), colors = ['#ef4444', '#ef4444', '#f59e0b', '#eab308', '#22c55e', '#16a34a'];
-        bar.style.width = v ? (Math.max(1, score) / 5 * 100) + '%' : '0';
-        bar.style.backgroundColor = colors[score];
-        hint('hint_password', v ? (err ? '<i class="fa-solid fa-circle-xmark me-1"></i>' + err : ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'][score]) : cfg.minPw + '–' + cfg.maxPw + ' characters' + (cfg.complex ? ', letters and numbers' : ''), v ? (err ? 'bad' : (score >= 3 ? 'ok' : '')) : '');
-
-        const match = p2.value === v;
-        p2.setCustomValidity(match ? '' : 'mismatch');
-        hint('hint_password2', p2.value ? (match ? '<i class="fa-solid fa-circle-check me-1"></i>Passwords match' : '<i class="fa-solid fa-circle-xmark me-1"></i>Passwords do not match') : '', p2.value ? (match ? 'ok' : 'bad') : '');
-    }
-    $('input_password').addEventListener('input', checkPw);
-    $('input_password2').addEventListener('input', checkPw);
-    document.querySelectorAll('[data-toggle-pw]').forEach(b => b.addEventListener('click', () => {
-        const f = $(b.dataset.togglePw), show = f.type === 'password';
-        f.type = show ? 'text' : 'password'; $('input_password2').type = f.type;
-        b.innerHTML = '<i class="fa-solid ' + (show ? 'fa-eye-slash' : 'fa-eye') + '"></i>';
-    }));
-
-    // Генерация пароля — криптостойкий генератор вместо Math.random()
-    window.generatePassword = function () {
-        const letters = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ', digits = '23456789', symbols = '!@#$%^&*';
-        const all = letters + digits + symbols;
-        const len = Math.min(cfg.maxPw, Math.max(cfg.minPw, 14));
-        const rnd = n => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
-        const chars = [letters[rnd(letters.length)], digits[rnd(digits.length)], symbols[rnd(symbols.length)]];
-        while (chars.length < len) chars.push(all[rnd(all.length)]);
-        for (let i = chars.length - 1; i > 0; i--) { const j = rnd(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
-        const pw = chars.join('');
-        $('input_password').value = pw; $('input_password2').value = pw; checkPw();
-        $('generated_password_text').textContent = pw;
-        $('generated_password_box').style.display = '';
-    };
-    window.copyGeneratedPassword = function () {
-        const t = $('generated_password_text').textContent;
-        if (t) navigator.clipboard?.writeText(t).then(() => { if (typeof showToast === 'function') showToast('Password copied to clipboard', 'success'); });
-    };
-
-    // ── Аватар ──────────────────────────────────────────────
-    window.switchAvatarTab = function (tab) {
-        $('avatar-panel-url').style.display  = tab === 'url'  ? '' : 'none';
-        $('avatar-panel-file').style.display = tab === 'file' ? '' : 'none';
-        $('tab-url').classList.toggle('active',  tab === 'url');
-        $('tab-file').classList.toggle('active', tab === 'file');
-    };
-    function showAvatar(src) {
-        const box = $('pvAvatar');
-        box.replaceChildren();
-        if (src) {
-            const img = document.createElement('img'); img.alt = ''; img.src = src;
-            img.onerror = () => { box.textContent = initial(); };
-            box.appendChild(img);
-            $('avatar_preview').hidden = false;
-        } else {
-            box.textContent = initial();
-            $('avatar_preview').hidden = true;
-        }
-    }
-    const initial = () => ([...$('input_username').value.trim()][0] || '?').toUpperCase();
-    window.clearAvatar = function () {
-        $('input_avatar').value = ''; $('input_avatar_file').value = '';
-        $('avatar-filename').style.display = 'none';
-        showAvatar('');
-    };
-    window.handleAvatarDrop = function (e) {
-        e.preventDefault();
-        $('avatar-dropzone').classList.remove('border-primary');
-        if (e.dataTransfer.files[0]) setAvatarFile(e.dataTransfer.files[0]);
-    };
-    function setAvatarFile(file) {
-        const dt = new DataTransfer(); dt.items.add(file);
-        $('input_avatar_file').files = dt.files;
-        $('avatar-filename').textContent = file.name; $('avatar-filename').style.display = 'block';
-        const r = new FileReader(); r.onload = e => showAvatar(e.target.result); r.readAsDataURL(file);
-    }
-    $('input_avatar_file').addEventListener('change', function () { if (this.files[0]) setAvatarFile(this.files[0]); });
-    $('input_avatar').addEventListener('input', function () { showAvatar(/^https?:\/\//i.test(this.value) ? this.value : ''); });
-
-    // ── Карточка-превью ─────────────────────────────────────
-    function bytes(field, unitName, def) {
-        const raw = $(field).value.trim();
-        const u = document.querySelector('[name="' + unitName + '"]').value;
-        return raw === '' ? def : Math.max(0, parseFloat(raw) || 0) * units[u];
-    }
-    function update() {
-        const name = $('input_username').value.trim();
-        $('pvName').textContent = name || 'New user';
-        $('pvEmail').textContent = $('input_email').value.trim() || 'no email yet';
-        if (!$('pvAvatar').querySelector('img')) $('pvAvatar').textContent = initial();
-        const g = $('input_usergroup');
-        $('pvGroup').textContent = g.options[g.selectedIndex].text.replace(/^Default — /, '');
-        const up = bytes('input_uploaded', 'uploaded_unit', cfg.defUpGb * units.GB);
-        const down = bytes('input_downloaded', 'downloaded_unit', 0);
-        $('pvUp').textContent = fmt(up); $('pvDown').textContent = fmt(down);
-        $('pvRatio').textContent = down > 0 ? (up / down).toFixed(2) : '∞';
-        const sb = $('input_seedbonus').value.trim();
-        $('pvBonus').textContent = (sb === '' ? cfg.defBonus : parseInt(sb, 10) || 0).toLocaleString();
-        $('pvInv').textContent = (parseInt($('input_invites').value, 10) || 0).toLocaleString();
-        $('pvStatus').innerHTML = $('confirm').checked
-            ? '<span class="text-warning"><i class="fa-solid fa-hourglass-half me-1"></i>Pending activation</span>'
-            : '<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>Confirmed</span>';
-    }
-    form.addEventListener('input', update);
-    form.addEventListener('change', update);
-
-    // Начальное состояние (после ошибки поля уже заполнены)
-    if ($('input_avatar').value) showAvatar($('input_avatar').value);
-    if ($('input_username').value) $('input_username').dispatchEvent(new Event('input'));
-    if ($('input_email').value) $('input_email').dispatchEvent(new Event('input'));
-    update();
-})();
+const AGS_LANG = <?= json_encode($jsLang, $jsonFlags) ?>;
+const AU_CFG = <?= json_encode($jsCfg, $jsonFlags) ?>;
 </script>
+<script src="<?= htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8') ?>/admin/scripts/adduser.js?ver=1"></script>
 <?php
 
 stdfoot();

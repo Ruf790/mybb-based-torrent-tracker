@@ -6,11 +6,43 @@ require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_multipage.php';
 
 // Access check
+// (stays hardcoded: on direct access the language system is not initialised yet)
 if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger" role="alert">
         <i class="fas fa-exclamation-triangle"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.
     </div>');
+}
+
+$lang->load('logmails');
+
+/**
+ * Substitute {1}, {2}… (and %1$s, %2$s… produced by $lang->load()) placeholders
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * Encode a string as a JS literal safe for use inside an HTML attribute
+ */
+if (!function_exists('ags_js_attr')) {
+    function ags_js_attr(string $str): string
+    {
+        return htmlspecialchars(
+            json_encode($str, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
+            ENT_QUOTES
+        );
+    }
 }
 
 // Initialize parser
@@ -25,7 +57,7 @@ $parser_options = [
 ];
 
 // Page title
-stdhead('Email Logs');
+stdhead($lang->logmails['page_title']);
 
 // Handle actions
 handleMailLogActions();
@@ -56,7 +88,7 @@ stdfoot();
  */
 function handleMailLogActions(): void
 {
-    global $db, $usergroups, $_this_script_;
+    global $db, $usergroups, $_this_script_, $lang;
     
     if (!($usergroups['cansettingspanel'] ?? false)) {
         return;
@@ -64,7 +96,7 @@ function handleMailLogActions(): void
     
     if (($_POST['clear'] ?? '') === 'yes') {
         $db->sql_query_prepared('TRUNCATE TABLE maillogs');
-        showAlert('success', '<i class="fas fa-trash"></i> Log table has been completely cleared!');
+        showAlert('success', '<i class="fas fa-trash"></i> ' . htmlspecialchars($lang->logmails['flash_cleared']));
         return;
     }
     
@@ -75,8 +107,11 @@ function handleMailLogActions(): void
             $db->sql_query_prepared("DELETE FROM maillogs WHERE mid IN ($ids)");
             $deleted = $db->affected_rows();
             showAlert('success', 
-                '<i class="fas fa-check-circle"></i> Successfully deleted ' . $deleted . ' ' . 
-                pluralize($deleted, ['entry', 'entries', 'entries']) . '!'
+                '<i class="fas fa-check-circle"></i> ' . htmlspecialchars(ags_fmt(
+                    $lang->logmails['flash_deleted'],
+                    $deleted,
+                    pluralize($deleted, explode('|', $lang->logmails['plural_entries']))
+                ))
             );
         }
     }
@@ -87,6 +122,8 @@ function handleMailLogActions(): void
  */
 function showAlert(string $type, string $message): void
 {
+    global $lang;
+
     $icons = [
         'success' => 'fas fa-check-circle',
         'danger' => 'fas fa-exclamation-circle',
@@ -97,7 +134,7 @@ function showAlert(string $type, string $message): void
     echo '<div class="container mt-3">
         <div class="alert alert-' . htmlspecialchars($type) . ' alert-dismissible fade show" role="alert">
             <i class="' . ($icons[$type] ?? 'fas fa-info') . '"></i> ' . $message . '
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="' . htmlspecialchars($lang->logmails['aria_close']) . '"></button>
         </div>
     </div>';
 }
@@ -107,14 +144,15 @@ function showAlert(string $type, string $message): void
  */
 function renderSearchForm(): void
 {
-    global $_this_script_no_act;
+    global $_this_script_no_act, $lang;
+    $L = $lang->logmails;
     $searchstr = htmlspecialchars($_GET['query'] ?? '');
     
     echo '<div class="container mt-4">
         <div class="card border-0">
             <div class="card-body">
                 <h4 class="card-title mb-4">
-                    <i class="fas fa-search me-2 text-primary"></i>Search Email Logs
+                    <i class="fas fa-search me-2 text-primary"></i>' . htmlspecialchars($L['sec_search']) . '
                 </h4>
                 <form method="get" action="' . htmlspecialchars(($_this_script_no_act ?? '') . '?act=searchlog') . '" class="row g-3">
                     <div class="col-md-8">
@@ -125,13 +163,14 @@ function renderSearchForm(): void
                             <input type="text" 
                                    name="query" 
                                    class="form-control border-start-0" 
-                                   placeholder="Enter email, subject or message text..."
+                                   placeholder="' . htmlspecialchars($L['ph_search']) . '"
+                                   aria-label="' . htmlspecialchars($L['aria_search']) . '"
                                    value="' . $searchstr . '">
                         </div>
                     </div>
                     <div class="col-md-4">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="fas fa-search me-1"></i> Search
+                            <i class="fas fa-search me-1"></i> ' . htmlspecialchars($L['btn_search']) . '
                         </button>
                     </div>
                 </form>
@@ -139,19 +178,19 @@ function renderSearchForm(): void
                     <form method="post" class="d-inline">
                         <input type="hidden" name="clear" value="yes">
                         <button type="submit" class="btn btn-outline-danger btn-sm" 
-                                onclick="return confirm(\'Are you sure you want to completely clear all logs?\')">
-                            <i class="fas fa-trash-alt me-1"></i> Clear All Logs
+                                onclick="return confirm(' . ags_js_attr($L['js_confirm_clear']) . ')">
+                            <i class="fas fa-trash-alt me-1"></i> ' . htmlspecialchars($L['btn_clear_all']) . '
                         </button>
                     </form>
                     <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" 
                             data-bs-target="#helpSection">
-                        <i class="fas fa-question-circle me-1"></i> Help
+                        <i class="fas fa-question-circle me-1"></i> ' . htmlspecialchars($L['btn_help']) . '
                     </button>
                 </div>
                 <div class="collapse mt-3" id="helpSection">
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
-                        <strong>Search works by:</strong> sender address, recipient address, and message content.
+                        ' . $L['hint_search'] . '
                     </div>
                 </div>
             </div>
@@ -199,7 +238,8 @@ function getMailLogs(int $start, int $perpage): array
  */
 function renderMailLogsTable(array $logs, int $total_count, string $multipage, $parser, array $parser_options, int $page, int $perpage): void
 {
-    global $_this_script_, $usergroups;
+    global $_this_script_, $usergroups, $lang, $BASEURL;
+    $L = $lang->logmails;
     
     echo '<div class="container mt-4">
         <!-- Statistics -->
@@ -212,7 +252,7 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                                 <i class="fas fa-envelope-open-text fa-2x"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-0">Total Entries</h5>
+                                <h5 class="card-title mb-0">' . htmlspecialchars($L['lbl_total']) . '</h5>
                                 <h2 class="mb-0">' . number_format($total_count) . '</h2>
                             </div>
                         </div>
@@ -227,7 +267,7 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                                 <i class="fas fa-clock fa-2x"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-0">Last Update</h5>
+                                <h5 class="card-title mb-0">' . htmlspecialchars($L['lbl_last_update']) . '</h5>
                                 <h6 class="mb-0 text-muted">' . date('m/d/Y H:i:s') . '</h6>
                             </div>
                         </div>
@@ -243,8 +283,12 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">
                         <i class="fas fa-list me-1"></i>
-                        Showing ' . (count($logs) > 0 ? (($page - 1) * $perpage + 1) : 0) . '-' . 
-                        min(($page - 1) * $perpage + count($logs), $total_count) . ' of ' . $total_count . ' entries
+                        ' . htmlspecialchars(ags_fmt(
+                            $L['lbl_showing'],
+                            count($logs) > 0 ? (($page - 1) * $perpage + 1) : 0,
+                            min(($page - 1) * $perpage + count($logs), $total_count),
+                            $total_count
+                        )) . '
                     </small>
                     <div class="pagination pagination-sm mb-0">
                         ' . $multipage . '
@@ -259,12 +303,12 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
             <div class="card-header bg-white border-0 py-3">
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
-                        <i class="fas fa-history me-2 text-primary"></i>Email History
+                        <i class="fas fa-history me-2 text-primary"></i>' . htmlspecialchars($L['sec_history']) . '
                     </h5>';
     
     if (!empty($logs) && ($usergroups['cansettingspanel'] ?? false)) {
         echo '<button type="button" class="btn btn-outline-primary btn-sm" id="selectAllBtn">
-                <i class="fas fa-check-square me-1"></i> Select All
+                <i class="fas fa-check-square me-1"></i> ' . htmlspecialchars($L['btn_select_all']) . '
             </button>';
     }
     
@@ -280,8 +324,8 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
         echo '<div class="text-center py-5">
                 <div class="py-4">
                     <i class="fas fa-inbox fa-4x text-muted opacity-50 mb-3"></i>
-                    <h4 class="text-muted">Email logs are empty</h4>
-                    <p class="text-muted mb-0">All system emails will be displayed here.</p>
+                    <h4 class="text-muted">' . htmlspecialchars($L['empty_title']) . '</h4>
+                    <p class="text-muted mb-0">' . htmlspecialchars($L['empty_text']) . '</p>
                 </div>
             </div>';
     } else {
@@ -289,22 +333,23 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                 <thead class="table-light">
                     <tr>
                         <th style="width: 50px;" class="text-center">
-                            <input type="checkbox" class="form-check-input" id="selectAll">
+                            <input type="checkbox" class="form-check-input" id="selectAll" aria-label="' . htmlspecialchars($L['aria_select_all']) . '">
                         </th>
                         <th style="width: 180px;">
-                            <i class="fas fa-calendar-alt me-1 text-muted"></i>Date
+                            <i class="fas fa-calendar-alt me-1 text-muted"></i>' . htmlspecialchars($L['th_date']) . '
                         </th>
                         <th>
-                            <i class="fas fa-envelope me-1 text-muted"></i>Message
+                            <i class="fas fa-envelope me-1 text-muted"></i>' . htmlspecialchars($L['th_message']) . '
                         </th>
                         <th style="width: 100px;" class="text-center">
-                            <i class="fas fa-cog me-1 text-muted"></i>Actions
+                            <i class="fas fa-cog me-1 text-muted"></i>' . htmlspecialchars($L['th_actions']) . '
                         </th>
                     </tr>
                 </thead>
                 <tbody>';
         
         foreach ($logs as $log) {
+            $mid = (int)$log['mid'];
             $date = my_datee('relative', $log['dateline']);
             $message = $parser->parse_message($log['message'], $parser_options);
             $message_preview = mb_substr(strip_tags($message), 0, 100) . (mb_strlen(strip_tags($message)) > 100 ? '...' : '');
@@ -314,7 +359,8 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
             echo '<tr class="mail-log-row">
                     <td class="text-center">
                         <input type="checkbox" class="form-check-input mail-checkbox" 
-                               name="logid[]" value="' . (int)$log['mid'] . '">
+                               name="logid[]" value="' . $mid . '"
+                               aria-label="' . htmlspecialchars(ags_fmt($L['aria_select_row'], $mid)) . '">
                     </td>
                     <td>
                         <div class="d-flex align-items-center">
@@ -323,7 +369,7 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                             </div>
                             <div>
                                 <div class="fw-medium">' . $date . '</div>
-                                <small class="text-muted">ID: ' . (int)$log['mid'] . '</small>
+                                <small class="text-muted">' . htmlspecialchars(ags_fmt($L['lbl_id'], $mid)) . '</small>
                             </div>
                         </div>
                     </td>
@@ -334,34 +380,36 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
                         <div class="mail-preview">
                             <div class="mb-2">
                                 <span class="badge bg-light text-dark me-2">
-                                    <i class="fas fa-paper-plane me-1"></i>From: ' . htmlspecialchars($log['fromemail']) . '
+                                    <i class="fas fa-paper-plane me-1"></i>' . htmlspecialchars(ags_fmt($L['lbl_from'], (string)$log['fromemail'])) . '
                                 </span>
                                 <span class="badge bg-light text-dark">
-                                    <i class="fas fa-inbox me-1"></i>To: ' . htmlspecialchars($log['toemail']) . '
+                                    <i class="fas fa-inbox me-1"></i>' . htmlspecialchars(ags_fmt($L['lbl_to'], (string)$log['toemail'])) . '
                                 </span>
                             </div>
                             <div class="mail-content" style="max-height: 100px; overflow: hidden;">
                                 ' . $message . '
                             </div>
                             <button type="button" class="btn btn-link btn-sm p-0 mt-1 show-more-btn">
-                                <i class="fas fa-chevron-down me-1"></i>Show More
+                                <i class="fas fa-chevron-down me-1"></i>' . htmlspecialchars($L['js_show_more']) . '
                             </button>
                         </div>
                     </td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm" role="group">
                             <button type="button" class="btn btn-outline-info view-mail-btn" 
-                                    data-mid="' . (int)$log['mid'] . '"
+                                    data-mid="' . $mid . '"
                                     data-from="' . htmlspecialchars($log['fromemail']) . '"
                                     data-to="' . htmlspecialchars($log['toemail']) . '"
                                     data-date="' . htmlspecialchars($date) . '"
                                     data-message="' . htmlspecialchars($message) . '"
-                                    title="View">
+                                    title="' . htmlspecialchars($L['title_view']) . '"
+                                    aria-label="' . htmlspecialchars($L['title_view']) . '">
                                 <i class="fas fa-eye"></i>
                             </button>
                             <button type="button" class="btn btn-outline-danger delete-single" 
-                                    data-id="' . (int)$log['mid'] . '"
-                                    title="Delete">
+                                    data-id="' . $mid . '"
+                                    title="' . htmlspecialchars($L['title_delete']) . '"
+                                    aria-label="' . htmlspecialchars($L['title_delete']) . '">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -377,13 +425,13 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
             echo '<div class="card-footer bg-white border-0 py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="text-muted small" id="selectedCount">Selected: 0</span>
+                            <span class="text-muted small" id="selectedCount">' . htmlspecialchars(ags_fmt($L['js_selected'], 0)) . '</span>
                         </div>
                         <div>
                             <button type="submit" class="btn btn-danger" 
-                                    onclick="return confirm(\'Delete selected entries?\')"
+                                    onclick="return confirm(' . ags_js_attr($L['js_confirm_delete_selected']) . ')"
                                     disabled id="deleteSelectedBtn">
-                                <i class="fas fa-trash me-1"></i> Delete Selected
+                                <i class="fas fa-trash me-1"></i> ' . htmlspecialchars($L['btn_delete_selected']) . '
                             </button>
                         </div>
                     </div>
@@ -410,161 +458,44 @@ function renderMailLogsTable(array $logs, int $total_count, string $multipage, $
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="fas fa-envelope-open-text me-2"></i>Email Details
+                        <i class="fas fa-envelope-open-text me-2"></i>' . htmlspecialchars($L['modal_title']) . '
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($L['aria_close']) . '"></button>
                 </div>
                 <div class="modal-body" id="mailDetailsContent">
                     <div class="text-center py-4">
                         <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
-                        <p class="mt-3">Loading...</p>
+                        <p class="mt-3">' . htmlspecialchars($L['lbl_loading']) . '</p>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <!-- JavaScript -->
+    </div>';
+
+    // JS strings: js_* keys → AGS_LANG without the prefix
+    $js_lang = [];
+    foreach ($L as $key => $value) {
+        if (str_starts_with((string)$key, 'js_')) {
+            $js_lang[substr((string)$key, 3)] = $value;
+        }
+    }
+
+    echo '
     <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Select all checkboxes
-        const selectAll = document.getElementById("selectAll");
-        const selectAllBtn = document.getElementById("selectAllBtn");
-        
-        function toggleAllCheckboxes(checked) {
-            document.querySelectorAll(".mail-checkbox").forEach(cb => {
-                cb.checked = checked;
-            });
-            updateSelectedCount();
-        }
-        
-        if (selectAll) {
-            selectAll.addEventListener("change", function() {
-                toggleAllCheckboxes(this.checked);
-            });
-        }
-        
-        if (selectAllBtn) {
-            selectAllBtn.addEventListener("click", function() {
-                const allChecked = Array.from(document.querySelectorAll(".mail-checkbox"))
-                    .every(cb => cb.checked);
-                toggleAllCheckboxes(!allChecked);
-                if (selectAll) {
-                    selectAll.checked = !allChecked;
-                }
-            });
-        }
-        
-        // Count selected
-        function updateSelectedCount() {
-            const selected = document.querySelectorAll(".mail-checkbox:checked").length;
-            const selectedCount = document.getElementById("selectedCount");
-            const deleteBtn = document.getElementById("deleteSelectedBtn");
-            
-            if (selectedCount) {
-                selectedCount.textContent = "Selected: " + selected;
-            }
-            
-            if (deleteBtn) {
-                deleteBtn.disabled = selected === 0;
-            }
-        }
-        
-        document.querySelectorAll(".mail-checkbox").forEach(cb => {
-            cb.addEventListener("change", updateSelectedCount);
-        });
-        
-        // Expand/collapse messages
-        document.querySelectorAll(".show-more-btn").forEach(btn => {
-            btn.addEventListener("click", function() {
-                const content = this.closest(".mail-preview").querySelector(".mail-content");
-                if (content.style.maxHeight) {
-                    content.style.maxHeight = null;
-                    this.innerHTML = \'<i class="fas fa-chevron-up me-1"></i>Collapse\';
-                } else {
-                    content.style.maxHeight = "100px";
-                    this.innerHTML = \'<i class="fas fa-chevron-down me-1"></i>Show More\';
-                }
-            });
-        });
-        
-        // Delete single entry
-        document.querySelectorAll(".delete-single").forEach(btn => {
-            btn.addEventListener("click", function() {
-                if (confirm("Delete this entry?")) {
-                    const form = document.getElementById("mailLogsForm");
-                    const checkbox = document.createElement("input");
-                    checkbox.type = "hidden";
-                    checkbox.name = "logid[]";
-                    checkbox.value = this.dataset.id;
-                    form.appendChild(checkbox);
-                    form.submit();
-                }
-            });
-        });
-        
-        // View email details
-        document.querySelectorAll(".view-mail-btn").forEach(btn => {
-            btn.addEventListener("click", function() {
-                const modal = new bootstrap.Modal(document.getElementById("mailDetailsModal"));
-                const content = document.getElementById("mailDetailsContent");
-                
-                content.innerHTML = `
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card border-light">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted"><i class="fas fa-paper-plane me-2"></i>Sender</h6>
-                                    <p class="card-text">${this.dataset.from}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card border-light">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted"><i class="fas fa-inbox me-2"></i>Recipient</h6>
-                                    <p class="card-text">${this.dataset.to}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <div class="card border-light">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted"><i class="fas fa-calendar-alt me-2"></i>Send Date</h6>
-                                    <p class="card-text">${this.dataset.date}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-12">
-                            <div class="card border-light">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted"><i class="fas fa-envelope me-2"></i>Message Content</h6>
-                                    <div class="mail-content-full p-3 bg-light rounded">
-                                        ${this.dataset.message}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>`;
-                
-                modal.show();
-            });
-        });
-        
-        updateSelectedCount();
-    });
-    </script>';
+    const AGS_LANG = ' . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
+    </script>
+    <script src="' . htmlspecialchars((string)($BASEURL ?? '')) . '/admin/scripts/logmails.js?ver=1"></script>';
 }
 
 /**
  * Pluralize numbers
+ * 2 forms (one|other) → English rule; 3 forms (one|few|many) → Slavic rule
  */
 function pluralize(int $number, array $forms): string
 {
+    if (count($forms) === 2) {
+        return $forms[$number === 1 ? 0 : 1];
+    }
     $cases = [2, 0, 1, 1, 1, 2];
     return $forms[($number % 100 > 4 && $number % 100 < 20) ? 2 : $cases[min($number % 10, 5)]];
 }

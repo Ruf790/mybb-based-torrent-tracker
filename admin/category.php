@@ -7,6 +7,26 @@ if (!defined('STAFF_PANEL')) {
 
 define('C_VERSION', '2.2');
 
+global $lang;
+$lang->load('category');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в строку из ланга.
+     * $lang->load() превращает {1} в %1$s — поэтому заменяем оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 /**
  * Category Management Module
  */
@@ -39,6 +59,8 @@ class CategoryManager
 
     public function updateCategoriesCache(): void
     {
+        global $lang;
+
         $categoriesC = [];
         $categoriesS = [];
 
@@ -64,7 +86,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
         $filename = TSDIR . '/cache/categories.php';
         if (file_put_contents($filename, $cacheContent) === false) {
-            $this->addError('Failed to write cache file');
+            $this->addError($lang->category['err_cache_write']);
         }
     }
 
@@ -92,6 +114,8 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
      */
     public function getIconSelector(string $selected = ''): string
     {
+        global $lang;
+
         $grid = '';
         foreach (self::ICONS as $icon) {
             $grid .= '<button type="button" class="cm-ico-opt" data-icon="' . $this->e($icon) . '" title="' . $this->e($icon) . '"><i class="' . $this->e($icon) . '"></i></button>';
@@ -101,17 +125,19 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             <div class="input-group">
                 <span class="input-group-text cm-ico-preview">' . $this->icon($selected, 'fa-solid fa-icons') . '</span>
                 <input type="text" class="form-control font-monospace" name="icon" value="' . $this->e($selected) . '" placeholder="fa-solid fa-film" autocomplete="off">
-                <button class="btn btn-outline-secondary cm-ico-toggle" type="button"><i class="fa-solid fa-table-cells me-1"></i>Pick</button>
+                <button class="btn btn-outline-secondary cm-ico-toggle" type="button"><i class="fa-solid fa-table-cells me-1"></i>' . $this->e($lang->category['btn_pick']) . '</button>
             </div>
             <div class="cm-ico-grid" hidden>' . $grid . '</div>
-            <div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Font Awesome classes, e.g. <code>fa-solid fa-film</code> · <a href="https://fontawesome.com/search" target="_blank" rel="noopener">browse icons</a></div>
+            <div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>' . $lang->category['hint_icon'] . ' · <a href="https://fontawesome.com/search" target="_blank" rel="noopener">' . $this->e($lang->category['lnk_browse_icons']) . '</a></div>
         </div>';
     }
 
     public function getCategoryDropdown(int $selectedId = 0, string $selectName = 'cid', bool $includeAll = false, int $excludeId = 0): string
     {
+        global $lang;
+
         $html = '<select name="' . $this->e($selectName) . '" class="form-select">';
-        $html .= '<option value="0">' . ($includeAll ? '— All categories —' : '— None (main category) —') . '</option>';
+        $html .= '<option value="0">' . $this->e($includeAll ? $lang->category['opt_all'] : $lang->category['opt_none']) . '</option>';
 
         $query = $this->db->sql_query_prepared("SELECT id, name FROM categories WHERE type = 'c' ORDER BY name");
         while ($query && ($cat = $this->db->fetch_array($query))) {
@@ -153,14 +179,22 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
     {
         if (self::$assetsPrinted) return;
         self::$assetsPrinted = true;
-       
-		   
-		global $BASEURL;
-	
-	   echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin_category.css">';  
-	   echo '<script src="' . $BASEURL . '/admin/scripts/admin_category.js"></script>';
-		   
-		   
+
+        global $BASEURL, $lang;
+
+        // Строки для JS: js_xxx из ланга → AGS_LANG.xxx
+        $jsLang = [];
+        foreach ($lang->category as $k => $v) {
+            if (str_starts_with((string)$k, 'js_')) {
+                $jsLang[substr((string)$k, 3)] = $v;
+            }
+        }
+
+        echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin_category.css">';
+        ?>
+<script>const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<?php
+        echo '<script src="' . $BASEURL . '/admin/scripts/admin_category.js?ver=2"></script>';
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -179,26 +213,28 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function saveCategory(array $data, ?int $id = null): bool
     {
+        global $lang;
+
         if ($data['name'] === '') {
-            $this->addError('Category name cannot be empty');
+            $this->addError($lang->category['err_name_empty']);
             return false;
         }
 
         if ($data['pid'] > 0) {
             // Родитель должен существовать и быть главной категорией (дерево в 2 уровня)
             if (!$this->validateCategoryId($data['pid'], 'c')) {
-                $this->addError('Selected parent category does not exist');
+                $this->addError($lang->category['err_parent_missing']);
                 return false;
             }
             if ($id !== null && $data['pid'] === $id) {
-                $this->addError('A category cannot be its own parent');
+                $this->addError($lang->category['err_own_parent']);
                 return false;
             }
             // Раньше главную категорию с подкатегориями можно было сделать подкатегорией —
             // её подкатегории оставались ссылаться на неё и получался третий уровень,
             // который browse.php и кэш не умеют показывать
             if ($id !== null && $this->getSubcategoryCount($id) > 0) {
-                $this->addError('This category has subcategories — move or delete them before making it a subcategory');
+                $this->addError($lang->category['err_has_subs_demote']);
                 return false;
             }
         }
@@ -212,7 +248,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         }
 
         if (!$this->db->sql_query_prepared($sql, $params)) {
-            $this->addError('Database error while saving category');
+            $this->addError($lang->category['err_db_save']);
             return false;
         }
 
@@ -226,6 +262,8 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     public function handleRequest(): void
     {
+        global $lang;
+
         $action = $_GET['do'] ?? $_POST['do'] ?? '';
         $what   = $_GET['what'] ?? $_POST['what'] ?? '';
         $id     = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
@@ -234,7 +272,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!verify_post_check($_POST['my_post_key'] ?? '')) {
                 http_response_code(403);
-                echo 'Invalid security token';
+                echo $this->e($lang->category['err_token']);
                 exit;
             }
         }
@@ -258,36 +296,42 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function handleNew(string $what): void
     {
+        global $lang;
+
         if ($what === 'save') {
             $data = $this->sanitizeInput($_POST);
             if ($this->saveCategory($data)) {
-                $this->done('New category has been successfully added!');
+                $this->done($lang->category['flash_added']);
             }
         }
-        $this->showCategoryForm('Add Category');
+        $this->showCategoryForm($lang->category['pane_add_category']);
     }
 
     private function handleEdit(string $what, int $id): void
     {
+        global $lang;
+
         if (!$this->validateCategoryId($id)) {
-            stderr('Error', 'Category with this ID was not found!');
+            stderr($lang->category['err_title'], $lang->category['err_not_found']);
             return;
         }
         if ($what === 'save') {
             $data = $this->sanitizeInput($_POST);
             if ($this->saveCategory($data, $id)) {
-                $this->done('Category has been updated!');
+                $this->done($lang->category['flash_updated']);
             }
         }
         $category = $this->getCategory($id);
-        $this->showCategoryForm('Edit Category', $category);
+        $this->showCategoryForm($lang->category['pane_edit_category'], $category);
     }
 
     private function ajaxGetCategory(int $id): void
     {
+        global $lang;
+
         header('Content-Type: application/json');
         if (!$this->validateCategoryId($id)) {
-            echo json_encode(['error' => 'Category not found']);
+            echo json_encode(['error' => $lang->category['err_ajax_not_found']]);
             exit;
         }
         $category = $this->getCategory($id);
@@ -298,29 +342,29 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function handleDelete(string $what, int $id): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
         if (!$this->validateCategoryId($id)) {
-            stderr('Error', 'Category with this ID was not found!');
+            stderr($lang->category['err_title'], $lang->category['err_not_found']);
             return;
         }
 
         $torrentCount = $this->getTorrentCountForCategory($id);
         if ($torrentCount > 0) {
-            stderr('Error', "This category still has {$torrentCount} torrent(s) assigned to it. Please reassign or remove them before deleting the category.");
+            stderr($lang->category['err_title'], ags_fmt($lang->category['err_has_torrents'], $torrentCount));
             return;
         }
         // Раньше главную категорию можно было удалить вместе с «повисшими» подкатегориями
         $subCount = $this->getSubcategoryCount($id);
         if ($subCount > 0) {
-            stderr('Error', "This category still has {$subCount} subcategory(ies). Delete or move them first.");
+            stderr($lang->category['err_title'], ags_fmt($lang->category['err_has_subs'], $subCount));
             return;
         }
 
         if ($what === 'sure' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $this->db->sql_query_prepared("DELETE FROM categories WHERE id = ? LIMIT 1", [$id]);
             $this->updateCategoriesCache();
-            $this->done('Category has been successfully deleted!');
+            $this->done($lang->category['flash_deleted']);
         }
 
         $category = $this->getCategory($id);
@@ -330,22 +374,22 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         <div class="modal-content">
             <div class="modal-header">
                 <span class="cm-mh-icon ic-red"><i class="fa-solid fa-trash"></i></span>
-                <h5 class="modal-title fw-bold" id="deleteModalLabel">Delete category</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold" id="deleteModalLabel">' . $this->e($lang->category['pane_delete']) . '</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . $this->e($lang->category['btn_close']) . '"></button>
             </div>
             <div class="modal-body">
                 <div class="cm-note mb-3"><span class="cm-mh-icon cm-mh-sm ic-blue m-0">' . $this->icon($category['icon'] ?? '') . '</span>
-                    <div><div class="fw-bold">' . $this->e($category['name']) . '</div><div class="text-body-secondary small">ID ' . (int)$id . ' · no torrents, no subcategories</div></div></div>
-                <div class="text-body-secondary"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>This action cannot be undone.</div>
+                    <div><div class="fw-bold">' . $this->e($category['name']) . '</div><div class="text-body-secondary small">' . $this->e(ags_fmt($lang->category['hint_delete_meta'], (int)$id)) . '</div></div></div>
+                <div class="text-body-secondary"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>' . $this->e($lang->category['hint_cannot_undo']) . '</div>
             </div>
             <div class="modal-footer">
-                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>' . $this->e($lang->category['btn_cancel']) . '</a>
                 <form method="post" action="' . $this->baseScript . '" class="d-inline">
                     <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
                     <input type="hidden" name="do" value="delete">
                     <input type="hidden" name="id" value="' . (int)$id . '">
                     <input type="hidden" name="what" value="sure">
-                    <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+                    <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>' . $this->e($lang->category['btn_delete']) . '</button>
                 </form>
             </div>
         </div>
@@ -359,8 +403,10 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function handleAddSubcategory(string $what, int $cid): void
     {
+        global $lang;
+
         if (!$this->validateCategoryId($cid, 'c')) {
-            stderr('Error', 'Main category with this ID was not found!');
+            stderr($lang->category['err_title'], $lang->category['err_main_not_found']);
             return;
         }
         if ($what === 'save') {
@@ -368,7 +414,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             $data['type'] = 's';
             $data['pid']  = $cid;
             if ($this->saveCategory($data)) {
-                $this->done('New subcategory has been successfully added!');
+                $this->done($lang->category['flash_sub_added']);
             }
         }
         $this->showSubcategoryForm($this->getCategory($cid));
@@ -389,7 +435,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function showCategoryForm(string $title, ?array $category = null): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
         $isEdit = ($category !== null);
         $data = $category ?? ['name' => '', 'icon' => '', 'type' => 'c', 'pid' => 0];
@@ -399,13 +445,13 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             $data['pid']  = (int)($_POST['cid'] ?? $data['pid']);
         }
 
-        stdhead('Manage Categories - ' . $title);
+        stdhead(ags_fmt($lang->category['title_form'], $title));
         $this->assets();
 
         echo '<div class="container mt-3 mb-4 cm cm-narrow">';
         echo $this->pageHero($isEdit ? 'fa-pen-to-square' : 'fa-folder-plus', 'ic-blue', $this->e($title),
-            $isEdit ? 'ID ' . (int)$category['id'] . ' · ' . $this->e($category['name']) : 'Create a main category or a subcategory',
-            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>');
+            $isEdit ? ags_fmt($this->e($lang->category['sub_edit_form']), (int)$category['id'], $this->e($category['name'])) : $this->e($lang->category['sub_new_form']),
+            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>' . $this->e($lang->category['btn_back']) . '</a>');
         $this->showErrors();
 
         echo '<form method="post" action="' . $this->baseScript . '" class="cm-card p-3 p-md-4">
@@ -415,21 +461,21 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             . ($isEdit ? '<input type="hidden" name="id" value="' . (int)$category['id'] . '">' : '') . '
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                    <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>' . $this->e($lang->category['lbl_name']) . ' <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="name" name="name" value="' . $this->e($data['name']) . '" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label"><i class="fa-solid fa-sitemap"></i>Parent category</label>
+                    <label class="form-label"><i class="fa-solid fa-sitemap"></i>' . $this->e($lang->category['lbl_parent']) . '</label>
                     ' . $this->getCategoryDropdown((int)$data['pid'], 'cid', false, $isEdit ? (int)$category['id'] : 0) . '
                 </div>
                 <div class="col-12">
-                    <label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>
+                    <label class="form-label"><i class="fa-solid fa-icons"></i>' . $this->e($lang->category['lbl_icon']) . '</label>
                     ' . $this->getIconSelector((string)$data['icon']) . '
                 </div>
             </div>
             <div class="d-flex justify-content-end gap-2 mt-4">
-                <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
-                <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+                <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . $this->e($lang->category['btn_reset']) . '</button>
+                <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . $this->e($lang->category['btn_save']) . '</button>
             </div>
         </form></div>';
 
@@ -439,15 +485,15 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function showSubcategoryForm(array $parentCategory): void
     {
-        global $mybb;
+        global $mybb, $lang;
 
-        stdhead('Add Subcategory');
+        stdhead($lang->category['title_add_sub']);
         $this->assets();
 
         echo '<div class="container mt-3 mb-4 cm cm-narrow">';
-        echo $this->pageHero('fa-folder-plus', 'ic-green', 'Add subcategory',
-            'Inside <strong>' . $this->e($parentCategory['name']) . '</strong>',
-            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>');
+        echo $this->pageHero('fa-folder-plus', 'ic-green', $this->e($lang->category['pane_add_sub']),
+            ags_fmt($this->e($lang->category['sub_inside']), '<strong>' . $this->e($parentCategory['name']) . '</strong>'),
+            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>' . $this->e($lang->category['btn_back']) . '</a>');
         $this->showErrors();
 
         echo '<form method="post" action="' . $this->baseScript . '" class="cm-card p-3 p-md-4">
@@ -456,16 +502,16 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             <input type="hidden" name="what" value="save">
             <input type="hidden" name="cid" value="' . (int)$parentCategory['id'] . '">
             <div class="mb-3">
-                <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>' . $this->e($lang->category['lbl_name']) . ' <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="name" name="name" value="' . $this->e($_POST['name'] ?? '') . '" required>
             </div>
             <div class="mb-3">
-                <label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>
+                <label class="form-label"><i class="fa-solid fa-icons"></i>' . $this->e($lang->category['lbl_icon']) . '</label>
                 ' . $this->getIconSelector((string)($_POST['icon'] ?? '')) . '
             </div>
             <div class="d-flex justify-content-end gap-2 mt-4">
-                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
-                <button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>Add subcategory</button>
+                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>' . $this->e($lang->category['btn_cancel']) . '</a>
+                <button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>' . $this->e($lang->category['btn_add_sub']) . '</button>
             </div>
         </form></div>';
 
@@ -479,7 +525,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function modal(string $id, string $icon, string $cls, string $title, string $body, string $submit, string $formId = '', string $extraHidden = ''): string
     {
-        global $mybb;
+        global $mybb, $lang;
         return '
 <div class="modal fade cm-modal" id="' . $id . '" tabindex="-1" aria-labelledby="' . $id . 'Label" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -487,13 +533,13 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             <div class="modal-header">
                 <span class="cm-mh-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>
                 <h5 class="modal-title fw-bold" id="' . $id . 'Label">' . $title . '</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . $this->e($lang->category['btn_close']) . '"></button>
             </div>
             <form method="post" action="' . $this->baseScript . '"' . ($formId ? ' id="' . $formId . '"' : '') . '>
                 <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">' . $extraHidden . '
                 ' . $body . '
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+                    <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>' . $this->e($lang->category['btn_cancel']) . '</button>
                     ' . $submit . '
                 </div>
             </form>
@@ -504,7 +550,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
     private function showCategoryList(): void
     {
-        global $BASEURL;
+        global $BASEURL, $lang;
 
         // Данные: категории, подкатегории, количество раздач (один GROUP BY)
         $categories = $subcategories = $counts = [];
@@ -528,34 +574,44 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         }
         $n_empty    = count(array_filter($all_ids, fn($cid) => empty($counts[$cid])));
 
-        stdhead('Manage Tracker Categories');
+        stdhead($lang->category['title_list']);
         $this->assets();
 
+        // Готовые куски разметки, которые повторяются в карточках
+        $t_edit     = $this->e($lang->category['tip_edit']);
+        $t_delete   = $this->e($lang->category['tip_delete']);
+        $t_view     = $this->e($lang->category['tip_view']);
+        $t_view_br  = $this->e($lang->category['tip_view_browse']);
+        $t_total    = $this->e($lang->category['tip_total_torrents']);
+        $t_lock_tor = $lang->category['tip_locked_torrents'];
+        $t_lock_sub = $lang->category['tip_locked_subs'];
+        $btn_add_cat = '<button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="fa-solid fa-plus me-1"></i>' . $this->e($lang->category['btn_add_category']) . '</button>';
+
         // ── Модалки ────────────────────────────────────────────
-        echo $this->modal('addCategoryModal', 'fa-folder-plus', 'ic-blue', 'Add category',
+        echo $this->modal('addCategoryModal', 'fa-folder-plus', 'ic-blue', $this->e($lang->category['modal_add_category']),
             '<div class="modal-body"><div class="row g-3">
-                <div class="col-md-6"><label for="modal_name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                <div class="col-md-6"><label for="modal_name" class="form-label"><i class="fa-solid fa-tag"></i>' . $this->e($lang->category['lbl_name']) . ' <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="modal_name" name="name" required></div>
-                <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-sitemap"></i>Parent category</label>' . $this->getCategoryDropdown(0, 'cid') . '
-                    <div class="form-text">Leave “None” for a main category</div></div>
-                <div class="col-12"><label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>' . $this->getIconSelector() . '</div>
+                <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-sitemap"></i>' . $this->e($lang->category['lbl_parent']) . '</label>' . $this->getCategoryDropdown(0, 'cid') . '
+                    <div class="form-text">' . $this->e($lang->category['hint_parent_none']) . '</div></div>
+                <div class="col-12"><label class="form-label"><i class="fa-solid fa-icons"></i>' . $this->e($lang->category['lbl_icon']) . '</label>' . $this->getIconSelector() . '</div>
             </div></div>',
-            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>',
+            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . $this->e($lang->category['btn_save']) . '</button>',
             '', '<input type="hidden" name="do" value="new"><input type="hidden" name="what" value="save">');
 
-        echo $this->modal('editCategoryModal', 'fa-pen-to-square', 'ic-blue', 'Edit category',
-            '<div class="modal-body" id="editCategoryModalBody"><div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div></div></div>',
-            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save changes</button>',
+        echo $this->modal('editCategoryModal', 'fa-pen-to-square', 'ic-blue', $this->e($lang->category['modal_edit_category']),
+            '<div class="modal-body" id="editCategoryModalBody"><div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">' . $this->e($lang->category['lbl_loading']) . '</span></div></div></div>',
+            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . $this->e($lang->category['btn_save_changes']) . '</button>',
             'editCategoryForm');
 
-        echo $this->modal('addSubcategoryModal', 'fa-folder-plus', 'ic-green', 'Add subcategory',
+        echo $this->modal('addSubcategoryModal', 'fa-folder-plus', 'ic-green', $this->e($lang->category['pane_add_sub']),
             '<div class="modal-body">
-                <div class="cm-note mb-3"><i class="fa-solid fa-sitemap text-success mt-1"></i><div>Inside <strong id="parentCategoryName"></strong></div></div>
-                <div class="mb-3"><label for="sub_name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                <div class="cm-note mb-3"><i class="fa-solid fa-sitemap text-success mt-1"></i><div>' . ags_fmt($this->e($lang->category['sub_inside']), '<strong id="parentCategoryName"></strong>') . '</div></div>
+                <div class="mb-3"><label for="sub_name" class="form-label"><i class="fa-solid fa-tag"></i>' . $this->e($lang->category['lbl_name']) . ' <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="sub_name" name="name" required></div>
-                <div><label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>' . $this->getIconSelector() . '</div>
+                <div><label class="form-label"><i class="fa-solid fa-icons"></i>' . $this->e($lang->category['lbl_icon']) . '</label>' . $this->getIconSelector() . '</div>
             </div>',
-            '<button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>Add subcategory</button>',
+            '<button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>' . $this->e($lang->category['btn_add_sub']) . '</button>',
             'addSubcategoryForm',
             '<input type="hidden" name="do" value="add_subcategory"><input type="hidden" name="what" value="save"><input type="hidden" name="cid" id="parentCategoryId" value="">');
 
@@ -563,30 +619,29 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
 
         // ── Страница ───────────────────────────────────────────
         echo '<div class="container mt-3 mb-4 cm">';
-        echo $this->pageHero('fa-folder-tree', 'ic-purple', 'Tracker Categories', 'Main categories and their subcategories as shown on Browse',
-            '<button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="fa-solid fa-plus me-1"></i>Add category</button>');
+        echo $this->pageHero('fa-folder-tree', 'ic-purple', $this->e($lang->category['pane_list']), $this->e($lang->category['sub_list']), $btn_add_cat);
 
         $this->showErrors();
 
         echo '<div class="row g-3 mb-3">';
         foreach ([
-            ['fa-folder',      'ic-blue',   'Main categories', count($categories)],
-            ['fa-sitemap',     'ic-green',  'Subcategories',   $n_subs],
-            ['fa-magnet',      'ic-amber',  'Torrents',        $n_torrents],
-            ['fa-folder-open', 'ic-purple', 'Empty',           $n_empty],
+            ['fa-folder',      'ic-blue',   $lang->category['stat_main'],     count($categories)],
+            ['fa-sitemap',     'ic-green',  $lang->category['stat_subs'],     $n_subs],
+            ['fa-magnet',      'ic-amber',  $lang->category['stat_torrents'], $n_torrents],
+            ['fa-folder-open', 'ic-purple', $lang->category['stat_empty'],    $n_empty],
         ] as [$ic, $cls, $label, $val]) {
             echo '<div class="col-6 col-lg-3"><div class="cm-card cm-stat"><span class="cm-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
-               . '<div><div class="cm-stat-label">' . $label . '</div><div class="cm-stat-value">' . number_format((int)$val) . '</div></div></div></div>';
+               . '<div><div class="cm-stat-label">' . $this->e($label) . '</div><div class="cm-stat-value">' . number_format((int)$val) . '</div></div></div></div>';
         }
         echo '</div>';
 
         if (empty($categories)) {
-            echo '<div class="cm-card"><div class="cm-empty"><i class="fa-solid fa-folder-plus"></i><div class="fw-semibold">No categories yet</div>'
-               . '<div class="small mb-3">Create the first one to start organising torrents.</div>'
-               . '<button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="fa-solid fa-plus me-1"></i>Add category</button></div></div>';
+            echo '<div class="cm-card"><div class="cm-empty"><i class="fa-solid fa-folder-plus"></i><div class="fw-semibold">' . $this->e($lang->category['empty_title']) . '</div>'
+               . '<div class="small mb-3">' . $this->e($lang->category['empty_text']) . '</div>'
+               . $btn_add_cat . '</div></div>';
         } else {
             echo '<div class="d-flex justify-content-end mb-3"><div class="position-relative cm-search"><i class="fa-solid fa-magnifying-glass"></i>'
-               . '<input type="search" class="form-control form-control-sm" id="cmFilter" placeholder="Filter categories…"></div></div>';
+               . '<input type="search" class="form-control form-control-sm" id="cmFilter" placeholder="' . $this->e($lang->category['ph_filter']) . '" aria-label="' . $this->e($lang->category['ph_filter']) . '"></div></div>';
             echo '<div class="row g-3" id="cmGrid">';
 
             foreach ($categories as $cid => $category) {
@@ -595,21 +650,21 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
                 $total    = $own + array_sum(array_map(fn($s) => $counts[(int)$s['id']] ?? 0, $subs));
                 $name     = $this->e($category['name']);
                 $locked   = $own > 0 || $subs;
-                $lock_why = $own > 0 ? 'Has torrents — reassign them first' : 'Has subcategories — remove them first';
+                $lock_why = $own > 0 ? $t_lock_tor : $t_lock_sub;
                 $search   = mb_strtolower($category['name'] . ' ' . implode(' ', array_column($subs, 'name')));
 
                 echo '<div class="col-md-6 col-xl-4 cm-cat-col" data-search="' . $this->e($search) . '"><div class="cm-card cm-cat">';
                 echo '<div class="cm-cat-head"><span class="cm-cat-icon">' . $this->icon($category['icon'] ?? '') . '</span>'
                    . '<div class="cm-grow"><div class="cm-cat-name">' . $name . '</div>'
                    . '<div class="d-flex flex-wrap align-items-center gap-2 mt-1"><span class="cm-id">#' . $cid . '</span>'
-                   . '<span class="cm-count' . ($total ? ' has' : '') . '" title="Torrents in this category and its subcategories"><i class="fa-solid fa-magnet"></i>' . number_format($total) . '</span>'
+                   . '<span class="cm-count' . ($total ? ' has' : '') . '" title="' . $t_total . '"><i class="fa-solid fa-magnet"></i>' . number_format($total) . '</span>'
                    . '<span class="cm-count"><i class="fa-solid fa-sitemap"></i>' . count($subs) . '</span></div></div>'
                    . '<div class="d-flex flex-shrink-0">'
-                   . '<a href="' . $BASEURL . '/browse.php?cat=' . $cid . '" class="cm-act" title="View on Browse" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
-                   . '<button type="button" class="cm-act edit-category-btn" data-id="' . $cid . '" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+                   . '<a href="' . $BASEURL . '/browse.php?cat=' . $cid . '" class="cm-act" title="' . $t_view_br . '" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
+                   . '<button type="button" class="cm-act edit-category-btn" data-id="' . $cid . '" title="' . $t_edit . '"><i class="fa-solid fa-pen"></i></button>'
                    . ($locked
                        ? '<span class="cm-act locked" title="' . $this->e($lock_why) . '"><i class="fa-solid fa-lock"></i></span>'
-                       : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $cid . '" class="cm-act danger" title="Delete"><i class="fa-solid fa-trash"></i></a>')
+                       : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $cid . '" class="cm-act danger" title="' . $t_delete . '"><i class="fa-solid fa-trash"></i></a>')
                    . '</div></div>';
 
                 echo '<div class="cm-subs">';
@@ -620,24 +675,24 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
                         echo '<div class="cm-subrow"><span class="cm-sub-icon">' . $this->icon($sub['icon'] ?? '', 'fa-solid fa-folder') . '</span>'
                            . '<span class="cm-sub-name" title="' . $this->e($sub['name']) . '">' . $this->e($sub['name']) . '</span>'
                            . '<span class="cm-count' . ($n ? ' has' : '') . '"><i class="fa-solid fa-magnet"></i>' . number_format($n) . '</span>'
-                           . '<a href="' . $BASEURL . '/browse.php?cat=' . $sid . '" class="cm-act" title="View" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
-                           . '<button type="button" class="cm-act edit-category-btn" data-id="' . $sid . '" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+                           . '<a href="' . $BASEURL . '/browse.php?cat=' . $sid . '" class="cm-act" title="' . $t_view . '" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
+                           . '<button type="button" class="cm-act edit-category-btn" data-id="' . $sid . '" title="' . $t_edit . '"><i class="fa-solid fa-pen"></i></button>'
                            . ($n > 0
-                               ? '<span class="cm-act locked" title="Has torrents — reassign them first"><i class="fa-solid fa-lock"></i></span>'
-                               : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $sid . '" class="cm-act danger" title="Delete"><i class="fa-solid fa-trash"></i></a>')
+                               ? '<span class="cm-act locked" title="' . $this->e($t_lock_tor) . '"><i class="fa-solid fa-lock"></i></span>'
+                               : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $sid . '" class="cm-act danger" title="' . $t_delete . '"><i class="fa-solid fa-trash"></i></a>')
                            . '</div>';
                     }
                 } else {
-                    echo '<div class="cm-subs-empty"><i class="fa-solid fa-inbox"></i>No subcategories</div>';
+                    echo '<div class="cm-subs-empty"><i class="fa-solid fa-inbox"></i>' . $this->e($lang->category['empty_no_subs']) . '</div>';
                 }
                 echo '</div>';
 
                 echo '<div class="cm-cat-foot"><button type="button" class="btn btn-sm btn-outline-success w-100 add-subcategory-btn" data-id="' . $cid . '" data-name="' . $name . '">'
-                   . '<i class="fa-solid fa-plus me-1"></i>Add subcategory</button></div>';
+                   . '<i class="fa-solid fa-plus me-1"></i>' . $this->e($lang->category['btn_add_sub']) . '</button></div>';
                 echo '</div></div>';
             }
             echo '</div>';
-            echo '<div class="cm-card mt-3" id="cmNoMatch" hidden><div class="cm-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">No matches</div></div></div>';
+            echo '<div class="cm-card mt-3" id="cmNoMatch" hidden><div class="cm-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">' . $this->e($lang->category['empty_no_match']) . '</div></div></div>';
         }
         echo '</div>';
         // Данные для admin_category.js (шаблоны для модалки редактирования)

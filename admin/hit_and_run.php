@@ -10,9 +10,50 @@ define('TSHRD_TOOL', 'v1.3');
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_multipage.php';
 include_once $rootpath . '/admin/include/global_config.php';
-include_once $rootpath . '/admin/include/staff_languages.php';
 
-global $mybb;
+
+global $mybb, $lang, $ban_user_limit, $hr_skip_groups, $hr_min_ratio, $hr_per_page;
+
+$lang->load('hit_and_run');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… (и %1$s — так их переписывает $lang->load()).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * HTML-блок флеш-сообщения: заголовок и текст из ланга (выводятся как есть).
+ */
+function hnr_alert(string $class, string $icon, string $head, string $text): string
+{
+    return '<div class="alert alert-' . $class . ' border"><i class="fas ' . $icon . ' me-2"></i><strong>' . $head . '</strong> ' . $text . '</div>';
+}
+
+/**
+ * Строки js_* из ланга → <script>const AGS_LANG = {...}</script> (ключи без префикса).
+ */
+function hnr_js_lang(): string
+{
+    global $lang;
+    $arr = [];
+    foreach ($lang->hit_and_run as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $arr[substr((string)$k, 3)] = (string)$v;
+        }
+    }
+    return '<script>const AGS_LANG = ' . json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+}
 
 /**
  * Проверяет CSRF-токен для мутирующих POST-действий.
@@ -33,7 +74,9 @@ function hnr_verify_csrf(): bool
  */
 function hnr_get_valid_pairs(object $db, array $pairs, array $skip_usergroups): array
 {
-    $pairs = array_values(array_filter($pairs, fn($p) => $p[0] > 0 && $p[1] > 0));
+   
+
+	$pairs = array_values(array_filter($pairs, fn($p) => $p[0] > 0 && $p[1] > 0));
     if (empty($pairs)) {
         return [];
     }
@@ -79,9 +122,17 @@ $eol = PHP_EOL;
 // через POST, а обычные ссылки-страницы (1,2,3...) идут через GET.
 $page = isset($_POST['page']) && $_POST['page'] > 0 ? intval($_POST['page'])
       : (isset($_GET['page']) && $_GET['page'] > 0 ? intval($_GET['page']) : 1);
-$per_page = $config['ts_hit_and_run']['query_limit'] ?? 20;
+// Rows per page: site setting (Admin → Settings → Cleanup → Hit & Run)
+//$per_page = min(500, max(1, (int)($hr_per_page ?? 20)));
+$per_page = max(1, (int)($ts_perpage ?? 20));
 
-$skip_usergroups_arr = $config['ts_hit_and_run']['skip_usergroups'] ?? [UC_BANNED, UC_VIP, UC_ADMINISTRATOR, UC_SYSOP, UC_MODERATOR];
+// Exempt groups: the same site setting the H&R cron uses (Admin → Settings → Cleanup → Hit & Run),
+// same default as weekly_cleanups.php. Banned users are always excluded, so the list is never empty (NOT IN ()).
+$skip_usergroups_arr = array_map('intval', array_filter(
+    explode(',', (string)($hr_skip_groups ?? '4,5,6,7,8')),
+    fn($v) => (int)$v > 0
+));
+$skip_usergroups_arr = array_values(array_unique([...$skip_usergroups_arr, UC_BANNED]));
 $skip_usergroups = implode(',', $skip_usergroups_arr);
 
 // Обработка POST запросов
@@ -89,7 +140,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
     // Обработка BAN
     if (isset($_POST['ban']) && !empty($_POST['user_torrent_ids']) && is_array($_POST['user_torrent_ids'])) {
         if (!hnr_verify_csrf()) {
-            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+            stderr(hnr_alert('danger', 'fa-shield-alt', $lang->hit_and_run['flash_error'], $lang->hit_and_run['flash_csrf']));
         }
 
         $pairs = [];
@@ -113,15 +164,15 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
                 "UPDATE users SET enabled='no', usergroup=?, modcomment=CONCAT(?, modcomment) WHERE id IN (0,{$ids_ph})",
                 [UC_BANNED, $modcomment, ...$userids]
             );
-            $success_msg = '<div class="alert alert-success border"><i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Users have been banned successfully!</div>';
+            $success_msg = hnr_alert('success', 'fa-check-circle', $lang->hit_and_run['flash_success'], $lang->hit_and_run['flash_banned']);
         } else {
-            $success_msg = '<div class="alert alert-warning border"><i class="fas fa-exclamation-triangle me-2"></i><strong>Warning!</strong> No valid hit-and-run users were found in the selection.</div>';
+            $success_msg = hnr_alert('warning', 'fa-exclamation-triangle', $lang->hit_and_run['flash_warning'], $lang->hit_and_run['flash_no_valid']);
         }
     } 
     // Выполнение предупреждения (после ввода сообщения)
     elseif (isset($_POST['warn_execute']) && !empty($_POST['user_torrent_ids'])) {
         if (!hnr_verify_csrf()) {
-            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+            stderr(hnr_alert('danger', 'fa-shield-alt', $lang->hit_and_run['flash_error'], $lang->hit_and_run['flash_csrf']));
         }
 
         $user_torrent_ids = explode(',', (string)$_POST['user_torrent_ids']);
@@ -152,7 +203,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
                 (string)$_POST['warnmessage']
             );
             $pm = [
-                'subject' => '⚠️ Warning!',
+                'subject' => $lang->hit_and_run['pm_subject'],
                 'message' => $msg,
                 'touid' => $userid
             ];
@@ -165,21 +216,27 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
             );
             $warned_count++;
         }
-        $success_msg = '<div class="alert alert-warning border"><i class="fas fa-exclamation-triangle me-2"></i><strong>Warning!</strong> ' . $warned_count . ' user(s) have been warned successfully!</div>';
+        $success_msg = hnr_alert('warning', 'fa-exclamation-triangle', $lang->hit_and_run['flash_warning'], ags_fmt($lang->hit_and_run['flash_warned'], $warned_count));
     } 
     // Форма текста предупреждения (нажата «Warn Selected» на основной странице)
     elseif (isset($_POST['warn']) && !empty($_POST['user_torrent_ids']) && is_array($_POST['user_torrent_ids'])) {
         if (!hnr_verify_csrf()) {
-            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+            stderr(hnr_alert('danger', 'fa-shield-alt', $lang->hit_and_run['flash_error'], $lang->hit_and_run['flash_csrf']));
         }
 
         $selected_ids   = array_map('strval', $_POST['user_torrent_ids']);
         $selected_count = count($selected_ids);
         // Раньше intval($_POST['page']) без проверки — warning, если page не пришёл
         $back_page      = max(1, (int)($_POST['page'] ?? 1));
-        $default_msg    = $adminlang['ts_hit_and_run'] ?? "⚠️ WARNING: Hit & Run Violation\n\nTorrent: {torrentinfo}\nRatio: {showratio}\n\nYou have been warned for not meeting the minimum seeding requirements.\n\nPlease download and seed: {torrentdownloadinfo}\n\nFailure to comply may result in further actions.\n\nRegards,\nStaff Team";
+        // Default text lives in the hit_and_run lang (was $adminlang['ts_hit_and_run'] in staff_languages.php, English only).
+        // {1} = ratio threshold, {2} = warning limit — the same settings the list and the cron use.
+        $default_msg    = ags_fmt(
+            $lang->hit_and_run['msg_default_warn'],
+            number_format(max(0.0, (float)($hr_min_ratio ?? 1.0)), 2),
+            max(1, (int)($ban_user_limit ?? 5))
+        );
 
-        stdhead('Hit & Run — Send Warnings');
+        stdhead($lang->hit_and_run['title_compose']);
         ?>
         <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/hit_and_run.css?v=<?= @filemtime($rootpath . '/admin/templates/hit_and_run.css') ?: 1 ?>">
 
@@ -196,30 +253,30 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
                         <div class="hr-head">
                             <span class="hr-head-icon"><i class="fas fa-envelope-open-text"></i></span>
                             <div>
-                                <h1 class="hr-title">Send Hit &amp; Run Warnings</h1>
-                                <div class="hr-sub"><i class="fas fa-users me-1"></i><b><?= $selected_count ?></b> selected snatch(es) will receive a PM</div>
+                                <h1 class="hr-title"><?= $lang->hit_and_run['pane_compose'] ?></h1>
+                                <div class="hr-sub"><i class="fas fa-users me-1"></i><?= ags_fmt($lang->hit_and_run['pane_compose_sub'], $selected_count) ?></div>
                             </div>
                         </div>
 
                         <div class="p-3 p-md-4">
-                            <label class="form-label fw-semibold" for="warnmessage"><i class="fas fa-pen-to-square me-2 text-body-secondary"></i>Message</label>
+                            <label class="form-label fw-semibold" for="warnmessage"><i class="fas fa-pen-to-square me-2 text-body-secondary"></i><?= htmlspecialchars($lang->hit_and_run['lbl_message']) ?></label>
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small text-body-secondary">
-                                <span><i class="fas fa-puzzle-piece me-1"></i>Placeholders (click to insert):</span>
+                                <span><i class="fas fa-puzzle-piece me-1"></i><?= htmlspecialchars($lang->hit_and_run['lbl_placeholders']) ?></span>
                                 <span class="hr-token" data-token="{torrentinfo}"><i class="fas fa-magnet"></i>{torrentinfo}</span>
                                 <span class="hr-token" data-token="{torrentdownloadinfo}"><i class="fas fa-download"></i>{torrentdownloadinfo}</span>
                                 <span class="hr-token" data-token="{showratio}"><i class="fas fa-scale-balanced"></i>{showratio}</span>
                             </div>
                             <textarea name="warnmessage" id="warnmessage" class="form-control hr-msg" rows="11"><?= htmlspecialchars($default_msg) ?></textarea>
-                            <div class="form-text"><i class="fas fa-circle-info me-1"></i>The ratio is calculated on the server; users already warned in the last 7 days are skipped.</div>
+                            <div class="form-text"><i class="fas fa-circle-info me-1"></i><?= htmlspecialchars($lang->hit_and_run['hint_compose']) ?></div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center gap-2 px-3 px-md-4 pb-4">
                             <a href="<?= $_this_script_ . '&page=' . $back_page . ($torrentid ? '&torrentid=' . $torrentid : '') ?>" class="btn btn-outline-secondary rounded-pill px-3">
-                                <i class="fas fa-arrow-left me-1"></i>Back
+                                <i class="fas fa-arrow-left me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_back']) ?>
                             </a>
                             <div class="d-flex gap-2">
-                                <button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fas fa-rotate-left me-1"></i>Reset</button>
-                                <button type="submit" class="btn btn-warning rounded-pill px-4"><i class="fas fa-paper-plane me-1"></i>Send <?= $selected_count ?> Warning(s)</button>
+                                <button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fas fa-rotate-left me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_reset']) ?></button>
+                                <button type="submit" class="btn btn-warning rounded-pill px-4"><i class="fas fa-paper-plane me-1"></i><?= htmlspecialchars(ags_fmt($lang->hit_and_run['btn_send'], $selected_count)) ?></button>
                             </div>
                         </div>
                     </form>
@@ -227,6 +284,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
             </div>
         </div>
 
+        <?= hnr_js_lang() ?>
         <script src="<?= $BASEURL ?>/admin/scripts/hit_and_run.js?v=<?= @filemtime($rootpath . '/admin/scripts/hit_and_run.js') ?: 1 ?>" defer></script>
         <?php
         stdfoot();
@@ -256,7 +314,7 @@ if (is_valid_id($torrentid)) {
     $extraquery_params[] = $torrentid;
     $hiddenvalues = '<input type="hidden" name="torrentid" value="' . $torrentid . '">';
     $link = $orjlink = 'torrentid=' . $torrentid . '&amp;';
-    $active_filters[] = ['fa-magnet', 'Torrent #' . $torrentid, $_this_script_ . '&type=' . $type];
+    $active_filters[] = ['fa-magnet', htmlspecialchars(ags_fmt($lang->hit_and_run['chip_torrent'], $torrentid)), $_this_script_ . '&type=' . $type];
 }
 
 if ($page > 1) {
@@ -268,7 +326,7 @@ if (isset($_GET['show_by_userid'])) {
     if (is_valid_id($userid)) {
         $extraquery2 = ' AND u.id=?';
         $extraquery2_params = [$userid];
-        $active_filters[] = ['fa-user', 'User #' . $userid, $_this_script_ . '&type=' . $type . ($torrentid ? '&torrentid=' . $torrentid : '')];
+        $active_filters[] = ['fa-user', htmlspecialchars(ags_fmt($lang->hit_and_run['chip_user'], $userid)), $_this_script_ . '&type=' . $type . ($torrentid ? '&torrentid=' . $torrentid : '')];
     }
 }
 
@@ -293,21 +351,21 @@ if (isset($_POST['do_search']) && !empty($_POST['keywords'])) {
             break;
     }
     if ($extraquery2 !== '') {
-        $active_filters[] = ['fa-magnifying-glass', 'Search: ' . htmlspecialchars($keywords), $_this_script_ . '&type=' . $type];
+        $active_filters[] = ['fa-magnifying-glass', ags_fmt(htmlspecialchars($lang->hit_and_run['chip_search']), htmlspecialchars($keywords)), $_this_script_ . '&type=' . $type];
     }
 }
 
-// Тип отбора. min_share_ratio приводим к float: значение подставляется прямо в SQL
-$min_ratio = (float)($config['ts_hit_and_run']['min_share_ratio'] ?? 1.0);
+// Тип отбора. Порог рейтинга — настройка hr_min_ratio; приводим к float: значение подставляется прямо в SQL
+$min_ratio = max(0.0, (float)($hr_min_ratio ?? 1.0));
 if ($type === 'seedtime') {
     $typequery  = '(s.seedtime = 0 OR s.seedtime < s.leechtime)';
     $link       = ($link ? $link . '&' : '') . 'type=seedtime';
-    $type_title = 'Seed time below leech time';
+    $type_title = htmlspecialchars($lang->hit_and_run['type_seedtime']);
     $type_icon  = 'fa-hourglass-half';
 } else {
     $typequery  = 's.uploaded/s.downloaded < ' . $min_ratio;
     $link       = ($link ? $link . '&' : '') . 'type=ratio';
-    $type_title = 'Ratio below ' . number_format($min_ratio, 2);
+    $type_title = htmlspecialchars(ags_fmt($lang->hit_and_run['type_ratio'], number_format($min_ratio, 2)));
     $type_icon  = 'fa-chart-line';
 }
 
@@ -355,13 +413,13 @@ $query = $db->sql_query_prepared(
     $where_params
 );
 
-$ban_threshold = (int)($ban_user_limit ?? 7);
+$ban_threshold = max(1, (int)($ban_user_limit ?? 5));
 $criticallimit = $ban_threshold - 1;
 $already_warned_count = array_sum(array_map('count', $alreadywarnedarrays));
 
 require_once INC_PATH . '/functions_mkprettytime.php';
 
-stdhead('Hit & Run Detection Tool');
+stdhead($lang->hit_and_run['title_main']);
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/hit_and_run.css?v=<?= @filemtime($rootpath . '/admin/templates/hit_and_run.css') ?: 1 ?>">
@@ -375,8 +433,8 @@ stdhead('Hit & Run Detection Tool');
         <div class="hr-head">
             <span class="hr-head-icon"><i class="fas fa-person-running"></i></span>
             <div>
-                <h1 class="hr-title">Hit &amp; Run Detection</h1>
-                <div class="hr-sub">Finished downloads that are no longer seeded and break the share rules</div>
+                <h1 class="hr-title"><?= $lang->hit_and_run['pane_main'] ?></h1>
+                <div class="hr-sub"><?= htmlspecialchars($lang->hit_and_run['pane_main_sub']) ?></div>
             </div>
             <span class="hr-ver"><i class="fas fa-toolbox me-1"></i><?= TSHRD_TOOL ?></span>
         </div>
@@ -386,19 +444,19 @@ stdhead('Hit & Run Detection Tool');
     <div class="row g-3 mb-3">
         <div class="col-6 col-md-3">
             <div class="hr-card hr-stat"><span class="hr-stat-icon ic-red"><i class="fas fa-list-check"></i></span>
-                <div><div class="hr-stat-label">Violations</div><div class="hr-stat-value"><?= number_format($total_count) ?></div></div></div>
+                <div><div class="hr-stat-label"><?= htmlspecialchars($lang->hit_and_run['stat_violations']) ?></div><div class="hr-stat-value"><?= number_format($total_count) ?></div></div></div>
         </div>
         <div class="col-6 col-md-3">
             <div class="hr-card hr-stat"><span class="hr-stat-icon ic-blue"><i class="fas fa-users"></i></span>
-                <div><div class="hr-stat-label">Users</div><div class="hr-stat-value"><?= number_format($total_users) ?></div></div></div>
+                <div><div class="hr-stat-label"><?= htmlspecialchars($lang->hit_and_run['stat_users']) ?></div><div class="hr-stat-value"><?= number_format($total_users) ?></div></div></div>
         </div>
         <div class="col-6 col-md-3">
             <div class="hr-card hr-stat"><span class="hr-stat-icon ic-amber"><i class="fas fa-envelope-circle-check"></i></span>
-                <div><div class="hr-stat-label">Warned · 7 days</div><div class="hr-stat-value"><?= number_format($already_warned_count) ?></div></div></div>
+                <div><div class="hr-stat-label"><?= htmlspecialchars($lang->hit_and_run['stat_warned_7d']) ?></div><div class="hr-stat-value"><?= number_format($already_warned_count) ?></div></div></div>
         </div>
         <div class="col-6 col-md-3">
             <div class="hr-card hr-stat"><span class="hr-stat-icon ic-slate"><i class="fas fa-gavel"></i></span>
-                <div><div class="hr-stat-label">Ban threshold</div><div class="hr-stat-value"><?= $ban_threshold ?> warns</div></div></div>
+                <div><div class="hr-stat-label"><?= htmlspecialchars($lang->hit_and_run['stat_ban_threshold']) ?></div><div class="hr-stat-value"><?= htmlspecialchars(ags_fmt($lang->hit_and_run['stat_warns_value'], $ban_threshold)) ?></div></div></div>
         </div>
     </div>
 
@@ -406,29 +464,29 @@ stdhead('Hit & Run Detection Tool');
     <div class="hr-card p-3 mb-3">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div class="hr-seg" role="tablist">
-                <a href="<?= $_this_script_ . '&' . $orjlink . 'type=ratio' ?>" class="<?= $type === 'ratio' ? 'active' : '' ?>"><i class="fas fa-chart-line me-1"></i>Low ratio</a>
-                <a href="<?= $_this_script_ . '&' . $orjlink . 'type=seedtime' ?>" class="<?= $type === 'seedtime' ? 'active' : '' ?>"><i class="fas fa-hourglass-half me-1"></i>Seed time</a>
+                <a href="<?= $_this_script_ . '&' . $orjlink . 'type=ratio' ?>" class="<?= $type === 'ratio' ? 'active' : '' ?>"><i class="fas fa-chart-line me-1"></i><?= htmlspecialchars($lang->hit_and_run['tab_low_ratio']) ?></a>
+                <a href="<?= $_this_script_ . '&' . $orjlink . 'type=seedtime' ?>" class="<?= $type === 'seedtime' ? 'active' : '' ?>"><i class="fas fa-hourglass-half me-1"></i><?= htmlspecialchars($lang->hit_and_run['tab_seedtime']) ?></a>
             </div>
 
             <form method="post" action="<?= $_this_script_ . '&type=' . $type ?>" class="hr-search d-flex flex-wrap gap-2">
                 <div class="input-group input-group-sm" style="width:auto">
                     <span class="input-group-text rounded-start-pill"><i class="fas fa-magnifying-glass"></i></span>
-                    <input type="text" class="form-control rounded-0" name="keywords" value="<?= htmlspecialchars($keywords) ?>" placeholder="Search..." style="min-width:170px">
+                    <input type="text" class="form-control rounded-0" name="keywords" value="<?= htmlspecialchars($keywords) ?>" placeholder="<?= htmlspecialchars_uni($lang->hit_and_run['ph_search']) ?>" style="min-width:170px">
                     <select class="form-select rounded-0 rounded-end-pill" name="searchtype" style="max-width:150px">
-                        <option value="1"<?= $searchtype == 1 ? ' selected' : '' ?>>Username</option>
-                        <option value="2"<?= $searchtype == 2 ? ' selected' : '' ?>>User ID</option>
-                        <option value="3"<?= $searchtype == 3 || $searchtype == 0 ? ' selected' : '' ?>>Torrent ID</option>
+                        <option value="1"<?= $searchtype == 1 ? ' selected' : '' ?>><?= htmlspecialchars($lang->hit_and_run['opt_username']) ?></option>
+                        <option value="2"<?= $searchtype == 2 ? ' selected' : '' ?>><?= htmlspecialchars($lang->hit_and_run['opt_userid']) ?></option>
+                        <option value="3"<?= $searchtype == 3 || $searchtype == 0 ? ' selected' : '' ?>><?= htmlspecialchars($lang->hit_and_run['opt_torrentid']) ?></option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3" name="do_search"><i class="fas fa-search me-1"></i>Search</button>
+                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3" name="do_search"><i class="fas fa-search me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_search']) ?></button>
             </form>
         </div>
 
         <?php if ($active_filters): ?>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
-                <span class="hr-muted"><i class="fas fa-filter me-1"></i>Filters:</span>
+                <span class="hr-muted"><i class="fas fa-filter me-1"></i><?= htmlspecialchars($lang->hit_and_run['lbl_filters']) ?></span>
                 <?php foreach ($active_filters as [$ico, $label, $clear_url]): ?>
-                    <span class="hr-chip"><i class="fas <?= $ico ?>"></i><?= $label ?><a href="<?= $clear_url ?>" title="Remove filter" aria-label="Remove filter"><i class="fas fa-xmark"></i></a></span>
+                    <span class="hr-chip"><i class="fas <?= $ico ?>"></i><?= $label ?><a href="<?= $clear_url ?>" title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_remove_filter']) ?>" aria-label="<?= htmlspecialchars_uni($lang->hit_and_run['tip_remove_filter']) ?>"><i class="fas fa-xmark"></i></a></span>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -444,14 +502,14 @@ stdhead('Hit & Run Detection Tool');
         <div class="hr-card hr-toolbar mb-3">
             <div class="hr-selected">
                 <i class="fas <?= $type_icon ?> me-1"></i><?= $type_title ?> ·
-                <i class="fas fa-square-check ms-1 me-1"></i>Selected: <b id="hrSelCount">0</b>
+                <i class="fas fa-square-check ms-1 me-1"></i><?= htmlspecialchars($lang->hit_and_run['lbl_selected']) ?> <b id="hrSelCount">0</b>
             </div>
             <div class="d-flex flex-wrap gap-2">
                 <button type="submit" name="warn" value="1" class="btn btn-sm btn-warning rounded-pill px-3 hr-act" disabled>
-                    <i class="fas fa-triangle-exclamation me-1"></i>Warn
+                    <i class="fas fa-triangle-exclamation me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_warn']) ?>
                 </button>
                 <button type="button" class="btn btn-sm btn-danger rounded-pill px-3 hr-act" id="hrBanBtn" disabled>
-                    <i class="fas fa-ban me-1"></i>Ban
+                    <i class="fas fa-ban me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_ban']) ?>
                 </button>
             </div>
         </div>
@@ -462,14 +520,14 @@ stdhead('Hit & Run Detection Tool');
                     <thead>
                         <tr>
                             <th style="width:48px">
-                                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="hrCheckAll" aria-label="Select all"></div>
+                                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="hrCheckAll" aria-label="<?= htmlspecialchars_uni($lang->hit_and_run['aria_select_all']) ?>"></div>
                             </th>
-                            <th><i class="fas fa-user"></i>User</th>
-                            <th><i class="fas fa-magnet"></i>Torrent</th>
-                            <th><i class="fas fa-arrow-up"></i>Uploaded / Seed</th>
-                            <th><i class="fas fa-arrow-down"></i>Downloaded / Leech</th>
-                            <th><i class="fas fa-scale-balanced"></i>Ratio</th>
-                            <th><i class="fas fa-triangle-exclamation"></i>Warns</th>
+                            <th><i class="fas fa-user"></i><?= htmlspecialchars($lang->hit_and_run['col_user']) ?></th>
+                            <th><i class="fas fa-magnet"></i><?= htmlspecialchars($lang->hit_and_run['col_torrent']) ?></th>
+                            <th><i class="fas fa-arrow-up"></i><?= htmlspecialchars($lang->hit_and_run['col_uploaded']) ?></th>
+                            <th><i class="fas fa-arrow-down"></i><?= htmlspecialchars($lang->hit_and_run['col_downloaded']) ?></th>
+                            <th><i class="fas fa-scale-balanced"></i><?= htmlspecialchars($lang->hit_and_run['col_ratio']) ?></th>
+                            <th><i class="fas fa-triangle-exclamation"></i><?= htmlspecialchars($lang->hit_and_run['col_warns']) ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -513,9 +571,9 @@ stdhead('Hit & Run Detection Tool');
                                 <td>
                                     <div class="form-check form-switch">
                                         <?php if ($is_warned): ?>
-                                            <input class="form-check-input" type="checkbox" disabled title="Already warned in the last 7 days">
+                                            <input class="form-check-input" type="checkbox" disabled title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_already_warned']) ?>">
                                         <?php else: ?>
-                                            <input class="form-check-input hr-cb" type="checkbox" role="switch" name="user_torrent_ids[]" value="<?= $uid . '|' . $tid . '|' . $ratio ?>" aria-label="Select">
+                                            <input class="form-check-input hr-cb" type="checkbox" role="switch" name="user_torrent_ids[]" value="<?= $uid . '|' . $tid . '|' . $ratio ?>" aria-label="<?= htmlspecialchars_uni($lang->hit_and_run['aria_select']) ?>">
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -523,24 +581,24 @@ stdhead('Hit & Run Detection Tool');
                                     <div class="hr-user">
                                         <?= $avatarHtml ?>
                                         <div style="min-width:0">
-                                            <a href="<?= $_this_script_ . '&type=' . $type . '&show_by_userid=' . $uid ?>" class="fw-semibold text-decoration-none" title="Show only this user"><?= format_name($safeName, (int)$row['usergroup']) ?></a>
+                                            <a href="<?= $_this_script_ . '&type=' . $type . '&show_by_userid=' . $uid ?>" class="fw-semibold text-decoration-none" title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_only_user']) ?>"><?= format_name($safeName, (int)$row['usergroup']) ?></a>
                                             <?= get_user_icons($row) ?>
                                             <div class="hr-muted"><?= htmlspecialchars_uni((string)($row['title'] ?? '')) ?></div>
                                         </div>
                                     </div>
                                 </td>
                                 <td>
-                                    <a href="<?= $_this_script_ . '&type=' . $type . '&torrentid=' . $tid ?>" class="hr-torrent" title="<?= $tname ?> — show only this torrent"><i class="fas fa-magnet text-danger me-1"></i><?= $tname ?></a>
+                                    <a href="<?= $_this_script_ . '&type=' . $type . '&torrentid=' . $tid ?>" class="hr-torrent" title="<?= ags_fmt(htmlspecialchars_uni($lang->hit_and_run['tip_only_torrent']), $tname) ?>"><i class="fas fa-magnet text-danger me-1"></i><?= $tname ?></a>
                                     <div class="hr-muted">
-                                        <span class="me-2" title="Seeders"><i class="fas fa-arrow-up text-success me-1"></i><?= ts_nf((int)$row['seeders']) ?></span>
-                                        <span title="Leechers"><i class="fas fa-arrow-down text-danger me-1"></i><?= ts_nf((int)$row['leechers']) ?></span>
-                                        <a href="<?= $BASEURL . '/' . get_torrent_link($tid) ?>" target="_blank" rel="noopener" class="ms-2 text-body-secondary" title="Open torrent"><i class="fas fa-up-right-from-square"></i></a>
+                                        <span class="me-2" title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_seeders']) ?>"><i class="fas fa-arrow-up text-success me-1"></i><?= ts_nf((int)$row['seeders']) ?></span>
+                                        <span title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_leechers']) ?>"><i class="fas fa-arrow-down text-danger me-1"></i><?= ts_nf((int)$row['leechers']) ?></span>
+                                        <a href="<?= $BASEURL . '/' . get_torrent_link($tid) ?>" target="_blank" rel="noopener" class="ms-2 text-body-secondary" title="<?= htmlspecialchars_uni($lang->hit_and_run['tip_open_torrent']) ?>"><i class="fas fa-up-right-from-square"></i></a>
                                     </div>
                                 </td>
                                 <td class="hr-io">
                                     <div><i class="fas fa-arrow-up text-success me-1"></i><b><?= mksize((int)$up) ?></b></div>
-                                    <div class="hr-muted"><i class="fas fa-seedling me-1"></i><?= $seed > 0 ? mkprettytime($seed) : 'never seeded' ?></div>
-                                    <div class="hr-time-bar" title="Seed <?= $seed_pct ?>% vs leech <?= 100 - $seed_pct ?>%"><span style="width:<?= $seed_pct ?>%"></span></div>
+                                    <div class="hr-muted"><i class="fas fa-seedling me-1"></i><?= $seed > 0 ? mkprettytime($seed) : htmlspecialchars($lang->hit_and_run['lbl_never_seeded']) ?></div>
+                                    <div class="hr-time-bar" title="<?= htmlspecialchars_uni(ags_fmt($lang->hit_and_run['tip_seed_bar'], $seed_pct, 100 - $seed_pct)) ?>"><span style="width:<?= $seed_pct ?>%"></span></div>
                                 </td>
                                 <td class="hr-io">
                                     <div><i class="fas fa-arrow-down text-danger me-1"></i><b><?= mksize((int)$down) ?></b></div>
@@ -552,7 +610,7 @@ stdhead('Hit & Run Detection Tool');
                                 <td>
                                     <span class="hr-warns <?= $wcls ?>"><i class="fas <?= $wico ?>"></i><?= number_format($tw) ?></span>
                                     <?php if ($is_warned): ?>
-                                        <div class="hr-warned-tag mt-1"><i class="fas fa-envelope-circle-check"></i>Warned <?= my_datee('relative', $alreadywarnedarrays[$uid][$tid]) ?></div>
+                                        <div class="hr-warned-tag mt-1"><i class="fas fa-envelope-circle-check"></i><?= ags_fmt(htmlspecialchars($lang->hit_and_run['lbl_warned_ago']), my_datee('relative', $alreadywarnedarrays[$uid][$tid])) ?></div>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -561,15 +619,15 @@ stdhead('Hit & Run Detection Tool');
                         <tr><td colspan="7">
                             <div class="hr-empty">
                                 <i class="fas fa-circle-check text-success"></i>
-                                <div class="fw-semibold">Nothing found</div>
-                                <div class="small">No violations match the current filter.</div>
+                                <div class="fw-semibold"><?= htmlspecialchars($lang->hit_and_run['empty_title']) ?></div>
+                                <div class="small"><?= htmlspecialchars($lang->hit_and_run['empty_text']) ?></div>
                             </div>
                         </td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
             </div>
-            <div class="px-3 py-2 border-top hr-muted"><i class="fas fa-circle-info me-1"></i>Users warned in the last 7 days can't be selected again. Click a user or torrent to filter by it.</div>
+            <div class="px-3 py-2 border-top hr-muted"><i class="fas fa-circle-info me-1"></i><?= htmlspecialchars($lang->hit_and_run['hint_table']) ?></div>
         </div>
     </form>
 
@@ -583,27 +641,28 @@ stdhead('Hit & Run Detection Tool');
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4 overflow-hidden">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="hrBanModalLabel"><i class="fas fa-ban me-2"></i>Ban users</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="hrBanModalLabel"><i class="fas fa-ban me-2"></i><?= htmlspecialchars($lang->hit_and_run['modal_ban_title']) ?></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars_uni($lang->hit_and_run['aria_close']) ?>"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex gap-3 align-items-start">
                     <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger flex-shrink-0" style="width:44px;height:44px"><i class="fas fa-gavel"></i></span>
                     <div>
-                        <div class="fw-semibold">Ban <span id="hrBanCount">0</span> user(s)?</div>
-                        <div class="small text-body-secondary">Accounts will be disabled and moved to the banned group. The whole account is banned, not just this torrent.</div>
+                        <div class="fw-semibold"><?= ags_fmt(htmlspecialchars($lang->hit_and_run['modal_ban_question']), '<span id="hrBanCount">0</span>') ?></div>
+                        <div class="small text-body-secondary"><?= htmlspecialchars($lang->hit_and_run['modal_ban_text']) ?></div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i>Cancel</button>
-                <button type="button" class="btn btn-danger rounded-pill px-3" id="hrBanConfirm"><i class="fas fa-ban me-1"></i>Ban</button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_cancel']) ?></button>
+                <button type="button" class="btn btn-danger rounded-pill px-3" id="hrBanConfirm"><i class="fas fa-ban me-1"></i><?= htmlspecialchars($lang->hit_and_run['btn_ban']) ?></button>
             </div>
         </div>
     </div>
 </div>
 
-<script src="<?= $BASEURL ?>/admin/scripts/hit_and_run.js?v=<?= @filemtime($rootpath . '/admin/scripts/hit_and_run.js') ?: 1 ?>" defer></script>
+<?= hnr_js_lang() ?>
+        <script src="<?= $BASEURL ?>/admin/scripts/hit_and_run.js?v=<?= @filemtime($rootpath . '/admin/scripts/hit_and_run.js') ?: 1 ?>" defer></script>
 
 <?php
 stdfoot();

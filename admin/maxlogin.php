@@ -3,14 +3,17 @@
 declare(strict_types=1);
 
 /*******************************************************************************
- * Login Security Manager v3.2
+ * Login Security Manager v3.3
  * Failed login attempts + login history (login_log)
  * PHP 8.5+ · AJAX · live search · filters · SweetAlert2
  *
- * Assets (no inline CSS/JS in this file):
+ * Assets (no inline CSS/JS in this file, except the AGS_LANG string table):
  *   /admin/templates/maxlogin.css   — all page styles
  *   /admin/scripts/maxlogin-ui.js   — config bootstrap, copy IP, empty-state buttons
  *   /admin/scripts/maxlogin.js      — AJAX table logic (both tabs)
+ *
+ * Language: languages/<lang>/maxlogin.lang.php → $lang->maxlogin['key'].
+ * Keys with the js_ prefix are passed to maxlogin.js as AGS_LANG (prefix stripped).
  ******************************************************************************/
 
 // Security check
@@ -18,6 +21,9 @@ if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger" role="alert"><b>Access Denied:</b> Direct access not permitted.</div>');
 }
+
+global $lang;
+$lang->load('maxlogin');
 
 /**
  * One maxlogin.js serves both tabs (attempts + log). Previously the attempts
@@ -27,7 +33,25 @@ if (!defined('STAFF_PANEL')) {
 const MAXLOGIN_JS = '/admin/scripts/maxlogin.js';
 const MAXLOGIN_UI_JS = '/admin/scripts/maxlogin-ui.js';
 const MAXLOGIN_CSS = '/admin/templates/maxlogin.css';
-const MAXLOGIN_ASSET_VER = '3.2';
+const MAXLOGIN_ASSET_VER = '3.3';
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Fills {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+     * so both forms are replaced. strtr() = single pass, values are not re-scanned.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}'] = (string) $arg;
+            $map['%' . $n . '$s'] = (string) $arg;
+        }
+
+        return $map === [] ? $str : strtr($str, $map);
+    }
+}
 
 /**
  * Public URL of a local asset with a cache-busting ?v= (file mtime,
@@ -57,6 +81,33 @@ function maxlogin_config_tag(string $elementId, array $config): string
     );
 
     return "<script type=\"application/json\" id=\"{$elementId}\">{$json}</script>";
+}
+
+/**
+ * JS strings for maxlogin.js: every js_* key without the prefix, printed once
+ * per page before the script (both tabs share one maxlogin.js).
+ */
+function maxlogin_js_lang(): string
+{
+    static $printed = false;
+    if ($printed) {
+        return '';
+    }
+    $printed = true;
+
+    global $lang;
+
+    $arr = [];
+    foreach ($lang->maxlogin as $key => $value) {
+        $key = (string) $key;
+        if (str_starts_with($key, 'js_')) {
+            $arr[substr($key, 3)] = (string) $value;
+        }
+    }
+
+    return '<script>const AGS_LANG = '
+        . json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . ';</script>';
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -102,6 +153,32 @@ function maxlogin_assets(): string
     HTML;
 }
 
+/**
+ * "Done. …" alert after a PRG redirect. $code is the ?update= value
+ * (Edit / Delete / Ban / Unban), already escaped by the caller.
+ */
+function maxlogin_flash_alert(string $code): string
+{
+    global $lang;
+    $L = $lang->maxlogin;
+
+    $text = match ($code) {
+        'Edit'   => $L['flash_edit'],
+        'Delete' => $L['flash_delete'],
+        'Ban'    => $L['flash_ban'],
+        'Unban'  => $L['flash_unban'],
+        default  => ags_fmt($L['flash_generic'], $code),
+    };
+
+    return <<<HTML
+    <div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mt-3 mb-0 ml-alert" role="alert">
+        <i class="fa-solid fa-circle-check"></i>
+        <div><strong>{$L['flash_done']}</strong> {$text}</div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{$L['aria_close']}"></button>
+    </div>
+    HTML;
+}
+
 /** Sort header link with an active-state arrow. */
 function maxlogin_sort_link(string $class, string $key, string $label, string $current, string $dir): string
 {
@@ -119,10 +196,14 @@ function maxlogin_sort_link(string $class, string $key, string $label, string $c
 /** Pill pagination; $linkClass keeps the class the external JS listens to. */
 function maxlogin_pager(int $current, int $total, int $totalRows, string $linkClass): string
 {
+    global $lang;
+    $L = $lang->maxlogin;
+
     $fmt = number_format($totalRows);
 
     if ($total <= 1) {
-        return "<div class=\"ml-pager\"><span class=\"ml-muted\"><i class=\"fa-solid fa-list-ol me-2\"></i>{$fmt} records</span></div>";
+        $records = ags_fmt($L['lbl_records'], $fmt);
+        return "<div class=\"ml-pager\"><span class=\"ml-muted\"><i class=\"fa-solid fa-list-ol me-2\"></i>{$records}</span></div>";
     }
 
     $pages = '';
@@ -138,18 +219,19 @@ function maxlogin_pager(int $current, int $total, int $totalRows, string $linkCl
     $nextDis = $current === $total ? ' disabled' : '';
     $prev    = max(1, $current - 1);
     $next    = min($total, $current + 1);
+    $pageOf  = ags_fmt($L['lbl_page_of'], $current, $total, $fmt);
 
     return <<<HTML
     <div class="ml-pager">
-        <span class="ml-muted"><i class="fa-solid fa-book-open me-2"></i>Page {$current} of {$total}, {$fmt} records</span>
-        <nav aria-label="Page navigation">
+        <span class="ml-muted"><i class="fa-solid fa-book-open me-2"></i>{$pageOf}</span>
+        <nav aria-label="{$L['aria_pagination']}">
             <ul class="pagination">
                 <li class="page-item{$prevDis}">
-                    <a class="page-link {$linkClass}" href="#" data-page="{$prev}" aria-label="Previous"><i class="fa-solid fa-chevron-left"></i></a>
+                    <a class="page-link {$linkClass}" href="#" data-page="{$prev}" aria-label="{$L['aria_prev']}"><i class="fa-solid fa-chevron-left"></i></a>
                 </li>
                 {$pages}
                 <li class="page-item{$nextDis}">
-                    <a class="page-link {$linkClass}" href="#" data-page="{$next}" aria-label="Next"><i class="fa-solid fa-chevron-right"></i></a>
+                    <a class="page-link {$linkClass}" href="#" data-page="{$next}" aria-label="{$L['aria_next']}"><i class="fa-solid fa-chevron-right"></i></a>
                 </li>
             </ul>
         </nav>
@@ -265,11 +347,14 @@ class LoginAttemptsManager
 
     public function renderKpis(array $s): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return maxlogin_kpis([
-            ['fa-network-wired', 'primary', $s['total'],    'Tracked IPs'],
-            ['fa-ban',           'danger',  $s['banned'],   'Banned IPs'],
-            ['fa-key',           'warning', $s['recover'],  'Recovery attempts'],
-            ['fa-repeat',        'info',    $s['attempts'], 'Failed attempts total'],
+            ['fa-network-wired', 'primary', $s['total'],    $L['kpi_tracked_ips']],
+            ['fa-ban',           'danger',  $s['banned'],   $L['kpi_banned_ips']],
+            ['fa-key',           'warning', $s['recover'],  $L['kpi_recovery']],
+            ['fa-repeat',        'info',    $s['attempts'], $L['kpi_attempts_total']],
         ]);
     }
 
@@ -291,6 +376,8 @@ class LoginAttemptsManager
 
     public function execute(): void
     {
+        global $lang;
+
         // AJAX handlers
         if ($this->action === 'ajax_ban' || $this->action === 'ajax_unban') {
             $this->handleAjaxToggleBan();
@@ -326,18 +413,21 @@ class LoginAttemptsManager
             'edit' => $this->edit(),
             'save' => $this->save(),
             'searchip' => $this->searchIp(),
-            default => $this->showError('Invalid Action')
+            default => $this->showError($lang->maxlogin['err_invalid_action'])
         };
     }
 
     private function showList(): void
     {
-        stdhead('Login Attempts Manager - View List');
+        global $lang;
+        $L = $lang->maxlogin;
+
+        stdhead($L['title_list']);
 
         echo maxlogin_styles();
         echo maxlogin_assets();
         echo '<div class="ml-wrap container-xl py-3">';
-        echo maxlogin_page_header('fa-shield-halved', 'primary', 'Failed login attempts', 'Track and manage suspicious login activity');
+        echo maxlogin_page_header('fa-shield-halved', 'primary', $L['pane_attempts'], $L['pane_attempts_sub']);
 
         if ($this->update) {
             echo $this->renderSuccessMessage($this->update);
@@ -378,14 +468,18 @@ class LoginAttemptsManager
 
     private function statusBadge(bool $isBanned): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return $isBanned
-            ? '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-ban"></i>Banned</span>'
-            : '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-circle-check"></i>Active</span>';
+            ? '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-ban"></i>' . $L['badge_banned'] . '</span>'
+            : '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-circle-check"></i>' . $L['badge_active'] . '</span>';
     }
 
     private function handleAjaxToggleBan(): void
     {
-        global $db;
+        global $db, $lang;
+        $L = $lang->maxlogin;
 
         header('Content-Type: application/json');
 
@@ -394,23 +488,23 @@ class LoginAttemptsManager
             $action = $_POST['ajax_action'] ?? '';
 
             if (!$id || !is_valid_id($id)) {
-                throw new Exception('Invalid ID');
+                throw new Exception($L['err_invalid_id']);
             }
 
             $newStatus = $action === 'ban' ? 'yes' : 'no';
-            $message = $action === 'ban' ? 'Ban' : 'Unban';
+            $message = $action === 'ban' ? $L['msg_ip_banned'] : $L['msg_ip_unbanned'];
 
             $db->sql_query_prepared("UPDATE loginattempts SET banned = ? WHERE id = ?", [$newStatus, $id]);
 
             $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE id = ?", [$id]);
             $row = $result ? $db->fetch_array($result) : null;
             if (!$row) {
-                throw new Exception('Record not found after update');
+                throw new Exception($L['err_not_found_after_update']);
             }
 
             echo json_encode([
                 'success' => true,
-                'message' => "IP {$message}ned successfully!",
+                'message' => $message,
                 'data' => [
                     'id' => $row['id'],
                     'ip' => $row['ip'],
@@ -433,7 +527,8 @@ class LoginAttemptsManager
 
     private function handleAjaxDelete(): void
     {
-        global $db;
+        global $db, $lang;
+        $L = $lang->maxlogin;
 
         header('Content-Type: application/json');
 
@@ -441,7 +536,7 @@ class LoginAttemptsManager
             $id = (int) ($_POST['id'] ?? 0);
 
             if (!$id || !is_valid_id($id)) {
-                throw new Exception('Invalid ID');
+                throw new Exception($L['err_invalid_id']);
             }
 
             $result = $db->sql_query_prepared("SELECT ip FROM loginattempts WHERE id = ?", [$id]);
@@ -452,7 +547,7 @@ class LoginAttemptsManager
 
             echo json_encode([
                 'success' => true,
-                'message' => "Attempt from IP {$ip} deleted successfully!",
+                'message' => ags_fmt($L['msg_attempt_deleted'], $ip),
                 'id' => $id
             ]);
 
@@ -681,18 +776,21 @@ class LoginAttemptsManager
     /** Card head of the attempts section (keeps #loading-spinner / #total-count for JS). */
     private function renderHeader(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return <<<HTML
         <div class="ml-head">
             <span class="ml-ico ml-ico-sm ml-soft-danger"><i class="fa-solid fa-user-lock"></i></span>
             <div class="ml-head-main">
-                <h5 class="ml-title">Failed attempts</h5>
-                <p class="ml-sub">IPs that failed to log in or recover a password</p>
+                <h5 class="ml-title">{$L['sec_attempts']}</h5>
+                <p class="ml-sub">{$L['sec_attempts_sub']}</p>
             </div>
             <div class="ml-head-side">
                 <div class="spinner-border spinner-border-sm text-primary d-none" id="loading-spinner" role="status">
-                    <span class="visually-hidden">Loading...</span>
+                    <span class="visually-hidden">{$L['lbl_loading']}</span>
                 </div>
-                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="total-count">Loading...</span></span>
+                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="total-count">{$L['lbl_loading']}</span></span>
             </div>
         </div>
         HTML;
@@ -700,6 +798,9 @@ class LoginAttemptsManager
 
     private function renderFiltersAndSearch(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $bannedSelected = htmlspecialchars($this->filterBanned ?? 'all');
         $typeSelected = htmlspecialchars($this->filterType ?? 'all');
         $searchValue = htmlspecialchars($this->searchIp ?? '');
@@ -713,23 +814,23 @@ class LoginAttemptsManager
                         <input type="text"
                                class="form-control"
                                id="live-search"
-                               placeholder="Search by IP address"
+                               placeholder="{$L['ph_search_ip']}"
                                value="{$searchValue}"
                                autocomplete="off">
-                        <button class="btn btn-outline-secondary" type="button" id="clear-search" title="Clear search">
+                        <button class="btn btn-outline-secondary" type="button" id="clear-search" title="{$L['tip_clear_search']}">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <div class="ml-hint"><i class="fa-solid fa-bolt me-1"></i>Results update as you type</div>
+                    <div class="ml-hint"><i class="fa-solid fa-bolt me-1"></i>{$L['hint_live_search']}</div>
                 </div>
 
                 <div class="col-sm-6 col-lg-2">
                     <div class="input-group ml-pill-group">
                         <span class="input-group-text"><i class="fa-solid fa-shield-halved"></i></span>
-                        <select class="form-select" id="filter-banned" aria-label="Status filter">
-                            <option value="all" {$this->selected($bannedSelected === 'all')}>All status</option>
-                            <option value="yes" {$this->selected($bannedSelected === 'yes')}>Banned</option>
-                            <option value="no" {$this->selected($bannedSelected === 'no')}>Active</option>
+                        <select class="form-select" id="filter-banned" aria-label="{$L['aria_filter_status']}">
+                            <option value="all" {$this->selected($bannedSelected === 'all')}>{$L['opt_all_status']}</option>
+                            <option value="yes" {$this->selected($bannedSelected === 'yes')}>{$L['opt_banned']}</option>
+                            <option value="no" {$this->selected($bannedSelected === 'no')}>{$L['opt_active']}</option>
                         </select>
                     </div>
                 </div>
@@ -737,19 +838,19 @@ class LoginAttemptsManager
                 <div class="col-sm-6 col-lg-2">
                     <div class="input-group ml-pill-group">
                         <span class="input-group-text"><i class="fa-solid fa-tag"></i></span>
-                        <select class="form-select" id="filter-type" aria-label="Type filter">
-                            <option value="all" {$this->selected($typeSelected === 'all')}>All types</option>
-                            <option value="login" {$this->selected($typeSelected === 'login')}>Login</option>
-                            <option value="recover" {$this->selected($typeSelected === 'recover')}>Recovery</option>
+                        <select class="form-select" id="filter-type" aria-label="{$L['aria_filter_type']}">
+                            <option value="all" {$this->selected($typeSelected === 'all')}>{$L['opt_all_types']}</option>
+                            <option value="login" {$this->selected($typeSelected === 'login')}>{$L['opt_login']}</option>
+                            <option value="recover" {$this->selected($typeSelected === 'recover')}>{$L['opt_recovery']}</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="col-lg-2 d-flex gap-2">
-                    <button type="button" class="btn btn-outline-primary ml-btn flex-fill" id="refresh-btn" title="Refresh">
-                        <i class="fa-solid fa-rotate"></i><span class="d-lg-none d-xl-inline">Refresh</span>
+                    <button type="button" class="btn btn-outline-primary ml-btn flex-fill" id="refresh-btn" title="{$L['tip_refresh']}">
+                        <i class="fa-solid fa-rotate"></i><span class="d-lg-none d-xl-inline">{$L['btn_refresh']}</span>
                     </button>
-                    <button type="button" class="btn btn-outline-danger ml-btn" id="clear-filters" title="Clear filters">
+                    <button type="button" class="btn btn-outline-danger ml-btn" id="clear-filters" title="{$L['tip_clear_filters']}">
                         <i class="fa-solid fa-filter-circle-xmark"></i>
                     </button>
                 </div>
@@ -761,22 +862,34 @@ class LoginAttemptsManager
 
     private function wrapTable(string $rows): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $o = $this->orderBy;
         $d = $this->orderType;
         $s = fn(string $k, string $l) => maxlogin_sort_link('sort-header', $k, $l, $o === 'banned' ? 'status' : $o, $d);
+
+        $h = [
+            'id'       => $s('id', $L['col_id']),
+            'ip'       => $s('ip', '<i class="fa-solid fa-network-wired"></i> ' . $L['col_ip']),
+            'added'    => $s('added', '<i class="fa-regular fa-clock"></i> ' . $L['col_last_attempt']),
+            'attempts' => $s('attempts', '<i class="fa-solid fa-repeat"></i> ' . $L['col_attempts']),
+            'type'     => $s('type', '<i class="fa-solid fa-tag"></i> ' . $L['col_type']),
+            'status'   => $s('status', '<i class="fa-solid fa-shield-halved"></i> ' . $L['col_status']),
+        ];
 
         return <<<HTML
         <div class="table-responsive">
             <table class="table table-hover align-middle ml-table">
                 <thead>
                     <tr>
-                        <th class="ml-w-6">{$s('id', 'ID')}</th>
-                        <th class="ml-w-22">{$s('ip', '<i class="fa-solid fa-network-wired"></i> IP address')}</th>
-                        <th class="ml-w-18">{$s('added', '<i class="fa-regular fa-clock"></i> Last attempt')}</th>
-                        <th class="ml-w-10">{$s('attempts', '<i class="fa-solid fa-repeat"></i> Attempts')}</th>
-                        <th class="ml-w-14">{$s('type', '<i class="fa-solid fa-tag"></i> Type')}</th>
-                        <th class="ml-w-14">{$s('status', '<i class="fa-solid fa-shield-halved"></i> Status')}</th>
-                        <th class="ml-w-16 text-end">Actions</th>
+                        <th class="ml-w-6">{$h['id']}</th>
+                        <th class="ml-w-22">{$h['ip']}</th>
+                        <th class="ml-w-18">{$h['added']}</th>
+                        <th class="ml-w-10">{$h['attempts']}</th>
+                        <th class="ml-w-14">{$h['type']}</th>
+                        <th class="ml-w-14">{$h['status']}</th>
+                        <th class="ml-w-16 text-end">{$L['col_actions']}</th>
                     </tr>
                 </thead>
                 <tbody>{$rows}</tbody>
@@ -799,6 +912,9 @@ class LoginAttemptsManager
 
     private function renderTableRow(array $row, string $dateformat, string $timeformat, string $baseUrl): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $id = (int) $row['id'];
         $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES);
         $ipUrl = urlencode((string) $row['ip']);
@@ -808,8 +924,8 @@ class LoginAttemptsManager
 
         $isRecover = $row['type'] === 'recover';
         $typeChip = $isRecover
-            ? '<span class="ml-chip ml-soft-warning attempt-type"><i class="fa-solid fa-key"></i>Recover password</span>'
-            : '<span class="ml-chip ml-soft-primary attempt-type"><i class="fa-solid fa-right-to-bracket"></i>Login</span>';
+            ? '<span class="ml-chip ml-soft-warning attempt-type"><i class="fa-solid fa-key"></i>' . $L['badge_recover_password'] . '</span>'
+            : '<span class="ml-chip ml-soft-primary attempt-type"><i class="fa-solid fa-right-to-bracket"></i>' . $L['badge_login'] . '</span>';
 
         // Severity color for the attempts counter
         $tone = match (true) {
@@ -826,13 +942,13 @@ class LoginAttemptsManager
             <td>
                 <div class="ml-ipcell">
                     <code class="ml-ip ip-address">{$ip}</code>
-                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="Copy IP">
+                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="{$L['tip_copy_ip']}">
                         <i class="fa-regular fa-copy"></i>
                     </button>
                     <a href="{$baseUrl}/admin/index.php?act=ipsearch&amp;do=1&amp;ip={$ipUrl}"
                        target="_blank" rel="noopener"
                        class="btn ml-btn-icon ml-mini ml-soft-info"
-                       title="Search this IP in the database">
+                       title="{$L['tip_ip_search']}">
                         <i class="fa-solid fa-magnifying-glass-location"></i>
                     </a>
                 </div>
@@ -853,13 +969,13 @@ class LoginAttemptsManager
                     {$this->renderBanButton($row)}
                     <a href="?act=maxlogin&amp;action=edit&amp;id={$id}"
                        class="btn ml-btn-icon ml-soft-primary"
-                       title="Edit">
+                       title="{$L['tip_edit']}">
                         <i class="fa-solid fa-pen"></i>
                     </a>
                     <button type="button" class="btn ml-btn-icon ml-soft-danger delete-btn"
                             data-id="{$id}"
                             data-ip="{$ip}"
-                            title="Delete">
+                            title="{$L['tip_delete']}">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
@@ -870,10 +986,13 @@ class LoginAttemptsManager
 
     private function renderBanButton(array $row): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $id = (int) $row['id'];
         $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES); // was unescaped in the attribute
         $isBanned = $row['banned'] === 'yes';
-        $banText = $isBanned ? 'Unban' : 'Ban';
+        $banTitle = $isBanned ? $L['tip_unban_ip'] : $L['tip_ban_ip'];
         $banTone = $isBanned ? 'success' : 'warning';
         $banIcon = $isBanned ? 'fa-lock-open' : 'fa-lock';
         $action = $isBanned ? 'unban' : 'ban';
@@ -883,7 +1002,7 @@ class LoginAttemptsManager
                 data-id="{$id}"
                 data-action="{$action}"
                 data-ip="{$ip}"
-                title="{$banText} IP">
+                title="{$banTitle}">
             <i class="fa-solid {$banIcon}"></i>
         </button>
         HTML;
@@ -905,13 +1024,15 @@ class LoginAttemptsManager
         ]);
 
         $assets = maxlogin_assets();
+        $jsLang = maxlogin_js_lang();
         $uiJs = maxlogin_ui_js();
         $js = maxlogin_asset_url(MAXLOGIN_JS);
 
-        // Order matters: config block -> maxlogin-ui.js (reads it) -> maxlogin.js
+        // Order matters: config block -> AGS_LANG -> maxlogin-ui.js (reads config) -> maxlogin.js
         return <<<HTML
         {$assets}
         {$config}
+        {$jsLang}
         {$uiJs}
         <script src="{$js}"></script>
         HTML;
@@ -919,6 +1040,9 @@ class LoginAttemptsManager
 
     private function renderEmptyState(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $hasFilters = !empty($this->filterBanned) && $this->filterBanned !== 'all'
             || !empty($this->filterType) && $this->filterType !== 'all'
             || !empty($this->searchIp);
@@ -927,10 +1051,10 @@ class LoginAttemptsManager
             return <<<HTML
             <div class="ml-empty">
                 <span class="ml-ico ml-soft-warning"><i class="fa-solid fa-filter"></i></span>
-                <h4>No matching records</h4>
-                <p class="ml-muted">Nothing matches the current filters. Clear them to see every record.</p>
+                <h4>{$L['empty_filtered']}</h4>
+                <p class="ml-muted">{$L['empty_filtered_text']}</p>
                 <button type="button" class="btn btn-outline-primary ml-btn mt-2" id="clear-filters-btn" data-ml-trigger="#clear-filters">
-                    <i class="fa-solid fa-filter-circle-xmark"></i> Clear filters
+                    <i class="fa-solid fa-filter-circle-xmark"></i> {$L['btn_clear_filters']}
                 </button>
             </div>
             HTML;
@@ -939,23 +1063,27 @@ class LoginAttemptsManager
         return <<<HTML
         <div class="ml-empty">
             <span class="ml-ico ml-soft-success"><i class="fa-solid fa-shield-heart"></i></span>
-            <h4>No failed attempts</h4>
-            <p class="ml-muted">Nobody has failed to log in. New failures will appear here.</p>
+            <h4>{$L['empty_attempts']}</h4>
+            <p class="ml-muted">{$L['empty_attempts_text']}</p>
         </div>
         HTML;
     }
 
     private function renderEmptySearch(string $searchTerm): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $searchTermHtml = htmlspecialchars($searchTerm);
+        $text = ags_fmt($L['empty_search_text'], '<code class="ml-ip">' . $searchTermHtml . '</code>');
 
         return <<<HTML
         <div class="ml-empty">
             <span class="ml-ico ml-soft-warning"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <h4>No results</h4>
-            <p class="ml-muted">No attempts found for <code class="ml-ip">{$searchTermHtml}</code></p>
+            <h4>{$L['empty_search']}</h4>
+            <p class="ml-muted">{$text}</p>
             <button type="button" class="btn btn-outline-primary ml-btn mt-2" data-ml-trigger="#clear-search">
-                <i class="fa-solid fa-xmark"></i> Clear search
+                <i class="fa-solid fa-xmark"></i> {$L['btn_clear_search']}
             </button>
         </div>
         HTML;
@@ -983,7 +1111,8 @@ class LoginAttemptsManager
 
     private function edit(): void
     {
-        global $db;
+        global $db, $lang;
+        $L = $lang->maxlogin;
 
         $this->validateId();
 
@@ -991,10 +1120,10 @@ class LoginAttemptsManager
         $attempt = $result ? $db->fetch_array($result) : null;
 
         if (!$attempt) {
-            stderr('Error', 'Login attempt not found');
+            stderr($L['err_title'], $L['err_attempt_not_found']);
         }
 
-        stdhead('Login Attempts - Edit');
+        stdhead($L['title_edit']);
         echo maxlogin_styles();
         echo $this->renderEditForm($attempt);
         stdfoot();
@@ -1030,15 +1159,21 @@ class LoginAttemptsManager
 
     private function searchIp(): void
     {
-        global $db, $dateformat, $timeformat, $BASEURL;
+        global $db, $dateformat, $timeformat, $BASEURL, $lang;
+        $L = $lang->maxlogin;
 
         $ip = trim($_POST['ip'] ?? '');
-        stdhead('Login Attempts - Search Results');
+        stdhead($L['title_search']);
 
         echo maxlogin_styles();
         echo maxlogin_assets();
         echo '<div class="ml-wrap container-xl py-3">';
-        echo maxlogin_page_header('fa-magnifying-glass-location', 'info', 'IP search', 'Failed attempts matching <code class="ml-ip">' . htmlspecialchars($ip) . '</code>');
+        echo maxlogin_page_header(
+            'fa-magnifying-glass-location',
+            'info',
+            $L['pane_search'],
+            ags_fmt($L['pane_search_sub'], '<code class="ml-ip">' . htmlspecialchars($ip) . '</code>')
+        );
         echo '<div class="ml-card mt-3">';
 
         $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE ip LIKE ?", ['%' . $this->likeEscape($ip) . '%']);
@@ -1060,17 +1195,21 @@ class LoginAttemptsManager
 
     private function validateId(?int $id = null): void
     {
+        global $lang;
+
         $id = $id ?? $this->id;
 
         if (!$id || !is_valid_id($id)) {
-            stderr('Error', 'Invalid ID');
+            stderr($lang->maxlogin['err_title'], $lang->maxlogin['err_invalid_id']);
         }
     }
 
     private function validateAttempts(int $attempts): void
     {
+        global $lang;
+
         if ($attempts < 0 || $attempts > 1000) {
-            stderr('Error', 'Invalid attempts value');
+            stderr($lang->maxlogin['err_title'], $lang->maxlogin['err_invalid_attempts']);
         }
     }
 
@@ -1097,7 +1236,8 @@ class LoginAttemptsManager
 
     private function renderEditForm(array $attempt): string
     {
-        global $mybb;
+        global $mybb, $lang;
+        $L = $lang->maxlogin;
 
         $id = (int) $attempt['id'];
         $ip = htmlspecialchars((string) $attempt['ip'], ENT_QUOTES); // was printed raw
@@ -1114,8 +1254,8 @@ class LoginAttemptsManager
         $header = maxlogin_page_header(
             'fa-pen-to-square',
             'primary',
-            "Edit login attempt #{$id}",
-            'Change the counter, the attempt type or the ban status',
+            ags_fmt($L['pane_edit'], $id),
+            $L['pane_edit_sub'],
             $status
         );
 
@@ -1137,7 +1277,7 @@ class LoginAttemptsManager
                                 <div class="ml-info">
                                     <span class="ml-ico ml-ico-sm ml-soft-info"><i class="fa-solid fa-network-wired"></i></span>
                                     <div>
-                                        <div class="ml-info-lbl">IP address</div>
+                                        <div class="ml-info-lbl">{$L['lbl_ip']}</div>
                                         <code class="ml-ip fs-6">{$ip}</code>
                                     </div>
                                 </div>
@@ -1146,7 +1286,7 @@ class LoginAttemptsManager
                                 <div class="ml-info">
                                     <span class="ml-ico ml-ico-sm ml-soft-secondary"><i class="fa-regular fa-clock"></i></span>
                                     <div>
-                                        <div class="ml-info-lbl">Last attempt</div>
+                                        <div class="ml-info-lbl">{$L['lbl_last_attempt']}</div>
                                         <div class="fw-semibold">{$added}</div>
                                     </div>
                                 </div>
@@ -1156,30 +1296,30 @@ class LoginAttemptsManager
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label for="attempts" class="form-label">
-                                    <i class="fa-solid fa-repeat"></i> Attempts
+                                    <i class="fa-solid fa-repeat"></i> {$L['lbl_attempts']}
                                 </label>
                                 <input type="number" class="form-control" id="attempts" name="attempts"
                                        value="{$attempts}" min="0" max="1000" required>
-                                <div class="form-text">From 0 to 1000</div>
+                                <div class="form-text">{$L['hint_attempts_range']}</div>
                             </div>
 
                             <div class="col-md-4">
                                 <label for="type" class="form-label">
-                                    <i class="fa-solid fa-tag"></i> Type
+                                    <i class="fa-solid fa-tag"></i> {$L['lbl_type']}
                                 </label>
                                 <select class="form-select" id="type" name="type" required>
-                                    <option value="login" {$this->selected($attempt['type'] === 'login')}>Login</option>
-                                    <option value="recover" {$this->selected($attempt['type'] === 'recover')}>Password recovery</option>
+                                    <option value="login" {$this->selected($attempt['type'] === 'login')}>{$L['opt_login']}</option>
+                                    <option value="recover" {$this->selected($attempt['type'] === 'recover')}>{$L['opt_password_recovery']}</option>
                                 </select>
                             </div>
 
                             <div class="col-md-4">
                                 <label for="banned" class="form-label">
-                                    <i class="fa-solid fa-shield-halved"></i> Status
+                                    <i class="fa-solid fa-shield-halved"></i> {$L['lbl_status']}
                                 </label>
                                 <select class="form-select" id="banned" name="banned" required>
-                                    <option value="yes" {$this->selected($attempt['banned'] === 'yes')}>Banned</option>
-                                    <option value="no" {$this->selected($attempt['banned'] === 'no')}>Active</option>
+                                    <option value="yes" {$this->selected($attempt['banned'] === 'yes')}>{$L['opt_banned']}</option>
+                                    <option value="no" {$this->selected($attempt['banned'] === 'no')}>{$L['opt_active']}</option>
                                 </select>
                             </div>
                         </div>
@@ -1187,12 +1327,12 @@ class LoginAttemptsManager
                 </div>
 
                 <div class="ml-actionbar">
-                    <span class="ml-sub"><i class="fa-solid fa-circle-info me-1"></i>Changes apply immediately after saving</span>
+                    <span class="ml-sub"><i class="fa-solid fa-circle-info me-1"></i>{$L['hint_save']}</span>
                     <a href="{$cancelUrl}" class="btn btn-outline-secondary ml-btn">
-                        <i class="fa-solid fa-xmark"></i> Cancel
+                        <i class="fa-solid fa-xmark"></i> {$L['btn_cancel']}
                     </a>
                     <button type="submit" class="btn btn-primary ml-btn px-4">
-                        <i class="fa-solid fa-floppy-disk"></i> Save changes
+                        <i class="fa-solid fa-floppy-disk"></i> {$L['btn_save']}
                     </button>
                 </div>
             </form>
@@ -1202,28 +1342,31 @@ class LoginAttemptsManager
 
     private function renderSearchForm(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return <<<HTML
         <div class="ml-card mt-3">
             <div class="ml-head">
                 <span class="ml-ico ml-ico-sm ml-soft-info"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <div class="ml-head-main">
-                    <h5 class="ml-title">Search another IP</h5>
+                    <h5 class="ml-title">{$L['sec_search_another']}</h5>
                 </div>
             </div>
             <div class="px-4 pb-4">
                 <form method="post" action="?act=maxlogin&amp;action=searchip" class="row g-2 align-items-center">
                     <input type="hidden" name="action" value="searchip">
                     <div class="col-md-9">
-                        <label for="searchIp" class="visually-hidden">IP address</label>
+                        <label for="searchIp" class="visually-hidden">{$L['lbl_ip']}</label>
                         <div class="input-group ml-pill-group">
                             <span class="input-group-text"><i class="fa-solid fa-network-wired"></i></span>
                             <input type="text" class="form-control" id="searchIp" name="ip"
-                                   placeholder="For example 192.168.1.1" required>
+                                   placeholder="{$L['ph_ip_example']}" required>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <button type="submit" class="btn btn-info ml-btn w-100">
-                            <i class="fa-solid fa-magnifying-glass"></i> Search
+                            <i class="fa-solid fa-magnifying-glass"></i> {$L['btn_search']}
                         </button>
                     </div>
                 </form>
@@ -1234,18 +1377,14 @@ class LoginAttemptsManager
 
     private function renderSuccessMessage(string $action): string
     {
-        return <<<HTML
-        <div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mt-3 mb-0 ml-alert" role="alert">
-            <i class="fa-solid fa-circle-check"></i>
-            <div><strong>Done.</strong> "{$action}" completed.</div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        HTML;
+        return maxlogin_flash_alert($action);
     }
 
     private function showError(string $message): void
     {
-        stderr('Error', $message);
+        global $lang;
+
+        stderr($lang->maxlogin['err_title'], $message);
     }
 
     private function getRequest(string $key, string $default = ''): string
@@ -1348,11 +1487,14 @@ class LoginLogManager
 
     public function renderKpis(array $s): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return maxlogin_kpis([
-            ['fa-clock-rotate-left',  'primary', $s['total'],      'Log entries'],
-            ['fa-circle-check',       'success', $s['success'],    'Successful logins'],
-            ['fa-circle-xmark',       'danger',  $s['fail'],       'Failed logins'],
-            ['fa-triangle-exclamation','warning', $s['suspicious'], 'Suspicious'],
+            ['fa-clock-rotate-left',  'primary', $s['total'],      $L['kpi_log_entries']],
+            ['fa-circle-check',       'success', $s['success'],    $L['kpi_success']],
+            ['fa-circle-xmark',       'danger',  $s['fail'],       $L['kpi_fail']],
+            ['fa-triangle-exclamation','warning', $s['suspicious'], $L['kpi_suspicious']],
         ]);
     }
 
@@ -1373,6 +1515,8 @@ class LoginLogManager
 
     private function handleAjax(): void
     {
+        global $lang;
+
         header('Content-Type: application/json');
         try {
             match ($this->action) {
@@ -1380,7 +1524,7 @@ class LoginLogManager
                 'log_ajax_get_count'  => $this->ajaxGetCount(),
                 'log_ajax_delete'     => $this->ajaxDelete(),
                 'log_ajax_delete_all' => $this->ajaxDeleteAll(),
-                default               => throw new Exception('Unknown action')
+                default               => throw new Exception($lang->maxlogin['err_unknown_action'])
             };
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -1411,20 +1555,22 @@ class LoginLogManager
 
     private function ajaxDelete(): void
     {
-        global $db;
+        global $db, $lang;
+        $L = $lang->maxlogin;
+
         $id = (int)($_POST['id'] ?? 0);
-        if ($id <= 0) throw new Exception('Invalid ID');
+        if ($id <= 0) throw new Exception($L['err_invalid_id']);
         $result = $db->sql_query_prepared("SELECT ip FROM login_log WHERE id=?", [$id]);
         $row = $result ? $db->fetch_array($result) : null;
-        if (!$row) throw new Exception('Log entry not found');
+        if (!$row) throw new Exception($L['err_log_not_found']);
         $db->sql_query_prepared("DELETE FROM login_log WHERE id=?", [$id]);
         $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES);
-        echo json_encode(['success' => true, 'message' => "Log entry #{$id} ({$ip}) deleted.", 'id' => $id]);
+        echo json_encode(['success' => true, 'message' => ags_fmt($L['msg_log_deleted'], $id, $ip), 'id' => $id]);
     }
 
     private function ajaxDeleteAll(): void
     {
-        global $db;
+        global $db, $lang;
         $scope = $_POST['scope'] ?? 'all';
 
         $where = match ($scope) {
@@ -1438,7 +1584,7 @@ class LoginLogManager
         $count = $countResult ? (int)$db->fetch_field($countResult, 'c') : 0;
         $db->sql_query_prepared("DELETE FROM login_log $where");
 
-        echo json_encode(['success' => true, 'message' => "{$count} records deleted.", 'count' => $count]);
+        echo json_encode(['success' => true, 'message' => ags_fmt($lang->maxlogin['msg_records_deleted'], $count), 'count' => $count]);
     }
 
     private function handleDelete(): void
@@ -1525,24 +1671,38 @@ class LoginLogManager
 
     private function renderTable(string $rows): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $o = $this->orderBy;
         $d = $this->orderType;
         $s = fn(string $k, string $l) => maxlogin_sort_link('log-sort', $k, $l, $o, $d);
+
+        $h = [
+            'id'         => $s('id', $L['col_id']),
+            'uid'        => $s('uid', '<i class="fa-solid fa-user"></i> ' . $L['col_user']),
+            'ip'         => $s('ip', '<i class="fa-solid fa-network-wired"></i> ' . $L['col_ip_short']),
+            'country'    => $s('country', '<i class="fa-solid fa-earth-europe"></i> ' . $L['col_location']),
+            'datetime'   => $s('datetime', '<i class="fa-regular fa-clock"></i> ' . $L['col_time']),
+            'type'       => $s('type', $L['col_type']),
+            'status'     => $s('status', $L['col_result']),
+            'suspicious' => $s('suspicious', $L['col_suspicious']),
+        ];
 
         return <<<HTML
         <div class="table-responsive">
             <table class="table table-hover align-middle ml-table">
                 <thead>
                     <tr>
-                        <th class="ml-w-5">{$s('id', 'ID')}</th>
-                        <th class="ml-w-11">{$s('uid', '<i class="fa-solid fa-user"></i> User')}</th>
-                        <th class="ml-w-14">{$s('ip', '<i class="fa-solid fa-network-wired"></i> IP')}</th>
-                        <th class="ml-w-13">{$s('country', '<i class="fa-solid fa-earth-europe"></i> Location')}</th>
-                        <th class="ml-w-15"><i class="fa-solid fa-display me-1"></i> Device</th>
-                        <th class="ml-w-12">{$s('datetime', '<i class="fa-regular fa-clock"></i> Time')}</th>
-                        <th class="ml-w-8">{$s('type', 'Type')}</th>
-                        <th class="ml-w-8">{$s('status', 'Result')}</th>
-                        <th class="ml-w-9">{$s('suspicious', 'Suspicious')}</th>
+                        <th class="ml-w-5">{$h['id']}</th>
+                        <th class="ml-w-11">{$h['uid']}</th>
+                        <th class="ml-w-14">{$h['ip']}</th>
+                        <th class="ml-w-13">{$h['country']}</th>
+                        <th class="ml-w-15"><i class="fa-solid fa-display me-1"></i> {$L['col_device']}</th>
+                        <th class="ml-w-12">{$h['datetime']}</th>
+                        <th class="ml-w-8">{$h['type']}</th>
+                        <th class="ml-w-8">{$h['status']}</th>
+                        <th class="ml-w-9">{$h['suspicious']}</th>
                         <th class="ml-w-5 text-end"></th>
                     </tr>
                 </thead>
@@ -1555,16 +1715,19 @@ class LoginLogManager
     /** Browser + OS icons from the user agent string. */
     private function parseUserAgent(string $ua): array
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $browser = match (true) {
-            $ua === ''                                        => ['fa-solid fa-circle-question', 'Unknown'],
-            (bool) preg_match('~bot|crawl|spider|curl|wget|python|httpclient~i', $ua) => ['fa-solid fa-robot', 'Bot / script'],
+            $ua === ''                                        => ['fa-solid fa-circle-question', $L['lbl_ua_unknown']],
+            (bool) preg_match('~bot|crawl|spider|curl|wget|python|httpclient~i', $ua) => ['fa-solid fa-robot', $L['lbl_ua_bot']],
             str_contains($ua, 'Edg/')                          => ['fa-brands fa-edge', 'Edge'],
             str_contains($ua, 'OPR/') || str_contains($ua, 'Opera') => ['fa-brands fa-opera', 'Opera'],
             str_contains($ua, 'YaBrowser')                     => ['fa-brands fa-yandex-international', 'Yandex'],
             str_contains($ua, 'Firefox/')                      => ['fa-brands fa-firefox-browser', 'Firefox'],
             str_contains($ua, 'Chrome/')                       => ['fa-brands fa-chrome', 'Chrome'],
             str_contains($ua, 'Safari/')                       => ['fa-brands fa-safari', 'Safari'],
-            default                                           => ['fa-solid fa-globe', 'Other'],
+            default                                           => ['fa-solid fa-globe', $L['lbl_ua_other']],
         };
 
         $os = match (true) {
@@ -1580,7 +1743,8 @@ class LoginLogManager
 
     private function renderRow(array $r): string
     {
-        global $dateformat, $timeformat, $BASEURL;
+        global $dateformat, $timeformat, $BASEURL, $lang;
+        $L = $lang->maxlogin;
 
         $id       = (int) $r['id'];
         $ip       = htmlspecialchars((string) $r['ip'], ENT_QUOTES);
@@ -1594,19 +1758,19 @@ class LoginLogManager
         $uid      = (int) $r['uid'];
 
         [[$bIcon, $bName], [$oIcon, $oName]] = $this->parseUserAgent($uaRaw);
-        $device = $oName !== '' ? "{$bName} on {$oName}" : $bName;
+        $device = $oName !== '' ? ags_fmt($L['lbl_device_on'], $bName, $oName) : $bName;
 
         $statusBadge = $r['status'] === 'success'
-            ? '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-check"></i>Success</span>'
-            : '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-xmark"></i>Fail</span>';
+            ? '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-check"></i>' . $L['badge_success'] . '</span>'
+            : '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-xmark"></i>' . $L['badge_fail'] . '</span>';
 
         $suspBadge = $r['suspicious'] === 'yes'
-            ? '<span class="ml-chip ml-soft-warning"><i class="fa-solid fa-triangle-exclamation"></i>Yes</span>'
-            : '<span class="ml-chip ml-soft-secondary"><i class="fa-solid fa-minus"></i>No</span>';
+            ? '<span class="ml-chip ml-soft-warning"><i class="fa-solid fa-triangle-exclamation"></i>' . $L['badge_yes'] . '</span>'
+            : '<span class="ml-chip ml-soft-secondary"><i class="fa-solid fa-minus"></i>' . $L['badge_no'] . '</span>';
 
         $typeBadge = $r['type'] === 'recover'
-            ? '<span class="ml-chip ml-soft-info" title="Password recovery"><i class="fa-solid fa-key"></i>Recover</span>'
-            : '<span class="ml-chip ml-soft-primary"><i class="fa-solid fa-right-to-bracket"></i>Login</span>';
+            ? '<span class="ml-chip ml-soft-info" title="' . $L['tip_password_recovery'] . '"><i class="fa-solid fa-key"></i>' . $L['badge_recover'] . '</span>'
+            : '<span class="ml-chip ml-soft-primary"><i class="fa-solid fa-right-to-bracket"></i>' . $L['badge_login'] . '</span>';
 
         $location = $country
             ? "<i class=\"fa-solid fa-location-dot me-1 ml-muted\"></i>{$country}" . ($city ? "<div class=\"ml-muted small\">{$city}</div>" : '')
@@ -1617,7 +1781,7 @@ class LoginLogManager
             $userCell = "<div class=\"ml-user\"><span class=\"ml-ico ml-mini ml-soft-primary\"><i class=\"fa-solid fa-user\"></i></span>"
                       . "<a href=\"{$BASEURL}/member.php?action=profile&amp;uid={$uid}\">{$username}</a></div>";
         } else {
-            $userCell = "<div class=\"ml-user ml-muted\"><span class=\"ml-ico ml-mini ml-soft-secondary\"><i class=\"fa-solid fa-user-secret\"></i></span>Unknown</div>";
+            $userCell = "<div class=\"ml-user ml-muted\"><span class=\"ml-ico ml-mini ml-soft-secondary\"><i class=\"fa-solid fa-user-secret\"></i></span>{$L['lbl_user_unknown']}</div>";
         }
 
         return <<<HTML
@@ -1627,11 +1791,11 @@ class LoginLogManager
             <td>
                 <div class="ml-ipcell">
                     <code class="ml-ip">{$ip}</code>
-                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="Copy IP">
+                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="{$L['tip_copy_ip']}">
                         <i class="fa-regular fa-copy"></i>
                     </button>
                     <a href="{$BASEURL}/admin/index.php?act=ipsearch&amp;do=1&amp;ip={$ipUrl}" target="_blank" rel="noopener"
-                       class="btn ml-btn-icon ml-mini ml-soft-info" title="Search this IP in the database">
+                       class="btn ml-btn-icon ml-mini ml-soft-info" title="{$L['tip_ip_search']}">
                         <i class="fa-solid fa-magnifying-glass-location"></i>
                     </a>
                 </div>
@@ -1653,7 +1817,7 @@ class LoginLogManager
             <td>{$suspBadge}</td>
             <td class="text-end">
                 <button type="button" class="btn ml-btn-icon ml-soft-danger log-delete-btn"
-                        data-id="{$id}" data-ip="{$ip}" title="Delete">
+                        data-id="{$id}" data-ip="{$ip}" title="{$L['tip_delete']}">
                     <i class="fa-solid fa-trash-can"></i>
                 </button>
             </td>
@@ -1663,11 +1827,14 @@ class LoginLogManager
 
     private function renderEmpty(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return <<<HTML
         <div class="ml-empty">
             <span class="ml-ico ml-soft-secondary"><i class="fa-solid fa-clock-rotate-left"></i></span>
-            <h4>No login history</h4>
-            <p class="ml-muted">Entries appear here after users log in.</p>
+            <h4>{$L['empty_log']}</h4>
+            <p class="ml-muted">{$L['empty_log_text']}</p>
         </div>
         HTML;
     }
@@ -1675,18 +1842,21 @@ class LoginLogManager
     /** Card head of the log section (keeps #log-spinner / #log-total-count for JS). */
     private function renderLogHeader(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         return <<<HTML
         <div class="ml-head">
             <span class="ml-ico ml-ico-sm ml-soft-primary"><i class="fa-solid fa-clock-rotate-left"></i></span>
             <div class="ml-head-main">
-                <h5 class="ml-title">Login history</h5>
-                <p class="ml-sub">Every login, successful or failed, with location and device</p>
+                <h5 class="ml-title">{$L['sec_log']}</h5>
+                <p class="ml-sub">{$L['sec_log_sub']}</p>
             </div>
             <div class="ml-head-side">
                 <div class="spinner-border spinner-border-sm text-primary d-none" id="log-spinner" role="status">
-                    <span class="visually-hidden">Loading...</span>
+                    <span class="visually-hidden">{$L['lbl_loading']}</span>
                 </div>
-                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="log-total-count">Loading…</span></span>
+                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="log-total-count">{$L['lbl_loading']}</span></span>
             </div>
         </div>
         HTML;
@@ -1694,6 +1864,9 @@ class LoginLogManager
 
     private function renderLogFilters(): string
     {
+        global $lang;
+        $L = $lang->maxlogin;
+
         $statusSel = $this->filterStatus;
         $suspSel   = $this->filterSuspicious;
         $searchVal = $this->searchIp;
@@ -1706,9 +1879,9 @@ class LoginLogManager
                 <div class="col-lg-5">
                     <div class="input-group ml-pill-group">
                         <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                        <input type="text" class="form-control" id="log-search" placeholder="Search by IP address"
+                        <input type="text" class="form-control" id="log-search" placeholder="{$L['ph_search_ip']}"
                                value="{$searchVal}" autocomplete="off">
-                        <button class="btn btn-outline-secondary" id="log-clear-search" type="button" title="Clear search">
+                        <button class="btn btn-outline-secondary" id="log-clear-search" type="button" title="{$L['tip_clear_search']}">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
@@ -1716,40 +1889,40 @@ class LoginLogManager
                 <div class="col-sm-6 col-lg-2">
                     <div class="input-group ml-pill-group">
                         <span class="input-group-text"><i class="fa-solid fa-circle-half-stroke"></i></span>
-                        <select class="form-select" id="log-filter-status" aria-label="Result filter">
-                            <option value="all"     {$sel($statusSel, 'all')}>All results</option>
-                            <option value="success" {$sel($statusSel, 'success')}>Success</option>
-                            <option value="fail"    {$sel($statusSel, 'fail')}>Failed</option>
+                        <select class="form-select" id="log-filter-status" aria-label="{$L['aria_filter_result']}">
+                            <option value="all"     {$sel($statusSel, 'all')}>{$L['opt_all_results']}</option>
+                            <option value="success" {$sel($statusSel, 'success')}>{$L['opt_success']}</option>
+                            <option value="fail"    {$sel($statusSel, 'fail')}>{$L['opt_failed']}</option>
                         </select>
                     </div>
                 </div>
                 <div class="col-sm-6 col-lg-2">
                     <div class="input-group ml-pill-group">
                         <span class="input-group-text"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                        <select class="form-select" id="log-filter-suspicious" aria-label="Suspicious filter">
-                            <option value="all" {$sel($suspSel, 'all')}>All entries</option>
-                            <option value="yes" {$sel($suspSel, 'yes')}>Suspicious</option>
-                            <option value="no"  {$sel($suspSel, 'no')}>Normal</option>
+                        <select class="form-select" id="log-filter-suspicious" aria-label="{$L['aria_filter_suspicious']}">
+                            <option value="all" {$sel($suspSel, 'all')}>{$L['opt_all_entries']}</option>
+                            <option value="yes" {$sel($suspSel, 'yes')}>{$L['opt_suspicious']}</option>
+                            <option value="no"  {$sel($suspSel, 'no')}>{$L['opt_normal']}</option>
                         </select>
                     </div>
                 </div>
                 <div class="col-lg-3 d-flex gap-2">
-                    <button type="button" class="btn btn-outline-primary ml-btn" id="log-refresh" title="Refresh">
+                    <button type="button" class="btn btn-outline-primary ml-btn" id="log-refresh" title="{$L['tip_refresh']}">
                         <i class="fa-solid fa-rotate"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary ml-btn" id="log-clear-filters" title="Clear filters">
+                    <button type="button" class="btn btn-outline-secondary ml-btn" id="log-clear-filters" title="{$L['tip_clear_filters']}">
                         <i class="fa-solid fa-filter-circle-xmark"></i>
                     </button>
                     <div class="dropdown flex-fill">
                         <button class="btn btn-danger ml-btn w-100 dropdown-toggle" type="button" id="log-delete-all-btn" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa-solid fa-trash-can"></i> Delete
+                            <i class="fa-solid fa-trash-can"></i> {$L['btn_delete']}
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow ml-dropdown">
-                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="all"><i class="fa-solid fa-dumpster me-2 text-danger"></i>All records</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="all"><i class="fa-solid fa-dumpster me-2 text-danger"></i>{$L['opt_del_all']}</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="fail"><i class="fa-solid fa-circle-xmark me-2 text-danger"></i>Failed only</a></li>
-                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="success"><i class="fa-solid fa-circle-check me-2 text-success"></i>Successful only</a></li>
-                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="suspicious"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i>Suspicious only</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="fail"><i class="fa-solid fa-circle-xmark me-2 text-danger"></i>{$L['opt_del_fail']}</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="success"><i class="fa-solid fa-circle-check me-2 text-success"></i>{$L['opt_del_success']}</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="suspicious"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i>{$L['opt_del_suspicious']}</a></li>
                         </ul>
                     </div>
                 </div>
@@ -1766,13 +1939,15 @@ class LoginLogManager
         ]);
 
         $assets = maxlogin_assets();
+        $jsLang = maxlogin_js_lang();
         $uiJs   = maxlogin_ui_js();
         $js     = maxlogin_asset_url(MAXLOGIN_JS);
 
-        // Order matters: config block -> maxlogin-ui.js (reads it) -> maxlogin.js
+        // Order matters: config block -> AGS_LANG -> maxlogin-ui.js (reads config) -> maxlogin.js
         return <<<HTML
         {$assets}
         {$config}
+        {$jsLang}
         {$uiJs}
         <script src="{$js}"></script>
         HTML;
@@ -1785,6 +1960,9 @@ class LoginLogManager
 
 function maxlogin_render_tabs(): void
 {
+    global $lang;
+    $L = $lang->maxlogin;
+
     $tab = ($_REQUEST['tab'] ?? 'attempts') === 'log' ? 'log' : 'attempts';
     $update = htmlspecialchars((string) ($_REQUEST['update'] ?? ''), ENT_QUOTES, 'UTF-8');
 
@@ -1793,7 +1971,7 @@ function maxlogin_render_tabs(): void
     $attStats    = $attemptsMgr->getStats();
     $logStats    = $logMgr->getStats();
 
-    stdhead('Login Security Manager');
+    stdhead($L['title_page']);
 
     echo maxlogin_styles();
     echo maxlogin_assets();
@@ -1807,23 +1985,21 @@ function maxlogin_render_tabs(): void
     echo maxlogin_page_header(
         'fa-shield-halved',
         'primary',
-        'Login security',
-        'Failed attempts, IP bans and the full login history'
+        $L['pane_security'],
+        $L['pane_security_sub']
     );
 
     if ($update) {
-        echo '<div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mt-3 mb-0 ml-alert" role="alert">'
-           . '<i class="fa-solid fa-circle-check"></i><div><strong>Done.</strong> "' . $update . '" completed.</div>'
-           . '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
+        echo maxlogin_flash_alert($update);
     }
 
     echo <<<HTML
     <nav class="ml-tabs" id="loginTabs">
         <a class="{$tabAttempts}" href="?act=maxlogin&amp;tab=attempts">
-            <i class="fa-solid fa-user-lock"></i> Failed attempts <span class="ml-count">{$attCount}</span>
+            <i class="fa-solid fa-user-lock"></i> {$L['tab_attempts']} <span class="ml-count">{$attCount}</span>
         </a>
         <a class="{$tabLog}" href="?act=maxlogin&amp;tab=log">
-            <i class="fa-solid fa-clock-rotate-left"></i> Login history <span class="ml-count">{$logCount}</span>
+            <i class="fa-solid fa-clock-rotate-left"></i> {$L['tab_log']} <span class="ml-count">{$logCount}</span>
         </a>
     </nav>
     HTML;
@@ -1857,9 +2033,9 @@ try {
             http_response_code(403);
             if (str_starts_with($rawAction, 'ajax_') || str_starts_with($rawAction, 'log_ajax_')) {
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Invalid security token or request method']);
+                echo json_encode(['success' => false, 'error' => $lang->maxlogin['err_csrf_json']]);
             } else {
-                stderr('Error', 'Invalid security token or request method. Please try again from the page.');
+                stderr($lang->maxlogin['err_title'], $lang->maxlogin['err_csrf']);
             }
             exit;
         }
@@ -1892,5 +2068,5 @@ try {
     maxlogin_render_tabs();
 
 } catch (Exception $e) {
-    stderr('System Error', 'An unexpected error occurred: ' . htmlspecialchars($e->getMessage()));
+    stderr($lang->maxlogin['err_system_title'], ags_fmt($lang->maxlogin['err_unexpected'], htmlspecialchars($e->getMessage())));
 }

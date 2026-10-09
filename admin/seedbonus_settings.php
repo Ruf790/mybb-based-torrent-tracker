@@ -6,6 +6,38 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('seedbonus_settings');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в строку из ланга.
+     * $lang->load() превращает {1} в %1$s, поэтому заменяются оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach (array_values($args) as $i => $a) {
+            $map['{' . ($i + 1) . '}']  = (string)$a;
+            $map['%' . ($i + 1) . '$s'] = (string)$a;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
+/** Отображаемое имя пресета (ключ пресета в БД/JS не меняется) */
+function sb_preset_name(string $preset): string
+{
+    global $lang;
+    return match ($preset) {
+        'conservative' => $lang->seedbonus_settings['opt_preset_conservative'],
+        'balanced'     => $lang->seedbonus_settings['opt_preset_balanced'],
+        'generous'     => $lang->seedbonus_settings['opt_preset_generous'],
+        'avistaz'      => $lang->seedbonus_settings['opt_preset_avistaz'],
+        'maximum'      => $lang->seedbonus_settings['opt_preset_maximum'],
+        default        => ucfirst($preset),
+    };
+}
+
 /** Вкл/выкл из любого старого формата: true / 'yes' / 'on' / '1' */
 function sb_is_on(mixed $v): bool
 {
@@ -264,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($CURUSER['id']) || !is_mod($usergroups)) {
         http_response_code(403);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Access denied. Staff only.']);
+        echo json_encode(['success' => false, 'message' => $lang->seedbonus_settings['flash_access_denied']]);
         exit;
     }
 
@@ -274,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         http_response_code(403);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Invalid security token. Please refresh the page and try again.']);
+        echo json_encode(['success' => false, 'message' => $lang->seedbonus_settings['flash_bad_token']]);
         exit;
     }
 
@@ -282,6 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $response = match ($action) {
         'save' => (function () use ($seedbonus): array {
+            global $lang;
             foreach ($_POST as $key => $value) {
                 if (str_starts_with((string)$key, 'seedbonus_')) {
                     $cleanKey = substr((string)$key, 10);
@@ -299,15 +332,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $seedbonus->saveSetting($cleanKey, $value, $type);
                 }
             }
-            return ['success' => true, 'message' => 'Settings saved successfully'];
+            return ['success' => true, 'message' => $lang->seedbonus_settings['flash_saved']];
         })(),
         'load_preset' => (function () use ($seedbonus): array {
+            global $lang;
             $preset = $_POST['preset'] ?? '';
             return $seedbonus->loadPreset($preset)
-                ? ['success' => true,  'message' => "Preset '{$preset}' loaded"]
-                : ['success' => false, 'message' => 'Invalid preset'];
+                ? ['success' => true,  'message' => ags_fmt($lang->seedbonus_settings['flash_preset_loaded'], sb_preset_name($preset))]
+                : ['success' => false, 'message' => $lang->seedbonus_settings['flash_invalid_preset']];
         })(),
-        default => ['success' => false, 'message' => 'Invalid action'],
+        default => ['success' => false, 'message' => $lang->seedbonus_settings['flash_invalid_action']],
     };
 
     header('Content-Type: application/json');
@@ -324,6 +358,19 @@ $configCode = $seedbonus->generateConfigCode();
 $s = fn(string $k, mixed $d = null) => htmlspecialchars((string)$seedbonus->getSetting($k, $d));
 $n = fn(mixed $v, int $dec = 1)     => htmlspecialchars(number_format((float)$v, $dec));
 
+// Ланг: $L — строки страницы, $t() — перевод с подстановкой {1}… и htmlspecialchars
+$L = $lang->seedbonus_settings;
+$t = fn(string $k, string|int|float ...$a): string => htmlspecialchars(ags_fmt($L[$k], ...$a));
+
+// JS-строки: ключи js_* без префикса + отображаемые имена пресетов (preset_<key>)
+$jsLang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) $jsLang[substr((string)$k, 3)] = (string)$v;
+}
+foreach (array_keys($seedbonus->getPresets()) as $p) {
+    $jsLang['preset_' . $p] = sb_preset_name((string)$p);
+}
+
 // Реальное число сидирующих пользователей — стартовое значение для прогноза инфляции
 // (раньше в одном блоке было «100 users», а в соседнем — «500 users»)
 $activeSeeders = 100;
@@ -339,14 +386,14 @@ $daily     = (float)$preview['daily'];
 $dailyAll  = $daily * $activeSeeders;
 
 $presetInfo = [
-    'conservative' => ['fa-shield-halved',  'ic-blue',   'Careful economy, slow growth'],
-    'balanced'     => ['fa-scale-balanced', 'ic-green',  'Recommended default'],
-    'generous'     => ['fa-gift',           'ic-amber',  'Rewards heavy seeders'],
-    'avistaz'      => ['fa-star',           'ic-purple', 'AvistaZ-style multipliers'],
-    'maximum'      => ['fa-rocket',         'ic-red',    'Very fast points — watch inflation'],
+    'conservative' => ['fa-shield-halved',  'ic-blue',   $L['hint_preset_conservative']],
+    'balanced'     => ['fa-scale-balanced', 'ic-green',  $L['hint_preset_balanced']],
+    'generous'     => ['fa-gift',           'ic-amber',  $L['hint_preset_generous']],
+    'avistaz'      => ['fa-star',           'ic-purple', $L['hint_preset_avistaz']],
+    'maximum'      => ['fa-rocket',         'ic-red',    $L['hint_preset_maximum']],
 ];
 
-stdhead('Seedbonus System Settings');
+stdhead($L['page_title']);
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/seedbonus_settings.css">
@@ -455,32 +502,32 @@ stdhead('Seedbonus System Settings');
     <div class="sb-card mb-3"><div class="sb-head">
         <span class="sb-head-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
         <div style="min-width:0">
-            <h1 class="sb-title">Seedbonus Settings</h1>
-            <div class="sb-sub">How many bonus points seeders earn — rates, multipliers, limits and cron timing</div>
+            <h1 class="sb-title"><?= $t('head_title') ?></h1>
+            <div class="sb-sub"><?= $t('head_sub') ?></div>
         </div>
         <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
-            <span class="sb-status <?= $enabled ? 'on' : 'off' ?>"><i class="fa-solid fa-power-off"></i><?= $enabled ? 'System ON' : 'System OFF' ?></span>
-            <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="resetBtn"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
-            <button type="button" class="btn btn-sm btn-primary px-3" id="saveBtn"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+            <span class="sb-status <?= $enabled ? 'on' : 'off' ?>"><i class="fa-solid fa-power-off"></i><?= $enabled ? $t('status_on') : $t('status_off') ?></span>
+            <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="resetBtn"><i class="fa-solid fa-rotate-left me-1"></i><?= $t('btn_reset') ?></button>
+            <button type="button" class="btn btn-sm btn-primary px-3" id="saveBtn"><i class="fa-solid fa-floppy-disk me-1"></i><?= $t('btn_save') ?></button>
         </div>
     </div></div>
 
     <!-- KPI -->
     <div class="row g-3 mb-3">
         <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
-            <div><div class="sb-kpi-label">Base bonus</div><div class="sb-kpi-value"><?= $n($preview['base_bonus']) ?></div></div></div></div>
+            <div><div class="sb-kpi-label"><?= $t('kpi_base_bonus') ?></div><div class="sb-kpi-value"><?= $n($preview['base_bonus']) ?></div></div></div></div>
         <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-red"><i class="fa-solid fa-gauge-high"></i></span>
-            <div><div class="sb-kpi-label">Hour cap</div><div class="sb-kpi-value"><?= $n($preview['hour_cap'], 0) ?></div></div></div></div>
+            <div><div class="sb-kpi-label"><?= $t('kpi_hour_cap') ?></div><div class="sb-kpi-value"><?= $n($preview['hour_cap'], 0) ?></div></div></div></div>
         <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-teal"><i class="fa-solid fa-clock"></i></span>
-            <div><div class="sb-kpi-label">Cron every</div><div class="sb-kpi-value"><?= $cronMin ?> min</div></div></div></div>
+            <div><div class="sb-kpi-label"><?= $t('kpi_cron_every') ?></div><div class="sb-kpi-value"><?= $t('fmt_minutes', $cronMin) ?></div></div></div></div>
         <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-green"><i class="fa-solid fa-chart-line"></i></span>
-            <div><div class="sb-kpi-label">Test user / day</div><div class="sb-kpi-value"><?= number_format($daily) ?></div></div></div></div>
+            <div><div class="sb-kpi-label"><?= $t('kpi_test_user_day') ?></div><div class="sb-kpi-value"><?= number_format($daily) ?></div></div></div></div>
     </div>
 
     <!-- Пресеты -->
     <div class="sb-card mb-3">
         <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
-            <div><h2 class="sb-sec-title">Quick presets</h2><div class="sb-muted">One click fills rates and multipliers — review and Save</div></div></div>
+            <div><h2 class="sb-sec-title"><?= $t('sec_presets') ?></h2><div class="sb-muted"><?= $t('hint_presets') ?></div></div></div>
         <div class="sb-sec-body">
             <div class="sb-presets">
             <?php foreach ($seedbonus->getPresets() as $preset => $vals):
@@ -488,7 +535,7 @@ stdhead('Seedbonus System Settings');
                 <!-- класс config-badge и data-preset — их слушает seedbonus_settings.js -->
                 <button type="button" class="config-badge sb-preset" data-preset="<?= htmlspecialchars($preset) ?>">
                     <span class="sb-sec-icon <?= $pc ?>"><i class="fa-solid <?= $pi ?>"></i></span>
-                    <span><b><?= htmlspecialchars(ucfirst($preset)) ?></b><small><?= htmlspecialchars($pd) ?> · base <?= $vals['base_bonus'] ?>, cap <?= (int)$vals['hour_cap'] ?></small></span>
+                    <span><b><?= htmlspecialchars(sb_preset_name((string)$preset)) ?></b><small><?= $t('fmt_preset_meta', $pd, $vals['base_bonus'], (int)$vals['hour_cap']) ?></small></span>
                 </button>
             <?php endforeach; ?>
             </div>
@@ -497,10 +544,10 @@ stdhead('Seedbonus System Settings');
 
     <!-- Вкладки -->
     <ul class="nav sb-tabs" role="tablist">
-        <?php foreach (['basic'=>['fa-sliders','Basic'],'multipliers'=>['fa-percent','Multipliers'],'time'=>['fa-clock','Time'],'preview'=>['fa-eye','Preview']] as $id=>[$icon,$label]): ?>
+        <?php foreach (['basic'=>['fa-sliders',$L['tab_basic']],'multipliers'=>['fa-percent',$L['tab_multipliers']],'time'=>['fa-clock',$L['tab_time']],'preview'=>['fa-eye',$L['tab_preview']]] as $id=>[$icon,$label]): ?>
         <li class="nav-item">
             <button class="nav-link <?= $id === 'basic' ? 'active' : '' ?>" data-bs-toggle="tab" data-bs-target="#<?= $id ?>" type="button" role="tab">
-                <i class="fa-solid <?= $icon ?>"></i><?= $label ?>
+                <i class="fa-solid <?= $icon ?>"></i><?= htmlspecialchars($label) ?>
             </button>
         </li>
         <?php endforeach; ?>
@@ -516,8 +563,8 @@ stdhead('Seedbonus System Settings');
                         <label class="sb-master <?= $enabled ? 'on' : 'off' ?>" for="systemEnabled" id="sbMaster">
                             <span class="sb-sec-icon <?= $enabled ? 'ic-green' : 'ic-red' ?>" style="width:46px;height:46px;font-size:1.25rem"><i class="fa-solid fa-power-off"></i></span>
                             <span class="flex-grow-1">
-                                <span class="fw-bold d-block">Seedbonus system</span>
-                                <span class="sb-muted">When off, the cron awards no points at all, whatever the other settings are.</span>
+                                <span class="fw-bold d-block"><?= $t('lbl_master') ?></span>
+                                <span class="sb-muted"><?= $t('hint_master') ?></span>
                             </span>
                             <input type="hidden" name="seedbonus_enabled" value="no">
                             <input class="form-check-input" type="checkbox" role="switch" id="systemEnabled" name="seedbonus_enabled" value="yes" <?= $enabled ? 'checked' : '' ?>>
@@ -527,11 +574,11 @@ stdhead('Seedbonus System Settings');
                     <div class="col-md-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
-                                <div><h3 class="sb-sec-title">Base bonus</h3><div class="sb-muted">Main multiplier — higher means more points</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_base_bonus') ?></h3><div class="sb-muted"><?= $t('hint_base_bonus') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <label class="form-label" for="baseBonus">Points per hour: <span class="sb-range-value" id="baseBonusValue"><?= $s('base_bonus', 10.0) ?></span></label>
+                                <label class="form-label" for="baseBonus"><?= $t('lbl_points_per_hour') ?>: <span class="sb-range-value" id="baseBonusValue"><?= $s('base_bonus', 10.0) ?></span></label>
                                 <input type="range" class="form-range" id="baseBonus" name="seedbonus_base_bonus" min="1" max="30" step="0.5" value="<?= $s('base_bonus', 10.0) ?>">
-                                <div class="sb-marks"><span>1</span><span>Conservative</span><span>15</span><span>Generous</span><span>30</span></div>
+                                <div class="sb-marks"><span>1</span><span><?= $t('mark_conservative') ?></span><span>15</span><span><?= $t('mark_generous') ?></span><span>30</span></div>
                             </div>
                         </div>
                     </div>
@@ -539,11 +586,11 @@ stdhead('Seedbonus System Settings');
                     <div class="col-md-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-gauge-high"></i></span>
-                                <div><h3 class="sb-sec-title">Hour cap</h3><div class="sb-muted">Max points per user per hour — abuse protection</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_hour_cap') ?></h3><div class="sb-muted"><?= $t('hint_hour_cap') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <label class="form-label" for="hourCap">Max per hour: <span class="sb-range-value" id="hourCapValue"><?= $s('hour_cap', 500.0) ?></span></label>
+                                <label class="form-label" for="hourCap"><?= $t('lbl_max_per_hour') ?>: <span class="sb-range-value" id="hourCapValue"><?= $s('hour_cap', 500.0) ?></span></label>
                                 <input type="range" class="form-range" id="hourCap" name="seedbonus_hour_cap" min="100" max="5000" step="50" value="<?= $s('hour_cap', 500.0) ?>">
-                                <div class="sb-marks"><span>100</span><span>Strict</span><span>1000</span><span>Generous</span><span>5000</span></div>
+                                <div class="sb-marks"><span>100</span><span><?= $t('mark_strict') ?></span><span>1000</span><span><?= $t('mark_generous') ?></span><span>5000</span></div>
                             </div>
                         </div>
                     </div>
@@ -551,15 +598,15 @@ stdhead('Seedbonus System Settings');
                     <div class="col-12">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-green"><i class="fa-solid fa-layer-group"></i></span>
-                                <div><h3 class="sb-sec-title">Torrent count multiplier</h3><div class="sb-muted">How the number of seeded torrents changes the bonus</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_torrent_mult') ?></h3><div class="sb-muted"><?= $t('hint_torrent_mult') ?></div></div></div>
                             <div class="sb-sec-body">
                                 <div class="row g-3">
                                 <?php
                                 $types = [
-                                    'penalty' => ['fa-arrow-trend-down', 'Penalty for many', ['1–20' => '100%', '21–50' => '90%', '51–100' => '80%', '100+' => '70%']],
-                                    'neutral' => ['fa-equals',           'Neutral',          ['1–100' => '100%', '101+' => '90%']],
-                                    'reward'  => ['fa-arrow-trend-up',   'Reward for many',  ['1–19' => '90%', '20–49' => '100%', '50–99' => '110%', '100+' => '120%']],
-                                    'flat'    => ['fa-lock',             'Fixed',            []],
+                                    'penalty' => ['fa-arrow-trend-down', $L['opt_mult_penalty'], ['1–20' => '100%', '21–50' => '90%', '51–100' => '80%', '100+' => '70%']],
+                                    'neutral' => ['fa-equals',           $L['opt_mult_neutral'], ['1–100' => '100%', '101+' => '90%']],
+                                    'reward'  => ['fa-arrow-trend-up',   $L['opt_mult_reward'],  ['1–19' => '90%', '20–49' => '100%', '50–99' => '110%', '100+' => '120%']],
+                                    'flat'    => ['fa-lock',             $L['opt_mult_flat'],    []],
                                 ];
                                 $current = $seedbonus->getSetting('torrent_multiplier_type', 'penalty');
                                 foreach ($types as $type => [$ic, $label, $rows]): ?>
@@ -567,13 +614,13 @@ stdhead('Seedbonus System Settings');
                                         <label class="sb-mtype" for="mult<?= ucfirst($type) ?>">
                                             <span class="d-flex align-items-center">
                                                 <input class="form-check-input" type="radio" name="seedbonus_torrent_multiplier_type" id="mult<?= ucfirst($type) ?>" value="<?= $type ?>" <?= $current === $type ? 'checked' : '' ?>>
-                                                <i class="fa-solid <?= $ic ?> me-2 text-body-secondary"></i><strong><?= $label ?></strong>
+                                                <i class="fa-solid <?= $ic ?> me-2 text-body-secondary"></i><strong><?= htmlspecialchars($label) ?></strong>
                                             </span>
                                             <?php if ($rows): ?>
-                                            <ul><?php foreach ($rows as $r => $v): ?><li><span><?= $r ?> torrents</span><b><?= $v ?></b></li><?php endforeach; ?></ul>
+                                            <ul><?php foreach ($rows as $r => $v): ?><li><span><?= $t('fmt_torrents', $r) ?></span><b><?= $v ?></b></li><?php endforeach; ?></ul>
                                             <?php else: ?>
                                             <div class="input-group input-group-sm mt-2">
-                                                <span class="input-group-text">Always ×</span>
+                                                <span class="input-group-text"><?= $t('lbl_always') ?></span>
                                                 <input type="number" class="form-control" name="seedbonus_flat_multiplier" value="<?= $s('flat_multiplier', 1.0) ?>" step="0.1" min="0.1" max="2.0">
                                             </div>
                                             <?php endif; ?>
@@ -602,20 +649,20 @@ stdhead('Seedbonus System Settings');
                     <div class="col-lg-4">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-download"></i></span>
-                                <div><h3 class="sb-sec-title">Leechers</h3><div class="sb-muted">Reward seeding what people are downloading</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_leechers') ?></h3><div class="sb-muted"><?= $t('hint_leechers') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <?= $field('leech_none', '<i class="fa-solid fa-user-slash me-1 text-body-secondary"></i>No leechers', 1.2, 0.1, 0.5, 3.0) ?>
-                                <?= $field('leech_few',  '<i class="fa-solid fa-user me-1 text-body-secondary"></i>1–2 leechers', 1.5, 0.1, 0.5, 3.0) ?>
-                                <?= $field('leech_many', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>3+ leechers', 1.8, 0.1, 0.5, 3.0) ?>
+                                <?= $field('leech_none', '<i class="fa-solid fa-user-slash me-1 text-body-secondary"></i>' . $t('lbl_leech_none'), 1.2, 0.1, 0.5, 3.0) ?>
+                                <?= $field('leech_few',  '<i class="fa-solid fa-user me-1 text-body-secondary"></i>' . $t('lbl_leech_few'), 1.5, 0.1, 0.5, 3.0) ?>
+                                <?= $field('leech_many', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>' . $t('lbl_leech_many'), 1.8, 0.1, 0.5, 3.0) ?>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-4">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-blue"><i class="fa-solid fa-hard-drive"></i></span>
-                                <div><h3 class="sb-sec-title">Torrent size</h3><div class="sb-muted">Reward seeding big files</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_size') ?></h3><div class="sb-muted"><?= $t('hint_size') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <?php foreach (['small'=>'&lt; 0.5 GB','medium'=>'&lt; 2 GB','large'=>'&lt; 8 GB','xlarge'=>'&lt; 20 GB','huge'=>'≥ 20 GB'] as $k=>$lbl): ?>
+                                <?php foreach (['small'=>$t('lbl_size_small'),'medium'=>$t('lbl_size_medium'),'large'=>$t('lbl_size_large'),'xlarge'=>$t('lbl_size_xlarge'),'huge'=>$t('lbl_size_huge')] as $k=>$lbl): ?>
                                 <?= $field("size_$k", $lbl, 1.0, 0.1, 0.5, 3.0) ?>
                                 <?php endforeach; ?>
                             </div>
@@ -624,42 +671,42 @@ stdhead('Seedbonus System Settings');
                     <div class="col-lg-4">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-star"></i></span>
-                                <div><h3 class="sb-sec-title">Extra modifiers</h3><div class="sb-muted">Swarm size, age and promotions</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_extra') ?></h3><div class="sb-muted"><?= $t('hint_extra') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <div class="sb-group"><i class="fa-solid fa-people-group me-1"></i>Many seeders (penalty)</div>
-                                <?= $field('seeders_many',   '&gt; 100 seeders', 0.9,  0.05, 0.1, 1.0) ?>
-                                <?= $field('seeders_medium', '&gt; 50 seeders',  0.95, 0.05, 0.1, 1.0) ?>
-                                <div class="sb-group"><i class="fa-solid fa-hourglass-half me-1"></i>Torrent age</div>
-                                <?= $field('age_old',    '&gt; 180 days', 1.5, 0.1, 1.0, 3.0) ?>
-                                <?= $field('age_medium', '&gt; 60 days',  1.3, 0.1, 1.0, 3.0) ?>
-                                <div class="sb-group"><i class="fa-solid fa-tags me-1"></i>Promo torrents</div>
-                                <?= $field('promo_free',   'Freeleech',     0.7, 0.1, 0, 2.0, '+') ?>
-                                <?= $field('promo_silver', 'Silver (50%)',  0.5, 0.1, 0, 2.0, '+') ?>
-                                <?= $field('promo_double', 'Double upload', 0.5, 0.1, 0, 2.0, '+') ?>
+                                <div class="sb-group"><i class="fa-solid fa-people-group me-1"></i><?= $t('grp_many_seeders') ?></div>
+                                <?= $field('seeders_many',   $t('lbl_seeders_many'), 0.9,  0.05, 0.1, 1.0) ?>
+                                <?= $field('seeders_medium', $t('lbl_seeders_medium'), 0.95, 0.05, 0.1, 1.0) ?>
+                                <div class="sb-group"><i class="fa-solid fa-hourglass-half me-1"></i><?= $t('grp_age') ?></div>
+                                <?= $field('age_old',    $t('lbl_age_old'), 1.5, 0.1, 1.0, 3.0) ?>
+                                <?= $field('age_medium', $t('lbl_age_medium'), 1.3, 0.1, 1.0, 3.0) ?>
+                                <div class="sb-group"><i class="fa-solid fa-tags me-1"></i><?= $t('grp_promo') ?></div>
+                                <?= $field('promo_free',   $t('lbl_promo_free'), 0.7, 0.1, 0, 2.0, '+') ?>
+                                <?= $field('promo_silver', $t('lbl_promo_silver'), 0.5, 0.1, 0, 2.0, '+') ?>
+                                <?= $field('promo_double', $t('lbl_promo_double'), 0.5, 0.1, 0, 2.0, '+') ?>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-gem"></i></span>
-                                <div><h3 class="sb-sec-title">Rarity</h3><div class="sb-muted">Reward keeping torrents alive that few people seed. Counts the seeder too.</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_rarity') ?></h3><div class="sb-muted"><?= $t('hint_rarity') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <?= $field('rare_1', '<i class="fa-solid fa-user me-1 text-body-secondary"></i>Only seeder',  1.0, 0.05, 1.0, 3.0) ?>
-                                <?= $field('rare_3', '<i class="fa-solid fa-user-group me-1 text-body-secondary"></i>2–3 seeders', 1.0, 0.05, 1.0, 3.0) ?>
-                                <?= $field('rare_5', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>4–5 seeders',  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('rare_1', '<i class="fa-solid fa-user me-1 text-body-secondary"></i>' . $t('lbl_rare_1'),  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('rare_3', '<i class="fa-solid fa-user-group me-1 text-body-secondary"></i>' . $t('lbl_rare_3'), 1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('rare_5', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>' . $t('lbl_rare_5'),  1.0, 0.05, 1.0, 3.0) ?>
                             </div>
                         </div>
                     </div>
                     <div class="col-lg-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-green"><i class="fa-solid fa-heart"></i></span>
-                                <div><h3 class="sb-sec-title">Loyalty</h3><div class="sb-muted">Reward how long this user has seeded this torrent (from snatched seed time)</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_loyalty') ?></h3><div class="sb-muted"><?= $t('hint_loyalty') ?></div></div></div>
                             <div class="sb-sec-body">
-                                <?= $field('loyal_30',  '<i class="fa-regular fa-calendar me-1 text-body-secondary"></i>30+ days',  1.0, 0.05, 1.0, 3.0) ?>
-                                <?= $field('loyal_90',  '<i class="fa-regular fa-calendar-check me-1 text-body-secondary"></i>90+ days',  1.0, 0.05, 1.0, 3.0) ?>
-                                <?= $field('loyal_180', '<i class="fa-solid fa-award me-1 text-body-secondary"></i>180+ days', 1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('loyal_30',  '<i class="fa-regular fa-calendar me-1 text-body-secondary"></i>' . $t('lbl_loyal_30'),  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('loyal_90',  '<i class="fa-regular fa-calendar-check me-1 text-body-secondary"></i>' . $t('lbl_loyal_90'),  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('loyal_180', '<i class="fa-solid fa-award me-1 text-body-secondary"></i>' . $t('lbl_loyal_180'), 1.0, 0.05, 1.0, 3.0) ?>
                             </div>
-                            <div class="sb-muted small mt-2"><i class="fa-solid fa-circle-info me-1"></i>1.0 turns a step off. Rarity and loyalty multiply: the only seeder holding a torrent 180+ days gets both. The hour cap still applies.</div>
+                            <div class="sb-muted small mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= $t('note_multipliers') ?></div>
                         </div>
                     </div>
                 </div>
@@ -673,16 +720,16 @@ stdhead('Seedbonus System Settings');
                     <div class="col-lg-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-teal"><i class="fa-solid fa-clock-rotate-left"></i></span>
-                                <div><h3 class="sb-sec-title">Intervals</h3><div class="sb-muted">How often the cron runs and peers announce</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_intervals') ?></h3><div class="sb-muted"><?= $t('hint_intervals') ?></div></div></div>
                             <div class="sb-sec-body">
                             <?php foreach ([
-                                ['cronInterval',     'seedbonus_cron_interval',     'Cron interval',     'cronIntervalValue',     5, 60, 5, 15, 'min',  ['5','15','30','45','60']],
-                                ['announceInterval', 'seedbonus_announce_interval', 'Announce interval', 'announceIntervalValue', 5, 60, 5, 15, 'min',  ['5','15','30','45','60']],
-                                ['historyDays',      'seedbonus_history_days',      'Activity history',  'historyDaysValue',      1, 30, 1, 1,  'days', ['1','15','30']],
+                                ['cronInterval',     'seedbonus_cron_interval',     $L['lbl_cron_interval'],     'cronIntervalValue',     5, 60, 5, 15, $L['unit_min'],  ['5','15','30','45','60']],
+                                ['announceInterval', 'seedbonus_announce_interval', $L['lbl_announce_interval'], 'announceIntervalValue', 5, 60, 5, 15, $L['unit_min'],  ['5','15','30','45','60']],
+                                ['historyDays',      'seedbonus_history_days',      $L['lbl_history_days'],      'historyDaysValue',      1, 30, 1, 1,  $L['unit_days'], ['1','15','30']],
                             ] as [$id, $name, $lbl, $valId, $min, $max, $step, $def, $unit, $marks]):
                                 $val = $s(substr($name, 10), $def); ?>
                                 <div class="mb-4">
-                                    <label class="form-label" for="<?= $id ?>"><?= $lbl ?>: <span class="sb-range-value" id="<?= $valId ?>"><?= $val ?></span> <?= $unit ?></label>
+                                    <label class="form-label" for="<?= $id ?>"><?= htmlspecialchars($lbl) ?>: <span class="sb-range-value" id="<?= $valId ?>"><?= $val ?></span> <?= htmlspecialchars($unit) ?></label>
                                     <input type="range" class="form-range" id="<?= $id ?>" name="<?= $name ?>" min="<?= $min ?>" max="<?= $max ?>" step="<?= $step ?>" value="<?= $val ?>">
                                     <div class="sb-marks"><?php foreach ($marks as $m): ?><span><?= $m ?></span><?php endforeach; ?></div>
                                 </div>
@@ -693,7 +740,7 @@ stdhead('Seedbonus System Settings');
                     <div class="col-lg-6">
                         <div class="sb-card sb-sec">
                             <div class="sb-sec-head"><span class="sb-sec-icon ic-amber"><i class="fa-solid fa-user-clock"></i></span>
-                                <div><h3 class="sb-sec-title">Seeding time heuristic</h3><div class="sb-muted">Estimated hours per day by number of torrents</div></div></div>
+                                <div><h3 class="sb-sec-title"><?= $t('sec_heuristic') ?></h3><div class="sb-muted"><?= $t('hint_heuristic') ?></div></div></div>
                             <div class="sb-sec-body">
                                 <div class="form-check form-switch mb-3">
                                     <!-- Раньше у переключателя не было ни value, ни скрытого «no»:
@@ -701,14 +748,14 @@ stdhead('Seedbonus System Settings');
                                          не отправлялся — отключить эвристику было невозможно -->
                                     <input type="hidden" name="seedbonus_enable_heuristic" value="no">
                                     <input class="form-check-input" type="checkbox" role="switch" id="enableHeuristic" name="seedbonus_enable_heuristic" value="yes" <?= $heuristic ? 'checked' : '' ?>>
-                                    <label class="form-check-label fw-semibold" for="enableHeuristic">Use heuristic <span class="text-body-secondary fw-normal">(recommended)</span></label>
+                                    <label class="form-check-label fw-semibold" for="enableHeuristic"><?= $t('lbl_use_heuristic') ?> <span class="text-body-secondary fw-normal"><?= $t('lbl_recommended') ?></span></label>
                                 </div>
                                 <?php foreach (['50'=>'≥ 50','40'=>'≥ 40','30'=>'≥ 30','20'=>'≥ 20','10'=>'≥ 10','5'=>'≥ 5','1'=>'1–4'] as $k=>$lbl): ?>
                                 <div class="sb-field">
-                                    <label for="h_<?= $k ?>"><i class="fa-solid fa-magnet me-1 text-body-secondary"></i><?= $lbl ?> torrents</label>
+                                    <label for="h_<?= $k ?>"><i class="fa-solid fa-magnet me-1 text-body-secondary"></i><?= $t('fmt_torrents', $lbl) ?></label>
                                     <div class="input-group input-group-sm">
                                         <input type="number" class="form-control" id="h_<?= $k ?>" name="seedbonus_heuristic_<?= $k ?>" value="<?= $s("heuristic_$k", 24.0) ?>" step="1" min="1" max="24">
-                                        <span class="input-group-text">h/day</span>
+                                        <span class="input-group-text"><?= $t('unit_hours_day') ?></span>
                                     </div>
                                 </div>
                                 <?php endforeach; ?>
@@ -725,62 +772,62 @@ stdhead('Seedbonus System Settings');
                 <div class="col-lg-6">
                     <div class="sb-card sb-sec">
                         <div class="sb-sec-head"><span class="sb-sec-icon ic-blue"><i class="fa-solid fa-calculator"></i></span>
-                            <div><h3 class="sb-sec-title">Test calculation</h3><div class="sb-muted">Simulated user with <?= (int)$preview['torrents'] ?> torrents, saved settings</div></div></div>
+                            <div><h3 class="sb-sec-title"><?= $t('sec_test_calc') ?></h3><div class="sb-muted"><?= $t('fmt_test_calc_hint', (int)$preview['torrents']) ?></div></div></div>
                         <div class="sb-sec-body">
                             <?php foreach ([
-                                ['fa-coins',          'Base rate',               $n($preview['base_bonus'])],
-                                ['fa-gem',            'Raw bonus',               $n($preview['raw_bonus'])],
-                                ['fa-layer-group',    'Torrent multiplier',      '×' . $n($preview['cap_mul'], 2)],
-                                ['fa-calculator',     'Theoretical per hour',    $n($preview['hourly_theoretical'])],
-                                ['fa-gauge-high',     'Hour cap',                $n($preview['hour_cap'], 0)],
-                                ['fa-check',          'Final per hour (capped)', $n($preview['final_hourly'])],
-                                ['fa-user-clock',     'Seeding per run',         number_format($preview['avg_hours'] * 60, 0) . ' min'],
+                                ['fa-coins',          $L['row_base_rate'],        $n($preview['base_bonus'])],
+                                ['fa-gem',            $L['row_raw_bonus'],        $n($preview['raw_bonus'])],
+                                ['fa-layer-group',    $L['row_torrent_mult'],     '×' . $n($preview['cap_mul'], 2)],
+                                ['fa-calculator',     $L['row_theoretical'],      $n($preview['hourly_theoretical'])],
+                                ['fa-gauge-high',     $L['row_hour_cap'],         $n($preview['hour_cap'], 0)],
+                                ['fa-check',          $L['row_final'],            $n($preview['final_hourly'])],
+                                ['fa-user-clock',     $L['row_seeding_per_run'],  $t('fmt_minutes', number_format($preview['avg_hours'] * 60, 0))],
                             ] as [$ic, $lbl, $val]): ?>
-                            <div class="sb-row"><span class="text-body-secondary"><i class="fa-solid <?= $ic ?> me-2"></i><?= $lbl ?></span><b><?= $val ?></b></div>
+                            <div class="sb-row"><span class="text-body-secondary"><i class="fa-solid <?= $ic ?> me-2"></i><?= htmlspecialchars($lbl) ?></span><b><?= $val ?></b></div>
                             <?php endforeach; ?>
                             <div class="row g-2 mt-2">
                                 <!-- Раньше подпись «Per 15min Run» и «Per Hour = run × 4» были зашиты,
                                      хотя интервал cron настраивается -->
-                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per <?= $cronMin ?>-min run</div><div class="v text-primary"><?= $n($preview['per_run'], 2) ?></div></div></div>
-                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per hour</div><div class="v text-success"><?= $n($preview['real_hourly']) ?></div></div></div>
-                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per day</div><div class="v text-warning"><?= number_format($daily) ?></div></div></div>
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted"><?= $t('fmt_per_run', $cronMin) ?></div><div class="v text-primary"><?= $n($preview['per_run'], 2) ?></div></div></div>
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted"><?= $t('lbl_per_hour') ?></div><div class="v text-success"><?= $n($preview['real_hourly']) ?></div></div></div>
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted"><?= $t('lbl_per_day') ?></div><div class="v text-warning"><?= number_format($daily) ?></div></div></div>
                             </div>
-                            <div class="sb-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i>Uses the saved values — press Save after changing settings to update this.</div>
+                            <div class="sb-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i><?= $t('note_preview') ?></div>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-6">
                     <div class="sb-card sb-sec">
                         <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-chart-line"></i></span>
-                            <div><h3 class="sb-sec-title">Inflation forecast</h3><div class="sb-muted">Points entering the economy</div></div></div>
+                            <div><h3 class="sb-sec-title"><?= $t('sec_inflation') ?></h3><div class="sb-muted"><?= $t('hint_inflation') ?></div></div></div>
                         <div class="sb-sec-body">
                             <div class="row g-2 mb-3">
                                 <div class="col-6">
-                                    <label class="form-label small fw-semibold" for="inflationUsers"><i class="fa-solid fa-users me-1"></i>Active seeders</label>
+                                    <label class="form-label small fw-semibold" for="inflationUsers"><i class="fa-solid fa-users me-1"></i><?= $t('lbl_active_seeders') ?></label>
                                     <input type="number" class="form-control" id="inflationUsers" value="<?= $activeSeeders ?>" min="1">
-                                    <div class="sb-muted mt-1">Now seeding: <?= number_format($activeSeeders) ?></div>
+                                    <div class="sb-muted mt-1"><?= $t('fmt_now_seeding', number_format($activeSeeders)) ?></div>
                                 </div>
-                                <div class="col-6"><div class="sb-big"><div class="sb-muted">Per user / day</div><div class="v" id="inflationAvgBonus" data-daily="<?= (float)$daily ?>"><?= number_format($daily) ?></div></div></div>
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><?= $t('lbl_per_user_day') ?></div><div class="v" id="inflationAvgBonus" data-daily="<?= (float)$daily ?>"><?= number_format($daily) ?></div></div></div>
                             </div>
                             <div class="row g-2">
-                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-sun me-1 text-warning"></i>Daily release</div><div class="v" id="inflationDaily"><?= number_format($dailyAll) ?></div></div></div>
-                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-calendar me-1 text-primary"></i>30-day release</div><div class="v" id="inflationMonthly"><?= number_format($dailyAll * 30) ?></div></div></div>
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-sun me-1 text-warning"></i><?= $t('lbl_daily_release') ?></div><div class="v" id="inflationDaily"><?= number_format($dailyAll) ?></div></div></div>
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-calendar me-1 text-primary"></i><?= $t('lbl_monthly_release') ?></div><div class="v" id="inflationMonthly"><?= number_format($dailyAll * 30) ?></div></div></div>
                                 <div class="col-12"><div class="sb-big text-start d-flex align-items-center gap-3">
                                     <i class="fa-solid fa-wallet fa-lg text-info"></i>
-                                    <div class="flex-grow-1"><div class="sb-muted">Balance per seeder after 30 days</div><div class="v" id="inflationAvgBalance"><?= number_format($daily * 30) ?></div></div>
+                                    <div class="flex-grow-1"><div class="sb-muted"><?= $t('lbl_balance_30') ?></div><div class="v" id="inflationAvgBalance"><?= number_format($daily * 30) ?></div></div>
                                 </div></div>
                             </div>
-                            <div class="alert alert-warning d-flex gap-2 mt-3 mb-0 rounded-4 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div>High daily release devalues the bonus shop over time — compare with what items cost.</div></div>
+                            <div class="alert alert-warning d-flex gap-2 mt-3 mb-0 rounded-4 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div><?= $t('warn_inflation') ?></div></div>
                         </div>
                     </div>
                 </div>
                 <div class="col-12">
                     <div class="sb-card">
                         <div class="sb-sec-head"><span class="sb-sec-icon ic-slate"><i class="fa-solid fa-code"></i></span>
-                            <div><h3 class="sb-sec-title">Generated cron config</h3><div class="sb-muted">For reference — the values the cron script uses</div></div>
+                            <div><h3 class="sb-sec-title"><?= $t('sec_config') ?></h3><div class="sb-muted"><?= $t('hint_config') ?></div></div>
                             <div class="ms-auto d-flex gap-2">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="copyCodeBtn"><i class="fa-regular fa-copy me-1"></i>Copy</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="downloadCodeBtn"><i class="fa-solid fa-download me-1"></i>Download</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="copyCodeBtn"><i class="fa-regular fa-copy me-1"></i><?= $t('btn_copy') ?></button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="downloadCodeBtn"><i class="fa-solid fa-download me-1"></i><?= $t('btn_download') ?></button>
                             </div></div>
                         <pre class="sb-code" id="generatedCode"><?= htmlspecialchars($configCode) ?></pre>
                     </div>
@@ -792,10 +839,10 @@ stdhead('Seedbonus System Settings');
 
     <div class="sb-card sb-savebar">
         <span class="sb-muted">
-            <span class="badge rounded-pill text-bg-warning me-2" id="sbDirty" hidden><i class="fa-solid fa-pen me-1"></i>Unsaved changes</span>
-            <i class="fa-solid fa-circle-info me-1"></i>Changes apply from the next cron run
+            <span class="badge rounded-pill text-bg-warning me-2" id="sbDirty" hidden><i class="fa-solid fa-pen me-1"></i><?= $t('badge_unsaved') ?></span>
+            <i class="fa-solid fa-circle-info me-1"></i><?= $t('note_savebar') ?>
         </span>
-        <button type="button" class="btn btn-primary px-4" id="sbSaveBar" onclick="document.getElementById('saveBtn').click()"><i class="fa-solid fa-floppy-disk me-1"></i>Save settings</button>
+        <button type="button" class="btn btn-primary px-4" id="sbSaveBar" onclick="document.getElementById('saveBtn').click()"><i class="fa-solid fa-floppy-disk me-1"></i><?= $t('btn_save_settings') ?></button>
     </div>
 </div>
 
@@ -810,6 +857,7 @@ document.addEventListener('DOMContentLoaded', function () {
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/seedbonus_settings.js?ver=2"></script>
+<script>const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/seedbonus_settings.js?ver=3"></script>
 
 <?php stdfoot(); ?>

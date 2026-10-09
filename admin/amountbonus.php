@@ -10,10 +10,13 @@ if (!defined('STAFF_PANEL')) {
           </div>');
 }
 
+global $lang;
+$lang->load('amountbonus');
+
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
     exit('<div class="alert alert-danger text-center" style="font-family: system-ui, -apple-system, sans-serif; font-size: 1rem; color: #dc2626;">
-            <strong>🚫 Access Denied!</strong> You do not have permission to access this page.
+            <strong>🚫 ' . $lang->amountbonus['err_access_denied'] . '</strong> ' . $lang->amountbonus['err_no_permission'] . '
           </div>');
 }
 
@@ -21,6 +24,23 @@ const AB_VERSION = 'Enhanced Amountbonus Module v0.8.5';
 
 require_once INC_PATH . '/functions_bonuslog.php';
 const EOL = PHP_EOL;
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… в строку из ланга.
+     * $lang->load() превращает {1} в %1$s, поэтому поддерживаются оба формата.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
 
 // ── AJAX: карточка пользователя с текущим балансом ─────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['lookup'])) {
@@ -55,7 +75,7 @@ global $mybb;
  */
 function processBonusDistribution(): bool
 {
-    global $db, $CURUSER, $BASEURL, $mybb;
+    global $db, $CURUSER, $BASEURL, $mybb, $lang;
     
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         return false;
@@ -63,7 +83,7 @@ function processBonusDistribution(): bool
     
     if (!verify_post_check($mybb->get_input('my_post_key'))) {
         http_response_code(403);
-        displayError('⚠️ Invalid security token. Please refresh the page and try again.');
+        displayError($lang->amountbonus['flash_bad_token']);
         return false;
     }
     
@@ -77,7 +97,7 @@ function processBonusDistribution(): bool
     $usergroup = filter_input(INPUT_POST, 'usergroup', FILTER_VALIDATE_INT) ?: null;
     
     if ($seedbonus === false || $seedbonus === null) {
-        displayError('❌ Please enter a valid number between 1 and 1,000,000 for bonus points.');
+        displayError($lang->amountbonus['flash_bad_amount']);
         return false;
     }
     
@@ -95,14 +115,14 @@ function processBonusDistribution(): bool
     try {
         if ($toAll === 'yes') {
             if ($usergroup !== null && $usergroup > 0 && in_array($usergroup, PROTECTED_BULK_GROUPS, true)) {
-                displayError('🚫 Bulk distribution to staff or administrative groups is not allowed.');
+                displayError($lang->amountbonus['flash_protected']);
                 return false;
             }
             distributeToAll($seedbonus, $usergroup, $modcomment, $moderatorName);
         } elseif ($username !== '') {
             distributeToUser($seedbonus, $username, $modcomment, $moderatorName);
         } else {
-            displayError('Please specify either a username or select "All Users".');
+            displayError($lang->amountbonus['flash_no_target']);
             return false;
         }
         return true;
@@ -112,7 +132,7 @@ function processBonusDistribution(): bool
         return false;
     } catch (Throwable $e) {
         // Unexpected/internal errors — don't leak details to the browser
-        displayError('⚠️ An unexpected error occurred. Please try again.');
+        displayError($lang->amountbonus['flash_unexpected']);
         return false;
     }
 }
@@ -122,29 +142,33 @@ function processBonusDistribution(): bool
  */
 function distributeToAll(int $points, ?int $group, string $comment, string $moderator): void
 {
-    global $db;
+    global $db, $lang;
     
     if ($group !== null && $group > 0 && in_array($group, PROTECTED_BULK_GROUPS, true)) {
-        throw new InvalidArgumentException('Bulk distribution to staff or administrative groups is not allowed.');
+        throw new InvalidArgumentException($lang->amountbonus['err_protected_group']);
     }
     
     // Build WHERE clause
     $whereClause = "WHERE ustatus = 'confirmed'";
-    $targetDescription = 'All confirmed users';
+    $targetDescription = 'All confirmed users';                 // для логов — всегда английский
+    $targetLabel = $lang->amountbonus['flash_target_all'];      // для flash — на языке пользователя
     $params = [$points, $comment];
 
     if ($group > 0) {
         $whereClause .= " AND usergroup = ?";
         $params[] = $group;
         // (string): get_user_class_name(string $class) — int давал TypeError в strict_types
-        $targetDescription = (get_user_class_name((string)$group) ?: 'Group ' . $group) . ' group';
+        $className = (string)get_user_class_name((string)$group);
+        $targetDescription = ($className ?: 'Group ' . $group) . ' group';
+        $targetLabel = ags_fmt($lang->amountbonus['flash_target_group'],
+            $className ?: ags_fmt($lang->amountbonus['flash_group_id'], $group));
     }
 
     // Using prepared statement
     $query = "UPDATE users SET seedbonus = seedbonus + ?, modcomment = CONCAT(?, modcomment) $whereClause";
 
     if (!$db->sql_query_prepared($query, $params)) {
-        throw new RuntimeException('Failed to update user records.');
+        throw new RuntimeException($lang->amountbonus['err_update_users']);
     }
 
     // Bonus log: same users as the UPDATE (same WHERE, same params after the first two)
@@ -157,7 +181,7 @@ function distributeToAll(int $points, ?int $group, string $comment, string $mode
         type: 'BULK_DISTRIBUTION'
     );
     
-    displaySuccess("✅ $points bonus points have been successfully sent to $targetDescription.");
+    displaySuccess(ags_fmt($lang->amountbonus['flash_bulk_done'], $points, $targetLabel));
 }
 
 /**
@@ -165,22 +189,22 @@ function distributeToAll(int $points, ?int $group, string $comment, string $mode
  */
 function distributeToUser(int $points, string $username, string $comment, string $moderator): void
 {
-    global $db, $BASEURL;
+    global $db, $BASEURL, $lang;
     
     if ($username === '') {
-        throw new InvalidArgumentException('Please enter a username.');
+        throw new InvalidArgumentException($lang->amountbonus['err_enter_username']);
     }
     
     // Update user's bonus points - using prepared statement
     $updateQuery = "UPDATE users SET seedbonus = seedbonus + ?, modcomment = CONCAT(?, modcomment) WHERE username = ?";
 
     if (!$db->sql_query_prepared($updateQuery, [$points, $comment, $username])) {
-        throw new RuntimeException('Failed to update user account.');
+        throw new RuntimeException($lang->amountbonus['err_update_user']);
     }
     
     // Check if user was updated
     if ($db->affected_rows() === 0) {
-        throw new RuntimeException("User '{$username}' not found.");
+        throw new RuntimeException(ags_fmt($lang->amountbonus['err_user_not_found'], $username));
     }
     
     // Get user ID for redirection
@@ -190,7 +214,7 @@ function distributeToUser(int $points, string $username, string $comment, string
     $userData = $result ? $db->fetch_array($result) : null;
     
     if (!$userData) {
-        throw new RuntimeException('Failed to retrieve user information.');
+        throw new RuntimeException($lang->amountbonus['err_user_fetch']);
     }
     
     global $CURUSER;
@@ -220,10 +244,14 @@ function setFlashMessage(string $type, string $message): void
  */
 function renderFlashMessage(): void
 {
+    global $lang;
     $flash = $GLOBALS['_bonus_flash'] ?? null;
     if (!$flash) {
         return;
     }
+    $errTitle = $lang->amountbonus['flash_error_title'];
+    $okTitle  = $lang->amountbonus['flash_success_title'];
+    $close    = htmlspecialchars($lang->amountbonus['lbl_close'], ENT_QUOTES);
     // Текст приходит из cookie после редиректа — всегда экранируем при выводе
     $flash['message'] = htmlspecialchars((string)$flash['message'], ENT_QUOTES);
 
@@ -233,9 +261,9 @@ function renderFlashMessage(): void
                 <div class="d-flex align-items-center">
                     <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
                     <div class="flex-grow-1">
-                        <strong>Error:</strong> {$flash['message']}
+                        <strong>{$errTitle}</strong> {$flash['message']}
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{$close}"></button>
                 </div>
             </div>
         HTML;
@@ -245,9 +273,9 @@ function renderFlashMessage(): void
                 <div class="d-flex align-items-center">
                     <i class="fas fa-check-circle me-3 fs-4"></i>
                     <div class="flex-grow-1">
-                        <strong>Success!</strong> {$flash['message']}
+                        <strong>{$okTitle}</strong> {$flash['message']}
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{$close}"></button>
                 </div>
             </div>
         HTML;
@@ -286,15 +314,16 @@ function logAction(string $message, string $type = 'INFO'): void
  */
 function generateGroupSelect(string $name = 'usergroup'): string
 {
+    global $lang;
     $groups = [
-        '' => '👥 All User Groups',
-        2 => '👤 User',
-        3 => '⚡ Power User',
-        4 => '⭐ VIP',
-        5 => '📤 Uploader',
-        6 => '🛡️ Moderator',
-        7 => '👑 Administrator',
-        8 => '🔧 Sysop',
+        '' => $lang->amountbonus['opt_grp_all'],
+        2 => $lang->amountbonus['opt_grp_2'],
+        3 => $lang->amountbonus['opt_grp_3'],
+        4 => $lang->amountbonus['opt_grp_4'],
+        5 => $lang->amountbonus['opt_grp_5'],
+        6 => $lang->amountbonus['opt_grp_6'],
+        7 => $lang->amountbonus['opt_grp_7'],
+        8 => $lang->amountbonus['opt_grp_8'],
     ];
     
     $html = '<select name="' . htmlspecialchars($name) . '" class="form-select form-select-lg">';
@@ -305,7 +334,7 @@ function generateGroupSelect(string $name = 'usergroup'): string
         $valueAttr = $value !== '' ? 'value="' . htmlspecialchars((string)$value) . '"' : '';
         $selected = $value === '' ? ' selected' : '';
         $disabledAttr = $isProtected ? ' disabled' : '';
-        $displayLabel = $isProtected ? $label . ' (staff — protected)' : $label;
+        $displayLabel = $isProtected ? $label . $lang->amountbonus['opt_grp_protected'] : $label;
         
         $html .= sprintf(
             '<option %s%s%s>%s</option>',
@@ -326,7 +355,7 @@ function generateGroupSelect(string $name = 'usergroup'): string
  */
 function displayStatistics(): void
 {
-    global $db;
+    global $db, $lang;
     
     $query = "SELECT COUNT(*) as total_users, SUM(seedbonus) as total_bonus, AVG(seedbonus) as avg_bonus FROM users WHERE ustatus = 'confirmed'";
     $result = $db->sql_query_prepared($query);
@@ -341,9 +370,9 @@ function displayStatistics(): void
     $avgBonus   = number_format((float)($stats['avg_bonus'] ?? 0));
     
     $cards = [
-        ['icon' => 'fa-users',       'color' => '#3b82f6', 'label' => 'Confirmed Users',   'value' => $totalUsers],
-        ['icon' => 'fa-coins',       'color' => '#f59e0b', 'label' => 'Total Bonus Points','value' => $totalBonus],
-        ['icon' => 'fa-chart-line',  'color' => '#22c55e', 'label' => 'Avg. per User',     'value' => $avgBonus],
+        ['icon' => 'fa-users',       'color' => '#3b82f6', 'label' => $lang->amountbonus['kpi_confirmed'],   'value' => $totalUsers],
+        ['icon' => 'fa-coins',       'color' => '#f59e0b', 'label' => $lang->amountbonus['kpi_circulation'], 'value' => $totalBonus],
+        ['icon' => 'fa-chart-line',  'color' => '#22c55e', 'label' => $lang->amountbonus['kpi_avg'],         'value' => $avgBonus],
     ];
     
     echo '<div class="row g-3 mb-4">';
@@ -437,7 +466,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         processBonusDistribution();
     } catch (Throwable $e) {
-        displayError('A critical error occurred. Please contact the administrator.');
+        displayError($lang->amountbonus['flash_critical']);
     }
 
     if (!headers_sent()) {
@@ -468,7 +497,15 @@ $self    = htmlspecialchars((string)($_SERVER['REQUEST_URI'] ?? ''), ENT_QUOTES)
 $me      = htmlspecialchars((string)($CURUSER['username'] ?? ''), ENT_QUOTES);
 $allCount = (int)($stats['total_users'] ?? 0);
 
-stdhead('Bonus Points Distribution');
+// Строки для JS: ключи js_* без префикса
+$abJsLang = [];
+foreach ($lang->amountbonus as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $abJsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+
+stdhead($lang->amountbonus['page_title']);
 ?>
 <?php
 // Ассеты страницы; ?v=filemtime — сброс кэша браузера при каждом изменении файла
@@ -487,8 +524,8 @@ $abAsset = static function (string $rel): string {
     <div class="ab-card mb-3"><div class="ab-head">
         <span class="ab-head-icon"><i class="fa-solid fa-gift"></i></span>
         <div style="min-width:0">
-            <h1 class="ab-title">Bonus Points Distribution</h1>
-            <div class="ab-sub">Give seed bonus points to one member or to a whole group</div>
+            <h1 class="ab-title"><?= $lang->amountbonus['page_title'] ?></h1>
+            <div class="ab-sub"><?= $lang->amountbonus['page_subtitle'] ?></div>
         </div>
         <span class="ab-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i><?= htmlspecialchars(AB_VERSION) ?></span>
     </div></div>
@@ -497,10 +534,10 @@ $abAsset = static function (string $rel): string {
 
     <div class="row g-3 mb-3">
         <?php foreach ([
-            ['fa-users',      'ic-blue',   'Confirmed users', number_format($allCount)],
-            ['fa-coins',      'ic-amber',  'Points in circulation', number_format((float)($stats['total_bonus'] ?? 0))],
-            ['fa-chart-line', 'ic-green',  'Average per user', number_format((float)($stats['avg_bonus'] ?? 0))],
-            ['fa-trophy',     'ic-purple', 'Richest balance', number_format((float)($stats['max_bonus'] ?? 0))],
+            ['fa-users',      'ic-blue',   $lang->amountbonus['kpi_confirmed'], number_format($allCount)],
+            ['fa-coins',      'ic-amber',  $lang->amountbonus['kpi_circulation'], number_format((float)($stats['total_bonus'] ?? 0))],
+            ['fa-chart-line', 'ic-green',  $lang->amountbonus['kpi_avg'], number_format((float)($stats['avg_bonus'] ?? 0))],
+            ['fa-trophy',     'ic-purple', $lang->amountbonus['kpi_max'], number_format((float)($stats['max_bonus'] ?? 0))],
         ] as [$ic, $cls, $label, $val]): ?>
         <div class="col-6 col-lg-3"><div class="ab-card ab-kpi"><span class="ab-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
             <div><div class="ab-kpi-label"><?= $label ?></div><div class="ab-kpi-value"><?= $val ?></div></div></div></div>
@@ -515,15 +552,15 @@ $abAsset = static function (string $rel): string {
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
                 <div class="ab-sec-head">
                     <span class="ab-sec-icon ic-blue"><i class="fa-solid fa-user"></i></span>
-                    <div><h2 class="ab-sec-title">Single user</h2><div class="ab-muted">Exact username</div></div>
+                    <div><h2 class="ab-sec-title"><?= $lang->amountbonus['sec_single'] ?></h2><div class="ab-muted"><?= $lang->amountbonus['sec_single_sub'] ?></div></div>
                 </div>
                 <div class="ab-body">
                     <div class="mb-3">
-                        <label class="form-label" for="abUser"><i class="fa-solid fa-user-tag"></i>Username</label>
+                        <label class="form-label" for="abUser"><i class="fa-solid fa-user-tag"></i><?= $lang->amountbonus['lbl_username'] ?></label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
-                            <input type="text" class="form-control" id="abUser" name="username" placeholder="Exact username" maxlength="50" required autocomplete="off">
-                            <button class="btn btn-outline-secondary" type="button" id="abMe" title="Myself" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-user-check"></i></button>
+                            <input type="text" class="form-control" id="abUser" name="username" placeholder="<?= htmlspecialchars($lang->amountbonus['ph_username'], ENT_QUOTES) ?>" maxlength="50" required autocomplete="off">
+                            <button class="btn btn-outline-secondary" type="button" id="abMe" title="<?= htmlspecialchars($lang->amountbonus['tip_myself'], ENT_QUOTES) ?>" aria-label="<?= htmlspecialchars($lang->amountbonus['tip_myself'], ENT_QUOTES) ?>" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-user-check"></i></button>
                         </div>
                         <div class="ab-user" id="abUserCard" hidden>
                             <span class="ab-avatar" id="abUserAv"><i class="fa-solid fa-user"></i></span>
@@ -532,18 +569,18 @@ $abAsset = static function (string $rel): string {
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="abAmount1"><i class="fa-solid fa-coins"></i>Points</label>
+                        <label class="form-label" for="abAmount1"><i class="fa-solid fa-coins"></i><?= $lang->amountbonus['lbl_points'] ?></label>
                         <div class="input-group">
-                            <input type="number" class="form-control" id="abAmount1" name="seedbonus" min="1" max="1000000" placeholder="Amount" required>
-                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0">points</span>
+                            <input type="number" class="form-control" id="abAmount1" name="seedbonus" min="1" max="1000000" placeholder="<?= htmlspecialchars($lang->amountbonus['ph_amount'], ENT_QUOTES) ?>" required>
+                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0"><?= $lang->amountbonus['lbl_unit'] ?></span>
                         </div>
                         <div class="ab-chips" data-target="abAmount1">
                             <?php foreach ([100, 500, 1000, 5000, 10000] as $v): ?><button type="button" class="ab-chip" data-v="<?= $v ?>"><?= number_format($v) ?></button><?php endforeach; ?>
                         </div>
                     </div>
                     <div class="d-flex justify-content-end gap-2 pt-2">
-                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i>Clear</button>
-                        <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-paper-plane me-1"></i>Send points</button>
+                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i><?= $lang->amountbonus['btn_clear'] ?></button>
+                        <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-paper-plane me-1"></i><?= $lang->amountbonus['btn_send'] ?></button>
                     </div>
                 </div>
             </form>
@@ -557,25 +594,25 @@ $abAsset = static function (string $rel): string {
                 <input type="hidden" name="my_post_key" value="<?= $key ?>">
                 <div class="ab-sec-head">
                     <span class="ab-sec-icon ic-amber"><i class="fa-solid fa-users"></i></span>
-                    <div><h2 class="ab-sec-title">Bulk distribution</h2><div class="ab-muted">Every confirmed member of a group</div></div>
+                    <div><h2 class="ab-sec-title"><?= $lang->amountbonus['sec_bulk'] ?></h2><div class="ab-muted"><?= $lang->amountbonus['sec_bulk_sub'] ?></div></div>
                 </div>
                 <div class="ab-body">
                     <div class="mb-3">
-                        <label class="form-label" for="abGroup"><i class="fa-solid fa-filter"></i>Target group</label>
+                        <label class="form-label" for="abGroup"><i class="fa-solid fa-filter"></i><?= $lang->amountbonus['lbl_group'] ?></label>
                         <select name="usergroup" id="abGroup" class="form-select">
-                            <option value="" data-n="<?= $allCount ?>">All confirmed users (<?= number_format($allCount) ?>)</option>
+                            <option value="" data-n="<?= $allCount ?>"><?= ags_fmt($lang->amountbonus['opt_all_confirmed'], number_format($allCount)) ?></option>
                             <?php foreach ($groups as $gid => $g): ?>
                             <option value="<?= $gid ?>" data-n="<?= $g['members'] ?>" <?= $g['protected'] ? 'disabled' : '' ?>>
-                                <?= htmlspecialchars($g['title']) ?> (<?= number_format($g['members']) ?>)<?= $g['protected'] ? ' — staff, protected' : ($g['banned'] ? ' — banned group' : '') ?>
+                                <?= htmlspecialchars($g['title']) ?> (<?= number_format($g['members']) ?>)<?= $g['protected'] ? $lang->amountbonus['opt_staff_protected'] : ($g['banned'] ? $lang->amountbonus['opt_banned_group'] : '') ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="abAmount2"><i class="fa-solid fa-coins"></i>Points per user</label>
+                        <label class="form-label" for="abAmount2"><i class="fa-solid fa-coins"></i><?= $lang->amountbonus['lbl_points_per_user'] ?></label>
                         <div class="input-group">
-                            <input type="number" class="form-control" id="abAmount2" name="seedbonus" min="1" max="1000000" placeholder="Amount" required>
-                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0">points</span>
+                            <input type="number" class="form-control" id="abAmount2" name="seedbonus" min="1" max="1000000" placeholder="<?= htmlspecialchars($lang->amountbonus['ph_amount'], ENT_QUOTES) ?>" required>
+                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0"><?= $lang->amountbonus['lbl_unit'] ?></span>
                         </div>
                         <div class="ab-chips" data-target="abAmount2">
                             <?php foreach ([100, 500, 1000, 5000] as $v): ?><button type="button" class="ab-chip" data-v="<?= $v ?>"><?= number_format($v) ?></button><?php endforeach; ?>
@@ -583,11 +620,11 @@ $abAsset = static function (string $rel): string {
                     </div>
                     <div class="ab-impact mb-3">
                         <span class="ab-sec-icon ic-slate"><i class="fa-solid fa-calculator"></i></span>
-                        <div><div class="ab-muted"><span id="abN">0</span> users × <span id="abPer">0</span> points</div><div class="ab-impact-v" id="abTotal">—</div></div>
+                        <div><div class="ab-muted"><?= ags_fmt($lang->amountbonus['lbl_impact'], '<span id="abN">0</span>', '<span id="abPer">0</span>') ?></div><div class="ab-impact-v" id="abTotal">—</div></div>
                     </div>
                     <div class="ab-warn mb-3" id="abWarn"><i class="fa-solid fa-triangle-exclamation"></i><div id="abWarnText"></div></div>
                     <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn btn-warning px-4" id="abBulkBtn"><i class="fa-solid fa-tower-broadcast me-1"></i>Distribute</button>
+                        <button type="submit" class="btn btn-warning px-4" id="abBulkBtn"><i class="fa-solid fa-tower-broadcast me-1"></i><?= $lang->amountbonus['btn_distribute'] ?></button>
                     </div>
                 </div>
             </form>
@@ -597,7 +634,7 @@ $abAsset = static function (string $rel): string {
         <div class="col-12">
             <div class="ab-card overflow-hidden">
                 <div class="ab-sec-head"><span class="ab-sec-icon ic-slate"><i class="fa-solid fa-clock-rotate-left"></i></span>
-                    <div><h2 class="ab-sec-title">Recent distributions</h2><div class="ab-muted">From the site log</div></div></div>
+                    <div><h2 class="ab-sec-title"><?= $lang->amountbonus['sec_recent'] ?></h2><div class="ab-muted"><?= $lang->amountbonus['sec_recent_sub'] ?></div></div></div>
                 <?php if ($recent): ?>
                 <ul class="ab-log">
                     <?php foreach ($recent as $r):
@@ -608,7 +645,7 @@ $abAsset = static function (string $rel): string {
                     <?php endforeach; ?>
                 </ul>
                 <?php else: ?>
-                <div class="ab-muted px-4 py-3">Nothing distributed yet.</div>
+                <div class="ab-muted px-4 py-3"><?= $lang->amountbonus['txt_nothing_yet'] ?></div>
                 <?php endif; ?>
             </div>
         </div>
@@ -617,7 +654,8 @@ $abAsset = static function (string $rel): string {
 
 
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js?ver=3"></script>
+<script>const AGS_LANG = <?= json_encode($abJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js?ver=4"></script>
 
 <?php
 stdfoot();

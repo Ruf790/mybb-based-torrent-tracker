@@ -6,6 +6,102 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array(
 
 
+
+// ── Date: weekdays ──
+'date_day_0' => 'Воскресенье',
+'date_day_1' => 'Понедельник',
+'date_day_2' => 'Вторник',
+'date_day_3' => 'Среда',
+'date_day_4' => 'Четверг',
+'date_day_5' => 'Пятница',
+'date_day_6' => 'Суббота',
+
+'date_day_short_0' => 'Вс',
+'date_day_short_1' => 'Пн',
+'date_day_short_2' => 'Вт',
+'date_day_short_3' => 'Ср',
+'date_day_short_4' => 'Чт',
+'date_day_short_5' => 'Пт',
+'date_day_short_6' => 'Сб',
+
+// ── Date: month names ──
+'date_month_1' => 'Январь',
+'date_month_2' => 'Февраль',
+'date_month_3' => 'Март',
+'date_month_4' => 'Апрель',
+'date_month_5' => 'Май',
+'date_month_6' => 'Июнь',
+'date_month_7' => 'Июль',
+'date_month_8' => 'Август',
+'date_month_9' => 'Сентябрь',
+'date_month_10' => 'Октябрь',
+'date_month_11' => 'Ноябрь',
+'date_month_12' => 'Декабрь',
+
+// ── Date: month names in genitive case ──
+'date_month_gen_1' => 'января',
+'date_month_gen_2' => 'февраля',
+'date_month_gen_3' => 'марта',
+'date_month_gen_4' => 'апреля',
+'date_month_gen_5' => 'мая',
+'date_month_gen_6' => 'июня',
+'date_month_gen_7' => 'июля',
+'date_month_gen_8' => 'августа',
+'date_month_gen_9' => 'сентября',
+'date_month_gen_10' => 'октября',
+'date_month_gen_11' => 'ноября',
+'date_month_gen_12' => 'декабря',
+
+// ── Date: short month names ──
+'date_month_short_1' => 'Янв',
+'date_month_short_2' => 'Фев',
+'date_month_short_3' => 'Мар',
+'date_month_short_4' => 'Апр',
+'date_month_short_5' => 'Май',
+'date_month_short_6' => 'Июн',
+'date_month_short_7' => 'Июл',
+'date_month_short_8' => 'Авг',
+'date_month_short_9' => 'Сен',
+'date_month_short_10' => 'Окт',
+'date_month_short_11' => 'Ноя',
+'date_month_short_12' => 'Дек',
+
+'date_am' => 'утра',
+'date_pm' => 'вечера',
+'rel_minutes_few'    => 'минуты',   
+'rel_minutes_plural' => 'минут',    
+'rel_minutes_less'   => 'минуты',
+'rel_hours_few'    => 'часа',   // 2–4, 22–24 → «3 часа назад»
+
+
+
+
+
+// ── Units: forms separated by | (English: one|other, Russian: one|few|many) ──
+	'unit_years' => 'год|года|лет',
+	'unit_months' => 'месяц|месяца|месяцев',
+	'unit_weeks' => 'неделя|недели|недель',
+	'unit_days' => 'день|дня|дней',
+	'unit_hours' => 'час|часа|часов',
+	'unit_minutes' => 'минута|минуты|минут',
+	'unit_seconds' => 'секунда|секунды|секунд',
+
+	// ── Short units ──
+	'short_years' => 'г',
+	'short_months' => 'мес',
+	'short_weeks' => 'нед',
+	'short_days' => 'д',
+	'short_hours' => 'ч',
+	'short_minutes' => 'мин',
+	'short_seconds' => 'с',
+
+	// ── Zero ──
+	'zero_full' => '0 секунд',
+	'zero_short' => '0с',
+
+
+
+
 'postbit_attachments' => "Прикреплённые файлы",
 
 'change_user' => "сменить пользователя",
@@ -480,9 +576,15 @@ $language['global'] = array(
 'rel_minutes_single' => 'минуты',
 'rel_in' => 'Через ',
 'rel_ago' => 'назад',
-'rel_time' => '<span title=\"{5}{6}\">{1}{2} {3} {4}</span>',
-'today_rel' => '<span title=\"{1}\">Сегодня</span>',
-'yesterday_rel' => '<span title=\"{1}\">Вчера</span>',
+//'rel_time' => '<span title=\"{5}{6}\">{1}{2} {3} {4}</span>',
+//'today_rel' => '<span title=\"{1}\">Сегодня</span>',
+//'yesterday_rel' => '<span title=\"{1}\">Вчера</span>',
+
+ 'rel_time'      => '<span title="{5}{6}">{1}{2} {3} {4}</span>',
+  'today_rel'     => '<span title="{1}">Сегодня</span>',
+  'yesterday_rel' => '<span title="{1}">Вчера</span>',
+
+
 'rel_hours_single' => 'час',
 'rel_hours_plural' => 'часов',
 

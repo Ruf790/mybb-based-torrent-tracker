@@ -1,64 +1,64 @@
 <?php
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
-if(!defined('IN_TRACKER'))
-  die('Hacking attempt!');
+$language['indexmain'] = array (
+	// ── Page ──
+	'page_title'          => 'Главная — новости и кто на сайте',
 
-$language['indexmain'] = array(
+	// ── News ──
+	'sec_news'            => 'Последние новости',
+	'lbl_posted_by'       => 'Опубликовал {1} — {2}',
+	'lbl_system'          => 'Система',
+	'msg_no_news'         => 'Новостей пока нет.',
 
-    // ── Заголовок страницы ────────────────────────────────────────────────────────────
-    'page_title'                => 'Панель управления',
+	// ── Seeders needed ──
+	'sec_seeders_needed'  => 'Свежие раздачи, которым нужны сиды',
+	'col_torrent'         => 'Раздача',
+	'col_seeders'         => 'Сиды',
+	'col_leechers'        => 'Личи',
+	'alt_poster'          => 'Постер',
+	'pane_torrent_details'=> 'Информация о раздаче',
+	'aria_close'          => 'Закрыть',
+	'msg_loading_details' => 'Загружаем информацию о раздаче...',
+	'sec_all_seeded'      => 'Все раздачи на сидах',
+	'msg_all_seeded'      => 'Отлично! Сейчас у каждой раздачи есть сиды.',
 
-    // ── Раздел новостей ─────────────────────────────────────────────────────────
-    'news_title'                => 'Последние новости',
-    'news_posted_by'            => 'Опубликовал',
-    'news_on'                   => '',
-    'news_none'                 => 'Новостей не найдено.',
+	// ── Latest torrents ──
+	'sec_latest_torrents' => 'Новые раздачи',
+	'lbl_free'            => 'Фрилич',
+	'tip_free'            => 'Фрилич-раздача',
+	'lbl_silver'          => 'Серебро',
+	'tip_silver'          => 'Серебряная раздача',
+	'lbl_double_upload'   => '2x отдача',
+	'tip_double_upload'   => 'Двойная отдача',
+	'lbl_added'           => 'Добавлена: {1}',
 
-    // ── Раздел необходимых сидеров ────────────────────────────────────────────────
-    'seeders_needed_title'      => 'Недавно загруженные торренты, нуждающиеся в сидерах',
-    'seeders_col_torrent'       => 'Торрент',
-    'seeders_col_seeders'       => 'Сидеры',
-    'seeders_col_leechers'      => 'Личеры',
-    'seeders_all_seeded_title'  => 'На все торренты есть сидеры',
-    'seeders_all_seeded_msg'    => 'Отличная работа! Все торренты в данный момент раздаются.',
+	// ── Charts ──
+	'sec_popular'         => 'Самые популярные раздачи',
+	'sec_active'          => 'Самые скачиваемые раздачи',
 
-    // ── Модальное окно торрента ─────────────────────────────────────────────────────────
-    'torrent_details'           => 'Детали торрента',
-    'torrent_loading'           => 'Загрузка деталей торрента...',
-    'torrent_load_error'        => 'Не удалось загрузить предпросмотр торрента.',
+	// ── Online users ──
+	'sec_online'          => 'Сейчас на сайте',
+	'sec_last24'          => 'Заходили за последние 24 часа',
+	'lbl_visible'         => 'Видимые: {1}',
+	'lbl_hidden'          => 'Скрытые: {1}',
+	'lbl_total_online'    => 'Всего онлайн: {1}',
+	'lbl_guests'          => 'Гости: {1}',
+	'lbl_total_users'     => 'Всего посетителей: {1}',
 
-    // ── Раздел последних торрентов ───────────────────────────────────────────────
-    'latest_torrents_title'     => 'Последние торренты',
-    'torrent_added'             => 'Добавлен:',
-    'torrent_badge_free'        => 'Free',
-    'torrent_badge_free_title'  => 'Free торрент',
-    'torrent_badge_silver'      => 'Silver',
-    'torrent_badge_silver_title'=> 'Silver торрент',
-    'torrent_badge_double'      => '2x Отдача',
-    'torrent_badge_double_title'=> 'Двойная отдача',
+	// ── JS: torrent preview ──
+	'js_preview_loading'  => 'Загружаем информацию о раздаче...',
+	'js_preview_failed'   => 'Не удалось загрузить информацию о раздаче.',
 
-    // ── Раздел графиков ────────────────────────────────────────────────────────
-    'chart_popular_title'       => 'Самые популярные торренты',
-    'chart_active_title'        => 'Самые активные торренты',
-    'chart_axis_torrent'        => 'Торрент',
-    'chart_axis_hits'           => 'Хиты',
-    'chart_axis_completed'      => 'Количество завершений',
-    'chart_series_hits'         => 'Хиты',
-    'chart_series_completed'    => 'Завершено',
-    'chart_tooltip_hits'        => ' хитов',
-    'chart_tooltip_completions' => ' завершений',
-
-    // ── Раздел пользователей онлайн ──────────────────────────────────────────────────
-    'online_title'              => 'Пользователи онлайн',
-    'online_visible'            => 'Видимые пользователи',
-    'online_hidden'             => 'Скрытые пользователи',
-    'online_total'              => 'Всего онлайн',
-
-    // ── Раздел за последние 24 часа ──────────────────────────────────────────────────────
-    'last24h_title'             => 'Активные пользователи за последние 24 часа',
-    'last24h_visible'           => 'Видимые пользователи',
-    'last24h_hidden'            => 'Скрытые пользователи',
-    'last24h_guests'            => 'Гости',
-    'last24h_total'             => 'Всего пользователей',
-
+	// ── JS: charts ──
+	'js_chart_popular'    => 'Самые популярные раздачи',
+	'js_chart_active'     => 'Самые скачиваемые раздачи',
+	'js_axis_torrent'     => 'Раздача',
+	'js_axis_hits'        => 'Просмотры',
+	'js_axis_completed'   => 'Скачано раз',
+	'js_series_hits'      => 'Просмотры',
+	'js_series_completed' => 'Скачали',
+	'js_suffix_hits'      => 'просм.',
+	'js_suffix_completed' => 'скач.',
 );
+?>

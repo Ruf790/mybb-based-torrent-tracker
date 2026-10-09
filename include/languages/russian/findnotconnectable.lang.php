@@ -1,69 +1,95 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English (Admin) Language File
-Translation by xam Version: 0.1
-*/
-
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
 // admin/findnotconnectable.php
-$language['findnotconnectable'] = array 
+$language['findnotconnectable'] = array
 (
-	'head'			=>	'Unconnectable Peers',
-	'pm'				=>	'Send PM',
-	'pm2'			=>	'Send Mass Messege To All Non-Connectable Users',
-	'pm3'			=>	'Send Message to Selected Users',
-	'showlist'		=>	'Show List',
-	'showlist2'	=>	'List Unconnectable Users',
-	'showlist3'	=>	'Total {1} unique users that are not connectable',
-	'log'				=>	'Unconnectable Peers Mass PM Log',
-	'action'		=>	'Action',
-	'delete'		=>	'Delete',
-	'home'			=>	'Home',
-	'sender'		=>	'Sender',
-	'date'			=>	'Date',
-	'username'	=>	'Username',
-	'torrent'		=>	'Torrent Name',
-	'client'			=>	'Client',
-	'ip'				=>	'IP / PORT',
-	'seeder'		=>	'Seeder',
-	'nolog'			=>	'There is no PM Log to show!',
-	'error1'		=>	'Please enter message to send!',
-	'error2'		=>	'There is no Unconnectable Peer!',
-	'error3'		=>	'Please select an user to send a message!',
-	'reset'			=>	'Reset',
-	'subject'		=>	'Warning!',
-	'msg'			=>	'Hi,
+	// ── Page / panes ──
+	'pane_head'          => 'Пиры без входящих соединений',
+	'pane_log'           => 'Журнал массовых ЛС пирам без входящих соединений',
+	'pane_list'          => 'Пользователи без входящих соединений',
+	'sec_subtitle'       => 'Пользователи, чей клиент не принимает входящие соединения (файрвол или NAT). Найдите их и отправьте в ЛС подсказку по пробросу портов.',
 
-Our tracker detected that you are firewalled or behind NAT and cannot accept incoming connections.
+	// ── KPI tiles ──
+	'kpi_users'          => 'Пользователей без вх. соединений',
+	'kpi_peers'          => 'Пиров без вх. соединений',
+	'kpi_seeders'        => 'Из них сидов',
+	'kpi_pms'            => 'Массовых ЛС отправлено',
+	'kpi_last_pm'        => 'Последнее: {1}',
+	'kpi_never'          => 'Ещё не отправлялись',
 
-This means other peers cannot connect to you directly, which reduces your download/upload speed. 
-If two firewalled peers are matched together, they cannot connect at all.
+	// ── Navigation / buttons ──
+	'btn_home'           => 'Журнал ЛС',
+	'btn_pm'             => 'Отправить ЛС',
+	'btn_showlist'       => 'Показать список',
+	'btn_pm_selected'    => 'Отправить ЛС выбранным',
+	'btn_send'           => 'Отправить',
+	'btn_reset'          => 'Сбросить',
+	'btn_delete'         => 'Удалить',
 
-To fix this:
-- Open the port your torrent client uses in your firewall/router
-- Configure port forwarding on your router (see: https://portforward.com)
+	// ── Table columns ──
+	'col_sender'         => 'Отправитель',
+	'col_date'           => 'Дата',
+	'col_action'         => 'Действие',
+	'col_username'       => 'Пользователь',
+	'col_torrent'        => 'Раздача',
+	'col_ip'             => 'IP / Порт',
+	'col_client'         => 'Клиент',
+	'col_seeder'         => 'Сид',
 
-If you need help, post in our forum or contact staff.
+	// ── Labels ──
+	'lbl_yes'            => 'Да',
+	'lbl_no'             => 'Нет',
+	'lbl_select_all'     => 'Выбрать всех',
+	'lbl_select_user'    => 'Выбрать пользователя',
+	'lbl_pm_form'        => 'Массовое ЛС всем пользователям без входящих соединений',
+	'lbl_message'        => 'Текст сообщения',
+	'lbl_close'          => 'Закрыть',
 
-Thank you
+	// ── Hints / placeholders ──
+	'hint_total'         => 'Всего уникальных пользователей без входящих соединений: {1}',
+	'hint_nolog'         => 'Журнал ЛС пуст.',
+	'ph_msg'             => 'Введите текст сообщения…',
+	'hint_nolog_text'    => 'Здесь появятся массовые ЛС, отправленные пользователям без входящих соединений.',
+	'hint_recipients'    => 'Получателей: {1}',
+	'hint_pm_form'       => 'ЛС получит каждый пользователь, у которого сейчас есть хотя бы один пир без входящих соединений.',
+	'hint_selected_pm'   => 'Выбранным пользователям уйдёт стандартное предупреждение с инструкцией по пробросу портов.',
+	'txt_page_of'        => 'Страница {1} из {2}',
+
+	// ── Errors ──
+	'err_empty_msg'      => 'Введите текст сообщения!',
+	'err_no_peers'       => 'Пиров без входящих соединений нет!',
+	'err_no_users'       => 'Выберите хотя бы одного пользователя для отправки ЛС!',
+
+	// ── Flash ──
+	'flash_pm_sent'      => 'ЛС успешно отправлены.',
+
+	// ── PM sent to users ──
+	'pm_subject'         => 'Внимание: ваш клиент не принимает входящие соединения',
+	'pm_body'            => 'Привет!
+
+Трекер обнаружил, что ваш торрент-клиент находится за файрволом или NAT и не принимает входящие соединения.
+
+Из-за этого другие пиры не могут подключиться к вам напрямую, и скорость отдачи и закачки падает.
+Если два таких пира попадают друг на друга, соединиться они не могут вообще — раздача между ними просто не идёт.
+
+Как исправить:
+- Откройте в файрволе/роутере порт, который использует ваш торрент-клиент
+- Настройте проброс портов (port forwarding) на роутере (инструкции: https://portforward.com)
+
+Если нужна помощь — пишите на форум или администрации.
+
+Спасибо!
 ',
 
+	// ── JS ──
+	'js_confirm_delete'  => 'Удалить эту запись из журнала?',
+	'js_confirm_title'   => 'Вы уверены?',
+	'js_confirm_selected' => 'Отправить предупреждение выбранным пользователям ({1})?',
+	'js_confirm_mass'    => 'Отправить это ЛС всем пользователям без входящих соединений ({1})?',
+	'js_selected'        => 'Выбрано: {1}',
+	'js_btn_yes'         => 'Да',
+	'js_btn_cancel'      => 'Отмена',
 );
 ?>

@@ -1,11 +1,28 @@
 /**
  * staff.js — Staff Panel Shared Scripts
  * Place at: admin/scripts/staff.js
- * v2.0.0 — extracted from inline scripts
+ * v2.1.0 — i18n: строки из AGS_LANG (выводится PHP перед скриптом)
  */
 
 (function () {
     'use strict';
+
+    /* ══════════════════════════════════════════════════════
+       I18N
+       t(key, fallback, ...args) — строка из AGS_LANG или английский fallback,
+       подставляет {1}, {2}… (и %1$s — формат после $lang->load()).
+       ══════════════════════════════════════════════════════ */
+
+    function t(key, fallback) {
+        var dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+        var str  = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : String(fallback);
+        for (var i = 2; i < arguments.length; i++) {
+            var n = i - 1, val = String(arguments[i]);
+            str = str.split('{' + n + '}').join(val).split('%' + n + '$s').join(val);
+        }
+        return str;
+    }
+    window.staffT = t; // для инлайн-обработчиков (confirm/alert в списках инструментов)
 
     /* ══════════════════════════════════════════════════════
        ADMIN FLOATING BAR
@@ -105,7 +122,11 @@
             btn.addEventListener('click', function () {
                 if (!this.getAttribute('href')) return;
                 var originalHTML = this.innerHTML;
-                this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading...';
+                var spinner = document.createElement('i');
+                spinner.className = 'fas fa-spinner fa-spin me-2';
+                this.textContent = '';
+                this.appendChild(spinner);
+                this.appendChild(document.createTextNode(t('loading', 'Loading...')));
                 this.disabled = true;
                 var self = this;
                 setTimeout(function () {

@@ -2,9 +2,15 @@
 (function () {
   'use strict';
 
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+  // ---------- i18n ----------
+  // AGS_LANG выводится spam.php перед подключением скрипта (ключи js_* без префикса).
+  // Если словаря нет - работают английские fallback'и.
+  const LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+  function t(key, fallback, ...args) {
+    let s = typeof LANG[key] === 'string' ? LANG[key] : fallback;
+    args.forEach((a, i) => { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+    return s;
+  }
 
   // ---------- Toast ----------
   function showToast(msg) {
@@ -28,10 +34,19 @@
     const endpoint = modal.dataset.endpoint || 'spam_message.php';
     const reqId = ++currentRequest; // защита от гонки при быстром переключении
 
-    titleEl.textContent = subject || '(no subject)';
-    bodyEl.innerHTML =
-      '<div class="sp-loading"><div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>' +
-      '<span>Loading message…</span></div>';
+    titleEl.textContent = subject || t('no_subject', '(no subject)');
+
+    // Переводы вставляем только как текст (без innerHTML)
+    const loading = document.createElement('div');
+    loading.className = 'sp-loading';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner-border spinner-border-sm';
+    spinner.setAttribute('role', 'status');
+    spinner.setAttribute('aria-hidden', 'true');
+    const loadingText = document.createElement('span');
+    loadingText.textContent = t('loading', 'Loading message…');
+    loading.append(spinner, loadingText);
+    bodyEl.replaceChildren(loading);
 
     fetch(endpoint + '?id=' + encodeURIComponent(pmid), { credentials: 'same-origin' })
       .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
@@ -42,9 +57,12 @@
       })
       .catch((err) => {
         if (reqId !== currentRequest) return;
-        bodyEl.innerHTML =
-          '<div class="alert alert-danger mb-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>' +
-          'Failed to load message. ' + esc(err) + '</div>';
+        const box = document.createElement('div');
+        box.className = 'alert alert-danger mb-0';
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-triangle-exclamation me-2';
+        box.append(icon, document.createTextNode(t('load_failed', 'Failed to load message. {1}', err)));
+        bodyEl.replaceChildren(box);
       });
   }
   window.loadMessage = loadMessage;
@@ -75,12 +93,12 @@
       ta.style.left = '-9999px';
       document.body.appendChild(ta);
       ta.focus(); ta.select();
-      try { document.execCommand('copy'); showToast('Copied to clipboard'); } catch (e) { /* ignore */ }
+      try { document.execCommand('copy'); showToast(t('copied', 'Copied to clipboard')); } catch (e) { /* ignore */ }
       document.body.removeChild(ta);
     };
 
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard')).catch(fallbackCopy);
+      navigator.clipboard.writeText(text).then(() => showToast(t('copied', 'Copied to clipboard'))).catch(fallbackCopy);
     } else {
       fallbackCopy();
     }
@@ -102,7 +120,7 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showToast(`Saved ${name}`);
+    showToast(t('saved', 'Saved {1}', name));
   };
 
   // ---------- Tooltips ----------

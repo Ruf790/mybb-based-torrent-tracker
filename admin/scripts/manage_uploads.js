@@ -10,6 +10,41 @@
     const $  = (sel, root = document) => root.querySelector(sel);
     const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+    // ── i18n ────────────────────────────────────────────────
+    // AGS_LANG выводит manage_uploads.php из js_* ключей ланга (без префикса).
+    // $lang->load() превращает {N} в %N$s - подставляем оба формата.
+    const LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG) || {};
+
+    function t(key, fallback, ...args) {
+        const s = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+        if (!args.length) return String(s);
+        return String(s).replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+            const i = Number(a || b) - 1;
+            return i < args.length ? String(args[i]) : m;
+        });
+    }
+
+    /** Множественное число: ключи base_one / _few / _many / _other (Intl.PluralRules) */
+    function tn(base, n, fallbackOne, fallbackOther) {
+        let cat = 'other';
+        try { cat = new Intl.PluralRules(t('plural_locale', 'en')).select(n); } catch (_) { /* старый браузер */ }
+        const key = Object.prototype.hasOwnProperty.call(LANG, base + '_' + cat) ? base + '_' + cat : base + '_other';
+        return t(key, n === 1 ? fallbackOne : fallbackOther, n);
+    }
+
+    /** Элемент с классом и текстом (переводы - только как текст, не через innerHTML) */
+    function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    }
+
+    function setBusy(btn, text) {
+        btn.textContent = '';
+        btn.append(el('span', 'spinner-border spinner-border-sm me-1'), document.createTextNode(' ' + text));
+    }
+
     function escapeHtml(str) {
         return String(str ?? '').replace(/[&<>"']/g, c => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -63,7 +98,7 @@
     function rowInfo(row) {
         const name = row.dataset.fileName
             || row.querySelector('.mu-fname, .fw-semibold')?.textContent.trim()
-            || 'Unknown file';
+            || t('unknown_file', 'Unknown file');
         const size = Number(row.dataset.fileSize || 0);
         const img  = row.querySelector('.img-preview');
         return { id: row.dataset.id, name, size, preview: img && img.src ? img.src : '' };
@@ -155,8 +190,11 @@
             if (!empty) {
                 empty = document.createElement('tr');
                 empty.id = 'muFilterEmpty';
-                empty.innerHTML = `<td colspan="8" class="text-center text-body-secondary py-4">
-                    <i class="fa-solid fa-filter-circle-xmark me-2"></i>No files on this page match the filter.</td>`;
+                const td = el('td', 'text-center text-body-secondary py-4');
+                td.colSpan = 8;
+                td.append(el('i', 'fa-solid fa-filter-circle-xmark me-2'),
+                          document.createTextNode(t('filter_empty', 'No files on this page match the filter.')));
+                empty.appendChild(td);
                 tbody.appendChild(empty);
             }
         } else if (empty) {
@@ -195,11 +233,14 @@
         url.searchParams.set('ajax_search', '1');
         url.searchParams.delete('page');
 
-        container.innerHTML = `
-            <div class="text-center py-5 my-4">
-                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
-                <p class="mt-3 text-body-secondary mb-0">Searching files…</p>
-            </div>`;
+        {
+            const wrap    = el('div', 'text-center py-5 my-4');
+            const spinner = el('div', 'spinner-border text-primary');
+            spinner.setAttribute('role', 'status');
+            spinner.appendChild(el('span', 'visually-hidden', t('loading', 'Loading…')));
+            wrap.append(spinner, el('p', 'mt-3 text-body-secondary mb-0', t('searching', 'Searching files…')));
+            container.replaceChildren(wrap);
+        }
 
         fetch(url.toString(), { credentials: 'same-origin' })
             .then(r => r.text())
@@ -209,10 +250,10 @@
             })
             .catch(err => {
                 console.error('Search error:', err);
-                container.innerHTML = `
-                    <div class="alert alert-danger m-4 d-flex align-items-center rounded-4">
-                        <i class="fa-solid fa-triangle-exclamation me-2"></i>Could not load results. Try again.
-                    </div>`;
+                const alertEl = el('div', 'alert alert-danger m-4 d-flex align-items-center rounded-4');
+                alertEl.append(el('i', 'fa-solid fa-triangle-exclamation me-2'),
+                               document.createTextNode(t('load_failed', 'Could not load results. Try again.')));
+                container.replaceChildren(alertEl);
             });
     }
     window.handleSearch = handleSearch; // используется после загрузки файлов
@@ -279,13 +320,13 @@
 
             const action = $('#bulkForm select[name="bulk_action"]')?.value || '';
             if (action !== 'delete') {
-                notify('Choose an action first.', 'warning');
+                notify(t('choose_action', 'Choose an action first.'), 'warning');
                 return;
             }
 
             const rows = $$('.file-checkbox:checked').map(cb => cb.closest('tr')).filter(Boolean);
             if (rows.length === 0) {
-                notify('Select at least one file.', 'warning');
+                notify(t('select_one', 'Select at least one file.'), 'warning');
                 return;
             }
 
@@ -296,9 +337,9 @@
             confirmBtn.innerHTML = confirmHtml;
             ['#filesCount', '#confirmCount', '#bulkSelectedCount'].forEach(sel => { const el = $(sel); if (el) el.textContent = n; });
             const summary = $('#selectedFilesSummary');
-            if (summary) summary.textContent = `${n} file${n !== 1 ? 's' : ''} selected`;
+            if (summary) summary.textContent = tn('files_selected', n, '{1} file selected', '{1} files selected');
             const sizeEl = $('#selectedFilesSize');
-            if (sizeEl) sizeEl.textContent = 'Total size: ' + formatBytes(total);
+            if (sizeEl) sizeEl.textContent = t('total_size', 'Total size: {1}', formatBytes(total));
 
             if (grid) {
                 const LIMIT = 8;
@@ -323,7 +364,7 @@
             if (ids.length === 0) { modal.hide(); return; }
 
             confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Deleting…';
+            setBusy(confirmBtn, t('deleting', 'Deleting…'));
 
             const params = new URLSearchParams();
             params.append('bulk_action', 'delete');
@@ -343,12 +384,12 @@
                         modal.hide();
                         clearSelection();
                         removeRows(deleted);
-                        notify(`${deleted.length} file${deleted.length !== 1 ? 's' : ''} deleted.`, 'success');
+                        notify(tn('files_deleted', deleted.length, '{1} file deleted.', '{1} files deleted.'), 'success');
                     } else {
-                        notify(data.message || 'Could not delete the files.', 'error');
+                        notify(data.message || t('delete_files_failed', 'Could not delete the files.'), 'error');
                     }
                 })
-                .catch(err => { console.error(err); notify('Server not responding.', 'error'); })
+                .catch(err => { console.error(err); notify(t('server_down', 'Server not responding.'), 'error'); })
                 .finally(() => {
                     confirmBtn.disabled = false;
                     confirmBtn.innerHTML = confirmHtml;
@@ -396,7 +437,7 @@
             if (!current) return;
 
             confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Deleting…';
+            setBusy(confirmBtn, t('deleting', 'Deleting…'));
 
             const id = current.id;
             const params = new URLSearchParams();
@@ -416,13 +457,13 @@
                         const cb = $(`.file-checkbox[value="${CSS.escape(String(id))}"]`);
                         if (cb) cb.checked = false;
                         removeRows([id]);
-                        notify('File deleted.', 'success');
+                        notify(t('file_deleted', 'File deleted.'), 'success');
                         current = null;
                     } else {
-                        notify(data.message || 'Could not delete the file.', 'error');
+                        notify(data.message || t('delete_file_failed', 'Could not delete the file.'), 'error');
                     }
                 })
-                .catch(() => notify('Server not responding.', 'error'))
+                .catch(() => notify(t('server_down', 'Server not responding.'), 'error'))
                 .finally(() => {
                     confirmBtn.disabled = false;
                     confirmBtn.innerHTML = confirmHtml;
@@ -501,8 +542,8 @@
             if (countBadge) countBadge.style.display = n ? 'block' : 'none';
             if (countBadgeText) countBadgeText.textContent = n;
             if (listCount)  listCount.textContent = n;
-            if (dropTitle)    dropTitle.textContent    = n ? `${n} file${n > 1 ? 's' : ''} selected` : 'Drag & drop files here';
-            if (dropSubtitle) dropSubtitle.textContent = n ? 'Drop or click to add more' : 'or click to browse';
+            if (dropTitle)    dropTitle.textContent    = n ? tn('files_selected', n, '{1} file selected', '{1} files selected') : t('drop_title', 'Drag & drop files here');
+            if (dropSubtitle) dropSubtitle.textContent = n ? t('drop_more', 'Drop or click to add more') : t('drop_browse', 'or click to browse');
 
             // статистика
             const counts = { image: 0, pdf: 0, doc: 0, other: 0 };
@@ -516,23 +557,30 @@
                 sizeWarning.style.display = total > MAX_TOTAL * 0.8 ? 'inline-flex' : 'none';
                 sizeWarning.classList.toggle('text-danger', total > MAX_TOTAL);
             }
-            if (totalSizeEl) totalSizeEl.textContent = `${formatBytes(total)} of ${formatBytes(MAX_TOTAL)}`;
+            if (totalSizeEl) totalSizeEl.textContent = t('size_of', '{1} of {2}', formatBytes(total), formatBytes(MAX_TOTAL));
 
             // список
             if (listContainer) {
-                listContainer.innerHTML = files.map((f, i) => `
-                    <div class="list-group-item mu-upload-item">
-                        <div class="d-flex align-items-center min-w-0">
-                            <i class="fa-solid ${KIND_ICON[kindOf(f)]} me-2"></i>
-                            <span class="small fw-medium text-truncate" title="${escapeHtml(f.name)}">${escapeHtml(shorten(f.name, 38))}</span>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                            <span class="mu-size-pill">${escapeHtml(formatBytes(f.size))}</span>
-                            <button type="button" class="btn btn-sm btn-link text-danger p-0" data-remove-index="${i}" title="Remove">
-                                <i class="fa-solid fa-circle-xmark"></i>
-                            </button>
-                        </div>
-                    </div>`).join('');
+                const removeTitle = t('remove', 'Remove');
+                listContainer.replaceChildren(...files.map((f, i) => {
+                    const item = el('div', 'list-group-item mu-upload-item');
+
+                    const left = el('div', 'd-flex align-items-center min-w-0');
+                    const name = el('span', 'small fw-medium text-truncate', shorten(f.name, 38));
+                    name.title = f.name;
+                    left.append(el('i', `fa-solid ${KIND_ICON[kindOf(f)]} me-2`), name);
+
+                    const right = el('div', 'd-flex align-items-center gap-2 flex-shrink-0');
+                    const btn = el('button', 'btn btn-sm btn-link text-danger p-0');
+                    btn.type = 'button';
+                    btn.dataset.removeIndex = String(i);
+                    btn.title = removeTitle;
+                    btn.appendChild(el('i', 'fa-solid fa-circle-xmark'));
+                    right.append(el('span', 'mu-size-pill', formatBytes(f.size)), btn);
+
+                    item.append(left, right);
+                    return item;
+                }));
             }
 
             renderPreviews();
@@ -551,12 +599,16 @@
                 if (token !== previewToken) { URL.revokeObjectURL(url); return; }
                 const item = document.createElement('div');
                 item.className = 'preview-item';
-                item.innerHTML = `
-                    <img src="${url}" alt="">
-                    <button type="button" class="remove-preview" data-remove-index="${i}" title="Remove">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>`;
-                item.querySelector('img').addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+                const pimg = document.createElement('img');
+                pimg.src = url;
+                pimg.alt = '';
+                const pbtn = el('button', 'remove-preview');
+                pbtn.type = 'button';
+                pbtn.dataset.removeIndex = String(i);
+                pbtn.title = t('remove', 'Remove');
+                pbtn.appendChild(el('i', 'fa-solid fa-xmark'));
+                item.append(pimg, pbtn);
+                pimg.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
                 previewList.appendChild(item);
             }
             if (images.length > 6) {
@@ -619,17 +671,17 @@
         }
 
         startBtn.addEventListener('click', () => {
-            if (files.length === 0) { notify('Select files to upload.', 'warning'); return; }
+            if (files.length === 0) { notify(t('need_files', 'Select files to upload.'), 'warning'); return; }
 
             const contentType = typeSelect?.value || '';
             const contentId   = (idInput?.value || '').trim();
-            if (!contentType || typeSelect.selectedIndex === 0) { notify('Choose a content type.', 'warning'); return; }
-            if (!contentId) { notify('Enter a content ID.', 'warning'); return; }
+            if (!contentType || typeSelect.selectedIndex === 0) { notify(t('need_type', 'Choose a content type.'), 'warning'); return; }
+            if (!contentId) { notify(t('need_id', 'Enter a content ID.'), 'warning'); return; }
 
             const invalid = files.filter(f => !f.type.startsWith('image/') && !ALLOWED.includes(f.type)).map(f => f.name);
             const total   = files.reduce((s, f) => s + f.size, 0);
-            if (invalid.length) { notify('Unsupported file type: ' + invalid.join(', '), 'error'); return; }
-            if (total > MAX_TOTAL) { notify(`Total size is over ${formatBytes(MAX_TOTAL)}.`, 'error'); return; }
+            if (invalid.length) { notify(t('bad_type', 'Unsupported file type: {1}', invalid.join(', ')), 'error'); return; }
+            if (total > MAX_TOTAL) { notify(t('too_big', 'Total size is over {1}.', formatBytes(MAX_TOTAL)), 'error'); return; }
 
             const fd = new FormData();
             files.forEach(f => fd.append('files[]', f));
@@ -663,20 +715,20 @@
                 done();
                 if (data && data.success) {
                     if (progressBar) progressBar.style.width = '100%';
-                    notify(data.message || 'Files uploaded.', 'success');
+                    notify(data.message || t('uploaded', 'Files uploaded.'), 'success');
                     setTimeout(() => {
                         bootstrap.Modal.getInstance(uploadModal)?.hide();
                         handleSearch();
                     }, 900);
                 } else {
                     if (progressWrap) progressWrap.style.display = 'none';
-                    notify(data?.message || 'Upload failed.', 'error');
+                    notify(data?.message || t('upload_failed', 'Upload failed.'), 'error');
                 }
             };
             xhr.onerror = () => {
                 done();
                 if (progressWrap) progressWrap.style.display = 'none';
-                notify('Server not responding.', 'error');
+                notify(t('server_down', 'Server not responding.'), 'error');
             };
             xhr.send(fd);
         });

@@ -7,6 +7,40 @@
         return;
     }
 
+    /* ---------- i18n ---------- */
+
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+
+    /** t(key, fallback, ...args): lang string with {1}, {2}… (and %1$s) substituted. */
+    function t(key, fallback) {
+        let s = typeof L[key] === 'string' ? L[key] : fallback;
+        for (let i = 2; i < arguments.length; i++) {
+            const n = i - 1;
+            const a = String(arguments[i]);
+            s = s.split('{' + n + '}').join(a).split('%' + n + '$s').join(a);
+        }
+        return s;
+    }
+
+    /** Plural form of <base>_one / _few / _many for n (ru: 1 / 2–4 / 5+, en: 1 / other). */
+    function pluralForm(n) {
+        if (L.lang_code === 'ru') {
+            const m10 = n % 10;
+            const m100 = n % 100;
+            if (m10 === 1 && m100 !== 11) { return 'one'; }
+            if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) { return 'few'; }
+            return 'many';
+        }
+        return n === 1 ? 'one' : 'many';
+    }
+
+    /** tp(n, base, fallbackOne, fallbackMany, ...args): {1} = n by default, extra args follow. */
+    function tp(n, base, fbOne, fbMany) {
+        const form = pluralForm(n);
+        const extra = Array.prototype.slice.call(arguments, 4);
+        return t.apply(null, [base + '_' + form, form === 'one' ? fbOne : fbMany].concat(extra.length ? extra : [n]));
+    }
+
     /**
      * Подтверждение через SweetAlert2, если он загрузился, иначе обычный confirm().
      * @returns {Promise<boolean>}
@@ -15,11 +49,11 @@
         if (window.Swal && typeof window.Swal.fire === 'function') {
             return window.Swal.fire({
                 icon: 'warning',
-                title: opts.title,
+                titleText: opts.title,
                 html: opts.html,
                 showCancelButton: true,
-                confirmButtonText: '<i class="fa-solid fa-trash-can me-1"></i> ' + opts.confirmText,
-                cancelButtonText: 'Cancel',
+                confirmButtonText: '<i class="fa-solid fa-trash-can me-1"></i> ' + escapeHtml(opts.confirmText),
+                cancelButtonText: escapeHtml(t('btn_cancel', 'Cancel')),
                 confirmButtonColor: '#dc3545',
                 reverseButtons: true,
                 focusCancel: true
@@ -52,16 +86,19 @@
         const isCat    = btn.dataset.faqmKind === 'category';
         const children = parseInt(btn.dataset.faqmChildren || '0', 10);
 
-        let text = '"' + name + '" will be deleted permanently.';
+        let text = t('del_text', '“{1}” will be deleted permanently.', name);
         if (isCat && children > 0) {
-            text = '"' + name + '" and its ' + children + (children === 1 ? ' question' : ' questions') + ' will be deleted permanently.';
+            text = tp(children, 'del_cat_text',
+                '“{1}” and its {2} question will be deleted permanently.',
+                '“{1}” and its {2} questions will be deleted permanently.',
+                name, children.toLocaleString());
         }
 
         confirmAction({
-            title: isCat ? 'Delete this category?' : 'Delete this question?',
+            title: isCat ? t('del_cat_title', 'Delete this category?') : t('del_q_title', 'Delete this question?'),
             text: text,
             html: escapeHtml(text),
-            confirmText: 'Delete'
+            confirmText: t('btn_delete', 'Delete')
         }).then(function (ok) {
             if (!ok) {
                 return;
@@ -113,7 +150,7 @@
         }
         if (status) {
             status.textContent = changed > 0
-                ? (changed === 1 ? '1 unsaved change' : changed + ' unsaved changes')
+                ? tp(changed, 'unsaved', '{1} unsaved change', '{1} unsaved changes', changed.toLocaleString())
                 : status.dataset.idle;
         }
     }
@@ -174,7 +211,7 @@
                 return;
             }
             const n = field.value.length;
-            c.textContent = n.toLocaleString() + (n === 1 ? ' character' : ' characters');
+            c.textContent = tp(n, 'chars', '{1} character', '{1} characters', n.toLocaleString());
         });
     }
 

@@ -9,6 +9,26 @@
         if (cfg) { MSG = JSON.parse(cfg.textContent) || {}; }
     } catch (err) { MSG = {}; }
 
+    // Строки интерфейса: const AGS_LANG выводит PHP из ключей js_* ланга reports
+    var LANG = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+
+    /** t(key, englishFallback, arg1, arg2…) — подставляет {1} и %1$s */
+    function t(key, fallback) {
+        var str = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+        for (var i = 2; i < arguments.length; i++) {
+            var n = i - 1, v = String(arguments[i]);
+            str = str.split('{' + n + '}').join(v).split('%' + n + '$s').join(v);
+        }
+        return str;
+    }
+
+    // SweetAlert2 вставляет тексты кнопок как HTML — экранируем, чтобы они шли как текст
+    function esc(s) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(s)));
+        return d.innerHTML;
+    }
+
     function toast(msg, type) {
         if (typeof window.showToast === 'function') { window.showToast(msg, type); }
     }
@@ -21,14 +41,14 @@
     function ask(o) {
         if (window.Swal && typeof window.Swal.fire === 'function') {
             return window.Swal.fire({
-                title: o.title,
+                titleText: o.title,
                 text: o.text || '',
                 icon: o.icon || 'warning',
                 showCancelButton: true,
                 reverseButtons: true,
                 focusCancel: o.variant === 'danger',
-                confirmButtonText: o.btn || 'Confirm',
-                cancelButtonText: 'Cancel',
+                confirmButtonText: esc(o.btn || t('confirm', 'Confirm')),
+                cancelButtonText: esc(t('cancel', 'Cancel')),
                 confirmButtonColor: cssVar('--bs-' + (o.variant || 'primary'), '#0d6efd'),
                 cancelButtonColor: cssVar('--bs-secondary', '#6c757d')
             }).then(function (r) { return !!r.isConfirmed; });
@@ -39,10 +59,10 @@
     function readConfirm(el) {
         var d = el.dataset;
         return {
-            title: d.confirmTitle || 'Are you sure?',
+            title: d.confirmTitle || t('are_you_sure', 'Are you sure?'),
             text: d.confirmText || '',
             icon: d.confirmIcon || 'warning',
-            btn: d.confirmBtn || 'Confirm',
+            btn: d.confirmBtn || t('confirm', 'Confirm'),
             variant: d.confirmVariant || 'primary'
         };
     }
@@ -63,10 +83,10 @@
             .then(function (data) {
                 if (!data.success) {
                     setBusy(form, false);
-                    toast(data.message || 'Action failed', 'danger');
+                    toast(data.message || t('action_failed', 'Action failed'), 'danger');
                     return;
                 }
-                toast(data.message || 'Done', 'success');
+                toast(data.message || t('done', 'Done'), 'success');
                 var row = form.closest('tr');
                 if (!row) { window.location.reload(); return; }
                 var body = row.parentNode;
@@ -92,7 +112,7 @@
         var source = form;
         if (form.dataset.confirm === 'choice') {
             source = form.querySelector('input[name="do"]:checked');
-            if (!source) { toast('Choose an action first', 'warning'); return; }
+            if (!source) { toast(t('choose_action', 'Choose an action first'), 'warning'); return; }
         }
 
         ask(readConfirm(source)).then(function (ok) {
@@ -121,7 +141,7 @@
         ['success', 'error'].forEach(function (k) {
             var code = url.searchParams.get(k);
             if (code === null) { return; }
-            var text = (MSG[k] && MSG[k][code]) || (k === 'success' ? 'Done' : 'Something went wrong');
+            var text = (MSG[k] && MSG[k][code]) || (k === 'success' ? t('done', 'Done') : t('went_wrong', 'Something went wrong'));
             toast(text, k === 'success' ? 'success' : 'danger');
             url.searchParams.delete(k);
             changed = true;

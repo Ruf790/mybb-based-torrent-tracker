@@ -1,3 +1,34 @@
+// ── i18n ────────────────────────────────────────────────────────────────────
+// AGS_LANG выводится PHP перед подключением скрипта (ключи js_* без префикса).
+// t(key, fallback, ...args): перевод с английским fallback и подстановкой {1}, {2}…
+// ($lang->load() превращает {N} в %N$s — поддерживаются оба формата)
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    const str = (typeof dict[key] === 'string') ? dict[key] : fallback;
+    if (!args.length) return str;
+    return str.replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+        const n = Number(a || b);
+        return args[n - 1] !== undefined ? String(args[n - 1]) : m;
+    });
+}
+
+// Множественное число через Intl.PluralRules: ключи <base>_one/_few/_many/_other
+function tPlural(base, n, fallbackOne, fallbackOther) {
+    let form = 'other';
+    try { form = new Intl.PluralRules(t('locale', 'en-US')).select(n); } catch (e) { form = (n === 1 ? 'one' : 'other'); }
+    const fb = (form === 'one') ? fallbackOne : fallbackOther;
+    return t(base + '_' + form, fb, n);
+}
+
+// Иконка + текст без innerHTML (перевод вставляется как текст)
+function setIconText(el, iconClass, text, spacer) {
+    el.textContent = '';
+    const i = document.createElement('i');
+    i.className = iconClass;
+    el.appendChild(i);
+    el.appendChild(document.createTextNode((spacer || '') + text));
+}
+
 let deleteId = null;
 let deleteImageSrc = null;
 
@@ -6,7 +37,7 @@ document.querySelectorAll('.single-delete-btn').forEach(btn => {
         e.preventDefault();
         
         deleteId = this.dataset.id;
-        const filename = this.dataset.filename || 'this screenshot';
+        const filename = this.dataset.filename || t('this_screenshot', 'this screenshot');
         
         // Получаем src изображения из карточки
         const card = this.closest('.screenshot-card');
@@ -14,22 +45,29 @@ document.querySelectorAll('.single-delete-btn').forEach(btn => {
         deleteImageSrc = img?.src || '';
         
         // Обновляем модалку
-        document.getElementById('singleDeleteModalLabel').innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion';
-        document.getElementById('singleDeleteTitle').textContent = 'Delete Screenshot?';
-        document.getElementById('singleDeleteFilename').innerHTML = '<strong>"' + filename + '"</strong>';
+        setIconText(document.getElementById('singleDeleteModalLabel'), 'fas fa-exclamation-triangle me-2', t('confirm_deletion', 'Confirm Deletion'), ' ');
+        document.getElementById('singleDeleteTitle').textContent = t('delete_q', 'Delete Screenshot?');
+        const fnEl = document.getElementById('singleDeleteFilename');
+        fnEl.textContent = '';
+        const fnStrong = document.createElement('strong');
+        fnStrong.textContent = t('quoted', '"{1}"', filename);
+        fnEl.appendChild(fnStrong);
         document.getElementById('singleDeleteFileName').textContent = filename;
         
         // Получаем информацию о файле
         const fileInfoEl = document.getElementById('singleDeleteFileInfo');
-        fileInfoEl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
+        setIconText(fileInfoEl, 'fas fa-spinner fa-spin me-1', t('loading', 'Loading...'), ' ');
         
         // Имитация получения информации
         setTimeout(() => {
             const randomSize = Math.floor(Math.random() * 500 + 100);
             const today = new Date();
-            const dateStr = today.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-            fileInfoEl.innerHTML = '<i class="fas fa-database me-1"></i> ' + randomSize + ' KB • ' + 
-                                   '<i class="fas fa-calendar me-1"></i> ' + dateStr;
+            const dateStr = today.toLocaleDateString(t('locale', 'en-US'), { year: 'numeric', month: 'short', day: 'numeric' });
+            setIconText(fileInfoEl, 'fas fa-database me-1', t('kb', '{1} KB', randomSize) + ' • ', ' ');
+            const calIcon = document.createElement('i');
+            calIcon.className = 'fas fa-calendar me-1';
+            fileInfoEl.appendChild(calIcon);
+            fileInfoEl.appendChild(document.createTextNode(' ' + dateStr));
         }, 500);
         
         
@@ -54,7 +92,12 @@ document.getElementById('confirmSingleDeleteBtn').addEventListener('click', func
     const btn = this;
     const originalHtml = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Deleting...';
+    btn.textContent = '';
+    const spin = document.createElement('span');
+    spin.className = 'spinner-border spinner-border-sm me-2';
+    spin.setAttribute('role', 'status');
+    btn.appendChild(spin);
+    btn.appendChild(document.createTextNode(' ' + t('deleting', 'Deleting...')));
 
     fetch('index.php?act=manage_screenshots&action=delete&id=' + deleteId, {
         method: 'POST',
@@ -74,9 +117,9 @@ document.getElementById('confirmSingleDeleteBtn').addEventListener('click', func
                 card.style.transform = 'scale(0.8)';
                 setTimeout(() => card.remove(), 300);
             }
-            showToast(data.message || 'Screenshot deleted successfully.', 'success');
+            showToast(data.message || t('deleted_ok', 'Screenshot deleted successfully.'), 'success');
         } else {
-            showToast(data.message || 'Failed to delete screenshot.', 'error');;
+            showToast(data.message || t('delete_failed', 'Failed to delete screenshot.'), 'error');;
         }
 
         deleteId = null;
@@ -84,7 +127,7 @@ document.getElementById('confirmSingleDeleteBtn').addEventListener('click', func
     })
     .catch(err => {
         console.error(err);
-        showToast('An error occurred while deleting the screenshot.', 'error');
+        showToast(t('delete_error', 'An error occurred while deleting the screenshot.'), 'error');
         deleteId = null;
         deleteImageSrc = null;
     })
@@ -98,8 +141,8 @@ document.getElementById('confirmSingleDeleteBtn').addEventListener('click', func
 // Очищаем превью при закрытии модалки
 document.getElementById('singleDeleteModal').addEventListener('hidden.bs.modal', function () {
     document.getElementById('singleDeleteImage').src = '';
-    document.getElementById('singleDeleteFileInfo').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
-    document.getElementById('singleDeleteFilename').innerHTML = '';
+    setIconText(document.getElementById('singleDeleteFileInfo'), 'fas fa-spinner fa-spin me-1', t('loading', 'Loading...'), ' ');
+    document.getElementById('singleDeleteFilename').textContent = '';
 });
 
 
@@ -148,12 +191,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // Создаем изображение с обработчиком ошибок
             const img = new Image();
             img.src = src;
-            img.alt = 'Screenshot';
+            img.alt = t('screenshot', 'Screenshot');
             img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
             
             // Обработчик ошибки загрузки
             img.onerror = function() {
-                this.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'56\' viewBox=\'0 0 100 56\'%3E%3Crect width=\'100\' height=\'56\' fill=\'%23e9ecef\'/%3E%3Ctext x=\'50\' y=\'28\' font-size=\'10\' text-anchor=\'middle\' fill=\'%236c757d\'%3ENo image%3C/text%3E%3C/svg%3E';
+                this.onerror = null;
+                const noImg = t('no_image', 'No image').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                this.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'56\' viewBox=\'0 0 100 56\'%3E%3Crect width=\'100\' height=\'56\' fill=\'%23e9ecef\'/%3E%3Ctext x=\'50\' y=\'28\' font-size=\'10\' text-anchor=\'middle\' fill=\'%236c757d\'%3E' + encodeURIComponent(noImg) + '%3C/text%3E%3C/svg%3E';
             };
             
             const imgDiv = document.createElement('div');
@@ -175,8 +220,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (this.hasAttribute('disabled')) {
                 // Показываем предупреждение
                 Swal.fire({
-                    title: 'No Selection',
-                    text: 'Please select at least one screenshot to delete.',
+                    title: t('no_selection_title', 'No Selection'),
+                    text: t('no_selection_text', 'Please select at least one screenshot to delete.'),
                     icon: 'info',
                     timer: 2000,
                     showConfirmButton: false
@@ -216,9 +261,11 @@ document.addEventListener('DOMContentLoaded', function() {
         selectAllBtn.addEventListener('click', function() {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             checkboxes.forEach(cb => cb.checked = !allChecked);
-            this.innerHTML = allChecked 
-                ? '<i class="fas fa-check-square me-2"></i>Select All'
-                : '<i class="fas fa-times-circle me-2"></i>Deselect All';
+            if (allChecked) {
+                setIconText(this, 'fas fa-check-square me-2', t('select_all', 'Select All'));
+            } else {
+                setIconText(this, 'fas fa-times-circle me-2', t('deselect_all', 'Deselect All'));
+            }
             updateDeleteBtnState();
         });
     }
@@ -253,7 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(error => {
-                showToast('An error occurred while deleting screenshots', 'error');
+                showToast(t('mass_error', 'An error occurred while deleting screenshots'), 'error');
             });
         });
     }
@@ -299,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
         placeholder.style.display = "none";
         previewContainer.style.display = "block";
         fileCountBadge.style.display = "block";
-        fileCountEl.textContent = selected.length + " file" + (selected.length > 1 ? "s" : "");
+        fileCountEl.textContent = tPlural("files", selected.length, "{1} file", "{1} files");
         clearBtn.classList.remove("d-none");
 
         selected.forEach(file => {
@@ -394,9 +441,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1200);
             } else {
                 if (typeof showToast === "function") {
-                    showToast(data.message || "Upload failed.", "error");
+                    showToast(data.message || t("upload_failed", "Upload failed."), "error");
                 } else {
-                    alert(data.message || "Upload failed.");
+                    alert(data.message || t("upload_failed", "Upload failed."));
                 }
                 if (progressWrap) progressWrap.style.display = "none";
             }
@@ -405,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
             clearInterval(progressInterval);
             console.error("Upload error:", err);
             if (typeof showToast === "function") {
-                showToast("Server not responding.", "error");
+                showToast(t("server_down", "Server not responding."), "error");
             }
             if (progressWrap) progressWrap.style.display = "none";
         })
@@ -435,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function() {
         idInput.value = trigger.getAttribute("data-id") || "";
         torrentInput.value = trigger.getAttribute("data-torrent-id") || "";
         preview.src = trigger.getAttribute("data-img-src") || "";
-        currentInfo.textContent = "Leave empty to keep: " + (trigger.getAttribute("data-filename") || "");
+        currentInfo.textContent = t("keep_file", "Leave empty to keep: {1}", trigger.getAttribute("data-filename") || "");
         fileInput.value = "";
     });
 
@@ -450,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     saveBtn.addEventListener("click", function() {
         if (!torrentInput.value.trim()) {
-            if (typeof showToast === "function") showToast("Torrent ID is required", "error");
+            if (typeof showToast === "function") showToast(t("torrent_required", "Torrent ID is required"), "error");
             return;
         }
 
@@ -481,15 +528,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1000);
             } else {
                 if (typeof showToast === "function") {
-                    showToast(data.message || "Update failed.", "error");
+                    showToast(data.message || t("update_failed", "Update failed."), "error");
                 } else {
-                    alert(data.message || "Update failed.");
+                    alert(data.message || t("update_failed", "Update failed."));
                 }
             }
         })
         .catch(err => {
             console.error("Edit error:", err);
-            if (typeof showToast === "function") showToast("Server not responding.", "error");
+            if (typeof showToast === "function") showToast(t("server_down", "Server not responding."), "error");
         })
         .finally(() => {
             saveBtn.disabled = false;

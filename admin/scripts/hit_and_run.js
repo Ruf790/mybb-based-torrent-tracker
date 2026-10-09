@@ -2,6 +2,17 @@
 (function () {
     'use strict';
 
+    // Строки из ланга (PHP выводит const AGS_LANG перед скриптом)
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    function t(key, fallback, ...args) {
+        let s = typeof L[key] === 'string' ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    }
+
     // Страница «Send Warnings»: клик по плейсхолдеру вставляет его в текст
     function initCompose() {
         const ta = document.getElementById('warnmessage');
@@ -56,7 +67,9 @@
             const f = document.getElementById('hrBanField');
             f.disabled = false; f.value = '1';
             this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Banning...';
+            const spin = document.createElement('span');
+            spin.className = 'spinner-border spinner-border-sm me-1';
+            this.replaceChildren(spin, document.createTextNode(t('banning', 'Banning...')));
             document.getElementById('hrForm').submit();
         });
 

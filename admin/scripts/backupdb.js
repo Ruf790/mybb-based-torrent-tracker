@@ -2,6 +2,13 @@
 (function () {
     "use strict";
 
+    /* ---------- Локализация: AGS_LANG выводит PHP (ключи js_* из ланга, без префикса) ---------- */
+    const t = (key, fallback, ...args) => {
+        const L = (typeof AGS_LANG !== "undefined" && AGS_LANG) ? AGS_LANG : {};
+        const src = typeof L[key] === "string" ? L[key] : fallback;
+        return src.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] !== undefined ? String(args[n - 1]) : m));
+    };
+
     /* ---------- New backup: выбор таблиц ---------- */
     const form = document.getElementById("table_selection");
     if (form) {
@@ -16,6 +23,13 @@
         const selSize = document.getElementById("bkSelSize");
         const go      = document.getElementById("bkGo");
         const filter  = document.getElementById("bkFilter");
+
+        // Содержимое кнопки: иконка + текст. Перевод вставляем как текст, не через innerHTML
+        function setGo(tag, cls, text) {
+            const ic = document.createElement(tag);
+            ic.className = cls;
+            go.replaceChildren(ic, document.createTextNode(text));
+        }
 
         function count() {
             const on = boxes().filter(b => b.checked);
@@ -39,10 +53,10 @@
         form.addEventListener("submit", function () {
             // Для «Download» страница не перезагружается — через несколько секунд вернём кнопку
             go.disabled = true;
-            go.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working…';
+            setGo("span", "spinner-border spinner-border-sm me-1", t("working", "Working…"));
             setTimeout(() => {
                 go.disabled = false;
-                go.innerHTML = '<i class="fa-solid fa-play me-1"></i>Create backup';
+                setGo("i", "fa-solid fa-play me-1", t("create_backup", "Create backup"));
             }, 8000);
         });
 

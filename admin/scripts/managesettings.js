@@ -1,6 +1,6 @@
 'use strict';
 /**
- * admin/scripts/settings.js — Settings Panel (settings.php)
+ * admin/scripts/managesettings.js — Settings Panel (managesettings.php)
  * Заменяет settings-page.js и admin-settings.js (оба можно удалить).
  *
  *  - flatpickr для дат freeleech
@@ -9,12 +9,19 @@
  *  - автозаполнение ID в таблице персонала
  *  - кнопка «Save tab» / Ctrl+S — сохраняет открытую вкладку
  *  - индикатор несохранённых изменений + предупреждение при уходе со страницы
+ *  - тексты берутся из языкового файла (AGS_LANG, ключи js_*)
  */
 document.addEventListener('DOMContentLoaded', () => {
     const root = document.querySelector('.ag-settings');
     if (!root) return;
 
     const TAB_KEY = 'settings_active_tab';
+
+    // ── Строки из языкового файла (js_* ключи, передаются как AGS_LANG) ─────
+    // {1}, {2}… заменяются аргументами; без перевода - английский запасной текст
+    const LANG = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    const t = (key, fallback, ...args) =>
+        String(LANG[key] ?? fallback).replace(/\{(\d+)\}/g, (m, n) => args[n - 1] ?? m);
 
     // ── Подтверждение: SweetAlert2, иначе confirm() ─────────────────────────
     const confirmDialog = (title, text, confirmText) => {
@@ -24,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonText: confirmText,
-                cancelButtonText: 'Cancel',
+                cancelButtonText: t('cancel', 'Cancel'),
                 reverseButtons: true,
                 focusCancel: true,
             }).then(r => r.isConfirmed);
@@ -123,11 +130,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const unlimited = unlMode?.checked;
         const mins = mainForm.querySelector('[name="offline_minutes_input"]')?.value || '30';
         confirmDialog(
-            'Take the site offline?',
+            t('offline_title', 'Take the site offline?'),
             unlimited
-                ? 'Regular users will see the maintenance message until you switch it back on.'
-                : `Regular users will see the maintenance message for ${mins} min.`,
-            'Go offline'
+                ? t('offline_text_unlimited', 'Regular users will see the maintenance message until you switch it back on.')
+                : t('offline_text_limited', 'Regular users will see the maintenance message for {1} min.', mins),
+            t('offline_confirm', 'Go offline')
         ).then(ok => {
             if (!ok) return;
             mainForm.dataset.confirmed = '1';
@@ -143,7 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (form.classList.contains('is-dirty')) return;
         form.classList.add('is-dirty');
         const note = form.querySelector('.ag-savebar-note');
-        if (note) note.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>Unsaved changes';
+        if (note) {
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid fa-circle-exclamation';
+            note.replaceChildren(icon, document.createTextNode(t('unsaved', 'Unsaved changes')));
+        }
         const paneId = form.closest('.tab-pane')?.id;
         if (paneId) linkFor(paneId)?.classList.add('is-dirty');
     };

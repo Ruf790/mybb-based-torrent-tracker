@@ -10,7 +10,30 @@
  * Публичный API прежний: init(id), initAll(), debounceInitAll(), resetAllToInherited(),
  * window.resetPermissions(), validateFormFields().
  */
+/** Строка из AGS_LANG (js_* без префикса) с английским fallback и подстановкой {1}, {2}… */
+function qpeT(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+    let str = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+    args.forEach((a, i) => { str = str.split('{' + (i + 1) + '}').join(String(a)); });
+    return str;
+}
+
+/** Иконка + текст в элементе (текст — только через textNode) */
+function qpeSetIconText(el, iconClass, text) {
+    const i = document.createElement('i');
+    i.className = iconClass;
+    el.replaceChildren(i, document.createTextNode(text));
+}
+
+/** showToast() из toast.js вставляет сообщения через innerHTML — экранируем */
+function qpeEscape(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
 const QuickPermEditor = {
+    /** Английские подписи — fallback; перевод — getPermissionLabel() → AGS_LANG.qpe_perm_* */
     labels: {
         canview:        'View',
         canpostthreads: 'Post Threads',
@@ -138,16 +161,14 @@ const QuickPermEditor = {
         const tag = row.querySelector('.fm2-tag.t-sub, .fm2-tag.t-cat');
         if (tag) {
             tag.className = 'fm2-tag ' + (isInherited ? 't-sub' : 't-cat');
-            tag.innerHTML = isInherited
-                ? '<i class="fa-solid fa-arrow-turn-down"></i>Inherited'
-                : '<i class="fa-solid fa-sliders"></i>Custom';
+            if (isInherited) qpeSetIconText(tag, 'fa-solid fa-arrow-turn-down', qpeT('qpe_inherited', 'Inherited'));
+            else             qpeSetIconText(tag, 'fa-solid fa-sliders', qpeT('qpe_custom', 'Custom'));
         } else {
             const badge = row.querySelector('.badge.bg-info, .badge.bg-warning');
             if (badge) {
                 badge.className = 'badge ' + (isInherited ? 'bg-info bg-opacity-10 text-info' : 'bg-warning bg-opacity-10 text-warning') + ' px-3 py-2';
-                badge.innerHTML = isInherited
-                    ? '<i class="fas fa-link me-1"></i>Inherited'
-                    : '<i class="fas fa-pen me-1"></i>Custom';
+                if (isInherited) qpeSetIconText(badge, 'fas fa-link me-1', qpeT('qpe_inherited', 'Inherited'));
+                else             qpeSetIconText(badge, 'fas fa-pen me-1', qpeT('qpe_custom', 'Custom'));
             }
         }
 
@@ -172,7 +193,7 @@ const QuickPermEditor = {
         btn.className = legacy
             ? 'btn btn-outline-danger btn-sm ms-1 qpe-revert-btn'
             : 'fm2-act text-danger qpe-revert-btn';
-        btn.title = 'Undo changes (back to inherited)';
+        btn.title = qpeT('qpe_undo_title', 'Undo changes (back to inherited)');
         btn.innerHTML = '<i class="fas fa-rotate-left"></i>';
         btn.addEventListener('click', e => {
             e.preventDefault();
@@ -192,8 +213,8 @@ const QuickPermEditor = {
                 text,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Yes, reset',
-                cancelButtonText: 'Cancel'
+                confirmButtonText: qpeT('qpe_yes_reset', 'Yes, reset'),
+                cancelButtonText: qpeT('cancel', 'Cancel')
             }).then(r => { if (r.isConfirmed) onConfirm(); });
         } else if (confirm(text)) {
             onConfirm();
@@ -217,8 +238,8 @@ const QuickPermEditor = {
 
     clearPermissions: function (id) {
         id = String(id);
-        this.confirmAction('Revert this group to inherited permissions?', () => {
-            if (this.revertGroup(id)) this.showNotification('Permissions reset to inherited values', 'info');
+        this.confirmAction(qpeT('qpe_confirm_revert', 'Revert this group to inherited permissions?'), () => {
+            if (this.revertGroup(id)) this.showNotification(qpeT('qpe_reverted', 'Permissions reset to inherited values'), 'info');
         });
     },
 
@@ -248,12 +269,12 @@ const QuickPermEditor = {
     },
 
     getPermissionLabel: function (perm) {
-        return this.labels[perm] || perm;
+        return qpeT('qpe_perm_' + perm, this.labels[perm] || perm);
     },
 
     showNotification: function (message, type = 'success') {
         if (typeof window.showToast === 'function' && (type === 'success' || type === 'error')) {
-            window.showToast([message], type);
+            window.showToast([qpeEscape(message)], type);
             return;
         }
         let box = document.getElementById('notification-container');
@@ -273,7 +294,7 @@ const QuickPermEditor = {
         close.type = 'button';
         close.className = 'btn-close';
         close.setAttribute('data-bs-dismiss', 'alert');
-        close.setAttribute('aria-label', 'Close');
+        close.setAttribute('aria-label', qpeT('close', 'Close'));
         alert.appendChild(close);
         box.appendChild(alert);
         setTimeout(() => alert.remove(), 3000);
@@ -294,9 +315,9 @@ const QuickPermEditor = {
     })(),
 
     resetAllToInherited: function () {
-        this.confirmAction('Reset all permission changes to inherited values?', () => {
+        this.confirmAction(qpeT('qpe_confirm_reset_all', 'Reset all permission changes to inherited values?'), () => {
             document.querySelectorAll('tr[data-group-id]').forEach(row => this.revertGroup(row.dataset.groupId));
-            this.showNotification('All permissions reset to inherited values', 'success');
+            this.showNotification(qpeT('qpe_reset_all_done', 'All permissions reset to inherited values'), 'success');
         });
         return false;
     },

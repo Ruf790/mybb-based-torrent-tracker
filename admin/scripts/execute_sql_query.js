@@ -17,6 +17,32 @@
     // считал деструктивным, а клиент нет, и такой запрос нельзя было выполнить вообще.
     const DESTRUCTIVE = /^(?:\s+|--[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i;
 
+    // ── Lang ────────────────────────────────────────────────────────────────
+    // AGS_LANG выводится PHP перед подключением скрипта (ключи js_* без префикса).
+    // {1} и %1$s — оба формата, т.к. $lang->load() превращает {1} в %1$s.
+    const LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG === 'object') ? AGS_LANG : {};
+
+    function t(key, fallback, ...args) {
+        let s = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+        args.forEach((arg, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(arg)).split('%' + n + '$s').join(String(arg));
+        });
+        return s;
+    }
+
+    // SweetAlert2 вставляет confirmButtonText/cancelButtonText как HTML — экранируем
+    const esc = str => String(str).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
+
+    // Иконка + текст через DOM (без innerHTML для переводов)
+    function setIconLabel(el, iconClass, text) {
+        const i = document.createElement('i');
+        i.className = iconClass;
+        el.replaceChildren(i, document.createTextNode(' ' + text));
+    }
+
     const hasSwal = () => !!(window.Swal && typeof window.Swal.fire === 'function');
 
     /**
@@ -25,12 +51,12 @@
     function askConfirm({ title, text, confirmText, danger = true, fallback }) {
         if (hasSwal()) {
             return window.Swal.fire({
-                title,
+                titleText: title,
                 text,
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonText: confirmText,
-                cancelButtonText: 'Cancel',
+                confirmButtonText: esc(confirmText),
+                cancelButtonText: esc(t('cancel', 'Cancel')),
                 confirmButtonColor: danger ? '#dc3545' : undefined,
                 focusCancel: true,
                 reverseButtons: true,
@@ -132,23 +158,27 @@
     clearHistForm?.addEventListener('submit', e => {
         e.preventDefault();
         askConfirm({
-            title: 'Clear query history?',
-            text: 'All saved queries from this session will be removed.',
-            confirmText: 'Clear history',
-            fallback: 'Clear query history?',
+            title: t('clear_hist_title', 'Clear query history?'),
+            text: t('clear_hist_text', 'All saved queries from this session will be removed.'),
+            confirmText: t('clear_hist_confirm', 'Clear history'),
+            fallback: t('clear_hist_title', 'Clear query history?'),
         }).then(ok => { if (ok) nativeSubmit(clearHistForm); });
     });
 
     // ── Execute (с подтверждением деструктивных запросов) ───────────────────
     // Серверная сторона тоже проверяет confirm_destructive — JS можно отключить или обойти.
     let submitting = false;
+    // Исходная разметка кнопки (уже переведена сервером) — для восстановления
+    const runBtnNodes = runBtn ? [...runBtn.childNodes].map(n => n.cloneNode(true)) : [];
 
     function setBusy(busy) {
         if (!runBtn) return;
         runBtn.disabled = busy;
-        runBtn.innerHTML = busy
-            ? '<i class="fa-solid fa-spinner fa-spin"></i> Running…'
-            : '<i class="fa-solid fa-play"></i> Execute';
+        if (busy) {
+            setIconLabel(runBtn, 'fa-solid fa-spinner fa-spin', t('running', 'Running…'));
+        } else {
+            runBtn.replaceChildren(...runBtnNodes.map(n => n.cloneNode(true)));
+        }
     }
 
     function doSubmit() {
@@ -172,12 +202,12 @@
 
         const kw = m[1].toUpperCase();
         askConfirm({
-            title: `Run ${kw} query?`,
-            text: 'This query changes or deletes data and runs immediately. There is no undo.',
-            confirmText: `Run ${kw}`,
+            title: t('run_title', 'Run {1} query?', kw),
+            text: t('run_text', 'This query changes or deletes data and runs immediately. There is no undo.'),
+            confirmText: t('run_confirm', 'Run {1}', kw),
             fallback:
-                `This looks like a destructive query (${kw}).\n\n` +
-                'It will run immediately with no undo. Continue?',
+                t('run_fallback_head', 'This looks like a destructive query ({1}).', kw) + '\n\n' +
+                t('run_fallback_body', 'It will run immediately with no undo. Continue?'),
         }).then(ok => {
             if (!ok) {
                 ta.focus();
@@ -243,12 +273,12 @@
         });
     }
 
-    function flashButton(btn, html, ms = 1600) {
-        const original = btn.innerHTML;
-        btn.innerHTML = html;
+    function flashButton(btn, iconClass, text, ms = 1600) {
+        const original = [...btn.childNodes].map(n => n.cloneNode(true));
+        setIconLabel(btn, iconClass, text);
         btn.disabled = true;
         setTimeout(() => {
-            btn.innerHTML = original;
+            btn.replaceChildren(...original);
             btn.disabled = false;
         }, ms);
     }
@@ -268,7 +298,7 @@
             .join('\r\n');
 
         copyText(csv)
-            .then(() => flashButton(copyBtn, '<i class="fa-solid fa-check"></i> Copied'))
-            .catch(() => flashButton(copyBtn, '<i class="fa-solid fa-triangle-exclamation"></i> Copy failed'));
+            .then(() => flashButton(copyBtn, 'fa-solid fa-check', t('copied', 'Copied')))
+            .catch(() => flashButton(copyBtn, 'fa-solid fa-triangle-exclamation', t('copy_failed', 'Copy failed')));
     });
 })();

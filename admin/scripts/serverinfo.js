@@ -5,6 +5,12 @@
     const page = document.querySelector('.si-page');
     if (!page) return;
 
+    function t(key, fallback, ...args) {
+        let str = Object.prototype.hasOwnProperty.call(window.AGS_LANG || {}, key) ? window.AGS_LANG[key] : fallback;
+        args.forEach((arg, i) => { str = str.replaceAll('{' + (i + 1) + '}', String(arg)); });
+        return str;
+    }
+
     // ── Вкладки: активная хранится в адресе (#si-php и т.п.) ──
     const tabs = [...page.querySelectorAll('.si-tab[data-bs-target]')];
 
@@ -48,7 +54,7 @@
                 r.hidden = !hit;
                 if (hit) n++;
             });
-            if (varCount) varCount.textContent = q ? n + ' of ' + rows.length : String(rows.length);
+            if (varCount) varCount.textContent = q ? t('filter_count', '{1} of {2}', n, rows.length) : String(rows.length);
         });
     }
 

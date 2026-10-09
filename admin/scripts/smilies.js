@@ -5,6 +5,18 @@
     const page = document.querySelector('.sm-page');
     if (!page) return;
 
+    // Строки из ланга (AGS_LANG выводит PHP перед этим скриптом). Fallback - английский.
+    // $lang->load() превращает {1} в %1$s, поэтому подставляем оба формата.
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    const t = (key, fallback, ...args) => {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1, v = String(a);
+            s = s.split('{' + n + '}').join(v).split('%' + n + '$s').join(v);
+        });
+        return s;
+    };
+
     const smilieUrl = page.dataset.smilieUrl || '';
     const imgUrl = file => smilieUrl + '/' + encodeURIComponent(file);
 
@@ -16,26 +28,26 @@
         if (!btn || !delForm) return;
         e.preventDefault();
 
-        const title = btn.dataset.title || 'this smilie';
+        const title = btn.dataset.title || t('this_smilie', 'this smilie');
         const submit = () => {
             delForm.querySelector('input[name="sid"]').value = btn.dataset.delete;
             delForm.submit();
         };
 
         if (!window.Swal) {
-            if (confirm('Delete "' + title + '"? This cannot be undone.')) submit();
+            if (confirm(t('confirm_delete', 'Delete "{1}"? This cannot be undone.', title))) submit();
             return;
         }
         const text = document.createElement('div');
-        text.textContent = 'Delete "' + title + '"? Posts that use its code will show the plain text instead.';
+        text.textContent = t('delete_text', 'Delete "{1}"? Posts that use its code will show the plain text instead.', title);
 
         Swal.fire({
-            title: 'Delete smilie?',
+            titleText: t('delete_title', 'Delete smilie?'),
             html: text,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Delete',
-            cancelButtonText: 'Cancel',
+            confirmButtonText: t('delete', 'Delete'),
+            cancelButtonText: t('cancel', 'Cancel'),
             confirmButtonColor: getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545',
             reverseButtons: true,
             focusCancel: true
@@ -99,7 +111,7 @@
                 if (hit) shown++;
             });
             grid.classList.toggle('is-filtered', !!q);
-            if (count) count.textContent = shown + ' shown';
+            if (count) count.textContent = t('shown', '{1} shown', shown);
             if (noMatch) noMatch.hidden = shown > 0;
         });
 
@@ -190,9 +202,9 @@
             inline.src = src;
         }
 
-        let t;
-        spath.addEventListener('input', () => { clearTimeout(t); t = setTimeout(updateImage, 250); });
-        stitle?.addEventListener('input', () => { title.textContent = stitle.value.trim() || 'No title'; });
+        let tm;
+        spath.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(updateImage, 250); });
+        stitle?.addEventListener('input', () => { title.textContent = stitle.value.trim() || t('no_title', 'No title'); });
         stext?.addEventListener('input', () => { code.textContent = stext.value.trim() || ':)'; });
 
         document.getElementById('smAutoOrder')?.addEventListener('click', e => {
@@ -226,7 +238,7 @@
     if (file) {
         const drop = file.closest('.sm-drop');
         const name = document.getElementById('smImportName');
-        const show = () => { name.textContent = file.files[0]?.name || 'Choose a JSON file'; };
+        const show = () => { name.textContent = file.files[0]?.name || t('choose_json', 'Choose a JSON file'); };
         file.addEventListener('change', show);
 
         ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('is-over'); }));

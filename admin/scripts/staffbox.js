@@ -2,6 +2,20 @@
 (function () {
     'use strict';
 
+    // Lang strings from PHP (js_* keys without the prefix)
+    const LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+
+    // t('key', 'English fallback', arg1, arg2…) — substitutes {1} and %1$s
+    function t(key, fallback) {
+        let s = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+        for (let i = 2; i < arguments.length; i++) {
+            const n = i - 1;
+            const v = String(arguments[i]);
+            s = s.split('{' + n + '}').join(v).split('%' + n + '$s').join(v);
+        }
+        return s;
+    }
+
     function ready(fn) {
         if (document.readyState !== 'loading') {
             fn();
@@ -112,7 +126,8 @@
 
             const title = btn.dataset.sbConfirm.replace('{n}', String(selectedCount()));
             const text = btn.dataset.sbConfirmText || '';
-            const confirmText = btn.dataset.sbConfirmBtn || 'Confirm';
+            const confirmText = btn.dataset.sbConfirmBtn || t('confirm', 'Confirm');
+            const cancelText = t('cancel', 'Cancel');
 
             const go = function () {
                 const hidden = document.createElement('input');
@@ -126,15 +141,21 @@
             if (window.Swal && typeof window.Swal.fire === 'function') {
                 const danger = getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545';
                 window.Swal.fire({
-                    title: title,
+                    titleText: title,           // titleText/text are rendered as plain text
                     text: text,
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonText: confirmText,
-                    cancelButtonText: 'Cancel',
+                    confirmButtonText: '',      // button labels are set as text in didOpen
+                    cancelButtonText: '',
                     confirmButtonColor: danger,
                     reverseButtons: true,
-                    focusCancel: true
+                    focusCancel: true,
+                    didOpen: function () {
+                        const ok = window.Swal.getConfirmButton();
+                        const no = window.Swal.getCancelButton();
+                        if (ok) { ok.textContent = confirmText; }
+                        if (no) { no.textContent = cancelText; }
+                    }
                 }).then(function (r) {
                     if (r.isConfirmed) {
                         go();

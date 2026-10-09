@@ -1,4 +1,5 @@
-/* batch_upload.js */
+/* batch_upload.js
+   Переводы: AGS_LANG (выводит batch_upload.php) + хелпер t() */
 'use strict';
 
 const VALID_IMAGE_TYPES = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
@@ -29,7 +30,52 @@ const BATCH_GENRES = [
     ['Western',     'fa-solid fa-hat-cowboy',        '#f39c12'],
 ];
 
-const FETCH_IMDB_LABEL = '<i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fetch info';
+// ── Переводы ─────────────────────────────────────────────
+// AGS_LANG выводит PHP (batch_upload.php) перед подключением скрипта.
+// $lang->load() превращает {1} в %1$s - подставляем оба формата.
+
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    const str  = typeof dict[key] === 'string' ? dict[key] : fallback;
+    if (!args.length) return str;
+    return str.replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+        const i = Number(a ?? b) - 1;
+        return i < args.length ? String(args[i]) : m;
+    });
+}
+
+// Полное экранирование (включая кавычки) - для вставки перевода в
+// HTML-шаблоны, в том числе в атрибуты title/placeholder/alt
+function escT(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function tx(key, fallback, ...args) {
+    return escT(t(key, fallback, ...args));
+}
+
+// 'Sci-Fi' => 'genre_sci_fi' (то же правило, что bu_genre_key() в PHP)
+function genreLabel(genre) {
+    return t('genre_' + genre.toLowerCase().replace(/-/g, '_'), genre);
+}
+
+// Иконка + текст узлом (перевод не проходит через innerHTML)
+function setIconText(el, iconClass, text) {
+    el.textContent = '';
+    const i = document.createElement('i');
+    i.className = iconClass;
+    el.appendChild(i);
+    el.appendChild(document.createTextNode(text));
+}
+
+function setFetchLabel(btn) {
+    setIconText(btn, 'fa-solid fa-wand-magic-sparkles me-1', t('item_fetch', 'Fetch info'));
+}
 
 let torrentCount = 1;
 
@@ -49,25 +95,26 @@ function getCategoryHtml(name, idx) {
 }
 
 function buildTorrentItemHtml(idx, fileName = '') {
+    const opt = tx('item_optional', 'optional');
     return `
-    <button type="button" class="bu-remove-item" title="Remove this torrent" aria-label="Remove this torrent">
+    <button type="button" class="bu-remove-item" title="${tx('item_remove', 'Remove this torrent')}" aria-label="${tx('item_remove', 'Remove this torrent')}">
       <i class="fa-solid fa-trash-can"></i>
     </button>
     <div class="row g-3">
       <div class="col-md-6">
-        <label class="form-label"><i class="fa-solid fa-file-zipper bu-ic bu-ic-primary"></i>Torrent file <span class="bu-req">*</span></label>
+        <label class="form-label"><i class="fa-solid fa-file-zipper bu-ic bu-ic-primary"></i>${tx('item_torrent_file', 'Torrent file')} <span class="bu-req">*</span></label>
         <input class="form-control" type="file" name="torrentFiles[]" accept=".torrent">
         <div class="torrent-name mt-1 small text-muted">${escapeHtml(fileName)}</div>
       </div>
       <div class="col-md-3">
-        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster <span class="bu-opt">optional</span></label>
+        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>${tx('item_poster', 'Poster')} <span class="bu-opt">${opt}</span></label>
         <input class="form-control" type="file" name="posters[]" accept="image/*">
         <div class="image-preview mt-2" style="max-width:150px;display:none">
           <img src="" class="img-thumbnail" style="max-height:100px" alt="">
         </div>
       </div>
       <div class="col-md-3">
-        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster 2 <span class="bu-opt">optional</span></label>
+        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>${tx('item_poster2', 'Poster 2')} <span class="bu-opt">${opt}</span></label>
         <input class="form-control" type="file" name="posters2[]" accept="image/*">
         <div class="image-preview mt-2" style="max-width:150px;display:none">
           <img src="" class="img-thumbnail" style="max-height:100px" alt="">
@@ -77,7 +124,7 @@ function buildTorrentItemHtml(idx, fileName = '') {
 
     <div class="row g-3 mt-0">
       <div class="col-12">
-        <label class="form-label"><i class="fa-solid fa-images bu-ic bu-ic-warning"></i>Screenshots <span class="bu-opt">optional, up to ${BATCH_CONFIG.maxScreenshots}</span></label>
+        <label class="form-label"><i class="fa-solid fa-images bu-ic bu-ic-warning"></i>${tx('item_screenshots', 'Screenshots')} <span class="bu-opt">${tx('item_screens_opt', 'optional, up to {1}', BATCH_CONFIG.maxScreenshots)}</span></label>
         <input class="form-control" type="file" name="screenshots_${idx}[]" accept="image/*" multiple>
         <div class="screenshots-preview mt-2 d-flex flex-wrap gap-2"></div>
       </div>
@@ -85,30 +132,30 @@ function buildTorrentItemHtml(idx, fileName = '') {
 
     <div class="row g-3 mt-0">
       <div class="col-md-6">
-        <label class="form-label"><i class="fa-solid fa-heading bu-ic bu-ic-primary"></i>Torrent name <span class="bu-opt">filename if empty</span></label>
-        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use the filename">
+        <label class="form-label"><i class="fa-solid fa-heading bu-ic bu-ic-primary"></i>${tx('item_name', 'Torrent name')} <span class="bu-opt">${tx('item_name_opt', 'filename if empty')}</span></label>
+        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="${tx('item_name_ph', 'Leave empty to use the filename')}">
       </div>
       <div class="col-md-6">
-        <label class="form-label"><i class="fa-solid fa-folder-tree bu-ic bu-ic-success"></i>Category</label>
+        <label class="form-label"><i class="fa-solid fa-folder-tree bu-ic bu-ic-success"></i>${tx('item_category', 'Category')}</label>
         ${getCategoryHtml('batch_categories', idx)}
       </div>
     </div>
 
     <div class="row g-3 mt-0">
       <div class="col-12">
-        <label class="form-label"><i class="fa-solid fa-align-left bu-ic bu-ic-secondary"></i>Description <span class="bu-opt">BBCode supported</span></label>
-        <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
+        <label class="form-label"><i class="fa-solid fa-align-left bu-ic bu-ic-secondary"></i>${tx('item_descr', 'Description')} <span class="bu-opt">${tx('item_descr_opt', 'BBCode supported')}</span></label>
+        <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="${tx('item_descr_ph', 'Description...')}"></textarea>
       </div>
     </div>
 
     <div class="row g-3 mt-0">
       <div class="col-12">
-        <label class="form-label"><i class="fa-solid fa-tags bu-ic bu-ic-danger"></i>Tags <span class="bu-opt">overridden by the CSV tags column</span></label>
+        <label class="form-label"><i class="fa-solid fa-tags bu-ic bu-ic-danger"></i>${tx('item_tags', 'Tags')} <span class="bu-opt">${tx('item_tags_opt', 'overridden by the CSV tags column')}</span></label>
         <div class="input-group mb-2">
           <span class="input-group-text bu-addon"><i class="fa-solid fa-tag"></i></span>
-          <input type="text" class="form-control batch-tags-input" name="tags_manual[]" placeholder="Action, Comedy, Drama...">
+          <input type="text" class="form-control batch-tags-input" name="tags_manual[]" placeholder="${tx('item_tags_ph', 'Action, Comedy, Drama...')}">
           <button type="button" class="btn bu-btn-soft-secondary" onclick="clearBatchTags(this)">
-            <i class="fa-solid fa-eraser me-1"></i>Clear
+            <i class="fa-solid fa-eraser me-1"></i>${tx('item_clear', 'Clear')}
           </button>
         </div>
         <div class="d-flex flex-wrap gap-2 batch-genre-buttons">
@@ -119,7 +166,7 @@ function buildTorrentItemHtml(idx, fileName = '') {
                   data-color="${color}"
                   onclick="toggleBatchGenreTag(this)"
                   style="border-color: ${color}80; color: ${color};">
-              <i class="${icon} me-1"></i>${label}
+              <i class="${icon} me-1"></i>${escT(genreLabel(label))}
           </button>`).join('')}
         </div>
       </div>
@@ -127,17 +174,17 @@ function buildTorrentItemHtml(idx, fileName = '') {
 
     <div class="row g-3 mt-0">
       <div class="col-12">
-        <label class="form-label"><i class="fa-brands fa-imdb bu-ic bu-ic-imdb"></i>IMDb URL <span class="bu-opt">optional</span></label>
+        <label class="form-label"><i class="fa-brands fa-imdb bu-ic bu-ic-imdb"></i>${tx('item_imdb_url', 'IMDb URL')} <span class="bu-opt">${opt}</span></label>
         <div class="input-group">
           <span class="input-group-text bu-addon"><i class="fa-solid fa-link"></i></span>
           <input type="url" class="form-control imdb-url-input" name="imdb_urls[]"
                  placeholder="https://www.imdb.com/title/tt0000000/">
-          <button type="button" class="btn bu-btn-imdb btn-fetch-imdb">${FETCH_IMDB_LABEL}</button>
+          <button type="button" class="btn bu-btn-imdb btn-fetch-imdb"><i class="fa-solid fa-wand-magic-sparkles me-1"></i>${tx('item_fetch', 'Fetch info')}</button>
         </div>
         <div class="imdb-preview mt-2" style="display:none;">
           <div class="bu-imdb-card">
             <div class="d-flex gap-3 align-items-start">
-              <img class="imdb-poster" src="" alt="Poster"
+              <img class="imdb-poster" src="" alt="${tx('item_poster', 'Poster')}"
                    style="width:56px;height:84px;object-fit:cover;border-radius:6px;display:none;">
               <div class="flex-grow-1 min-w-0">
                 <div class="fw-bold imdb-title">—</div>
@@ -148,7 +195,7 @@ function buildTorrentItemHtml(idx, fileName = '') {
                 </div>
                 <p class="small text-muted mt-2 mb-2 imdb-plot"></p>
                 <button type="button" class="btn btn-sm rounded-pill bu-btn-soft-primary btn-imdb-apply-desc">
-                  <i class="fa-solid fa-paste me-1"></i>Add to description
+                  <i class="fa-solid fa-paste me-1"></i>${tx('item_add_descr', 'Add to description')}
                 </button>
               </div>
             </div>
@@ -185,11 +232,11 @@ function hideImagePreview(posterInput) {
 
 function validateImage(file) {
     if (!VALID_IMAGE_TYPES.includes(file.type)) {
-        alert(`${file.name}: invalid image type`);
+        alert(t('err_image_type', '{1}: invalid image type', file.name));
         return false;
     }
     if (file.size > BATCH_CONFIG.maxImageBytes) {
-        alert(`${file.name}: too large (max ${Math.round(BATCH_CONFIG.maxImageBytes / 1048576)} MB)`);
+        alert(t('err_image_size', '{1}: too large (max {2} MB)', file.name, Math.round(BATCH_CONFIG.maxImageBytes / 1048576)));
         return false;
     }
     return true;
@@ -248,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('addMore')?.addEventListener('click', () => {
         if (torrentCount >= BATCH_CONFIG.maxTorrents) {
-            alert(`Maximum ${BATCH_CONFIG.maxTorrents} torrents`);
+            alert(t('max_torrents', 'Maximum {1} torrents', BATCH_CONFIG.maxTorrents));
             return;
         }
         addTorrentItem(null, torrentCount);
@@ -300,10 +347,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!data.exists) return;
         const warn = document.createElement('div');
         warn.className = 'duplicate-warning bu-alert bu-alert-warning mt-3';
-        warn.innerHTML = '<div class="bu-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>'
-            + '<div><strong>Duplicate detected.</strong> A torrent with the same info_hash already exists: '
-            + '<a href="' + escapeHtml(data.link) + '" target="_blank" rel="noopener">' + escapeHtml(data.name) + '</a>'
-            + ', uploaded ' + escapeHtml(data.added) + '.</div>';
+        warn.innerHTML = '<div class="bu-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>';
+
+        const body   = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = t('dup_title', 'Duplicate detected.');
+        const link = document.createElement('a');
+        link.href        = data.link ?? '';
+        link.target      = '_blank';
+        link.rel         = 'noopener';
+        link.textContent = data.name ?? '';
+        body.append(
+            strong,
+            ' ' + t('dup_text', 'A torrent with the same info_hash already exists:') + ' ',
+            link,
+            t('dup_added', ', uploaded {1}.', data.added ?? '')
+        );
+        warn.appendChild(body);
         item.appendChild(warn);
     }
 
@@ -324,24 +384,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const url     = input?.value?.trim();
         if (!preview) return;
 
-        if (!url) { alert('Please enter an IMDb URL first.'); return; }
+        if (!url) { alert(t('imdb_enter_url', 'Please enter an IMDb URL first.')); return; }
         if (!/^https?:\/\/www\.imdb\.com\/title\/tt\d+/i.test(url)) {
-            alert('Invalid IMDb URL. Example: https://www.imdb.com/title/tt0000000/');
+            alert(t('imdb_invalid', 'Invalid IMDb URL. Example: https://www.imdb.com/title/tt0000000/'));
             return;
         }
 
         btn.disabled  = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Fetching...';
+        setIconText(btn, 'fa-solid fa-spinner fa-spin me-1', t('imdb_fetching', 'Fetching...'));
 
         fetch(BATCH_CONFIG.scriptUrl + '&action=get_imdb_data&imdb_url=' + encodeURIComponent(url))
             .then(r => r.text())
             .then(text => {
                 btn.disabled  = false;
-                btn.innerHTML = FETCH_IMDB_LABEL;
+                setFetchLabel(btn);
                 const match = text.match(/\{[\s\S]*\}/);
                 if (!match) throw new Error('No JSON in response');
                 const data = JSON.parse(match[0]);
-                if (!data.success) { alert('IMDb Error: ' + (data.error || 'Unknown')); return; }
+                if (!data.success) { alert(t('imdb_error', 'IMDb Error: {1}', data.error || t('unknown', 'Unknown'))); return; }
 
                 preview.style.display = '';
                 const poster = preview.querySelector('.imdb-poster');
@@ -364,8 +424,8 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(() => {
                 btn.disabled  = false;
-                btn.innerHTML = FETCH_IMDB_LABEL;
-                alert('Failed to fetch IMDb data. Please try again.');
+                setFetchLabel(btn);
+                alert(t('imdb_failed', 'Failed to fetch IMDb data. Please try again.'));
             });
     }
 
@@ -383,9 +443,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const plot   = preview.querySelector('.imdb-plot')?.textContent;
 
         if (title && title !== '—') parts.push('[b]' + title + '[/b]');
-        if (year)   parts.push('Year: '         + year);
-        if (genre)  parts.push('Genre: '        + genre);
-        if (rating) parts.push('IMDb Rating: '  + rating);
+        if (year)   parts.push(t('descr_year',   'Year: {1}',        year));
+        if (genre)  parts.push(t('descr_genre',  'Genre: {1}',       genre));
+        if (rating) parts.push(t('descr_rating', 'IMDb Rating: {1}', rating));
         if (plot)   parts.push('\n' + plot);
         textarea.value = parts.join('\n');
         textarea.focus();
@@ -397,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const hasFiles = [...document.querySelectorAll('input[name="torrentFiles[]"]')]
             .some(i => i.files.length > 0);
-        if (!hasFiles) { alert('Please select at least one torrent file'); return; }
+        if (!hasFiles) { alert(t('no_files', 'Please select at least one torrent file')); return; }
 
         const allValid = [...document.querySelectorAll('input[name="posters[]"], input[name="posters2[]"]')]
             .every(i => i.files.length === 0 || validateImage(i.files[0]));
@@ -425,23 +485,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isLast   = document.querySelectorAll('#torrentContainer .torrent-item').length <= 1;
         const fileName = item.querySelector('input[name="torrentFiles[]"]')?.files[0]?.name ?? '';
-        const title    = isLast ? 'Clear this torrent?' : 'Remove this torrent?';
+        const title    = isLast
+            ? t('confirm_clear_title', 'Clear this torrent?')
+            : t('confirm_remove_title', 'Remove this torrent?');
         const text     = (fileName ? fileName + ': ' : '')
-            + (isLast ? 'all fields of this block will be cleared.' : 'the block and everything filled in it will be removed from the batch.');
+            + (isLast
+                ? t('confirm_clear_text', 'all fields of this block will be cleared.')
+                : t('confirm_remove_text', 'the block and everything filled in it will be removed from the batch.'));
 
-        confirmAction(title, text, isLast ? 'Clear' : 'Remove').then(ok => { if (ok) doRemove(); });
+        confirmAction(title, text, isLast ? t('confirm_clear', 'Clear') : t('confirm_remove', 'Remove'))
+            .then(ok => { if (ok) doRemove(); });
     });
 
     // SweetAlert2 с запасным вариантом confirm(), если библиотека не загрузилась
     function confirmAction(title, text, confirmText) {
         if (typeof Swal === 'undefined') return Promise.resolve(confirm(title + '\n\n' + text));
         return Swal.fire({
-            title,
+            titleText: title,   // titleText, а не title: title в Swal - это HTML
             text,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: confirmText,
-            cancelButtonText: 'Cancel',
+            cancelButtonText: t('cancel', 'Cancel'),
             confirmButtonColor: getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545',
             reverseButtons: true,
             focusCancel: true,
@@ -567,7 +632,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateTorrentCount() {
         torrentCount = document.querySelectorAll('.torrent-item').length;
         const btn = document.getElementById('batchUploadBtn');
-        if (btn) btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up me-1"></i>Upload ${torrentCount} torrent${torrentCount !== 1 ? 's' : ''}`;
+        if (btn) setIconText(btn, 'fa-solid fa-cloud-arrow-up me-1', torrentCount !== 1
+            ? t('btn_upload_many', 'Upload {1} torrents', torrentCount)
+            : t('btn_upload_one', 'Upload {1} torrent', torrentCount));
 
         const addBtn = document.getElementById('addMore');
         if (addBtn) addBtn.disabled = torrentCount >= BATCH_CONFIG.maxTorrents;
@@ -575,9 +642,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setModalState(state) {
         const map = {
-            working: ['fa-solid fa-spinner fa-spin',     'bu-soft-primary', 'Processing upload'],
-            done:    ['fa-solid fa-circle-check',        'bu-soft-success', 'Upload finished'],
-            error:   ['fa-solid fa-circle-exclamation',  'bu-soft-danger',  'Upload failed'],
+            working: ['fa-solid fa-spinner fa-spin',     'bu-soft-primary', t('state_working', 'Processing upload')],
+            done:    ['fa-solid fa-circle-check',        'bu-soft-success', t('state_done', 'Upload finished')],
+            error:   ['fa-solid fa-circle-exclamation',  'bu-soft-danger',  t('state_error', 'Upload failed')],
         };
         const [icon, soft, title] = map[state];
         if (modalIcon)    modalIcon.className = icon;
@@ -610,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <span class="text-truncate">
                     <i class="fa-solid fa-file-zipper me-1 text-primary"></i>${escapeHtml(input.files[0].name)}
                   </span>
-                  <span class="badge bu-badge bu-soft-secondary"><i class="fa-regular fa-clock me-1"></i>Waiting</span>
+                  <span class="badge bu-badge bu-soft-secondary"><i class="fa-regular fa-clock me-1"></i>${tx('st_waiting', 'Waiting')}</span>
                 </div>
                 <div class="progress bu-progress-sm">
                   <div class="progress-bar" style="width:0%"></div>
@@ -626,14 +693,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const bar   = el.querySelector('.progress-bar');
         bar.style.width = percent + '%';
         const map = {
-            uploading:  ['bu-soft-info',    'fa-solid fa-arrow-up',        'Uploading',  'progress-bar bg-info progress-bar-striped progress-bar-animated'],
-            processing: ['bu-soft-warning', 'fa-solid fa-gear fa-spin',    'Processing', 'progress-bar bg-warning progress-bar-striped progress-bar-animated'],
-            success:    ['bu-soft-success', 'fa-solid fa-check',           'Done',       'progress-bar bg-success'],
-            error:      ['bu-soft-danger',  'fa-solid fa-xmark',           'Error',      'progress-bar bg-danger'],
+            uploading:  ['bu-soft-info',    'fa-solid fa-arrow-up',        t('st_uploading', 'Uploading'),   'progress-bar bg-info progress-bar-striped progress-bar-animated'],
+            processing: ['bu-soft-warning', 'fa-solid fa-gear fa-spin',    t('st_processing', 'Processing'), 'progress-bar bg-warning progress-bar-striped progress-bar-animated'],
+            success:    ['bu-soft-success', 'fa-solid fa-check',           t('st_done', 'Done'),             'progress-bar bg-success'],
+            error:      ['bu-soft-danger',  'fa-solid fa-xmark',           t('st_error', 'Error'),           'progress-bar bg-danger'],
         };
         const [soft, icon, text, barClass] = map[status] ?? ['bu-soft-secondary', 'fa-solid fa-circle', status, 'progress-bar'];
         badge.className = `badge bu-badge ${soft}`;
-        badge.innerHTML = `<i class="${icon} me-1"></i>${escapeHtml(text)}`;
+        setIconText(badge, `${icon} me-1`, text);
         bar.className   = barClass;
     }
 
@@ -656,18 +723,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;
             try {
                 if (!xhr.getResponseHeader('Content-Type')?.includes('application/json')) {
-                    throw new Error('Non-JSON response from server');
+                    throw new Error(t('err_non_json', 'Non-JSON response from server'));
                 }
                 const data = JSON.parse(xhr.responseText);
-                data.success ? showResults(data) : showError(data.error ?? 'Server error');
+                data.success ? showResults(data) : showError(data.error ?? t('err_server', 'Server error'));
             } catch (e) {
-                showError('Response error: ' + e.message);
+                showError(t('err_response', 'Response error: {1}', e.message));
             }
         };
 
-        xhr.onerror   = () => showError('Network error');
+        xhr.onerror   = () => showError(t('err_network', 'Network error'));
         xhr.timeout   = 300000;
-        xhr.ontimeout = () => showError('Request timeout');
+        xhr.ontimeout = () => showError(t('err_timeout', 'Request timeout'));
 
         xhr.open('POST', BATCH_CONFIG.scriptUrl);
         xhr.send(new FormData(form));
@@ -701,12 +768,12 @@ document.addEventListener('DOMContentLoaded', () => {
         summary.innerHTML = `
             <div class="bu-alert-icon"><i class="fa-solid ${allOk ? 'fa-circle-check' : 'fa-circle-info'}"></i></div>
             <div class="flex-grow-1">
-              <strong>Uploaded ${data.successful} of ${data.processed} torrents</strong>
+              <strong>${tx('sum_uploaded', 'Uploaded {1} of {2} torrents', data.successful, data.processed)}</strong>
               <div class="bu-result-stats">
-                <span><i class="fa-solid fa-image me-1"></i>${s.with_posters ?? 0} with posters</span>
-                <span><i class="fa-solid fa-image me-1"></i>${s.with_posters2 ?? 0} with poster 2</span>
-                <span><i class="fa-solid fa-images me-1"></i>${s.total_screenshots ?? 0} screenshots</span>
-                <span><i class="fa-solid fa-file-csv me-1"></i>${s.csv_imported ?? 0} CSV records</span>
+                <span><i class="fa-solid fa-image me-1"></i>${tx('sum_posters', '{1} with posters', s.with_posters ?? 0)}</span>
+                <span><i class="fa-solid fa-image me-1"></i>${tx('sum_posters2', '{1} with poster 2', s.with_posters2 ?? 0)}</span>
+                <span><i class="fa-solid fa-images me-1"></i>${tx('sum_screens', '{1} screenshots', s.total_screenshots ?? 0)}</span>
+                <span><i class="fa-solid fa-file-csv me-1"></i>${tx('sum_csv', '{1} CSV records', s.csv_imported ?? 0)}</span>
               </div>
             </div>`;
         resultsList.appendChild(summary);
@@ -724,17 +791,17 @@ document.addEventListener('DOMContentLoaded', () => {
                       <div class="bu-result-name">${r.name}</div>
                       <div class="bu-result-meta">
                         <span><i class="fa-solid fa-hashtag"></i>${r.id}</span>
-                        <span><i class="fa-solid fa-copy"></i>${r.files} files</span>
+                        <span><i class="fa-solid fa-copy"></i>${tx('res_files', '{1} files', r.files)}</span>
                         <span><i class="fa-solid fa-hard-drive"></i>${escapeHtml(r.size)}</span>
                       </div>
                     </div>
                     <div class="bu-result-badges">
-                      ${r.has_poster ? '<span class="badge bu-badge bu-soft-info" title="Poster"><i class="fa-solid fa-image"></i></span>' : ''}
-                      ${r.has_poster2 ? '<span class="badge bu-badge bu-soft-info" title="Poster 2"><i class="fa-solid fa-image me-1"></i>2</span>' : ''}
-                      ${r.screenshots_added ? `<span class="badge bu-badge bu-soft-warning" title="Screenshots"><i class="fa-solid fa-images me-1"></i>${r.screenshots_added}</span>` : ''}
+                      ${r.has_poster ? `<span class="badge bu-badge bu-soft-info" title="${tx('item_poster', 'Poster')}"><i class="fa-solid fa-image"></i></span>` : ''}
+                      ${r.has_poster2 ? `<span class="badge bu-badge bu-soft-info" title="${tx('item_poster2', 'Poster 2')}"><i class="fa-solid fa-image me-1"></i>2</span>` : ''}
+                      ${r.screenshots_added ? `<span class="badge bu-badge bu-soft-warning" title="${tx('item_screenshots', 'Screenshots')}"><i class="fa-solid fa-images me-1"></i>${r.screenshots_added}</span>` : ''}
                       ${r.has_imdb ? '<span class="badge bu-badge bu-soft-warning" title="IMDb"><i class="fa-brands fa-imdb"></i></span>' : ''}
                       <a href="${escapeHtml(r.link)}" target="_blank" rel="noopener" class="btn btn-sm rounded-pill bu-btn-soft-primary">
-                        <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>View
+                        <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>${tx('res_view', 'View')}
                       </a>
                     </div>`;
                 list.appendChild(item);
@@ -748,7 +815,7 @@ document.addEventListener('DOMContentLoaded', () => {
             err.innerHTML = `
                 <div class="bu-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
                 <div class="flex-grow-1">
-                  <strong>Errors (${data.errors.length})</strong>
+                  <strong>${tx('errors_title', 'Errors ({1})', data.errors.length)}</strong>
                   <ul class="bu-error-list">${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
                 </div>`;
             resultsList.appendChild(err);
@@ -765,7 +832,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const err = document.createElement('div');
         err.className = 'bu-alert bu-alert-danger';
         err.innerHTML = `<div class="bu-alert-icon"><i class="fa-solid fa-circle-exclamation"></i></div>`
-            + `<div><strong>Error:</strong> ${escapeHtml(msg)}</div>`;
+            + `<div><strong>${tx('err_label', 'Error:')}</strong> ${escapeHtml(msg)}</div>`;
         resultsList.appendChild(err);
         closeModalBtn.style.display = '';
     }

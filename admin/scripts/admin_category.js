@@ -6,6 +6,30 @@
         return String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     }
 
+    // ── Ланг: AGS_LANG выводит admin/category.php (ключи js_* без префикса) ──
+    // $lang->load() превращает {1} в %1$s, поэтому подставляем оба формата.
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    function t(key, fallback, ...args) {
+        const str = typeof L[key] === 'string' ? L[key] : fallback;
+        return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+            const i = Number(a || b) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+    // Английские fallback для подписей в модалке редактирования
+    const FB = {
+        lbl_name:      'Name',
+        lbl_parent:    'Parent category',
+        lbl_icon:      'Icon',
+        hint_has_subs: 'Has subcategories — must stay a main category',
+    };
+    function alertBox(text) {
+        const d = document.createElement('div');
+        d.className = 'alert alert-danger';
+        d.textContent = text;
+        return d;
+    }
+
     // ── Выбор иконки — через делегирование, в пределах СВОЕГО .cm-icon-picker ──
     document.addEventListener('click', function (e) {
         const toggle = e.target.closest('.cm-ico-toggle');
@@ -76,18 +100,20 @@
             fetch(baseScript + '&do=ajax_get_category&id=' + encodeURIComponent(id))
                 .then(r => r.json())
                 .then(data => {
-                    if (data.error) { body.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.error) + '</div>'; return; }
+                    if (data.error) { body.replaceChildren(alertBox(data.error)); return; }
                     body.innerHTML = `
                         <input type="hidden" name="do" value="edit">
                         <input type="hidden" name="what" value="save">
                         <input type="hidden" name="id" value="${escapeHtml(data.id)}">
                         <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                            <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-tag"></i><span data-cm-t="lbl_name"></span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="name" value="${escapeHtml(data.name)}" required></div>
-                            <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-sitemap"></i>Parent category</label>${dropdownHtml}
-                                ${data.has_subs ? '<div class="form-text text-warning"><i class="fa-solid fa-lock me-1"></i>Has subcategories — must stay a main category</div>' : ''}</div>
-                            <div class="col-12"><label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>${iconSelectorHtml}</div>
+                            <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-sitemap"></i><span data-cm-t="lbl_parent"></span></label>${dropdownHtml}
+                                ${data.has_subs ? '<div class="form-text text-warning"><i class="fa-solid fa-lock me-1"></i><span data-cm-t="hint_has_subs"></span></div>' : ''}</div>
+                            <div class="col-12"><label class="form-label"><i class="fa-solid fa-icons"></i><span data-cm-t="lbl_icon"></span></label>${iconSelectorHtml}</div>
                         </div>`;
+                    // Переводы — только текстом
+                    body.querySelectorAll('[data-cm-t]').forEach(el => { el.textContent = t(el.dataset.cmT, FB[el.dataset.cmT] ?? ''); });
                     const sel = body.querySelector('select[name="cid"]');
                     if (sel) {
                         // сама себе не родитель; с подкатегориями — только «None»
@@ -97,9 +123,9 @@
                     }
                     const icon = body.querySelector('input[name="icon"]');
                     if (icon) { icon.value = data.icon || ''; icon.dispatchEvent(new Event('input', { bubbles: true })); }
-                    label.textContent = 'Edit “' + (data.name || '') + '”';
+                    label.textContent = t('edit_title', 'Edit “{1}”', data.name || '');
                 })
-                .catch(err => { body.innerHTML = '<div class="alert alert-danger">Error loading category data</div>'; console.error(err); });
+                .catch(err => { body.replaceChildren(alertBox(t('err_load', 'Error loading category data'))); console.error(err); });
         }));
     });
 })();

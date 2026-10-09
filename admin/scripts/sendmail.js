@@ -8,6 +8,22 @@
         if (el) el.style.display = 'block';
     };
 
+    /* ---- i18n: AGS_LANG is printed by sendmail.php (js_* keys without the prefix) ---- */
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    const t = (key, fallback, ...args) => {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    };
+
+    // For places that are rendered as HTML (SweetAlert2 buttons, preview srcdoc)
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+
     const init = () => {
         const form = document.getElementById('mailForm');
         if (!form) return;
@@ -33,7 +49,7 @@
                     ...opts,
                 }).then((r) => r.isConfirmed);
             }
-            return Promise.resolve(window.confirm(opts.text || opts.title));
+            return Promise.resolve(window.confirm(opts.text || opts.titleText));
         };
 
         /* ---- Toolbar ---- */
@@ -85,11 +101,12 @@
         };
 
         const render = () => {
-            setMeta(pvTo, email.value.trim(), 'No recipient yet');
-            setMeta(pvSubject, subject.value.trim(), 'No subject yet');
+            setMeta(pvTo, email.value.trim(), t('no_recipient', 'No recipient yet'));
+            setMeta(pvSubject, subject.value.trim(), t('no_subject', 'No subject yet'));
 
             const body = message.value.trim()
-                || '<p style="color:#adb5bd;font-style:italic">Your message will appear here.</p>';
+                || '<p style="color:#adb5bd;font-style:italic">'
+                    + esc(t('preview_placeholder', 'Your message will appear here.')) + '</p>';
 
             // sandbox="" on the iframe blocks scripts, forms and navigation
             frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8">'
@@ -138,10 +155,10 @@
 
             ask({
                 icon: 'question',
-                title: 'Send this email?',
-                text: 'It will be delivered to ' + email.value.trim() + '.',
-                confirmButtonText: 'Send email',
-                cancelButtonText: 'Keep editing',
+                titleText: t('confirm_send_title', 'Send this email?'),
+                text: t('confirm_send_text', 'It will be delivered to {1}.', email.value.trim()),
+                confirmButtonText: esc(t('btn_send', 'Send email')),
+                cancelButtonText: esc(t('btn_keep_editing', 'Keep editing')),
             }).then((ok) => {
                 if (!ok) return;
                 confirmed = true;
@@ -159,10 +176,10 @@
 
             ask({
                 icon: 'warning',
-                title: 'Discard your changes?',
-                text: 'The form will go back to how it was when the page loaded.',
-                confirmButtonText: 'Discard',
-                cancelButtonText: 'Keep editing',
+                titleText: t('confirm_reset_title', 'Discard your changes?'),
+                text: t('confirm_reset_text', 'The form will go back to how it was when the page loaded.'),
+                confirmButtonText: esc(t('btn_discard', 'Discard')),
+                cancelButtonText: esc(t('btn_keep_editing', 'Keep editing')),
             }).then((ok) => {
                 if (!ok) return;
                 form.reset();

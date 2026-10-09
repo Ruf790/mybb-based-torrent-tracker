@@ -10,7 +10,32 @@
         try { return Object.assign(fallback, JSON.parse(node.textContent || '{}')); } catch (e) { return fallback; }
     })();
 
+    // ── i18n: AGS_LANG выводит PHP (js_* ключи ланга без префикса) ──
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+
+    /** Перевод с английским fallback; {1}… и %1$s (после $lang->load()) → args */
+    function t(key, fallback, ...args) {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    }
+
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    /** Небольшой DOM-хелпер: тексты только через textContent */
+    function el(tag, attrs = {}, ...children) {
+        const node = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+            if (k === 'style') node.style.cssText = v; else node.setAttribute(k, v);
+        }
+        for (const c of children) {
+            node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        }
+        return node;
+    }
 
     // ── Log lines ───────────────────────────────────────────
     const searchInput = document.getElementById('searchInput');
@@ -55,7 +80,11 @@
 
         searchField?.classList.toggle('has-value', q !== '');
         searchField?.classList.toggle('is-invalid', !!test && !test.ok);
-        if (searchField) searchField.title = test && !test.ok ? 'Invalid regex — searching as plain text' : '';
+        if (searchField) {
+            searchField.title = test && !test.ok
+                ? t('invalid_regex', 'Invalid regex — searching as plain text')
+                : '';
+        }
 
         let shown = 0;
         for (const el of lines) {
@@ -76,12 +105,14 @@
         noResults?.classList.toggle('show', shown === 0);
         if (counter) {
             const filtered = q !== '' || activeLevel !== 'all';
-            counter.textContent = filtered ? `${shown.toLocaleString()} of ${lines.length.toLocaleString()} lines` : '';
+            counter.textContent = filtered
+                ? t('found', '{1} of {2} lines', shown.toLocaleString(), lines.length.toLocaleString())
+                : '';
         }
     }
 
-    let t = null;
-    const applyDebounced = () => { clearTimeout(t); t = setTimeout(apply, lines.length > 5000 ? 220 : 90); };
+    let tmr = null;
+    const applyDebounced = () => { clearTimeout(tmr); tmr = setTimeout(apply, lines.length > 5000 ? 220 : 90); };
 
     function clearSearch() {
         if (!searchInput) return;
@@ -98,7 +129,7 @@
 
     searchInput?.addEventListener('input', applyDebounced);
     searchInput?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(t); apply(); }
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(tmr); apply(); }
         if (e.key === 'Escape') { e.preventDefault(); clearSearch(); }
     });
 
@@ -165,6 +196,7 @@
     if (logOutput) logOutput.scrollTop = logOutput.scrollHeight;
 
     // ── Delete confirmations: SweetAlert2 → confirm() fallback ──
+    // opts.html — DOM-узел (Swal принимает HTMLElement), переводы внутри только текстом
     function confirmAction(opts, onOk) {
         if (window.Swal && typeof window.Swal.fire === 'function') {
             const danger = getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545';
@@ -174,7 +206,7 @@
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonText: opts.confirm,
-                cancelButtonText: 'Cancel',
+                cancelButtonText: t('cancel', 'Cancel'),
                 confirmButtonColor: danger,
                 reverseButtons: true,
                 focusCancel: true
@@ -189,22 +221,31 @@
             if (btn.dataset.confirm === 'one') {
                 const form = document.getElementById('lelDeleteOne');
                 if (!form) return;
+                const html = el('div', {},
+                    el('code', {}, LEL.selected),
+                    el('br'),
+                    el('small', {}, t('del_one_note', "This can't be undone."))
+                );
                 confirmAction({
-                    title: 'Delete this log?',
-                    html: `<code>${esc(LEL.selected)}</code><br><small>This can't be undone.</small>`,
-                    plain: `Delete ${LEL.selected}? This can't be undone.`,
-                    confirm: 'Delete file'
+                    title: t('del_one_title', 'Delete this log?'),
+                    html,
+                    plain: t('del_one_plain', "Delete {1}? This can't be undone.", LEL.selected),
+                    confirm: t('del_one_confirm', 'Delete file')
                 }, () => form.submit());
             } else {
                 const form = document.getElementById('lelDeleteAll');
                 if (!form) return;
-                const list = LEL.files.map((f) => `<li><code>${esc(f)}</code></li>`).join('');
+                const n = LEL.files.length;
+                const list = el('ul', { style: 'margin:0' }, ...LEL.files.map((f) => el('li', {}, el('code', {}, f))));
+                const html = el('div', {},
+                    el('div', { style: 'max-height:200px;overflow:auto;text-align:left' }, list),
+                    el('small', {}, t('del_all_note', '{1} of log history will be removed permanently.', LEL.totalSize))
+                );
                 confirmAction({
-                    title: `Delete all ${LEL.files.length} log files?`,
-                    html: `<div style="max-height:200px;overflow:auto;text-align:left"><ul style="margin:0">${list}</ul></div>`
-                        + `<small>${esc(LEL.totalSize)} of log history will be removed permanently.</small>`,
-                    plain: `Delete all ${LEL.files.length} log files? This can't be undone.`,
-                    confirm: 'Delete all'
+                    title: t('del_all_title', 'Delete all {1} log files?', n),
+                    html,
+                    plain: t('del_all_plain', "Delete all {1} log files? This can't be undone.", n),
+                    confirm: t('del_all_confirm', 'Delete all')
                 }, () => form.submit());
             }
         });

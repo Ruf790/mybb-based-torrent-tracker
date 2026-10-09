@@ -1,4 +1,45 @@
 // maxlogin.js — вынесено из maxlogin.php
+// Strings: AGS_LANG (printed by maxlogin.php from js_* keys of maxlogin.lang.php).
+// Translations go into the DOM as text only (textContent / text nodes).
+
+(function () {
+
+    /** Translated string with an English fallback; fills {1}… and %1$s… */
+    function t(key, fallback, ...args) {
+        const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+        const str = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+        return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            const i = parseInt(a || b, 10) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+
+    /** Element with plain text content. */
+    function el(tag, text) {
+        const node = document.createElement(tag);
+        node.textContent = text;
+        return node;
+    }
+
+    /**
+     * Translated string as a DOM fragment (for Swal `html`): text parts become
+     * text nodes, {N} placeholders are replaced by the given nodes/strings.
+     */
+    function tNode(key, fallback, ...parts) {
+        const wrap = document.createElement('div');
+        t(key, fallback).split(/(\{\d+\}|%\d+\$s)/).forEach(function (seg) {
+            const m = seg.match(/^\{(\d+)\}$|^%(\d+)\$s$/);
+            if (m) {
+                const part = parts[parseInt(m[1] || m[2], 10) - 1];
+                if (part !== undefined) {
+                    wrap.appendChild(part instanceof Node ? part : document.createTextNode(String(part)));
+                    return;
+                }
+            }
+            if (seg !== '') wrap.appendChild(document.createTextNode(seg));
+        });
+        return wrap;
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
         let searchTimeout;
@@ -55,7 +96,7 @@
             .then(response => response.json())
             .catch(error => {
                 console.error('Request failed:', error);
-                return { success: false, error: 'Request failed' };
+                return { success: false, error: t('request_failed', 'Request failed') };
             });
         }
         
@@ -84,7 +125,7 @@
                     updateFilterInfo();
                     updateTotalCount();
                 } else {
-                    Swal.fire('Error!', response.error || 'Unknown error', 'error');
+                    Swal.fire(t('error', 'Error'), response.error || t('unknown_error', 'Unknown error'), 'error');
                 }
             })
             .finally(() => {
@@ -126,7 +167,7 @@
                     updateFilterInfo();
                     updateTotalCount(response.count);
                 } else {
-                    Swal.fire('Error!', response.error || 'Search failed', 'error');
+                    Swal.fire(t('error', 'Error'), response.error || t('search_failed', 'Search failed'), 'error');
                 }
             })
             .finally(() => {
@@ -140,7 +181,7 @@
             if (!totalCountEl) return;
             
             if (count !== undefined) {
-                totalCountEl.textContent = count + ' records';
+                totalCountEl.textContent = t('records', '{1} records', count);
             } else {
                 const searchTerm = liveSearchEl ? liveSearchEl.value : '';
                 const filterBanned = filterBannedEl ? filterBannedEl.value : 'all';
@@ -153,7 +194,7 @@
                 })
                 .then(response => {
                     if (response.success && totalCountEl) {
-                        totalCountEl.textContent = response.count + ' records';
+                        totalCountEl.textContent = t('records', '{1} records', response.count);
                     }
                 });
             }
@@ -253,15 +294,17 @@
                 const id = button.dataset.id;
                 const action = button.dataset.action;
                 const ip = button.dataset.ip;
-                const actionText = action === 'ban' ? 'ban' : 'unban';
+                const isBan = action === 'ban';
                 
                 Swal.fire({
-                    title: 'Are you sure?',
-                    html: 'Do you want to <strong>' + actionText + '</strong> IP <code>' + ip + '</code>?',
+                    title: t('confirm_title', 'Are you sure?'),
+                    html: isBan
+                        ? tNode('confirm_ban', 'Do you want to ban IP {1}?', el('code', ip))
+                        : tNode('confirm_unban', 'Do you want to unban IP {1}?', el('code', ip)),
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonText: 'Yes, ' + actionText + ' it!',
-                    cancelButtonText: 'Cancel',
+                    confirmButtonText: isBan ? t('yes_ban', 'Yes, ban it!') : t('yes_unban', 'Yes, unban it!'),
+                    cancelButtonText: t('cancel', 'Cancel'),
                     confirmButtonColor: action === 'ban' ? '#d33' : '#3085d6',
                     reverseButtons: true
                 }).then((result) => {
@@ -292,16 +335,17 @@
                                 // Показываем уведомление
                                 Swal.fire({
                                     icon: 'success',
-                                    title: 'Success!',
-                                    text: response.data.ip + ' has been ' + 
-                                          (response.data.is_banned ? 'banned' : 'unbanned'),
+                                    title: t('success', 'Success!'),
+                                    text: response.data.is_banned
+                                        ? t('ip_banned', '{1} has been banned', response.data.ip)
+                                        : t('ip_unbanned', '{1} has been unbanned', response.data.ip),
                                     timer: 2000,
                                     showConfirmButton: false
                                 });
                                 
                                 updateFilterInfo();
                             } else {
-                                Swal.fire('Error!', response.error || 'Operation failed', 'error');
+                                Swal.fire(t('error', 'Error'), response.error || t('operation_failed', 'Operation failed'), 'error');
                             }
                         })
                         .finally(() => {
@@ -319,12 +363,12 @@
                 const ip = button.dataset.ip;
                 
                 Swal.fire({
-                    title: 'Delete Attempt',
-                    html: 'Are you sure you want to delete attempt from IP <code>' + ip + '</code>?',
+                    title: t('delete_attempt_title', 'Delete attempt'),
+                    html: tNode('delete_attempt_confirm', 'Are you sure you want to delete the attempt from IP {1}?', el('code', ip)),
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonText: 'Yes, delete it!',
-                    cancelButtonText: 'Cancel',
+                    confirmButtonText: t('yes_delete', 'Yes, delete'),
+                    cancelButtonText: t('cancel', 'Cancel'),
                     confirmButtonColor: '#d33',
                     reverseButtons: true
                 }).then((result) => {
@@ -350,13 +394,13 @@
                                 
                                 Swal.fire({
                                     icon: 'success',
-                                    title: 'Deleted!',
+                                    title: t('deleted', 'Deleted!'),
                                     text: response.message,
                                     timer: 2000,
                                     showConfirmButton: false
                                 });
                             } else {
-                                Swal.fire('Error!', response.error || 'Delete failed', 'error');
+                                Swal.fire(t('error', 'Error'), response.error || t('delete_failed', 'Delete failed'), 'error');
                             }
                         })
                         .finally(() => {
@@ -379,20 +423,27 @@
             let info = [];
             
             if (searchTerm) {
-                info.push('Search: "' + searchTerm + '"');
+                info.push(t('filter_search', 'Search: "{1}"', searchTerm));
             }
             
             if (bannedFilter !== 'all') {
-                info.push('Status: ' + (bannedFilter === 'yes' ? 'Banned' : 'Active'));
+                info.push(t('filter_status', 'Status: {1}', bannedFilter === 'yes' ? t('banned', 'Banned') : t('active', 'Active')));
             }
             
             if (typeFilter !== 'all') {
-                info.push('Type: ' + (typeFilter === 'login' ? 'Login' : 'Recovery'));
+                info.push(t('filter_type', 'Type: {1}', typeFilter === 'login' ? t('login', 'Login') : t('recovery', 'Recovery')));
             }
             
-            filterInfoEl.innerHTML = info.length > 0 ? 
-                '<i class="fas fa-filter me-1"></i>' + info.join(' • ') : 
-                'Showing all records';
+            // Text nodes only: the search term is user input
+            filterInfoEl.textContent = '';
+            if (info.length > 0) {
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-filter me-1';
+                filterInfoEl.appendChild(icon);
+                filterInfoEl.appendChild(document.createTextNode(info.join(' • ')));
+            } else {
+                filterInfoEl.textContent = t('showing_all', 'Showing all records');
+            }
         }
         
         // Инициализация
@@ -457,7 +508,7 @@
                     body: params
                 })
                 .then(r => r.json())
-                .catch(() => ({success: false, error: 'Request failed'}))
+                .catch(() => ({success: false, error: t('request_failed', 'Request failed')}))
                 .finally(() => {
                     if (logSpinner) logSpinner.classList.add('d-none');
                     if (logContainer) logContainer.style.opacity = '1';
@@ -469,7 +520,7 @@
                     if (res.success && logContainer) {
                         logContainer.innerHTML = res.html;
                     } else if (!res.success) {
-                        Swal.fire('Error', res.error || 'Failed to load', 'error');
+                        Swal.fire(t('error', 'Error'), res.error || t('load_failed', 'Failed to load'), 'error');
                     }
                     logUpdateCount();
                 });
@@ -477,9 +528,9 @@
 
             function logUpdateCount(n) {
                 if (!logCount) return;
-                if (n !== undefined) { logCount.textContent = n + ' records'; return; }
+                if (n !== undefined) { logCount.textContent = t('records', '{1} records', n); return; }
                 logReq('log_ajax_get_count').then(res => {
-                    if (res.success) logCount.textContent = res.count + ' records';
+                    if (res.success) logCount.textContent = t('records', '{1} records', res.count);
                 });
             }
 
@@ -521,14 +572,20 @@
                 if (!delAll) return;
                 e.preventDefault();
                 const scope = delAll.dataset.scope;
-                const labels = {all: 'ALL records', fail: 'all FAILED records', success: 'all SUCCESS records', suspicious: 'all SUSPICIOUS records'};
+                const titles = {
+                    all:        t('delete_all_title_all', 'Delete ALL records?'),
+                    fail:       t('delete_all_title_fail', 'Delete all FAILED records?'),
+                    success:    t('delete_all_title_success', 'Delete all SUCCESSFUL records?'),
+                    suspicious: t('delete_all_title_suspicious', 'Delete all SUSPICIOUS records?')
+                };
                 Swal.fire({
-                    title: 'Delete ' + labels[scope] + '?',
-                    html: 'This action <strong>cannot be undone</strong>.',
+                    title: titles[scope] || titles.all,
+                    html: tNode('irreversible', 'This action {1}.', el('strong', t('irreversible_strong', 'cannot be undone'))),
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonColor: '#d33',
-                    confirmButtonText: 'Yes, delete',
+                    confirmButtonText: t('yes_delete', 'Yes, delete'),
+                    cancelButtonText: t('cancel', 'Cancel'),
                     reverseButtons: true
                 }).then(result => {
                     if (!result.isConfirmed) return;
@@ -536,9 +593,9 @@
                         if (res.success) {
                             logPage = 1;
                             logUpdate();
-                            Swal.fire({icon: 'success', title: 'Deleted!', text: res.message, timer: 2000, showConfirmButton: false});
+                            Swal.fire({icon: 'success', title: t('deleted', 'Deleted!'), text: res.message, timer: 2000, showConfirmButton: false});
                         } else {
-                            Swal.fire('Error', res.error || 'Delete failed', 'error');
+                            Swal.fire(t('error', 'Error'), res.error || t('delete_failed', 'Delete failed'), 'error');
                         }
                     });
                 });
@@ -577,12 +634,13 @@
                     const id = delBtn.dataset.id;
                     const ip = delBtn.dataset.ip;
                     Swal.fire({
-                        title: 'Delete log entry?',
-                        html: 'Remove record <strong>#' + id + '</strong> from IP <code>' + ip + '</code>?',
+                        title: t('delete_log_title', 'Delete log entry?'),
+                        html: tNode('delete_log_confirm', 'Remove record {1} from IP {2}?', el('strong', '#' + id), el('code', ip)),
                         icon: 'warning',
                         showCancelButton: true,
                         confirmButtonColor: '#d33',
-                        confirmButtonText: 'Yes, delete',
+                        confirmButtonText: t('yes_delete', 'Yes, delete'),
+                        cancelButtonText: t('cancel', 'Cancel'),
                         reverseButtons: true
                     }).then(result => {
                         if (!result.isConfirmed) return;
@@ -594,9 +652,9 @@
                                     row.style.opacity = '0';
                                     setTimeout(() => { row.remove(); logUpdateCount(); }, 300);
                                 }
-                                Swal.fire({icon:'success', title:'Deleted!', text: res.message, timer:2000, showConfirmButton:false});
+                                Swal.fire({icon:'success', title: t('deleted', 'Deleted!'), text: res.message, timer:2000, showConfirmButton:false});
                             } else {
-                                Swal.fire('Error', res.error || 'Delete failed', 'error');
+                                Swal.fire(t('error', 'Error'), res.error || t('delete_failed', 'Delete failed'), 'error');
                             }
                         });
                     });
@@ -606,3 +664,5 @@
             // Init
             setTimeout(() => { logUpdate(); logUpdateCount(); }, 150);
         });
+
+})();

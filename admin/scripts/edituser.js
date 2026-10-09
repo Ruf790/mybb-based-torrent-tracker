@@ -1,3 +1,16 @@
+// ── i18n ────────────────────────────────────────────────────────────────────
+// AGS_LANG выводит edituser.php (ключи js_* без префикса). Английский fallback,
+// подстановка {1}, {2}… (и %1$s — $lang->load() переводит {N} в %N$s).
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    let s = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : (fallback ?? key);
+    args.forEach((arg, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(arg)).split('%' + n + '$s').join(String(arg));
+    });
+    return s;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 
     
@@ -61,10 +74,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // ── Test avatar ──────────────────────────────────────────────────────────────
 function testAvatar() {
     const avatarInput = document.querySelector('input[name="avatar"]');
-    if (!avatarInput) { showToast('Avatar field not found!', 'error'); return; }
+    if (!avatarInput) { showToast(t('avatar_field_missing', 'Avatar field not found!'), 'error'); return; }
 
     let avatarUrl = avatarInput.value.trim();
-    if (!avatarUrl) { showToast('Please enter an avatar URL first.', 'warning'); return; }
+    if (!avatarUrl) { showToast(t('avatar_enter_url', 'Please enter an avatar URL first.'), 'warning'); return; }
 
     // Нормализация: если это не полный URL (http/https) и нет ведущего слэша —
     // добавляем его, иначе браузер резолвит путь относительно текущей папки
@@ -76,28 +89,32 @@ function testAvatar() {
     const button = document.querySelector('button[onclick="testAvatar()"]');
     const originalHtml = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing...';
+    button.textContent = '';
+    const spinner = document.createElement('i');
+    spinner.className = 'fas fa-spinner fa-spin me-1';
+    button.appendChild(spinner);
+    button.appendChild(document.createTextNode(t('avatar_testing', 'Testing...')));
 
     const img = new Image();
     const timeout = setTimeout(() => {
         img.onload = img.onerror = null;
         button.disabled = false;
         button.innerHTML = originalHtml;
-        showToast('Avatar test timed out.', 'error');
+        showToast(t('avatar_timeout', 'Avatar test timed out.'), 'error');
     }, 10000);
 
     img.onload = function() {
         clearTimeout(timeout);
         button.disabled = false;
         button.innerHTML = originalHtml;
-        showToast('✓ Avatar valid! Dimensions: ' + img.naturalWidth + '×' + img.naturalHeight + 'px', 'success');
+        showToast(t('avatar_valid', '✓ Avatar valid! Dimensions: {1}×{2}px', img.naturalWidth, img.naturalHeight), 'success');
     };
 
     img.onerror = function() {
         clearTimeout(timeout);
         button.disabled = false;
         button.innerHTML = originalHtml;
-        showToast('✗ Avatar URL invalid or image cannot be loaded. Check: URL is correct, image is accessible, supported format (JPG, PNG, GIF, WebP).', 'error');
+        showToast(t('avatar_invalid', '✗ Avatar URL invalid or image cannot be loaded. Check: URL is correct, image is accessible, supported format (JPG, PNG, GIF, WebP).'), 'error');
     };
 
     img.src = avatarUrl + (avatarUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -105,7 +122,7 @@ function testAvatar() {
 
 // ── Security action ──────────────────────────────────────────────────────────
 function securityAction(action, uid, postKey, script) {
-    if (!confirm('Are you sure?')) return;
+    if (!confirm(t('confirm', 'Are you sure?'))) return;
     const data = new FormData();
     data.append('action', 'updateuser');
     data.append('userid', uid);
@@ -113,14 +130,14 @@ function securityAction(action, uid, postKey, script) {
     data.append(action, '1');
     fetch(script, { method: 'POST', body: data })
         .then(() => location.reload())
-        .catch(e => alert('Error: ' + e));
+        .catch(e => alert(t('error', 'Error: {1}', e)));
 }
 
 // ── Send PM ──────────────────────────────────────────────────────────────────
 function sendPMajax(uid, postKey, script) {
     const subject = document.getElementById('pmSubject')?.value.trim();
     const message = document.getElementById('pmMessage')?.value.trim();
-    if (!subject || !message) { alert('Subject and message are required.'); return; }
+    if (!subject || !message) { alert(t('pm_required', 'Subject and message are required.')); return; }
 
     const data = new FormData();
     data.append('action', 'updateuser');
@@ -132,6 +149,6 @@ function sendPMajax(uid, postKey, script) {
 
     fetch(script, { method: 'POST', body: data }).then(() => {
         bootstrap.Modal.getInstance(document.getElementById('sendPMModal'))?.hide();
-        alert('PM sent successfully!');
+        alert(t('pm_sent', 'PM sent successfully!'));
     });
 }

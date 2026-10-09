@@ -2,6 +2,30 @@
 (function () {
     "use strict";
 
+    // Language strings from warned.lang.php (js_* keys, prefix stripped)
+    const L = (typeof AGS_LANG === "object" && AGS_LANG) ? AGS_LANG : {};
+
+    // t(key, fallback, ...args): {1}/%1$s placeholders, English fallback
+    function t(key, fallback, ...args) {
+        let s = typeof L[key] === "string" && L[key] !== "" ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split("{" + n + "}").join(String(a)).split("%" + n + "$s").join(String(a));
+        });
+        return s;
+    }
+
+    // Plural form per lang rule: "one" | "few" | "many"
+    function plural(n) {
+        if (L.plural_rule === "ru") {
+            const m10 = n % 10, m100 = n % 100;
+            if (m10 === 1 && m100 !== 11) return "one";
+            if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "few";
+            return "many";
+        }
+        return n === 1 ? "one" : "many";
+    }
+
     // Flash message close button
     document.querySelectorAll(".wu-page .wu-flash-close").forEach(b => {
         b.addEventListener("click", () => b.closest(".wu-flash")?.remove());
@@ -57,19 +81,24 @@
     if (btn) btn.addEventListener("click", () => {
         const n = boxes().filter(b => b.checked).length;
         if (n === 0) return;
-        const text = "Warnings will be removed from " + n + " user" + (n === 1 ? "" : "s") + ".";
+        const form_ = plural(n);
+        const text = form_ === "one"
+            ? t("confirm_text_one", "Warnings will be removed from {1} user.", n)
+            : form_ === "few"
+                ? t("confirm_text_few", "Warnings will be removed from {1} users.", n)
+                : t("confirm_text_many", "Warnings will be removed from {1} users.", n);
         if (window.Swal) {
             Swal.fire({
-                title: "Remove warnings?",
+                title: t("confirm_title", "Remove warnings?"),
                 text: text,
                 icon: "warning",
                 showCancelButton: true,
-                confirmButtonText: "Remove warnings",
-                cancelButtonText: "Cancel",
+                confirmButtonText: t("confirm_btn", "Remove warnings"),
+                cancelButtonText: t("cancel_btn", "Cancel"),
                 confirmButtonColor: "#dc3545",
                 reverseButtons: true
             }).then(r => { if (r.isConfirmed) form.submit(); });
-        } else if (confirm(text + " Continue?")) {
+        } else if (confirm(text + " " + t("continue", "Continue?"))) {
             form.submit();
         }
     });

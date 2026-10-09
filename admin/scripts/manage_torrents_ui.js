@@ -3,6 +3,14 @@
 (function () {
     'use strict';
 
+    // ── Переводы: const AGS_LANG выводит manage_torrents.php перед скриптами ──
+    // t('key', 'English fallback', arg1, arg2…) → подстановка {1}, {2}… за один проход
+    const t = (key, fallback, ...args) => {
+        const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+        const str  = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : String(fallback ?? key);
+        return str.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] !== undefined ? String(args[n - 1]) : m));
+    };
+
     // ── Конфиг из <script type="application/json" id="mtConfig"> ──
     let cfg = {};
     const cfgEl = document.getElementById('mtConfig');
@@ -75,8 +83,14 @@
         const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
 
         const destructiveActions = {
-            delete: { title: 'Delete selected torrents?', message: 'The torrent files, images, screenshots, comments and all related data are removed permanently.' },
-            banned: { title: 'Toggle ban on selected torrents?', message: 'Banned torrents are hidden from users and cannot be downloaded.' },
+            delete: {
+                title:   t('bulk_delete_title', 'Delete selected torrents?'),
+                message: t('bulk_delete_msg', 'The torrent files, images, screenshots, comments and all related data are removed permanently.'),
+            },
+            banned: {
+                title:   t('bulk_ban_title', 'Toggle ban on selected torrents?'),
+                message: t('bulk_ban_msg', 'Banned torrents are hidden from users and cannot be downloaded.'),
+            },
         };
 
         let confirmed = false;
@@ -87,7 +101,10 @@
             e.preventDefault();
             const count = document.querySelectorAll('.torrent-checkbox:checked').length;
             document.getElementById('bulkConfirmTitle').textContent = c.title;
-            document.getElementById('bulkConfirmMessage').textContent = c.message + ' (' + count + ' torrent' + (count === 1 ? '' : 's') + ' selected)';
+            const countText = count === 1
+                ? t('bulk_selected_one', '1 torrent selected')
+                : t('bulk_selected_many', '{1} torrents selected', count);
+            document.getElementById('bulkConfirmMessage').textContent = c.message + ' (' + countText + ')';
             confirmModal.show();
         });
         document.getElementById('bulkConfirmBtn').addEventListener('click', () => {

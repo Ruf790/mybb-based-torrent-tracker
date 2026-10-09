@@ -1,3 +1,14 @@
+/**
+ * Строка из AGS_LANG (js_* без префикса) с английским fallback и подстановкой {1}, {2}…
+ * popup.js подключается и на страницах без AGS_LANG — тогда всегда fallback.
+ */
+function popupT(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+    let str = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+    args.forEach((a, i) => { str = str.split('{' + (i + 1) + '}').join(String(a)); });
+    return str;
+}
+
 function popupWindow(url, options, root) {
     if (!options) options = {};
     if (root !== true) url = rootpath + url;
@@ -71,7 +82,9 @@ function handleModalFormSubmit(e) {
     if (submitBtn) {
         if (submitBtn.disabled) return; // повторный сабмит, пока идёт запрос
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
+        const spinIcon = document.createElement('i');
+        spinIcon.className = 'fas fa-spinner fa-spin me-2';
+        submitBtn.replaceChildren(spinIcon, document.createTextNode(popupT('popup_saving', 'Saving...')));
     }
     const restoreBtn = () => {
         if (submitBtn) {
@@ -93,7 +106,7 @@ function handleModalFormSubmit(e) {
             // Новый формат: {ok, gid, html} — заменить строку таблицы целиком
             if (data && typeof data === 'object' && 'ok' in data) {
                 if (!data.ok) {
-                    alert(data.error || 'Failed to save (HTTP ' + status + ').');
+                    alert(data.error || popupT('popup_save_failed_http', 'Failed to save (HTTP {1}).', status));
                     restoreBtn();
                     return;
                 }
@@ -113,7 +126,7 @@ function handleModalFormSubmit(e) {
         })
         .catch(error => {
             console.error('Form submission error:', error);
-            alert('Failed to save. Error: ' + error.message);
+            alert(popupT('popup_save_failed_error', 'Failed to save. Error: {1}', error.message));
             restoreBtn();
         });
 }

@@ -9,6 +9,17 @@
     const myPostKey = cfg.postKey || '';
     const scriptUrl = cfg.scriptUrl || location.pathname + location.search;
 
+    // ── i18n (AGS_LANG выводит manage_uploads.php; {N} и %N$s) ──
+    const LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG) || {};
+    function t(key, fallback, ...args) {
+        const s = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+        if (!args.length) return String(s);
+        return String(s).replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+            const i = Number(a || b) - 1;
+            return i < args.length ? String(args[i]) : m;
+        });
+    }
+
     function toast(msg, type) {
         if (typeof showToast === 'function') { showToast(msg, type); }
         else if (typeof Swal !== 'undefined') {
@@ -59,10 +70,10 @@
                         location.reload();
                     }, 900);
                 } else {
-                    toast(data.message || 'Update failed.', 'error');
+                    toast(data.message || t('update_failed', 'Update failed.'), 'error');
                 }
             })
-            .catch(() => toast('Server not responding.', 'error'))
+            .catch(() => toast(t('server_down', 'Server not responding.'), 'error'))
             .finally(() => {
                 btn.disabled = false;
                 btn.querySelector('.save-text').classList.remove('d-none');
@@ -83,10 +94,10 @@
         if (type === 'message') {
             checkbox.checked = false;
             checkbox.disabled = true;
-            note.textContent = 'The tag is always removed from the old location. Not inserted automatically for Messages - private message text is never modified automatically.';
+            note.textContent = t('move_note_pm', 'The tag is always removed from the old location. Not inserted automatically for Messages - private message text is never modified automatically.');
         } else {
             checkbox.disabled = false;
-            note.textContent = 'The tag is always removed from the old location.';
+            note.textContent = t('move_note', 'The tag is always removed from the old location.');
         }
     }
     moveModal.addEventListener('show.bs.modal', function(event) {
@@ -98,20 +109,20 @@
         document.getElementById('moveContentId').value = '';
         document.getElementById('moveInsertTag').checked = true;
         document.getElementById('moveInsertTag').disabled = false;
-        document.getElementById('moveInsertTagNote').textContent = 'The tag is always removed from the old location.';
+        document.getElementById('moveInsertTagNote').textContent = t('move_note', 'The tag is always removed from the old location.');
         updateMoveBbcode();
     });
     document.getElementById('moveContentType').addEventListener('change', updateMoveInsertNote);
     document.getElementById('moveCopyBbcodeBtn').addEventListener('click', function() {
         const input = document.getElementById('moveBbcodeTag');
         input.select();
-        navigator.clipboard?.writeText(input.value).then(() => toast('Copied to clipboard', 'success'));
+        navigator.clipboard?.writeText(input.value).then(() => toast(t('copied_clipboard', 'Copied to clipboard'), 'success'));
     });
     document.getElementById('moveSaveBtn').addEventListener('click', function() {
         const btn = this;
         const contentType = document.getElementById('moveContentType').value;
         const contentId   = document.getElementById('moveContentId').value.trim();
-        if (!contentType || !contentId) { toast('Content type and ID are required', 'error'); return; }
+        if (!contentType || !contentId) { toast(t('type_id_required', 'Content type and ID are required'), 'error'); return; }
 
         const formData = new FormData();
         formData.append('ajax_move', '1');
@@ -135,10 +146,10 @@
                         location.reload();
                     }, 900);
                 } else {
-                    toast(data.message || 'Move failed.', 'error');
+                    toast(data.message || t('move_failed', 'Move failed.'), 'error');
                 }
             })
-            .catch(() => toast('Server not responding.', 'error'))
+            .catch(() => toast(t('server_down', 'Server not responding.'), 'error'))
             .finally(() => {
                 btn.disabled = false;
                 btn.querySelector('.save-text').classList.remove('d-none');
@@ -159,7 +170,7 @@
         if (type === 'message') {
             checkbox.checked = false;
             checkbox.disabled = true;
-            note.textContent = 'Not available for Messages - private message text is never modified automatically.';
+            note.textContent = t('copy_note_pm', 'Not available for Messages - private message text is never modified automatically.');
         } else {
             checkbox.disabled = false;
             note.textContent = '';
@@ -181,13 +192,13 @@
     document.getElementById('copyCopyBbcodeBtn').addEventListener('click', function() {
         const input = document.getElementById('copyBbcodeTag');
         input.select();
-        navigator.clipboard?.writeText(input.value).then(() => toast('Copied to clipboard', 'success'));
+        navigator.clipboard?.writeText(input.value).then(() => toast(t('copied_clipboard', 'Copied to clipboard'), 'success'));
     });
     document.getElementById('copySaveBtn').addEventListener('click', function() {
         const btn = this;
         const contentType = document.getElementById('copyContentType').value;
         const contentId   = document.getElementById('copyContentId').value.trim();
-        if (!contentType || !contentId) { toast('Content type and ID are required', 'error'); return; }
+        if (!contentType || !contentId) { toast(t('type_id_required', 'Content type and ID are required'), 'error'); return; }
 
         const formData = new FormData();
         formData.append('ajax_copy', '1');
@@ -211,10 +222,10 @@
                         location.reload();
                     }, 900);
                 } else {
-                    toast(data.message || 'Copy failed.', 'error');
+                    toast(data.message || t('copy_failed', 'Copy failed.'), 'error');
                 }
             })
-            .catch(() => toast('Server not responding.', 'error'))
+            .catch(() => toast(t('server_down', 'Server not responding.'), 'error'))
             .finally(() => {
                 btn.disabled = false;
                 btn.querySelector('.save-text').classList.remove('d-none');

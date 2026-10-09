@@ -6,6 +6,17 @@
     var reV4  = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
     var reV6  = /^[0-9a-fA-F:.]+$/;
 
+    // Ланг из PHP (const AGS_LANG), английский fallback, подстановка {1} и %1$s
+    var L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    function t(key, fallback) {
+        var str  = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        var args = Array.prototype.slice.call(arguments, 2);
+        return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            var i = parseInt(a || b, 10) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+
     // Поиск: лёгкая проверка на клиенте (сервер всё равно валидирует) + спиннер
     if (form && input) {
         input.addEventListener('input', function () {
@@ -19,7 +30,7 @@
             if (!ok) {
                 e.preventDefault();
                 form.classList.add('is-invalid');
-                input.setCustomValidity('Enter a valid IPv4 or IPv6 address');
+                input.setCustomValidity(t('invalid_ip', 'Enter a valid IPv4 or IPv6 address'));
                 input.reportValidity();
                 return;
             }
@@ -83,7 +94,7 @@
             e.preventDefault();
 
             var name = f.getAttribute('data-username') || '';
-            var msg  = 'Reset passkey for ' + name + '? The user will have to re-download all .torrent files.';
+            var msg  = t('reset_text', 'Reset passkey for {1}? The user will have to re-download all .torrent files.', name);
             var go   = function () {
                 f.dataset.confirmed = '1';
                 f.submit();
@@ -91,12 +102,12 @@
 
             if (window.Swal && typeof window.Swal.fire === 'function') {
                 window.Swal.fire({
-                    title: 'Reset passkey?',
+                    title: t('reset_title', 'Reset passkey?'),
                     text: msg,
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonText: 'Yes, reset',
-                    cancelButtonText: 'Cancel',
+                    confirmButtonText: t('reset_confirm', 'Yes, reset'),
+                    cancelButtonText: t('reset_cancel', 'Cancel'),
                     confirmButtonColor: '#dc3545',
                     reverseButtons: true,
                     focusCancel: true

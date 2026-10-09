@@ -5,8 +5,47 @@
     const page = document.querySelector('.ro-page');
     if (!page) return;
 
-    const singular = page.dataset.singular || 'Item';
-    const plural   = page.dataset.plural || 'items';
+    // ── Ланг: JSON-блок #ro-lang от PHP; запасной вариант — глобальный AGS_LANG
+    function loadLang() {
+        const el = document.getElementById('ro-lang');
+        if (el) {
+            try {
+                const data = JSON.parse(el.textContent || '{}');
+                if (data && typeof data === 'object') return data;
+            } catch (err) {
+                console.warn('requests_offers: bad #ro-lang JSON', err);
+            }
+        }
+        if (typeof AGS_LANG === 'object' && AGS_LANG) return AGS_LANG;
+        console.warn('requests_offers: lang strings not found, using English');
+        return {};
+    }
+    const L = loadLang();
+
+    /** Строка из ланга с английским fallback; подставляет {1} и %1$s. */
+    function t(key, fallback, ...args) {
+        const s = typeof L[key] === 'string' ? L[key] : fallback;
+        return s.replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+            const i = Number(a || b) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+
+    // Строки, разные для вкладок: js_req_* / js_off_*
+    const pfx = page.dataset.tab === 'offers' ? 'off_' : 'req_';
+    const tt  = (key, fallback, ...args) => t(pfx + key, fallback, ...args);
+
+    /** Существительное по числу: 1 запрос / 2 запроса / 5 запросов. */
+    let pluralRules = null;
+    try { pluralRules = new Intl.PluralRules(t('locale', 'en')); } catch (_) { pluralRules = null; }
+
+    function noun(n) {
+        const fb  = pfx === 'off_' ? ['offer', 'offers'] : ['request', 'requests'];
+        const cat = pluralRules ? pluralRules.select(n) : (n === 1 ? 'one' : 'other');
+        if (cat === 'one') return tt('noun_one', fb[0]);
+        if (cat === 'few') return tt('noun_few', fb[1]);
+        return tt('noun_many', fb[1]);
+    }
 
     // ── Подтверждения: SweetAlert2, fallback на confirm()/alert() ──────────
     const hasSwal = () => typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function';
@@ -18,8 +57,8 @@
                 text: opts.text || '',
                 icon: opts.danger ? 'warning' : 'question',
                 showCancelButton: true,
-                confirmButtonText: opts.confirmText || 'Confirm',
-                cancelButtonText: 'Cancel',
+                confirmButtonText: opts.confirmText || t('confirm', 'Confirm'),
+                cancelButtonText: t('cancel', 'Cancel'),
                 reverseButtons: true,
                 focusCancel: !!opts.danger
             };
@@ -94,21 +133,21 @@
 
             if (n === 0) return;
             if (!action) {
-                notify('Choose a bulk action first.');
+                notify(t('choose_action', 'Choose a bulk action first.'));
                 return;
             }
 
             const label = sel.options[sel.selectedIndex].text.trim();
             const opts = action === 'delete'
                 ? {
-                    title: 'Delete ' + n + ' ' + (n === 1 ? singular.toLowerCase() : plural) + '?',
-                    text: 'Their votes and comments will be removed too. This cannot be undone.',
-                    confirmText: 'Delete ' + n,
+                    title: t('bulk_del_title', 'Delete {1} {2}?', n, noun(n)),
+                    text: t('bulk_del_text', 'Their votes and comments will be removed too. This cannot be undone.'),
+                    confirmText: t('bulk_del_btn', 'Delete {1}', n),
                     danger: true
                 }
                 : {
-                    title: label + ' — ' + n + ' selected?',
-                    text: 'The status of every selected ' + singular.toLowerCase() + ' will change.',
+                    title: t('bulk_status_title', '{1} — {2} selected?', label, n),
+                    text: tt('bulk_status_text', 'The status of every selected item will change.'),
                     confirmText: label
                 };
 
@@ -158,15 +197,15 @@
         const isDelete = d.roDo === 'delete';
         const opts = isDelete
             ? {
-                title: 'Delete ' + singular.toLowerCase() + ' #' + d.id + '?',
-                text: (d.title ? '«' + d.title + '»\n' : '') + 'Its votes and comments will be removed too. This cannot be undone.',
-                confirmText: 'Delete',
+                title: tt('del_title', 'Delete #{1}?', d.id),
+                text: (d.title ? '«' + d.title + '»\n' : '') + t('del_text', 'Its votes and comments will be removed too. This cannot be undone.'),
+                confirmText: t('delete', 'Delete'),
                 danger: true
             }
             : {
-                title: 'Mark #' + d.id + ' as ' + d.statusLabel + '?',
+                title: t('status_title', 'Mark #{1} as {2}?', d.id, d.statusLabel),
                 text: d.title || '',
-                confirmText: 'Mark as ' + d.statusLabel
+                confirmText: t('status_btn', 'Mark as {1}', d.statusLabel)
             };
 
         confirmAction(opts).then(ok => {

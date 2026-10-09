@@ -2,23 +2,28 @@
 (() => {
   'use strict';
 
+  // ── i18n: strings exported by PHP as AGS_LANG (English fallbacks inline) ──
+  const L = (typeof AGS_LANG === 'object' && AGS_LANG) || {};
+  const t = (key, fallback, ...args) =>
+    String(L[key] ?? fallback).replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] !== undefined ? String(args[n - 1]) : m));
+
   const page = document.querySelector('.cn-page');
   if (!page) return;
 
   // ── Delete: SweetAlert2 (confirm() fallback) → hidden POST form ───────────
   const confirmDelete = name => {
-    const title = `Delete ${name}?`;
-    const text  = 'Members who picked this country will show no flag until they choose another.';
+    const title = t('confirm_title', 'Delete {1}?', name);
+    const text  = t('confirm_text', 'Members who picked this country will show no flag until they choose another.');
     if (typeof window.Swal === 'undefined') {
       return Promise.resolve(window.confirm(`${title}\n\n${text}`));
     }
     return window.Swal.fire({
-      title,
+      titleText: title,
       text,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Delete',
-      cancelButtonText: 'Cancel',
+      confirmButtonText: t('confirm_btn', 'Delete'),
+      cancelButtonText: t('cancel_btn', 'Cancel'),
       confirmButtonColor: getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545',
       reverseButtons: true,
       focusCancel: true,
@@ -31,7 +36,7 @@
     const btn = e.target.closest('[data-cn-delete]');
     if (!btn || !delForm || btn.classList.contains('is-busy')) return;
 
-    confirmDelete(btn.dataset.name || 'this country').then(ok => {
+    confirmDelete(btn.dataset.name || t('default_name', 'this country')).then(ok => {
       if (!ok) return;
       btn.classList.add('is-busy');
       const icon = btn.querySelector('i');
@@ -73,7 +78,7 @@
 
   if (nameIn && pvName) {
     nameIn.addEventListener('input', () => {
-      pvName.textContent = nameIn.value.trim() || 'Country name';
+      pvName.textContent = nameIn.value.trim() || t('preview_name', 'Country name');
     });
   }
 

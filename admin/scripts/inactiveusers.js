@@ -1,6 +1,17 @@
 (function () {
     'use strict';
 
+    // Переводы из PHP (AGS_LANG), английский fallback, подстановка {1} / %1$s
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    function t(key, fallback, ...args) {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    }
+
     const boxes    = () => Array.from(document.querySelectorAll('.user-checkbox'));
     const selected = () => boxes().filter(cb => cb.checked);
 
@@ -25,7 +36,7 @@
     window.submitForm = function (action) {
         const sel = selected();
         if (sel.length === 0) {
-            alert('Please select at least one user.');
+            alert(t('select_one', 'Please select at least one user.'));
             return;
         }
         if (action === 'delete_selected_users') {
@@ -43,7 +54,7 @@
             });
             bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteConfirmModal')).show();
         } else if (action === 'send_warn_email') {
-            if (confirm('Send warning emails to ' + sel.length + ' user(s)?')) submit(action);
+            if (confirm(t('confirm_send', 'Send warning emails to {1} user(s)?', sel.length))) submit(action);
         }
     };
 
@@ -72,7 +83,9 @@
         document.getElementById('confirmDeleteBtn').addEventListener('click', function () {
             if (selected().length === 0) return;
             this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+            const spinner = document.createElement('span');
+            spinner.className = 'spinner-border spinner-border-sm me-1';
+            this.replaceChildren(spinner, document.createTextNode(t('deleting', 'Deleting...')));
             submit('delete_selected_users');
         });
 

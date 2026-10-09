@@ -5,6 +5,17 @@
     const form = document.getElementById('ttForm');
     if (!form) return;
 
+    // Строки из ланга (AGS_LANG выводит PHP), английский fallback, {1} и %1$s.
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    const t = (key, fallback, ...args) => {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    };
+
     const modeInput = form.querySelector('input[name="mode_js"]');
     const btnDry    = document.getElementById('ttDry');
     const btnRun    = document.getElementById('ttRun');
@@ -17,7 +28,7 @@
         const n = checked().length;
         btnDry.disabled = btnRun.disabled = n === 0;
         const label = toggleAll?.querySelector('span');
-        if (label) label.textContent = n === boxes.length ? 'Clear all' : 'Select all';
+        if (label) label.textContent = n === boxes.length ? t('clear_all', 'Clear all') : t('select_all', 'Select all');
     }
 
     boxes.forEach(b => b.addEventListener('change', updateState));
@@ -30,7 +41,9 @@
 
     function setBusy(btn) {
         btnDry.disabled = btnRun.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Working…';
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-spinner fa-spin me-1';
+        btn.replaceChildren(icon, document.createTextNode(t('working', 'Working…')));
     }
 
     function submitWith(mode) {
@@ -50,7 +63,7 @@
         const titles = checked().map(b => b.dataset.title || b.value);
 
         if (!window.Swal) {
-            if (confirm('Run cleanup now? Deleted records and files cannot be restored.\n\n- ' + titles.join('\n- '))) {
+            if (confirm(t('confirm_native', 'Run cleanup now? Deleted records and files cannot be restored.') + '\n\n- ' + titles.join('\n- '))) {
                 submitWith('run');
             }
             return;
@@ -59,7 +72,7 @@
         // Список собираем через DOM, без innerHTML с данными
         const wrap = document.createElement('div');
         const p = document.createElement('p');
-        p.textContent = 'Deleted records and files cannot be restored. Make sure you have a fresh backup.';
+        p.textContent = t('swal_text', 'Deleted records and files cannot be restored. Make sure you have a fresh backup.');
         const ul = document.createElement('ul');
         ul.style.textAlign = 'left';
         ul.style.margin = '.75rem auto 0';
@@ -72,12 +85,12 @@
         wrap.append(p, ul);
 
         Swal.fire({
-            title: 'Run cleanup?',
+            title: t('swal_title', 'Run cleanup?'),
             html: wrap,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Run cleanup',
-            cancelButtonText: 'Cancel',
+            confirmButtonText: t('swal_confirm', 'Run cleanup'),
+            cancelButtonText: t('swal_cancel', 'Cancel'),
             confirmButtonColor: getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545',
             reverseButtons: true,
             focusCancel: true

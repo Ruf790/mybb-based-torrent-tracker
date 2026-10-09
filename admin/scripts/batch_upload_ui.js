@@ -8,6 +8,12 @@
 
 let _batchActiveTextarea = null;
 
+// t() объявлен в batch_upload.js (подключается раньше); запасной вариант -
+// английский fallback, если основной скрипт не загрузился
+function buT(key, fallback, ...args) {
+    return typeof t === 'function' ? t(key, fallback, ...args) : fallback;
+}
+
 function buEscape(str) {
     if (typeof window.escapeHtml === 'function') return window.escapeHtml(str);
     return String(str)
@@ -29,11 +35,11 @@ document.getElementById('buCopyAnnounce')?.addEventListener('click', function ()
         const label = btn.querySelector('span');
         btn.classList.add('is-copied');
         if (icon)  icon.className = 'fa-solid fa-check me-1';
-        if (label) label.textContent = 'Copied!';
+        if (label) label.textContent = buT('copied', 'Copied!');
         setTimeout(() => {
             btn.classList.remove('is-copied');
             if (icon)  icon.className = 'fa-solid fa-copy me-1';
-            if (label) label.textContent = 'Copy';
+            if (label) label.textContent = buT('copy', 'Copy');
         }, 1800);
     }).catch(() => {});
 });

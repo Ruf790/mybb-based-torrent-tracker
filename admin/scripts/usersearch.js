@@ -4,6 +4,40 @@
 'use strict';
 
 /* ────────────────────────────────────────────────────────────────────────
+   i18n: AGS_LANG выводит usersearch.php (ключи js_* без префикса).
+   t(key, fallback, ...args) — английский fallback, подстановка {1} / %1$s.
+   applyT(root) — переводит [data-t] (textContent) и [data-t-ph] (placeholder);
+   английский текст в разметке служит fallback, аргументы — data-t-args через |.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string')
+        ? AGS_LANG[key]
+        : String(fallback ?? key);
+    args.forEach((arg, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(arg)).split('%' + n + '$s').join(String(arg));
+    });
+    return s;
+}
+
+function applyT(root) {
+    root.querySelectorAll('[data-t]').forEach(el => {
+        const args = el.dataset.tArgs !== undefined ? el.dataset.tArgs.split('|') : [];
+        el.textContent = t(el.dataset.t, el.textContent.trim(), ...args);
+    });
+    root.querySelectorAll('[data-t-ph]').forEach(el => {
+        el.placeholder = t(el.dataset.tPh, el.getAttribute('placeholder') || '');
+    });
+}
+
+/* Кнопка/контейнер: статичная иконка-спиннер + переведённый текст текстовым узлом */
+function setBusy(el, iconHtml, text) {
+    el.innerHTML = iconHtml;
+    el.appendChild(document.createTextNode(text));
+}
+
+/* ────────────────────────────────────────────────────────────────────────
    Passkey toggle/copy
    ──────────────────────────────────────────────────────────────────────── */
 
@@ -30,12 +64,12 @@ function copyPasskey(btn) {
     var passkey = span.dataset.passkey;
 
     navigator.clipboard.writeText(passkey).then(function () {
-        showToast('Passkey copied!', 'success');
+        showToast(t('passkey_copied', 'Passkey copied!'), 'success');
         var icon = btn.querySelector('i');
         icon.className = 'bi bi-clipboard-check text-success';
         setTimeout(function () { icon.className = 'bi bi-clipboard'; }, 2000);
     }).catch(function () {
-        showToast('Failed to copy', 'error');
+        showToast(t('copy_failed', 'Failed to copy'), 'error');
     });
 }
 
@@ -103,7 +137,7 @@ function bulkAction(action) {
     if (action === 'changegroup') {
         const groupSelect = document.getElementById('bulkGroupSelect');
         if (!groupSelect || !groupSelect.value) {
-            showToast('Please select a group first', 'warning');
+            showToast(t('select_group', 'Please select a group first'), 'warning');
             return;
         }
         groupId = groupSelect.value;
@@ -117,32 +151,29 @@ function showBulkBanConfirmation(ids) {
         document.getElementById('bulkBanModal').remove();
     }
 
-    const banTimes = {
-        '1-0-0':  '1 Day',
-        '2-0-0':  '2 Days',
-        '3-0-0':  '3 Days',
-        '4-0-0':  '4 Days',
-        '5-0-0':  '5 Days',
-        '6-0-0':  '6 Days',
-        '7-0-0':  '1 Week',
-        '14-0-0': '2 Weeks',
-        '21-0-0': '3 Weeks',
-        '0-1-0':  '1 Month',
-        '0-2-0':  '2 Months',
-        '0-3-0':  '3 Months',
-        '0-4-0':  '4 Months',
-        '0-5-0':  '5 Months',
-        '0-6-0':  '6 Months',
-        '0-0-1':  '1 Year',
-        '0-0-2':  '2 Years',
-        '---':    'Permanent'
-    };
+    // [value, lang key, English fallback]
+    const banTimes = [
+        ['1-0-0',  'bt_1d',   '1 Day'],
+        ['2-0-0',  'bt_2d',   '2 Days'],
+        ['3-0-0',  'bt_3d',   '3 Days'],
+        ['4-0-0',  'bt_4d',   '4 Days'],
+        ['5-0-0',  'bt_5d',   '5 Days'],
+        ['6-0-0',  'bt_6d',   '6 Days'],
+        ['7-0-0',  'bt_1w',   '1 Week'],
+        ['14-0-0', 'bt_2w',   '2 Weeks'],
+        ['21-0-0', 'bt_3w',   '3 Weeks'],
+        ['0-1-0',  'bt_1m',   '1 Month'],
+        ['0-2-0',  'bt_2m',   '2 Months'],
+        ['0-3-0',  'bt_3m',   '3 Months'],
+        ['0-4-0',  'bt_4m',   '4 Months'],
+        ['0-5-0',  'bt_5m',   '5 Months'],
+        ['0-6-0',  'bt_6m',   '6 Months'],
+        ['0-0-1',  'bt_1y',   '1 Year'],
+        ['0-0-2',  'bt_2y',   '2 Years'],
+        ['---',    'bt_perm', 'Permanent']
+    ];
 
-    let options = '';
-    for (const [val, label] of Object.entries(banTimes)) {
-        const selected = val === '---' ? ' selected' : '';
-        options += `<option value="${val}"${selected}>${label}</option>`;
-    }
+    const idsPreview = ids.slice(0,5).join(', ') + (ids.length > 5 ? '...' : '');
 
     const modalHTML = `
         <div class="modal fade" id="bulkBanModal" tabindex="-1" aria-hidden="true">
@@ -151,40 +182,38 @@ function showBulkBanConfirmation(ids) {
                     <div class="modal-header bg-warning text-dark text-center py-4 border-0">
                         <div class="w-100">
                             <i class="fas fa-ban fa-3x mb-3"></i>
-                            <h3 class="mb-0">Ban Users</h3>
+                            <h3 class="mb-0" data-t="ban_title">Ban Users</h3>
                         </div>
                         <button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body py-4">
                         <div class="user-info bg-light rounded-4 p-3 mb-4 text-center">
-                            <h5 class="fw-bold mb-1">${ids.length} users selected</h5>
-                            <p class="text-muted mb-0 small">IDs: ${ids.slice(0,5).join(', ')}${ids.length > 5 ? '...' : ''}</p>
+                            <h5 class="fw-bold mb-1" data-t="users_selected" data-t-args="${ids.length}">{1} users selected</h5>
+                            <p class="text-muted mb-0 small" data-t="ids" data-t-args="${idsPreview}">IDs: {1}</p>
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold">
-                                <i class="bi bi-clock me-1"></i>Ban Duration
+                                <i class="bi bi-clock me-1"></i><span data-t="ban_duration">Ban Duration</span>
                             </label>
-                            <select class="form-select" id="banDuration">
-                                ${options}
-                            </select>
+                            <select class="form-select" id="banDuration"></select>
                         </div>
                         <div class="mb-4">
                             <label class="form-label fw-semibold">
-                                <i class="bi bi-chat-text me-1"></i>Ban Reason
+                                <i class="bi bi-chat-text me-1"></i><span data-t="ban_reason">Ban Reason</span>
                             </label>
                             <input type="text"
                                    class="form-control"
                                    id="banReason"
-                                   placeholder="Enter reason for ban..."
+                                   placeholder="Enter reason for ban..." data-t-ph="ban_reason_ph"
                                    maxlength="255">
-                            <div class="form-text">Optional. Max 255 characters.</div>
+                            <div class="form-text" data-t="ban_reason_hint">Optional. Max 255 characters.</div>
                         </div>
                         <div class="d-flex justify-content-center gap-3">
                             <button type="button" class="btn btn-warning btn-lg px-4" id="confirmBulkBan">
-                                <i class="fas fa-ban me-2"></i>Ban ${ids.length} Users
+                                <i class="fas fa-ban me-2"></i><span data-t="ban_confirm" data-t-args="${ids.length}">Ban {1} Users</span>
                             </button>
                             <button type="button" class="btn btn-secondary btn-lg px-4" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-2"></i>Cancel
+                                <i class="fas fa-times me-2"></i><span data-t="cancel">Cancel</span>
                             </button>
                         </div>
                     </div>
@@ -197,12 +226,22 @@ function showBulkBanConfirmation(ids) {
     const modalEl = document.getElementById('bulkBanModal');
     const modal   = new bootstrap.Modal(modalEl);
 
+    applyT(modalEl);
+    const durationSelect = modalEl.querySelector('#banDuration');
+    banTimes.forEach(([val, key, fallback]) => {
+        const opt = document.createElement('option');
+        opt.value       = val;
+        opt.textContent = t(key, fallback);
+        if (val === '---') opt.selected = true;
+        durationSelect.appendChild(opt);
+    });
+
     document.getElementById('confirmBulkBan').addEventListener('click', function() {
         const reason  = document.getElementById('banReason').value.trim();
         const bantime = document.getElementById('banDuration').value;
 
         this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Banning...';
+        setBusy(this, '<i class="fas fa-spinner fa-spin me-2"></i>', t('banning', 'Banning...'));
         modal.hide();
         executeBulkAction('ban', ids, null, { reason, bantime });
     });
@@ -216,6 +255,8 @@ function showBulkDeleteConfirmation(ids) {
         document.getElementById('bulkDeleteModal').remove();
     }
 
+    const idsPreview = ids.slice(0,5).join(', ') + (ids.length > 5 ? '...' : '');
+
     const modalHTML = `
         <div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
@@ -223,26 +264,26 @@ function showBulkDeleteConfirmation(ids) {
                     <div class="modal-header bg-danger text-white text-center py-4 border-0">
                         <div class="w-100">
                             <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                            <h3 class="mb-0">Confirm Bulk Deletion</h3>
+                            <h3 class="mb-0" data-t="del_title">Confirm Bulk Deletion</h3>
                         </div>
                         <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body text-center py-5">
-                        <h5 class="text-danger mb-3">Are you sure you want to delete these accounts?</h5>
+                        <h5 class="text-danger mb-3" data-t="del_question">Are you sure you want to delete these accounts?</h5>
                         <div class="user-info bg-light rounded-4 p-4 mb-4 mx-auto" style="max-width:300px;">
-                            <h4 class="text-danger fw-bold mb-2">${ids.length} users selected</h4>
-                            <p class="text-muted mb-0">IDs: ${ids.slice(0,5).join(', ')}${ids.length > 5 ? '...' : ''}</p>
+                            <h4 class="text-danger fw-bold mb-2" data-t="users_selected" data-t-args="${ids.length}">{1} users selected</h4>
+                            <p class="text-muted mb-0" data-t="ids" data-t-args="${idsPreview}">IDs: {1}</p>
                         </div>
                         <p class="text-muted mb-4">
                             <i class="fas fa-info-circle text-info me-1"></i>
-                            This action cannot be undone. All user data will be permanently removed.
+                            <span data-t="del_warning">This action cannot be undone. All user data will be permanently removed.</span>
                         </p>
                         <div class="d-flex justify-content-center gap-3">
                             <button type="button" class="btn btn-danger btn-lg px-4" id="confirmBulkDelete">
-                                <i class="fas fa-trash me-2"></i>Yes, Delete ${ids.length} Accounts
+                                <i class="fas fa-trash me-2"></i><span data-t="del_confirm" data-t-args="${ids.length}">Yes, Delete {1} Accounts</span>
                             </button>
                             <button type="button" class="btn btn-secondary btn-lg px-4" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-2"></i>Cancel
+                                <i class="fas fa-times me-2"></i><span data-t="cancel">Cancel</span>
                             </button>
                         </div>
                     </div>
@@ -254,10 +295,11 @@ function showBulkDeleteConfirmation(ids) {
 
     const modalEl = document.getElementById('bulkDeleteModal');
     const modal   = new bootstrap.Modal(modalEl);
+    applyT(modalEl);
 
     document.getElementById('confirmBulkDelete').addEventListener('click', function() {
         this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Deleting...';
+        setBusy(this, '<i class="fas fa-spinner fa-spin me-2"></i>', t('deleting', 'Deleting...'));
         modal.hide();
         executeBulkAction('delete', ids);
     });
@@ -271,6 +313,8 @@ function showBulkPmModal(ids) {
         document.getElementById('bulkPmModal').remove();
     }
 
+    const idsPreview = ids.slice(0,5).join(', ') + (ids.length > 5 ? '...' : '');
+
     const modalHTML = `
         <div class="modal fade" id="bulkPmModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -278,40 +322,40 @@ function showBulkPmModal(ids) {
                     <div class="modal-header bg-primary text-white text-center py-4 border-0">
                         <div class="w-100">
                             <i class="bi bi-envelope fa-3x mb-3" style="font-size:2.5rem;"></i>
-                            <h3 class="mb-0">Send PM</h3>
+                            <h3 class="mb-0" data-t="pm_title">Send PM</h3>
                         </div>
                         <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body py-4">
                         <div class="user-info bg-light rounded-4 p-3 mb-4 text-center">
-                            <h5 class="fw-bold mb-1">${ids.length} users selected</h5>
-                            <p class="text-muted mb-0 small">IDs: ${ids.slice(0,5).join(', ')}${ids.length > 5 ? '...' : ''}</p>
+                            <h5 class="fw-bold mb-1" data-t="users_selected" data-t-args="${ids.length}">{1} users selected</h5>
+                            <p class="text-muted mb-0 small" data-t="ids" data-t-args="${idsPreview}">IDs: {1}</p>
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold">
-                                <i class="bi bi-card-text me-1"></i>Subject
+                                <i class="bi bi-card-text me-1"></i><span data-t="pm_subject">Subject</span>
                             </label>
                             <input type="text"
                                    class="form-control"
                                    id="bulkPmSubject"
-                                   placeholder="Subject..."
+                                   placeholder="Subject..." data-t-ph="pm_subject_ph"
                                    maxlength="200">
                         </div>
                         <div class="mb-4">
                             <label class="form-label fw-semibold">
-                                <i class="bi bi-chat-text me-1"></i>Message
+                                <i class="bi bi-chat-text me-1"></i><span data-t="pm_message">Message</span>
                             </label>
                             <textarea class="form-control"
                                       id="bulkPmMessage"
                                       rows="6"
-                                      placeholder="Write your message..."></textarea>
+                                      placeholder="Write your message..." data-t-ph="pm_message_ph"></textarea>
                         </div>
                         <div class="d-flex justify-content-center gap-3">
                             <button type="button" class="btn btn-primary btn-lg px-4" id="confirmBulkPm">
-                                <i class="bi bi-send me-2"></i>Send to ${ids.length} Users
+                                <i class="bi bi-send me-2"></i><span data-t="pm_confirm" data-t-args="${ids.length}">Send to {1} Users</span>
                             </button>
                             <button type="button" class="btn btn-secondary btn-lg px-4" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-2"></i>Cancel
+                                <i class="fas fa-times me-2"></i><span data-t="cancel">Cancel</span>
                             </button>
                         </div>
                     </div>
@@ -323,18 +367,19 @@ function showBulkPmModal(ids) {
 
     const modalEl = document.getElementById('bulkPmModal');
     const modal   = new bootstrap.Modal(modalEl);
+    applyT(modalEl);
 
     document.getElementById('confirmBulkPm').addEventListener('click', function() {
         const subject = document.getElementById('bulkPmSubject').value.trim();
         const message = document.getElementById('bulkPmMessage').value.trim();
 
         if (!subject || !message) {
-            showToast('Please fill in both subject and message', 'warning');
+            showToast(t('pm_fill', 'Please fill in both subject and message'), 'warning');
             return;
         }
 
         this.disabled = true;
-        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sending...';
+        setBusy(this, '<i class="fas fa-spinner fa-spin me-2"></i>', t('sending', 'Sending...'));
         modal.hide();
         executeBulkAction('pm', ids, null, { pmSubject: subject, pmMessage: message });
     });
@@ -347,8 +392,8 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
     const bar = document.getElementById('bulkActionBar');
     const originalHtml = bar.innerHTML;
     bar.innerHTML = '<div class="d-flex align-items-center gap-2">'
-        + '<div class="spinner-border spinner-border-sm text-primary"></div>'
-        + ' Processing ' + ids.length + ' users...</div>';
+        + '<div class="spinner-border spinner-border-sm text-primary"></div></div>';
+    bar.firstElementChild.appendChild(document.createTextNode(' ' + t('processing', 'Processing {1} users...', ids.length)));
 
     const formData = new FormData();
     formData.append('bulk_action', action);
@@ -390,12 +435,12 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
             showToast(data.message, 'success');
         } else {
             bar.innerHTML = originalHtml;
-            showToast(data.error || 'Error occurred', 'error');
+            showToast(data.error || t('error', 'Error occurred'), 'error');
         }
     })
     .catch(() => {
         bar.innerHTML = originalHtml;
-        showToast('Request failed', 'error');
+        showToast(t('request_failed', 'Request failed'), 'error');
     });
 }
 
@@ -425,7 +470,7 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
         const file = fileInput.files[0];
 
         if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-            alert('Allowed JPG/JPEG/PNG/GIF/WebP');
+            alert(t('av_bad_type', 'Allowed JPG/JPEG/PNG/GIF/WebP'));
             fileInput.value = '';
             return;
         }
@@ -435,7 +480,7 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
         // отсутствует/некорректен.
         const maxMb = parseFloat(fileInput.dataset.maxMb) || 22;
         if (file.size > maxMb * 1024 * 1024) {
-            alert('File is too big (max. ' + maxMb + ' MB)');
+            alert(t('av_too_big', 'File is too big (max. {1} MB)', maxMb));
             fileInput.value = '';
             return;
         }
@@ -447,16 +492,22 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
 
         const box  = targetCell;
         const prev = box.innerHTML;
-        box.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:50px;width:50px;font-size:12px;color:#666;">Uploading…</div>';
+        box.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:50px;width:50px;font-size:12px;color:#666;"></div>';
+        box.firstElementChild.textContent = t('uploading', 'Uploading…');
 
         fetch(UPLOAD_URL, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.json())
             .then(j => {
-                if (!j.ok) throw new Error(j.error || 'Upload failed');
+                if (!j.ok) throw new Error(j.error || t('av_failed', 'Upload failed'));
                 const url = (j.href || j.url) + '?v=' + Date.now();
-                box.innerHTML = '<img src="' + url + '" alt="avatar" class="rounded" width="50">';
+                const img = document.createElement('img');
+                img.src       = url;
+                img.alt       = t('alt_avatar', 'avatar');
+                img.className = 'rounded';
+                img.width     = 50;
+                box.replaceChildren(img);
             })
-            .catch(err => { alert(err.message || 'Upload error'); box.innerHTML = prev; })
+            .catch(err => { alert(err.message || t('av_error', 'Upload error')); box.innerHTML = prev; })
             .finally(() => { targetCell = null; targetUid = null; });
     });
 })();

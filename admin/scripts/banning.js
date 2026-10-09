@@ -5,6 +5,7 @@
    - Reason character counter
    - Username autocomplete with keyboard navigation
    - Esc / backdrop on the no-JS confirmation page
+   - Strings from AGS_LANG (printed by banning.php), English fallback
    ========================================================================== */
 (() => {
   'use strict';
@@ -15,28 +16,41 @@
   const postKey = page.dataset.postKey || '';
   const cssVar  = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+  // ── i18n ──────────────────────────────────────────────────────────────────
+  // $lang->load() turns {1} into %1$s, so both forms are substituted.
+  const LANG = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+  const t = (key, fallback, ...args) => {
+    let s = (typeof LANG[key] === 'string' && LANG[key] !== '') ? LANG[key] : fallback;
+    args.forEach((a, i) => {
+      const n = i + 1;
+      s = s.split(`{${n}}`).join(String(a)).split(`%${n}$s`).join(String(a));
+    });
+    return s;
+  };
+
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 
   // ── Confirmations ─────────────────────────────────────────────────────────
   const askConfirm = el => {
-    const title = el.dataset.title || 'Are you sure?';
+    const title = el.dataset.title || t('confirm_title', 'Are you sure?');
     const text  = el.dataset.text  || '';
-    const ok    = el.dataset.ok    || 'Continue';
+    const ok    = el.dataset.ok    || t('confirm_ok', 'Continue');
     const tone  = el.dataset.tone  || 'danger';
 
     if (typeof window.Swal === 'undefined') {
       return Promise.resolve(window.confirm(text ? `${title}\n\n${text}` : title));
     }
 
+    // titleText / text are set as plain text; button labels are escaped
     return window.Swal.fire({
-      title,
+      titleText: title,
       text,
       icon: tone === 'success' ? 'question' : 'warning',
       showCancelButton: true,
-      confirmButtonText: ok,
-      cancelButtonText: 'Cancel',
+      confirmButtonText: esc(ok),
+      cancelButtonText: esc(t('confirm_cancel', 'Cancel')),
       reverseButtons: true,
       focusCancel: true,
       confirmButtonColor: cssVar(`--bs-${tone}`) || undefined,

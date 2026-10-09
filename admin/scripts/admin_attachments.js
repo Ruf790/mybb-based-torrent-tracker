@@ -4,6 +4,18 @@
     'use strict';
     let pendingForm = null;
 
+    // Ланг-строки приходят из PHP как const AGS_LANG = {...} (ключи js_* без префикса).
+    // $lang->load() превращает {1} в %1$s — подставляем оба формата.
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    function t(key, fallback, ...args) {
+        let s = typeof L[key] === 'string' ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    }
+
     function refresh(form) {
         const boxes = form.querySelectorAll('input.atm-cb');
         const n = form.querySelectorAll('input.atm-cb:checked').length;
@@ -52,7 +64,10 @@
         document.getElementById('atmConfirmBtn')?.addEventListener('click', function () {
             if (!pendingForm) return;
             this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+            // Перевод вставляем текстом, не через innerHTML
+            const spin = document.createElement('span');
+            spin.className = 'spinner-border spinner-border-sm me-1';
+            this.replaceChildren(spin, document.createTextNode(t('deleting', 'Deleting...')));
             pendingForm.submit();
         });
     });

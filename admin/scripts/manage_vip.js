@@ -1,6 +1,19 @@
 (function () {
     'use strict';
 
+    // Strings from languages/<lang>/manage_vip.lang.php (js_* keys, prefix dropped)
+    const LANG = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+
+    /** t(name, englishFallback, arg1, arg2…) fills {1}… and %1$s… */
+    function t(key, fallback) {
+        const args = Array.prototype.slice.call(arguments, 2);
+        let str = typeof LANG[key] === 'string' ? LANG[key] : fallback;
+        return str.replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            const i = parseInt(a || b, 10) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+
     // Drop the one-shot flash params so F5 shows a clean page
     try {
         const url = new URL(window.location.href);
@@ -84,7 +97,7 @@
 
     function notify(text) {
         if (window.Swal) {
-            window.Swal.fire({ icon: 'info', text: text, confirmButtonText: 'OK' });
+            window.Swal.fire({ icon: 'info', text: text, confirmButtonText: t('btn_ok', 'OK') });
         } else {
             window.alert(text);
         }
@@ -97,8 +110,8 @@
                 text: text,
                 icon: danger ? 'warning' : 'question',
                 showCancelButton: true,
-                confirmButtonText: danger ? 'Remove VIP' : 'Apply',
-                cancelButtonText: 'Cancel',
+                confirmButtonText: danger ? t('btn_remove', 'Remove VIP') : t('btn_apply', 'Apply'),
+                cancelButtonText: t('btn_cancel', 'Cancel'),
                 confirmButtonColor: danger ? '#dc3545' : undefined,
                 reverseButtons: true,
                 focusCancel: danger
@@ -112,35 +125,40 @@
 
         const n = selectedCount();
         if (n === 0) {
-            notify('Select at least one VIP account first.');
+            notify(t('select_first', 'Select at least one VIP account first.'));
             return;
         }
 
         const r = currentAction();
         const isRemove = r.value === 'remove_vip';
-        const who = n === 1 ? '1 account' : nf.format(n) + ' accounts';
         let title;
         let text;
 
         if (isRemove) {
-            title = 'Remove VIP from ' + who + '?';
-            text  = 'They go back to their previous group right now. This cannot be undone.';
+            title = n === 1
+                ? t('remove_title_one', 'Remove VIP from 1 account?')
+                : t('remove_title_many', 'Remove VIP from {1} accounts?', nf.format(n));
+            text  = t('remove_text', 'They go back to their previous group right now. This cannot be undone.');
         } else {
             const v   = parseInt(limit.value, 10);
             const max = parseInt(r.dataset.max, 10);
             if (!(v >= 1 && v <= max)) {
-                notify('Enter an amount from 1 to ' + nf.format(max) + ' ' + r.dataset.unit + '.');
+                notify(t('bad_amount', 'Enter an amount from 1 to {1} {2}.', nf.format(max), r.dataset.unit));
                 limit.focus();
                 return;
             }
-            title = r.dataset.label + '?';
-            text  = r.dataset.label + ': ' + nf.format(v) + ' ' + r.dataset.unit + ' for ' + who + '.';
+            title = t('apply_title', '{1}?', r.dataset.label);
+            text  = n === 1
+                ? t('apply_text_one', '{1}: {2} {3} for 1 account.', r.dataset.label, nf.format(v), r.dataset.unit)
+                : t('apply_text_many', '{1}: {2} {3} for {4} accounts.', r.dataset.label, nf.format(v), r.dataset.unit, nf.format(n));
         }
 
         ask(title, text, isRemove).then(function (ok) {
             if (!ok) { return; }
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Applying…';
+            const spin = document.createElement('i');
+            spin.className = 'fa-solid fa-spinner fa-spin me-1';
+            submitBtn.replaceChildren(spin, document.createTextNode(t('applying', 'Applying…')));
             form.submit();
         });
     });

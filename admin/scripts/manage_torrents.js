@@ -1,139 +1,154 @@
-'use strict';
+// Всё наружу отдаётся через Object.assign(window, …) в конце файла
+(function () {
+    'use strict';
 
-// ── Selection ─────────────────────────────────────────────
-function toggleAllSelection(checkbox) {
-    document.querySelectorAll('.torrent-checkbox').forEach(cb => { cb.checked = checkbox.checked; });
-    updateSelectionCounter();
-}
+    // ── Переводы: const AGS_LANG выводит manage_torrents.php перед скриптами ──
+    // t('key', 'English fallback', arg1, arg2…) → подстановка {1}, {2}… за один проход
+    const t = (key, fallback, ...args) => {
+        const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+        const str  = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : String(fallback ?? key);
+        return str.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] !== undefined ? String(args[n - 1]) : m));
+    };
 
-function updateSelectionCounter() {
-    const all      = document.querySelectorAll('.torrent-checkbox');
-    const selected = document.querySelectorAll('.torrent-checkbox:checked').length;
-    const counter  = document.getElementById('selectedCounter');
-    const execBtn  = document.getElementById('executeBtn');
-    const selAll   = document.getElementById('selectAll');
-
-    if (counter) counter.textContent = selected + ' selected';
-    if (execBtn) execBtn.disabled = selected === 0;
-    // «Select page» показывает частичный выбор
-    if (selAll) {
-        selAll.checked = all.length > 0 && selected === all.length;
-        selAll.indeterminate = selected > 0 && selected < all.length;
+    // ── Selection ─────────────────────────────────────────────
+    function toggleAllSelection(checkbox) {
+        document.querySelectorAll('.torrent-checkbox').forEach(cb => { cb.checked = checkbox.checked; });
+        updateSelectionCounter();
     }
 
-    document.querySelectorAll('.torrent-row').forEach(row => {
-        const cb = row.querySelector('.torrent-checkbox');
-        row.classList.toggle('selected', cb?.checked ?? false);
-    });
-}
+    function updateSelectionCounter() {
+        const all      = document.querySelectorAll('.torrent-checkbox');
+        const selected = document.querySelectorAll('.torrent-checkbox:checked').length;
+        const counter  = document.getElementById('selectedCounter');
+        const execBtn  = document.getElementById('executeBtn');
+        const selAll   = document.getElementById('selectAll');
 
-function clearSelection() {
-    document.querySelectorAll('.torrent-checkbox').forEach(cb => { cb.checked = false; });
-    updateSelectionCounter();
-}
+        if (counter) counter.textContent = t('selected_count', '{1} selected', selected);
+        if (execBtn) execBtn.disabled = selected === 0;
+        // «Select page» показывает частичный выбор
+        if (selAll) {
+            selAll.checked = all.length > 0 && selected === all.length;
+            selAll.indeterminate = selected > 0 && selected < all.length;
+        }
 
-// ── Filters ───────────────────────────────────────────────
-function clearSearch() {
-    const input = document.getElementById('torrent-search');
-    if (input) input.value = '';
-    document.getElementById('searchForm')?.submit();
-}
+        document.querySelectorAll('.torrent-row').forEach(row => {
+            const cb = row.querySelector('.torrent-checkbox');
+            row.classList.toggle('selected', cb?.checked ?? false);
+        });
+    }
 
-function resetFilters() {
-    // Раньше: manageTorrentScript (уже «index.php?act=manage_torrents&») + «?act=manage_torrents»
-    // давало «…&?act=manage_torrents» — сброс оставлял фильтры в адресе
-    window.location.href = window.location.pathname + '?act=manage_torrents';
-}
+    function clearSelection() {
+        document.querySelectorAll('.torrent-checkbox').forEach(cb => { cb.checked = false; });
+        updateSelectionCounter();
+    }
 
-function toggleMoveCategory(select) {
-    const div = document.getElementById('moveCategory');
-    if (div) div.style.display = select.value === 'move' ? 'inline-block' : 'none';
-}
+    // ── Filters ───────────────────────────────────────────────
+    function clearSearch() {
+        const input = document.getElementById('torrent-search');
+        if (input) input.value = '';
+        document.getElementById('searchForm')?.submit();
+    }
 
-// ── Quick actions (одиночное действие над торрентом, вызывается из модалки) ──
-function submitTorrentAction(id, action) {
-    const label = action === 'delete'
-        ? `Delete torrent #${id}?\n\nThis cannot be undone.`
-        : `Toggle "${action}" for torrent #${id}?`;
-    if (!confirm(label)) return;
+    function resetFilters() {
+        // Раньше: manageTorrentScript (уже «index.php?act=manage_torrents&») + «?act=manage_torrents»
+        // давало «…&?act=manage_torrents» — сброс оставлял фильтры в адресе
+        window.location.href = window.location.pathname + '?act=manage_torrents';
+    }
 
-    // Раньше в форме не было my_post_key — сервер всегда отвечал
-    // «Security check failed», и быстрые действия из модалки не работали
-    const key = document.querySelector('#torrentForm [name="my_post_key"]')?.value
-             || window.manageTorrentKey || '';
+    function toggleMoveCategory(select) {
+        const div = document.getElementById('moveCategory');
+        if (div) div.style.display = select.value === 'move' ? 'inline-block' : 'none';
+    }
 
-    const form = Object.assign(document.createElement('form'), {
-        method: 'POST',
-        action: window.location.href,
-    });
-    form.style.display = 'none';
+    // ── Quick actions (одиночное действие над торрентом, вызывается из модалки) ──
+    function submitTorrentAction(id, action) {
+        const label = action === 'delete'
+            ? t('confirm_delete', 'Delete torrent #{1}?', id) + '\n\n' + t('cannot_undo', 'This cannot be undone.')
+            : t('confirm_toggle', 'Toggle "{1}" for torrent #{2}?', t('field_' + action, action), id);
+        if (!confirm(label)) return;
 
-    const add = (name, value) => form.appendChild(Object.assign(document.createElement('input'), { type: 'hidden', name, value }));
-    add('do', 'update');
-    add('actiontype', action);
-    add('my_post_key', key);
-    add('torrentid[]', String(id));
+        // Раньше в форме не было my_post_key — сервер всегда отвечал
+        // «Security check failed», и быстрые действия из модалки не работали
+        const key = document.querySelector('#torrentForm [name="my_post_key"]')?.value
+                 || window.manageTorrentKey || '';
 
-    document.body.appendChild(form);
-    form.submit();
-}
+        const form = Object.assign(document.createElement('form'), {
+            method: 'POST',
+            action: window.location.href,
+        });
+        form.style.display = 'none';
 
-// Legacy aliases
-const toggleTorrentField = (id, field) => submitTorrentAction(id, field);
-const deleteTorrentQuick = (id)        => submitTorrentAction(id, 'delete');
+        const add = (name, value) => form.appendChild(Object.assign(document.createElement('input'), { type: 'hidden', name, value }));
+        add('do', 'update');
+        add('actiontype', action);
+        add('my_post_key', key);
+        add('torrentid[]', String(id));
 
-// ── Modal ─────────────────────────────────────────────────
-// Раньше обработчик вешался на ВСЕ [data-bs-toggle="modal"], в том числе чужие кнопки
-function initModal() {
-    document.addEventListener('click', async function (e) {
-        const btn = e.target.closest('.torrent-btn[data-id]');
-        if (!btn) return;
+        document.body.appendChild(form);
+        form.submit();
+    }
 
-        const id      = parseInt(btn.dataset.id, 10);
-        const content = document.getElementById('manageTorrentContent');
-        if (!content || !id) return;
+    // Legacy aliases
+    const toggleTorrentField = (id, field) => submitTorrentAction(id, field);
+    const deleteTorrentQuick = (id)        => submitTorrentAction(id, 'delete');
 
-        content.innerHTML = `
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
-                <p class="mt-3 text-body-secondary">Loading torrent #${id}…</p>
-            </div>`;
+    // ── Modal ─────────────────────────────────────────────────
+    // Раньше обработчик вешался на ВСЕ [data-bs-toggle="modal"], в том числе чужие кнопки
+    function initModal() {
+        document.addEventListener('click', async function (e) {
+            const btn = e.target.closest('.torrent-btn[data-id]');
+            if (!btn) return;
 
-        try {
-            const res = await fetch(window.manageBaseUrl + '/admin/manage_torrents_ajax.php?id=' + id, { credentials: 'same-origin' });
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            content.innerHTML = await res.text();
-        } catch (err) {
+            const id      = parseInt(btn.dataset.id, 10);
+            const content = document.getElementById('manageTorrentContent');
+            if (!content || !id) return;
+
+            // Разметка без текста; переводы вставляются через textContent
             content.innerHTML = `
-                <div class="alert alert-danger d-flex gap-2 rounded-4 mb-0">
-                    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
-                    <div>Could not load torrent #${id}. Please try again.</div>
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"><span class="visually-hidden"></span></div>
+                    <p class="mt-3 text-body-secondary"></p>
                 </div>`;
+            content.querySelector('.visually-hidden').textContent = t('loading', 'Loading…');
+            content.querySelector('p').textContent = t('loading_torrent', 'Loading torrent #{1}…', id);
+
+            try {
+                const res = await fetch(window.manageBaseUrl + '/admin/manage_torrents_ajax.php?id=' + id, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                content.innerHTML = await res.text();
+            } catch (err) {
+                content.innerHTML = `
+                    <div class="alert alert-danger d-flex gap-2 rounded-4 mb-0">
+                        <i class="fa-solid fa-triangle-exclamation mt-1"></i>
+                        <div></div>
+                    </div>`;
+                content.querySelector('.alert > div').textContent = t('load_failed', 'Could not load torrent #{1}. Please try again.', id);
+            }
+        });
+    }
+
+    // ── Init ──────────────────────────────────────────────────
+    // Раньше тут был scroll-обработчик, добавлявший класс «sticky» панели действий
+    // на каждый пиксель прокрутки. Панель теперь «липкая» через CSS (position: sticky).
+    document.addEventListener('DOMContentLoaded', () => {
+        updateSelectionCounter();
+        initModal();
+
+        // Клик по строке (не по ссылке/кнопке) ставит галочку
+        document.getElementById('torrentTableBody')?.addEventListener('click', e => {
+            if (e.target.closest('a, button, input, label, select')) return;
+            const cb = e.target.closest('.torrent-row')?.querySelector('.torrent-checkbox');
+            if (cb) { cb.checked = !cb.checked; updateSelectionCounter(); }
+        });
+
+        if (typeof bootstrap !== 'undefined') {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
         }
     });
-}
 
-// ── Init ──────────────────────────────────────────────────
-// Раньше тут был scroll-обработчик, добавлявший класс «sticky» панели действий
-// на каждый пиксель прокрутки. Панель теперь «липкая» через CSS (position: sticky).
-document.addEventListener('DOMContentLoaded', () => {
-    updateSelectionCounter();
-    initModal();
-
-    // Клик по строке (не по ссылке/кнопке) ставит галочку
-    document.getElementById('torrentTableBody')?.addEventListener('click', e => {
-        if (e.target.closest('a, button, input, label, select')) return;
-        const cb = e.target.closest('.torrent-row')?.querySelector('.torrent-checkbox');
-        if (cb) { cb.checked = !cb.checked; updateSelectionCounter(); }
+    Object.assign(window, {
+        toggleAllSelection, updateSelectionCounter, clearSelection,
+        clearSearch, resetFilters, toggleMoveCategory,
+        submitTorrentAction, toggleTorrentField, deleteTorrentQuick,
     });
-
-    if (typeof bootstrap !== 'undefined') {
-        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
-    }
-});
-
-Object.assign(window, {
-    toggleAllSelection, updateSelectionCounter, clearSelection,
-    clearSearch, resetFilters, toggleMoveCategory,
-    submitTorrentAction, toggleTorrentField, deleteTorrentQuick,
-});
+})();

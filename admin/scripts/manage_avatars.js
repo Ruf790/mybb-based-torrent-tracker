@@ -3,6 +3,20 @@
     const form = document.getElementById('avatarForm');
     if (!form) return;
 
+    // Lang: AGS_LANG is printed by manage_avatars.php (js_* keys without prefix)
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    const t = (key, fallback, ...args) => {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1, v = String(a);
+            s = s.split('{' + n + '}').join(v).split('%' + n + '$s').join(v);
+        });
+        return s;
+    };
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+
     const boxes      = () => Array.from(form.querySelectorAll('input[name="avatars[]"]'));
     const itemOf     = box => box.closest('.ma-item');
     const isVisible  = box => !itemOf(box).classList.contains('d-none');
@@ -125,9 +139,9 @@
         const owned   = selected.filter(b => itemOf(b).dataset.owner === '1').length;
         const orphans = selected.length - owned;
 
-        const lines = [`${selected.length} file(s) will be permanently deleted.`];
-        if (owned)   lines.push(`${owned} member(s) will lose their avatar.`);
-        if (orphans) lines.push(`${orphans} orphaned file(s) have no owner.`);
+        const lines = [t('confirm_files', '{1} file(s) will be permanently deleted.', selected.length)];
+        if (owned)   lines.push(t('confirm_owned', '{1} member(s) will lose their avatar.', owned));
+        if (orphans) lines.push(t('confirm_orphans', '{1} orphaned file(s) have no owner.', orphans));
 
         const go = () => { confirmed = true; form.submit(); };
 
@@ -136,16 +150,24 @@
             return;
         }
 
+        // Body built as DOM text nodes, not HTML
+        const body = document.createElement('div');
+        lines.forEach(l => {
+            const row = document.createElement('div');
+            row.textContent = l;
+            body.appendChild(row);
+        });
+
         Swal.fire({
-            title: 'Delete selected avatars?',
-            html: lines.map(l => `<div>${l}</div>`).join(''),
+            titleText: t('confirm_title', 'Delete selected avatars?'),
+            html: body,
             icon: 'warning',
             showCancelButton: true,
             focusCancel: true,
             confirmButtonColor: '#dc3545',
             cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="fa-solid fa-trash-can me-2"></i>Delete',
-            cancelButtonText: '<i class="fa-solid fa-xmark me-2"></i>Cancel'
+            confirmButtonText: '<i class="fa-solid fa-trash-can me-2"></i>' + esc(t('btn_delete', 'Delete')),
+            cancelButtonText: '<i class="fa-solid fa-xmark me-2"></i>' + esc(t('btn_cancel', 'Cancel'))
         }).then(r => { if (r.isConfirmed) go(); });
     });
 

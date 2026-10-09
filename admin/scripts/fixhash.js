@@ -5,6 +5,19 @@
     const root = document.getElementById('fhPage');
     if (!root) return;
 
+    // ── Lang: AGS_LANG выводится PHP перед подключением скрипта ────────
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+
+    // t(key, fallback, ...args) — подставляет {1}… и %1$s… ($lang->load() конвертирует {N} в %N$s)
+    function t(key, fallback) {
+        let s = (typeof L[key] === 'string') ? L[key] : fallback;
+        for (let i = 2; i < arguments.length; i++) {
+            const n = i - 1, v = String(arguments[i]);
+            s = s.split('{' + n + '}').join(v).split('%' + n + '$s').join(v);
+        }
+        return s;
+    }
+
     const currentPage = parseInt(root.dataset.page, 10) || 1;
     const totalPages  = parseInt(root.dataset.totalPages, 10) || 1;
     const mismatch    = parseInt(root.dataset.mismatch, 10) || 0;
@@ -15,16 +28,16 @@
     const applyBtn  = document.getElementById('applyBtn');
     const hasSwal   = typeof window.Swal !== 'undefined';
 
-    // ── SweetAlert2 с fallback ──────────────────────────────────────────
+    // ── SweetAlert2 с fallback (title/text — только как текст) ─────────
     function confirmBox(title, text) {
         if (!hasSwal) return Promise.resolve(window.confirm(title + '\n\n' + text));
         return Swal.fire({
             icon: 'question',
-            title: title,
+            titleText: title,
             text: text,
             showCancelButton: true,
-            confirmButtonText: 'Apply fixes',
-            cancelButtonText: 'Cancel',
+            confirmButtonText: t('btn_confirm', 'Apply fixes'),
+            cancelButtonText: t('btn_cancel', 'Cancel'),
             reverseButtons: true,
             focusCancel: true
         }).then(r => r.isConfirmed);
@@ -35,13 +48,13 @@
             window.alert(title + (text ? '\n\n' + text : ''));
             return Promise.resolve();
         }
-        return Swal.fire({ icon: icon, title: title, text: text || '' });
+        return Swal.fire({ icon: icon, titleText: title, text: text || '' });
     }
 
     function toast(icon, title) {
         if (!hasSwal) return;
         Swal.fire({
-            toast: true, position: 'bottom-end', icon: icon, title: title,
+            toast: true, position: 'bottom-end', icon: icon, titleText: title,
             showConfirmButton: false, timer: 1400, timerProgressBar: true
         });
     }
@@ -52,9 +65,14 @@
     function setBusy(busy) {
         if (!applyBtn) return;
         applyBtn.disabled = busy;
-        applyBtn.innerHTML = busy
-            ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Applying…'
-            : originalBtnHtml;
+        if (busy) {
+            const spin = document.createElement('span');
+            spin.className = 'spinner-border spinner-border-sm me-2';
+            spin.setAttribute('aria-hidden', 'true');
+            applyBtn.replaceChildren(spin, document.createTextNode(t('applying', 'Applying…')));
+        } else {
+            applyBtn.innerHTML = originalBtnHtml; // исходная серверная разметка кнопки
+        }
     }
 
     function postApply() {
@@ -67,10 +85,10 @@
     }
 
     function resultText(d) {
-        let t = 'Fixed ' + d.fixed + ' torrent(s)';
-        if (d.errors)  t += ', ' + d.errors + ' error(s)';
-        if (d.skipped) t += ', ' + d.skipped + ' skipped';
-        return t + '.';
+        let s = t('result_fixed', 'Fixed {1} torrent(s)', d.fixed);
+        if (d.errors)  s += t('result_errors', ', {1} error(s)', d.errors);
+        if (d.skipped) s += t('result_skipped', ', {1} skipped', d.skipped);
+        return s + '.';
     }
 
     if (applyForm && applyBtn) {
@@ -79,23 +97,23 @@
             if (applyBtn.disabled) return;
 
             confirmBox(
-                'Apply fixes?',
-                'The stored info_hash will be replaced for ' + mismatch + ' torrent(s) on page ' + currentPage + '.'
+                t('confirm_title', 'Apply fixes?'),
+                t('confirm_text', 'The stored info_hash will be replaced for {1} torrent(s) on page {2}.', mismatch, currentPage)
             ).then(function (ok) {
                 if (!ok) return;
                 setBusy(true);
                 postApply()
                     .then(function (data) {
                         if (data && data.success) {
-                            notify(data.errors ? 'warning' : 'success', 'Fixes applied', resultText(data))
+                            notify(data.errors ? 'warning' : 'success', t('applied_title', 'Fixes applied'), resultText(data))
                                 .then(() => window.location.reload());
                         } else {
-                            notify('error', 'Fixes not applied', (data && data.error) || 'Unknown error');
+                            notify('error', t('not_applied', 'Fixes not applied'), (data && data.error) || t('unknown_error', 'Unknown error'));
                             setBusy(false);
                         }
                     })
                     .catch(function () {
-                        notify('error', 'Request failed', 'The server did not return a valid response. Try again.');
+                        notify('error', t('req_failed', 'Request failed'), t('req_failed_text', 'The server did not return a valid response. Try again.'));
                         setBusy(false);
                     });
             });
@@ -138,9 +156,9 @@
                     btn.classList.remove('is-copied');
                     btn.innerHTML = '<i class="fa-solid fa-copy"></i>';
                 }, 1200);
-                toast('success', 'Hash copied');
+                toast('success', t('copied', 'Hash copied'));
             })
-            .catch(() => toast('error', 'Copy failed'));
+            .catch(() => toast('error', t('copy_failed', 'Copy failed')));
     });
 
     // ── Auto Fix ────────────────────────────────────────────────────────
@@ -152,7 +170,9 @@
 
     function render() {
         if (statusText) {
-            statusText.textContent = (needsFix ? 'Fixing' : 'Next page') + ' in ' + left + 's';
+            statusText.textContent = needsFix
+                ? t('auto_fix_in', 'Fixing in {1}s', left)
+                : t('auto_next_in', 'Next page in {1}s', left);
         }
     }
 
@@ -164,13 +184,17 @@
             window.location.href = url.toString();
             return;
         }
-        if (statusText) statusText.textContent = 'Finished';
-        notify('success', 'Auto Fix finished', 'All ' + totalPages + ' page(s) have been processed.')
+        if (statusText) statusText.textContent = t('auto_finished', 'Finished');
+        notify('success', t('finished_title', 'Auto Fix finished'), t('finished_text', 'All {1} page(s) have been processed.', totalPages))
             .then(function () { if (stopUrl) window.location.href = stopUrl; });
     }
 
     function step() {
-        if (statusText) statusText.textContent = needsFix ? 'Applying fixes…' : 'Moving on…';
+        if (statusText) {
+            statusText.textContent = needsFix
+                ? t('auto_applying', 'Applying fixes…')
+                : t('auto_moving', 'Moving on…');
+        }
         const job = needsFix
             ? (setBusy(true), postApply().catch(() => null))
             : Promise.resolve(null);

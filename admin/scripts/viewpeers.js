@@ -2,6 +2,18 @@
 (function () {
     'use strict';
 
+    var L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+
+    /* t(key, fallback, ...args) — English fallback, substitutes {1} and %1$s */
+    function t(key, fallback) {
+        var str  = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        var args = Array.prototype.slice.call(arguments, 2);
+        return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            var i = parseInt(a || b, 10) - 1;
+            return i >= 0 && i < args.length ? String(args[i]) : m;
+        });
+    }
+
     function init() {
         var root = document.querySelector('.vp-page');
         if (!root) {
@@ -120,8 +132,16 @@
             if (!btn) {
                 return;
             }
-            var icon = btn.querySelector('i');
+            var icon      = btn.querySelector('i');
+            var origTitle = btn.getAttribute('title') || '';
+            var setTip    = function (text) {
+                btn.setAttribute('title', text);
+                btn.setAttribute('aria-label', text);
+            };
+            var restoreTip = function () { setTip(origTitle); };
+
             copyText(btn.dataset.vpCopy).then(function () {
+                setTip(t('copied', 'Copied: {1}', btn.dataset.vpCopy));
                 btn.classList.add('is-done');
                 if (icon) {
                     icon.className = 'fa-solid fa-check';
@@ -131,8 +151,12 @@
                     if (icon) {
                         icon.className = 'fa-solid fa-copy';
                     }
+                    restoreTip();
                 }, 1200);
-            }).catch(function () { /* ignore */ });
+            }).catch(function () {
+                setTip(t('copy_failed', 'Could not copy to clipboard'));
+                setTimeout(restoreTip, 2000);
+            });
         });
     }
 

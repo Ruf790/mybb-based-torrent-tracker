@@ -1,3 +1,31 @@
+// ── i18n ────────────────────────────────────────────────────────────────────
+// AGS_LANG выводит latest_comments.php из js_* ключей ланга (без префикса).
+// $lang->load() превращает {N} в %N$s — подставляем оба формата.
+function t(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG === 'object' && AGS_LANG !== null) ? AGS_LANG : {};
+    const str  = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+    return str.replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a !== undefined ? a : b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Элемент с классом и текстом (текст — только через textContent)
+function lcEl(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = text;
+    return el;
+}
+
+// Кнопка в состоянии загрузки: спиннер + текст
+function lcSetBusy(btn, text) {
+    btn.replaceChildren(
+        lcEl('span', 'spinner-border spinner-border-sm'),
+        document.createTextNode(' ' + text)
+    );
+}
+
 // Глобальные переменные состояния
 const commentManager = {
     currentPage: 1,
@@ -22,14 +50,12 @@ function loadComments(page = 1) {
     
     const commentsTable = document.getElementById('comments-table');
     if (commentsTable) {
-        commentsTable.innerHTML = `
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 text-muted">Loading comments...</p>
-            </div>
-        `;
+        const wrap    = lcEl('div', 'text-center py-5');
+        const spinner = lcEl('div', 'spinner-border text-primary');
+        spinner.setAttribute('role', 'status');
+        spinner.appendChild(lcEl('span', 'visually-hidden', t('loading', 'Loading...')));
+        wrap.append(spinner, lcEl('p', 'mt-2 text-muted', t('loading_comments', 'Loading comments...')));
+        commentsTable.replaceChildren(wrap);
     }
     
     const queryParams = new URLSearchParams();
@@ -57,11 +83,12 @@ function loadComments(page = 1) {
         .catch(error => {
             console.error('Error loading comments:', error);
             if (commentsTable) {
-                commentsTable.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="bi bi-exclamation-triangle"></i> Failed to load comments: ${error.message}
-                    </div>
-                `;
+                const alert = lcEl('div', 'alert alert-danger');
+                alert.append(
+                    lcEl('i', 'bi bi-exclamation-triangle'),
+                    document.createTextNode(' ' + t('load_failed', 'Failed to load comments: {1}', error.message))
+                );
+                commentsTable.replaceChildren(alert);
             }
         })
         .finally(() => {
@@ -117,7 +144,7 @@ document.addEventListener('change', function(e) {
 });
 
 document.addEventListener('click', function(e) {
-    if (e.target.id === 'selectAllBtn') {
+    if (e.target.closest('#selectAllBtn')) {
         const selectAll = document.getElementById('selectAll');
         if (selectAll) {
             selectAll.checked = true;
@@ -138,7 +165,7 @@ function bindBulkDeleteHandler() {
 
     newBulkDeleteBtn.addEventListener('click', function() {
         if (commentManager.selectedComments.length === 0) {
-            showToast('Please select at least one comment', 'warning');
+            showToast(t('select_one', 'Please select at least one comment'), 'warning');
             return;
         }
 
@@ -147,11 +174,12 @@ function bindBulkDeleteHandler() {
 
         const modal = new bootstrap.Modal(modalElement);
         const count = commentManager.selectedComments.length;
-        const word = count === 1 ? 'comment' : 'comments';
         const messageElement = document.getElementById('bulkDeleteMessage');
         
         if (messageElement) {
-            messageElement.textContent = `Are you sure you want to delete ${count} selected ${word}?`;
+            messageElement.textContent = count === 1
+                ? t('bulk_confirm_one', 'Are you sure you want to delete {1} selected comment?', count)
+                : t('bulk_confirm_many', 'Are you sure you want to delete {1} selected comments?', count);
         }
 
         // Обработчик подтверждения удаления
@@ -159,8 +187,9 @@ function bindBulkDeleteHandler() {
         if (confirmBtn) {
             const handleConfirm = function() {
                 const btn = this;
+                const btnHtml = btn.innerHTML; // серверная разметка кнопки (иконка + переведённый текст)
                 btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Deleting...';
+                lcSetBusy(btn, t('deleting', 'Deleting...'));
 
                 // ИСПРАВЛЕНИЕ: Отправляем ids как массив, а не JSON строку
                 const formData = new FormData();
@@ -189,20 +218,20 @@ function bindBulkDeleteHandler() {
                 .then(response => {
                     console.log('Ответ от сервера:', response);
                     if (response.success) {
-                        showToast(`${response.deleted} comments deleted successfully`, 'success');
+                        showToast(t('bulk_deleted', '{1} comment(s) deleted successfully', response.deleted), 'success');
                         loadComments(commentManager.currentPage);
                         modal.hide();
                     } else {
-                        showToast(response.error || 'Error deleting comments', 'error');
+                        showToast(response.error || t('err_delete_many', 'Error deleting comments'), 'error');
                     }
                 })
                 .catch(error => {
                     console.error('Bulk delete error:', error);
-                    showToast('Error: ' + error.message, 'error');
+                    showToast(t('error_prefix', 'Error: {1}', error.message), 'error');
                 })
                 .finally(() => {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="bi bi-trash"></i> Delete Selected';
+                    btn.innerHTML = btnHtml;
                     confirmBtn.removeEventListener('click', handleConfirm);
                 });
             };
@@ -216,35 +245,36 @@ function bindBulkDeleteHandler() {
 
 // Copy Comments
 document.addEventListener('click', async function(e) {
-    if (e.target.id === 'confirmCopyBtn') {
+    const btn = e.target.closest('#confirmCopyBtn');
+    if (btn) {
         const targetInput = document.getElementById('copyTargetTorrent');
         if (!targetInput) return;
 
         const target = parseInt(targetInput.value);
         if (!target || target <= 0) {
-            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            Swal.fire({ icon: 'warning', titleText: t('invalid_target', 'Please enter a valid target torrent ID') });
             return;
         }
 
         const selectedComments = commentManager.selectedComments;
         if (selectedComments.length === 0) {
-            Swal.fire({ icon: 'warning', title: 'Please select at least one comment to copy' });
+            Swal.fire({ icon: 'warning', titleText: t('select_copy', 'Please select at least one comment to copy') });
             return;
         }
 
         const confirmResult = await Swal.fire({
             icon: 'question',
-            title: 'Copy comments?',
-            text: `Copy ${selectedComments.length} selected comment(s) to torrent ID ${target}?`,
+            titleText: t('copy_title', 'Copy comments?'),
+            text: t('copy_text', 'Copy {1} selected comment(s) to torrent ID {2}?', selectedComments.length, target),
             showCancelButton: true,
-            confirmButtonText: 'Copy',
-            cancelButtonText: 'Cancel'
+            confirmButtonText: escapeHtml(t('copy_btn', 'Copy')),
+            cancelButtonText: escapeHtml(t('cancel', 'Cancel'))
         });
         if (!confirmResult.isConfirmed) return;
 
-        const btn = e.target;
+        const btnHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = 'Copying...';
+        btn.textContent = t('copying', 'Copying...');
 
         const formData = new FormData();
         formData.append('comment_ids', JSON.stringify(selectedComments));
@@ -260,56 +290,57 @@ document.addEventListener('click', async function(e) {
         .then(response => response.json())
         .then(res => {
             if (res.success) {
-                showToast(res.copied + " comment(s) copied successfully!", 'success');
+                showToast(t('copied', '{1} comment(s) copied successfully!', res.copied), 'success');
                 const modal = bootstrap.Modal.getInstance(document.getElementById('copyCommentsModal'));
                 if (modal) modal.hide();
                 if (targetInput) targetInput.value = '';
             } else {
-                showToast("Error: " + res.error, 'error');
+                showToast(t('error_prefix', 'Error: {1}', res.error), 'error');
             }
         })
         .catch(error => {
             console.error('Copy error:', error);
-            showToast("AJAX error: " + error.message, 'error');
+            showToast(t('ajax_error', 'AJAX error: {1}', error.message), 'error');
         })
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = 'Copy Comments';
+            btn.innerHTML = btnHtml;
         });
     }
 });
 
 // Merge Selected Comments Into One (join texts, delete originals)
 document.addEventListener('click', async function(e) {
-    if (e.target.id === 'confirmMergeIntoOneBtn') {
+    const btn = e.target.closest('#confirmMergeIntoOneBtn');
+    if (btn) {
         const targetInput = document.getElementById('mergeTargetTorrent');
         if (!targetInput) return;
 
         const target = parseInt(targetInput.value);
         if (!target || target <= 0) {
-            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            Swal.fire({ icon: 'warning', titleText: t('invalid_target', 'Please enter a valid target torrent ID') });
             return;
         }
 
         const selectedComments = commentManager.selectedComments;
         if (selectedComments.length < 2) {
-            Swal.fire({ icon: 'warning', title: 'Please select at least 2 comments to merge' });
+            Swal.fire({ icon: 'warning', titleText: t('select_merge', 'Please select at least 2 comments to merge') });
             return;
         }
 
         const confirmResult = await Swal.fire({
             icon: 'warning',
-            title: 'Merge comments?',
-            text: `Merge ${selectedComments.length} selected comments into one, on torrent ID ${target}? This cannot be undone.`,
+            titleText: t('merge_title', 'Merge comments?'),
+            text: t('merge_text', 'Merge {1} selected comments into one, on torrent ID {2}? This cannot be undone.', selectedComments.length, target),
             showCancelButton: true,
-            confirmButtonText: 'Merge',
-            cancelButtonText: 'Cancel'
+            confirmButtonText: escapeHtml(t('merge_btn', 'Merge')),
+            cancelButtonText: escapeHtml(t('cancel', 'Cancel'))
         });
         if (!confirmResult.isConfirmed) return;
 
-        const btn = e.target;
+        const btnHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = 'Merging...';
+        btn.textContent = t('merging', 'Merging...');
 
         const formData = new FormData();
         formData.append('comment_ids', JSON.stringify(selectedComments));
@@ -325,57 +356,58 @@ document.addEventListener('click', async function(e) {
         .then(response => response.json())
         .then(res => {
             if (res.success) {
-                showToast(res.merged + " comments merged into comment #" + res.new_comment_id + "!", 'success');
+                showToast(t('merged', '{1} comments merged into comment #{2}!', res.merged, res.new_comment_id), 'success');
                 const modal = bootstrap.Modal.getInstance(document.getElementById('mergeIntoOneModal'));
                 if (modal) modal.hide();
                 loadComments(commentManager.currentPage);
                 if (targetInput) targetInput.value = '';
             } else {
-                showToast("Error: " + res.error, 'error');
+                showToast(t('error_prefix', 'Error: {1}', res.error), 'error');
             }
         })
         .catch(error => {
             console.error('Merge error:', error);
-            showToast("AJAX error: " + error.message, 'error');
+            showToast(t('ajax_error', 'AJAX error: {1}', error.message), 'error');
         })
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = 'Merge Comments';
+            btn.innerHTML = btnHtml;
         });
     }
 });
 
 // Move Comments
 document.addEventListener('click', async function(e) {
-    if (e.target.id === 'confirmMoveBtn') {
+    const btn = e.target.closest('#confirmMoveBtn');
+    if (btn) {
         const targetInput = document.getElementById('targetTorrent');
         if (!targetInput) return;
 
         const target = parseInt(targetInput.value);
         if (!target || target <= 0) {
-            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            Swal.fire({ icon: 'warning', titleText: t('invalid_target', 'Please enter a valid target torrent ID') });
             return;
         }
 
         const selectedComments = commentManager.selectedComments;
         if (selectedComments.length === 0) {
-            Swal.fire({ icon: 'warning', title: 'Please select at least one comment to move' });
+            Swal.fire({ icon: 'warning', titleText: t('select_move', 'Please select at least one comment to move') });
             return;
         }
 
         const confirmResult = await Swal.fire({
             icon: 'question',
-            title: 'Move comments?',
-            text: `Are you sure you want to move ${selectedComments.length} selected comments to torrent ID ${target}?`,
+            titleText: t('move_title', 'Move comments?'),
+            text: t('move_text', 'Are you sure you want to move {1} selected comments to torrent ID {2}?', selectedComments.length, target),
             showCancelButton: true,
-            confirmButtonText: 'Move',
-            cancelButtonText: 'Cancel'
+            confirmButtonText: escapeHtml(t('move_btn', 'Move')),
+            cancelButtonText: escapeHtml(t('cancel', 'Cancel'))
         });
         if (!confirmResult.isConfirmed) return;
 
-        const btn = e.target;
+        const btnHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = 'Moving...';
+        btn.textContent = t('moving', 'Moving...');
 
         const formData = new FormData();
         formData.append('comment_ids', JSON.stringify(selectedComments));
@@ -391,22 +423,22 @@ document.addEventListener('click', async function(e) {
         .then(response => response.json())
         .then(res => {
             if (res.success) {
-                showToast(res.moved + " comments moved successfully!", 'success');
+                showToast(t('moved', '{1} comment(s) moved successfully!', res.moved), 'success');
                 const modal = bootstrap.Modal.getInstance(document.getElementById('moveCommentsModal'));
                 if (modal) modal.hide();
                 loadComments(commentManager.currentPage);
                 if (targetInput) targetInput.value = '';
             } else {
-                showToast("Error: " + res.error, 'error');
+                showToast(t('error_prefix', 'Error: {1}', res.error), 'error');
             }
         })
         .catch(error => {
             console.error('Move error:', error);
-            showToast("AJAX error: " + error.message, 'error');
+            showToast(t('ajax_error', 'AJAX error: {1}', error.message), 'error');
         })
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = 'Move Comments';
+            btn.innerHTML = btnHtml;
         });
     }
 });
@@ -531,7 +563,7 @@ function editComment(id) {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                Swal.fire({ icon: 'error', title: 'Error', text: data.error });
+                Swal.fire({ icon: 'error', titleText: t('error_title', 'Error'), text: data.error });
                 return;
             }
             const editCommentText = document.getElementById('editCommentText');
@@ -543,7 +575,7 @@ function editComment(id) {
         })
         .catch(error => {
             console.error('Error loading comment:', error);
-            Swal.fire({ icon: 'error', title: 'Error loading comment', text: error.message });
+            Swal.fire({ icon: 'error', titleText: t('err_load_comment', 'Error loading comment'), text: error.message });
         });
 }
 
@@ -569,7 +601,7 @@ function updatePreview() {
     .catch(error => {
         console.error('Preview error:', error);
         const preview = document.getElementById('bbcodePreview');
-        if (preview) preview.innerHTML = '<div class="text-danger">Preview generation failed</div>';
+        if (preview) preview.replaceChildren(lcEl('div', 'text-danger', t('preview_failed', 'Preview generation failed')));
     });
 }
 
@@ -581,21 +613,22 @@ function saveComment() {
     
     // Клиентская валидация
     if (commentText.length < 3) {
-        showToast('Comment must be at least 3 characters long', 'warning');
+        showToast(t('text_min', 'Comment must be at least 3 characters long'), 'warning');
         return;
     }
     
     const cleanText = commentText.replace(/\s+/g, '');
     if (cleanText.length < 3) {
-        showToast('Comment must contain meaningful text', 'warning');
+        showToast(t('text_meaningful', 'Comment must contain meaningful text'), 'warning');
         return;
     }
     
     const saveBtn = document.getElementById('confirmEditComment');
     if (!saveBtn) return;
 
+    const saveBtnHtml = saveBtn.innerHTML;
     saveBtn.disabled = true;
-    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+    lcSetBusy(saveBtn, t('saving', 'Saving...'));
 
     const formData = new FormData();
     formData.append('id', commentManager.editId);
@@ -618,34 +651,34 @@ function saveComment() {
             const modal = bootstrap.Modal.getInstance(document.getElementById('editCommentModal'));
             if (modal) modal.hide();
             loadComments(commentManager.currentPage);
-            showToast('Comment updated successfully', 'success');
+            showToast(t('saved', 'Comment updated successfully'), 'success');
         } else {
-            const errorMsg = response && response.error ? response.error : 'Unknown error occurred';
+            const errorMsg = response && response.error ? response.error : t('unknown_error', 'Unknown error occurred');
             showToast(errorMsg, 'error');
         }
     })
     .catch(error => {
         console.error('Save comment error:', error);
-        let errorMsg = 'Error saving comment';
+        let errorMsg = t('err_save', 'Error saving comment');
         if (error.message.includes('Network')) {
-            errorMsg = 'Network error - please check your connection';
+            errorMsg = t('network_error', 'Network error - please check your connection');
         }
         showToast(errorMsg, 'error');
     })
     .finally(() => {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = 'Save Changes';
+        saveBtn.innerHTML = saveBtnHtml;
     });
 }
 
 async function deleteComment(id) {
     const confirmResult = await Swal.fire({
         icon: 'warning',
-        title: 'Delete comment?',
-        text: 'Are you sure you want to delete this comment?',
+        titleText: t('delete_title', 'Delete comment?'),
+        text: t('delete_text', 'Are you sure you want to delete this comment?'),
         showCancelButton: true,
-        confirmButtonText: 'Delete',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: escapeHtml(t('delete_btn', 'Delete')),
+        cancelButtonText: escapeHtml(t('cancel', 'Cancel')),
         confirmButtonColor: '#d33'
     });
     if (!confirmResult.isConfirmed) return;
@@ -663,7 +696,7 @@ async function deleteComment(id) {
     })
     .then(response => {
         if (response.ok) {
-            showToast('Comment deleted successfully', 'success');
+            showToast(t('deleted', 'Comment deleted successfully'), 'success');
             loadComments(commentManager.currentPage);
         } else {
             throw new Error('Delete failed');
@@ -671,7 +704,7 @@ async function deleteComment(id) {
     })
     .catch(error => {
         console.error('Delete error:', error);
-        showToast('Error deleting comment', 'error');
+        showToast(t('err_delete_one', 'Error deleting comment'), 'error');
     });
 }
 
@@ -786,7 +819,12 @@ function initTorrentTagPanel() {
                 return;
             }
             debounceTimer = setTimeout(function () {
-                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                const loading = lcEl('div', 'text-muted small');
+                loading.append(
+                    lcEl('i', 'fa-solid fa-spinner fa-spin me-1'),
+                    document.createTextNode(t('preview_loading', 'Loading preview...'))
+                );
+                preview.replaceChildren(loading);
                 // Мы в /admin/ - относительный путь резолвился бы в
                 // /admin/ajax_torrent_preview.php (404), файл лежит в
                 // корне сайта, нужен абсолютный путь.
@@ -794,22 +832,33 @@ function initTorrentTagPanel() {
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         if (data.error) {
-                            preview.innerHTML = '<div class="text-danger small">' + escapeHtml(data.error) + '</div>';
+                            preview.replaceChildren(lcEl('div', 'text-danger small', String(data.error)));
                             return;
                         }
-                        const img = data.image
-                            ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
-                            : '';
-                        preview.innerHTML = '<div class="card">' + img
-                            + '<div class="card-body py-2 px-3">'
-                            + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
-                            + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
-                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
-                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
-                            + '</div></div>';
+                        const card = lcEl('div', 'card');
+                        if (data.image) {
+                            const img = lcEl('img', 'card-img-top');
+                            img.src = String(data.image);
+                            img.style.height = '100px';
+                            img.style.objectFit = 'cover';
+                            card.appendChild(img);
+                        }
+                        const body  = lcEl('div', 'card-body py-2 px-3');
+                        const title = lcEl('div', 'fw-bold text-truncate small');
+                        title.append(lcEl('i', 'fa-solid fa-magnet me-1'), document.createTextNode(String(data.name ?? '')));
+                        const meta = lcEl('div', 'text-muted small');
+                        meta.append(
+                            document.createTextNode(String(data.catname ?? '') + ' \u00B7 ' + String(data.size ?? '') + ' \u00B7 '),
+                            lcEl('span', 'text-success', t('preview_seeders', '{1} seeders', data.seeders)),
+                            document.createTextNode(' \u00B7 '),
+                            lcEl('span', 'text-danger', t('preview_leechers', '{1} leechers', data.leechers))
+                        );
+                        body.append(title, meta);
+                        card.appendChild(body);
+                        preview.replaceChildren(card);
                     })
                     .catch(function () {
-                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                        preview.replaceChildren(lcEl('div', 'text-danger small', t('preview_load_failed', 'Failed to load preview')));
                     });
             }, 400);
         });

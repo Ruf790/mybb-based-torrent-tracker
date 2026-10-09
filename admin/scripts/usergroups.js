@@ -1,5 +1,18 @@
 /* User Groups (admin/groups.php): живой предпросмотр ника/иконки, переключатели вступления */
 document.addEventListener('DOMContentLoaded', function () {
+    // Строки из ланга (const AGS_LANG выводит groups.php перед скриптом); английский — fallback
+    const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+    function t(key, fallback, ...args) {
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+        return s;
+    }
+    function escText(str) {
+        const d = document.createElement('div');
+        d.textContent = String(str);
+        return d.innerHTML;
+    }
+
     // Живой предпросмотр стиля ника и картинки группы
     const style = document.querySelector('.ug input[name="namestyle"]');
     const title = document.querySelector('.ug input[name="title"]');
@@ -18,7 +31,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     function renderName() {
         if (!out || !style) return;
-        const name = (title && title.value.trim()) ? 'Username' : 'Username';
+        // Перевод подставляется экранированным текстом внутрь стиля ника
+        const name = escText(t('preview_username', 'Username'));
         out.innerHTML = safeHtml((style.value || '{username}').split('{username}').join(name));
     }
     function renderImg() {
@@ -30,7 +44,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const el = document.createElement('img');
         el.alt = '';
         el.src = /^(https?:)?\/\//i.test(v) || v.startsWith('/') ? v : '../' + v;
-        el.onerror = () => { iout.innerHTML = '<span class="text-danger small"><i class="fa-solid fa-image me-1"></i>not found</span>'; };
+        el.onerror = () => {
+            const span = document.createElement('span');
+            span.className = 'text-danger small';
+            const ic = document.createElement('i');
+            ic.className = 'fa-solid fa-image me-1';
+            span.append(ic, document.createTextNode(t('img_not_found', 'not found')));
+            iout.replaceChildren(span);
+        };
         iout.appendChild(el);
     }
     style && style.addEventListener('input', renderName);

@@ -1,4 +1,24 @@
 // deleteForum.js - оптимизированная версия
+
+/**
+ * Строка из AGS_LANG (ключи js_* из ланга без префикса) с английским fallback и подстановкой {1}, {2}…
+ * Имя не t(): файл не обёрнут в IIFE, а глобальный t() есть и в других скриптах.
+ */
+function fmDelT(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+    let str = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+    // {1} — формат лангов; %1$s — если загрузчик лангов переделал плейсхолдеры под sprintf
+    args.forEach((a, i) => {
+        str = str.split('{' + (i + 1) + '}').join(String(a)).split('%' + (i + 1) + '$s').join(String(a));
+    });
+    return str;
+}
+
+/** Имя форума из data-атрибута: там HTML (MyBB хранит имена с разметкой/сущностями) → чистый текст */
+function fmDelPlainName(html) {
+    if (!html) return '';
+    return new DOMParser().parseFromString(html, 'text/html').documentElement.textContent.trim();
+}
 document.addEventListener('DOMContentLoaded', function() {  
     // Используем делегирование событий для динамически добавленных элементов
     document.addEventListener('click', function(e) {
@@ -6,7 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (deleteBtn) {
             e.preventDefault();   
             const empid = deleteBtn.getAttribute('data-emp-id');
-            const forumName = deleteBtn.getAttribute('data-forum-name') || 'this forum';
+            const forumName = fmDelPlainName(deleteBtn.getAttribute('data-forum-name'));
             const parent = deleteBtn.closest(".tr") || deleteBtn.closest(".forum-row");
             
             // Создаем кастомное модальное окно вместо bootbox
@@ -21,7 +41,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function showDeleteConfirmation(empid, forumName, parentRow) {
     // Определяем forumName с значением по умолчанию
-    forumName = forumName || 'this forum';
+    forumName = forumName || fmDelT('del_this_forum', 'this forum');
+
+    // Тексты в разметке — английский fallback; перевод ставится ниже через textContent (data-fm-t="ключ")
     
     const modalHTML = `
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
@@ -35,12 +57,12 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
                     </div>
                     <div>
                         <h5 class="modal-title mb-0 fw-bold">
-                            <i class="fa-solid fa-trash-can me-2"></i>Delete Forum
+                            <i class="fa-solid fa-trash-can me-2"></i><span data-fm-t="del_title">Delete Forum</span>
                         </h5>
-                        <p class="mb-0 small opacity-75">Critical Action Required</p>
+                        <p class="mb-0 small opacity-75" data-fm-t="del_subtitle">Critical Action Required</p>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white shadow-none" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white shadow-none" data-bs-dismiss="modal" data-fm-aria="close" aria-label="Close"></button>
             </div>
             
             <!-- Тело модального окна -->
@@ -51,18 +73,15 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
                         <div class="pulse-ring"></div>
                     </div>
                     
-                    <h4 class="fw-bold text-dark mb-3">
-                        Confirm Deletion
-                    </h4>
+                    <h4 class="fw-bold text-dark mb-3" data-fm-t="del_confirm">Confirm Deletion</h4>
                     
                     <div class="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25" role="alert">
                         <div class="d-flex">
                             <i class="fa-solid fa-circle-exclamation text-danger mt-1 me-3"></i>
                             <div>
-                                <p class="mb-1 fw-semibold">You are about to delete:</p>
+                                <p class="mb-1 fw-semibold" data-fm-t="del_about">You are about to delete:</p>
                                 <h6 class="mb-0 text-danger">
-                                    <i class="fa-solid fa-folder-open me-2"></i>
-                                    "${forumName}"
+                                    <i class="fa-solid fa-folder-open me-2"></i><span id="deleteForumName"></span>
                                 </h6>
                             </div>
                         </div>
@@ -75,15 +94,15 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
                         <div class="col-6">
                             <div class="text-center">
                                 <i class="fa-solid fa-message text-muted fa-lg mb-2"></i>
-                                <p class="mb-1 small">Threads</p>
-                                <p class="mb-0 fw-bold">All</p>
+                                <p class="mb-1 small" data-fm-t="del_threads">Threads</p>
+                                <p class="mb-0 fw-bold" data-fm-t="del_all">All</p>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="text-center">
                                 <i class="fa-solid fa-comment text-muted fa-lg mb-2"></i>
-                                <p class="mb-1 small">Posts</p>
-                                <p class="mb-0 fw-bold">All</p>
+                                <p class="mb-1 small" data-fm-t="del_posts">Posts</p>
+                                <p class="mb-0 fw-bold" data-fm-t="del_all">All</p>
                             </div>
                         </div>
                     </div>
@@ -94,8 +113,8 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
                     <div class="d-flex">
                         <i class="fa-solid fa-triangle-exclamation text-warning mt-1 me-3"></i>
                         <div>
-                            <p class="mb-1 fw-semibold">This action cannot be undone!</p>
-                            <p class="mb-0 small">All content in this forum will be permanently deleted.</p>
+                            <p class="mb-1 fw-semibold" data-fm-t="del_warn_title">This action cannot be undone!</p>
+                            <p class="mb-0 small" data-fm-t="del_warn_text">All content in this forum will be permanently deleted.</p>
                         </div>
                     </div>
                 </div>
@@ -103,20 +122,18 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
                 <!-- Подтверждение -->
                 <div class="form-check mt-4">
                     <input class="form-check-input" type="checkbox" id="confirmDeleteCheckbox">
-                    <label class="form-check-label small" for="confirmDeleteCheckbox">
-                        I understand this action is permanent and cannot be reversed
-                    </label>
+                    <label class="form-check-label small" for="confirmDeleteCheckbox" data-fm-t="del_checkbox">I understand this action is permanent and cannot be reversed</label>
                 </div>
             </div>
             
             <!-- Футер модального окна -->
             <div class="modal-footer border-0 bg-light rounded-bottom">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-2"></i>Cancel
+                    <i class="fa-solid fa-xmark me-2"></i><span data-fm-t="cancel">Cancel</span>
                 </button>
                 <button type="button" class="btn btn-danger px-4 fw-semibold" id="confirmDeleteBtn" disabled>
                     <i class="fa-solid fa-trash-can me-2"></i>
-                    <span>Delete Forum</span>
+                    <span data-fm-t="del_button">Delete Forum</span>
                     <span class="spinner-border spinner-border-sm ms-2 d-none" id="deleteSpinner"></span>
                 </button>
             </div>
@@ -127,6 +144,17 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
     // Добавляем модальное окно в DOM
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     const modalElement = document.getElementById('deleteConfirmModal');
+
+    // Переводы и имя форума — только как текст
+    modalElement.querySelectorAll('[data-fm-t]').forEach(el => {
+        el.textContent = fmDelT(el.dataset.fmT, el.textContent.trim());
+    });
+    modalElement.querySelectorAll('[data-fm-aria]').forEach(el => {
+        el.setAttribute('aria-label', fmDelT(el.dataset.fmAria, el.getAttribute('aria-label') || ''));
+    });
+    const nameEl = modalElement.querySelector('#deleteForumName');
+    if (nameEl) nameEl.textContent = fmDelT('del_quoted', '"{1}"', forumName);
+
     const modal = new bootstrap.Modal(modalElement);
     
     // Показываем модальное окно
@@ -156,11 +184,13 @@ function showDeleteConfirmation(empid, forumName, parentRow) {
         if (confirmCheckbox) confirmCheckbox.disabled = true;
         
         // Меняем текст кнопки
-        this.innerHTML = `
-            <i class="fa-solid fa-trash-can me-2"></i>
-            <span>Deleting...</span>
-            <span class="spinner-border spinner-border-sm ms-2"></span>
-        `;
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-trash-can me-2';
+        const label = document.createElement('span');
+        label.textContent = fmDelT('del_deleting', 'Deleting...');
+        const spin = document.createElement('span');
+        spin.className = 'spinner-border spinner-border-sm ms-2';
+        this.replaceChildren(icon, label, spin);
         
         deleteEmployee(empid, parentRow, modal);
     });
@@ -183,7 +213,7 @@ async function deleteEmployee(empid, parentRow, modal) {
         const myPostKey = window.my_post_key || document.querySelector('input[name="my_post_key"]')?.value;
         
         if (!myPostKey) {
-            showAlert('Security token missing. Please refresh the page and try again.', 'danger');
+            showAlert(fmDelT('del_no_token', 'Security token missing. Please refresh the page and try again.'), 'danger');
             return;
         }
 
@@ -213,15 +243,15 @@ async function deleteEmployee(empid, parentRow, modal) {
                 }, 300);
             }
             
-            showAlert('Forum deleted successfully!', 'success');
+            showAlert(fmDelT('del_success', 'Forum deleted successfully!'), 'success');
         } else {
-            showAlert('Error deleting forum: ' + result, 'danger');
+            showAlert(fmDelT('del_error', 'Error deleting forum: {1}', result.trim()), 'danger');
         }
 
         modal.hide();
     } catch (error) {
         console.error('Delete error:', error);
-        showAlert('Network error. Please check your connection and try again.', 'danger');
+        showAlert(fmDelT('del_network', 'Network error. Please check your connection and try again.'), 'danger');
         modal.hide();
     }
 }
@@ -234,9 +264,7 @@ function showAlert(message, type = 'info') {
         <div class="toast-container position-fixed top-0 end-0 p-3">
             <div class="toast align-items-center text-bg-${type} border-0" role="alert">
                 <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
-                    </div>
+                    <div class="toast-body"></div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
                 </div>
             </div>
@@ -244,7 +272,10 @@ function showAlert(message, type = 'info') {
     `;
 
     document.body.insertAdjacentHTML('beforeend', alertHTML);
-    const toastElement = document.querySelector('.toast');
+    // Последний добавленный контейнер — сообщение (в т.ч. ответ сервера) ставится как текст
+    const toastElement = document.body.lastElementChild.querySelector('.toast');
+    toastElement.querySelector('.toast-body').textContent = message;
+    toastElement.querySelector('.btn-close').setAttribute('aria-label', fmDelT('close', 'Close'));
     const toast = new bootstrap.Toast(toastElement, {
         autohide: true,
         delay: 5000

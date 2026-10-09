@@ -2,6 +2,56 @@
 
 const presets = window.seedbonusPresets || {};
 
+// ── Языковые строки ─────────────────────────────────────────
+// AGS_LANG выводит seedbonus_settings.php перед подключением скрипта
+// (ключи js_* из ланга без префикса + preset_<key> — имена пресетов).
+const SB_LANG = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+
+/** Сырой шаблон: перевод или английский fallback */
+const tRaw = (key, fallback) =>
+    (typeof SB_LANG[key] === 'string' && SB_LANG[key] !== '') ? SB_LANG[key] : String(fallback);
+
+/** {1}, {2}… и %1$s (в него $lang->load() превращает {1}) */
+const PH_RE = /\{(\d+)\}|%(\d+)\$s/g;
+
+/** Перевод с подстановкой аргументов — результат всегда вставлять как текст */
+function t(key, fallback, ...args) {
+    return tRaw(key, fallback).replace(PH_RE, (m, a, b) => {
+        const i = parseInt(a ?? b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+/** Перевод как DOM: текст через createTextNode, аргументы {N} — в <b> через textContent */
+function tNode(key, fallback, ...args) {
+    const s = tRaw(key, fallback), box = document.createElement('div');
+    let last = 0;
+    for (const m of s.matchAll(PH_RE)) {
+        if (m.index > last) box.appendChild(document.createTextNode(s.slice(last, m.index)));
+        const i = parseInt(m[1] ?? m[2], 10) - 1;
+        if (i >= 0 && i < args.length) {
+            const b = document.createElement('b');
+            b.textContent = String(args[i]);
+            box.appendChild(b);
+        } else {
+            box.appendChild(document.createTextNode(m[0]));
+        }
+        last = m.index + m[0].length;
+    }
+    if (last < s.length) box.appendChild(document.createTextNode(s.slice(last)));
+    return box;
+}
+
+/** Иконка Font Awesome + текст (для кнопок) */
+function iconText(icon, text) {
+    const i = document.createElement('i');
+    i.className = 'fa-solid ' + icon + ' me-1';
+    return [i, document.createTextNode(String(text))];
+}
+
+/** Отображаемое имя пресета; ключ пресета для сервера не меняется */
+const presetTitle = name => t('preset_' + name, name);
+
 // ── SweetAlert2 с fallback на нативные alert/confirm ────────
 const hasSwal = () => typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function';
 
@@ -22,10 +72,11 @@ function swalTheme() {
 
 /**
  * Подтверждение. Всегда возвращает Promise<boolean>.
- * opts: { title, text, html, icon, confirmText, confirmIcon, danger }
+ * opts: { title, text, html (DOM-узел), icon, confirmText, confirmIcon, danger }
+ * Тексты кнопок и заголовок вставляются как текст (titleText / didRender), не как HTML.
  */
 function sbConfirm(opts) {
-    const o = Object.assign({ icon: 'question', confirmText: 'Yes', confirmIcon: 'fa-check' }, opts);
+    const o = Object.assign({ icon: 'question', confirmText: t('yes', 'Yes'), confirmIcon: 'fa-check' }, opts);
     if (!hasSwal()) {
         return Promise.resolve(window.confirm([o.title, o.text].filter(Boolean).join('\n\n')));
     }
@@ -33,15 +84,19 @@ function sbConfirm(opts) {
     if (o.danger) theme.customClass.confirmButton = 'btn btn-danger rounded-pill px-4 mx-1';
 
     return window.Swal.fire(Object.assign(theme, {
-        title: o.title,
+        titleText: o.title,
         text: o.html ? undefined : o.text,
         html: o.html,
         icon: o.icon,
         showCancelButton: true,
         focusCancel: true,
         reverseButtons: true,
-        confirmButtonText: '<i class="fa-solid ' + o.confirmIcon + ' me-1"></i>' + o.confirmText,
-        cancelButtonText: '<i class="fa-solid fa-xmark me-1"></i>Cancel',
+        confirmButtonText: '',
+        cancelButtonText: '',
+        didRender: () => {
+            window.Swal.getConfirmButton()?.replaceChildren(...iconText(o.confirmIcon, o.confirmText));
+            window.Swal.getCancelButton()?.replaceChildren(...iconText('fa-xmark', t('cancel', 'Cancel')));
+        },
     })).then(r => r.isConfirmed === true);
 }
 
@@ -49,15 +104,13 @@ function sbConfirm(opts) {
 function sbAlert(msg, icon = 'info', title = '') {
     if (!hasSwal()) { window.alert(msg); return Promise.resolve(); }
     return window.Swal.fire(Object.assign(swalTheme(), {
-        title: title || undefined,
+        titleText: title || undefined,
         text: String(msg),
         icon: icon,
-        confirmButtonText: 'OK',
+        confirmButtonText: '',
+        didRender: () => { window.Swal.getConfirmButton()?.replaceChildren(document.createTextNode(t('ok', 'OK'))); },
     }));
 }
-
-/** Экранирование для html-опции Swal */
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
 
 // toast.js может не загрузиться — тогда модальный SweetAlert (или alert, если нет и его)
 const notify = (msg, type = 'info') =>
@@ -127,32 +180,44 @@ function setDirty() {
     markActivePreset();
 }
 
-function setBusy(btn, busy, html) {
+/** Сохранить исходное содержимое кнопки (узлы с сервера) */
+const snapshot = el => [...el.childNodes].map(n => n.cloneNode(true));
+const restore  = (el, nodes) => el.replaceChildren(...nodes.map(n => n.cloneNode(true)));
+
+function setBusy(btn, busy, text) {
     if (!btn) return;
     if (busy) {
-        btn.dataset.html = btn.innerHTML;
+        if (!btn.disabled) btn._sbOrig = snapshot(btn);
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + (html || 'Saving…');
+        const sp = document.createElement('span');
+        sp.className = 'spinner-border spinner-border-sm me-1';
+        btn.replaceChildren(sp, document.createTextNode(text || t('saving', 'Saving…')));
     } else {
         btn.disabled = false;
-        if (btn.dataset.html) btn.innerHTML = btn.dataset.html;
+        if (btn._sbOrig) restore(btn, btn._sbOrig);
     }
 }
 
 // ── Пресеты ─────────────────────────────────────────────────
 async function loadPreset(presetName, skipConfirm = false) {
     if (!presets[presetName]) {
-        notify(`Preset "${presetName}" not found`, 'error');
+        notify(t('preset_not_found', 'Preset "{1}" not found', presetName), 'error');
         return;
     }
     if (!skipConfirm) {
+        const html = tNode('load_preset_html', 'The {1} preset will overwrite current rates and multipliers.', presetTitle(presetName));
+        if (dirty) {
+            const warn = document.createElement('span');
+            warn.className = 'text-warning-emphasis';
+            warn.textContent = t('unsaved_lost', 'Your unsaved changes will be lost.');
+            html.append(document.createElement('br'), warn);
+        }
         const ok = await sbConfirm({
-            title: 'Load preset?',
-            html: `The <b>${esc(presetName)}</b> preset will overwrite current rates and multipliers.`
-                + (dirty ? '<br><span class="text-warning-emphasis">Your unsaved changes will be lost.</span>' : ''),
-            text: `Load the "${presetName}" preset? Current rates and multipliers will be overwritten.`,
+            title: t('load_preset_title', 'Load preset?'),
+            html: html,
+            text: t('load_preset_text', 'Load the "{1}" preset? Current rates and multipliers will be overwritten.', presetTitle(presetName)),
             icon: 'question',
-            confirmText: 'Load preset',
+            confirmText: t('load_preset_btn', 'Load preset'),
             confirmIcon: 'fa-wand-magic-sparkles',
         });
         if (!ok) return;
@@ -168,7 +233,7 @@ async function loadPreset(presetName, skipConfirm = false) {
             notify(data.message, data.success ? 'success' : 'error');
             if (data.success) { dirty = false; setTimeout(() => location.reload(), 900); }
         })
-        .catch(err => notify('Error: ' + err.message, 'error'));
+        .catch(err => notify(t('error', 'Error: {1}', err.message), 'error'));
 }
 
 /** Подсветить пресет, если текущие значения формы с ним совпадают */
@@ -217,17 +282,17 @@ function saveSettings() {
                 btns.forEach(b => setBusy(b, false));
             }
         })
-        .catch(err => { notify('Error: ' + err.message, 'error'); btns.forEach(b => setBusy(b, false)); });
+        .catch(err => { notify(t('error', 'Error: {1}', err.message), 'error'); btns.forEach(b => setBusy(b, false)); });
 }
 
 async function resetSettings() {
     // Подтверждение спрашивается один раз — здесь; loadPreset() вызывается с skipConfirm
     const ok = await sbConfirm({
-        title: 'Reset to defaults?',
-        html: 'All settings will be replaced with the <b>balanced</b> preset.',
-        text: 'Reset all settings to the "balanced" defaults?',
+        title: t('reset_title', 'Reset to defaults?'),
+        html: tNode('reset_html', 'All settings will be replaced with the {1} preset.', presetTitle('balanced')),
+        text: t('reset_text', 'Reset all settings to the "{1}" defaults?', presetTitle('balanced')),
         icon: 'warning',
-        confirmText: 'Reset settings',
+        confirmText: t('reset_btn', 'Reset settings'),
         confirmIcon: 'fa-rotate-left',
         danger: true,
     });
@@ -237,7 +302,7 @@ async function resetSettings() {
 /** POST с разбором JSON и при ошибочном HTTP-статусе (сервер отвечает 403 с JSON) */
 function post(formData) {
     return fetch(window.location.href, { method: 'POST', body: formData, credentials: 'same-origin' })
-        .then(r => r.json().catch(() => { throw new Error('Unexpected server response (' + r.status + ')'); }));
+        .then(r => r.json().catch(() => { throw new Error(t('bad_response', 'Unexpected server response ({1})', r.status)); }));
 }
 
 // ── Код конфигурации ────────────────────────────────────────
@@ -247,10 +312,17 @@ function copyCode() {
     const btn = document.getElementById('copyCodeBtn');
     navigator.clipboard.writeText(el.textContent)
         .then(() => {
-            notify('Code copied to clipboard', 'success');
-            if (btn) { const h = btn.innerHTML; btn.innerHTML = '<i class="fa-solid fa-check me-1"></i>Copied'; setTimeout(() => { btn.innerHTML = h; }, 1500); }
+            notify(t('code_copied', 'Code copied to clipboard'), 'success');
+            if (btn) {
+                if (!btn._sbCopied) {
+                    btn._sbCopied = snapshot(btn);
+                    btn.replaceChildren(...iconText('fa-check', t('copied', 'Copied')));
+                }
+                clearTimeout(btn._sbCopyTimer);
+                btn._sbCopyTimer = setTimeout(() => { restore(btn, btn._sbCopied); btn._sbCopied = null; }, 1500);
+            }
         })
-        .catch(() => notify('Failed to copy code', 'error'));
+        .catch(() => notify(t('copy_failed', 'Failed to copy code'), 'error'));
 }
 
 function downloadCode() {
@@ -262,7 +334,7 @@ function downloadCode() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notify('File downloaded', 'success');
+    notify(t('downloaded', 'File downloaded'), 'success');
 }
 
 // ── Прогноз инфляции ────────────────────────────────────────

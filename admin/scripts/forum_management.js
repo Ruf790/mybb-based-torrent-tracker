@@ -10,6 +10,21 @@
     // скрипт синхронный и стоит там же, где стоял document.write, поэтому эффект тот же.
     document.documentElement.classList.add('fm2-js');
 
+    /** Строка из AGS_LANG (js_* без префикса) с английским fallback и подстановкой {1}, {2}… */
+    const t = (key, fallback, ...args) => {
+        const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : {};
+        let str = (typeof dict[key] === 'string' && dict[key] !== '') ? dict[key] : fallback;
+        args.forEach((a, i) => { str = str.split('{' + (i + 1) + '}').join(String(a)); });
+        return str;
+    };
+
+    /** Иконка + текст (текст — только через textNode) */
+    const iconText = (iconClass, text) => {
+        const i = document.createElement('i');
+        i.className = iconClass;
+        return [i, document.createTextNode(text)];
+    };
+
     const onReady = fn => {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
         else fn();
@@ -155,9 +170,19 @@
         const syncGroups = () => {
             if (!sgList) return;
             const sel = Array.from(cg.selectedOptions);
-            sgList.innerHTML = sel.length
-                ? sel.map(o => '<span class="badge bg-primary me-1 mb-1">' + o.text + '</span>').join('')
-                : '<p class="text-muted small mb-0">No groups selected</p>';
+            if (sel.length) {
+                sgList.replaceChildren(...sel.map(o => {
+                    const b = document.createElement('span');
+                    b.className = 'badge bg-primary me-1 mb-1';
+                    b.textContent = o.text;
+                    return b;
+                }));
+            } else {
+                const p = document.createElement('p');
+                p.className = 'text-muted small mb-0';
+                p.textContent = t('no_groups_selected', 'No groups selected');
+                sgList.replaceChildren(p);
+            }
         };
         const setAll = on => { Array.from(cg.options).forEach(o => { o.selected = on; }); syncGroups(); };
 
@@ -171,7 +196,7 @@
             const btn = this.querySelector('button[type="submit"]');
             if (!btn) return;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Copying...';
+            btn.replaceChildren(...iconText('fas fa-spinner fa-spin me-2', t('copying', 'Copying...')));
         });
     }
 
@@ -182,7 +207,7 @@
         const count = () => {
             const n = form.querySelectorAll('.fm2-sw input:checked').length;
             const el = document.getElementById('fm2SwCount');
-            if (el) el.innerHTML = '<i class="fa-solid fa-toggle-on"></i>' + n + ' enabled';
+            if (el) el.replaceChildren(...iconText('fa-solid fa-toggle-on', t('sw_count', '{1} enabled', n)));
         };
         form.addEventListener('change', count);
         form.addEventListener('reset', () => setTimeout(count, 0));

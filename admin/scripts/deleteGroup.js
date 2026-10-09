@@ -1,3 +1,22 @@
+/* User Groups (admin/groups.php): удаление группы через модальное окно */
+(function () {
+'use strict';
+
+// Строки из ланга (const AGS_LANG выводит groups.php перед скриптом); английский — fallback
+const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+function t(key, fallback, ...args) {
+    let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+    args.forEach((a, i) => { s = s.split('{' + (i + 1) + '}').join(String(a)); });
+    return s;
+}
+
+/** Иконка + текст кнопки (перевод — текстовым узлом, не через innerHTML) */
+function setBtn(btn, iconClass, text) {
+    const ic = document.createElement('i');
+    ic.className = iconClass;
+    btn.replaceChildren(ic, document.createTextNode(text));
+}
+
 document.addEventListener('DOMContentLoaded', function() {  
     document.querySelectorAll('.delete_employee').forEach(button => {
         button.addEventListener('click', function(e) {   
@@ -15,30 +34,28 @@ function showDeleteConfirmation(empid, parentRow) {
     // Получаем ключ безопасности
     const myPostKeyField = document.querySelector('input[name="my_post_key"]');
     if (!myPostKeyField) {
-        showAlert('Security token not found on page. Please reload the page and try again.');
+        showAlert(t('no_token', 'Security token not found on page. Please reload the page and try again.'));
         return;
     }
     const myPostKey = myPostKeyField.value;
     
-    // Создаем модальное окно
+    // Создаем модальное окно (тексты подставляются ниже через textContent)
     const modalHTML = `
         <div class="modal fade" id="deleteConfirmModal" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">
-                            <i class="fa-solid fa-trash" style="color: #0d0d0d;"></i> Delete Group
+                            <i class="fa-solid fa-trash" style="color: #0d0d0d;"></i> <span class="dg-title"></span>
                         </h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <p>Are you sure you want to delete this group? This action cannot be undone.</p>
+                        <p class="dg-text"></p>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-success" data-bs-dismiss="modal">No</button>
-                        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
-                            <i class="fa-solid fa-trash me-1"></i>Delete!
-                        </button>
+                        <button type="button" class="btn btn-success dg-no" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn btn-danger" id="confirmDeleteBtn"></button>
                     </div>
                 </div>
             </div>
@@ -48,6 +65,10 @@ function showDeleteConfirmation(empid, parentRow) {
     // Добавляем модальное окно в DOM
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     const modalElement = document.getElementById('deleteConfirmModal');
+    modalElement.querySelector('.dg-title').textContent = t('del_title', 'Delete Group');
+    modalElement.querySelector('.dg-text').textContent  = t('del_confirm', 'Are you sure you want to delete this group? This action cannot be undone.');
+    modalElement.querySelector('.dg-no').textContent    = t('btn_no', 'No');
+    setBtn(document.getElementById('confirmDeleteBtn'), 'fa-solid fa-trash me-1', t('btn_delete', 'Delete!'));
     const modal = new bootstrap.Modal(modalElement);
     
     // Показываем модальное окно
@@ -68,8 +89,7 @@ async function deleteGroup(empid, parentRow, modal, myPostKey) {
     try {
         // Показываем индикатор загрузки
         const deleteBtn = document.getElementById('confirmDeleteBtn');
-        const originalText = deleteBtn.innerHTML;
-        deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Deleting...';
+        setBtn(deleteBtn, 'fa-solid fa-spinner fa-spin me-1', t('deleting', 'Deleting...'));
         deleteBtn.disabled = true;
 
         const response = await fetch(`index.php?act=groups&action=delete`, {
@@ -106,21 +126,15 @@ async function deleteGroup(empid, parentRow, modal, myPostKey) {
 
     } catch (error) {
         console.error('Delete error:', error);
-        showAlert('Error deleting group. Please try again.');
+        showAlert(t('del_error', 'Error deleting group. Please try again.'));
         
         // Восстанавливаем кнопку в случае ошибки
         const deleteBtn = document.getElementById('confirmDeleteBtn');
         if (deleteBtn) {
-            deleteBtn.innerHTML = '<i class="fa-solid fa-trash me-1"></i>Delete!';
+            setBtn(deleteBtn, 'fa-solid fa-trash me-1', t('btn_delete', 'Delete!'));
             deleteBtn.disabled = false;
         }
     }
-}
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
 }
 
 function showAlert(message) {
@@ -129,10 +143,10 @@ function showAlert(message) {
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-body">
-                        <p>${escapeHtml(message)}</p>
+                        <p class="dg-alert-text"></p>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                        <button type="button" class="btn btn-primary dg-ok" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
             </div>
@@ -140,10 +154,13 @@ function showAlert(message) {
     `;
 
     document.body.insertAdjacentHTML('beforeend', alertHTML);
-    const alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+    const alertEl = document.getElementById('alertModal');
+    alertEl.querySelector('.dg-alert-text').textContent = String(message);
+    alertEl.querySelector('.dg-ok').textContent = t('btn_ok', 'OK');
+    const alertModal = new bootstrap.Modal(alertEl);
     alertModal.show();
 
-    document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+    alertEl.addEventListener('hidden.bs.modal', function() {
         this.remove();
     });
 }
@@ -167,3 +184,5 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+})();

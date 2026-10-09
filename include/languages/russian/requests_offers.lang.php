@@ -1,0 +1,141 @@
+<?php
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
+
+$language['requests_offers'] = array (
+	// ── Page ──
+	'pane_title'               => 'Запросы и предложения',
+	'pane_subtitle'            => 'Меняйте статусы, привязывайте залитые раздачи и чистите то, что пользователи запросили или предложили.',
+	'aria_section'             => 'Раздел',
+
+	// ── Tabs / nouns ──
+	'lbl_tab_requests'         => 'Запросы',
+	'lbl_tab_offers'           => 'Предложения',
+	'th_req_item'              => 'Запрос',
+	'th_off_item'              => 'Предложение',
+	'lbl_votes'                => 'Голоса',
+	'lbl_wants'                => 'Хотят',
+
+	// ── Statuses ──
+	'opt_req_open'             => 'Открыт',
+	'opt_req_filled'           => 'Выполнен',
+	'opt_req_cancelled'        => 'Отменён',
+	'opt_off_open'             => 'Открыто',
+	'opt_off_uploaded'         => 'Залито',
+	'opt_off_cancelled'        => 'Отменено',
+
+	// ── KPI ──
+	'kpi_req_total'            => 'Всего запросов',
+	'kpi_off_total'            => 'Всего предложений',
+	'kpi_cancelled_sub'        => 'Отменено: {1}',
+	'kpi_open'                 => 'Открытые',
+	'kpi_req_open_sub'         => '{1}% от всех запросов',
+	'kpi_off_open_sub'         => '{1}% от всех предложений',
+	'kpi_req_done'             => 'Выполненные',
+	'kpi_off_done'             => 'Залитые',
+	'kpi_done_sub'             => 'Доля выполненных: {1}%',
+	'kpi_bounty'               => 'Общая награда',
+	'kpi_bounty_value'         => '{1} BP',
+	'kpi_bounty_sub'           => '{1} BP ещё ждут на открытых запросах',
+	'kpi_wants'                => 'Всего «хочу»',
+	'kpi_wants_sub'            => 'Столько раз пользователи ждут заливку',
+
+	// ── Filters ──
+	'aria_status_filter'       => 'Фильтр по статусу',
+	'lbl_all'                  => 'Все',
+	'lbl_search'               => 'Поиск по названию',
+	'aria_category'            => 'Категория',
+	'opt_all_categories'       => 'Все категории',
+	'aria_sort'                => 'Сортировка',
+	'opt_sort_newest'          => 'Сначала новые',
+	'opt_sort_votes'           => 'Больше всего голосов',
+	'opt_sort_wants'           => 'Больше всего «хочу»',
+	'opt_sort_bounty'          => 'Самая большая награда',
+	'btn_filter'               => 'Фильтр',
+	'btn_reset'                => 'Сбросить',
+
+	// ── Table ──
+	'aria_select_all'          => 'Выбрать все на этой странице',
+	'th_by'                    => 'Автор',
+	'th_status'                => 'Статус',
+	'th_bounty'                => 'Награда',
+	'th_created'               => 'Добавлено',
+	'th_actions'               => 'Действия',
+	'aria_select_row'          => 'Выбрать #{1}',
+	'lbl_no_category'          => 'Без категории',
+	'lbl_torrent'              => 'Раздача #{1}',
+	'lbl_user_deleted'         => 'удалён',
+	'lbl_ago'                  => '{1} назад',
+	'tip_open_public'          => 'Открыть страницу на сайте',
+	'tip_more_actions'         => 'Другие действия',
+	'lbl_change_status'        => '#{1} · смена статуса',
+	'lbl_mark_as'              => 'Отметить как «{1}»',
+	'btn_delete'               => 'Удалить',
+
+	// ── Empty state ──
+	'empty_req_filtered'       => 'Нет запросов по этим фильтрам',
+	'empty_off_filtered'       => 'Нет предложений по этим фильтрам',
+	'empty_filtered_hint'      => 'Очистите поиск или выберите другой статус или категорию.',
+	'btn_reset_filters'        => 'Сбросить фильтры',
+	'empty_req_none'           => 'Запросов пока нет',
+	'empty_off_none'           => 'Предложений пока нет',
+	'empty_req_none_hint'      => 'Здесь появятся новые запросы пользователей.',
+	'empty_off_none_hint'      => 'Здесь появятся новые предложения пользователей.',
+
+	// ── Footer / bulk bar ──
+	'lbl_showing'              => 'Показано {1}–{2} из {3}',
+	'lbl_selected'             => 'Выбрано: {1}',
+	'btn_clear'                => 'Снять выбор',
+	'aria_bulk_action'         => 'Массовое действие',
+	'opt_choose_action'        => 'Выберите действие…',
+	'opt_delete_selected'      => 'Удалить выбранные',
+	'btn_apply'                => 'Применить',
+
+	// ── Modal ──
+	'modal_req_title'          => 'Отметить как выполненный',
+	'modal_off_title'          => 'Отметить как залитое',
+	'modal_req_label'          => 'ID раздачи, которой выполнен запрос',
+	'modal_off_label'          => 'ID раздачи, в которой залито предложение',
+	'hint_torrent_id'          => 'Число из адреса страницы раздачи (details.php?id=…).',
+	'btn_close'                => 'Закрыть',
+	'btn_cancel'               => 'Отмена',
+
+	// ── Flash messages ──
+	'flash_security'           => 'Проверка безопасности не пройдена. Попробуйте ещё раз.',
+	'flash_no_torrent_id'      => 'Не указан ID раздачи.',
+	'flash_torrent_missing'    => 'Раздача с ID {1} не найдена.',
+	'flash_req_completed'      => 'Запрос #{1} отмечен как выполненный.',
+	'flash_off_completed'      => 'Предложение #{1} отмечено как залитое.',
+	'flash_nothing_selected'   => 'Ничего не выбрано.',
+	'flash_req_deleted'        => 'Запрос #{1} удалён.',
+	'flash_off_deleted'        => 'Предложение #{1} удалено.',
+	'flash_req_status'         => 'Запрос #{1}: статус изменён на «{2}».',
+	'flash_off_status'         => 'Предложение #{1}: статус изменён на «{2}».',
+	'flash_unknown_action'     => 'Неизвестное действие.',
+	'flash_bulk_deleted'       => 'Удалено: {1} {2}.',
+	'flash_bulk_status'        => '{1} {2}: статус изменён на «{3}».',
+
+	// ── JS (also used by PHP: locale, nouns) ──
+	'js_locale'                => 'ru',
+	'js_req_noun_one'          => 'запрос',
+	'js_req_noun_few'          => 'запроса',
+	'js_req_noun_many'         => 'запросов',
+	'js_off_noun_one'          => 'предложение',
+	'js_off_noun_few'          => 'предложения',
+	'js_off_noun_many'         => 'предложений',
+	'js_confirm'               => 'Подтвердить',
+	'js_cancel'                => 'Отмена',
+	'js_choose_action'         => 'Сначала выберите массовое действие.',
+	'js_bulk_del_title'        => 'Удалить {1} {2}?',
+	'js_bulk_del_text'         => 'Вместе с ними удалятся голоса и комментарии. Отменить это будет нельзя.',
+	'js_bulk_del_btn'          => 'Удалить ({1})',
+	'js_bulk_status_title'     => '{1} — выбрано: {2}?',
+	'js_req_bulk_status_text'  => 'Статус всех выбранных запросов будет изменён.',
+	'js_off_bulk_status_text'  => 'Статус всех выбранных предложений будет изменён.',
+	'js_req_del_title'         => 'Удалить запрос #{1}?',
+	'js_off_del_title'         => 'Удалить предложение #{1}?',
+	'js_del_text'              => 'Вместе с ним удалятся голоса и комментарии. Отменить это будет нельзя.',
+	'js_delete'                => 'Удалить',
+	'js_status_title'          => 'Отметить #{1} как «{2}»?',
+	'js_status_btn'            => 'Отметить как «{1}»',
+);
+?>

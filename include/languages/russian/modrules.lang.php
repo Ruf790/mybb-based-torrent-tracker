@@ -1,40 +1,57 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English (Admin) Language File
-Translation by xam Version: 0.1
-*/
-
-if(!defined('IN_TRACKER'))
-  die('Hacking attempt!');
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
 //  admin/modrules.php
-$language['modrules'] = array 
-(
-	'title'		=>	 'Manage Tracker Rules',
-	'edit'		=>	 'Edit',
-	'delete'	=>	 'Delete',
-	'save'		=>	 'Save Rule',
-	'reset'	=>	 'Revert Changes',
-	'confirm'	=>	 'Are you sure you want to delete the rule?',
-	'new'		=>	 'Create New Rule',
-	'title2'	=>	 'Rule Title:',
-	'title3'	=>	 'Rule Description:',
-	'title4'	=>	 'Select Usergroup(s):',
-	'error'	=>	 'Title and Description can not be empty!',
+$language['modrules'] = array (
+	// ── Header ──
+	'title'             => 'Управление правилами трекера',
+	'description'       => 'Правила и регламент трекера',
+	'new'               => 'Новое правило',
+
+	// ── KPI tiles ──
+	'kpi_total'         => 'Всего правил',
+	'kpi_all'           => 'Для всех групп',
+	'kpi_limited'       => 'Для отдельных групп',
+	'kpi_last'          => 'Последнее добавлено',
+
+	// ── Form ──
+	'title2'            => 'Заголовок правила',
+	'title3'            => 'Текст правила',
+	'title4'            => 'Группы',
+	'formatting_hint'   => 'Можно использовать BBCode и HTML',
+	'select_all'        => 'Выбрать все',
+	'deselect_all'      => 'Снять все',
+	'groups_hint'       => 'Ничего не выбрано — правило видят все группы',
+	'save'              => 'Сохранить правило',
+	'cancel'            => 'Отмена',
+
+	// ── Russian version ──
+	'sec_ru_version'    => 'Русская версия',
+	'hint_ru_fallback'  => 'Необязательно. Если оставить пустым, будет показан английский вариант.',
+	'lbl_title_ru'      => 'Заголовок (рус.)',
+	'lbl_text_ru'       => 'Текст (рус.)',
+	'tip_ru_ok'         => 'Русская версия заполнена',
+	'tip_ru_missing'    => 'Нет русской версии — показывается английская',
+	'flash_ru_missing'  => 'Правил без русской версии: {1}. Для них показывается английский текст.',
+
+	// ── Rules list ──
+	'search'            => 'Поиск по правилам…',
+	'search_empty'      => 'По вашему запросу правил нет',
+	'all_groups'        => 'Все группы',
+	'edit'              => 'Редактировать',
+	'delete'            => 'Удалить',
+	'no_rules'          => 'Правил пока нет',
+	'create_first'      => 'Нажмите кнопку выше, чтобы создать первое правило',
+
+	// ── Delete confirmation ──
+	'confirm_title'     => 'Удалить это правило?',
+	'confirm'           => 'Это действие нельзя отменить.',
+
+	// ── Messages ──
+	'created_success'   => 'Правило создано',
+	'updated_success'   => 'Правило сохранено',
+	'deleted_success'   => 'Правило удалено',
+	'error'             => 'Заголовок и текст не могут быть пустыми!',
+	'invalid_token'     => 'Неверный токен безопасности. Обновите страницу и попробуйте ещё раз.',
 );
 ?>

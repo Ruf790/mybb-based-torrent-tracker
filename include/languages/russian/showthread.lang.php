@@ -1,10 +1,5 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Перевод на русский язык
- */
+
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
@@ -12,6 +7,9 @@ if(!defined('IN_TRACKER'))
 // showthread.php
 $language['showthread'] = array 
 (
+
+'mergeposts'=>'Объединить сообщения',
+
 
 'moderation_user_posts' => "Обратите внимание, что новые сообщения, которые вы создаете, должны быть одобрены модератором, прежде чем станут видимыми.",
 
@@ -122,5 +120,175 @@ $language['showthread'] = array
 'quick_restore_error' => 'Произошла ошибка при восстановлении вашего ответа:',
 'quick_restore_success' => 'Сообщение успешно восстановлено.',
 'post_deleted_error' => 'Вы не можете выполнить это действие с удаленным сообщением.',
+
+
+
+
+
+// ── Report modal ──
+'report_title'             => 'Пожаловаться на сообщение',
+'report_close'             => 'Закрыть',
+'report_reporting'         => 'Жалоба на:',
+'report_forum_post'        => 'Сообщение форума',
+
+// ── Post preview ──
+'report_post_preview'      => 'Предпросмотр сообщения',
+'report_user'              => 'Пользователь',
+'report_post_subject'      => 'Тема сообщения',
+'report_forum'             => 'Раздел:',
+'report_forum_default'     => 'Общий',
+'report_thread'            => 'Тема:',
+'report_thread_default'    => 'Обсуждение',
+'report_content_default'   => 'Текст сообщения появится здесь...',
+
+// ── Reason ──
+'report_reason'            => 'Причина жалобы',
+'report_select_reason'     => 'Выберите причину...',
+
+'report_group_content'     => 'Нарушения контента',
+'report_r_spam'            => 'Спам / Реклама',
+'report_r_offensive'       => 'Оскорбительная / грубая лексика',
+'report_r_harassment'      => 'Преследование / Травля',
+'report_r_hate_speech'     => 'Разжигание ненависти / Дискриминация',
+'report_r_explicit'        => 'Откровенный / «взрослый» контент',
+'report_r_illegal'         => 'Незаконный контент / Варез',
+
+'report_group_rules'       => 'Правила форума',
+'report_r_off_topic'       => 'Не по теме / Не тот раздел',
+'report_r_double_post'     => 'Дублирование / Кросспостинг',
+'report_r_flame'           => 'Флейм / Троллинг',
+'report_r_personal_attack' => 'Личные нападки',
+'report_r_spoiler'         => 'Спойлеры без пометки',
+
+'report_group_other'       => 'Другое',
+'report_r_copyright'       => 'Нарушение авторских прав',
+'report_r_personal_info'   => 'Личная информация',
+'report_r_malware'         => 'Ссылка на вредоносное ПО',
+'report_r_scam'            => 'Мошенничество / Обман',
+'report_r_other'           => 'Другая причина',
+
+// ── Details ──
+'report_details'              => 'Дополнительные сведения',
+'report_details_placeholder'  => 'Опишите ситуацию подробнее...',
+'report_details_hint'         => 'Необязательно, но очень поможет модераторам',
+
+// ── Rule violation ──
+'report_rule_violation'    => 'Нарушенное правило (необязательно)',
+'report_rule_none'         => 'Не указано',
+'report_rule_1'            => 'Правило 1: Без спама и рекламы',
+'report_rule_2'            => 'Правило 2: Без оскорбительных выражений',
+'report_rule_3'            => 'Правило 3: Без преследования и травли',
+'report_rule_4'            => 'Правило 4: Придерживайтесь темы',
+'report_rule_5'            => 'Правило 5: Без вареза и незаконного контента',
+'report_rule_6'            => 'Правило 6: Уважайте других участников',
+'report_rule_7'            => 'Правило 7: Без дублирования сообщений',
+'report_rule_8'            => 'Правило 8: Используйте уместную лексику',
+
+// ── Email ──
+'report_email'             => 'Контактный email (необязательно)',
+'report_email_placeholder' => 'your@email.com',
+
+// ── Captcha ──
+'report_security'            => 'Проверка безопасности',
+'report_captcha_alt'         => 'Код безопасности',
+'report_captcha_title'       => 'Нажмите, чтобы обновить',
+'report_captcha_placeholder' => 'Введите код',
+
+// ── Warning ──
+'report_important'         => 'Важно:',
+'report_rules_pre'         => 'Пожалуйста, жалуйтесь только на сообщения, нарушающие',
+'report_rules_link'        => 'правила форума',
+'report_rules_post'        => 'Ложные жалобы могут привести к наказанию.',
+
+// ── Buttons ──
+'report_cancel'            => 'Отмена',
+'report_submit'            => 'Отправить жалобу',
+
+
+
+
+
+// ── Moderation: General ──
+'mod_go' => 'Выполнить',
+'mod_cancel' => 'Отмена',
+'mod_delete_permanently' => 'Удалить навсегда',
+'mod_thread_id' => 'ID темы:',
+'mod_tid' => 'ID темы:',
+
+// ── Moderation: Delete posts modal ──
+'mod_dp_title' => 'Удалить сообщения навсегда',
+'mod_dp_subtitle' => 'Необратимое действие',
+'mod_dp_warning' => 'Вы собираетесь <strong>навсегда удалить</strong> выбранные сообщения. Это <strong>невозможно отменить</strong>.',
+'mod_dp_posts' => 'Сообщений:',
+'mod_dp_preview' => 'Будут удалены сообщения:',
+
+// ── Moderation: Delete thread modal ──
+'mod_dt_title' => 'Удалить тему',
+'mod_dt_warning_title' => 'Предупреждение о безвозвратном удалении',
+'mod_dt_warning_text' => 'Все сообщения, вложения и данные опросов будут удалены навсегда. Это невозможно отменить.',
+'mod_dt_confirm1' => 'Я понимаю, что это необратимо и удаление нельзя отменить',
+'mod_dt_confirm2' => 'Я убедился, что важное содержимое сохранено в резервной копии',
+
+// ── Moderation: Merge thread modal ──
+'mod_mg_title' => 'Объединение тем',
+'mod_mg_subtitle' => 'Объединить несколько тем в одну',
+'mod_mg_current' => 'Текущая тема',
+'mod_mg_new_subject' => 'Новое название',
+'mod_mg_url' => 'Ссылка на присоединяемую тему',
+'mod_mg_note' => 'Указанная тема будет <strong>удалена</strong>, а её сообщения перенесены в эту.',
+'mod_mg_button' => 'Объединить темы',
+
+// ── Moderation: Move / copy thread modal ──
+'mod_mv_title' => 'Перемещение / копирование темы',
+'mod_mv_subtitle' => 'Перенос в другой раздел',
+'mod_mv_destination' => 'Раздел назначения',
+'mod_mv_method' => 'Способ переноса',
+'mod_mv_redirect' => 'Переместить с перенаправлением',
+'mod_mv_redirect_desc' => 'Оставить перенаправление в исходном разделе',
+'mod_mv_redirect_days' => 'Дней перенаправления (пусто = бессрочно)',
+'mod_mv_move' => 'Переместить тему',
+'mod_mv_move_desc' => 'Удалить из исходного раздела',
+'mod_mv_copy' => 'Копировать тему',
+'mod_mv_copy_desc' => 'Оставить оригинал и создать копию',
+'mod_mv_process' => 'Выполнить',
+
+
+
+
+// ── Postbit: edit / delete modals and buttons ──
+'pb_bb_left' => 'Влево',
+'pb_bb_center' => 'Центр',
+'pb_bb_right' => 'Вправо',
+'pb_bb_red' => 'Красный',
+'pb_bb_size' => 'Размер',
+'pb_bb_video' => 'Видео',
+'pb_bb_quote' => 'Цитата',
+'pb_bb_code' => 'Код',
+'pb_bb_list' => 'Список',
+'pb_bb_list_num' => '№ Список',
+'pb_bb_spoiler' => 'Спойлер',
+'pb_torrent' => 'Торрент',
+'pb_torrent_id_label' => 'ID или ссылка на торрент',
+'pb_torrent_placeholder' => 'например, 17, или вставьте ссылку на торрент',
+'pb_insert' => 'Вставить',
+'pb_edit_title' => 'Редактирование сообщения',
+'pb_edit_reason' => 'Причина редактирования (необязательно)',
+'pb_live_preview' => 'Предпросмотр',
+'pb_cancel' => 'Отмена',
+'pb_save_changes' => 'Сохранить изменения',
+'pb_delete_title' => 'Удалить сообщение',
+'pb_delete_confirm' => 'Вы уверены, что хотите удалить это сообщение?',
+'pb_delete_irreversible' => 'Это действие невозможно отменить.',
+'pb_pid' => 'ID сообщения:',
+'pb_deleting' => 'Удаление...',
+'pb_deleting_post' => 'Удаление сообщения...',
+'pb_delete' => 'Удалить',
+'pb_report_post' => 'Пожаловаться',
+'pb_edit_note' => 'Последнее редактирование: %s, автор:',
+'pb_unapproved_own' => 'Ваше сообщение находится на модерации и пока не видно другим пользователям. Оно появится после одобрения модератором.',
+'pb_ignored' => 'Содержимое сообщения скрыто, потому что %s находится в вашем <a href="usercp.php?action=editlists">списке игнорируемых</a>.',
+'pb_post_deleted' => 'Это сообщение удалено',
+
+
 
 );

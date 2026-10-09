@@ -1,126 +1,123 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English Language File
-Translation by xam Version: 0.2
 
-*/
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// topten.php
-$language['topten'] = array 
+$language['topten'] = array
 (
-	
-	
-	
-// Для категорий (type = 5)
-"type5_title_categories" => "Top %d Categories",
-"type5_title_subcategories" => "Top %d Subcategories", 
-"type5_title_active_categories" => "Top %d Active Categories",
-"type5_title_ratio_categories" => "Top %d Categories by Ratio",
+	// ── Page ──────────────────────────────────────────────────────────────
+	'html_lang'          => 'ru',
+	'page_title'         => 'Топ-10',
+	'page_subtitle'      => 'Статистика и рейтинги сообщества',
+	'page_eyebrow'       => 'Рейтинги',
 
+	// ── Tabs ──────────────────────────────────────────────────────────────
+	'tab_users'          => 'Пользователи',
+	'tab_torrents'       => 'Раздачи',
+	'tab_countries'      => 'Страны',
+	'tab_peers'          => 'Пиры',
+	'tab_categories'     => 'Категории',
+	'tab_seedbonus'      => 'Бонусы',
+	'tab_hot'            => 'Горячее',
+	'tab_contributors'   => 'Активисты',
+	'tab_forum'          => 'Форум',
 
-	
-	
-	
-"type5_title_comments" => "Top %d Commenters",
-"type5_title_posts" => "Top %d Forum Posters",
-"type5_title_topics" => "Top %d Topic Creators",
-"type2_title_comments" => "Top %d Most Commented Torrents",
-"comments" => "Comments",
-"forum_posts" => "Forum Posts",    
-"forum_topics" => "Forum Topics",
-	
-"torrent" => "Torrent",
+	// ── Limit links / badge ───────────────────────────────────────────────
+	'lnk_top25'          => 'Топ-25',
+	'lnk_top50'          => 'Топ-50',
+	'lnk_top100'         => 'Топ-100',
+	'lnk_top250'         => 'Топ-250',
+	'badge_top'          => 'Топ-{1}',
 
-"subtitle" => "Community Statistics and Rankings",
-	
+	// ── Sections: users ───────────────────────────────────────────────────
+	'sec_users_ul'       => 'Топ-{1} по отданному',
+	'sec_users_dl'       => 'Топ-{1} по скачанному',
+	'sec_users_uls'      => 'Топ-{1} по скорости отдачи <small>(в среднем, с учётом простоя)</small>',
+	'sec_users_dls'      => 'Топ-{1} по скорости загрузки <small>(в среднем, с учётом простоя)</small>',
+	'sec_users_bsh'      => 'Топ-{1} с лучшим рейтингом <small>(скачано не менее 1 ГБ)</small>',
+	'sec_users_wsh'      => 'Топ-{1} с худшим рейтингом <small>(скачано не менее 1 ГБ)</small>',
 
-"type2_title_categories" => "Top %d Categories",
-"type2_title_subcategories" => "Top %d Subcategories",
-"category" => "Category",
-"categories" => "Categories",
-"subcategory" => "Subcategory",
-"torrents" => "Torrents",
-"total_size" => "Total Size",
-"snatches" => "Snatches",
-"active_categories" => "Active Categories",
-"best_ratio_categories" => "Best Ratio Categories",
-	
-	
-	
-	
-	
-	"reportuser" => "Report User",
-	'rank'					=>'Rank',
-	'user'					=>'User',
-	'uploaded'				=>'Uploaded',
-	'ulspeed'				=>'Upload Speed',
-	'downloaded'			=>'Downloaded',
-	'dlspeed'				=>'Download Speed',
-	'ratio'					=>'Ratio',
-	'joined'				=>'Joined',
-	'name'					=>'Name',
-	'snatched'				=>'Snatched',
-	'data'					=>'Data',
-	'seeders'				=>'Seeders',
-	'leechers'				=>'Leechers',
-	'total'					=>'Total',
-	'country'				=>'Country',
-	'users'					=>'Users',
-	'torrents'				=>'Torrents',
-	'countries'				=>'Countries',
-	'peers'					=>'Peers',
-	'top25'					=>'Top 25',
-	'top50'					=>'Top 50',
-	'top100'				=>'Top 100',
-	'top250'				=>'Top 250',
-	'head'					=>'Top 10 List',
-	'type1_title1'			=>'Top {1} Uploaders',
-	'type1_title2'			=>'Top {1} Downloaders',
-	'type1_title3'			=>'Top {1} Fastest Uploaders <font class=small>(average, includes inactive time)</font>',
-	'type1_title4'			=>'Top {1} Fastest Downloaders <font class=small>(average, includes inactive time)</font>',
-	'type1_title5'			=>'Top {1} Best Sharers <font class=small>(with minimum 1 GB downloaded)</font>',
-	'type1_title6'			=>'Top {1} Worst Sharers <font class=small>(with minimum 1 GB downloaded)</font>',
-	'type2_title1'			=>'Top {1} Most Active Torrents',
-	'type2_title2'			=>'Top {1} Most Snatched Torrents',
-	'type2_title3'			=>'Top {1} Most Data Transferred Torrents',
-	'type2_title4'			=>'Top {1} Best Seeded Torrents <font class=small>(with minimum 5 seeders)</font>',
-	'type2_title5'			=>'Top {1} Worst Seeded Torrents <font class=small>(with minimum 5 leechers, excluding unsnatched torrents)</font>',
-	'type3_title1'			=>'Top {1} Countries<font class=small> (users)</font>',
-	'type3_title2'			=>'Top {1} Countries<font class=small> (total uploaded)</font>',
-	'type3_title3'			=>'Top {1} Countries<font class=small> (average total uploaded per user, with minimum 1TB uploaded and 100 users)</font>',
-	'type3_title4'			=>'Top {1} Countries<font class=small> (ratio, with minimum 1TB uploaded, 1TB downloaded and 100 users)</font>',
-	'type4_title1'			=>'Top {1} Fastest Uploaders',
-	'type4_title2'			=>'Top {1} Fastest Downloaders',
-	'type5_title'				=>'Top {1} Forum Posters', // Added v4.0
-	'type6_title'				=>'Top {1} Thread Starters', // Added v4.0
-	'type7_title'				=>'Top {1} Most Viewed Threads', // Added v4.0
-	'type8_title'				=>'Top {1} Most Replied Threads', // Added v4.0
-	'forums' => 'Top Forum Posts', // Added v4.0
-	'posts'	=>'Post Count', // Added v4.
-	'threads'	=>'Thread Count', // Added v4.0
-	'replies'	=>'Reply Count', // Added v4.0
-	'views'	=>'View Count', // Added v4.0
-	'threadname'=>'Thread Name', // Added v4.0
-	'forumname'=>'Forum Name', // Added v4.0
-	'author'	 =>'Author',// Added v4.0
+	// ── Sections: torrents ────────────────────────────────────────────────
+	'sec_torrents_act'   => 'Топ-{1} самых активных раздач',
+	'sec_torrents_sna'   => 'Топ-{1} самых скачиваемых раздач',
+	'sec_torrents_mdt'   => 'Топ-{1} раздач по объёму трафика',
+	'sec_torrents_bse'   => 'Топ-{1} раздач с лучшим сидированием <small>(не менее 5 сидов)</small>',
+	'sec_torrents_wse'   => 'Топ-{1} раздач с нехваткой сидов <small>(не менее 5 личей, без ни разу не скачанных)</small>',
+	'sec_torrents_mcom'  => 'Топ-{1} самых обсуждаемых раздач',
 
+	// ── Sections: countries ───────────────────────────────────────────────
+	'sec_countries_us'   => 'Топ-{1} стран <small>(по числу пользователей)</small>',
+	'sec_countries_ul'   => 'Топ-{1} стран <small>(по общему отданному)</small>',
+	'sec_countries_avg'  => 'Топ-{1} стран <small>(в среднем отдано на пользователя; не менее 1 ТБ отдано и 100 пользователей)</small>',
+	'sec_countries_r'    => 'Топ-{1} стран <small>(по рейтингу; не менее 1 ТБ отдано, 1 ТБ скачано и 100 пользователей)</small>',
+
+	// ── Sections: peers / other ───────────────────────────────────────────
+	'sec_peers_ul'       => 'Топ-{1} по текущей скорости отдачи',
+	'sec_peers_dl'       => 'Топ-{1} по текущей скорости загрузки',
+	'sec_categories'     => 'Топ-{1} категорий',
+	'sec_seedbonus'      => 'Топ-{1} по бонусам',
+	'sec_hot'            => 'Горячее сейчас — топ-{1}',
+	'sec_contributors'   => 'Топ-{1} активных участников',
+	'sec_active_threads' => 'Самые активные темы',
+
+	// ── Columns ───────────────────────────────────────────────────────────
+	'col_user'           => 'Пользователь',
+	'col_uploaded'       => 'Отдано',
+	'col_ulspeed'        => 'Скорость отдачи',
+	'col_downloaded'     => 'Скачано',
+	'col_dlspeed'        => 'Скорость загрузки',
+	'col_ratio'          => 'Рейтинг',
+	'col_sl_ratio'       => 'Сиды/личи',
+	'col_joined'         => 'Регистрация',
+	'col_seedbonus'      => 'Бонусы',
+	'col_name'           => 'Название',
+	'col_promo'          => 'Акция',
+	'col_seeders'        => 'Сиды',
+	'col_leechers'       => 'Личи',
+	'col_snatched'       => 'Скачали',
+	'col_data'           => 'Трафик',
+	'col_total'          => 'Пиров',
+	'col_comments'       => 'Комментарии',
+	'col_ratings'        => 'Оценки',
+	'col_total_activity' => 'Всего',
+	'col_country'        => 'Страна',
+	'col_cnt_users'      => 'Пользователей',
+	'col_cnt_uploaded'   => 'Отдано',
+	'col_cnt_average'    => 'В среднем',
+	'col_cnt_ratio'      => 'Рейтинг',
+	'col_torrent'        => 'Раздача',
+	'col_category'       => 'Категория',
+	'col_torrents'       => 'Раздач',
+	'col_snatches'       => 'Скачиваний',
+	'col_total_size'     => 'Общий объём',
+	'col_thread'         => 'Тема',
+	'col_forum'          => 'Раздел',
+	'col_views'          => 'Просмотры',
+	'col_replies'        => 'Ответы',
+	'col_activity'       => 'Активность',
+
+	// ── Labels ────────────────────────────────────────────────────────────
+	'lbl_na'             => 'н/д',
+	'lbl_per_sec'        => '/с',
+	'lbl_by'             => 'автор: {1}',
+	'alt_avatar'         => 'Аватар',
+
+	// ── Promo badges ──────────────────────────────────────────────────────
+	'badge_free'         => 'Фрилич',
+	'badge_thirty'       => '30%',
+	'tip_silver'         => 'Серебряная раздача',
+
+	// ── Messages ──────────────────────────────────────────────────────────
+	'msg_not_available'  => 'Эта статистика недоступна на данном трекере.',
+	
+	
+	'kpi_users'      => 'Пользователи',
+'kpi_torrents'   => 'Торренты',
+'kpi_peers'      => 'Пиры',
+'kpi_downloaded' => '{1} скачано',
+'msg_no_data'    => 'Пока нет данных',
+	
+	
 );
 ?>

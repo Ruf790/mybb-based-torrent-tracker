@@ -1,21 +1,204 @@
 <?php
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
+$language['announcements'] = array (
 
-if(!defined('IN_TRACKER'))
-  die('Hacking attempt!');
+	// ── Page titles ──
+	'title_list'                => 'Announcements {1}',
+	'title_view'                => 'View Announcement',
+	'title_add'                 => 'New Announcement',
+	'title_edit'                => 'Edit Announcement',
+	'title_duplicate'           => 'Duplicate Announcement',
 
-// ts_watch_list.php
-$language['announcements'] = array 
-(
+	// ── Section headers / tabs ──
+	'sec_tracker_announcements' => 'Tracker Announcements',
+	'sec_list'                  => 'Announcements List',
+	'sec_preview_page'          => 'Announcement Preview',
+	'sec_details'               => 'Announcement Details',
+	'sec_tech'                  => 'Technical Info',
+	'sec_view_history'          => 'View History (Last 7 Days)',
+	'sec_quick_actions'         => 'Quick Actions',
+	'sec_navigation'            => 'Navigation',
+	'sec_timer'                 => 'Auto-close Timer',
+	'sec_export'                => 'Export',
+	'sec_shortcuts'             => 'Shortcuts',
+	'sec_preview'               => 'Preview',
+	'sec_quick_stats'           => 'Quick Stats',
+	'tab_content'               => 'Content',
+	'tab_details'               => 'Details',
+	'tab_stats'                 => 'Statistics',
 
+	// ── Buttons ──
+	'btn_new'                   => 'New Announcement',
+	'btn_back'                  => 'Back',
+	'btn_cancel'                => 'Cancel',
+	'btn_delete'                => 'Delete',
+	'btn_edit'                  => 'Edit',
+	'btn_duplicate'             => 'Duplicate',
+	'btn_yes_duplicate'         => 'Yes, Duplicate',
+	'btn_share'                 => 'Share',
+	'btn_reset'                 => 'Reset',
+	'btn_pause'                 => 'Pause',
+	'btn_export_text'           => 'As Text',
+	'btn_export_html'           => 'As HTML',
+	'btn_print'                 => 'Print / PDF',
+	'btn_open_modal'            => 'Open in Modal',
+	'btn_full_view'             => 'Full View',
+	'btn_save'                  => 'Save Announcement',
+	'btn_update_preview'        => 'Update Preview',
 
-'nav_announcements' => "Forum Announcement",
-'announcements' => "Announcement",
-'forum_announcement' => "Forum Announcement: {1}",
-'error_invalidannouncement' => "The announcement specified is invalid.",
+	// ── List table ──
+	'th_id'                     => 'ID',
+	'th_subject'                => 'Subject',
+	'th_preview'                => 'Preview',
+	'th_added'                  => 'Added',
+	'th_minclass'               => 'Min. Class',
+	'th_actions'                => 'Actions',
+	'lbl_total'                 => 'Total: {1}',
+	'lbl_no_announcements'      => 'No announcements found',
 
-'announcement_edit' => "Edit this announcement",
-'announcement_qdelete' => "Delete this announcement",
-'announcement_quickdelete_confirm' => "Are you sure you want to delete this announcement?",
+	// ── Tooltips (title=) ──
+	'tip_preview'               => 'Preview',
+	'tip_edit'                  => 'Edit',
+	'tip_delete'                => 'Delete',
+	'tip_toggle_sidebar'        => 'Toggle sidebar',
+	'tip_prev'                  => 'Previous (←)',
+	'tip_next'                  => 'Next (→)',
+	'tip_fullscreen'            => 'Fullscreen (F)',
+	'tip_position'              => '{1} of {2}',
+	'tip_font_inc'              => 'Increase',
+	'tip_font_dec'              => 'Decrease',
+	'tip_dark'                  => 'Dark mode (D)',
+	'tip_copy'                  => 'Copy (C)',
+
+	// ── Labels ──
+	'lbl_id'                    => 'ID',
+	'lbl_ago'                   => '{1} ago',
+	'lbl_font'                  => 'Font:',
+	'lbl_words'                 => '{1} words',
+	'lbl_chars'                 => '{1} chars',
+	'lbl_reading_one'           => '{1} min',
+	'lbl_reading_many'          => '{1} mins',
+	'lbl_views'                 => '{1} views',
+	'lbl_yes'                   => 'Yes',
+	'lbl_no'                    => 'No',
+	'lbl_never'                 => 'Never',
+	'lbl_original'              => 'Original version',
+	'lbl_prev'                  => 'Previous',
+	'lbl_next'                  => 'Next',
+	'lbl_no_prev'               => 'No previous',
+	'lbl_no_next'               => 'No next',
+	'lbl_seconds_left'          => 'seconds remaining',
+	'lbl_author_staff'          => 'Staff',
+	'lbl_copy_subject'          => 'Copy of {1}',
+
+	// ── Details tab (definition list) ──
+	'dt_id'                     => 'ID:',
+	'dt_created'                => 'Created:',
+	'dt_author'                 => 'Author:',
+	'dt_target'                 => 'Target:',
+	'dt_subject'                => 'Subject:',
+	'dt_bbcode'                 => 'BBCode Tags:',
+	'dt_has_images'             => 'Has Images:',
+	'dt_has_links'              => 'Has Links:',
+	'dt_content_type'           => 'Content Type:',
+	'dt_modified'               => 'Last Modified:',
+
+	// ── Content types ──
+	'opt_ct_images'             => 'With Images',
+	'opt_ct_links'              => 'With Links',
+	'opt_ct_long'               => 'Long Text',
+	'opt_ct_short'              => 'Short Text',
+	'opt_ct_standard'           => 'Standard',
+
+	// ── Statistics ──
+	'stat_total_views'          => 'Total Views',
+	'stat_total'                => 'Total Announcements',
+	'stat_position'             => 'Position in List',
+	'qs_position'               => 'Position',
+	'qs_views'                  => 'Views',
+	'qs_words'                  => 'Words',
+	'qs_age'                    => 'Age',
+
+	// ── Keyboard shortcuts ──
+	'key_navigate'              => 'Navigate',
+	'key_fullscreen'            => 'Fullscreen',
+	'key_copy'                  => 'Copy',
+	'key_dark'                  => 'Dark',
+	'key_close'                 => 'Close',
+
+	// ── Delete modal / duplicate page ──
+	'del_title'                 => 'Delete Announcement',
+	'del_about'                 => 'You are about to delete:',
+	'del_warning'               => 'This action cannot be undone.',
+	'dup_confirm'               => 'Are you sure you want to duplicate this announcement?',
+
+	// ── Add / edit form ──
+	'lbl_subject'               => 'Subject',
+	'ph_subject'                => 'Announcement subject',
+	'lbl_minclass'              => 'Minimum User Class',
+	'opt_all_users'             => 'All users',
+	'lbl_mark_unread'           => 'Mark as unread for all users',
+	'hint_mark_unread'          => 'Forces all users to see this announcement again.',
+	'lbl_message'               => 'Message',
+	'ph_message'                => 'Write your announcement using BBCode…',
+	'lbl_characters'            => 'characters',
+	'lbl_preview_placeholder'   => 'Preview will appear here…',
+
+	// ── BBCode toolbar ──
+	'bb_center'                 => 'Center',
+	'bb_left'                   => 'Left',
+	'bb_right'                  => 'Right',
+	'bb_quote'                  => 'Quote',
+	'bb_code'                   => 'Code',
+	'bb_spoiler'                => 'Spoiler',
+	'bb_list'                   => 'List',
+	'bb_list_item'              => 'Item {1}',
+	'bb_youtube'                => 'YouTube',
+	'bb_color'                  => 'Color',
+	'bb_size'                   => 'Size',
+	'bb_font'                   => 'Font',
+
+	// ── Flash messages ──
+	'flash_invalid_action'      => 'Invalid action specified',
+	'flash_invalid_id'          => 'Invalid announcement ID',
+	'flash_not_found'           => 'Announcement not found',
+	'flash_csrf'                => 'Security check failed. Please try again.',
+	'flash_required'            => 'Please fill in all required fields',
+	'flash_added'               => 'Announcement has been added successfully',
+	'flash_updated'             => 'Announcement updated successfully',
+	'flash_bad_request_token'   => 'Invalid request method or security token.',
+	'flash_deleted'             => 'Announcement has been deleted',
+	'flash_invalid_request'     => 'Invalid request',
+	'flash_original_not_found'  => 'Original announcement not found',
+	'flash_dup_failed'          => 'Failed to duplicate announcement',
+	'flash_dup_ok'              => 'Announcement duplicated successfully',
+
+	// ── JS strings (AGS_LANG, prefix stripped) ──
+	'js_copied_content'         => 'Content copied to clipboard!',
+	'js_copied_link'            => 'Link copied to clipboard!',
+	'js_pause'                  => 'Pause',
+	'js_resume'                 => 'Resume',
+	'js_confirm_duplicate'      => "Duplicate this announcement?\n\nA copy will be created with \"Copy of\" prefix.",
+	'js_duplicating'            => 'Duplicating…',
+	'js_duplicate'              => 'Duplicate',
+	'js_error'                  => 'Error: {1}',
+	'js_network_error'          => 'Network error',
+	'js_network_error_fmt'      => 'Network error: {1}',
+	'js_exp_subject'            => 'Announcement: {1}',
+	'js_exp_date'               => 'Date: {1}',
+	'js_exp_author'             => 'Author: {1}',
+	'js_exp_for'                => 'For: {1}',
+	'js_chart_views'            => 'Views',
+	'js_day_mon'                => 'Mon',
+	'js_day_tue'                => 'Tue',
+	'js_day_wed'                => 'Wed',
+	'js_day_thu'                => 'Thu',
+	'js_day_fri'                => 'Fri',
+	'js_day_sat'                => 'Sat',
+	'js_day_sun'                => 'Sun',
+	'js_no_preview'             => 'No content to preview',
+	'js_preview_note'           => 'Basic preview only — final rendering may differ.',
 
 );
+?>

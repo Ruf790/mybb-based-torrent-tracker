@@ -1,64 +1,64 @@
 <?php
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
-if(!defined('IN_TRACKER'))
-  die('Hacking attempt!');
+$language['indexmain'] = array (
+	// ── Page ──
+	'page_title'          => 'Dashboard with Online Users and News',
 
-$language['indexmain'] = array(
+	// ── News ──
+	'sec_news'            => 'Latest News',
+	'lbl_posted_by'       => 'Posted by {1} on {2}',
+	'lbl_system'          => 'System',
+	'msg_no_news'         => 'No news found.',
 
-    // ── Page title ────────────────────────────────────────────────────────────
-    'page_title'                => 'Dashboard',
+	// ── Seeders needed ──
+	'sec_seeders_needed'  => 'Recently Uploaded Torrents Needing Seeders',
+	'col_torrent'         => 'Torrent',
+	'col_seeders'         => 'Seeders',
+	'col_leechers'        => 'Leechers',
+	'alt_poster'          => 'Poster',
+	'pane_torrent_details'=> 'Torrent Details',
+	'aria_close'          => 'Close',
+	'msg_loading_details' => 'Loading torrent details...',
+	'sec_all_seeded'      => 'All Torrents Have Seeders',
+	'msg_all_seeded'      => 'Great job! All torrents are currently seeded.',
 
-    // ── News section ─────────────────────────────────────────────────────────
-    'news_title'                => 'Latest News',
-    'news_posted_by'            => 'Posted by',
-    'news_on'                   => 'on',
-    'news_none'                 => 'No news found.',
+	// ── Latest torrents ──
+	'sec_latest_torrents' => 'Latest Torrents',
+	'lbl_free'            => 'Free',
+	'tip_free'            => 'Free Torrent',
+	'lbl_silver'          => 'Silver',
+	'tip_silver'          => 'Silver Torrent',
+	'lbl_double_upload'   => '2x Upload',
+	'tip_double_upload'   => 'Double Upload',
+	'lbl_added'           => 'Added: {1}',
 
-    // ── Seeders needed section ────────────────────────────────────────────────
-    'seeders_needed_title'      => 'Recently Uploaded Torrents Needing Seeders',
-    'seeders_col_torrent'       => 'Torrent',
-    'seeders_col_seeders'       => 'Seeders',
-    'seeders_col_leechers'      => 'Leechers',
-    'seeders_all_seeded_title'  => 'All Torrents Have Seeders',
-    'seeders_all_seeded_msg'    => 'Great job! All torrents are currently seeded.',
+	// ── Charts ──
+	'sec_popular'         => 'Most Popular Torrents',
+	'sec_active'          => 'Most Active Torrents',
 
-    // ── Torrent modal ─────────────────────────────────────────────────────────
-    'torrent_details'           => 'Torrent Details',
-    'torrent_loading'           => 'Loading torrent details...',
-    'torrent_load_error'        => 'Failed to load torrent preview.',
+	// ── Online users ──
+	'sec_online'          => 'Online Users',
+	'sec_last24'          => 'Last 24 Hours Active Users',
+	'lbl_visible'         => 'Visible Members: {1}',
+	'lbl_hidden'          => 'Hidden Members: {1}',
+	'lbl_total_online'    => 'Total Online: {1}',
+	'lbl_guests'          => 'Guests: {1}',
+	'lbl_total_users'     => 'Total Users: {1}',
 
-    // ── Latest torrents section ───────────────────────────────────────────────
-    'latest_torrents_title'     => 'Latest Torrents',
-    'torrent_added'             => 'Added:',
-    'torrent_badge_free'        => 'Free',
-    'torrent_badge_free_title'  => 'Free Torrent',
-    'torrent_badge_silver'      => 'Silver',
-    'torrent_badge_silver_title'=> 'Silver Torrent',
-    'torrent_badge_double'      => '2x Upload',
-    'torrent_badge_double_title'=> 'Double Upload',
+	// ── JS: torrent preview ──
+	'js_preview_loading'  => 'Loading torrent details...',
+	'js_preview_failed'   => 'Failed to load torrent preview.',
 
-    // ── Charts section ────────────────────────────────────────────────────────
-    'chart_popular_title'       => 'Most Popular Torrents',
-    'chart_active_title'        => 'Most Active Torrents',
-    'chart_axis_torrent'        => 'Torrent',
-    'chart_axis_hits'           => 'Hits',
-    'chart_axis_completed'      => 'Completed Times',
-    'chart_series_hits'         => 'Hits',
-    'chart_series_completed'    => 'Completed',
-    'chart_tooltip_hits'        => ' hits',
-    'chart_tooltip_completions' => ' completions',
-
-    // ── Online users section ──────────────────────────────────────────────────
-    'online_title'              => 'Online Users',
-    'online_visible'            => 'Visible Members',
-    'online_hidden'             => 'Hidden Members',
-    'online_total'              => 'Total Online',
-
-    // ── Last 24h section ──────────────────────────────────────────────────────
-    'last24h_title'             => 'Last 24 Hours Active Users',
-    'last24h_visible'           => 'Visible Members',
-    'last24h_hidden'            => 'Hidden Members',
-    'last24h_guests'            => 'Guests',
-    'last24h_total'             => 'Total Users',
-
+	// ── JS: charts ──
+	'js_chart_popular'    => 'Most Popular Torrents',
+	'js_chart_active'     => 'Most Active Torrents',
+	'js_axis_torrent'     => 'Torrent',
+	'js_axis_hits'        => 'Hits',
+	'js_axis_completed'   => 'Completed Times',
+	'js_series_hits'      => 'Hits',
+	'js_series_completed' => 'Completed',
+	'js_suffix_hits'      => 'hits',
+	'js_suffix_completed' => 'completions',
 );
+?>

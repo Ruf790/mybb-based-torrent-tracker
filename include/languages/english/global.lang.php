@@ -9,6 +9,34 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+'rel_minutes_plural' => 'minutes',
+
+	// ── Units: forms separated by | (English: one|other, Russian: one|few|many) ──
+	'unit_years' => 'year|years',
+	'unit_months' => 'month|months',
+	'unit_weeks' => 'week|weeks',
+	'unit_days' => 'day|days',
+	'unit_hours' => 'hour|hours',
+	'unit_minutes' => 'minute|minutes',
+	'unit_seconds' => 'second|seconds',
+
+	// ── Short units ──
+	'short_years' => 'y',
+	'short_months' => 'mo',
+	'short_weeks' => 'w',
+	'short_days' => 'd',
+	'short_hours' => 'h',
+	'short_minutes' => 'm',
+	'short_seconds' => 's',
+
+	// ── Zero ──
+	'zero_full' => '0 seconds',
+	'zero_short' => '0s',
+
+
+
+
+
 'postbit_attachment_downloads' => "Downloads:",
 
 'postbit_attachments' => "Attached Files",

@@ -1,4 +1,14 @@
 // ── Who Posted modal ─────────────────────────────────────────────────────────
+(function () {
+    // t(key, englishFallback, ...args): AGS_LANG is emitted by PHP before this script
+    function t(key, fallback, ...args) {
+        var s = (typeof AGS_LANG !== 'undefined' && AGS_LANG && AGS_LANG[key] != null) ? String(AGS_LANG[key]) : fallback;
+        return s.replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            var n = a || b;
+            return args[n - 1] === undefined ? m : String(args[n - 1]);
+        });
+    }
+
 window.whoPosted = function (tid) {
     // Создаём модалку один раз
     if (!document.getElementById('whoPostedModal')) {
@@ -35,7 +45,11 @@ window.whoPostedLoad = function (tid, sort) {
         .then(function (r) { return r.text(); })
         .then(function (html) { content.innerHTML = html; })
         .catch(function () {
-            content.innerHTML =
-                '<p class="text-danger text-center py-4 px-3">Failed to load. Please try again.</p>';
+            var p = document.createElement('p');
+            p.className = 'text-danger text-center py-4 px-3';
+            p.textContent = t('whoposted_failed', 'Failed to load. Please try again.');
+            content.innerHTML = '';
+            content.appendChild(p);
         });
 };
+})();

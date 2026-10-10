@@ -1,5 +1,15 @@
 
 
+(function () {
+    // t(key, englishFallback, ...args): AGS_LANG is emitted by PHP before this script
+    function t(key, fallback, ...args) {
+        var s = (typeof AGS_LANG !== 'undefined' && AGS_LANG && AGS_LANG[key] != null) ? String(AGS_LANG[key]) : fallback;
+        return s.replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+            var n = a || b;
+            return args[n - 1] === undefined ? m : String(args[n - 1]);
+        });
+    }
+
 var inlineEditor = {
     init: function() {
         document.addEventListener('DOMContentLoaded', () => {
@@ -17,7 +27,7 @@ var inlineEditor = {
             let isEditing = false;
 
             // Добавляем подсказку
-            element.title = '(Click and hold to edit)';
+            element.title = t('click_hold_edit', '(Click and hold to edit)');
             element.style.cursor = 'pointer';
 
             // Обработчик зажатия мыши
@@ -120,7 +130,11 @@ var inlineEditor = {
 
     saveSubject: function(tid, newSubject, element, originalContent, originalId) {
         // Показываем спиннер
-        element.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Saving...';
+        element.innerHTML = '';
+        var spinner = document.createElement('i');
+        spinner.className = 'fa-solid fa-spinner fa-spin me-2';
+        element.appendChild(spinner);
+        element.appendChild(document.createTextNode(t('saving', 'Saving...')));
         
         // Отправляем запрос
         fetch('xmlhttp.php?action=edit_subject&my_post_key=' + my_post_key + '&tid=' + tid, {
@@ -143,14 +157,14 @@ var inlineEditor = {
                 if (data.errors) {
                     // Показываем ошибки через Toast
                     data.errors.forEach(message => {
-                        showToast('Error: ' + message, 'error');
+                        showToast(t('error_msg', 'Error: {1}', message), 'error');
                     });
                     // Восстанавливаем оригинальный контент
                     this.restoreContent(element, originalId, originalContent, tid);
                 } else {
                     // Обновляем заголовок
                     this.restoreContent(element, originalId, data.subject || newSubject, tid);
-                    showToast('Subject updated successfully', 'success');
+                    showToast(t('subject_updated', 'Subject updated successfully'), 'success');
                 }
             }
             
@@ -158,7 +172,7 @@ var inlineEditor = {
         })
         .catch(error => {
             console.error('Error:', error);
-            showToast('Error updating subject', 'error');
+            showToast(t('error_updating', 'Error updating subject'), 'error');
             this.restoreContent(element, originalId, originalContent, tid);
         });
     },
@@ -181,7 +195,7 @@ var inlineEditor = {
         // Убираем класс редактирования
         element.classList.remove('editing');
         element.style.cursor = 'pointer';
-        element.title = '(Click and hold to edit)';
+        element.title = t('click_hold_edit', '(Click and hold to edit)');
     }
 };
 
@@ -229,3 +243,6 @@ if (!document.getElementById('inline-editor-styles')) {
 
 // Инициализация
 inlineEditor.init();
+
+window.inlineEditor = inlineEditor;
+})();

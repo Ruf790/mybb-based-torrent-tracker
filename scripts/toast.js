@@ -1,4 +1,22 @@
 // toast.js - полностью без jQuery
+// ── i18n ──────────────────────────────────────────────────────────────────────
+// toast.js is shared by many pages, so its strings come from a dedicated object:
+//   window.AGS_TOAST_LANG = {success, error, warning, info, close}   (printed once, e.g. by stdhead())
+// A page-level AGS_LANG with js_toast_* keys (without prefix: toast_success...) is also accepted.
+// If neither exists, the English fallback is used, so pages without translations still work.
+function toastT(key, fallback) {
+    var v;
+    if (typeof window.AGS_TOAST_LANG === 'object' && window.AGS_TOAST_LANG) {
+        v = window.AGS_TOAST_LANG[key.replace(/^toast_/, '')];
+        if (typeof v === 'string' && v !== '') return v;
+    }
+    if (typeof AGS_LANG !== 'undefined' && AGS_LANG) {
+        v = AGS_LANG[key];
+        if (typeof v === 'string' && v !== '') return v;
+    }
+    return fallback;
+}
+
 // Основная функция Toast
 function showToast(message, type = 'info') {
     const toastId = 'toast-' + Date.now();
@@ -20,9 +38,9 @@ function showToast(message, type = 'info') {
                 <div class="toast-icon me-2">
                     ${icon}
                 </div>
-                <strong class="me-auto">${title}</strong>
+                <strong class="me-auto"></strong>
                 <small class="text-white-50">${getCurrentTime()}</small>
-                <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="toast" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="toast"></button>
             </div>
         </div>
         <div class="toast-body bg-light">
@@ -33,6 +51,10 @@ function showToast(message, type = 'info') {
             </div>
         </div>
     `;
+
+    // Title and aria-label are inserted as text, not HTML
+    toast.querySelector('.toast-header strong').textContent = title;
+    toast.querySelector('.btn-close').setAttribute('aria-label', toastT('toast_close', 'Close'));
 
     // Add progress bar
     const progressBar = document.createElement('div');
@@ -99,10 +121,10 @@ function getToastIcon(type) {
 
 function getToastTitle(type) {
     const titles = {
-        success: 'Success',
-        error: 'Error',
-        warning: 'Warning',
-        info: 'Information'
+        success: toastT('toast_success', 'Success'),
+        error: toastT('toast_error', 'Error'),
+        warning: toastT('toast_warning', 'Warning'),
+        info: toastT('toast_info', 'Information')
     };
     return titles[type] || titles.info;
 }

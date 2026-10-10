@@ -1,3 +1,18 @@
+// ── i18n ──────────────────────────────────────────────────────────────────────
+// AGS_LANG is printed by showthread.php before this script (keys without the "js_" prefix).
+// t(key, englishFallback, ...args): {1}, {2}... are replaced by args. Returns plain text:
+// always pass the result to textContent / showToast text, never to innerHTML.
+if (typeof window.t !== 'function') {
+    window.t = function(key, fallback) {
+        var args = Array.prototype.slice.call(arguments, 2);
+        var str = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+        return str.replace(/\{(\d+)\}/g, function(m, n) {
+            var v = args[n - 1];
+            return v === undefined ? m : String(v);
+        });
+    };
+}
+
 var Thread = {
     init: function() {
         if (document.readyState === 'loading') {
@@ -37,7 +52,7 @@ var Thread = {
                 moderatorForm.addEventListener('submit', function(e){
                     if(moderatorSelector.value == "") {
                         if(typeof showToast !== 'undefined') {
-                            showToast('Select tool', 'warning');
+                            showToast(t('warn_select_tool', 'Select tool'), 'warning');
                         } else {
                         }
                         e.preventDefault();
@@ -101,7 +116,7 @@ var Thread = {
         var messageElement = document.getElementById('message');
         if(!messageElement || messageElement.value.trim() === '') {
             if(typeof showToast !== 'undefined') {
-                showToast('Please enter a message', 'warning');
+                showToast(t('warn_enter_message', 'Please enter a message'), 'warning');
             }
             this.quick_replying = false;
             return false;
@@ -112,7 +127,7 @@ var Thread = {
         if(submitButton) {
             submitButton.disabled = true;
             var originalText = submitButton.value;
-            submitButton.value = 'Posting...';
+            submitButton.value = t('lbl_posting', 'Posting...');
         }
 
         // Подготавливаем данные формы
@@ -140,7 +155,7 @@ var Thread = {
         })
         .then(response => {
             if (!response.ok) {
-                throw new Error('Network response was not ok: ' + response.status);
+                throw new Error(t('err_network', 'Network response was not ok: {1}', response.status));
             }
             return response.json();
         })
@@ -150,7 +165,7 @@ var Thread = {
         .catch(error => {
             console.error('Quick reply error:', error);
             if(typeof showToast !== 'undefined') {
-                showToast('Error sending reply: ' + error.message, 'error');
+                showToast(t('err_send_reply', 'Error sending reply: {1}', error.message), 'error');
             }
         })
         .finally(() => {
@@ -160,7 +175,7 @@ var Thread = {
             }
             if(submitButton) {
                 submitButton.disabled = false;
-                submitButton.value = originalText || 'Post Reply';
+                submitButton.value = originalText || t('lbl_post_reply', 'Post Reply');
             }
             this.quick_replying = false;
         });
@@ -174,7 +189,7 @@ var Thread = {
         if(typeof json == 'object' && json.hasOwnProperty("errors")) {
             json.errors.forEach(function(message) {
                 if(typeof showToast !== 'undefined') {
-                    showToast('Quick reply error: ' + message, 'error');
+                    showToast(t('err_quick_reply', 'Quick reply error: {1}', message), 'error');
                 }
             });
             return false;
@@ -183,7 +198,7 @@ var Thread = {
         // Проверяем на ошибку дублирования поста
         if(json.data && (json.data.includes('error_post_already_submitted') || json.message && json.message.includes('error_post_already_submitted'))) {
             if(typeof showToast !== 'undefined') {
-                showToast('Post was already submitted. Please wait...', 'warning');
+                showToast(t('warn_already_submitted', 'Post was already submitted. Please wait...'), 'warning');
             }
             console.warn('Duplicate post detected in response');
             return false;
@@ -231,7 +246,7 @@ var Thread = {
             
             // Успешное уведомление
             if(typeof showToast !== 'undefined') {
-                showToast('Reply posted successfully!', 'success');
+                showToast(t('ok_reply_posted', 'Reply posted successfully!'), 'success');
             }
             
             // Переинициализируем интерфейс
@@ -242,7 +257,7 @@ var Thread = {
         } else {
             console.warn('No valid post data found in response');
             if(typeof showToast !== 'undefined') {
-                showToast('No post data received', 'error');
+                showToast(t('err_no_post_data', 'No post data received'), 'error');
             }
         }
 
@@ -315,7 +330,7 @@ var Thread = {
             const nextPost = postElement.nextElementSibling;
             if(nextPost && nextPost.classList.contains('deleted_post')) {
                 if(typeof showToast !== 'undefined') {
-                    showToast('This post has been deleted', 'error');
+                    showToast(t('err_post_deleted', 'This post has been deleted'), 'error');
                 }
                 deleted = true;
             }
@@ -342,13 +357,13 @@ var Thread = {
                 mquoteLink.classList.add('postbit_multiquote_on');
             }
             if(typeof showToast !== 'undefined') {
-                showToast('Post added to multi-quote', 'success');
+                showToast(t('ok_mq_added', 'Post added to multi-quote'), 'success');
             }
         } else if(mquoteLink) {
             mquoteLink.classList.remove('postbit_multiquote_on');
             mquoteLink.classList.add('postbit_multiquote');
             if(typeof showToast !== 'undefined') {
-                showToast('Post removed from multi-quote', 'info');
+                showToast(t('info_mq_removed', 'Post removed from multi-quote'), 'info');
             }
         }
 
@@ -396,7 +411,7 @@ var Thread = {
                 console.error('Error:', error);
                 if(mquote_spinner) mquote_spinner.style.display = 'none';
                 if(typeof showToast !== 'undefined') {
-                    showToast('Error loading multi-quote', 'error');
+                    showToast(t('err_mq_load', 'Error loading multi-quote'), 'error');
                 }
                 this.loadingMultiQuote = false;
             });
@@ -409,7 +424,7 @@ var Thread = {
         if(typeof json == 'object' && json.hasOwnProperty("errors")) {
             json.errors.forEach(function(message) {
                 if(typeof showToast !== 'undefined') {
-                    showToast('Multi-quote error: ' + message, 'error');
+                    showToast(t('err_mq', 'Multi-quote error: {1}', message), 'error');
                 }
             });
             return false;
@@ -426,7 +441,7 @@ var Thread = {
                 // Проверяем, не содержится ли уже такой текст
                 if (messageElement.value.includes(quoteText)) {
                     if(typeof showToast !== 'undefined') {
-                        showToast('Multi-quote already exists in message', 'info');
+                        showToast(t('info_mq_exists', 'Multi-quote already exists in message'), 'info');
                     }
                     return false;
                 }
@@ -452,7 +467,7 @@ var Thread = {
                 if(quotedIds) quotedIds.value = 'all';
 
                 if(typeof showToast !== 'undefined') {
-                    showToast('Multi-quote added to quick reply', 'success');
+                    showToast(t('ok_mq_added_reply', 'Multi-quote added to quick reply'), 'success');
                 }
             }
         }

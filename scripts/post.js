@@ -1,8 +1,26 @@
-const removeattach_confirm = "Are you sure you want to delete this attachment?";
+// Тексты берутся из AGS_LANG (ключи js_* из ланга страницы). Если страница AGS_LANG не
+// выводит - работает английский fallback. Хелпер не перезаписывает уже объявленный t().
+if (typeof window.t !== 'function') {
+    window.t = function (key, fallback, ...args) {
+        let str = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG[key] === 'string')
+            ? AGS_LANG[key]
+            : fallback;
+        args.forEach(function (arg, i) {
+            str = str.split('{' + (i + 1) + '}').join(String(arg));
+        });
+        return str;
+    };
+}
+
+const removeattach_confirm = t('removeattach_confirm', 'Are you sure you want to delete this attachment?');
 
 // ── Модалка подтверждения удаления вложения (Bootstrap modal, в стиле manage_screenshots.php) ──
 const AttachRemoveModal = {
     IMAGE_EXT: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'],
+
+    esc: function(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
 
     getExtension: function(filename) {
         const parts = (filename || '').split('.');
@@ -14,7 +32,7 @@ const AttachRemoveModal = {
 
         if (this.IMAGE_EXT.includes(ext)) {
             return '<div class="preview-wrapper" style="display:inline-block;max-width:100%;">'
-                + '<img src="attachment.php?aid=' + aid + '" alt="Preview" '
+                + '<img src="attachment.php?aid=' + aid + '" alt="' + this.esc(t('attach_preview_alt', 'Preview')) + '" '
                 + 'style="max-width:100%;max-height:200px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">'
                 + '</div>';
         }
@@ -34,7 +52,7 @@ const AttachRemoveModal = {
             : '<i class="fa-solid fa-file" style="font-size:52px;color:#94a3b8"></i>';
 
         return '<div>' + iconHtml
-            + '<div class="small text-muted text-uppercase fw-bold mt-2">' + (ext || 'file') + '</div>'
+            + '<div class="small text-muted text-uppercase fw-bold mt-2">' + (ext || this.esc(t('attach_file_label', 'file'))) + '</div>'
             + '</div>';
     },
 
@@ -49,8 +67,8 @@ const AttachRemoveModal = {
                   <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content border-0 shadow">
                       <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i><span class="attach-remove-title"></span></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                       </div>
                       <div class="modal-body">
                         <div class="d-flex align-items-center mb-3">
@@ -58,7 +76,7 @@ const AttachRemoveModal = {
                             <i class="fas fa-trash-alt text-danger fs-1"></i>
                           </div>
                           <div>
-                            <h5 class="fw-bold mb-1">Delete Attachment?</h5>
+                            <h5 class="fw-bold mb-1 attach-remove-heading"></h5>
                             <p class="text-muted mb-0 attach-remove-filename"></p>
                           </div>
                         </div>
@@ -66,16 +84,16 @@ const AttachRemoveModal = {
                         <div class="alert alert-warning mt-2 mb-0">
                           <div class="d-flex">
                             <i class="fas fa-exclamation-circle me-2 mt-1"></i>
-                            <div><strong>Warning:</strong> This action cannot be undone!</div>
+                            <div><strong class="attach-remove-warning-label"></strong> <span class="attach-remove-warning"></span></div>
                           </div>
                         </div>
                       </div>
                       <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                          <i class="fas fa-times me-1"></i> Cancel
+                          <i class="fas fa-times me-1"></i> <span class="attach-remove-cancel"></span>
                         </button>
                         <button type="button" class="btn btn-danger" id="attachRemoveConfirmBtn">
-                          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+                          <i class="fas fa-trash-alt me-1"></i> <span class="attach-remove-confirm"></span>
                         </button>
                       </div>
                     </div>
@@ -83,6 +101,14 @@ const AttachRemoveModal = {
                 </div>
             `;
             const modalEl = wrapper.firstElementChild;
+            // Переведённые тексты - только как textContent / атрибут
+            modalEl.querySelector('.attach-remove-title').textContent = t('attach_modal_title', 'Confirm Deletion');
+            modalEl.querySelector('.btn-close').setAttribute('aria-label', t('attach_modal_close', 'Close'));
+            modalEl.querySelector('.attach-remove-heading').textContent = t('attach_modal_heading', 'Delete Attachment?');
+            modalEl.querySelector('.attach-remove-warning-label').textContent = t('attach_modal_warning_label', 'Warning:');
+            modalEl.querySelector('.attach-remove-warning').textContent = t('attach_modal_warning', 'This action cannot be undone!');
+            modalEl.querySelector('.attach-remove-cancel').textContent = t('attach_modal_cancel', 'Cancel');
+            modalEl.querySelector('.attach-remove-confirm').textContent = t('attach_modal_confirm', 'Yes, Delete');
             modalEl.querySelector('.attach-remove-filename').textContent = filename || '';
             modalEl.querySelector('.attach-remove-preview').innerHTML = this.buildPreviewHtml(aid, filename, sourceEl);
 
@@ -272,12 +298,12 @@ const Post = {
                                 this.regenAttachbuttons();
                             }, 500);
                         }
-                        showToast('Attachment successfully removed', 'success');
+                        showToast(t('attach_removed', 'Attachment successfully removed'), 'success');
                     }
                     this.attachmentAction('', '');
                 })
                 .catch(() => {
-                    showToast('Error removing attachment', 'error');
+                    showToast(t('attach_remove_error', 'Error removing attachment'), 'error');
                 });
         });
 
@@ -360,7 +386,7 @@ const Post = {
                         const usageEl = container.querySelector('.tcat>strong');
                         if (usageEl) usageEl.textContent = data.usage;
                     });
-                    showToast('Files uploaded successfully', 'success');
+                    showToast(t('files_uploaded', 'Files uploaded successfully'), 'success');
                 }
 
                 this.fileInput.value = '';
@@ -368,7 +394,7 @@ const Post = {
                 this.removeTempInputs();
             })
             .catch(() => {
-                showToast('Error uploading files', 'error');
+                showToast(t('files_upload_error', 'Error uploading files'), 'error');
                 this.removeTempInputs();
             });
     },
@@ -430,7 +456,7 @@ const Post = {
         
         const file = this.fileInput;
         if (!file) {
-            showToast('File input not found', 'error');
+            showToast(t('file_input_missing', 'File input not found'), 'error');
             return false;
         }
 

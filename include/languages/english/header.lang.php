@@ -132,7 +132,11 @@ $language['header'] = array(
     'nav_video_formats'  => 'Video Formats',
     'nav_torrent_links'  => 'Torrent Links',
     'nav_faq'            => 'FAQ',
-    'nav_rules'          => 'Rules'
+    'nav_rules'          => 'Rules',
+	
+	'low_raio_warns'      => 'You are now warned for having a low ratio!',
+	
+	
 	
 
 );

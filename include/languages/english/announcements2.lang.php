@@ -9,7 +9,7 @@ if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
 // ts_watch_list.php
-$language['announcements'] = array 
+$language['announcements2'] = array 
 (
 
 

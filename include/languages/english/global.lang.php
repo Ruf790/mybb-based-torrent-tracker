@@ -633,5 +633,23 @@ You do not have permission to access this page. This could be because of one of 
 	'h1' => 'You must reply to see the hidden information contained here.',//Added in v5.6
 	'h2'	=> 'Hidden Content',//Added in v5.6
 	'h3'	=>	'Un-Hidden Content',//Added in v5.6
+	
+	
+	// ── JS: Toast titles (shared by every page that loads toast.js) ──
+
+	'js_toast_success' => 'Success',
+
+	'js_toast_error' => 'Error',
+
+	'js_toast_warning' => 'Warning',
+
+	'js_toast_info' => 'Information',
+
+	'js_toast_close' => 'Close',
+
+
+	
+	
+	
 );
 ?>

@@ -75,6 +75,19 @@ if (!defined('IN_TRACKER')) {
         var saving_changes = 'Saving changes&hellip;';
         // -->
     </script>
+	
+	<?php
+    // Toast titles for toast.js (shared by every page): toastT() in toast.js reads window.AGS_TOAST_LANG
+    $ags_toast = [];
+    foreach (['success', 'error', 'warning', 'info', 'close'] as $ags_k) {
+        $ags_toast[$ags_k] = (string)($lang->global['js_toast_' . $ags_k] ?? '');
+    }
+    ?>
+    <script>
+        window.AGS_TOAST_LANG = <?= json_encode($ags_toast, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    </script>
+	
+	
 
     <script type="text/javascript">
         window.onscroll = () => {
@@ -119,6 +132,7 @@ if (!defined('IN_TRACKER')) {
             });
         });
     </script>
+
 
     <title><?= htmlspecialchars($title ?? 'ArtCore Gangsta', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
     <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/bootstrap.min.css" type="text/css" media="screen" />
@@ -897,7 +911,7 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
         <div class="card-header22">
             <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
             <div>
-                <h2 class="mb-0">You are now warned for having a low ratio!</h2>
+                <h2 class="mb-0">'.sprintf($lang->header['low_raio_warns']).'</h2>
                 <p class="mb-0 opacity-75"></p>
             </div>
         </div>

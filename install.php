@@ -1857,8 +1857,8 @@ function executeInstallStep(int $index): array
                 ];
                 foreach ($cats as $cat) {
                     $db->sql_query_prepared(
-                        'INSERT IGNORE INTO categories (name, icon, type, minclassread) VALUES (?, ?, ?, ?)',
-                        [$cat[0], $cat[1], 'c', 0]
+                       'INSERT IGNORE INTO categories (name, icon, type) VALUES (?, ?, ?)',
+                        [$cat[0], $cat[1], 'c']
                     );
                 }
                 return ['status' => 'ok', 'label' => 'Default categories', 'message' => count($cats) . ' seeded', 'elapsed_ms' => $elapsed()];

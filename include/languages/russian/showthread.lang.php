@@ -291,4 +291,31 @@ $language['showthread'] = array
 
 
 
+// ── JS: Toasts: form / tools ──
+'js_warn_select_tool' => "Выберите действие",
+'js_warn_enter_message' => "Введите сообщение",
+
+// ── JS: Quick reply: button ──
+'js_lbl_posting' => "Отправка...",
+'js_lbl_post_reply' => "Отправить ответ",
+
+// ── JS: Quick reply: results ──
+'js_err_network' => "Сервер вернул ошибку: {1}",
+'js_err_send_reply' => "Ошибка отправки ответа: {1}",
+'js_err_quick_reply' => "Ошибка быстрого ответа: {1}",
+'js_warn_already_submitted' => "Сообщение уже отправлено. Подождите...",
+'js_ok_reply_posted' => "Ответ успешно отправлен!",
+'js_err_no_post_data' => "Данные сообщения не получены",
+
+// ── JS: Multi-quote ──
+'js_err_post_deleted' => "Это сообщение удалено",
+'js_ok_mq_added' => "Сообщение добавлено в мультицитату",
+'js_info_mq_removed' => "Сообщение убрано из мультицитаты",
+'js_err_mq_load' => "Не удалось загрузить мультицитату",
+'js_err_mq' => "Ошибка мультицитаты: {1}",
+'js_info_mq_exists' => "Мультицитата уже есть в сообщении",
+'js_ok_mq_added_reply' => "Мультицитата добавлена в быстрый ответ",
+
+
+
 );

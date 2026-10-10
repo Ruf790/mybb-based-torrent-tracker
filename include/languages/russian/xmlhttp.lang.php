@@ -1,53 +1,74 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- */
+
+
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// users.php *** Re-Coded in v4.1 ***
+// xmlhttp.php *** Re-Coded in v4.1 ***
 $language['xmlhttp'] = array 
 (
 
-'no_new_subject' => "You did not enter a new subject.",
-'post_moderation' => "Your post is now under moderation.",
-'thread_moderation' => "Your thread is now under moderation.",
-'post_doesnt_exist' => "The specified post does not exist.",
-'thread_doesnt_exist' => "The specified thread does not exist.",
-'thread_closed_edit_subjects' => "This thread is closed and you may not edit subjects.",
-'no_permission_edit_subject' => "You do not have permission to edit this thread subject.",
-'thread_closed_edit_message' => "This thread is closed and you may not edit messages within it.",
-'no_permission_edit_post' => "You do not have permission to edit this message.",
-'edit_time_limit' => "You can only edit messages for {1} minutes after they were posted.",
-'postbit_edited' => "This post was last modified: {1} by",
-'postbit_editreason' => "Edit Reason",
-'save_changes' => "Save Changes",
-'cancel_edit' => "Cancel Edit",
-'answer_valid_not_exists' => "The question you are trying to answer does not exist.",
-'captcha_not_exists' => "The image verification image you are trying to refresh does not exist.",
-'captcha_valid_not_exists' => "The image verification image you are trying to check does not seem to exist.",
-'captcha_does_not_match' => "The image verification code that you entered was incorrect. Please enter the code exactly how it appears in the image.",
-'captcha_matches' => "The image verification code you entered was correct.",
-'answer_does_not_match' => "The answer you entered is not correct.",
-'banned_username' => "The username you entered has been disallowed by the administrator",
-'banned_characters_username' => "Your username contains one or more invalid characters",
-'complex_password_fails' => "Password requires an upper case letter, lower case letter and a number",
-'username_taken' => "{1} is already registered by another member",
-'username_available' => "{1} is available",
-'invalid_username' => "{1} is not the username of a registered member",
-'valid_username' => "{1} is a valid referrer.",
-'buddylist_error' => "It seems like you do not have any buddies on your buddy list. Please add some before trying to use this.",
-'close' => "Close",
-'select_buddies' => "Select Buddies",
-'select_buddies_desc' => "To add one or more of your buddies as recipients, select them below and click OK.",
-'selected_recipients' => "Selected recipients",
+'no_new_subject' => "Вы не ввели новую тему.",
+'post_moderation' => "Ваше сообщение отправлено на модерацию.",
+'thread_moderation' => "Ваша тема отправлена на модерацию.",
+'post_doesnt_exist' => "Указанное сообщение не существует.",
+'thread_doesnt_exist' => "Указанная тема не существует.",
+'thread_closed_edit_subjects' => "Тема закрыта, изменять заголовки нельзя.",
+'no_permission_edit_subject' => "У вас нет прав на изменение заголовка этой темы.",
+'thread_closed_edit_message' => "Тема закрыта, редактировать сообщения в ней нельзя.",
+'no_permission_edit_post' => "У вас нет прав на редактирование этого сообщения.",
+'edit_time_limit' => "Сообщения можно редактировать только в течение {1} мин. после публикации.",
+'postbit_edited' => "Сообщение изменено: {1}, автор правки:",
+'postbit_editreason' => "Причина правки",
+'save_changes' => "Сохранить изменения",
+'cancel_edit' => "Отменить редактирование",
+'answer_valid_not_exists' => "Вопрос, на который вы пытаетесь ответить, не существует.",
+'captcha_not_exists' => "Изображение проверочного кода, которое вы пытаетесь обновить, не существует.",
+'captcha_valid_not_exists' => "Изображение проверочного кода, которое вы пытаетесь проверить, не найдено.",
+'captcha_does_not_match' => "Код с картинки введён неверно. Введите код точно так, как он показан на изображении.",
+'captcha_matches' => "Код с картинки введён верно.",
+'answer_does_not_match' => "Ответ неверный.",
+'banned_username' => "Введённое имя пользователя запрещено администратором",
+'banned_characters_username' => "Имя пользователя содержит недопустимые символы",
+'complex_password_fails' => "Пароль должен содержать заглавную букву, строчную букву и цифру",
+'username_taken' => "Имя {1} уже занято другим пользователем",
+'username_available' => "Имя {1} свободно",
+'invalid_username' => "Пользователя с именем {1} не существует",
+'valid_username' => "Пользователь {1} может быть указан как пригласивший.",
+'buddylist_error' => "В вашем списке друзей никого нет. Добавьте друзей, прежде чем использовать эту функцию.",
+'close' => "Закрыть",
+'select_buddies' => "Выбор друзей",
+'select_buddies_desc' => "Чтобы добавить друзей в получатели, отметьте их ниже и нажмите OK.",
+'selected_recipients' => "Выбранные получатели",
 'ok' => "OK",
-'cancel' => "Cancel",
-'online' => "Online",
-'offline' => "Offline",
-'edited_post' => "Edited Post",
-'usergroup' => "Usergroup",
+'cancel' => "Отмена",
+'online' => "В сети",
+'offline' => "Не в сети",
+'edited_post' => "Правка сообщения",
+'usergroup' => "Группа",
+
+// ── Added: security / access ──
+'err_invalid_post_code' => "Недействительный токен безопасности. Обновите страницу и попробуйте снова.",
+'err_not_logged_in' => "Вы не авторизованы",
+'err_invalid_request_method' => "Недопустимый метод запроса",
+'err_invalid_parameters' => "Некорректные параметры",
+'err_access_denied' => "Доступ запрещён",
+'err_forbidden' => "Недостаточно прав для этого действия",
+'err_comment_not_allowed' => "Вам запрещено оставлять комментарии",
+
+// ── Added: threads ──
+'err_invalid_thread_id' => "Некорректный ID темы",
+'err_thread_not_found' => "Тема не найдена",
+'err_thread_no_view_permission' => "У вас нет прав на просмотр этой темы",
+'lbl_guest' => "Гость",
+'lbl_unknown' => "Неизвестно",
+
+// ── Added: torrent editing ──
+'err_name_empty' => "Название не может быть пустым",
+'err_descr_empty' => "Описание не может быть пустым",
+'err_no_torrent_id' => "Не указан ID раздачи",
+'err_torrent_not_found' => "Раздача не найдена",
+'flash_torrent_updated' => "Данные обновлены",
+'err_torrent_update_failed' => "Не удалось обновить данные",
 
 );

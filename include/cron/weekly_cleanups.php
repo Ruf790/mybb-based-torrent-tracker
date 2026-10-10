@@ -48,7 +48,7 @@ if (!empty($HRSkipGroups)) {
 $wrapped = $db->sql_query_prepared(
     "SELECT s.id, s.torrentid, s.userid, s.seedtime, s.completedat,
            t.name,
-           u.username, u.timeswarned
+           u.username, u.timeswarned, u.language
     FROM snatched s
     INNER JOIN torrents t ON s.torrentid = t.id
     INNER JOIN users    u ON s.userid    = u.id
@@ -96,12 +96,14 @@ foreach ($userTorrents as $uid => $torrents) {
     }
 }
 
+// The PM text is NOT translated here: only language keys are passed, send_pm() loads the
+// strings from languages/<user language>/cron.lang.php for every recipient.
 if (!empty($warnPm)) {
-    hr_send_pm($warnPm, $lang->cron['hr_warn_subject'], $lang->cron['hr_warn_message'], $ban_user_limit);
+    hr_send_pm($warnPm, 'hr_warn_subject', 'hr_warn_message', $ban_user_limit);
 }
 
 if (!empty($finalPm)) {
-    hr_send_pm($finalPm, $lang->cron['hr_final_subject'], $lang->cron['hr_final_message'], $ban_user_limit);
+    hr_send_pm($finalPm, 'hr_final_subject', 'hr_final_message', $ban_user_limit);
 }
 
 if (!empty($silentMark)) {
@@ -158,13 +160,16 @@ if ($warnPm || $finalPm || $silentMark) {
 }
 
 /**
+ * $subjectKey / $messageKey are keys of $language['cron'] (cron.lang.php), resolved by send_pm()
+ * in the recipient's language.
+ *
  * Template placeholders (hr_warn_message / hr_final_message):
  *   {1} username          {2} torrent link (details)   {3} hours seeded
  *   {4} required hours    {5} download link             {6} required hours (rule text)
  *   {7} warning limit before ban ($ban_user_limit)
  *   {8} hours still to seed
  */
-function hr_send_pm(array $rows, string $subject, string $tpl, int $banLimit): void
+function hr_send_pm(array $rows, string $subjectKey, string $messageKey, int $banLimit): void
 {
     global $CQueryCount, $MinSeedHours, $BASEURL, $db;
 
@@ -174,22 +179,26 @@ function hr_send_pm(array $rows, string $subject, string $tpl, int $banLimit): v
         $seeded_h    = (int)floor($r['seedtime'] / HOUR_IN_SECONDS);
         $remaining_h = max(0, (int)$MinSeedHours - $seeded_h);
 
-        $message = sprintf($tpl,
-            $r['username'],
-            '[URL=' . $BASEURL . '/details.php?id='  . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
-            $seeded_h,
-            $MinSeedHours,
-            '[URL=' . $BASEURL . '/download.php?id=' . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
-            $MinSeedHours,
-            $banLimit,
-            $remaining_h
-        );
+        // Recipient language (users.language); fall back to English when it is empty
+        $userLanguage = !empty($r['language']) ? (string)$r['language'] : 'english';
 
         send_pm([
-            'subject' => $subject,
-            'message' => $message,
-            'touid'   => (int)$r['userid'],
-            'sender'  => ['uid' => -1],
+            'subject'       => [$subjectKey],
+            'message'       => [
+                $messageKey,
+                $r['username'],
+                '[URL=' . $BASEURL . '/details.php?id='  . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
+                $seeded_h,
+                $MinSeedHours,
+                '[URL=' . $BASEURL . '/download.php?id=' . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
+                $MinSeedHours,
+                $banLimit,
+                $remaining_h,
+            ],
+            'touid'         => (int)$r['userid'],
+            'language'      => $userLanguage,
+            'language_file' => 'cron',
+            'sender'        => ['uid' => -1],
         ], -1, true);
 
         $CQueryCount++;

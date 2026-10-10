@@ -8,7 +8,7 @@ if (!defined('IN_CRON')) {
     exit();
 }
 
-require INC_PATH . '/functions_pm.php';
+require_once INC_PATH . '/functions_pm.php';
 
 
 
@@ -21,15 +21,37 @@ function build_in_placeholders(array $ids): string {
     return implode(',', array_fill(0, count($ids), '?'));
 }
 
-// Отправка PM нескольким пользователям
-function send_bulk_pm(array $user_ids, string $subject, string $message) {
-    global $CQueryCount;
+// Отправка PM нескольким пользователям, каждому на его языке.
+// $subjectKey / $messageKey — ключи $language['cron'] (cron.lang.php), $args — аргументы {1}, {2}...
+// Текст собирает send_pm() из языка получателя (users.language).
+function send_bulk_pm(array $user_ids, string $subjectKey, string $messageKey, array $args = []): void
+{
+    global $db, $CQueryCount;
+
+    $user_ids = array_values(array_unique(array_map('intval', $user_ids)));
+    if (!$user_ids) {
+        return;
+    }
+
+    // Язык каждого получателя одним запросом
+    $languages = [];
+    $res = $db->sql_query_prepared(
+        'SELECT id, language FROM users WHERE id IN (' . build_in_placeholders($user_ids) . ')',
+        $user_ids
+    );
+    $CQueryCount++;
+    while ($row = $db->fetch_array($res)) {
+        $languages[(int)$row['id']] = (string)($row['language'] ?? '');
+    }
+
     foreach ($user_ids as $uid) {
         $result = send_pm([
-            'subject' => $subject,
-            'message' => $message,
-            'touid' => (int)$uid,
-            'sender' => ['uid' => -1]
+            'subject'       => [$subjectKey],
+            'message'       => array_merge([$messageKey], $args),
+            'touid'         => $uid,
+            'language'      => ($languages[$uid] ?? '') !== '' ? $languages[$uid] : 'english',
+            'language_file' => 'cron',
+            'sender'        => ['uid' => -1],
         ], -1, true);
         if ($result) $CQueryCount++; // Учитываем запросы отправки PM
     }
@@ -93,8 +115,9 @@ if ($leechwarn_ids) {
 
     send_bulk_pm(
         $leechwarn_ids,
-        $lang->cron['lwarning_subject'],
-        sprintf($lang->cron['lwarning_message'], $leechwarn_remove_ratio, $leechwarn_length)
+        'lwarning_subject',
+        'lwarning_message',
+        [$leechwarn_remove_ratio, $leechwarn_length]
     );
 }
 
@@ -253,8 +276,8 @@ if ($promote_gig_limit > 0) {
 
         send_bulk_pm(
             $promote_ids,
-            $lang->cron['promote_subject'],
-            $lang->cron['promote_message']
+            'promote_subject',
+            'promote_message'
         );
     }
 }
@@ -290,7 +313,8 @@ if ($demote_ids) {
 
     send_bulk_pm(
         $demote_ids,
-        $lang->cron['demote_subject'],
-        sprintf($lang->cron['demote_message'], $demote_min_ratio)
+        'demote_subject',
+        'demote_message',
+        [$demote_min_ratio]
     );
 }

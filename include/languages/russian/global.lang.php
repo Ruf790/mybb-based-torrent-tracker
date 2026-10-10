@@ -100,7 +100,7 @@ $language['global'] = array(
 	'zero_short' => '0с',
 
 
-
+'postbit_attachment_downloads' => "Downloads:",
 
 'postbit_attachments' => "Прикреплённые файлы",
 
@@ -647,5 +647,26 @@ $language['global'] = array(
 'h1' => 'Необходимо ответить, чтобы увидеть скрытое содержимое.',
 'h2' => 'Скрытое содержимое',
 'h3' => 'Раскрытое содержимое',
+
+
+
+// ── JS: Toast titles (shared by every page that loads toast.js) ──
+
+'js_toast_success' => 'Успешно',
+
+'js_toast_error' => 'Ошибка',
+
+'js_toast_warning' => 'Внимание',
+
+'js_toast_info' => 'Информация',
+
+'js_toast_close' => 'Закрыть',
+
+
+
+
+
+
+
 );
 ?>

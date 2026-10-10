@@ -130,7 +130,9 @@ $language['header'] = array(
     'nav_video_formats'  => 'Форматы видео',
     'nav_torrent_links'  => 'Ссылки на торренты',
     'nav_faq'            => 'FAQ',
-    'nav_rules'          => 'Правила'
+    'nav_rules'          => 'Правила',
+	
+	'low_raio_warns'      => 'Вы теперь предупреждены за низкий рейтинг!',
 
 );
 ?>

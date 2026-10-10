@@ -305,4 +305,37 @@ $language['showthread'] = array
 
 
 
+
+
+// ── JS: Toasts: form / tools ──
+'js_warn_select_tool' => "Select tool",
+'js_warn_enter_message' => "Please enter a message",
+
+// ── JS: Quick reply: button ──
+'js_lbl_posting' => "Posting...",
+'js_lbl_post_reply' => "Post Reply",
+
+// ── JS: Quick reply: results ──
+'js_err_network' => "Network response was not ok: {1}",
+'js_err_send_reply' => "Error sending reply: {1}",
+'js_err_quick_reply' => "Quick reply error: {1}",
+'js_warn_already_submitted' => "Post was already submitted. Please wait...",
+'js_ok_reply_posted' => "Reply posted successfully!",
+'js_err_no_post_data' => "No post data received",
+
+// ── JS: Multi-quote ──
+'js_err_post_deleted' => "This post has been deleted",
+'js_ok_mq_added' => "Post added to multi-quote",
+'js_info_mq_removed' => "Post removed from multi-quote",
+'js_err_mq_load' => "Error loading multi-quote",
+'js_err_mq' => "Multi-quote error: {1}",
+'js_info_mq_exists' => "Multi-quote already exists in message",
+'js_ok_mq_added_reply' => "Multi-quote added to quick reply",
+
+
+
+
+
+
+
 );

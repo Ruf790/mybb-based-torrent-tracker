@@ -47,28 +47,4 @@ $language['xmlhttp'] = array
 'edited_post' => "Edited Post",
 'usergroup' => "Usergroup",
 
-// ── Added: security / access ──
-'err_invalid_post_code' => "Invalid security token. Please refresh the page and try again.",
-'err_not_logged_in' => "You are not logged in",
-'err_invalid_request_method' => "Invalid request method",
-'err_invalid_parameters' => "Invalid parameters",
-'err_access_denied' => "Access denied",
-'err_forbidden' => "You do not have permission to do this",
-'err_comment_not_allowed' => "You are not allowed to post comments",
-
-// ── Added: threads ──
-'err_invalid_thread_id' => "Invalid thread ID",
-'err_thread_not_found' => "Thread not found",
-'err_thread_no_view_permission' => "You do not have permission to view this thread",
-'lbl_guest' => "Guest",
-'lbl_unknown' => "Unknown",
-
-// ── Added: torrent editing ──
-'err_name_empty' => "The name cannot be empty",
-'err_descr_empty' => "The description cannot be empty",
-'err_no_torrent_id' => "No torrent ID specified",
-'err_torrent_not_found' => "Torrent not found",
-'flash_torrent_updated' => "Data has been updated",
-'err_torrent_update_failed' => "Failed to update data",
-
 );

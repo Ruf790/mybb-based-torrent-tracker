@@ -476,7 +476,7 @@ foreach ($lang->details as $ags_key => $ags_val) {
 }
 echo '<script>const AGS_LANG = ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
 
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=2"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';

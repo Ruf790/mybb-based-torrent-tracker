@@ -24,6 +24,9 @@ require_once INC_PATH . '/datahandler.php';
 // Load global language phrases
 $lang->load("editpost");
 $lang->load("newthread");
+$lang->load("post3");
+
+
 
 $plugins->run_hooks("editpost_start");
 
@@ -45,7 +48,7 @@ if (isset($style) && $style['pid'] == $pid && $style['type'] != 'f') {
 
 
 if (!$post || $post['visible'] == -1) {
-	stderr($lang->global['error_invalidpost'], $SITENAME . ' - Post Not Found', 404, '404');
+	stderr($lang->editpost['flash_invalid_post'], $SITENAME . ' - ' . $lang->editpost['title_post_not_found'], 404, '404');
 }
 
 
@@ -78,7 +81,7 @@ if ($thread['visible'] == 0 && !$is_mod || $thread['visible'] == -1 && $is_mod |
 
 
 if (!$forum || $forum['type'] != "f") {
-	stderr($lang->global['error_closedinvalidforum'], $SITENAME . ' - Access Denied', 403, '403');
+	stderr($lang->global['error_closedinvalidforum'], $SITENAME . ' - ' . $lang->editpost['title_access_denied'], 403, '403');
 }
 
 
@@ -92,7 +95,7 @@ if ($forum['open'] == 0 && !$is_mod) {
 // Make navigation
 build_forum_breadcrumb($fid);
 add_breadcrumb($thread['subject'], get_thread_link($thread['tid']));
-add_breadcrumb('Edit Post');
+add_breadcrumb($lang->editpost['nav_edit_post']);
 
 $forumpermissions = forum_permissions($fid);
 
@@ -121,7 +124,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     }
 
     if (!$is_mod && $thread['closed'] == 1) {
-        error($lang->global['redirect_threadclosed'] ?? 'Thread is closed');
+        error($lang->editpost['flash_thread_closed']);
     }
 
     // User can't delete unapproved post unless allowed for own
@@ -130,7 +133,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     }
 
     if ($post['visible'] == -1) {
-        error($lang->editpost['error_already_deleted'] ?? 'Already deleted');
+        error($lang->editpost['flash_already_deleted']);
     }
 }
 
@@ -138,7 +141,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
 check_forum_password($forum['fid']);
 
 if ((empty($_POST) && empty($_FILES)) && $mybb->get_input('processed', MyBB::INPUT_INT) == '1') {
-    error('error_empty_post_input');
+    error($lang->editpost['flash_empty_post_input']);
 }
 
 $attacherror = '';
@@ -162,7 +165,7 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
         if (isset($ret['success'])) {
             $attachment = ['aid'=>'{1}', 'icon'=>'{2}', 'filename'=>'{3}', 'size'=>'{4}'];
             
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn" />
+            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="'.$lang->editpost['btn_insert_into_post'].'" id="insertBtn" />
 
 <script>
   document.getElementById("insertBtn").addEventListener("click", function(event) {
@@ -179,7 +182,7 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
             
 			$attach_mod_options = '
 			
-			<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
+			<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
 			';
 			
 			
@@ -187,7 +190,7 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
             
             $attach_rem_options = '
 			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->editpost['remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
+			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
 			
 			';
 			
@@ -289,13 +292,13 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
         print_no_permission();
     }
     if (!$is_mod && $thread['closed'] == 1) {
-        error($lang->global['redirect_threadclosed'] ?? 'Thread is closed');
+        error($lang->editpost['flash_thread_closed']);
     }
     if (!$is_mod && $post['visible'] == 0 && !($showownunapproved && $post['uid'] == $CURUSER['id'])) {
         print_no_permission();
     }
     if ($post['visible'] == -1) {
-        error($lang->editpost['error_already_deleted'] ?? 'Already deleted');
+        error($lang->editpost['flash_already_deleted']);
     }
     // ── конец проверки ──
 
@@ -316,7 +319,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
                 header("Content-type: application/json; charset={$charset}");
                 echo json_encode(["data" => '1', "first" => '1', "url" => get_forum_link($fid)]);
             } else {
-                redirect(get_forum_link($fid), 'Thank you, the thread has been deleted.<br />You will now be returned to the forum');
+                redirect(get_forum_link($fid), $lang->editpost['flash_thread_deleted']);
             }
         } else {
             require_once INC_PATH."/class_moderation.php";
@@ -338,11 +341,11 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
                 header("Content-type: application/json; charset={$charset}");
                 echo json_encode(["data" => '1', "first" => '0', "url" => $redirect]);
             } else {
-                redirect($redirect, 'Thank you, the post has been deleted.<br />You will now be returned to the thread');
+                redirect($redirect, $lang->editpost['flash_post_deleted']);
             }
         }
     } else {
-        error($lang->editpost['redirect_nodelete'] ?? 'Delete cancelled');
+        error($lang->editpost['flash_nodelete']);
     }
 }
 
@@ -406,16 +409,16 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
         // Did the user choose to post a poll? Redirect them to the poll posting page.
         if ($mybb->get_input('postpoll', MyBB::INPUT_INT) && $forumpermissions['canpostpolls']) {
             $url = "polls.php?action=newpoll&tid=$tid&polloptions=".$mybb->get_input('numpolloptions', MyBB::INPUT_INT);
-            $redirect_postedited = $lang->editpost['redirect_postedited_poll'] ?? 'Post edited - redirect to poll';
+            $redirect_postedited = $lang->editpost['flash_post_edited_poll'];
         } elseif ($visible == 0 && $first_post && !$is_mod) {
             // Moderated post
-            $redirect_postedited = $lang->editpost['redirect_thread_moderation'] ?? 'Thread awaiting moderation';
+            $redirect_postedited = $lang->editpost['flash_thread_moderation'];
             $url = get_forum_link($fid);
         } elseif ($visible == 0 && !$is_mod) {
-            $redirect_postedited = $lang->editpost['redirect_post_moderation'] ?? 'Post awaiting moderation';
+            $redirect_postedited = $lang->editpost['flash_post_moderation'];
             $url = get_thread_link($tid);
         } else {
-            $redirect_postedited = $lang->editpost['redirect_postedited_redirect'] ?? 'Post edited';
+            $redirect_postedited = $lang->editpost['flash_post_edited'];
             $url = get_post_link($pid, $tid)."#pid{$pid}";
         }
         $plugins->run_hooks("editpost_do_editpost_end");
@@ -453,16 +456,16 @@ $modal_message2 = $parser->parse_message($post['message'], $modal_parser_options
 $deletebox = '
 <div class="card border-0 mb-4">
     <div class="card-header rounded-bottom text-19 fw-bold">
-        '.$lang->editpost['edit_post'].'
+        '.$lang->editpost['pane_edit_post'].'
     </div>
     <div class="card-body">
         <div class="row g-2 pb-3 border-bottom">
             <div class="col align-self-center">
-                <i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['delete_2'].'
+                <i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['tip_delete_note'].'
             </div>
             <div class="col-auto text-end align-self-center">
                 <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal'.$pid.'" tabindex="9">
-                    <i class="fa-solid fa-trash-can"></i> '.$lang->editpost['delete_now'].'
+                    <i class="fa-solid fa-trash-can"></i> '.$lang->editpost['btn_delete_now'].'
                 </button>
             </div>
         </div>
@@ -472,21 +475,21 @@ $deletebox = '
 $modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">'
         . '<div class="modal-header bg-danger text-white">'
-        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>Delete Post</h5>'
+        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>' . $lang->editpost['modal_delete_title'] . '</h5>'
         . '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>'
         . '</div>'
         . '<div class="modal-body">'
         . '<div class="text-center mb-3">'
         . '<i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>'
-        . '<h6 class="fw-bold">Are you sure you want to delete this post?</h6>'
-        . '<p class="text-muted mb-0">This action cannot be undone.</p>'
+        . '<h6 class="fw-bold">' . $lang->editpost['modal_delete_confirm'] . '</h6>'
+        . '<p class="text-muted mb-0">' . $lang->editpost['modal_delete_warning'] . '</p>'
         . '</div>'
         . '<div class="card border-danger border-opacity-25 mb-3">'
         . '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">'
         . '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>' . $modal_username . '</span>'
         . '<div class="d-flex gap-2 align-items-center">'
         . '<span class="text-muted small">' . $modal_postdate . '</span>'
-        . '<span class="badge bg-secondary">PID: ' . $pid . '</span>'
+        . '<span class="badge bg-secondary">' . sprintf($lang->editpost['lbl_pid'], $pid) . '</span>'
         . '</div>'
         . '</div>'
         . '<div class="card-body py-2 px-3">'
@@ -498,15 +501,15 @@ $modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabind
         . '</div>'
         . '</div>'
         . '<div id="deleteLoading' . $pid . '" class="text-center mt-3" style="display:none;">'
-        . '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Deleting...</span></div>'
-        . '<p class="mt-2 text-muted">Deleting post...</p>'
+        . '<div class="spinner-border text-primary" role="status">' . $lang->editpost['modal_deleting_sr'] . '</div>'
+        . '<p class="mt-2 text-muted">' . $lang->editpost['modal_deleting'] . '</p>'
         . '</div>'
         . '</div>'
         . '<div class="modal-footer">'
         . '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">'
-        . '<i class="fa-solid fa-xmark me-1"></i>Cancel</button>'
+        . '<i class="fa-solid fa-xmark me-1"></i>' . $lang->editpost['btn_cancel'] . '</button>'
         . '<button type="button" class="btn btn-danger" id="confirmDeleteBtn' . $pid . '">'
-        . '<i class="fa-solid fa-trash me-1"></i>Delete Post</button>'
+        . '<i class="fa-solid fa-trash me-1"></i>' . $lang->editpost['btn_delete_post'] . '</button>'
         . '</div>'
         . '</div></div></div>';
 
@@ -541,7 +544,7 @@ $deletebox .= $modal_delete;
 
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
 
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn" />
+            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="'.$lang->editpost['btn_insert_into_post'].'" id="insertBtn" />
 
 <script>
   document.getElementById("insertBtn").addEventListener("click", function(event) {
@@ -561,7 +564,7 @@ $deletebox .= $modal_delete;
 					$attach_mod_options = '
 					
 					
-					<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
+					<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
 					
 					';
 
@@ -570,7 +573,7 @@ $deletebox .= $modal_delete;
                     
 					$attach_mod_options = '
 					
-					<input type="submit" class="btn btn-page" name="approveattach_'.$attachment['aid'].'" value="'.$lang->editpost['approve_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"approve");" />
+					<input type="submit" class="btn btn-page" name="approveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_approve_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"approve");" />
 					
 					';
 					
@@ -583,7 +586,7 @@ $deletebox .= $modal_delete;
             $attach_rem_options = '
 			
 			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->editpost['remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
+			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
 			
 			
 			
@@ -647,20 +650,20 @@ $deletebox .= $modal_delete;
         }
         
         if ($usergroups['attachquota'] == 0) {
-            $friendlyquota = 'unlimited';
+            $friendlyquota = $lang->editpost['lbl_unlimited'];
         } else {
             $friendlyquota = mksize($usergroups['attachquota']*1024);
         }
 
-        $attach_quota = sprintf($lang->editpost['attach_quota'] ?? 'Attachment quota: %s', $friendlyquota);
+        $attach_quota = sprintf($lang->editpost['tip_attach_quota'], $friendlyquota);
 
         $link_viewattachments = '';
 
         if ($usage['ausage'] !== null) {
             $friendlyusage = mksize($usage['ausage']);
-            $attach_usage = sprintf($lang->editpost['attach_usage'] ?? 'Attachment usage: %s', $friendlyusage);
+            $attach_usage = sprintf($lang->editpost['tip_attach_usage'], $friendlyusage);
             
-			$link_viewattachments = '<a href="usercp.php?action=attachments">'.$lang->global['view_attachments'].'</a>';
+			$link_viewattachments = '<a href="usercp.php?action=attachments">'.$lang->editpost['lbl_view_attachments'].'</a>';
 			
 			
         } else {
@@ -674,7 +677,7 @@ $deletebox .= $modal_delete;
             
 			$attach_add_options = '
 			
-			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->editpost['add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->editpost['add_attachment'].'</button>
+			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->post3['btn_add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->post3['btn_add_attachment'].'</button>
 			
 			';
 			
@@ -685,7 +688,7 @@ $deletebox .= $modal_delete;
             
 			$attach_update_options = '
 			
-			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->editpost['update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->editpost['update_attachment'].'&nbsp;</button>
+			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->post3['btn_update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->post3['btn_update_attachment'].'&nbsp;</button>
 			
 			
 			';	
@@ -710,7 +713,7 @@ $deletebox .= $modal_delete;
 	</div>
 </div>
 
-<label for="attachments[]">'.$lang->editpost['new_attachment'].'</label>
+<label for="attachments[]">'.$lang->post3['lbl_new_attachment'].'</label>
 <div class="alert bg-nav mb-0">
 <input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
 </div>
@@ -873,12 +876,12 @@ $deletebox .= $modal_delete;
         $closeoption = '
         <div class="form-check mb-2">
             <input type="checkbox" class="form-check-input" name="postoptions[closethread]" id="closethread" value="1"' . (($thread['closed'] ?? 0) == 1 ? ' checked="checked"' : '') . ' />
-            <label class="form-check-label" for="closethread">' . ($lang->editpost['close_thread'] ?? 'Close Thread') . '</label>
+            <label class="form-check-label" for="closethread">' . $lang->editpost['lbl_close_thread'] . '</label>
         </div>';
         $stickoption = '
         <div class="form-check">
             <input type="checkbox" class="form-check-input" name="postoptions[stickthread]" id="stickthread" value="1"' . (($thread['sticky'] ?? 0) == 1 ? ' checked="checked"' : '') . ' />
-            <label class="form-check-label" for="stickthread">' . ($lang->editpost['stick_thread'] ?? 'Stick Thread') . '</label>
+            <label class="form-check-label" for="stickthread">' . $lang->editpost['lbl_stick_thread'] . '</label>
         </div>';
     }
 
@@ -889,7 +892,7 @@ $deletebox .= $modal_delete;
         
 		$editreason = '
 		
-		<input type="text" class="form-control border mb-3" name="editreason" size="40" placeholder="'.$lang->editpost['editreason'].'" maxlength="150" value="'.$reason.'" tabindex="5" />
+		<input type="text" class="form-control border mb-3" name="editreason" size="40" placeholder="'.$lang->editpost['ph_edit_reason'].'" maxlength="150" value="'.$reason.'" tabindex="5" />
 		
 		';
 		
@@ -935,7 +938,7 @@ $deletebox .= $modal_delete;
     
     if ($firstcheck['pid'] == $pid && $thread['poll'] < 1 && $is_mod) {
         $maxpolloptions = "10";
-        $max_options = sprintf($lang->editpost['max_options'] ?? 'Max options: %s', $maxpolloptions);
+        $max_options = sprintf($lang->editpost['hint_poll_max_options'], $maxpolloptions);
         $numpolloptions = $mybb->get_input('numpolloptions', MyBB::INPUT_INT);
         $postpollchecked = '';
         
@@ -950,7 +953,7 @@ $deletebox .= $modal_delete;
         $pollbox = '
 		
 		
-		&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-pollop" role="button"><i class="fa-solid fa-circle-plus"></i> &nbsp;'.$lang->newthread['poll'].'</a>&nbsp;&nbsp;
+		&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-pollop" role="button"><i class="fa-solid fa-circle-plus"></i> &nbsp;'.$lang->editpost['pane_poll'].'</a>&nbsp;&nbsp;
 		
 		
 		
@@ -966,15 +969,15 @@ $deletebox .= $modal_delete;
         $pollpanel = '
 <!-- pollop -->
 <div id="collapse-pollop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['poll'].'</div>
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_poll'].'</div>
 <div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['poll'].'
+'.$lang->editpost['pane_poll'].'
 </div>
 <div class="col">
-<div class="text-desc mb-3">'.$lang->editpost['poll_desc'].'</div>
-<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['poll_check'].'</label>	
-<div class="mt-3">'.$lang->editpost['num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$lang->editpost['max_options'].'
+<div class="text-desc mb-3">'.$lang->editpost['tip_poll_desc'].'</div>
+<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['lbl_poll_check'].'</label>	
+<div class="mt-3">'.$lang->editpost['lbl_poll_num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$max_options.'
 </div>	
 </div>
 </div>
@@ -995,7 +998,7 @@ $deletebox .= $modal_delete;
     
 	$postoptions = '
 	
-	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->editpost['post_options'].'</a>
+	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->editpost['pane_post_options'].'</a>
 	
 	';
 	
@@ -1010,22 +1013,22 @@ $deletebox .= $modal_delete;
     $post_javascript = '
 	
 	<script type="text/javascript">
-				lang.add_attachment = "Add Attachment";
-				lang.update_attachment = "Update Attachment";
-				lang.update_confirm = "The following file(s) are already attached and will be updated / replaced with the newly selected one(s). {1} Are you sure?";
-				lang.attachment_missing = "Please select one or more files before attempting to attach.";
-				lang.attachment_too_many_files = "You can upload a maximum of {1} files at once.";
-				lang.attachment_too_big_upload = "You can upload a maximum of {1} MB at once.";
-				lang.attachment_max_allowed_files = "You can attach {1} more file(s) to this post.";
-				lang.error_maxattachpost = "Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of {1}";
-				lang.drop_files = "Click or drop some files here to upload...";
-				lang.upload_initiate = "Release to initiate upload...";
+				lang.add_attachment = AGS_LANG.add_attachment;
+				lang.update_attachment = AGS_LANG.update_attachment;
+				lang.update_confirm = AGS_LANG.update_confirm;
+				lang.attachment_missing = AGS_LANG.attachment_missing;
+				lang.attachment_too_many_files = AGS_LANG.attachment_too_many_files;
+				lang.attachment_too_big_upload = AGS_LANG.attachment_too_big_upload;
+				lang.attachment_max_allowed_files = AGS_LANG.attachment_max_allowed_files;
+				lang.error_maxattachpost = AGS_LANG.error_maxattachpost;
+				lang.drop_files = AGS_LANG.drop_files;
+				lang.upload_initiate = AGS_LANG.upload_initiate;
 				php_max_upload_size = '.$php_max_upload_size.';
 				php_max_file_uploads = '.$php_max_file_uploads.';
 				mybb_max_file_uploads = '.$maxattachments.';
 			</script>
-			<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-			<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1832"></script>';	
+			<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=7"></script>
+			<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=234"></script>';	
 	
 	
 
@@ -1040,7 +1043,7 @@ $deletebox .= $modal_delete;
 	
 	<html>
 <head>
-<title>'.$SITENAME.' - '.$lang->editpost['edit_post'].'</title>
+<title>'.$SITENAME.' - '.$lang->editpost['pane_edit_post'].'</title>
 
 '.$post_javascript.'
 		
@@ -1084,9 +1087,9 @@ $deletebox .= $modal_delete;
 
 <div class="mt-2 mb-3">
 '.$postoptions.'		
-<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->editpost['attachments'].'</a>		
+<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->editpost['pane_attachments'].'</a>		
 '.$pollbox.'
-<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->editpost['preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['preview_post'].'</button>
+<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->editpost['btn_preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['btn_preview_post'].'</button>
 
 		
 
@@ -1094,10 +1097,10 @@ $deletebox .= $modal_delete;
 '.$pollpanel.'
  <!-- attach -->
 <div id="collapse-attach" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['attachments'].'</div>
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_attachments'].'</div>
 <div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['attachments'].'
+'.$lang->editpost['pane_attachments'].'
 </div>
 <div class="col">
 '.$attachbox.'
@@ -1107,10 +1110,10 @@ $deletebox .= $modal_delete;
 <!-- attach -->
  <!-- modop -->
 <div id="collapse-modop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['mod_options'].'</div>
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_mod_options'].'</div>
 <div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['mod_options'].'
+'.$lang->editpost['pane_mod_options'].'
 </div>
 <div class="col">
 '.$closeoption.'
@@ -1121,10 +1124,10 @@ $deletebox .= $modal_delete;
 <!-- modop -->	
 <!-- postop -->
 <div id="collapse-postop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['post_options'].'</div>
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_post_options'].'</div>
 <div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['post_options'].'
+'.$lang->editpost['pane_post_options'].'
 </div>
 <div class="col">
 '.$signature.'
@@ -1139,7 +1142,7 @@ $deletebox .= $modal_delete;
 	</div>
 
 	<div class="card-footer text-center">
-		<button type="submit" class="btn btn-primary lift" name="submitbutton" value="'.$lang->editpost['update_post'].'" tabindex="3" accesskey="s"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['update_post'].'</button>
+		<button type="submit" class="btn btn-primary lift" name="submitbutton" value="'.$lang->editpost['btn_update_post'].'" tabindex="3" accesskey="s"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['btn_update_post'].'</button>
 	</div>
 		
 <input type="hidden" name="action" value="do_editpost" />
@@ -1171,7 +1174,17 @@ document.addEventListener(\'DOMContentLoaded\', function() {
     build_breadcrumb();
 	
 	
-	echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_post_editpost.js"></script>';
+	// JS-строки из ланга (ключи js_*) -> AGS_LANG без префикса
+	$ags_lang = [];
+	foreach ([$lang->post3, $lang->editpost] as $ags_src) {
+		foreach ($ags_src as $ags_key => $ags_val) {
+			if (str_starts_with((string)$ags_key, 'js_')) {
+				$ags_lang[substr((string)$ags_key, 3)] = $ags_val;
+			}
+		}
+	}
+	echo '<script>const AGS_LANG = ' . json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+	echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_post_editpost.js?ver=1"></script>';
 	
 	
 	

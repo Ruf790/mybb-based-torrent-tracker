@@ -1579,7 +1579,7 @@ if ($mybb->input['action'] === 'avatar') {
         $avatarurl = htmlspecialchars_uni($CURUSER['avatar']);
     }
 
-    echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
     echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     $useravatar    = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);

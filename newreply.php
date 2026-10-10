@@ -18,7 +18,7 @@ require_once 'cache/smilies.php';
 require_once INC_PATH . '/datahandler.php';
 
 $lang->load('newreply');
-$lang->load('editpost');
+$lang->load('post3');
 
 $tid     = $mybb->get_input('tid', MyBB::INPUT_INT);
 $replyto = $mybb->get_input('replyto', MyBB::INPUT_INT);
@@ -673,7 +673,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             
 			$attach_add_options = '
 			
-			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->editpost['add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->editpost['add_attachment'].'</button>
+			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->post3['btn_add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->post3['btn_add_attachment'].'</button>
 			
 			';
 			
@@ -684,7 +684,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             
 			$attach_update_options = '
 			
-			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->editpost['update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->editpost['update_attachment'].'&nbsp;</button>
+			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->post3['btn_update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->post3['btn_update_attachment'].'&nbsp;</button>
 			
 			
 			';	
@@ -708,7 +708,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 	</div>
 </div>
 
-<label for="attachments[]">'.$lang->editpost['new_attachment'].'</label>
+<label for="attachments[]">'.$lang->post3['lbl_new_attachment'].'</label>
 <div class="alert bg-nav mb-0">
 <input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
 </div>
@@ -893,26 +893,38 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 
     $php_max_upload_size  = get_php_upload_limit();
     $php_max_file_uploads = (int)ini_get('max_file_uploads');
+
+    // JS-строки post.js из ланга (ключи js_*) -> AGS_LANG без префикса.
+    // Если на странице появятся свои js_-ключи, добавить их источник в этот же массив
+    // (const AGS_LANG на странице должен быть ровно один).
+    $ags_lang = [];
+    foreach ($lang->post3 as $ags_key => $ags_val) {
+        if (str_starts_with((string)$ags_key, 'js_')) {
+            $ags_lang[substr((string)$ags_key, 3)] = $ags_val;
+        }
+    }
+    $ags_lang_json = json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
   
 
     $post_javascript = '
 <script type="text/javascript">
-lang.add_attachment = "Add Attachment";
-lang.update_attachment = "Update Attachment";
-lang.update_confirm = "The following file(s) are already attached and will be updated / replaced with the newly selected one(s). {1} Are you sure?";
-lang.attachment_missing = "Please select one or more files before attempting to attach.";
-lang.attachment_too_many_files = "You can upload a maximum of {1} files at once.";
-lang.attachment_too_big_upload = "You can upload a maximum of {1} MB at once.";
-lang.attachment_max_allowed_files = "You can attach {1} more file(s) to this post.";
-lang.error_maxattachpost = "Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of {1}";
-lang.drop_files = "Click or drop some files here to upload...";
-lang.upload_initiate = "Release to initiate upload...";
+const AGS_LANG = '.$ags_lang_json.';
+lang.add_attachment = AGS_LANG.add_attachment;
+lang.update_attachment = AGS_LANG.update_attachment;
+lang.update_confirm = AGS_LANG.update_confirm;
+lang.attachment_missing = AGS_LANG.attachment_missing;
+lang.attachment_too_many_files = AGS_LANG.attachment_too_many_files;
+lang.attachment_too_big_upload = AGS_LANG.attachment_too_big_upload;
+lang.attachment_max_allowed_files = AGS_LANG.attachment_max_allowed_files;
+lang.error_maxattachpost = AGS_LANG.error_maxattachpost;
+lang.drop_files = AGS_LANG.drop_files;
+lang.upload_initiate = AGS_LANG.upload_initiate;
 php_max_upload_size = '.$php_max_upload_size.';
 php_max_file_uploads = '.$php_max_file_uploads.';
 mybb_max_file_uploads = '.$maxattachments.';
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1832"></script>';
+<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1833"></script>';
 
     $plugins->run_hooks('newreply_end');
 

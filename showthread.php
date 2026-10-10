@@ -846,12 +846,25 @@ echo '<script src="' . $BASEURL . '/scripts/ignor.js"></script>';
 echo '<script src="' . $BASEURL . '/scripts/showthread.js"></script>';
 
 
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=1827"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>';
+$ags_js_lang = [];
+foreach ($lang->showthread as $ags_key => $ags_val) {
+    if (str_starts_with((string)$ags_key, 'js_')) {
+        $ags_js_lang[substr((string)$ags_key, 3)] = (string)$ags_val;
+    }
+}
+?>
+<script>
+const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<?php
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=23"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=233"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report_post.js"></script>';
+
+
 
 
 ?>
@@ -877,6 +890,10 @@ lang.softdelete_thread         = "Soft Delete Thread";
 lang.restore_thread            = "Restore Thread";
 </script>
 <?php
+
+
+
+
 
 build_breadcrumb();
 

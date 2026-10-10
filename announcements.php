@@ -68,7 +68,7 @@ $announcementarray = $db->fetch_array($query);
 
 
 if (!$announcementarray) {
-    stderr($lang->announcements['error_invalidannouncement']);
+    stderr($lang->announcements2['error_invalidannouncement']);
 }
 
 
@@ -95,7 +95,7 @@ $announcement = build_postbit($announcementarray, 3);
 $announcementarray['subject'] = $parser->parse_badwords($announcementarray['subject']);
 
 $forum_announcement = sprintf(
-    $lang->announcements['forum_announcement'],
+    $lang->announcements2['forum_announcement'],
     htmlspecialchars_uni($announcementarray['subject'])
 );
 
@@ -120,10 +120,10 @@ $plugins->run_hooks('announcements_end');
 
 $forumannouncement = '<html>
 <head>
-<title>'.$lang->announcements['forum_announcement'].'</title>
+<title>'.$lang->announcements2['forum_announcement'].'</title>
 
 <script type="text/javascript">
-var announcement_quickdelete_confirm = "'.$lang->announcements['announcement_quickdelete_confirm'].'";
+var announcement_quickdelete_confirm = "'.$lang->announcements2['announcement_quickdelete_confirm'].'";
 </script>
 </head>
 <body>

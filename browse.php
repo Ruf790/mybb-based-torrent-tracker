@@ -1842,7 +1842,7 @@ if ($showimages === 'yes' && $total > 0): ?>
 <?php endif;
 
 
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=11"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';

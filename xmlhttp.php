@@ -64,6 +64,22 @@ if (function_exists('mb_internal_encoding') && !empty($charset)) {
 }
 
 $charset = $charset ?: "UTF-8";
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}... placeholders in a language string.
+     * Order of words differs between languages, so we avoid sprintf's positional "%s".
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $map['{' . ($i + 1) . '}'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 $lang->load("xmlhttp");
 
 $closed_bypass = ["refresh_captcha", "validate_captcha"];
@@ -225,12 +241,12 @@ function handleRateTorrent(): void
 
 function handleRateThread(): void
 {
-    global $db, $CURUSER, $charset, $kpsrate;
+    global $db, $CURUSER, $charset, $kpsrate, $lang;
 
     header("Content-Type: application/json; charset={$charset}");
 
     if (!$CURUSER) {
-        echo json_encode(['success' => false, 'error' => 'Not logged in']);
+        echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_not_logged_in']]);
         exit;
     }
 
@@ -238,7 +254,7 @@ function handleRateThread(): void
     $rating = max(1, min(10, (int)($_POST['rating'] ?? 0)));
 
     if (!$tid || !$rating) {
-        echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
+        echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_invalid_parameters']]);
         exit;
     }
 
@@ -282,14 +298,14 @@ function handleRateThread(): void
  */
 function handleGetThreadInfo(): void
 {
-    global $mybb, $db, $charset;
+    global $mybb, $db, $charset, $lang;
 
     header("Content-Type: application/json; charset={$charset}");
 
     $tid = $mybb->get_input('tid', MyBB::INPUT_INT);
 
     if (!$tid || !is_valid_id($tid)) {
-        echo json_encode(['success' => false, 'errors' => ['Invalid thread ID']]);
+        echo json_encode(['success' => false, 'errors' => [$lang->xmlhttp['err_invalid_thread_id']]]);
         exit;
     }
 
@@ -304,23 +320,23 @@ function handleGetThreadInfo(): void
     $thread = $query ? $db->fetch_array($query) : null;
 
     if (!$thread || (int)$thread['visible'] !== 1) {
-        echo json_encode(['success' => false, 'errors' => ['Thread not found']]);
+        echo json_encode(['success' => false, 'errors' => [$lang->xmlhttp['err_thread_not_found']]]);
         exit;
     }
 
     $forum_perms = forum_permissions($thread['fid']);
     if (empty($forum_perms['canview'])) {
-        echo json_encode(['success' => false, 'errors' => ['No permission to view this thread']]);
+        echo json_encode(['success' => false, 'errors' => [$lang->xmlhttp['err_thread_no_view_permission']]]);
         exit;
     }
 
     echo json_encode([
         'success' => true,
         'title'    => htmlspecialchars_uni($thread['subject']),
-        'author'   => $thread['username'] !== '' ? htmlspecialchars_uni($thread['username']) : 'Guest',
+        'author'   => $thread['username'] !== '' ? htmlspecialchars_uni($thread['username']) : $lang->xmlhttp['lbl_guest'],
         'posts'    => (int)$thread['replies'] + 1,
         'lastpost' => $thread['lastpost'] ? my_datee('relative', (int)$thread['lastpost']) : '-',
-        'forum'    => htmlspecialchars_uni($thread['forum_name'] ?? 'Unknown'),
+        'forum'    => htmlspecialchars_uni($thread['forum_name'] ?? $lang->xmlhttp['lbl_unknown']),
     ]);
     exit;
 }
@@ -494,19 +510,19 @@ function handleGetMultiquoted(): void
  */
 function handleEditPost(): void
 {
-    global $mybb, $db, $charset, $plugins, $CURUSER;
+    global $mybb, $db, $charset, $plugins, $CURUSER, $lang;
     
     $post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
 
     if (!$post || $post['visible'] == -1) {
-        xmlhttp_error('post_doesnt_exist');
+        xmlhttp_error($lang->xmlhttp['post_doesnt_exist']);
     }
 
     $thread = get_thread($post['tid']);
     $forum = get_forum($thread['fid']);
 
     if (!$thread || !$forum || $forum['type'] != "f") {
-        xmlhttp_error('thread_doesnt_exist');
+        xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
     }
 
     $plugins->run_hooks("xmlhttp_edit_post_start");
@@ -559,10 +575,10 @@ function handleEditPost(): void
             
             if ($visible == 0 && !is_moderator($post['fid'], "canviewunapprove")) {
                 if ($thread['firstpost'] == $post['pid']) {
-                    echo json_encode(["moderation_thread" => $lang->thread_moderation, 'url' => $mybb->settings['bburl'].'/'.get_forum_link($thread['fid']), "message" => $post['message']]);
+                    echo json_encode(["moderation_thread" => $lang->xmlhttp['thread_moderation'], 'url' => $mybb->settings['bburl'].'/'.get_forum_link($thread['fid']), "message" => $post['message']]);
                     exit;
                 } else {
-                    echo json_encode(["moderation_post" => $lang->post_moderation, 'url' => $mybb->settings['bburl'].'/'.get_thread_link($thread['tid']), "message" => $post['message']]);
+                    echo json_encode(["moderation_post" => $lang->xmlhttp['post_moderation'], 'url' => $mybb->settings['bburl'].'/'.get_thread_link($thread['tid']), "message" => $post['message']]);
                     exit;
                 }
             }
@@ -600,7 +616,7 @@ function handleEditPost(): void
         
         if ($showeditedby != 0) {
             $post['editdate'] = my_datee('relative', TIMENOW);
-            $post['editnote'] = sprintf('This post was last modified: '.$post['editdate'].' by');
+            $post['editnote'] = ags_fmt(htmlspecialchars_uni($lang->xmlhttp['postbit_edited']), (string)$post['editdate']);
             $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
             $post['editedprofilelink'] = build_profile_link($CURUSER['username'], $CURUSER['id']);
             $post['editreason'] = trim($editreason);
@@ -609,7 +625,7 @@ function handleEditPost(): void
             if ($post['editreason'] != "") {
                 $post['editreason'] = $parser->parse_badwords($post['editreason']);
                 $post['editreason'] = htmlspecialchars_uni($post['editreason']);
-                $editreason = ' Edit Reason: '.$post['editreason'].'';
+                $editreason = ' ' . htmlspecialchars_uni($lang->xmlhttp['postbit_editreason']) . ': ' . $post['editreason'];
             }
             
             $editedmsg = '<div class="mt-3"><span class="small">'.$post['editnote'].' '.$post['editedprofilelink'].''.$editreason.'</span></div>';
@@ -633,7 +649,7 @@ function handleEditPost(): void
  */
 function handleEditSubject(): void
 {
-    global $mybb, $db, $charset, $plugins, $CURUSER;
+    global $mybb, $db, $charset, $plugins, $CURUSER, $lang;
     
     if ($mybb->request_method != "post") {
         exit;
@@ -642,7 +658,7 @@ function handleEditSubject(): void
     if ($mybb->get_input('tid', MyBB::INPUT_INT)) {
         $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
         if (!$thread) {
-            xmlhttp_error('thread_doesnt_exist');
+            xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
         }
 
         $query = $db->sql_query_prepared("SELECT pid,uid,dateline FROM posts WHERE tid = ? ORDER BY dateline, pid", [$thread['tid']]);
@@ -653,7 +669,7 @@ function handleEditSubject(): void
 
     $forum = get_forum($thread['fid']);
     if (!$forum || $forum['type'] != "f") {
-        xmlhttp_error('thread_doesnt_exist');
+        xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
     }
 
     $plugins->run_hooks("xmlhttp_edit_subject_start");
@@ -715,7 +731,7 @@ function handleEditSubject(): void
  */
 function handleComplexPassword(): void
 {
-    global $charset, $plugins;
+    global $mybb, $charset, $plugins, $lang;
     
     $password = trim($mybb->get_input('password'));
     $password = str_replace([unichr(160), unichr(173), unichr(0xCA), dec_to_utf8(8238), dec_to_utf8(8237), dec_to_utf8(8203)], [" ", "-", "", "", "", ""], $password);
@@ -726,7 +742,7 @@ function handleComplexPassword(): void
     $plugins->run_hooks("xmlhttp_complex_password");
 
     if (!preg_match("/^.*(?=.{".$minpasswordlength.",})(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/", $password)) {
-        echo json_encode('complex_password_fails');
+        echo json_encode($lang->xmlhttp['complex_password_fails']);
     } else {
         echo json_encode("true");
     }
@@ -742,7 +758,7 @@ function handleUsernameAvailability(): void
     global $mybb, $db, $charset, $plugins, $lang;
     
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        xmlhttp_error($lang->invalid_post_code);
+        xmlhttp_error($lang->xmlhttp['err_invalid_post_code']);
     }
 
     require_once INC_PATH."/functions_user.php";
@@ -754,18 +770,18 @@ function handleUsernameAvailability(): void
     header("Content-type: application/json; charset={$charset}");
 
     if (empty($username)) {
-        echo json_encode('banned_characters_username');
+        echo json_encode($lang->xmlhttp['banned_characters_username']);
         exit;
     }
 
     $banned_username = is_banned_username($username, true);
     if ($banned_username) {
-        echo json_encode('banned_username');
+        echo json_encode($lang->xmlhttp['banned_username']);
         exit;
     }
 
     if (strpos($username, "<") !== false || strpos($username, ">") !== false || strpos($username, "&") !== false || my_strpos($username, "\\") !== false || strpos($username, ";") !== false || strpos($username, ",") !== false || !validate_utf8_string($username, false, false)) {
-        echo json_encode('banned_characters_username');
+        echo json_encode($lang->xmlhttp['banned_characters_username']);
         exit;
     }
 
@@ -773,7 +789,7 @@ function handleUsernameAvailability(): void
     $plugins->run_hooks("xmlhttp_username_availability");
 
     if ($user) {
-        $username_taken = sprintf($lang->xmlhttp['username_taken'], htmlspecialchars_uni($username));
+        $username_taken = ags_fmt($lang->xmlhttp['username_taken'], htmlspecialchars_uni($username));
         echo json_encode($username_taken);
         exit;
     } else {
@@ -787,10 +803,10 @@ function handleUsernameAvailability(): void
  */
 function handleEmailAvailability(): void
 {
-    global $mybb, $charset, $plugins;
+    global $mybb, $charset, $plugins, $lang;
     
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        xmlhttp_error('invalid_post_code');
+        xmlhttp_error($lang->xmlhttp['err_invalid_post_code']);
     }
 
     require_once INC_PATH."/datahandlers/user.php";
@@ -919,13 +935,13 @@ function handleGetTorrentsByIds(): void
  */
 function handleSelectAllFiltered(): void
 {
-    global $db, $charset, $CURUSER, $usergroups;
+    global $db, $charset, $CURUSER, $usergroups, $lang;
 
     $is_mod = is_mod($usergroups);
     if (!$is_mod) {
         http_response_code(403);
         header("Content-Type: application/json; charset={$charset}");
-        echo json_encode(['error' => 'Forbidden']);
+        echo json_encode(['error' => $lang->xmlhttp['err_forbidden']]);
         exit;
     }
 
@@ -1063,7 +1079,7 @@ function handleQuickComment(): void
     global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage, $kpscomment;
 
 	if (!verify_post_check($_POST['my_post_key'] ?? '')) {
-        show_msg('Invalid security token. Please refresh the page and try again.');
+        show_msg($lang->xmlhttp['err_invalid_post_code']);
     }
 
 	
@@ -1071,7 +1087,7 @@ function handleQuickComment(): void
     $commentperm = $query ? $db->fetch_array($query) : null;
     if ((int)($commentperm['cancomment'] ?? 1) === 0) 
     {
-       show_msg('nopermission');
+       show_msg($lang->xmlhttp['err_comment_not_allowed']);
     }
 	
 
@@ -1309,14 +1325,14 @@ function handleEditTorrent(): void
     // Проверяем авторизацию
     if (empty($CURUSER['id'])) {
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Not logged in']);
+        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_not_logged_in']]);
         exit;
     }
 
     // Проверяем метод запроса
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_invalid_request_method']]);
         exit;
     }
 
@@ -1326,10 +1342,10 @@ function handleEditTorrent(): void
 
     $errors = [];
     if (empty($_POST['name'])) {
-        $errors[] = 'The name cannot be empty';
+        $errors[] = $lang->xmlhttp['err_name_empty'];
     }
     if (empty($_POST['descr'])) {
-        $errors[] = 'The description cannot be empty';
+        $errors[] = $lang->xmlhttp['err_descr_empty'];
     }
 
     if (!empty($errors) && $isAjax) {
@@ -1349,12 +1365,12 @@ function handleEditTorrent(): void
             header('Content-Type: application/json');
             echo json_encode([
                 'success' => false,
-                'message' => 'No Torrent ID'
+                'message' => $lang->xmlhttp['err_no_torrent_id']
             ]);
             ob_end_flush();
             exit;
         } else {
-            die('No Torrent ID');
+            die($lang->xmlhttp['err_no_torrent_id']);
         }
     }
 
@@ -1362,14 +1378,14 @@ function handleEditTorrent(): void
     $torrent = get_torrent($id);
     if (!$torrent) {
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Torrent not found']);
+        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_torrent_not_found']]);
         exit;
     }
 
     // Проверяем, может ли пользователь редактировать этот торрент
     if ((int)$CURUSER['id'] !== (int)$torrent['owner'] && !$is_mod) {
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Access denied']);
+        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_access_denied']]);
         exit;
     }
 
@@ -1636,7 +1652,7 @@ write_log($log_message);
             header('Content-Type: application/json');
             echo json_encode([
                 'success' => true,
-                'message' => 'Data is Updated',
+                'message' => $lang->xmlhttp['flash_torrent_updated'],
                 'updatedData' => [
                     'name' => $name,
                     'descr' => $descr,
@@ -1653,10 +1669,10 @@ write_log($log_message);
             header('Content-Type: application/json');
             echo json_encode([
                 'success' => false,
-                'message' => 'Error Update Data'
+                'message' => $lang->xmlhttp['err_torrent_update_failed']
             ]);
         } else {
-            die('Error Update Data');
+            die($lang->xmlhttp['err_torrent_update_failed']);
         }
     }
     ob_end_flush();

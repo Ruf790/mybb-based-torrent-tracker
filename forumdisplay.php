@@ -11,17 +11,19 @@ define('THIS_SCRIPT', 'forumdisplay.php');
 define('IN_FORUM', true);
 
 require_once 'global.php';
+
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_forumlist.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_forum_jump.php';
 require_once INC_PATH . '/functions_parent_list.php';
 
+$lang->load('forumdisplay');
+
 
 if (empty($CURUSER['id'])) {
     print_no_permission();
 }
-
 
 // ─── Инициализация массивов сортировки ───────────────────────────────────────
 $orderarrow = $sortsel = array_fill_keys(
@@ -32,7 +34,6 @@ $ordersel   = ['asc' => '', 'desc' => ''];
 $datecutsel = array_fill_keys([1, 5, 10, 20, 50, 75, 100, 365, 9999], '');
 $rules      = '';
 
-$lang->load('forumdisplay');
 $plugins->run_hooks('forumdisplay_start');
 
 // ─── Обработка специальных fid (отрицательные) ───────────────────────────────
@@ -57,7 +58,7 @@ if ($fid < 0) {
 // ─── Информация о форуме ──────────────────────────────────────────────────────
 $foruminfo = get_forum($fid);
 if (!$foruminfo) {
-    stderr($lang->forumdisplay['error_invalidforum'], $SITENAME . ' - Forum Not Found', 404, 'forum');
+    stderr($lang->forumdisplay['err_invalid_forum'], sprintf($lang->forumdisplay['err_forum_not_found'], $SITENAME), 404, 'forum');
 }
 
 $currentitem = $fid;
@@ -118,7 +119,7 @@ $child_forums  = build_forumbits($fid, 2);
 
 if (!empty($child_forums) && !empty($child_forums['forum_list'])) {
     $forums        = $child_forums['forum_list'];
-    $sub_forums_in = 'Forums in ' . $foruminfo['name'];
+    $sub_forums_in = sprintf($lang->forumdisplay['sec_subforums_in'], $foruminfo['name']); // name is already escaped
     
 	
 	$subforums = '
@@ -155,7 +156,7 @@ $newthread  = '';
 if ($foruminfo['type'] === 'f' && $foruminfo['open'] != 0 && $fpermissions['canpostthreads'] != 0) {
     
 	
-	$newthread = '<a href="newthread.php?fid='.$fid.'" class="btn btn-primary" role="button"><i class="fa-solid fa-pencil"></i> &nbsp;'.$lang->forumdisplay['post_thread'].'</a>';
+	$newthread = '<a href="newthread.php?fid='.$fid.'" class="btn btn-primary" role="button"><i class="fa-solid fa-pencil"></i> &nbsp;'.$lang->forumdisplay['btn_post_thread'].'</a>';
 	
 	
 }
@@ -166,7 +167,7 @@ if ($fpermissions['cansearch'] != 0 && $foruminfo['type'] === 'f') {
 	$searchforum = '<div class="row g-1">
 <div class="col align-self-center">
 <form action="search.php">
-<input type="text" name="keywords" class="form-control border form-control-sm border" placeholder="Enter keywords..." />
+<input type="text" name="keywords" class="form-control border form-control-sm border" placeholder="'.$lang->forumdisplay['ph_search_keywords'].'" />
 	</div>
 	<div class="col-auto align-self-center">
 			<button type="submit" class="btn btn-primary btn-sm" value="Go!"><i class="fa-solid fa-magnifying-glass"></i> &nbsp;'.$lang->global['search_button'].'</button>
@@ -233,7 +234,7 @@ foreach (explode(',', $parentlist) as $mfid) {
 
 $comma       = '';
 $moderatedby = $moderators
-    ? '<span class="small">{$lang->moderated_by} <strong>' . $moderators . '</strong></span><br />'
+    ? '<span class="small">' . $lang->forumdisplay['lbl_moderated_by'] . ' <strong>' . $moderators . '</strong></span><br />'
     : '';
 
 // ─── Пользователи на форуме ───────────────────────────────────────────────────
@@ -281,19 +282,19 @@ if ($browsingthisforum != 0) {
     $guestcount = count($guest_ips);
 
     $guestsonline = $guestcount
-        ? sprintf($lang->forumdisplay['users_browsing_forum_guests'], $guestcount)
+        ? sprintf($lang->forumdisplay['lbl_guests_browsing'], $guestcount)
         : '';
     if ($CURUSER['invisible'] == 1) {
         --$inviscount;
     }
     $invisonline = ($inviscount > 0 && ($usergroups['canviewwolinvis'] ?? 0) != 1)
-        ? sprintf($lang->forumdisplay['users_browsing_forum_invis'], $inviscount)
+        ? sprintf($lang->forumdisplay['lbl_invis_browsing'], $inviscount)
         : '';
     $onlinesep  = ($invisonline !== '' && $onlinemembers) ? ', ' : '';
     $onlinesep2 = (($invisonline !== '' && $guestcount) || ($onlinemembers && $guestcount)) ? ', ' : '';
     $usersbrowsing = '<div class="card border-0 rounded mt-5">
     <div class="card-body bg-nav rounded">
-        <strong>' . $lang->forumdisplay['users_browsing_forum'] . '</strong> ' . $onlinemembers . ' ' . $onlinesep . ' ' . $invisonline . ' ' . $onlinesep2 . ' ' . $guestsonline . '
+        <strong>' . $lang->forumdisplay['lbl_users_browsing'] . '</strong> ' . $onlinemembers . ' ' . $onlinesep . ' ' . $invisonline . ' ' . $onlinesep2 . ' ' . $guestsonline . '
     </div></div>';
 }
 
@@ -420,7 +421,7 @@ $sorturl = ($mybb->input['page'] > 1)
     ? get_forum_link($fid, $mybb->input['page']) . $string . "datecut=$datecut&amp;prefix=$tprefix"
     : get_forum_link($fid) . $string . "datecut=$datecut&amp;prefix=$tprefix";
 
-$orderarrow['$sortby'] = '<span class="smalltext">[<a href="' . $sorturl . '&amp;sortby=' . $sortby . '&amp;order=' . $oppsortnext . '">' . $oppsort . '</a>]</span>';
+$orderarrow['$sortby'] = '<span class="smalltext">[<a href="' . $sorturl . '&amp;sortby=' . $sortby . '&amp;order=' . $oppsortnext . '">' . $lang->forumdisplay[$oppsort === 'asc' ? 'lbl_sort_asc' : 'lbl_sort_desc'] . '</a>]</span>';
 
 // ─── Подсчёт тредов ───────────────────────────────────────────────────────────
 $threadcount = 0;
@@ -575,7 +576,7 @@ if ($has_announcements) {
 	<div class="card-body py-0 px-1 inline_row">
 <div class="row py-3">
 		<div class="col align-self-center ms-2">
-			<h6 class="mb-0 text-forum"><a href="'.$announcement['announcementlink'].'">'.$announcement['subject'].'</a> <span class="text-muted small">'.$lang->forumdisplay['by'].'</span> <span class="links small">'.$announcement['profilelink'].'</h6></span>
+			<h6 class="mb-0 text-forum"><a href="'.$announcement['announcementlink'].'">'.$announcement['subject'].'</a> <span class="text-muted small">'.$lang->forumdisplay['lbl_by'].'</span> <span class="links small">'.$announcement['profilelink'].'</h6></span>
 	</div>
 	<div class="col-lg-3 align-self-center small text-muted text-wrap text-uppercase">
 				'.$postdate.'
@@ -644,9 +645,9 @@ $is_mod   = is_mod($usergroups);
 $selectall = '';
 
 if ($is_mod && $threadcount > $perpage) {
-    $page_selected = sprintf($lang->forumdisplay['page_selected'], count($threadcache));
-    $select_all    = sprintf($lang->forumdisplay['select_all'], (int)$threadcount);
-    $all_selected  = sprintf($lang->forumdisplay['all_selected'], (int)$threadcount);
+    $page_selected = sprintf($lang->forumdisplay['sel_page_html'], count($threadcache));
+    $select_all    = sprintf($lang->forumdisplay['sel_select_all_html'], (int)$threadcount);
+    $all_selected  = sprintf($lang->forumdisplay['sel_all_html'], (int)$threadcount);
    
 
 $selectall = '
@@ -654,7 +655,7 @@ $selectall = '
     <td colspan="8" class="selectall">' . $page_selected . ' <a href="javascript:void(0)" onclick="inlineModeration.selectAll(); return false;">' . $select_all . '</a></td>
 </tr>
 <tr id="allSelectedrow" class="hiddenrow">
-    <td colspan="8" class="selectall">' . $all_selected . ' <a href="javascript:void(0)" onclick="inlineModeration.clearChecked(); return false;">' . $lang->forumdisplay['clear_selection'] . '</a></td>
+    <td colspan="8" class="selectall">' . $all_selected . ' <a href="javascript:void(0)" onclick="inlineModeration.clearChecked(); return false;">' . $lang->forumdisplay['btn_clear_selection'] . '</a></td>
 </tr>';
    
    
@@ -741,7 +742,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
 
         $thread['author'] = $thread['uid'];
         if (!$thread['username']) {
-            $thread['username'] = $thread['profilelink'] = htmlspecialchars_uni($thread['threadusername'] ?: 'guest');
+            $thread['username'] = $thread['profilelink'] = htmlspecialchars_uni($thread['threadusername'] ?: $lang->forumdisplay['lbl_guest']);
         } else {
             $thread['username']    = htmlspecialchars_uni($thread['username']);
             $thread['profilelink'] = build_profile_link($thread['username'], $thread['uid']);
@@ -808,7 +809,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
                 $threadpages .= '<a href="' . get_thread_link($thread['tid'], $i) . '" class="btn-fd">' . $i . '</a>';
             }
 
-            $thread['multipage'] = '<div class="d-block small"><span class="text-desc">Pages:</span> ' . $threadpages . $morelink . '</div>';
+            $thread['multipage'] = '<div class="d-block small"><span class="text-desc">' . $lang->forumdisplay['lbl_pages'] . '</span> ' . $threadpages . $morelink . '</div>';
         }
 
         // ─ Инлайн-модерация ──────────────────────────────────────────────────
@@ -845,7 +846,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         }
 
         $moved_badge = ($prefix === 'moved_prefix')
-            ? '<span class="badge bg-secondary me-1"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>Moved</span>'
+            ? '<span class="badge bg-secondary me-1"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>' . $lang->forumdisplay['lbl_moved'] . '</span>'
             : '';
 
         $thread['threadlink']   = get_thread_link($thread['tid']);
@@ -854,7 +855,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         $folder_label = '';
         if (isset($thread['doticon'])) {
             $folder       = 'dot_';
-            $folder_label .= $lang->forumdisplay['icon_dot'];
+            $folder_label .= $lang->forumdisplay['tip_icon_dot'];
         }
 
         $gotounread = '';
@@ -872,14 +873,14 @@ if (!empty($threadcache) && is_array($threadcache)) {
 
         if ($thread['lastpost'] > $last_read && $moved[0] !== 'moved') {
             $folder      .= 'new';
-            $folder_label .= $lang->forumdisplay['icon_new'];
+            $folder_label .= $lang->forumdisplay['tip_icon_new'];
             $new_class    = 'subject_new';
             $thread['newpostlink'] = get_thread_link($thread['tid'], 0, 'newpost');
             $gotounread   = '<a href="' . $thread['newpostlink'] . '">
-            <img src="pic/jump.png" alt="' . $lang->forumdisplay['goto_first_unread'] . '" title="' . $lang->forumdisplay['goto_first_unread'] . '" /></a> ';
+            <img src="pic/jump.png" alt="' . $lang->forumdisplay['tip_goto_first_unread'] . '" title="' . $lang->forumdisplay['tip_goto_first_unread'] . '" /></a> ';
             $unreadpost   = 1;
         } else {
-            $folder_label .= $lang->forumdisplay['icon_no_new'];
+            $folder_label .= $lang->forumdisplay['tip_icon_no_new'];
         }
 
         $hottopic      = 20;
@@ -887,12 +888,12 @@ if (!empty($threadcache) && is_array($threadcache)) {
 
         if ($thread['replies'] >= $hottopic || $thread['views'] >= $hottopicviews) {
             $folder      .= 'hot';
-            $folder_label .= 'icon_hot';
+            $folder_label .= $lang->forumdisplay['tip_icon_hot'];
         }
 
         if ($thread['closed'] == 1) {
             $folder      .= 'close';
-            $folder_label .= $lang->forumdisplay['icon_close'];
+            $folder_label .= $lang->forumdisplay['tip_icon_close'];
         }
 
         if ($moved[0] === 'moved') {
@@ -901,6 +902,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         }
 
         $folder .= 'folder';
+        $folder_label_attr = htmlspecialchars($folder_label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         $inline_edit_tid   = $thread['tid'];
         $inline_edit_class = '';
@@ -911,7 +913,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         }
 
         $lastposteruid  = $thread['lastposteruid'];
-        $lastposter     = htmlspecialchars_uni($thread['lastposter'] ?: 'guest');
+        $lastposter     = htmlspecialchars_uni($thread['lastposter'] ?: $lang->forumdisplay['lbl_guest']);
         $lastpostdate   = my_datee('relative', $thread['lastpost']);
         $lastposterlink = ($lastposteruid == 0) ? $lastposter : build_profile_link($lastposter, $lastposteruid);
 
@@ -922,8 +924,8 @@ if (!empty($threadcache) && is_array($threadcache)) {
         $unapproved_posts = '';
         if (($thread['unapprovedposts'] ?? 0) > 0) {
             $unapproved_posts_count = ($thread['unapprovedposts'] > 1)
-                ? sprintf($lang->forumdisplay['thread_unapproved_posts_count'], $thread['unapprovedposts'])
-                : sprintf($lang->forumdisplay['thread_unapproved_post_count'], 1);
+                ? sprintf($lang->forumdisplay['tip_unapproved_many'], $thread['unapprovedposts'])
+                : $lang->forumdisplay['tip_unapproved_one'];
             $thread['unapprovedposts'] = ts_nf($thread['unapprovedposts']);
             
 			
@@ -937,8 +939,8 @@ if (!empty($threadcache) && is_array($threadcache)) {
         $attachment_count = '';
         if (($enableattachments ?? 0) == 1 && ($thread['attachmentcount'] ?? 0) > 0) {
             $label            = ($thread['attachmentcount'] > 1)
-                ? 'This thread contains ' . $thread['attachmentcount'] . ' attachments'
-                : 'This thread contains 1 attachment';
+                ? sprintf($lang->forumdisplay['tip_attachment_many'], $thread['attachmentcount'])
+                : $lang->forumdisplay['tip_attachment_one'];
             $attachment_count = '<i class="fa-solid fa-paperclip" style="color:#444;opacity:.4" title="' . $label . '"></i>';
         }
 
@@ -953,24 +955,24 @@ if (!empty($threadcache) && is_array($threadcache)) {
 				
 		<h6 class="mb-0 text-forum" style="overflow-wrap:anywhere;"><a href="'.$thread['threadlink'].'">'.$moved_badge.'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
 		
-		<div class="links small">'.$lang->forumdisplay['by'].' '.$thread['profilelink'].''.$rating.'</div>
+		<div class="links small">'.$lang->forumdisplay['lbl_by'].' '.$thread['profilelink'].''.$rating.'</div>
 
 
 		
 		<div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none mt-1">
-			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label.'"></span>
+			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label_attr.'"></span>
 		</div>
 		
 		</div>
 			<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center text-end">
-			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label.'"></span>
+			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label_attr.'"></span>
 				'.$thread['multipage'].'
 			</div>
 		<div class="col-1 d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center text-center">
 			
 			
 			<h6 class="mb-0"><a href="' . $BASEURL . '/misc.php?action=whoposted&amp;tid=' . (int)$thread['tid'] . '" onclick="whoPosted(' . (int)$thread['tid'] . '); return false;">' . (int)$thread['replies'] . '</a></h6>
-<span class="text-muted small">' . $lang->forumdisplay['replies'] . '</span>
+<span class="text-muted small">' . $lang->forumdisplay['lbl_replies'] . '</span>
 			
 			
 		</div>
@@ -1028,30 +1030,196 @@ if (!empty($threadcache) && is_array($threadcache)) {
         $inlinemodrestore   = $inlinemoddelete       = $inlinemodmanage    = '';
         $inlinemodapproveunapprove = '';
 
-        $inlinemodopenclose = '<option value="multiclosethreads">'.$lang->forumdisplay['close_threads'].'</option>
-        <option value="multiopenthreads">'.$lang->forumdisplay['open_threads'].'</option>';
+        $inlinemodopenclose = '<option value="multiclosethreads">'.$lang->forumdisplay['opt_close_threads'].'</option>
+        <option value="multiopenthreads">'.$lang->forumdisplay['opt_open_threads'].'</option>';
 		
 		
 		
-        $inlinemodstickunstick = '<option value="multistickthreads">'.$lang->forumdisplay['stick_threads'].'</option>
-        <option value="multiunstickthreads">'.$lang->forumdisplay['unstick_threads'].'</option>';
+        $inlinemodstickunstick = '<option value="multistickthreads">'.$lang->forumdisplay['opt_stick_threads'].'</option>
+        <option value="multiunstickthreads">'.$lang->forumdisplay['opt_unstick_threads'].'</option>';
 		
 		
-        $inlinemodapproveunapprove = '<option value="multiapprovethreads">'.$lang->forumdisplay['approve_threads'].'</option>
-        <option value="multiunapprovethreads">'.$lang->forumdisplay['unapprove_threads'].'</option>';
+        $inlinemodapproveunapprove = '<option value="multiapprovethreads">'.$lang->forumdisplay['opt_approve_threads'].'</option>
+        <option value="multiunapprovethreads">'.$lang->forumdisplay['opt_unapprove_threads'].'</option>';
 		
 		
 
-        $inlinemoddelete = '<option value="multideletethreads">Delete Threads Permanently</option>';
-        $inlinemodmanage = '<option value="multimovethreads">Move / Copy Threads</option>';
+        $inlinemoddelete = '<option value="multideletethreads">' . $lang->forumdisplay['opt_delete_threads'] . '</option>';
+        $inlinemodmanage = '<option value="multimovethreads">' . $lang->forumdisplay['opt_move_threads'] . '</option>';
 
-        $standardthreadtools = '<optgroup label="Standard Tools">'
+        $standardthreadtools = '<optgroup label="' . $lang->forumdisplay['opt_group_standard'] . '">'
             . $inlinemodopenclose
             . $inlinemodstickunstick
             . $inlinemoddelete
             . $inlinemodmanage
             . $inlinemodapproveunapprove
             . '</optgroup>';
+
+$inline_modal_js = <<<'JS'
+    document.addEventListener('DOMContentLoaded', function() {
+        // t(key, englishFallback, ...args): AGS_LANG is emitted by PHP in <head>
+        function t(key, fallback, ...args) {
+            var s = (typeof AGS_LANG !== 'undefined' && AGS_LANG && AGS_LANG[key] != null) ? String(AGS_LANG[key]) : fallback;
+            return s.replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+                var n = a || b;
+                return args[n - 1] === undefined ? m : String(args[n - 1]);
+            });
+        }
+
+        // Icon + text, text inserted as a text node (never via innerHTML)
+        function setIconText(el, iconClass, text) {
+            el.textContent = '';
+            var icon = document.createElement('i');
+            icon.className = iconClass;
+            el.appendChild(icon);
+            el.appendChild(document.createTextNode(text));
+        }
+
+        var selector     = document.getElementById("inlinemoderation_threads_selector");
+        var form         = document.getElementById("inlinemoderation_threads");
+        var confirmCheck = document.getElementById('confirmThreadDelete');
+        var confirmBtn   = document.getElementById('confirmDeleteThreadsBtn');
+        var deleteModal  = null;
+
+        if (typeof bootstrap !== 'undefined') {
+            var modalElement = document.getElementById('deleteThreadsModal');
+            if (modalElement) {
+                deleteModal = new bootstrap.Modal(modalElement);
+                modalElement.addEventListener('hidden.bs.modal', function() {
+                    if (confirmCheck) confirmCheck.checked = false;
+                    if (confirmBtn) {
+                        confirmBtn.disabled = true;
+                        confirmBtn.style.opacity = '0.6';
+                        setIconText(confirmBtn, 'fas fa-trash-alt me-1', t('delete_threads', 'Delete Threads Permanently'));
+                    }
+                });
+            }
+        }
+
+        if (confirmCheck) {
+            confirmCheck.addEventListener('change', function() {
+                if (confirmBtn) {
+                    confirmBtn.disabled = !this.checked;
+                    confirmBtn.style.opacity = this.checked ? '1' : '0.6';
+                }
+            });
+        }
+
+        if (selector && form) {
+
+            form.addEventListener('submit', function(e) {
+                if (selector.value === 'multideletethreads') {
+                    e.preventDefault();
+
+                    var selectedThreads = document.querySelectorAll('input[name^="inlinemod_"]:checked');
+                    var selectedCount   = selectedThreads.length;
+
+                    if (selectedCount === 0) {
+                        alert(t('select_thread', 'Please select at least one thread.'));
+                        return;
+                    }
+
+                    var countSpan = document.getElementById('modal_thread_count');
+                    if (countSpan) countSpan.textContent = selectedCount;
+
+                    var threadIds = Array.from(selectedThreads).map(function(el) {
+                        return el.name.replace('inlinemod_', '');
+                    });
+
+                    // Превью
+                    var previewContainer = document.getElementById('modal_threads_preview');
+                    if (previewContainer) {
+                        previewContainer.innerHTML = '';
+
+                        threadIds.forEach(function(tid) {
+                            var titleEl   = document.querySelector('a[id="tid_' + tid + '"]');
+                            var titleText = titleEl ? titleEl.innerText.trim() : t('thread_id', 'Thread ID: {1}', tid);
+
+                            var preview = document.createElement('div');
+                            preview.className = 'card mb-2 border-danger border-opacity-25';
+
+                            var body = document.createElement('div');
+                            body.className = 'card-body py-2 px-3 d-flex justify-content-between align-items-center';
+
+                            var title = document.createElement('span');
+                            title.className = 'small fw-bold';
+                            var fileIcon = document.createElement('i');
+                            fileIcon.className = 'fas fa-file-alt text-danger me-2';
+                            title.appendChild(fileIcon);
+                            title.appendChild(document.createTextNode(titleText));
+
+                            var badge = document.createElement('span');
+                            badge.className = 'badge bg-secondary';
+                            badge.textContent = t('tid_badge', 'TID: {1}', tid);
+
+                            body.appendChild(title);
+                            body.appendChild(badge);
+                            preview.appendChild(body);
+                            previewContainer.appendChild(preview);
+                        });
+                    }
+
+                    // Скрытая форма
+                    var oldForm = document.getElementById('deleteThreadsHiddenForm');
+                    if (oldForm) { oldForm.remove(); }
+
+                    var hiddenForm       = document.createElement('form');
+                    hiddenForm.method    = 'post';
+                    hiddenForm.action    = 'moderation.php';
+                    hiddenForm.style.display = 'none';
+                    hiddenForm.id        = 'deleteThreadsHiddenForm';
+
+                    var fields = {
+                        'my_post_key': document.querySelector('#inlinemoderation_threads input[name="my_post_key"]').value,
+                        'fid':         String(inlineId),
+                        'modtype':     'inlinethread',
+                        'action':      'do_multideletethreads',
+                        'threads':     threadIds.join(','),
+                        'url':         window.location.href
+                    };
+
+                    for (var key in fields) {
+                        var input   = document.createElement('input');
+                        input.type  = 'hidden';
+                        input.name  = key;
+                        input.value = fields[key];
+                        hiddenForm.appendChild(input);
+                    }
+
+                    document.body.appendChild(hiddenForm);
+
+                    if (confirmBtn) {
+                        confirmBtn.onclick = function() {
+                            if (!confirmCheck || !confirmCheck.checked) {
+                                if (confirmCheck) confirmCheck.focus();
+                                return;
+                            }
+                            confirmBtn.disabled = true;
+                            setIconText(confirmBtn, 'fas fa-spinner fa-spin me-2', t('deleting', 'Deleting...'));
+                            hiddenForm.submit();
+                            if (deleteModal) deleteModal.hide();
+                        };
+                    }
+
+                    if (deleteModal) deleteModal.show();
+                }
+            });
+
+            selector.addEventListener('change', function() {
+                form.dispatchEvent(new Event('submit'));
+            });
+        }
+    });
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === "&") return "&amp;";
+            if (m === "<") return "&lt;";
+            if (m === ">") return "&gt;";
+            return m;
+        });
+    }
+JS;
 
 $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
 <script type="text/javascript" src="'.$BASEURL.'/scripts/inline_moderation.js?ver=1832"></script>
@@ -1065,17 +1233,17 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
     </div>
     <div class="col-lg-auto align-self-center">
         <select name="action" id="inlinemoderation_threads_selector" class="form-select form-select-sm w-auto pe-5">
-            <option value="delayedmoderation">'.$lang->forumdisplay['delayed_moderation'].'</option>
+            <option value="delayedmoderation">'.$lang->forumdisplay['opt_delayed_moderation'].'</option>
            '.$standardthreadtools.'
             '.$customthreadtools.'
         </select>
     </div>
     <div class="col-auto align-self-center">
-        <input type="submit" class="btn btn-primary btn-sm" name="go" value="'.$lang->forumdisplay['inline_go'].' ('.$inlinecount.')" id="inline_go" />
+        <input type="submit" class="btn btn-primary btn-sm" name="go" value="'.$lang->forumdisplay['btn_inline_go'].' ('.$inlinecount.')" id="inline_go" />
     </div>
     <div class="col-auto align-self-center">
         <button type="button" onclick="inlineModeration.clearChecked();" class="btn btn-secondary btn-sm">
-            <i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->forumdisplay['clear'].'
+            <i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->forumdisplay['btn_clear'].'
         </button>
     </div>
 </div>
@@ -1093,11 +1261,11 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
                         <i class="fas fa-trash-alt"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title mb-0" id="deleteThreadsModalLabel">Delete Threads Permanently</h5>
-                        <small class="opacity-75">Irreversible Action — Proceed with Caution</small>
+                        <h5 class="modal-title mb-0" id="deleteThreadsModalLabel">'.$lang->forumdisplay['modal_del_title'].'</h5>
+                        <small class="opacity-75">'.$lang->forumdisplay['modal_del_subtitle'].'</small>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="'.$lang->forumdisplay['aria_close'].'"></button>
             </div>
 
             <div class="modal-body p-0">
@@ -1108,34 +1276,34 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
                         <i class="fas fa-hashtag"></i>
                         <span id="modal_thread_count">0</span>
                     </div>
-                    <p class="text-muted mb-0">Threads Selected for Deletion</p>
+                    <p class="text-muted mb-0">'.$lang->forumdisplay['modal_del_selected'].'</p>
                 </div>
 
                 <!-- Предупреждение -->
                 <div class="px-4 pt-3 pb-2">
                     <div style="background:linear-gradient(135deg,#fff5f5,#ffeaea);border-left:4px solid #ff6b6b;border-radius:10px;padding:20px;">
-                        <h6 class="fw-bold mb-3"><i class="fas fa-radiation me-2 text-danger"></i>Critical Warning</h6>
-                        <p class="small mb-3">You are about to <strong>permanently delete</strong> selected threads. This action <strong>cannot be undone!</strong></p>
+                        <h6 class="fw-bold mb-3"><i class="fas fa-radiation me-2 text-danger"></i>'.$lang->forumdisplay['modal_del_warn_title'].'</h6>
+                        <p class="small mb-3">'.$lang->forumdisplay['modal_del_warn_html'].'</p>
                         <ul class="list-unstyled mb-3">
                             <li class="py-1 border-bottom border-danger border-opacity-25 small">
-                                <i class="fas fa-times-circle text-danger me-2"></i>All posts within these threads will be permanently deleted
+                                <i class="fas fa-times-circle text-danger me-2"></i>'.$lang->forumdisplay['modal_del_item_posts'].'
                             </li>
                             <li class="py-1 border-bottom border-danger border-opacity-25 small">
-                                <i class="fas fa-paperclip text-danger me-2"></i>All attachments will be removed from the server
+                                <i class="fas fa-paperclip text-danger me-2"></i>'.$lang->forumdisplay['modal_del_item_attach'].'
                             </li>
                             <li class="py-1 border-bottom border-danger border-opacity-25 small">
-                                <i class="fas fa-chart-bar text-danger me-2"></i>Polls and voting data will be erased
+                                <i class="fas fa-chart-bar text-danger me-2"></i>'.$lang->forumdisplay['modal_del_item_polls'].'
                             </li>
                              <li class="py-1 border-bottom border-danger border-opacity-25 small">
-                               <i class="fas fa-history me-2"></i>Thread history and statistics will be lost 
+                               <i class="fas fa-history me-2"></i>'.$lang->forumdisplay['modal_del_item_history'].'
                              </li>
                             <li class="py-1 small">
-                                <i class="fas fa-undo text-danger me-2"></i>No recovery or restore option is available
+                                <i class="fas fa-undo text-danger me-2"></i>'.$lang->forumdisplay['modal_del_item_norecover'].'
                             </li>
                         </ul>
                         <div class="alert alert-danger py-2 mb-0 small">
                             <i class="fas fa-skull-crossbones me-2"></i>
-                            <strong>Data Loss Warning:</strong> This will permanently remove content from the database.
+                            <strong>'.$lang->forumdisplay['modal_del_dataloss_title'].'</strong> '.$lang->forumdisplay['modal_del_dataloss_text'].'
                         </div>
                     </div>
                 </div>
@@ -1143,7 +1311,7 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
                 <!-- Превью тредов -->
                 <div class="px-4 py-3">
                     <h6 class="text-muted mb-2">
-                        <i class="fas fa-eye me-1"></i>Threads to be deleted:
+                        <i class="fas fa-eye me-1"></i>'.$lang->forumdisplay['modal_del_preview_title'].'
                     </h6>
                     <div id="modal_threads_preview" style="max-height: 200px; overflow-y: auto;"></div>
                 </div>
@@ -1153,8 +1321,8 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="confirmThreadDelete" style="accent-color:#ff416c;">
                         <label class="form-check-label small" for="confirmThreadDelete">
-                            <strong>I understand this action is permanent and cannot be undone.</strong>
-                            I have verified that I want to delete these threads.
+                            <strong>'.$lang->forumdisplay['modal_del_confirm_strong'].'</strong>
+                            '.$lang->forumdisplay['modal_del_confirm_text'].'
                         </label>
                     </div>
                 </div>
@@ -1163,11 +1331,11 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
 
             <div class="modal-footer d-flex justify-content-between border-top">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
-                    <i class="fas fa-arrow-left me-1"></i>Cancel & Return
+                    <i class="fas fa-arrow-left me-1"></i>'.$lang->forumdisplay['btn_cancel_return'].'
                 </button>
                 <button type="button" class="btn btn-sm px-4 text-white" id="confirmDeleteThreadsBtn"
                     style="background:linear-gradient(135deg,#ff416c,#ff4b2b);border:none;opacity:0.6;" disabled>
-                    <i class="fas fa-trash-alt me-1"></i>Delete Threads Permanently
+                    <i class="fas fa-trash-alt me-1"></i>'.$lang->forumdisplay['btn_delete_threads'].'
                 </button>
             </div>
 
@@ -1177,145 +1345,12 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
 
 <script type="text/javascript">
 <!--
-    var go_text = "' . addslashes($lang->forumdisplay['inline_go']) . '";
+    var go_text = ' . json_encode($lang->forumdisplay['btn_inline_go'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
     var all_text = "' . (int)$threadcount . '";
     var inlineType = "forum";
     var inlineId = ' . (int)$fid . ';
 
-    document.addEventListener(\'DOMContentLoaded\', function() {
-        var selector     = document.getElementById("inlinemoderation_threads_selector");
-        var form         = document.getElementById("inlinemoderation_threads");
-        var confirmCheck = document.getElementById(\'confirmThreadDelete\');
-        var confirmBtn   = document.getElementById(\'confirmDeleteThreadsBtn\');
-        var deleteModal  = null;
-
-        if (typeof bootstrap !== \'undefined\') {
-            var modalElement = document.getElementById(\'deleteThreadsModal\');
-            if (modalElement) {
-                deleteModal = new bootstrap.Modal(modalElement);
-                modalElement.addEventListener(\'hidden.bs.modal\', function() {
-                    if (confirmCheck) confirmCheck.checked = false;
-                    if (confirmBtn) {
-                        confirmBtn.disabled = true;
-                        confirmBtn.style.opacity = \'0.6\';
-                        confirmBtn.innerHTML = \'<i class="fas fa-trash-alt me-1"></i>Delete Threads Permanently\';
-                    }
-                });
-            }
-        }
-
-        if (confirmCheck) {
-            confirmCheck.addEventListener(\'change\', function() {
-                if (confirmBtn) {
-                    confirmBtn.disabled = !this.checked;
-                    confirmBtn.style.opacity = this.checked ? \'1\' : \'0.6\';
-                }
-            });
-        }
-
-        if (selector && form) {
-
-            form.addEventListener(\'submit\', function(e) {
-                if (selector.value === \'multideletethreads\') {
-                    e.preventDefault();
-
-                    var selectedThreads = document.querySelectorAll(\'input[name^="inlinemod_"]:checked\');
-                    var selectedCount   = selectedThreads.length;
-
-                    if (selectedCount === 0) {
-                        alert(\'Please select at least one thread.\');
-                        return;
-                    }
-
-                    var countSpan = document.getElementById(\'modal_thread_count\');
-                    if (countSpan) countSpan.textContent = selectedCount;
-
-                    var threadIds = Array.from(selectedThreads).map(function(el) {
-                        return el.name.replace(\'inlinemod_\', \'\');
-                    });
-
-                    // Превью
-                    var previewContainer = document.getElementById(\'modal_threads_preview\');
-                    if (previewContainer) {
-                        previewContainer.innerHTML = \'\';
-
-                        threadIds.forEach(function(tid) {
-                            var titleEl  = document.querySelector(\'a[id="tid_\' + tid + \'"]\');
-                            var titleText = titleEl ? titleEl.innerText.trim() : \'Thread ID: \' + tid;
-
-                            var preview  = document.createElement(\'div\');
-                            preview.className = \'card mb-2 border-danger border-opacity-25\';
-                            preview.innerHTML =
-                                \'<div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">\' +
-                                    \'<span class="small fw-bold">\' +
-                                        \'<i class="fas fa-file-alt text-danger me-2"></i>\' + escapeHtml(titleText) +
-                                    \'</span>\' +
-                                    \'<span class="badge bg-secondary">TID: \' + tid + \'</span>\' +
-                                \'</div>\';
-                            previewContainer.appendChild(preview);
-                        });
-                    }
-
-                    // Скрытая форма
-                    var oldForm = document.getElementById(\'deleteThreadsHiddenForm\');
-                    if (oldForm) { oldForm.remove(); }
-
-                    var hiddenForm       = document.createElement(\'form\');
-                    hiddenForm.method    = \'post\';
-                    hiddenForm.action    = \'moderation.php\';
-                    hiddenForm.style.display = \'none\';
-                    hiddenForm.id        = \'deleteThreadsHiddenForm\';
-
-                    var fields = {
-                        \'my_post_key\': document.querySelector(\'#inlinemoderation_threads input[name="my_post_key"]\').value,
-                        \'fid\':         \'' . (int)$fid . '\',
-                        \'modtype\':     \'inlinethread\',
-                        \'action\':      \'do_multideletethreads\',
-                        \'threads\':     threadIds.join(\',\'),
-                        \'url\':         window.location.href
-                    };
-
-                    for (var key in fields) {
-                        var input   = document.createElement(\'input\');
-                        input.type  = \'hidden\';
-                        input.name  = key;
-                        input.value = fields[key];
-                        hiddenForm.appendChild(input);
-                    }
-
-                    document.body.appendChild(hiddenForm);
-
-                    if (confirmBtn) {
-                        confirmBtn.onclick = function() {
-                            if (!confirmCheck || !confirmCheck.checked) {
-                                if (confirmCheck) confirmCheck.focus();
-                                return;
-                            }
-                            confirmBtn.disabled  = true;
-                            confirmBtn.innerHTML = \'<i class="fas fa-spinner fa-spin me-2"></i>Deleting...\';
-                            hiddenForm.submit();
-                            if (deleteModal) deleteModal.hide();
-                        };
-                    }
-
-                    if (deleteModal) deleteModal.show();
-                }
-            });
-
-            selector.addEventListener(\'change\', function() {
-                form.dispatchEvent(new Event(\'submit\'));
-            });
-        }
-    });
-    
-    function escapeHtml(str) {
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === "&") return "&amp;";
-            if (m === "<") return "&lt;";
-            if (m === ">") return "&gt;";
-            return m;
-        });
-    }
+' . $inline_modal_js . '
 // -->
 </script>';
 
@@ -1336,7 +1371,7 @@ if ($unread_threads !== false && $unread_threads == 0 && empty($unread_forums)) 
 
 // ─── Подписка на форум ────────────────────────────────────────────────────────
 $add_remove_subscription      = 'add';
-$add_remove_subscription_text = 'Subscribe to this forum';
+$add_remove_subscription_text = $lang->forumdisplay['btn_subscribe'];
 $addremovesubscription        = '';
 
 if ($CURUSER['id']) {
@@ -1347,7 +1382,7 @@ if ($CURUSER['id']) {
 
     if ($db->num_rows($query) > 0) {
         $add_remove_subscription      = 'remove';
-        $add_remove_subscription_text = 'Unsubscribe from this forum';
+        $add_remove_subscription_text = $lang->forumdisplay['btn_unsubscribe'];
     }
 
     $addremovesubscription = '<a href="usercp.php?action=' . $add_remove_subscription . 'subscription&amp;type=forum&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-secondary">&nbsp;' . $add_remove_subscription_text . '&nbsp;</a>';
@@ -1367,10 +1402,10 @@ if ($foruminfo['type'] !== 'c') {
                 <i class="fa-solid fa-lock fa-3x text-danger"></i>
             </div>
         </div>
-        <h5 class="text-danger mb-3">' . $lang->forumdisplay['nopermission'] . '</h5>
+        <h5 class="text-danger mb-3">' . $lang->forumdisplay['err_no_permission'] . '</h5>
         <p class="text-muted mb-0">
             <i class="fa-regular fa-circle-question me-1"></i>
-            You don\'t have permission to view threads in this forum.
+            ' . $lang->forumdisplay['hint_no_permission'] . '
         </p>
     </div>
 </div>';
@@ -1386,17 +1421,17 @@ if ($foruminfo['type'] !== 'c') {
             <i class="fa-regular fa-file-lines fa-3x text-secondary"></i>
         </div>
     </div>
-    <h5 class="text-secondary mb-2">No threads available</h5>
-    <p class="text-muted">No threads match your selected criteria. Try adjusting your filters.</p>
+    <h5 class="text-secondary mb-2">' . $lang->forumdisplay['msg_no_threads_title'] . '</h5>
+    <p class="text-muted">' . $lang->forumdisplay['msg_no_threads_hint'] . '</p>
 </div>';
 
     }
 
     if ($foruminfo['password'] !== '') {
-        $clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '">'.$lang->forumdisplay['clear_stored_password'].'</a>';
+        $clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '">'.$lang->forumdisplay['lbl_clear_stored_password'].'</a>';
     }
 
-    $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
+    $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;' . $lang->forumdisplay['btn_go'] . '</button>';
 
     $forumsort = '';
     
@@ -1410,32 +1445,32 @@ if ($foruminfo['type'] !== 'c') {
 	</div>
 <div class="col-lg-auto align-self-center">
 				<select class="form-select border form-select-sm pe-5" name="sortby">
-					<option value="subject"'.$sortsel['subject'].'>'.$lang->forumdisplay['sort_by_subject'].'</option>
-					<option value="lastpost"'.$sortsel['lastpost'].'>'.$lang->forumdisplay['sort_by_lastpost'].'</option>
-					<option value="starter"'.$sortsel['starter'].'>'.$lang->forumdisplay['sort_by_starter'].'</option>
-					<option value="started"'.$sortsel['started'].'>'.$lang->forumdisplay['sort_by_started'].'</option>
+					<option value="subject"'.$sortsel['subject'].'>'.$lang->forumdisplay['opt_sort_subject'].'</option>
+					<option value="lastpost"'.$sortsel['lastpost'].'>'.$lang->forumdisplay['opt_sort_lastpost'].'</option>
+					<option value="starter"'.$sortsel['starter'].'>'.$lang->forumdisplay['opt_sort_starter'].'</option>
+					<option value="started"'.$sortsel['started'].'>'.$lang->forumdisplay['opt_sort_started'].'</option>
 					
-					<option value="replies"'.$sortsel['replies'].'>'.$lang->forumdisplay['sort_by_replies'].'</option>
-					<option value="views"'.$sortsel['views'].'>'.$lang->forumdisplay['sort_by_views'].'</option>
+					<option value="replies"'.$sortsel['replies'].'>'.$lang->forumdisplay['opt_sort_replies'].'</option>
+					<option value="views"'.$sortsel['views'].'>'.$lang->forumdisplay['opt_sort_views'].'</option>
 				</select>
 	</div>
 	<div class="col-lg-auto align-self-center">
 				<select name="order" class="form-select border form-select-sm pe-5">
-					<option value="asc"'.$ordersel['asc'].'>'.$lang->forumdisplay['sort_order_asc'].'</option>
-					<option value="desc"'.$ordersel['desc'].'>'.$lang->forumdisplay['sort_order_desc'].'</option>
+					<option value="asc"'.$ordersel['asc'].'>'.$lang->forumdisplay['opt_order_asc'].'</option>
+					<option value="desc"'.$ordersel['desc'].'>'.$lang->forumdisplay['opt_order_desc'].'</option>
 				</select>
 	</div>
 	<div class="col-lg-auto align-self-center">
 				<select name="datecut" class="form-select border form-select-sm pe-5">
-					<option value="1"'.$datecutsel['1'].'>'.$lang->forumdisplay['datelimit_1day'].'</option>
-					<option value="5"'.$datecutsel['5'].'>'.$lang->forumdisplay['datelimit_5days'].'</option>
-					<option value="10"'.$datecutsel['10'].'>'.$lang->forumdisplay['datelimit_10days'].'</option>
-					<option value="20"'.$datecutsel['20'].'>'.$lang->forumdisplay['datelimit_20days'].'</option>
-					<option value="50"'.$datecutsel['50'].'>'.$lang->forumdisplay['datelimit_50days'].'</option>
-					<option value="75"'.$datecutsel['75'].'>'.$lang->forumdisplay['datelimit_75days'].'</option>
-					<option value="100"'.$datecutsel['100'].'>'.$lang->forumdisplay['datelimit_100days'].'</option>
-					<option value="365"'.$datecutsel['365'].'>'.$lang->forumdisplay['datelimit_lastyear'].'</option>
-					<option value="9999"'.$datecutsel['9999'].'>'.$lang->forumdisplay['datelimit_beginning'].'</option>
+					<option value="1"'.$datecutsel['1'].'>'.$lang->forumdisplay['opt_date_1day'].'</option>
+					<option value="5"'.$datecutsel['5'].'>'.$lang->forumdisplay['opt_date_5days'].'</option>
+					<option value="10"'.$datecutsel['10'].'>'.$lang->forumdisplay['opt_date_10days'].'</option>
+					<option value="20"'.$datecutsel['20'].'>'.$lang->forumdisplay['opt_date_20days'].'</option>
+					<option value="50"'.$datecutsel['50'].'>'.$lang->forumdisplay['opt_date_50days'].'</option>
+					<option value="75"'.$datecutsel['75'].'>'.$lang->forumdisplay['opt_date_75days'].'</option>
+					<option value="100"'.$datecutsel['100'].'>'.$lang->forumdisplay['opt_date_100days'].'</option>
+					<option value="365"'.$datecutsel['365'].'>'.$lang->forumdisplay['opt_date_lastyear'].'</option>
+					<option value="9999"'.$datecutsel['9999'].'>'.$lang->forumdisplay['opt_date_beginning'].'</option>
 				</select>
 	</div>
 	
@@ -1458,8 +1493,9 @@ if ($foruminfo['type'] !== 'c') {
 
     $plugins->run_hooks('forumdisplay_threadlist');
 
-    $rssdiscovery = '<link rel="alternate" type="application/rss+xml" title="'.$lang->forumdisplay['rss_discovery_forum'].' (RSS 2.0)" href="'.$BASEURL.'/syndication.php?fid='.$fid.'" />
-<link rel="alternate" type="application/atom+xml" title="'.$lang->forumdisplay['rss_discovery_forum'].' (Atom 1.0)" href="'.$BASEURL.'/syndication.php?type=atom1.0&amp;fid='.$fid.'" />';
+    $rss_title = sprintf($lang->forumdisplay['tip_rss_latest'], htmlspecialchars(htmlspecialchars_decode($foruminfo['name']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+	$rssdiscovery = '<link rel="alternate" type="application/rss+xml" title="'.$rss_title.' (RSS 2.0)" href="'.$BASEURL.'/syndication.php?fid='.$fid.'" />
+<link rel="alternate" type="application/atom+xml" title="'.$rss_title.' (Atom 1.0)" href="'.$BASEURL.'/syndication.php?type=atom1.0&amp;fid='.$fid.'" />';
 	
 	
 	
@@ -1468,7 +1504,7 @@ $threadslist  = '<div class="row m-0 me-0 pe-0 p-0 mb-3">
 			'.$multipage.'
 		</div>
 	<div class="col-12 col-sm-12 col-md-12 col-lg-auto col-xl-auto col-xxl-auto mt-3 mt-sm-3 mt-md-3 mt-lg-0 me-0 pe-0 text-end align-self-center">
-		<a href="misc.php?action=markread&amp;fid='.$fid.''.$post_code_string.'" class="btn btn-secondary" title="'.$lang->forumdisplay['markforum_read'].'">&nbsp;<i class="fa-solid fa-check"></i>&nbsp;</a> &nbsp; '.$addremovesubscription.' &nbsp; '.$newthread.'
+		<a href="misc.php?action=markread&amp;fid='.$fid.''.$post_code_string.'" class="btn btn-secondary" title="'.$lang->forumdisplay['tip_mark_read'].'">&nbsp;<i class="fa-solid fa-check"></i>&nbsp;</a> &nbsp; '.$addremovesubscription.' &nbsp; '.$newthread.'
 	</div>
 </div>
 
@@ -1477,16 +1513,16 @@ $threadslist  = '<div class="row m-0 me-0 pe-0 p-0 mb-3">
 	
 	<div class="row">
 		<div class="col">
-	<p class="mb-0"><a href="'.$sorturl.'&amp;sortby=subject&amp;order=asc">'.$lang->forumdisplay['thread'].'</a> '.$orderarrow['subject'].' &mdash; <a href="'.$sorturl.'&amp;sortby=starter&amp;order=asc">'.$lang->forumdisplay['author'].'</a></p>
+	<p class="mb-0"><a href="'.$sorturl.'&amp;sortby=subject&amp;order=asc">'.$lang->forumdisplay['lbl_thread'].'</a> '.$orderarrow['subject'].' &mdash; <a href="'.$sorturl.'&amp;sortby=starter&amp;order=asc">'.$lang->forumdisplay['lbl_author'].'</a></p>
 		</div>
 		<div class="col-1 d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block text-center">
 			<p class="mb-0">
-				&nbsp;<a href="'.$sorturl.'&amp;sortby=replies&amp;order=desc">'.$lang->forumdisplay['replies'].'</a>
+				&nbsp;<a href="'.$sorturl.'&amp;sortby=replies&amp;order=desc">'.$lang->forumdisplay['lbl_replies'].'</a>
 			</p>
 		</div>
 		<div class="col-3">
 			<span class="float-end">'.$inlinemodcol.'</span>
-			&nbsp;<a href="'.$sorturl.'&amp;sortby=lastpost&amp;order=desc" class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->forumdisplay['lastpost'].'</a>
+			&nbsp;<a href="'.$sorturl.'&amp;sortby=lastpost&amp;order=desc" class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->forumdisplay['lbl_last_post'].'</a>
 			
 		</div>
 	</div>
@@ -1526,13 +1562,22 @@ $threadslist  = '<div class="row m-0 me-0 pe-0 p-0 mb-3">
     $rssdiscovery = $threadslist = '';
 
     if (empty($forums)) {
-        error($lang->forumdisplay['error_containsnoforums']);
+        error($lang->forumdisplay['err_contains_no_forums']);
     }
 }
 
 $plugins->run_hooks('forumdisplay_end');
 
 $foruminfo['name'] = strip_tags($foruminfo['name']);
+
+// ─── JS strings (js_ keys -> AGS_LANG without the prefix) ────────────────────
+$ags_lang_js = [];
+foreach ($lang->forumdisplay as $lang_key => $lang_val) {
+    if (str_starts_with((string)$lang_key, 'js_')) {
+        $ags_lang_js[substr((string)$lang_key, 3)] = $lang_val;
+    }
+}
+$ags_lang_json = json_encode($ags_lang_js, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
 $forums = '<html>
 <head>
@@ -1544,12 +1589,15 @@ $forums = '<html>
 <!--
 	lang.no_new_posts = "'.$lang->global['no_new_posts'].'";
 	lang.click_mark_read = "'.$lang->global['click_mark_read'].'";
-	lang.inline_edit_description = "'.$lang->forumdisplay['inline_edit_description'].'";
+	lang.inline_edit_description = '.json_encode($lang->forumdisplay['js_click_hold_edit'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT).';
 	lang.post_fetch_error = "'.$lang->global['post_fetch_error'].'";
 // -->
 </script>
+<script type="text/javascript">
+const AGS_LANG = '.$ags_lang_json.';
+</script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_edit.js?ver=1821"></script>
+<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_edit.js?ver=1822"></script>
 </head>
 <body>
 
@@ -1579,7 +1627,7 @@ $forums = '<html>
 stdhead('title');
 build_breadcrumb();
 
-echo '<script src="' . $BASEURL . '/scripts/whoposted_js.js" defer></script>';
+echo '<script src="' . $BASEURL . '/scripts/whoposted_js.js?ver=1" defer></script>';
 
 echo $forums;
 stdfoot();

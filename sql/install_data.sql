@@ -360,7 +360,7 @@ INSERT IGNORE INTO `seedbonus_settings` (`id`, `setting_key`, `setting_value`, `
 
 -- staffpanel
 INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `usergroups`) VALUES
-(1, 'adduser', 'Add New User', 'adduser.php', '[5],[6],[8]'),
+(1, 'adduser', 'Add New User', 'adduser.php', '[8]'),
 (4, 'allagents', 'Show ALL Agents', 'allagents.php', '[5],[6],[8]'),
 (5, 'amountbonus', 'Send Bonus Points', 'amountbonus.php', '[8],[8]'),
 (6, 'announcements', 'Manage Announcements', 'announcements.php', '[6],[7],[8]'),
@@ -382,7 +382,7 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (30, 'modrules', 'Manage Rules', 'modrules.php', '[8],[6],[5]'),
 (31, 'mysql_overview', 'MYSQL Overview', 'mysql_overview.php', '[8]'),
 (32, 'mysql_stats', 'MYSQL Stats', 'mysql_stats.php', '[8]'),
-(33, 'news', 'Manage News', 'news.php', '[8],[6],[10],[5]'),
+(33, 'news', 'Manage News', 'news.php', '[6],[7],[8]'),
 (34, 'ratio', 'Update Users Ratio', 'ratio.php', '[8],[6],[5]'),
 (37, 'reports', 'Manage Reports', 'reports.php', '[8],[6],[10],[5]'),
 (40, 'snatched_torrents', 'Show Snatched Torrents', 'snatched_torrents.php', '[8],[6],[10],[5]'),
@@ -402,7 +402,6 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (64, 'fixhash', 'Fix Torrents (info_hash)', 'fixhash.php', '[8]'),
 (66, 'serverinfo', 'Display Server Info', 'serverinfo.php', '[8],[6]'),
 (67, 'cheat_attempts', 'Manage Cheat Attempts!', 'cheat_attempts.php', '[5],[6],[8]'),
-(68, 'announce_actions', 'Possible cheat attempts on announce', 'announce_actions.php', '[6],[7],[8]'),
 (69, 'tweak_tracker', 'Tweak Your Tracker', 'tweak_tracker.php', '[8]'),
 (74, 'passkeysearch', 'Search Passkey', 'passkeysearch.php', '[8],[8],[6],[10],[5]'),
 (75, 'iptocountry', 'IP to Country', 'iptocountry.php', '[8],[6],[10],[5]'),
@@ -447,5 +446,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (127, 'convert_innodb', 'Convert DB Tables to InnoDB', 'convert_innodb.php', '[8]'),
 (128, 'useractivity', 'Daily active users chart with time stats and exports.', 'useractivity.php', '[8]'),
 (129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]'),
-(130, 'exams', 'Exams and Tasks', 'exams.php', '[6],[7],[8]'),
+(130, 'exams', 'Ecams Test', 'exams.php', '[8]'),
 (132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]');

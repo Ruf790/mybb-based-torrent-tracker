@@ -2,6 +2,25 @@
 declare(strict_types=1);
 
 
+
+/**
+ * Ланг functions_upload (грузится один раз при первом обращении, т.к. файл
+ * подключается из разных страниц).
+ */
+function _upload_lang(): array
+{
+    global $lang;
+    static $loaded = false;
+
+    if (!$loaded) {
+        $lang->load('functions_upload');
+        $loaded = true;
+    }
+
+    return $lang->functions_upload;
+}
+
+
 // ---------------------------------------------------------------------------
 // Upload limit
 // ---------------------------------------------------------------------------
@@ -50,6 +69,8 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 {
     global $db, $CURUSER, $lang, $plugins, $cache, $avataruploadpath, $avatarsize, $maxavatardims;
 
+    $ul = _upload_lang();
+
     if (!$uid) {
         $uid = (int)$CURUSER['id'];
     }
@@ -59,12 +80,12 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
     }
 
     if (empty($avatar['tmp_name']) || !is_uploaded_file($avatar['tmp_name'])) {
-        return ['error' => 'The file upload failed. Please choose a valid file and try again.'];
+        return ['error' => $ul['err_upload_failed']];
     }
 
     $ext = get_extension(my_strtolower($avatar['name']));
     if (!preg_match('#^(gif|jpg|jpeg|jpe|bmp|png|webp)$#i', $ext)) {
-        return ['error' => 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP, PNG or WebP format'];
+        return ['error' => $ul['err_avatar_type']];
     }
 
     
@@ -74,18 +95,18 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 
     if (!empty($file['error'])) {
         delete_uploaded_file($avatarpath . '/' . $filename);
-        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+        return ['error' => $ul['err_upload_failed']];
     }
 
     if (!file_exists($avatarpath . '/' . $filename)) {
         delete_uploaded_file($avatarpath . '/' . $filename);
-        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+        return ['error' => $ul['err_upload_failed']];
     }
 
     $img_dimensions = @getimagesize($avatarpath . '/' . $filename);
     if (!is_array($img_dimensions)) {
         delete_uploaded_file($avatarpath . '/' . $filename);
-        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+        return ['error' => $ul['err_upload_failed']];
     }
 
     // Разрешённые MIME-типы из кэша
@@ -103,7 +124,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 
     if ($img_type === 0 || empty($allowed_mime_types[$mime_type])) {
         delete_uploaded_file($avatarpath . '/' . $filename);
-        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+        return ['error' => $ul['err_upload_failed']];
     }
 
     
@@ -119,12 +140,12 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
       
         if (!resize_animated_gif($avatarFullPath, $avatarFullPath, $maxW, $maxH)) {
             delete_uploaded_file($avatarFullPath);
-            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+            return ['error' => $ul['err_image_corrupted']];
         }
     } elseif (in_array($mime_type, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
         if (!create_thumbnail($avatarFullPath, $avatarFullPath, $maxW, $maxH, $mime_type)) {
             delete_uploaded_file($avatarFullPath);
-            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+            return ['error' => $ul['err_image_corrupted']];
         }
     }
     
@@ -139,7 +160,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 
     if ($final_filesize > $max_size) {
         delete_uploaded_file($avatarpath . '/' . $filename);
-        return ['error' => 'The size of the uploaded file is too large'];
+        return ['error' => $ul['err_avatar_too_large']];
     }
 
     remove_avatars($uid, $filename);
@@ -161,7 +182,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 
 function check_parse_php_upload_err(array $FILE): string
 {
-    global $lang;
+    $ul = _upload_lang();
 
     $error = $FILE['error'] ?? 0;
 
@@ -169,16 +190,14 @@ function check_parse_php_upload_err(array $FILE): string
         return '';
     }
 
-    $detail = $lang->error_uploadfailed . $lang->error_uploadfailed_detail;
-
-    return $detail . match($error) {
-        UPLOAD_ERR_INI_SIZE   => 'error_uploadfailed_php1',
-        UPLOAD_ERR_FORM_SIZE  => 'error_uploadfailed_php2',
-        UPLOAD_ERR_PARTIAL    => 'error_uploadfailed_php3',
-        UPLOAD_ERR_NO_FILE    => 'error_uploadfailed_php4',
-        UPLOAD_ERR_NO_TMP_DIR => 'error_uploadfailed_php6',
-        UPLOAD_ERR_CANT_WRITE => 'error_uploadfailed_php7',
-        default               => sprintf('error_uploadfailed_phpx', $error),
+    return match($error) {
+        UPLOAD_ERR_INI_SIZE   => $ul['err_php_ini_size'],
+        UPLOAD_ERR_FORM_SIZE  => $ul['err_php_form_size'],
+        UPLOAD_ERR_PARTIAL    => $ul['err_php_partial'],
+        UPLOAD_ERR_NO_FILE    => $ul['err_php_no_file'],
+        UPLOAD_ERR_NO_TMP_DIR => $ul['err_php_no_tmp_dir'],
+        UPLOAD_ERR_CANT_WRITE => $ul['err_php_cant_write'],
+        default               => sprintf($ul['err_php_unknown'], (int)$error),
     };
 }
 
@@ -313,11 +332,13 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
            $uploadspath, $attachthumbh, $attachthumbw,
            $posthash, $pid, $tid, $forum, $maxattachments, $CURUSER;
 
+    $ul = _upload_lang();
+
     $posthash = $mybb->get_input('posthash');
     $pid      = (int)$pid;
 
     if (!is_uploaded_file($attachment['tmp_name']) || empty($attachment['tmp_name'])) {
-        return ['error' => $lang->error_uploadfailed . $lang->error_uploadfailed_php4];
+        return ['error' => $ul['err_php_no_file']];
     }
 
     $attachtypes = (array)$cache->read('attachtypes');
@@ -325,7 +346,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
 
     $ext = get_extension($attachment['name']);
     if (!isset($attachtypes[$ext]) || empty($attachtypes[$ext]['enabled'])) {
-        return ['error' => 'The type of file that you attached is not allowed. Please remove the attachment or choose a different type'];
+        return ['error' => $ul['err_type_not_allowed']];
     }
     $attachtype = $attachtypes[$ext];
 
@@ -341,14 +362,14 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         ];
 
         if (in_array($realMime, $dangerousRealTypes, true)) {
-            return ['error' => 'The uploaded file was rejected: its real content does not match an allowed file type.'];
+            return ['error' => $ul['err_real_type_mismatch']];
         }
     }
 
     $imageExts = ['gif', 'png', 'jpg', 'jpeg', 'jpe', 'webp', 'bmp'];
     if (in_array($ext, $imageExts, true)) {
         if (@getimagesize($attachment['tmp_name']) === false) {
-            return ['error' => 'The uploaded file is not a valid image.'];
+            return ['error' => $ul['err_not_valid_image']];
         }
 
         // Перекодирование — защита от "полиглот"-файлов. recode_image_file()
@@ -357,19 +378,19 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         // целиком, без всякой защиты.
         $newSize = recode_image_file($attachment['tmp_name'], $realMime);
         if ($newSize === false) {
-            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+            return ['error' => $ul['err_image_corrupted']];
         }
         $attachment['size'] = $newSize;
     }
 
     // Длина имени файла
     if (my_strlen($attachment['name']) > 255) {
-        return ['error' => 'The file name ' . htmlspecialchars_uni($attachment['name']) . ' exceeds the maximum file name length 255.'];
+        return ['error' => sprintf($ul['err_filename_too_long'], htmlspecialchars_uni($attachment['name']))];
     }
 
     // Размер файла
     if ($attachtype['maxsize'] !== '' && $attachment['size'] > (int)$attachtype['maxsize'] * 1024) {
-        return ['error' => 'The file ' . htmlspecialchars_uni($attachment['name']) . ' is too large. The maximum size for that type of file is ' . $attachtype['maxsize'] . ' kilobytes'];
+        return ['error' => sprintf($ul['err_file_too_large'], htmlspecialchars_uni($attachment['name']), (string)$attachtype['maxsize'])];
     }
 
     // Квота пользователя
@@ -377,7 +398,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
         $usage = ($query ? (int)$db->fetch_array($query)['ausage'] : 0) + $attachment['size'];
         if ($usage > $usergroups['attachquota'] * 1024) {
-            return ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($usergroups['attachquota'] * 1024)];
+            return ['error' => sprintf($ul['err_quota'], mksize($usergroups['attachquota'] * 1024))];
         }
     }
 
@@ -396,7 +417,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     $prevattach = $query ? $db->fetch_array($query) : null;
 
     if ($prevattach && !$update_attachment) {
-        return ['error' => sprintf('error_alreadyuploaded', htmlspecialchars_uni($attachment['name']))];
+        return ['error' => sprintf($ul['err_already_uploaded'], htmlspecialchars_uni($attachment['name']))];
     }
 
     // Максимум аттачментов на пост
@@ -405,7 +426,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         $query       = $db->sql_query_prepared("SELECT COUNT(aid) AS numattachs FROM attachments WHERE {$uploaded_query}", $uploaded_params);
         $attachcount = $query ? (int)$db->fetch_field($query, 'numattachs') : 0;
         if ($attachcount >= $maxattachments) {
-            return ['error' => 'Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of ' . $maxattachments];
+            return ['error' => sprintf($ul['err_max_attachments'], (string)$maxattachments)];
         }
     }
 
@@ -433,17 +454,16 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     }
 
     if (!empty($file['error'])) {
-        $err = $lang->error_uploadfailed . $lang->error_uploadfailed_detail;
-        $err .= match($file['error']) {
-            1       => 'error_uploadfailed_nothingtomove',
-            2       => 'error_uploadfailed_movefailed',
-            default => '',
+        $err = match($file['error']) {
+            1       => $ul['err_nothing_to_move'],
+            2       => $ul['err_move_failed'],
+            default => $ul['err_upload_failed'],
         };
         return ['error' => $err];
     }
 
     if (!file_exists($uploadspath_abs . '/' . $filename)) {
-        return ['error' => 'error_uploadfailed' . 'error_uploadfailed_detail' . 'error_uploadfailed_lost'];
+        return ['error' => $ul['err_file_lost']];
     }
 
     $attacharray = [
@@ -572,6 +592,8 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
 {
     global $db, $mybb, $lang;
 
+    $ul = _upload_lang();
+
     $ret   = [];
     $total = isset($_FILES['attachments']['name']) ? count($_FILES['attachments']['name']) : 0;
 
@@ -621,7 +643,7 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
         }
 
         if ($FILE['size'] <= 0) {
-            $ret['errors'][]      = sprintf('error_uploadempty', htmlspecialchars_uni($FILE['name']));
+            $ret['errors'][]      = sprintf($ul['err_upload_empty'], htmlspecialchars_uni($FILE['name']));
             $mybb->input['action'] = $action;
             continue;
         }
@@ -631,7 +653,7 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
         $update_attachment = $exists && (bool)$mybb->get_input('updateattachment');
 
         if (!$exists && $mybb->get_input('updateattachment') && $mybb->get_input('updateconfirmed', MyBB::INPUT_INT) != 1) {
-            $ret['errors'][] = sprintf('error_updatefailed', $filename);
+            $ret['errors'][] = sprintf($ul['err_update_failed'], htmlspecialchars_uni($filename));
             continue;
         }
 
@@ -712,7 +734,7 @@ function _process_image_attachment(
 
     if (!is_array($img_dimensions) || ($img_dimensions[2] !== $img_type && !in_array($mime, $supported_mimes, true))) {
         delete_uploaded_file($file_path);
-        return ['error' => $lang->error_uploadfailed];
+        return ['error' => _upload_lang()['err_upload_failed']];
     }
 
     $thumbname   = str_replace('.attach', "_thumb.{$ext}", $filename);

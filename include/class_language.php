@@ -166,6 +166,13 @@ class trackerlanguage
 	
 	public $task;
 	
+	public $functions_upload;
+	
+	
+	public $post3;
+	
+	public $settings_history;
+	
 	
 	
 

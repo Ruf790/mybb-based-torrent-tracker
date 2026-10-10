@@ -56,13 +56,7 @@ INSERT IGNORE INTO `bonus` (`id`, `bonusname`, `points`, `description`, `art`, `
 (8, 'Remove Warning', 400.0, 'Remove a warning from your account.', 'warning', 1),
 (9, 'Fix Torrent Ratio', 2000.0, 'Get 1:1 ratio on a specific torrent.', 'ratiofix', 1);
 
--- categories
-INSERT IGNORE INTO `categories` (`id`, `name`, `cat_desc`, `minclassread`, `type`, `pid`, `icon`) VALUES
-(1, '1080p', '', 0, 'c', 0, 'fa-solid fa-film fa-shake'),
-(2, 'BluRay', '', 0, 'c', 0, 'fa-solid fa-compact-disc fa-spin'),
-(3, 'UltraHD', '', 0, 'c', 0, 'fa-solid fa-satellite-dish'),
-(4, '2160p', '', 0, 'c', 0, 'fa-solid fa-clapperboard'),
-(5, '720p', '', 0, 'c', 0, 'fa-solid fa-tv');
+
 
 -- countries
 INSERT IGNORE INTO `countries` (`id`, `name`, `flagpic`) VALUES

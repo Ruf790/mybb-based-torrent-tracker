@@ -452,6 +452,19 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
     const fileInput = document.getElementById('avatarUploadInput');
     if (!fileInput) return;
 
+    // Тост в правом верхнем углу — как в профиле (avatar_upload.js).
+    // Без SweetAlert — showToast() из toast.js; без него — alert().
+    function avatarToast(msg, icon) {
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            Swal.fire({ toast: true, position: 'top-end', icon: icon, title: msg,
+                        showConfirmButton: false, timer: icon === 'error' ? 2200 : 1600 });
+        } else if (typeof window.showToast === 'function') {
+            window.showToast(msg, icon);
+        } else {
+            alert(msg);
+        }
+    }
+
     const UPLOAD_URL = 'index.php?act=usersearch&action=upload_avatar';
     let targetCell = null, targetUid = null;
 
@@ -470,7 +483,7 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
         const file = fileInput.files[0];
 
         if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-            alert(t('av_bad_type', 'Allowed JPG/JPEG/PNG/GIF/WebP'));
+            avatarToast(t('av_bad_type', 'Allowed JPG/JPEG/PNG/GIF/WebP'), 'error');
             fileInput.value = '';
             return;
         }
@@ -480,7 +493,7 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
         // отсутствует/некорректен.
         const maxMb = parseFloat(fileInput.dataset.maxMb) || 22;
         if (file.size > maxMb * 1024 * 1024) {
-            alert(t('av_too_big', 'File is too big (max. {1} MB)', maxMb));
+            avatarToast(t('av_too_big', 'File is too big (max. {1} MB)', maxMb), 'error');
             fileInput.value = '';
             return;
         }
@@ -504,10 +517,11 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
                 img.src       = url;
                 img.alt       = t('alt_avatar', 'avatar');
                 img.className = 'rounded';
-                img.width     = 50;
+                img.style.cssText = 'width:50px;height:50px;object-fit:cover;'; // как остальные аватары в таблице
                 box.replaceChildren(img);
+                avatarToast(j.message || t('av_updated', 'Avatar updated'), 'success');
             })
-            .catch(err => { alert(err.message || t('av_error', 'Upload error')); box.innerHTML = prev; })
+            .catch(err => { avatarToast(err.message || t('av_error', 'Upload error'), 'error'); box.innerHTML = prev; })
             .finally(() => { targetCell = null; targetUid = null; });
     });
 })();

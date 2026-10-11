@@ -5,6 +5,7 @@ define("IN_MYBB", 1);
 define('SCRIPTNAME', 'offers.php');
 
 require_once 'global.php';
+$lang->load('offers');
 require_once 'cache/smilies.php';
 require_once INC_PATH . '/editor.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
@@ -30,6 +31,19 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $is_mod = is_mod($usergroups);
 $action = $mybb->get_input('action');
 $oid    = $mybb->get_input('oid', MyBB::INPUT_INT);
+
+// ── String formatter: {1}, {2}… (and %1$s after $lang->load conversion) ──────
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']    = (string)$arg;
+            $map['%' . $n . '$s']   = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 // ── Flash helper ──────────────────────────────────────────────────────────────
 function show_flash(): void {
@@ -58,15 +72,15 @@ if ($action === 'want' && $mybb->request_method === 'post') {
     header('Content-Type: application/json');
     header('X-Content-Type-Options: nosniff');
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        echo json_encode(['success' => false, 'error' => 'Invalid post key']); exit();
+        echo json_encode(['success' => false, 'error' => $lang->offers['err_post_key']]); exit();
     }
     $uid = (int)$CURUSER['id'];
     $offer = $db->fetch_array($db->sql_query_prepared("SELECT id, status, user_id FROM offers WHERE id = ?", [$oid]));
-    if (!$offer) { echo json_encode(['success' => false, 'error' => 'Not found']); exit(); }
-    if ($offer['status'] !== 'open') { echo json_encode(['success' => false, 'error' => 'Offer is closed']); exit(); }
-    if ($offer['user_id'] == $uid) { echo json_encode(['success' => false, 'error' => 'Cannot request your own offer']); exit(); }
+    if (!$offer) { echo json_encode(['success' => false, 'error' => $lang->offers['err_not_found']]); exit(); }
+    if ($offer['status'] !== 'open') { echo json_encode(['success' => false, 'error' => $lang->offers['err_closed']]); exit(); }
+    if ($offer['user_id'] == $uid) { echo json_encode(['success' => false, 'error' => $lang->offers['err_own_offer']]); exit(); }
     if ($db->num_rows($db->sql_query_prepared("SELECT id FROM offer_votes WHERE offer_id = ? AND user_id = ?", [$oid, $uid]))) {
-        echo json_encode(['success' => false, 'error' => 'Already requested']); exit();
+        echo json_encode(['success' => false, 'error' => $lang->offers['err_already_requested']]); exit();
     }
     $vote_data = ['offer_id' => $oid, 'user_id' => $uid, 'created_at' => TIMENOW];
     $columns      = array_keys($vote_data);
@@ -86,12 +100,12 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
     header('Content-Type: application/json');
     header('X-Content-Type-Options: nosniff');
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        echo json_encode(['success' => false, 'error' => 'Invalid post key']); exit();
+        echo json_encode(['success' => false, 'error' => $lang->offers['err_post_key']]); exit();
     }
     $message = trim($mybb->get_input('message'));
-    if (empty($message)) { echo json_encode(['success' => false, 'error' => 'Empty message']); exit(); }
+    if (empty($message)) { echo json_encode(['success' => false, 'error' => $lang->offers['err_empty_message']]); exit(); }
     if (!$db->num_rows($db->sql_query_prepared("SELECT id FROM offers WHERE id = ?", [$oid]))) {
-        echo json_encode(['success' => false, 'error' => 'Not found']); exit();
+        echo json_encode(['success' => false, 'error' => $lang->offers['err_not_found']]); exit();
     }
     $comment_data = [
         'offer_id'   => $oid,
@@ -111,14 +125,14 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
 
 // ── POST: Create Offer ────────────────────────────────────────────────────────
 if ($action === 'do_create' && $mybb->request_method === 'post') {
-    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
+    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->offers['err_post_key']);
     $title = trim($mybb->get_input('title'));
     $description = trim($mybb->get_input('description'));
     $category_id = $mybb->get_input('category_id', MyBB::INPUT_INT);
     $year = ($year_raw = trim($mybb->get_input('year'))) !== '' && (int)$year_raw > 0 ? (int)$year_raw : null;
     $errors = [];
-    if (strlen($title) < 3) $errors[] = 'Title must be at least 3 characters.';
-    if (strlen($title) > 255) $errors[] = 'Title is too long.';
+    if (strlen($title) < 3) $errors[] = $lang->offers['err_title_short'];
+    if (strlen($title) > 255) $errors[] = $lang->offers['err_title_long'];
     if (empty($errors)) {
         $db->sql_query_prepared(
             "INSERT INTO offers (user_id, title, description, category_id, year, status, requests, created_at, updated_at)
@@ -126,7 +140,7 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
             [(int)$CURUSER['id'], $title, $description, $category_id, $year, TIMENOW, TIMENOW]
         );
         $id = $db->insert_id();
-        $_SESSION['flash'] = ['msg' => 'Offer created successfully!', 'type' => 'success'];
+        $_SESSION['flash'] = ['msg' => $lang->offers['flash_created'], 'type' => 'success'];
         header('Location: offers.php?action=view&oid=' . $id);
         exit();
     }
@@ -134,13 +148,13 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
 
 // ── POST: Mark as Uploaded ────────────────────────────────────────────────────
 if ($action === 'upload' && $mybb->request_method === 'post') {
-    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
+    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->offers['err_post_key']);
     $offer = $db->fetch_array($db->sql_query_prepared("SELECT * FROM offers WHERE id = ?", [$oid]));
-    if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr('No permission');
-    if ($offer['status'] !== 'open') stderr('Offer already closed');
+    if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr($lang->offers['err_no_permission']);
+    if ($offer['status'] !== 'open') stderr($lang->offers['err_closed']);
     $torrent_id = $mybb->get_input('torrent_id', MyBB::INPUT_INT);
     if (!$torrent_id || !$db->num_rows($db->sql_query_prepared("SELECT id FROM torrents WHERE id = ?", [$torrent_id]))) {
-        $_SESSION['flash'] = ['msg' => 'Torrent ID ' . $torrent_id . ' does not exist.', 'type' => 'danger'];
+        $_SESSION['flash'] = ['msg' => ags_fmt($lang->offers['flash_torrent_missing'], $torrent_id), 'type' => 'danger'];
         header('Location: offers.php?action=view&oid=' . $oid);
         exit();
     }
@@ -149,37 +163,54 @@ if ($action === 'upload' && $mybb->request_method === 'post') {
         ['uploaded', $torrent_id, TIMENOW, TIMENOW, $oid]
     );
     require_once INC_PATH . '/functions_pm.php';
-    $votes_q = $db->sql_query_prepared("SELECT user_id FROM offer_votes WHERE offer_id = ?", [$oid]);
+
+    // Скобки в названии ломают [b]...[/b] / [url=...]...[/url]
+    $offer_title = str_replace(['[', ']'], ['(', ')'], (string)$offer['title']);
+    $torrent_url = $BASEURL . '/details.php?id=' . $torrent_id;
+
+    $votes_q = $db->sql_query_prepared(
+        "SELECT ov.user_id, u.language
+         FROM offer_votes ov
+         JOIN users u ON u.id = ov.user_id
+         WHERE ov.offer_id = ?",
+        [$oid]
+    );
     while ($v = $db->fetch_array($votes_q)) {
         if ($v['user_id'] == $CURUSER['id']) continue;
-        $pm = ['subject' => 'Offer uploaded: ' . $offer['title'], 'message' => 'The offer [b]' . $offer['title'] . '[/b] has been uploaded! [url=' . $BASEURL . '/details.php?id=' . $torrent_id . ']Download here[/url]', 'touid' => (int)$v['user_id']];
-        $pm['sender']['uid'] = -1;
-        send_pm($pm, -1, true);
+        // Текст ЛС берётся из offers.lang.php на языке получателя
+        send_pm([
+            'subject'       => ['pm_uploaded_subject', $offer_title],
+            'message'       => ['pm_uploaded_message', $offer_title, $torrent_url],
+            'touid'         => (int)$v['user_id'],
+            'language'      => (string)($v['language'] ?? ''),
+            'language_file' => 'offers',
+            'sender'        => ['uid' => -1],
+        ], -1, true);
     }
-    $_SESSION['flash'] = ['msg' => 'Offer marked as uploaded!', 'type' => 'success'];
+    $_SESSION['flash'] = ['msg' => $lang->offers['flash_uploaded'], 'type' => 'success'];
     header('Location: offers.php?action=view&oid=' . $oid);
     exit();
 }
 
 // ── POST: Cancel ──────────────────────────────────────────────────────────────
 if ($action === 'cancel' && $mybb->request_method === 'post') {
-    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
+    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->offers['err_post_key']);
     $offer = $db->fetch_array($db->sql_query_prepared("SELECT user_id, status FROM offers WHERE id = ?", [$oid]));
-    if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr('No permission');
+    if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr($lang->offers['err_no_permission']);
     $db->sql_query_prepared("UPDATE offers SET status = ?, updated_at = ? WHERE id = ?", ['cancelled', TIMENOW, $oid]);
-    $_SESSION['flash'] = ['msg' => 'Offer cancelled.', 'type' => 'info'];
+    $_SESSION['flash'] = ['msg' => $lang->offers['flash_cancelled'], 'type' => 'info'];
     header('Location: offers.php');
     exit();
 }
 
 // ── POST: Delete ──────────────────────────────────────────────────────────────
 if ($action === 'delete' && $mybb->request_method === 'post') {
-    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
-    if (!$is_mod) stderr('No permission');
+    if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->offers['err_post_key']);
+    if (!$is_mod) stderr($lang->offers['err_no_permission']);
     $db->sql_query_prepared("DELETE FROM offer_votes WHERE offer_id = ?", [$oid]);
     $db->sql_query_prepared("DELETE FROM offer_comments WHERE offer_id = ?", [$oid]);
     $db->sql_query_prepared("DELETE FROM offers WHERE id = ?", [$oid]);
-    $_SESSION['flash'] = ['msg' => 'Offer deleted.', 'type' => 'success'];
+    $_SESSION['flash'] = ['msg' => $lang->offers['flash_deleted'], 'type' => 'success'];
     header('Location: offers.php');
     exit();
 }
@@ -195,7 +226,7 @@ if ($action === 'view' && $oid) {
          WHERE o.id = ?",
         [$oid]
     ));
-    if (!$offer) stderr('Offer not found.');
+    if (!$offer) stderr($lang->offers['err_not_found']);
 
     $my_want = $db->num_rows($db->sql_query_prepared(
         "SELECT id FROM offer_votes WHERE offer_id = ? AND user_id = ?",
@@ -212,13 +243,13 @@ if ($action === 'view' && $oid) {
     );
 
     $status_badge = match($offer['status']) {
-        'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>Open</span>',
-        'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary"><i class="fas fa-upload me-1"></i>Uploaded</span>',
-        'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary"><i class="fas fa-times me-1"></i>Cancelled</span>',
+        'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>' . htmlspecialchars($lang->offers['status_open']) . '</span>',
+        'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary"><i class="fas fa-upload me-1"></i>' . htmlspecialchars($lang->offers['status_uploaded']) . '</span>',
+        'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary"><i class="fas fa-times me-1"></i>' . htmlspecialchars($lang->offers['status_cancelled']) . '</span>',
         default     => ''
     };
 
-    stdhead('Offer: ' . htmlspecialchars($offer['title']));
+    stdhead(htmlspecialchars(ags_fmt($lang->offers['title_view'], $offer['title'])));
     show_flash();
     ?>
     <style>
@@ -297,8 +328,8 @@ if ($action === 'view' && $oid) {
     <div class="container py-4">
         <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i>Offers</a></li>
+                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->offers['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->offers['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
+                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['nav_offers']) ?></a></li>
                 <li class="breadcrumb-item active text-truncate" style="max-width:300px"><?= htmlspecialchars($offer['title']) ?></li>
             </ol>
         </nav>
@@ -329,13 +360,13 @@ if ($action === 'view' && $oid) {
                             <?php if ($offer['year']): ?>
                             <span><i class="fas fa-film me-1"></i><?= (int)$offer['year'] ?></span>
                             <?php endif; ?>
-                            <span><i class="fas fa-users me-1"></i><?= (int)$offer['requests'] ?> want this</span>
+                            <span><i class="fas fa-users me-1"></i><?= htmlspecialchars(ags_fmt($lang->offers['lbl_want_count'], (int)$offer['requests'])) ?></span>
                         </div>
 
                         <?php if ($offer['status'] === 'uploaded' && $offer['torrent_id']): ?>
                         <div class="alert alert-success mt-4 mb-0 rounded-3 animate-fade-in-up">
                             <i class="fas fa-check-circle me-2"></i>
-                            This offer has been uploaded! <a href="<?= get_torrent_link($offer['torrent_id']) ?>" class="alert-link fw-semibold">Download here</a>
+                            <?= htmlspecialchars($lang->offers['txt_uploaded']) ?> <a href="<?= get_torrent_link($offer['torrent_id']) ?>" class="alert-link fw-semibold"><?= htmlspecialchars($lang->offers['lnk_download']) ?></a>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -344,26 +375,26 @@ if ($action === 'view' && $oid) {
                     <div class="card-footer bg-transparent border-0 d-flex flex-wrap gap-2 align-items-center">
                         <?php if (!$my_want && $offer['user_id'] != $CURUSER['id']): ?>
                         <button class="btn btn-sm btn-outline-success rounded-pill px-4 pulse-on-hover" onclick="wantOffer(<?= $oid ?>)" id="wantBtn">
-                            <i class="fas fa-hand-paper me-1"></i>I want this! (<span id="want-count"><?= (int)$offer['requests'] ?></span>)
+                            <i class="fas fa-hand-paper me-1"></i><?= htmlspecialchars($lang->offers['btn_want']) ?> (<span id="want-count"><?= (int)$offer['requests'] ?></span>)
                         </button>
                         <?php else: ?>
                         <span class="text-muted small"><i class="fas fa-check-circle text-success me-1"></i>
-                            <?= $offer['user_id'] == $CURUSER['id'] ? 'Your offer' : 'You requested this' ?>
+                            <?= htmlspecialchars($offer['user_id'] == $CURUSER['id'] ? $lang->offers['txt_your_offer'] : $lang->offers['txt_you_requested']) ?>
                         </span>
                         <?php endif; ?>
 
                         <?php if ($offer['user_id'] == $CURUSER['id'] || $is_mod): ?>
                         <button class="btn btn-sm btn-primary rounded-pill px-4 ms-auto pulse-on-hover" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                            <i class="fas fa-upload me-1"></i>Uploaded
+                            <i class="fas fa-upload me-1"></i><?= htmlspecialchars($lang->offers['btn_uploaded']) ?>
                         </button>
-                        <form method="post" action="offers.php?action=cancel&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm('Cancel this offer?')">
+                        <form method="post" action="offers.php?action=cancel&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->offers['conf_cancel'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
                             <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover"><i class="fas fa-times me-1"></i>Cancel</button>
+                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover"><i class="fas fa-times me-1"></i><?= htmlspecialchars($lang->offers['btn_cancel_offer']) ?></button>
                         </form>
                         <?php if ($is_mod): ?>
-                        <form method="post" action="offers.php?action=delete&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm('Delete this offer permanently?')">
+                        <form method="post" action="offers.php?action=delete&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->offers['conf_delete'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
                             <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-danger rounded-pill px-3 pulse-on-hover"><i class="fas fa-trash-alt me-1"></i>Delete</button>
+                            <button class="btn btn-sm btn-outline-danger rounded-pill px-3 pulse-on-hover"><i class="fas fa-trash-alt me-1"></i><?= htmlspecialchars($lang->offers['btn_delete']) ?></button>
                         </form>
                         <?php endif; ?>
                         <?php endif; ?>
@@ -374,7 +405,7 @@ if ($action === 'view' && $oid) {
                 <!-- Comments -->
                 <div class="card border-0 shadow-sm rounded-4 animate-fade-in-up">
                     <div class="card-header bg-transparent border-0">
-                        <h6 class="mb-0"><i class="fas fa-comments me-2"></i>Comments</h6>
+                        <h6 class="mb-0"><i class="fas fa-comments me-2"></i><?= htmlspecialchars($lang->offers['sec_comments']) ?></h6>
                     </div>
                     <div class="card-body p-0" id="commentsContainer">
                         <?php
@@ -402,14 +433,14 @@ if ($action === 'view' && $oid) {
                         </div>
                         <?php endwhile; ?>
                         <?php if ($comment_count === 0): ?>
-                        <div class="text-center py-4 text-muted small">No comments yet.</div>
+                        <div class="text-center py-4 text-muted small"><?= htmlspecialchars($lang->offers['txt_no_comments']) ?></div>
                         <?php endif; ?>
                     </div>
                     <?php if ($offer['status'] === 'open'): ?>
                     <div class="card-footer bg-transparent border-0">
                         <div class="d-flex gap-2">
-                            <textarea class="form-control form-control-sm rounded-3" id="commentText" rows="2" placeholder="Add a comment..."></textarea>
-                            <button class="btn btn-sm btn-primary rounded-pill px-4 pulse-on-hover" onclick="addComment(<?= $oid ?>)"><i class="fas fa-paper-plane"></i></button>
+                            <textarea class="form-control form-control-sm rounded-3" id="commentText" rows="2" placeholder="<?= htmlspecialchars($lang->offers['ph_comment']) ?>"></textarea>
+                            <button class="btn btn-sm btn-primary rounded-pill px-4 pulse-on-hover" onclick="addComment(<?= $oid ?>)" title="<?= htmlspecialchars($lang->offers['aria_send_comment']) ?>" aria-label="<?= htmlspecialchars($lang->offers['aria_send_comment']) ?>"><i class="fas fa-paper-plane"></i></button>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -421,13 +452,13 @@ if ($action === 'view' && $oid) {
                 <div class="card border-0 shadow-sm rounded-4 text-center animate-fade-in-up">
                     <div class="card-body">
                         <div class="display-4 fw-bold text-success" id="want-count-sidebar"><?= (int)$offer['requests'] ?></div>
-                        <div class="text-muted small">people want this</div>
+                        <div class="text-muted small"><?= htmlspecialchars($lang->offers['lbl_people_want']) ?></div>
                         <hr>
                         <div class="small text-muted">
-                            <div class="mb-2"><i class="fas fa-user me-2"></i>Offered by <a href="<?= $BASEURL ?>/user-<?= $offer['user_id'] ?>.html" class="text-decoration-none"><?= htmlspecialchars($offer['username']) ?></a></div>
-                            <div class="mb-2"><i class="fas fa-clock me-2"></i><?= mkprettytime(TIMENOW - $offer['created_at']) ?> ago</div>
+                            <div class="mb-2"><i class="fas fa-user me-2"></i><?= htmlspecialchars($lang->offers['lbl_offered_by']) ?> <a href="<?= $BASEURL ?>/user-<?= $offer['user_id'] ?>.html" class="text-decoration-none"><?= htmlspecialchars($offer['username']) ?></a></div>
+                            <div class="mb-2"><i class="fas fa-clock me-2"></i><?= htmlspecialchars(ags_fmt($lang->offers['txt_ago'], mkprettytime(TIMENOW - $offer['created_at']))) ?></div>
                             <?php if ($offer['year']): ?>
-                            <div><i class="fas fa-film me-2"></i>Year: <?= (int)$offer['year'] ?></div>
+                            <div><i class="fas fa-film me-2"></i><?= htmlspecialchars(ags_fmt($lang->offers['lbl_year_value'], (int)$offer['year'])) ?></div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -441,20 +472,20 @@ if ($action === 'view' && $oid) {
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow rounded-4">
                 <div class="modal-header border-0">
-                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Mark as Uploaded</h5>
-                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i><?= htmlspecialchars($lang->offers['pane_upload']) ?></h5>
+                    <button class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->offers['aria_close']) ?>"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small">Enter the torrent ID that you uploaded for this offer.</p>
+                    <p class="text-muted small"><?= htmlspecialchars($lang->offers['hint_upload']) ?></p>
                     <form method="post" action="offers.php?action=upload&oid=<?= $oid ?>">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Torrent ID</label>
-                            <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="e.g. 12345">
+                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_torrent_id']) ?></label>
+                            <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="<?= htmlspecialchars($lang->offers['ph_torrent_id']) ?>">
                         </div>
                         <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4 pulse-on-hover">Confirm Upload</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal"><?= htmlspecialchars($lang->offers['btn_modal_cancel']) ?></button>
+                            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->offers['btn_confirm_upload']) ?></button>
                         </div>
                     </form>
                 </div>
@@ -462,7 +493,25 @@ if ($action === 'view' && $oid) {
         </div>
     </div>
 
+    <?php
+    $ags_js_lang = [];
+    foreach ($lang->offers as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) $ags_js_lang[substr((string)$k, 3)] = $v;
+    }
+    ?>
     <script>
+    const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+    // Translation helper: t(key, fallback, ...args) — substitutes {1} and %1$s
+    function t(key, fallback, ...args) {
+        let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+        args.forEach((a, i) => {
+            const n = i + 1;
+            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+        });
+        return s;
+    }
+
     const postKey = '<?= $mybb->post_code ?>';
     const oid = <?= $oid ?>;
 
@@ -474,7 +523,11 @@ if ($action === 'view' && $oid) {
         }
         
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<span class="loading-spinner me-1"></span> Loading...';
+        btn.textContent = '';
+        const spinner = document.createElement('span');
+        spinner.className = 'loading-spinner me-1';
+        btn.appendChild(spinner);
+        btn.appendChild(document.createTextNode(' ' + t('loading', 'Loading...')));
         btn.classList.add('btn-loading');
         btn.disabled = true;
         
@@ -517,7 +570,7 @@ if ($action === 'view' && $oid) {
                 btn.innerHTML = originalHtml;
                 btn.classList.remove('btn-loading');
                 btn.disabled = false;
-                alert(data.error || 'Error processing request');
+                alert(data.error || t('want_error', 'Error processing request'));
             }
         })
         .catch(error => {
@@ -527,9 +580,9 @@ if ($action === 'view' && $oid) {
             btn.disabled = false;
             
             if (error.message.includes('HTTP')) {
-                alert('Server error (HTTP ' + error.message.replace('HTTP ', '') + '). Please try again.');
+                alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
             } else {
-                alert('Network error. Please check your connection and try again.');
+                alert(t('network_error', 'Network error. Please check your connection and try again.'));
             }
         });
     }
@@ -537,7 +590,7 @@ if ($action === 'view' && $oid) {
     function addComment(oid) {
         const msg = document.getElementById('commentText').value.trim();
         if (!msg) {
-            alert('Please enter a comment.');
+            alert(t('comment_empty', 'Please enter a comment.'));
             return;
         }
         
@@ -570,7 +623,7 @@ if ($action === 'view' && $oid) {
                     btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
                     btn.disabled = false;
                 }
-                alert(data.error || 'Error adding comment');
+                alert(data.error || t('comment_error', 'Error adding comment'));
             }
         })
         .catch(error => {
@@ -580,9 +633,9 @@ if ($action === 'view' && $oid) {
                 btn.disabled = false;
             }
             if (error.message.includes('HTTP')) {
-                alert('Server error (HTTP ' + error.message.replace('HTTP ', '') + '). Please try again.');
+                alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
             } else {
-                alert('Network error. Please check your connection and try again.');
+                alert(t('network_error', 'Network error. Please check your connection and try again.'));
             }
         });
     }
@@ -608,7 +661,7 @@ if ($action === 'view' && $oid) {
 // ── VIEW: Create Form ─────────────────────────────────────────────────────────
 if ($action === 'create') {
     $editor = insert_bbcode_editor($smilies ?? [], $BASEURL, 'description');
-    stdhead('New Offer');
+    stdhead(htmlspecialchars($lang->offers['title_create']));
     show_flash();
     ?>
     <style>
@@ -632,16 +685,16 @@ if ($action === 'create') {
     <div class="container py-4">
         <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i>Offers</a></li>
-                <li class="breadcrumb-item active">New Offer</li>
+                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->offers['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->offers['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
+                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['nav_offers']) ?></a></li>
+                <li class="breadcrumb-item active"><?= htmlspecialchars($lang->offers['nav_new']) ?></li>
             </ol>
         </nav>
 
         <div class="card border-0 shadow-sm rounded-4">
             <div class="card-header bg-transparent border-0">
-                <h5 class="mb-0"><i class="fas fa-gift me-2 text-success"></i>Post a New Offer</h5>
-                <small class="text-muted">I have this and can upload it if people want it</small>
+                <h5 class="mb-0"><i class="fas fa-gift me-2 text-success"></i><?= htmlspecialchars($lang->offers['pane_create']) ?></h5>
+                <small class="text-muted"><?= htmlspecialchars($lang->offers['hint_create']) ?></small>
             </div>
             <div class="card-body">
                 <?php if (!empty($errors)): ?>
@@ -652,36 +705,36 @@ if ($action === 'create') {
                     <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_title']) ?> <span class="text-danger">*</span></label>
                         <input type="text" class="form-control rounded-3" name="title" maxlength="255" required
-                               value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="Movie / TV Show / Game title...">
+                               value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="<?= htmlspecialchars($lang->offers['ph_title']) ?>">
                     </div>
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-8">
-                            <label class="form-label fw-semibold">Category</label>
+                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_category']) ?></label>
                             <select class="form-select rounded-3" name="category_id">
-                                <option value="0">— Any —</option>
+                                <option value="0"><?= htmlspecialchars($lang->offers['opt_cat_any']) ?></option>
                                 <?php foreach ($cats as $cid => $cname): ?>
                                 <option value="<?= $cid ?>"><?= htmlspecialchars($cname) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold">Year</label>
+                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_year']) ?></label>
                             <input type="number" class="form-control rounded-3" name="year" min="1900" max="<?= date('Y') + 2 ?>" placeholder="2024">
                         </div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label fw-semibold">Description</label>
+                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_description']) ?></label>
                         <?= $editor['toolbar'] ?>
-                        <textarea class="form-control rounded-3" name="description" id="description" rows="6" placeholder="Describe what you have — quality, format, source, size, etc."><?= htmlspecialchars($mybb->get_input('description')) ?></textarea>
+                        <textarea class="form-control rounded-3" name="description" id="description" rows="6" placeholder="<?= htmlspecialchars($lang->offers['ph_description']) ?>"><?= htmlspecialchars($mybb->get_input('description')) ?></textarea>
                     </div>
 
                     <div class="d-flex justify-content-end gap-2">
-                        <a href="offers.php" class="btn btn-outline-secondary rounded-pill px-4 pulse-on-hover">Cancel</a>
-                        <button type="submit" class="btn btn-success rounded-pill px-4 pulse-on-hover"><i class="fas fa-gift me-1"></i>Post Offer</button>
+                        <a href="offers.php" class="btn btn-outline-secondary rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->offers['btn_form_cancel']) ?></a>
+                        <button type="submit" class="btn btn-success rounded-pill px-4 pulse-on-hover"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['btn_submit']) ?></button>
                     </div>
                 </form>
             </div>
@@ -724,7 +777,7 @@ $offers_q = $db->sql_query_prepared(
     [...$where_params, $offset, $perpage]
 );
 
-stdhead('Offers');
+stdhead(htmlspecialchars($lang->offers['title_list']));
 show_flash();
 ?>
 <style>
@@ -776,19 +829,19 @@ show_flash();
 <div class="container py-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in-up">
         <div>
-            <h4 class="mb-0"><i class="fas fa-gift me-2 text-success"></i>Offers</h4>
-            <small class="text-muted"><?= $total ?> total offers</small>
+            <h4 class="mb-0"><i class="fas fa-gift me-2 text-success"></i><?= htmlspecialchars($lang->offers['sec_list']) ?></h4>
+            <small class="text-muted"><?= htmlspecialchars(ags_fmt($lang->offers['txt_total'], $total)) ?></small>
         </div>
         <a href="offers.php?action=create" class="btn btn-success rounded-pill px-4 pulse-on-hover">
-            <i class="fas fa-plus me-1"></i>Post an Offer
+            <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->offers['btn_new']) ?>
         </a>
     </div>
 
     <!-- Quick status filters -->
     <div class="d-flex flex-wrap gap-2 mb-4 animate-fade-in-up">
-        <?php foreach (['open' => 'Open', 'uploaded' => 'Uploaded', 'cancelled' => 'Cancelled', '' => 'All'] as $val => $label): ?>
+        <?php foreach (['open' => $lang->offers['opt_status_open'], 'uploaded' => $lang->offers['opt_status_uploaded'], 'cancelled' => $lang->offers['opt_status_cancelled'], '' => $lang->offers['opt_status_all']] as $val => $label): ?>
         <a href="?status=<?= $val ?>&cat=<?= $filter_cat ?>&sort=<?= $sort ?>" class="btn btn-sm <?= $filter_status === $val ? 'btn-success' : 'btn-outline-secondary' ?> rounded-pill px-4 pulse-on-hover">
-            <?= $label ?>
+            <?= htmlspecialchars($label) ?>
         </a>
         <?php endforeach; ?>
     </div>
@@ -799,16 +852,16 @@ show_flash();
         while ($offer = $db->fetch_array($offers_q)):
             $count++;
             $status_badge = match($offer['status']) {
-                'open'      => '<span class="badge bg-success bg-opacity-25 text-success">Open</span>',
-                'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary">Uploaded</span>',
-                'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary">Cancelled</span>',
+                'open'      => '<span class="badge bg-success bg-opacity-25 text-success">' . htmlspecialchars($lang->offers['status_open']) . '</span>',
+                'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary">' . htmlspecialchars($lang->offers['status_uploaded']) . '</span>',
+                'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary">' . htmlspecialchars($lang->offers['status_cancelled']) . '</span>',
                 default     => ''
             };
         ?>
         <div class="d-flex align-items-center gap-3 p-3 <?= $count > 1 ? 'border-top' : '' ?> offer-row animate-fade-in-up">
             <div class="text-center flex-shrink-0" style="min-width:48px">
                 <div class="fw-bold text-success fs-5"><?= (int)$offer['requests'] ?></div>
-                <div class="text-muted" style="font-size:.65rem">wants</div>
+                <div class="text-muted" style="font-size:.65rem"><?= htmlspecialchars($lang->offers['lbl_wants']) ?></div>
             </div>
             <div class="flex-grow-1 min-w-0">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -823,7 +876,7 @@ show_flash();
                     <span><i class="fas fa-tag me-1"></i><?= htmlspecialchars($cats[$offer['category_id']]) ?></span>
                     <?php endif; ?>
                     <span><i class="fas fa-user me-1"></i><?= htmlspecialchars($offer['username']) ?></span>
-                    <span><i class="fas fa-clock me-1"></i><?= mkprettytime(TIMENOW - $offer['created_at']) ?> ago</span>
+                    <span><i class="fas fa-clock me-1"></i><?= htmlspecialchars(ags_fmt($lang->offers['txt_ago'], mkprettytime(TIMENOW - $offer['created_at']))) ?></span>
                 </div>
             </div>
         </div>
@@ -831,9 +884,9 @@ show_flash();
         <?php if ($count === 0): ?>
         <div class="text-center py-5 animate-fade-in-up">
             <i class="fas fa-gift fa-3x text-muted mb-3"></i>
-            <h6 class="text-muted">No offers found</h6>
+            <h6 class="text-muted"><?= htmlspecialchars($lang->offers['txt_empty']) ?></h6>
             <a href="offers.php?action=create" class="btn btn-success btn-sm rounded-pill px-4 mt-2 pulse-on-hover">
-                <i class="fas fa-plus me-1"></i>Post the first offer
+                <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->offers['btn_create_first']) ?>
             </a>
         </div>
         <?php endif; ?>

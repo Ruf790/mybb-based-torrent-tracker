@@ -661,6 +661,7 @@ require_once INC_PATH . '/functions_forum.php';
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
+require_once INC_PATH . '/functions_additions.php';
 
 
 
@@ -1993,7 +1994,8 @@ function renderSecurityTab(): string
                 ico.className = "fas fa-ban me-2";
                 btn.appendChild(ico);
                 btn.appendChild(document.createTextNode(t("ban_user", "Ban User")));
-                alert(t("error", "Error: {1}", e));
+                var msg = t("error", "Error: {1}", e);
+                if (window.agsAlert) { window.agsAlert(msg, "error"); } else { alert(msg); }
             });
     }
 	
@@ -2738,13 +2740,13 @@ function renderAuditTab(): string
     $clearBtn = '';
     
         $clearBtn = "
-        <form method='post' action='{$h_script}' class='d-inline'
-              onsubmit=\"return confirm(t('audit_clear_confirm', 'Clear entire audit history? This cannot be undone.'))\">
+        <form method='post' action='{$h_script}' class='d-inline'>
             <input type='hidden' name='action'       value='updateuser'>
             <input type='hidden' name='userid'       value='{$uid}'>
             <input type='hidden' name='my_post_key'  value='{$postCode}'>
             <input type='hidden' name='clear_modcomment' value='1'>
-            <button type='submit' class='btn btn-sm btn-outline-danger'>
+            <button type='submit' class='btn btn-sm btn-outline-danger' data-ags-danger='1'
+                    data-ags-confirm='" . htmlspecialchars((string)($lang->edituser['js_audit_clear_confirm'] ?? 'Clear entire audit history? This cannot be undone.'), ENT_QUOTES, 'UTF-8') . "'>
                 <i class='fas fa-trash me-1'></i>" . $lang->edituser['audit_clear'] . "
             </button>
         </form>";
@@ -3763,7 +3765,13 @@ function handleEditUser(): void
     $can_change_avatar = ($is_own_profile || $is_mod) ? 1 : 0;
 	
 	
-    echo '<script src="'.$BASEURL.'/scripts/avatar_upload.js"></script>';
+    // SweetAlert2 + ags-dialog.js (кнопки ОК/Да/Отмена — из global.lang.php)
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+    . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+    . ags_js_lang('global', ['dlg_ok' => 'js_dlg_ok', 'dlg_yes' => 'js_dlg_yes', 'dlg_cancel' => 'js_dlg_cancel'])
+    . '<script src="' . $BASEURL . '/scripts/ags-dialog.js?ver=1"></script>';
+    echo avatar_js_lang();
+    echo '<script src="'.$BASEURL.'/scripts/avatar_upload.js?ver=5"></script>';
     echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css">';
 
     
@@ -4096,9 +4104,10 @@ echo '
             $ags_js_lang[substr((string)$k, 3)] = (string)$v;
         }
     }
-    echo '<script>const AGS_LANG = ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
+    // Object.assign, not const: avatar_js_lang() and the SweetAlert button labels add their keys to the same object
+    echo '<script>window.AGS_LANG = Object.assign(window.AGS_LANG || {}, ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ');</script>';
     echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>
-<script src="'.$BASEURL.'/admin/scripts/edituser.js?ver=22"></script>';
+<script src="'.$BASEURL.'/admin/scripts/edituser.js?ver=23"></script>';
 	
 
 

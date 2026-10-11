@@ -441,4 +441,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (128, 'useractivity', 'Daily active users chart with time stats and exports.', 'useractivity.php', '[8]'),
 (129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]'),
 (130, 'exams', 'Ecams Test', 'exams.php', '[8]'),
-(132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]');
+(132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]'),
+(133, 'check_update', 'Update check (GitHub)', 'check_update.php', '[8]');

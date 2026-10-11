@@ -1300,6 +1300,9 @@ echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*" 
     }
 ?>
 <script>const AGS_LANG = <?= json_encode($usersearchJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<!-- SweetAlert2: тосты загрузки аватара (как в профиле) -->
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 <?php
     // FIX: cache-busting через filemtime() - при каждой правке usersearch.js
     // версия в URL меняется автоматически, браузер/reverse-proxy не сможет

@@ -10,11 +10,28 @@
  * Каждый блок сам проверяет наличие своих элементов, поэтому файл можно
  * подключать на любой вкладке UserCP.
  * Зависимости (глобальные): my_post_key, lang и showToast() (опционально).
+ * Тексты: window.AGS_LANG (из usercp.php), английский — fallback.
+ * Наружу отдаются только window.UserCP и window.toggleCatSub (нужны inline-обработчикам).
  */
+(function () {
+'use strict';
 
 /* ══════════════════════════════════════════════════════════
    Общие хелперы
    ══════════════════════════════════════════════════════════ */
+
+function t(key, fallback, ...args) {
+    const L = window.AGS_LANG || {};
+    let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+    args.forEach((a, i) => {
+        s = s.split('{' + (i + 1) + '}').join(a).split('%' + (i + 1) + '$s').join(a);
+    });
+    return s;
+}
+
+// SweetAlert через ags-dialog.js; без него — нативные alert()/confirm()
+const say = (msg, icon) => (window.agsAlert ? window.agsAlert(msg, icon) : (window.alert(msg), Promise.resolve()));
+const ask = (msg, opts) => (window.agsConfirm ? window.agsConfirm(msg, opts) : Promise.resolve(window.confirm(msg)));
 
 // Только http(s) (абсолютные или относительные, вроде ./uploads/avatars/x.png?dateline=…)
 // — никаких javascript:/data: в src
@@ -70,7 +87,7 @@ class UserMultiSelect {
     init() {
         this.input = document.createElement('input');
         this.input.type = 'text';
-        this.input.placeholder = 'Поиск пользователя...';
+        this.input.placeholder = t('search_user', 'Search for a user...');
         this.input.autocomplete = 'off';
 
         this.dropdown = document.createElement('div');
@@ -137,7 +154,7 @@ class UserMultiSelect {
 
     add(user) {
         if (this.selected.length >= this.limit) {
-            alert(`Максимум ${this.limit}`);
+            say(t('max_users', 'You can select up to {1} users at once', this.limit), 'info');
             return;
         }
         this.selected.push({ id: user.id, text: user.text, avatar: user.avatar || '' });
@@ -168,7 +185,8 @@ class UserMultiSelect {
             const x = document.createElement('span');
             x.className = 'user-tag-remove';
             x.setAttribute('role', 'button');
-            x.setAttribute('aria-label', 'Remove');
+            x.setAttribute('aria-label', t('remove', 'Remove'));
+            x.title = t('remove', 'Remove');
             x.innerHTML = '&times;';
             x.addEventListener('click', () => this.remove(user.id));
             tag.appendChild(x);
@@ -240,9 +258,14 @@ const UserCP = {
     // Удаление — AJAX: сервер отвечает JSON, строку убираем со страницы.
     removeBuddy(type, uid) {
         const msg = (typeof lang !== 'undefined' && lang && (type === 'ignored' ? lang.remove_ignored : lang.remove_buddy))
-            || 'Remove this user from the list?';
-        if (!confirm(msg)) return false;
+            || t('remove_from_list_confirm', 'Remove this user from the list?');
+        ask(msg, { danger: true }).then(ok => {
+            if (ok) this.doRemoveBuddy(type, uid);
+        });
+        return false;
+    },
 
+    doRemoveBuddy(type, uid) {
         const body = new URLSearchParams({ ajax: '1', my_post_key: my_post_key });
 
         fetch(
@@ -281,10 +304,8 @@ const UserCP = {
             })
             .catch(err => {
                 console.error('Remove from list failed:', err);
-                alert('Could not update the list. Please try again.');
+                say(t('list_update_failed', 'Could not update the list. Please try again.'), 'error');
             });
-
-        return false;
     }
 };
 
@@ -351,3 +372,5 @@ document.addEventListener('DOMContentLoaded', function () {
     UserCP.init();
     if (document.querySelector('.attachment-item')) initUserCPAttachments();
 });
+
+})();

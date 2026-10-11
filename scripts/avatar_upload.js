@@ -6,6 +6,18 @@
 // action=upload_avatar; usercp.php — через do_avatar(), поле формы action=do_avatar,
 // имя файла avatarupload), так что унификация тут не "один код на всё", а
 // "один файл, две реализации, включается нужная".
+//
+// Тексты: window.AGS_LANG (выводит avatar_js_lang() из include/functions.php,
+// ключи js_avatar_* в global.lang.php). Без него — английский fallback.
+
+function avatarT(key, fallback, ...args) {
+  const L = window.AGS_LANG || {};
+  let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+  args.forEach((a, i) => {
+    s = s.split('{' + (i + 1) + '}').join(a).split('%' + (i + 1) + '$s').join(a);
+  });
+  return s;
+}
 
 document.addEventListener('DOMContentLoaded', function () {
   const modernContainer = document.getElementById('avatar-container');
@@ -55,18 +67,18 @@ function initModernAvatarUpload(container) {
 
     const file = this.files[0];
     if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-      toastError('Allowed JPG/JPEG/PNG/GIF/WebP');
+      toastError(avatarT('avatar_bad_type', 'Please select a JPG, PNG, GIF or WebP image'));
       this.value = '';
       return;
     }
     if (file.size > MAX_MB * 1024 * 1024) {
-      toastError('File is too big (max. ' + MAX_MB + ' MB)');
+      toastError(avatarT('avatar_too_big', 'File is too big (max. {1} MB)', MAX_MB));
       this.value = '';
       return;
     }
 
     const id = container.dataset.uid;
-    if (!id) { toastError('ID profile is not found'); return; }
+    if (!id) { toastError(avatarT('avatar_no_profile', 'Profile ID not found')); return; }
 
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
@@ -114,10 +126,10 @@ function initModernAvatarUpload(container) {
           }
           const newUrl = res.url + (res.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
           avatarImg.src = newUrl;
-          avatarImg.alt = 'Avatar';
-          toastSuccess('Avatar Updated');
+          avatarImg.alt = avatarT('avatar_alt', 'Avatar');
+          toastSuccess(avatarT('avatar_updated', 'Avatar updated'));
         } else {
-          toastError((res && res.error) ? res.error : ('Server error: ' + xhr.status));
+          toastError((res && res.error) ? res.error : avatarT('avatar_server_error', 'Server error: {1}', xhr.status));
         }
       }
     };
@@ -156,13 +168,13 @@ function initLegacyAvatarUpload(avatarContainerEl) {
     if (!file) return;
 
     if (!validateFileType(file)) {
-      showToast('Please select a valid image file (JPG, PNG, GIF, WEBP)', 'error');
+      toastError(avatarT('avatar_bad_type', 'Please select a JPG, PNG, GIF or WebP image'));
       return;
     }
 
     if (!validateFileSize(file)) {
       const maxMb = parseFloat(avatarContainer.dataset.maxMb) || 2;
-      showToast('File size too large. Maximum ' + maxMb + 'MB allowed.', 'error');
+      toastError(avatarT('avatar_too_big', 'File is too big (max. {1} MB)', maxMb));
       return;
     }
 
@@ -201,7 +213,7 @@ function initLegacyAvatarUpload(avatarContainerEl) {
       newImg.src = dataUrl;
       newImg.className = avatarContainer.className || 'rounded img-fluid';
       newImg.style.cssText = avatarContainer.style.cssText + '; object-fit: cover;';
-      newImg.alt = 'Avatar';
+      newImg.alt = avatarT('avatar_alt', 'Avatar');
       newImg.dataset.originalSrc = dataUrl;
 
       avatarContainer.parentNode.replaceChild(newImg, avatarContainer);
@@ -216,7 +228,7 @@ function initLegacyAvatarUpload(avatarContainerEl) {
     formData.append('action', 'do_avatar');
     formData.append('my_post_key', window.my_post_key);
 
-    showToast('Uploading avatar...', 'info');
+    toastInfo(avatarT('avatar_uploading', 'Uploading avatar...'));
 
     fetch('usercp.php?action=do_avatar', {
       method: 'POST',
@@ -231,20 +243,20 @@ function initLegacyAvatarUpload(avatarContainerEl) {
       })
       .then((data) => {
         if (data.success) {
-          showToast('Avatar successfully updated!', 'success');
+          toastSuccess(avatarT('avatar_updated', 'Avatar updated'));
           if (data.avatarUrl) {
             updateGlobalAvatar(data.avatarUrl);
           }
           saveOriginalAvatar();
         } else {
-          const errorMsg = data.error || 'Unknown error occurred';
-          showToast('Error: ' + errorMsg, 'error');
+          const errorMsg = data.error || avatarT('avatar_unknown_error', 'Unknown error occurred');
+          toastError(avatarT('avatar_error', 'Error: {1}', errorMsg));
           restoreOriginalAvatar();
         }
       })
       .catch((error) => {
         console.error('Upload error:', error);
-        showToast('Upload error: ' + error.message, 'error');
+        toastError(avatarT('avatar_upload_error', 'Upload error: {1}', error.message));
         restoreOriginalAvatar();
       })
       .finally(() => {
@@ -271,29 +283,22 @@ function initLegacyAvatarUpload(avatarContainerEl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Общие утилиты уведомлений (используются обеими реализациями)
+// Общие утилиты уведомлений (обе реализации): SweetAlert-тост в правом верхнем
+// углу; без Swal — showToast() из toast.js, если есть; иначе alert().
 // ─────────────────────────────────────────────────────────────────────────
-function toastSuccess(msg) {
-  if (window.Swal) {
-    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: msg, showConfirmButton: false, timer: 1600 });
-  } else {
-    alert(msg);
+function avatarToast(msg, icon, timer) {
+  if (window.Swal && typeof window.Swal.fire === 'function') {
+    Swal.fire({ toast: true, position: 'top-end', icon: icon, title: msg, showConfirmButton: false, timer: timer });
+    return;
   }
+  if (typeof window.showToast === 'function') {
+    window.showToast(msg, icon);
+    return;
+  }
+  // без Swal и toast.js промежуточный статус («Загрузка...») не показываем — alert() блокирует страницу
+  if (icon !== 'info') alert(msg);
 }
 
-function toastError(msg) {
-  if (window.Swal) {
-    Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: msg, showConfirmButton: false, timer: 2200 });
-  } else {
-    alert(msg);
-  }
-}
-
-// showToast() — используется usercp-веткой (уже могла существовать глобально
-// на странице usercp.php раньше; на случай, если её там не было, даём
-// реализацию через тот же Swal/alert, что и toastSuccess/toastError выше.
-if (typeof window.showToast !== 'function') {
-  window.showToast = function (msg, type) {
-    if (type === 'error') { toastError(msg); } else { toastSuccess(msg); }
-  };
-}
+function toastSuccess(msg) { avatarToast(msg, 'success', 1600); }
+function toastError(msg)   { avatarToast(msg, 'error', 2200); }
+function toastInfo(msg)    { avatarToast(msg, 'info', 1200); }

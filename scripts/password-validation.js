@@ -1,4 +1,21 @@
+/**
+ * password-validation.js — смена пароля (usercp.php?action=password)
+ * Тексты: window.AGS_LANG (из usercp.php), английский — fallback.
+ */
 document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    function t(key, fallback, ...args) {
+        const L = window.AGS_LANG || {};
+        let s = (typeof L[key] === 'string' && L[key] !== '') ? L[key] : fallback;
+        args.forEach((a, i) => {
+            s = s.split('{' + (i + 1) + '}').join(a).split('%' + (i + 1) + '$s').join(a);
+        });
+        return s;
+    }
+    // SweetAlert через ags-dialog.js; без него — нативные alert()/confirm()
+    const say = (msg, icon) => (window.agsAlert ? window.agsAlert(msg, icon) : (window.alert(msg), Promise.resolve()));
+    const ask = (msg, opts) => (window.agsConfirm ? window.agsConfirm(msg, opts) : Promise.resolve(window.confirm(msg)));
 
     const config = window.passwordConfig || {};
     const MIN_PASSWORD_LENGTH = config.minLength || 6;
@@ -10,8 +27,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const oldPasswordInput = document.getElementById('oldpassword');
     const submitBtn = document.getElementById('submitBtn');
 
-    const strengthFill = document.getElementById('strengthFill');
-    const strengthText = document.getElementById('strengthText');
     const passwordLengthSpan = document.getElementById('passwordLength');
     const passwordCharCounter = document.getElementById('passwordCharCounter');
     const passwordMatch = document.getElementById('passwordMatch');
@@ -56,10 +71,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const length = password.length;
 
         if (length < MIN_PASSWORD_LENGTH) {
-            return { valid: false, message: `Min ${MIN_PASSWORD_LENGTH} chars` };
+            return { valid: false, message: t('pwd_min', 'Password must be at least {1} characters', MIN_PASSWORD_LENGTH) };
         }
         if (length > MAX_PASSWORD_LENGTH) {
-            return { valid: false, message: `Max ${MAX_PASSWORD_LENGTH} chars` };
+            return { valid: false, message: t('pwd_max', 'Password must be no longer than {1} characters', MAX_PASSWORD_LENGTH) };
         }
         return { valid: true };
     }
@@ -86,16 +101,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!passwordInput || !password2Input || !passwordMatch) return;
 
         if (password2Input.value.length === 0) {
-            passwordMatch.innerHTML = '';
+            passwordMatch.textContent = '';
+            passwordMatch.className = 'small mt-1';
             return;
         }
 
         if (passwordInput.value === password2Input.value) {
-            passwordMatch.innerHTML = '✔ Passwords match';
-            passwordMatch.className = 'text-success';
+            passwordMatch.textContent = '✔ ' + t('pwd_match', 'Passwords match');
+            passwordMatch.className = 'small mt-1 text-success';
         } else {
-            passwordMatch.innerHTML = '✖ Passwords do not match';
-            passwordMatch.className = 'text-danger';
+            passwordMatch.textContent = '✖ ' + t('pwd_mismatch', 'Passwords do not match');
+            passwordMatch.className = 'small mt-1 text-danger';
         }
     }
 
@@ -119,13 +135,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (oldPasswordInput && !oldPasswordInput.value) {
                 e.preventDefault();
-                alert('Enter current password');
+                say(t('enter_current_password', 'Enter your current password')).then(() => oldPasswordInput.focus());
                 return;
             }
 
             if (!passwordInput || !passwordInput.value) {
                 e.preventDefault();
-                alert('Enter new password');
+                say(t('enter_new_password', 'Enter a new password')).then(() => passwordInput?.focus());
                 return;
             }
 
@@ -134,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!lengthValidation.valid) {
                 e.preventDefault();
-                alert(lengthValidation.message);
+                say(lengthValidation.message).then(() => passwordInput.focus());
                 return;
             }
 
@@ -142,22 +158,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 const c = checkComplexity(password);
                 if (!(c.uppercase && c.lowercase && c.number && c.special)) {
                     e.preventDefault();
-                    alert('Password too weak');
+                    say(t('pwd_weak', 'Password is too weak')).then(() => passwordInput.focus());
                     return;
                 }
             }
 
             if (password2Input && password !== password2Input.value) {
                 e.preventDefault();
-                alert('Passwords do not match');
+                say(t('pwd_mismatch', 'Passwords do not match')).then(() => password2Input.focus());
                 return;
             }
 
             if (submitBtn) {
-                submitBtn.innerHTML = 'Updating...';
+                const spin = document.createElement('i');
+                spin.className = 'fas fa-spinner fa-spin me-2';
+                submitBtn.replaceChildren(spin, document.createTextNode(' ' + t('updating', 'Updating...')));
             }
         });
     }
-
-    console.log(`Password rules: ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH}, complex=${REQUIRE_COMPLEX_PASSWORDS}`);
 });

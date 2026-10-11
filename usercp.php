@@ -28,6 +28,7 @@ require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_remote_connect.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/datahandler.php';
+require_once INC_PATH . '/functions_additions.php';
 
 $parser = new postParser();
 
@@ -44,6 +45,13 @@ $errors  = '';
 $mybb->input['action'] ??= '';
 
 usercp_menu();
+
+// SweetAlert2 + ags-dialog.js (agsAlert / agsConfirm / data-ags-confirm) — выводится
+// на тех страницах UCP, где есть диалоги; кнопки ОК/Да/Отмена — из global.lang.php
+$swal_assets = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+    . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+    . ags_js_lang('global', ['dlg_ok' => 'js_dlg_ok', 'dlg_yes' => 'js_dlg_yes', 'dlg_cancel' => 'js_dlg_cancel'])
+    . '<script src="' . $BASEURL . '/scripts/ags-dialog.js?ver=1"></script>';
 
 // ── HTTP Referer sanitisation ──────────────────────────────────────────────
 $server_http_referer = '';
@@ -104,8 +112,8 @@ $breadcrumb_map = [
     'usergroups'        => $lang->usercpnav['ucp_nav_usergroups'],
     'attachments'       => $lang->usercpnav['ucp_nav_attachments'],
     'bookmarks'         => $lang->usercpnav['ucp_nav_book'],
-	'2fa'               => 'Two-Factor Authentication',
-    'do_2fa'            => 'Two-Factor Authentication',
+	'2fa'               => $lang->usercp['nav_2fa'],
+    'do_2fa'            => $lang->usercp['nav_2fa'],
 ];
 
 if (isset($breadcrumb_map[$mybb->input['action']])) {
@@ -136,6 +144,20 @@ function build_avatar_html(array $useravatar): string
 
 
 
+
+// ── Helper: lang strings for page JS → window.AGS_LANG ────────────────────
+// $map: js key (без префикса) => ключ из $lang->usercp. JS берёт их через t(key, fallback).
+function ucp_js_lang(array $map): string
+{
+    global $lang;
+    $out = [];
+    foreach ($map as $jsKey => $langKey) {
+        $out[$jsKey] = (string)($lang->usercp[$langKey] ?? '');
+    }
+    return '<script>window.AGS_LANG = Object.assign(window.AGS_LANG || {}, '
+         . json_encode($out, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+         . ');</script>';
+}
 
 // ── Helper: file type icon ─────────────────────────────────────────────────
 function get_file_type_icon(string $file_type): string
@@ -265,7 +287,7 @@ $_tpl_out =
                         <div class="section-title-left text-center w-100">
                             <i class="fas fa-user-edit section-icon-large"></i>
                             <div class="fw-bold mt-2">' . $lang_change_username . '</div>
-                            <small class="text-muted">Change your display name</small>
+                            <small class="text-muted">' . $lang->usercp['hint_changename_sub'] . '</small>
                         </div>
                     </div>
  
@@ -274,9 +296,8 @@ $_tpl_out =
                         <!-- Уведомление -->
                         <div class="info-hint mb-4">
                             <i class="fas fa-shield-alt me-2 text-info"></i>
-                            <strong>Important Notice:</strong>
-                            Changing your username will affect how you appear across the entire site.
-                            Some restrictions may apply.
+                            <strong>' . $lang->usercp['lbl_important_notice'] . '</strong>
+                            ' . $lang->usercp['hint_changename_notice'] . '
                         </div>
  
                         <!-- Подтверждение паролем -->
@@ -288,17 +309,17 @@ $_tpl_out =
                             <div class="position-relative">
                                 <input type="password" class="form-control pe-5"
                                        name="password" id="password"
-                                       placeholder="Enter your current password"
+                                       placeholder="' . $lang->usercp['ph_current_password'] . '"
                                        autocomplete="current-password" />
                                 <button type="button"
                                         class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
                                         data-target="password"
-                                        aria-label="Toggle password visibility">
+                                        aria-label="' . $lang->usercp['tip_toggle_password'] . '">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
                             <small class="text-muted d-block mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Enter your current password to confirm identity
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_confirm_identity'] . '
                             </small>
                         </div>
  
@@ -312,18 +333,18 @@ $_tpl_out =
                                    name="username" id="username"
                                    maxlength="' . $maxLen . '"
                                    value="' . $username . '"
-                                   placeholder="New username"
+                                   placeholder="' . $lang->usercp['ph_new_username'] . '"
                                    autocomplete="username" />
                             <div id="usernameFeedback" class="username-feedback"></div>
                             <div class="char-counter mt-1" id="charCounter">
                                 <i class="fas fa-text-height me-1"></i>
-                                <span id="usernameLength">0</span> / ' . $maxLen . ' characters
+                                <span id="usernameLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters'] . '
                                 <span id="minLengthHint" class="ms-2">
-                                    <i class="fas fa-info-circle me-1"></i> Minimum: ' . $minLen . ' characters
+                                    <i class="fas fa-info-circle me-1"></i> ' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '
                                 </span>
                             </div>
                             <small class="text-muted d-block mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Username must be unique and follow community guidelines
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_username_unique'] . '
                             </small>
                         </div>
  
@@ -353,7 +374,21 @@ $_tpl_out =
 window.MIN_USERNAME_LENGTH = ' . $minLen . ';
 window.MAX_USERNAME_LENGTH = ' . $maxLen . ';
 </script>
-<script src="' . $BASEURL . '/scripts/username-validation.js"></script>';
+' . $swal_assets . '
+' . ucp_js_lang([
+    'username_too_short' => 'js_username_too_short',
+    'username_too_long' => 'js_username_too_long',
+    'username_bad_chars' => 'js_username_bad_chars',
+    'username_empty' => 'js_username_empty',
+    'username_trim' => 'js_username_trim',
+    'username_double_space' => 'js_username_double_space',
+    'username_ok' => 'js_username_ok',
+    'username_rules' => 'js_username_rules',
+    'enter_username' => 'js_enter_username',
+    'enter_password_confirm' => 'js_enter_password_confirm',
+    'updating' => 'js_updating',
+]) . '
+<script src="' . $BASEURL . '/scripts/username-validation.js?ver=3"></script>';
 	
 	
 	
@@ -665,7 +700,7 @@ $current_cats = implode('', $cat_matches[0]);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['edit_options'].' | Настройки профиля</title>
+    <title>'.$SITENAME.' - '.$lang->usercp['edit_options'].'</title>
     
 	<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_options.css">
 
@@ -804,29 +839,29 @@ $current_cats = implode('', $cat_matches[0]);
             
             <!-- ========= TORRENT CATEGORY NOTIFICATIONS ========= -->
             <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
-                <i class="fas fa-bell me-1"></i> Torrent Category Notifications
+                <i class="fas fa-bell me-1"></i> ' . $lang->usercp['sec_cat_notifications'] . '
             </div>
             <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
                 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-                    <i class="fas fa-bell me-1 fa-fw text-warning"></i> Category Notifications
+                    <i class="fas fa-bell me-1 fa-fw text-warning"></i> ' . $lang->usercp['sec_cat_notifications_short'] . '
                 </div>
                 <div class="col">
                     <p class="text-muted small mb-3">
                         <i class="fas fa-info-circle me-1 text-info"></i>
-                        Select categories you want to be notified about when a new torrent is uploaded.
+                        ' . $lang->usercp['hint_cat_notifications'] . '
                     </p>
                     <!-- PM / Email toggles with beautiful icons -->
                     <div class="d-flex gap-4 mb-3 flex-wrap">
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" name="pmnotif" id="pmnotif" value="yes" '.$pmnotif.' />
                             <label class="form-check-label" for="pmnotif">
-                                <i class="fas fa-envelope me-1 text-primary"></i> <strong>PM Notification</strong>
+                                <i class="fas fa-envelope me-1 text-primary"></i> <strong>' . $lang->usercp['lbl_pm_notification_cat'] . '</strong>
                             </label>
                         </div>
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" name="emailnotif" id="emailnotif" value="yes" '.$emailnotif.' />
                             <label class="form-check-label" for="emailnotif">
-                                <i class="fas fa-at me-1 text-success"></i> <strong>Email Notification</strong>
+                                <i class="fas fa-at me-1 text-success"></i> <strong>' . $lang->usercp['lbl_email_notification_cat'] . '</strong>
                             </label>
                         </div>
                     </div>
@@ -837,7 +872,7 @@ $current_cats = implode('', $cat_matches[0]);
     '.$category_subscriptions.'
 </div>
 <div class="mt-2 small text-muted">
-    <i class="fas fa-info-circle me-1"></i> Click categories to toggle subscription
+    <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_cat_toggle'] . '
 </div>
 
                 </div>
@@ -948,7 +983,7 @@ $current_cats = implode('', $cat_matches[0]);
 </form>
 
 
-<script src="'.$BASEURL.'/scripts/usercp.js?ver=1901"></script>
+<script src="'.$BASEURL.'/scripts/usercp.js?ver=1903"></script>
 
 <script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
 
@@ -999,7 +1034,7 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
                     [(int)$CURUSER['id'], TIMENOW, $activationcode, $activation['type']]
                 );
 
-                $emailsubject = 'Account Activation at ' . $SITENAME;
+                $emailsubject = sprintf($lang->usercp['subj_account_activation'], $SITENAME);
                 
 				$emailmessage = sprintf(
                     $lang->member['email_activateaccount'],
@@ -1018,7 +1053,7 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
                 );
                 my_mail(
                     $mybb->get_input('email'),
-                    sprintf('Change of Email at ' . $SITENAME),
+                    sprintf($lang->usercp['subj_change_email'], $SITENAME),
                     sprintf($lang->usercp['email_changeemail'], $CURUSER['username'], $SITENAME, $CURUSER['email'],
                         $mybb->get_input('email'), $BASEURL, $activationcode, $CURUSER['username'], $CURUSER['id'])
                 );
@@ -1026,8 +1061,8 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
                 
 				stdok(
                     $lang->usercp['redirect_changeemail_activation'],
-                    "Email Change",
-                    "Activation link has been sent"
+                    $lang->usercp['lbl_email_change'],
+                    $lang->usercp['flash_activation_sent']
                 );
 				
 				
@@ -1138,7 +1173,7 @@ if ($mybb->input['action'] === 'email') {
                         <div class="section-title-left text-center">
                             <i class="fas fa-at section-icon-large"></i>
                             <div class="fw-bold mt-2">'.$lang->usercp['change_email'].'</div>
-                            <small class="text-muted">Update your email address</small>
+                            <small class="text-muted">' . $lang->usercp['hint_email_sub'] . '</small>
                         </div>
                     </div>
                     
@@ -1147,7 +1182,7 @@ if ($mybb->input['action'] === 'email') {
                         <!-- Security Notice -->
                         <div class="info-hint mb-4">
                             <i class="fas fa-shield-alt me-2 text-info"></i>
-                            <strong>Security Notice:</strong> Your email address is used for account recovery and important notifications. Please ensure its correct.
+                            <strong>' . $lang->usercp['lbl_security_notice'] . '</strong> ' . $lang->usercp['hint_email_notice'] . '
                         </div>
                         
                         <!-- Current Password -->
@@ -1157,13 +1192,13 @@ if ($mybb->input['action'] === 'email') {
                                 '.$lang->usercp['current_password'].'
                             </label>
                             <div class="position-relative">
-                                <input type="password" class="form-control" name="password" id="password" placeholder="Enter your current password" />
+                                <input type="password" class="form-control" name="password" id="password" placeholder="' . $lang->usercp['ph_current_password'] . '" />
                                 <button type="button" class="btn btn-link position-absolute end-0 top-0 mt-2 me-2 text-muted toggle-password" style="text-decoration: none;">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
                             <small class="text-muted d-block mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Enter your current password to verify your identity
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_verify_identity'] . '
                             </small>
                         </div>
                         
@@ -1176,7 +1211,7 @@ if ($mybb->input['action'] === 'email') {
                             <input type="email" class="form-control" name="email" id="email" maxlength="150" value="'.$email.'" placeholder="newemail@example.com" />
                             <div id="emailFeedback" class="email-feedback"></div>
                             <small class="text-muted d-block mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Your new email address will be used for all communications
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_new_email'] . '
                             </small>
                         </div>
                         
@@ -1186,7 +1221,7 @@ if ($mybb->input['action'] === 'email') {
                                 <i class="fas fa-check-circle text-success"></i>
                                 '.$lang->usercp['confirm_email'].'
                             </label>
-                            <input type="email" class="form-control" name="email2" id="email2" maxlength="150" value="'.$email2.'" placeholder="Confirm your new email" />
+                            <input type="email" class="form-control" name="email2" id="email2" maxlength="150" value="'.$email2.'" placeholder="' . $lang->usercp['ph_confirm_email'] . '" />
                             <div id="emailMatchFeedback" class="email-feedback"></div>
                         </div>
                         
@@ -1318,7 +1353,7 @@ if ($mybb->input['action'] === 'password') {
                         <div class="text-center p-3 border-end w-100">
                             <i class="fas fa-lock fa-3x mb-3 text-primary"></i>
                             <div class="fw-bold mt-2">' . $lang_change_password . '</div>
-                            <small class="text-muted">Update your password for security</small>
+                            <small class="text-muted">' . $lang->usercp['hint_password_sub'] . '</small>
                         </div>
                     </div>
 
@@ -1326,13 +1361,12 @@ if ($mybb->input['action'] === 'password') {
 
                         <div class="info-hint mb-4">
                             <i class="fas fa-shield-alt me-2 text-info"></i>
-                            <strong>Security Tip:</strong>
-                            Use a strong password with at least ' . $minLen . ' characters,
-                            including uppercase and lowercase letters, numbers, and special symbols.
+                            <strong>' . $lang->usercp['lbl_security_tip'] . '</strong>
+                            ' . sprintf($lang->usercp['hint_password_tip'], $minLen) . '
                             <br>
                             <small class="mt-1 d-block">
                                 <i class="fas fa-info-circle me-1"></i>
-                                Password length: ' . $minLen . ' – ' . $maxLen . ' characters
+                                ' . sprintf($lang->usercp['hint_password_length'], $minLen, $maxLen) . '
                                 ' . $requirecomplexpasswords . '
                             </small>
                         </div>
@@ -1348,12 +1382,12 @@ if ($mybb->input['action'] === 'password') {
                                        placeholder="••••••••" autocomplete="current-password" />
                                 <button type="button"
                                         class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
-                                        data-target="oldpassword" aria-label="Toggle password visibility">
+                                        data-target="oldpassword" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
                             <small class="text-muted mt-1 d-block">
-                                <i class="fas fa-info-circle me-1"></i> Enter your current password for verification
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_verification'] . '
                             </small>
                         </div>
 
@@ -1365,40 +1399,40 @@ if ($mybb->input['action'] === 'password') {
                             <div class="position-relative">
                                 <input type="password" class="form-control pe-5"
                                        name="password" id="password"
-                                       placeholder="New password"
+                                       placeholder="' . $lang->usercp['ph_new_password'] . '"
                                        autocomplete="new-password"
                                        maxlength="' . $maxLen . '" />
                                 <button type="button"
                                         class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
-                                        data-target="password" aria-label="Toggle password visibility">
+                                        data-target="password" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
 
                             <div class="char-counter mt-1" id="passwordCharCounter">
                                 <i class="fas fa-text-height me-1"></i>
-                                <span id="passwordLength">0</span> / ' . $maxLen . ' characters
+                                <span id="passwordLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters'] . '
                                 <span id="minLengthHint" class="ms-2">
-                                    <i class="fas fa-info-circle me-1"></i> Minimum: ' . $minLen . ' characters
+                                    <i class="fas fa-info-circle me-1"></i> ' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '
                                 </span>
                             </div>
 
                             <div class="mt-2" id="complexitySection">
                                 <div class="small fw-semibold mb-1">
-                                    <i class="fas fa-list-check me-1"></i> Password requirements:
+                                    <i class="fas fa-list-check me-1"></i> ' . $lang->usercp['lbl_password_requirements'] . '
                                 </div>
                                 <ul class="complexity-list" id="complexityList">
                                     <li id="complexityUppercase">
-                                        <i class="fas fa-times-circle"></i> At least one uppercase letter (A-Z)
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_upper'] . '
                                     </li>
                                     <li id="complexityLowercase">
-                                        <i class="fas fa-times-circle"></i> At least one lowercase letter (a-z)
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_lower'] . '
                                     </li>
                                     <li id="complexityNumber">
-                                        <i class="fas fa-times-circle"></i> At least one number (0-9)
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_number'] . '
                                     </li>
                                     <li id="complexitySpecial">
-                                        <i class="fas fa-times-circle"></i> At least one special character (!@#$%^&amp;* etc.)
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_special'] . '
                                     </li>
                                 </ul>
                             </div>
@@ -1419,11 +1453,11 @@ if ($mybb->input['action'] === 'password') {
                             <div class="position-relative">
                                 <input type="password" class="form-control pe-5"
                                        name="password2" id="password2"
-                                       placeholder="Confirm new password"
+                                       placeholder="' . $lang->usercp['ph_confirm_password'] . '"
                                        autocomplete="new-password" />
                                 <button type="button"
                                         class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
-                                        data-target="password2" aria-label="Toggle password visibility">
+                                        data-target="password2" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
@@ -1458,7 +1492,18 @@ window.passwordConfig = {
     requireComplex: ' . $requireComplex . '
 };
 </script>
-<script src="' . $BASEURL . '/scripts/password-validation.js"></script>';
+' . $swal_assets . '
+' . ucp_js_lang([
+    'pwd_min' => 'js_pwd_min',
+    'pwd_max' => 'js_pwd_max',
+    'pwd_match' => 'js_pwd_match',
+    'pwd_mismatch' => 'js_pwd_mismatch',
+    'pwd_weak' => 'js_pwd_weak',
+    'enter_current_password' => 'js_enter_current_password',
+    'enter_new_password' => 'js_enter_new_password',
+    'updating' => 'js_updating',
+]) . '
+<script src="' . $BASEURL . '/scripts/password-validation.js?ver=3"></script>';
 
 }
 
@@ -1495,7 +1540,7 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
         }
 
     } elseif (!$allowremoteavatars && !($_FILES['avatarupload']['name'] ?? '')) {
-        $avatar_error = 'error_avatarimagemissing';
+        $avatar_error = $lang->usercp['error_avatarimagemissing'];
 
     } elseif ($allowremoteavatars) {
         $avatarurl = preg_replace('#script:#i', '', $mybb->input['avatarurl']);
@@ -1503,12 +1548,12 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
         $file      = fetch_remote_file($avatarurl);
 
         if (!$file) {
-            $avatar_error = 'The URL you entered for your avatar does not appear to be valid. Please ensure you enter a valid URL';
+            $avatar_error = $lang->usercp['error_invalidavatarurl'];
         } else {
             $tmp_name = $avataruploadpath . '/remote_' . md5((string) time() . mt_rand());
             $fp       = @fopen($tmp_name, 'wb');
             if (!$fp) {
-                $avatar_error = 'The URL you entered for your avatar does not appear to be valid. Please ensure you enter a valid URL';
+                $avatar_error = $lang->usercp['error_invalidavatarurl'];
             } else {
                 fwrite($fp, $file);
                 fclose($fp);
@@ -1516,7 +1561,7 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
                 [$width, $height] = @getimagesize($tmp_name);
                 @unlink($tmp_name);
                 if (!$type) {
-                    $avatar_error = 'The URL you entered for your avatar does not appear to be valid. Please ensure you enter a valid URL';
+                    $avatar_error = $lang->usercp['error_invalidavatarurl'];
                 }
             }
         }
@@ -1526,11 +1571,11 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
             if ($width && $height && $maxavatardims !== '') {
                 [$maxwidth, $maxheight] = preg_split('/[|x]/', strtolower($maxavatardims));
                 if (($maxwidth && $width > $maxwidth) || ($maxheight && $height > $maxheight)) {
-                    $avatar_error = 'error_avatartoobig2';
+                    $avatar_error = sprintf($lang->usercp['error_avatartoobig'], $maxwidth, $maxheight);
                 }
             }
             if (strlen($avatarurl) > 200) {
-                $avatar_error = 'error_avatarurltoolong';
+                $avatar_error = $lang->usercp['error_avatarurltoolong'];
             }
         }
 
@@ -1579,8 +1624,6 @@ if ($mybb->input['action'] === 'avatar') {
         $avatarurl = htmlspecialchars_uni($CURUSER['avatar']);
     }
 
-    echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
-    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     $useravatar    = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
     $currentavatar = build_avatar_html($useravatar);
@@ -1622,13 +1665,13 @@ if ($mybb->input['action'] === 'avatar') {
 		';
 
     $removeavatar = !empty($CURUSER['avatar'])
-        ? '<button type="submit" class="btn btn-secondary" name="remove" value="Remove Avatar"><i class="fa-solid fa-xmark"></i> &nbsp;Remove Avatar</button>'
+        ? '<button type="submit" class="btn btn-secondary" name="remove" value="Remove Avatar"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->usercp['remove_avatar'] . '</button>'
         : '';
 
     $plugins->run_hooks('usercp_avatar_end');
     $avatar_error ??= '';
 
-    stdhead('title');
+    stdhead($lang->usercp['change_avatar']);
     build_breadcrumb();
     
 	$_tpl_out = '<!DOCTYPE html>
@@ -1733,7 +1776,7 @@ if ($mybb->input['action'] === 'avatar') {
                         <div class="section-title-left text-center">
                             <i class="fas fa-user-circle section-icon-large"></i>
                             <div class="fw-bold mt-2">'.$lang->usercp['change_avatar'].'</div>
-                            <small class="text-muted">Customize your profile picture</small>
+                            <small class="text-muted">' . $lang->usercp['hint_avatar_sub'] . '</small>
                         </div>
                     </div>
                     
@@ -1745,7 +1788,7 @@ if ($mybb->input['action'] === 'avatar') {
                         <!-- Current Avatar Display -->
                         <div class="info-hint mb-3">
                             <i class="fas fa-info-circle me-2 text-info"></i>
-                            <strong>Current Avatar:</strong> Your current profile picture is displayed below.
+                            <strong>' . $lang->usercp['lbl_current_avatar'] . '</strong> ' . $lang->usercp['hint_current_avatar'] . '
                         </div>
                         
                         <div class="row align-items-center g-4">
@@ -1754,7 +1797,7 @@ if ($mybb->input['action'] === 'avatar') {
                                     '.$currentavatar.'
                                     <div class="mt-2">
                                         <small class="text-muted">
-                                            <i class="fas fa-camera me-1"></i> Current avatar
+                                            <i class="fas fa-camera me-1"></i> ' . $lang->usercp['lbl_current_avatar_caption'] . '
                                         </small>
                                     </div>
                                 </div>
@@ -1763,13 +1806,13 @@ if ($mybb->input['action'] === 'avatar') {
                                 <div class="form-group">
                                     <label for="avatarupload">
                                         <i class="fas fa-cloud-upload-alt text-primary me-2"></i>
-                                        Upload New Avatar
+                                        ' . $lang->usercp['lbl_upload_new_avatar'] . '
                                     </label>
                                     <div class="file-input-wrapper">
                                         '.$avatarupload.'
                                     </div>
                                     <small class="text-muted d-block mt-2">
-                                        <i class="fas fa-info-circle me-1"></i> Supported formats: JPG, PNG, GIF (Max 2MB)
+                                        <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_avatar_formats'] . '
                                     </small>
                                 </div>
                             </div>
@@ -1790,7 +1833,7 @@ if ($mybb->input['action'] === 'avatar') {
                                 '.$avatar_remote.'
                             </div>
                             <small class="text-muted d-block mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Enter a direct URL to an image (e.g., https://example.com/avatar.jpg)
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_avatar_url'] . '
                             </small>
                         </div>
                         
@@ -1823,6 +1866,12 @@ if ($mybb->input['action'] === 'avatar') {
 
 
 	echo $_tpl_out;
+
+    // Скрипты — после разметки страницы (раньше выводились до stdhead())
+    echo $swal_assets;
+    echo avatar_js_lang();
+    echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js?ver=5"></script>';
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1859,7 +1908,7 @@ if ($mybb->input['action'] === 'do_addsubscription' && $mybb->get_input('type') 
     } else {
         $url = get_thread_link($thread['tid']);
     }
-    redirect($url, 'The selected thread has been added to your subscriptions list.<br />You will be now returned to the location you came from');
+    redirect($url, $lang->usercp['redirect_subscriptionadded']);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1882,7 +1931,7 @@ if ($mybb->input['action'] === 'addsubscription') {
         add_subscribed_forum($forum['fid']);
 
         $url = ($server_http_referer && $mybb->request_method !== 'post') ? $server_http_referer : 'index.php';
-        redirect($url, 'redirect_forumsubscriptionadded');
+        redirect($url, $lang->usercp['redirect_forumsubscriptionadded']);
     } else {
         $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
         if (!$thread || $thread['visible'] == -1) { error('error_invalidthread'); }
@@ -2030,7 +2079,7 @@ if ($mybb->input['action'] === 'do_editsig' && $mybb->request_method === 'post')
     $db->sql_query_prepared("UPDATE users SET signature = ? WHERE id = ?", [$mybb->input['signature'], (int)$CURUSER['id']]);
 
     $plugins->run_hooks('usercp_do_editsig_end');
-    redirect('usercp.php?action=editsig', 'Your signature has been successfully updated.<br />You will be now returned to the signature settings');
+    redirect('usercp.php?action=editsig', $lang->usercp['redirect_sigupdated']);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2079,7 +2128,7 @@ if ($sig && $heading) {
 	   
 	   <html>
 <head>
-<title>'.$SITENAME.' - '.$lang->userc['edit_sig'].'</title>
+<title>'.$SITENAME.' - '.$lang->usercp['edit_sig'].'</title>
 
 </head>
 <body>
@@ -2199,9 +2248,9 @@ if ($sig && $heading) {
                 
                 <!-- Signature Textarea -->
                 <div class="form-group">
-                    <textarea style="height: 300px; width: 100%" class="form-control" id="signature" name="signature" placeholder="Write your signature here...">'.$sig.'</textarea>
+                    <textarea style="height: 300px; width: 100%" class="form-control" id="signature" name="signature" placeholder="' . $lang->usercp['ph_signature'] . '">'.$sig.'</textarea>
                     <div class="char-counter" id="charCounter">
-                        <i class="fas fa-text-height me-1"></i> <span id="charCount">0</span> characters
+                        <i class="fas fa-text-height me-1"></i> <span id="charCount">0</span> ' . $lang->usercp['lbl_characters'] . '
                     </div>
                 </div>
                 
@@ -2217,7 +2266,7 @@ if ($sig && $heading) {
                         <div class="section-title-left text-center">
                             <i class="fas fa-pen-fancy section-icon-large"></i>
                             <div class="fw-bold mt-2">'.$lang->usercp['edit_sig'].'</div>
-                            <small class="text-muted">Signature settings</small>
+                            <small class="text-muted">' . $lang->usercp['hint_sig_sub'] . '</small>
                         </div>
                     </div>
                     
@@ -2226,7 +2275,7 @@ if ($sig && $heading) {
                         <!-- Info Notice -->
                         <div class="info-hint mb-3">
                             <i class="fas fa-info-circle me-2 text-info"></i>
-                            <strong>Signature Guidelines:</strong> Your signature appears below all your posts. Keep it clean and follow community rules.
+                            <strong>' . $lang->usercp['lbl_sig_guidelines'] . '</strong> ' . $lang->usercp['hint_sig_guidelines'] . '
                         </div>
                         
                         <!-- Radio Options -->
@@ -2237,7 +2286,7 @@ if ($sig && $heading) {
                                 '.$lang->usercp['enable_sig_posts'].'
                             </label>
                             <div class="text-muted small ms-4 mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Update signature in all existing posts
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_enable_all'] . '
                             </div>
                         </div>
                         
@@ -2248,7 +2297,7 @@ if ($sig && $heading) {
                                 '.$lang->usercp['disable_sig_posts'].'
                             </label>
                             <div class="text-muted small ms-4 mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Remove signature from all existing posts
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_disable_all'] . '
                             </div>
                         </div>
                         
@@ -2259,7 +2308,7 @@ if ($sig && $heading) {
                                 '.$lang->usercp['leave_sig_settings'].'
                             </label>
                             <div class="text-muted small ms-4 mt-1">
-                                <i class="fas fa-info-circle me-1"></i> Only affect future posts
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_future'] . '
                             </div>
                         </div>
                         
@@ -2326,9 +2375,9 @@ if ($mybb->input['action'] === 'do_profile' && $mybb->request_method === 'post')
     $secret_errors = [];
 
     if ($passhint > 0 && $hintanswer === '') {
-        $secret_errors[] = 'Please provide an answer for the secret question';
+        $secret_errors[] = $lang->usercp['err_secret_answer'];
     } elseif ($passhint === 0 && $hintanswer !== '') {
-        $secret_errors[] = 'Please select a secret question';
+        $secret_errors[] = $lang->usercp['err_secret_question'];
     }
 
     require_once INC_PATH . '/datahandlers/user.php';
@@ -2386,7 +2435,7 @@ if ($mybb->input['action'] === 'do_profile' && $mybb->request_method === 'post')
         }
 
         $plugins->run_hooks('usercp_do_profile_end');
-        redirect('usercp.php?action=profile', 'redirect_profileupdated');
+        redirect('usercp.php?action=profile', $lang->usercp['redirect_profileupdated']);
     }
 }
 
@@ -2400,7 +2449,7 @@ if ($mybb->input['action'] === 'removesubscriptions') {
         $plugins->run_hooks('usercp2_removesubscriptions_forum');
         $db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [(int)$CURUSER['id']]);
         $url = $server_http_referer ?: 'usercp.php?action=forumsubscriptions';
-        redirect($url, $lang->redirect_forumsubscriptionsremoved);
+        redirect($url, $lang->usercp['redirect_forumsubscriptionsremoved']);
     } else {
         $plugins->run_hooks('usercp2_removesubscriptions_thread');
         $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [(int)$CURUSER['id']]);
@@ -2568,7 +2617,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                 $folder_label .= $lang->usercp['icon_new'];
                 $new_class    = 'subject_new';
                 $thread['newpostlink'] = get_thread_link($thread['tid'], 0, 'newpost');
-                $gotounread   = '<a href="' . $thread['newpostlink'] . '"><i class="fas fa-chevron-right text-primary" title="Go to first unread post"></i></a>';
+                $gotounread   = '<a href="' . $thread['newpostlink'] . '"><i class="fas fa-chevron-right text-primary" title="' . $lang->usercp['goto_first_unread'] . '"></i></a>';
             } else {
                 $folder_label .= $lang->usercp['icon_no_new'];
                 $new_class    = 'subject_old';
@@ -2593,9 +2642,9 @@ if ($mybb->input['action'] === 'subscriptions') {
             $thread['views']   = ts_nf($thread['views']);
 
             $notification_type = match ((string) $thread['notification']) {
-                '2'     => 'Instant PM Notification',
-                '1'     => 'Change to email notification',
-                default => 'No Notification',
+                '2'     => $lang->usercp['pm_notification'],
+                '1'     => $lang->usercp['email_notification'],
+                default => $lang->usercp['no_notification'],
             };
 
            
@@ -2630,7 +2679,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                     <div class="notification-method mt-2">
                         <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">
                             <i class="fas fa-bell me-1"></i>
-                            '.$lang->usercp['notification_method'].': 
+                            '.$lang->usercp['notification_method'].' 
                             <span class="fw-medium">'.$notification_type.'</span>
                         </span>
                     </div>
@@ -2689,7 +2738,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                     <div class="d-flex gap-1">
                         <a href="'.$thread['threadlink'].'" 
                            class="btn btn-sm btn-outline-primary" 
-                           title="Go to Thread">
+                           title="' . $lang->usercp['tip_go_to_thread'] . '">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </div>
@@ -2706,17 +2755,17 @@ if ($mybb->input['action'] === 'subscriptions') {
                     <div class="row small">
                         <div class="col-md-4">
                             <i class="fas fa-calendar-plus me-1 text-muted"></i>
-                            <span class="text-muted">Подписана:</span>
+                            <span class="text-muted">' . $lang->usercp['lbl_subscribed_on'] . ':</span>
                             <span class="ms-1">'.$subscription_date.'</span>
                         </div>
                         <div class="col-md-4">
                             <i class="fas fa-user me-1 text-muted"></i>
-                            <span class="text-muted">Автор:</span>
+                            <span class="text-muted">' . $lang->usercp['author'] . ':</span>
                             <span class="ms-1">'.htmlspecialchars_uni($thread['author'] ?? '—').'</span>
                         </div>
                         <div class="col-md-4">
                             <i class="fas fa-tag me-1 text-muted"></i>
-                            <span class="text-muted">Форум:</span>
+                            <span class="text-muted">' . $lang->usercp['forum'] . ':</span>
                             <span class="ms-1">'.htmlspecialchars_uni($thread['forumname'] ?? '—').'</span>
                         </div>
                     </div>
@@ -2841,9 +2890,6 @@ if ($mybb->input['action'] === 'subscriptions') {
         }
     }
 </style>
-
-
-<script type="text/javascript" src="' . $BASEURL . '/scripts/subscription.js"></script>
 ';
 			
 			
@@ -2863,7 +2909,7 @@ if ($mybb->input['action'] === 'subscriptions') {
 			
         }
 
-        $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
+        $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;' . $lang->usercp['btn_go'] . '</button>';
         
 		$remove_options = '<div class="row g-3">
 	<div class="col-lg text-center text-sm-center text-md-center text-lg-start text-xl-start text-xxl-start">
@@ -2885,11 +2931,11 @@ if ($mybb->input['action'] === 'subscriptions') {
 		
     } else {
         $remove_options = '';
-        $threads = 'You are currently not subscribed to any threads.<p>To subscribe to a thread:</p><ol><li>Navigate to the thread you wish to subscribe to.</li><li>Click the Subscribe to this thread link towards the bottom of the page.</li></ol>';
+        $threads = $lang->usercp['no_thread_subscriptions'];
     }
 
     $plugins->run_hooks('usercp_subscriptions_end');
-    stdhead('title');
+    stdhead($lang->usercp['subscriptions']);
     build_breadcrumb();
     
 	
@@ -3047,7 +3093,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                                 
                                 <!-- Переключатель "Select All" -->
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="text-muted small me-2">Select All</span>
+                                    <span class="text-muted small me-2">' . $lang->usercp['lbl_select_all'] . '</span>
                                     <label class="subscription-switch">
                                         <input name="allbox" type="checkbox" class="checkall" value="1">
                                         <span class="switch-slider"></span>
@@ -3065,8 +3111,8 @@ if ($mybb->input['action'] === 'subscriptions') {
                             <!-- Сообщение если нет подписок -->
                             <div id="noSubscriptions" class="text-center py-5 d-none">
                                 <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
-                                <h5 class="text-muted">Нет активных подписок</h5>
-                                <p class="text-muted">Вы не подписаны ни на одну тему</p>
+                                <h5 class="text-muted">' . $lang->usercp['lbl_no_subs_title'] . '</h5>
+                                <p class="text-muted">' . $lang->usercp['hint_no_subs'] . '</p>
                             </div>
                         </div>
                         
@@ -3074,7 +3120,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                         <div class="card-footer bg-light py-3">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div class="selected-count text-muted small d-none">
-                                    Selected: <span id="selectedCount">0</span>
+                                    ' . $lang->usercp['lbl_selected'] . ' <span id="selectedCount">0</span>
                                 </div>
                                 
                                 <div class="d-flex gap-2">
@@ -3093,7 +3139,14 @@ if ($mybb->input['action'] === 'subscriptions') {
         </div>
     </div>
 
-    <script type="text/javascript" src="' . $BASEURL . '/scripts/subscriptions.js"></script>
+    ' . $swal_assets . '
+    ' . ucp_js_lang([
+    'select_subscription' => 'no_subscriptions_selected',
+    'confirm_unsubscribe' => 'js_confirm_unsubscribe',
+    'close' => 'js_close',
+]) . '
+    <script type="text/javascript" src="' . $BASEURL . '/scripts/subscription.js?ver=31"></script>
+    <script type="text/javascript" src="' . $BASEURL . '/scripts/subscriptions.js?ver=31"></script>
 	
 	
 </body>
@@ -3127,7 +3180,7 @@ if ($mybb->input['action'] === 'removesubscription'
         $plugins->run_hooks('usercp2_removesubscription_forum');
         remove_subscribed_forum($forum['fid']);
         $url = ($server_http_referer && $mybb->request_method !== 'post') ? $server_http_referer : 'usercp.php?action=forumsubscriptions';
-        redirect($url, 'The selected forum has been removed from your forum subscriptions list.<br />You will be now returned to where you came from.');
+        redirect($url, $lang->usercp['redirect_forumsubscriptionremoved']);
     } else {
         $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
         if (!$thread) { error('error_invalidthread'); }
@@ -3192,7 +3245,7 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 		<div class="col align-self-center">
 
 
-<p class="fs-6 mb-0">Never</p>
+<p class="fs-6 mb-0">' . $lang->usercp['lastpost_never'] . '</p>
 			
 		</div>
 	</div>
@@ -3206,7 +3259,7 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 		<div class="col align-self-center">
 
 
-<p class="fs-6 mb-0">Never</p>
+<p class="fs-6 mb-0">' . $lang->usercp['lastpost_never'] . '</p>
 			
 		</div>
 		<div class="col-auto align-self-center">
@@ -3341,11 +3394,11 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
     <h5 class="text-muted mb-3">' . $lang->usercp['no_forum_subscriptions'] . '</h5>
     <p class="text-muted small mb-0">
         <i class="fa-regular fa-bell-slash me-1"></i>
-        You are not subscribed to any forums
+        ' . $lang->usercp['hint_no_forum_subs'] . '
     </p>
     <a href="' . $BASEURL . '/index2.php" class="btn btn-sm btn-outline-primary mt-3">
         <i class="fa-regular fa-compass me-1"></i>
-        Browse Forums
+        ' . $lang->usercp['btn_browse_forums'] . '
     </a>
 </div>';
 		
@@ -3501,19 +3554,19 @@ if ($mybb->input['action'] === 'bookmarks') {
         $remove_options = '
         <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap">
             <button type="button" class="btn btn-danger btn-sm mb-2" data-bs-toggle="modal" data-bs-target="#confirmDeleteSelectedModal">
-                <i class="fa-solid fa-trash me-1"></i> Delete Selected
+                <i class="fa-solid fa-trash me-1"></i> ' . $lang->usercp['btn_delete_selected'] . '
             </button>
             <button type="button" class="btn btn-danger btn-sm mb-2" data-bs-toggle="modal" data-bs-target="#confirmDeleteAllModal">
-                <i class="fa-solid fa-xmark me-1"></i> Remove All
+                <i class="fa-solid fa-xmark me-1"></i> ' . $lang->usercp['btn_remove_all'] . '
             </button>
         </div>';
     } else {
         $bookmark_cards = '
         <div class="col-12 text-center py-5 text-muted">
             <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);"><i class="fa-regular fa-bookmark"></i></div>
-            <h5 class="mb-2 fw-semibold">Your bookmark list is empty</h5>
-            <p class="mb-4">Start building your collection by bookmarking your favourite torrents.</p>
-            <a href="browse.php" class="btn btn-primary btn-sm shadow-sm"><i class="fa-solid fa-magnifying-glass me-1"></i> Browse Torrents</a>
+            <h5 class="mb-2 fw-semibold">' . $lang->usercp['lbl_bookmarks_empty'] . '</h5>
+            <p class="mb-4">' . $lang->usercp['hint_bookmarks_empty'] . '</p>
+            <a href="browse.php" class="btn btn-primary btn-sm shadow-sm"><i class="fa-solid fa-magnifying-glass me-1"></i> ' . $lang->usercp['btn_browse_torrents'] . '</a>
         </div>';
         $remove_options = '';
     }
@@ -3521,14 +3574,17 @@ if ($mybb->input['action'] === 'bookmarks') {
     $post_code   = $mybb->post_code;
     $multipage_h = $multipage ? '<div class="mt-3">' . $multipage . '</div>' : '';
 
+    $bm_subtitle    = sprintf($lang->usercp['hint_bookmarks_sub'], $total);
+    $bm_confirm_sel = sprintf($lang->usercp['hint_confirm_delete_bm'], '<span id="selectedCount">0</span>');
+
     $bookmarks_html = <<<HTML
 <div class="container">
     <div class="row">
         <div class="col-lg-3 mb-4">{$usercpnav}</div>
         <div class="col-lg-9">
             <div class="page-header mb-4">
-                <h2 class="h3 mb-2 text-dark"><i class="fa-solid fa-bookmark me-2"></i>My Bookmarks</h2>
-                <p class="text-muted mb-0">Manage your bookmarked torrents &bull; {$total} total</p>
+                <h2 class="h3 mb-2 text-dark"><i class="fa-solid fa-bookmark me-2"></i>{$lang->usercp['lbl_my_bookmarks']}</h2>
+                <p class="text-muted mb-0">{$bm_subtitle}</p>
             </div>
             <form method="post" action="usercp.php" id="bookmarksForm">
                 <input type="hidden" name="my_post_key" value="{$post_code}">
@@ -3544,11 +3600,11 @@ if ($mybb->input['action'] === 'bookmarks') {
 <div class="modal fade" id="confirmDeleteSelectedModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">Are you sure you want to delete <span id="selectedCount">0</span> selected bookmark(s)?</div>
+      <div class="modal-header"><h5 class="modal-title">{$lang->usercp['lbl_confirm_deletion']}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">{$bm_confirm_sel}</div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteSelectedBtn">Yes, Delete</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$lang->usercp['cancel']}</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteSelectedBtn">{$lang->usercp['btn_yes_delete']}</button>
       </div>
     </div>
   </div>
@@ -3557,11 +3613,11 @@ if ($mybb->input['action'] === 'bookmarks') {
 <div class="modal fade" id="confirmDeleteAllModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">Are you sure you want to remove <strong>all</strong> bookmarks? This cannot be undone.</div>
+      <div class="modal-header"><h5 class="modal-title">{$lang->usercp['lbl_confirm_deletion']}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">{$lang->usercp['hint_confirm_remove_all_bm']}</div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteAllBtn">Yes, Remove All</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$lang->usercp['cancel']}</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteAllBtn">{$lang->usercp['btn_yes_remove_all']}</button>
       </div>
     </div>
   </div>
@@ -3590,10 +3646,10 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
                 <i class="fa-regular fa-bookmark"></i>
             </div>
-            <h5 class="mb-2 fw-semibold">Your bookmark list is empty</h5>
-            <p class="mb-4">Start building your collection by bookmarking your favourite torrents.</p>
+            <h5 class="mb-2 fw-semibold"><?= htmlspecialchars_uni($lang->usercp['lbl_bookmarks_empty']) ?></h5>
+            <p class="mb-4"><?= htmlspecialchars_uni($lang->usercp['hint_bookmarks_empty']) ?></p>
             <a href="browse.php" class="btn btn-primary btn-sm shadow-sm">
-                <i class="fa-solid fa-magnifying-glass me-1"></i> Browse Torrents
+                <i class="fa-solid fa-magnifying-glass me-1"></i> <?= htmlspecialchars_uni($lang->usercp['btn_browse_torrents']) ?>
             </a>
         </div>`;
         document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.remove();
@@ -3602,7 +3658,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.addEventListener('click', function () {
         const count = form.querySelectorAll('input[type="checkbox"]:checked').length;
-        if (!count) { showToast('Please select at least one bookmark.', false); return; }
+        if (!count) { showToast(<?= json_encode($lang->usercp['js_select_bookmark'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>, false); return; }
         document.getElementById('selectedCount').textContent = count;
         new bootstrap.Modal(document.getElementById('confirmDeleteSelectedModal')).show();
     });
@@ -3651,7 +3707,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
     <?php
 
-    stdhead('My Bookmarks - ' . $SITENAME);
+    stdhead($lang->usercp['lbl_my_bookmarks'] . ' - ' . $SITENAME);
     build_breadcrumb();
     echo $bookmarks_html;
 }
@@ -3687,19 +3743,19 @@ if ($mybb->input['action'] === 'manage_files') {
 
             // Build badge links inline
             $badge_comment = $file['comment_id']
-                ? '<a href="' . get_comment_link($file['comment_id'], $file['torrentid']) . '#pid' . $file['comment_id'] . '" class="badge text-success bg-success bg-opacity-10 me-1"><i class="fa-solid fa-comment me-1"></i>Comment #' . $file['comment_id'] . '</a>'
+                ? '<a href="' . get_comment_link($file['comment_id'], $file['torrentid']) . '#pid' . $file['comment_id'] . '" class="badge text-success bg-success bg-opacity-10 me-1"><i class="fa-solid fa-comment me-1"></i>' . sprintf($lang->usercp['lbl_badge_comment'], $file['comment_id']) . '</a>'
                 : '';
             $badge_news = $file['news_id']
-                ? '<a href="news.php?id=' . $file['news_id'] . '" class="badge text-warning bg-warning bg-opacity-10 me-1"><i class="fa-solid fa-newspaper me-1"></i>News #' . $file['news_id'] . '</a>'
+                ? '<a href="news.php?id=' . $file['news_id'] . '" class="badge text-warning bg-warning bg-opacity-10 me-1"><i class="fa-solid fa-newspaper me-1"></i>' . sprintf($lang->usercp['lbl_badge_news'], $file['news_id']) . '</a>'
                 : '';
             $badge_torrent = $file['torrent_id']
-                ? '<a href="' . get_torrent_link($file['torrent_id']) . '" class="badge text-info bg-info bg-opacity-10 me-1"><i class="fa-solid fa-download me-1"></i>Torrent #' . $file['torrent_id'] . '</a>'
+                ? '<a href="' . get_torrent_link($file['torrent_id']) . '" class="badge text-info bg-info bg-opacity-10 me-1"><i class="fa-solid fa-download me-1"></i>' . sprintf($lang->usercp['lbl_badge_torrent'], $file['torrent_id']) . '</a>'
                 : '';
             $badge_post = $file['postid']
-                ? '<a href="' . $postlink . '#pid' . $file['postid'] . '" class="badge text-primary bg-primary bg-opacity-10 me-1"><i class="fa-solid fa-file-lines me-1"></i>Post #' . $file['postid'] . '</a>'
+                ? '<a href="' . $postlink . '#pid' . $file['postid'] . '" class="badge text-primary bg-primary bg-opacity-10 me-1"><i class="fa-solid fa-file-lines me-1"></i>' . sprintf($lang->usercp['lbl_badge_post'], $file['postid']) . '</a>'
                 : '';
             $badge_msg = $file['messages_id']
-                ? '<a href="messages.php?id=' . $file['messages_id'] . '" class="badge text-secondary bg-secondary bg-opacity-10 me-1"><i class="fa-solid fa-envelope-open-text me-1"></i>Message #' . $file['messages_id'] . '</a>'
+                ? '<a href="messages.php?id=' . $file['messages_id'] . '" class="badge text-secondary bg-secondary bg-opacity-10 me-1"><i class="fa-solid fa-envelope-open-text me-1"></i>' . sprintf($lang->usercp['lbl_badge_message'], $file['messages_id']) . '</a>'
                 : '';
 
             $fn_safe   = htmlspecialchars_uni($file['file_name']);
@@ -3727,7 +3783,7 @@ if ($mybb->input['action'] === 'manage_files') {
                             <div class="file-badges mt-2">{$badge_comment}{$badge_news}{$badge_torrent}{$badge_post}{$badge_msg}</div>
                         </div>
                         <div class="file-actions d-grid">
-                            <a href="{$file_url}" target="_blank" class="btn btn-outline-primary"><i class="fa-solid fa-eye me-2"></i>View File</a>
+                            <a href="{$file_url}" target="_blank" class="btn btn-outline-primary"><i class="fa-solid fa-eye me-2"></i>{$lang->usercp['btn_view_file']}</a>
                         </div>
                     </div>
                 </div>
@@ -3739,19 +3795,19 @@ if ($mybb->input['action'] === 'manage_files') {
         $remove_options = '
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 py-3">
             <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-danger px-4" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal"><i class="fa-solid fa-trash me-2"></i>Delete Selected</button>
-                <a href="#" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteAllModal"><i class="fa-solid fa-broom me-2"></i>Delete All</a>
+                <button type="button" class="btn btn-danger px-4" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal"><i class="fa-solid fa-trash me-2"></i>' . $lang->usercp['btn_delete_selected'] . '</button>
+                <a href="#" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteAllModal"><i class="fa-solid fa-broom me-2"></i>' . $lang->usercp['btn_delete_all'] . '</a>
             </div>
             <div class="d-flex align-items-center gap-3">
-                <span class="text-muted">Selected: <span id="selected-count" class="fw-semibold">0</span></span>
+                <span class="text-muted">' . $lang->usercp['lbl_selected'] . ' <span id="selected-count" class="fw-semibold">0</span></span>
                 <div class="form-check">
                     <input type="checkbox" class="form-check-input" id="select-all">
-                    <label class="form-check-label text-muted" for="select-all">Select all</label>
+                    <label class="form-check-label text-muted" for="select-all">' . $lang->usercp['lbl_select_all'] . '</label>
                 </div>
             </div>
         </div>';
     } else {
-        $filelist       = '<div class="text-center py-5"><div class="empty-state"><i class="fa-regular fa-folder-open fa-4x text-muted mb-4"></i><h4 class="text-muted mb-3">No files uploaded yet</h4><p class="text-muted mb-4">You haven\'t uploaded any files yet.</p></div></div>';
+        $filelist       = '<div class="text-center py-5"><div class="empty-state"><i class="fa-regular fa-folder-open fa-4x text-muted mb-4"></i><h4 class="text-muted mb-3">' . $lang->usercp['lbl_no_files'] . '</h4><p class="text-muted mb-4">' . $lang->usercp['hint_no_files'] . '</p></div></div>';
         $remove_options = '';
     }
 
@@ -3759,14 +3815,17 @@ if ($mybb->input['action'] === 'manage_files') {
     $mp_html    = $multipage ? '<div class="mt-4"><nav><ul class="pagination justify-content-center">' . $multipage . '</ul></nav></div>' : '';
     $ro_html    = $remove_options ? '<div class="card-footer bg-light py-3">' . $remove_options . '</div>' : '';
 
+    $files_subtitle = sprintf($lang->usercp['hint_files_sub'], $filecount);
+    $files_badge    = sprintf($lang->usercp['lbl_files_count'], $filecount);
+
     $files_html = <<<HTML
 <div class="container">
     <div class="row">
         <div class="col-lg-3 mb-4">{$usercpnav}</div>
         <div class="col-lg-9">
             <div class="page-header mb-4">
-                <h2 class="h3 mb-2 text-dark"><i class="fa-solid fa-images me-2"></i>My Files</h2>
-                <p class="text-muted mb-0">Manage your uploaded files &bull; {$filecount} total</p>
+                <h2 class="h3 mb-2 text-dark"><i class="fa-solid fa-images me-2"></i>{$lang->usercp['lbl_my_files']}</h2>
+                <p class="text-muted mb-0">{$files_subtitle}</p>
             </div>
             <form id="fileDeleteForm" action="usercp.php" method="post">
                 <input type="hidden" name="my_post_key" value="{$post_code}">
@@ -3774,8 +3833,8 @@ if ($mybb->input['action'] === 'manage_files') {
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-light py-3">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0"><i class="fa-solid fa-list me-2"></i>File Manager</h5>
-                            <span class="badge bg-primary">{$filecount} files</span>
+                            <h5 class="mb-0"><i class="fa-solid fa-list me-2"></i>{$lang->usercp['lbl_file_manager']}</h5>
+                            <span class="badge bg-primary">{$files_badge}</span>
                         </div>
                     </div>
                     <div class="card-body p-4">{$filelist}</div>
@@ -3786,11 +3845,11 @@ if ($mybb->input['action'] === 'manage_files') {
             <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                  <div class="modal-header"><h5 class="modal-title">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                  <div class="modal-body">Are you sure you want to delete the selected files? This action cannot be undone.</div>
+                  <div class="modal-header"><h5 class="modal-title">{$lang->usercp['lbl_confirm_deletion']}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                  <div class="modal-body">{$lang->usercp['hint_confirm_delete_files']}</div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger" form="fileDeleteForm">Yes, Delete</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$lang->usercp['cancel']}</button>
+                    <button type="submit" class="btn btn-danger" form="fileDeleteForm">{$lang->usercp['btn_yes_delete']}</button>
                   </div>
                 </div>
               </div>
@@ -3799,11 +3858,11 @@ if ($mybb->input['action'] === 'manage_files') {
             <div class="modal fade" id="confirmDeleteAllModal" tabindex="-1" aria-hidden="true">
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                  <div class="modal-header bg-danger text-white"><h5 class="modal-title"><i class="fa-solid fa-triangle-exclamation me-2"></i>Confirm Deletion</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
-                  <div class="modal-body">Are you sure you want to delete <strong>ALL your files</strong>? This action <strong>cannot</strong> be undone!</div>
+                  <div class="modal-header bg-danger text-white"><h5 class="modal-title"><i class="fa-solid fa-triangle-exclamation me-2"></i>{$lang->usercp['lbl_confirm_deletion']}</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+                  <div class="modal-body">{$lang->usercp['hint_confirm_delete_all_files']}</div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <a href="usercp.php?action=remove_all_files&amp;my_post_key={$post_code}" class="btn btn-danger">Yes, Delete All</a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$lang->usercp['cancel']}</button>
+                    <a href="usercp.php?action=remove_all_files&amp;my_post_key={$post_code}" class="btn btn-danger">{$lang->usercp['btn_yes_delete_all']}</a>
                   </div>
                 </div>
               </div>
@@ -3814,7 +3873,7 @@ if ($mybb->input['action'] === 'manage_files') {
 </div>
 HTML;
 
-    stdhead('My Files - ' . $SITENAME);
+    stdhead($lang->usercp['lbl_my_files'] . ' - ' . $SITENAME);
 
     echo '<style>
     .file-card{transition:all .3s ease;border-radius:12px;overflow:hidden}
@@ -3894,11 +3953,11 @@ if ($mybb->input['action'] === 'do_remove_files') {
                 $deleted++;
             }
         }
-        header('Location: usercp.php?action=manage_files&msg=' . urlencode("Successfully deleted {$deleted} files"));
+        header('Location: usercp.php?action=manage_files&msg=' . urlencode(sprintf($lang->usercp['flash_files_deleted'], $deleted)));
         exit;
     }
 
-    header('Location: usercp.php?action=manage_files&msg=' . urlencode('No files selected for deletion'));
+    header('Location: usercp.php?action=manage_files&msg=' . urlencode($lang->usercp['flash_no_files_selected']));
     exit;
 }
 
@@ -3948,7 +4007,7 @@ if ($mybb->input['action'] === 'remove_all_files') {
         $deleted++;
     }
 
-    header('Location: usercp.php?action=manage_files&msg=' . urlencode("Successfully deleted all {$deleted} files"));
+    header('Location: usercp.php?action=manage_files&msg=' . urlencode(sprintf($lang->usercp['flash_all_files_deleted'], $deleted)));
     exit;
 }
 
@@ -4389,7 +4448,7 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
     <span class="ucp-req-mark ucp-req-out"><i class="fa-solid fa-arrow-up"></i></span>
     <div class="ucp-list-name">'.$request['username'].'<span class="ucp-list-date">'.$request['date'].'</span></div>
     <div class="ucp-req-actions">
-        <span class="ucp-req-pending"><i class="fa-regular fa-clock me-1"></i>Pending</span>
+        <span class="ucp-req-pending"><i class="fa-regular fa-clock me-1"></i>' . $lang->usercp['lbl_pending'] . '</span>
         <a href="'.$BASEURL.'/usercp.php?action=cancelrequest&amp;id='.(int)$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="ucp-list-remove" title="'.$lang->usercp['cancel'].'" aria-label="'.$lang->usercp['cancel'].'"><i class="fa-solid fa-xmark"></i></a>
     </div>
 </div>';
@@ -4597,7 +4656,15 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
 .ucp-lists .ucp-list-empty i { font-size: 1.6rem; opacity: .5; }
 </style>
 
-<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1901"></script>
+' . $swal_assets . '
+' . ucp_js_lang([
+    'search_user' => 'search_user',
+    'max_users' => 'js_max_users',
+    'remove' => 'remove_from_list',
+    'remove_from_list_confirm' => 'js_confirm_remove_user',
+    'list_update_failed' => 'js_list_update_failed',
+]) . '
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript">
     window.lang = Object.assign(window.lang || {}, ' . $ucp_lang_js . ');
 </script>
@@ -4704,7 +4771,7 @@ if ($mybb->input['action'] === 'do_drafts' && $mybb->request_method === 'post') 
     verify_post_check($mybb->get_input('my_post_key'));
 
     $mybb->input['deletedraft'] = $mybb->get_input('deletedraft', MyBB::INPUT_ARRAY);
-    if (empty($mybb->input['deletedraft'])) { error($lang->no_drafts_selected); }
+    if (empty($mybb->input['deletedraft'])) { error($lang->usercp['no_drafts_selected']); }
 
     $plugins->run_hooks('usercp_do_drafts_start');
 
@@ -4738,7 +4805,7 @@ if ($mybb->input['action'] === 'drafts') {
 
     $query      = $db->sql_query_prepared("SELECT COUNT(pid) AS draftcount FROM posts WHERE visible='-2' AND uid = ?", [(int)$CURUSER['id']]);
     $draftcount = $query ? (int) $db->fetch_field($query, 'draftcount') : 0;
-    $drafts_count       = 'Saved Drafts (' . ts_nf($draftcount) . ')';
+    $drafts_count       = sprintf($lang->usercp['drafts_count'], ts_nf($draftcount));
     $drafts             = '';
     $disable_delete_drafts = '';
 
@@ -4759,14 +4826,14 @@ if ($mybb->input['action'] === 'drafts') {
             if ($draft['threadvisible'] == 1) {
                 $draft['threadlink']    = get_thread_link($draft['tid']);
                 $draft['threadsubject'] = htmlspecialchars_uni($draft['threadsubject']);
-                $detail   = 'Thread: <a href="' . $draft['threadlink'] . '">' . $draft['threadsubject'] . '</a>';
+                $detail   = $lang->usercp['thread'] . ': <a href="' . $draft['threadlink'] . '">' . $draft['threadsubject'] . '</a>';
                 $editurl  = 'newreply.php?action=editdraft&amp;pid=' . $draft['pid'];
                 $id       = $draft['pid'];
                 $type     = 'post';
             } elseif ($draft['threadvisible'] == -2) {
                 $draft['forumlink'] = get_forum_link($draft['fid']);
                 $draft['forumname'] = htmlspecialchars_uni($draft['forumname']);
-                $detail   = 'Forum: <a href="' . $draft['forumlink'] . '">' . $draft['forumname'] . '</a>';
+                $detail   = $lang->usercp['forum'] . ': <a href="' . $draft['forumlink'] . '">' . $draft['forumname'] . '</a>';
                 $editurl  = 'newthread.php?action=editdraft&amp;tid=' . $draft['tid'];
                 $id       = $draft['tid'];
                 $type     = 'thread';
@@ -4808,11 +4875,11 @@ if ($mybb->input['action'] === 'drafts') {
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-light text-dark border">
                             <i class="fas fa-comments me-1"></i>
-                            Draft
+                            ' . $lang->usercp['lbl_draft'] . '
                         </span>
                         <span class="badge bg-info bg-opacity-10 text-info border border-info">
                             <i class="fas fa-save me-1"></i>
-                            Auto-save
+                            ' . $lang->usercp['lbl_autosave'] . '
                         </span>
                     </div>
                 </div>
@@ -4824,7 +4891,7 @@ if ($mybb->input['action'] === 'drafts') {
             <div class="draft-date text-center text-md-start">
                 <div class="text-muted small mb-1">
                     <i class="far fa-calendar me-1"></i>
-                    Save Date
+                    ' . $lang->usercp['lbl_save_date'] . '
                 </div>
                 <div class="fw-medium">
                     <i class="far fa-clock me-1 text-secondary"></i>
@@ -4841,14 +4908,14 @@ if ($mybb->input['action'] === 'drafts') {
                    class="btn btn-sm btn-primary w-100 w-md-auto" 
                    title="'.$lang->usercp['edit_draft'].'">
                     <i class="fas fa-edit me-1"></i>
-                    Edit
+                    ' . $lang->usercp['btn_edit'] . '
                 </a>
                 
                 <!-- Quick Delete Button -->
                 <button type="button" 
                         class="btn btn-sm btn-outline-danger delete-single-draft" 
                         data-draft-id="'.$id.'"
-                        title="Delete Draft">
+                        title="' . $lang->usercp['tip_delete_draft'] . '">
                     <i class="fas fa-trash-alt"></i>
                 </button>
             </div>
@@ -4947,9 +5014,9 @@ if ($mybb->input['action'] === 'drafts') {
         </div>
     </div>
     <h5 class="text-muted mb-2">' . $lang->usercp['no_drafts'] . '</h5>
-    <p class="text-muted small">You don\'t have any saved drafts. Start creating a new thread or post to save drafts automatically.</p>
+    <p class="text-muted small">' . $lang->usercp['hint_no_drafts'] . '</p>
     <a href="' . $BASEURL . '/newthread.php" class="btn btn-primary mt-3">
-        <i class="fas fa-plus-circle me-2"></i>Create New Thread
+        <i class="fas fa-plus-circle me-2"></i>' . $lang->usercp['btn_create_thread'] . '
     </a>
 </div>';
 		
@@ -4962,7 +5029,7 @@ if ($mybb->input['action'] === 'drafts') {
     }
 
     $plugins->run_hooks('usercp_drafts_end');
-    stdhead('title');
+    stdhead($lang->usercp['drafts']);
     build_breadcrumb();
     
 	
@@ -5040,7 +5107,7 @@ if ($mybb->input['action'] === 'drafts') {
 </h5>
 
 <div class="d-flex align-items-center gap-2">
-<span class="small text-muted">Select All</span>
+<span class="small text-muted">' . $lang->usercp['lbl_select_all'] . '</span>
 <label class="draft-switch">
 <input type="checkbox" id="checkAll">
 <span class="draft-slider"></span>
@@ -5054,7 +5121,7 @@ if ($mybb->input['action'] === 'drafts') {
 
 <div class="card-footer d-flex justify-content-between align-items-center">
 <div class="selected-count d-none">
-Selected: <span id="selectedCount">0</span>
+' . $lang->usercp['lbl_selected'] . ' <span id="selectedCount">0</span>
 </div>
 
 <button type="submit"
@@ -5072,7 +5139,13 @@ Selected: <span id="selectedCount">0</span>
 </div>
 </form>
 
-<script type="text/javascript" src="' . $BASEURL . '/scripts/drafts.js"></script>
+' . $swal_assets . '
+' . ucp_js_lang([
+    'select_draft' => 'no_drafts_selected',
+    'confirm_delete_draft' => 'js_confirm_delete_draft',
+    'confirm_delete_drafts' => 'js_confirm_delete_drafts',
+]) . '
+<script type="text/javascript" src="' . $BASEURL . '/scripts/drafts.js?ver=3"></script>
 
 </body>
 </html>'; 
@@ -5129,7 +5202,7 @@ if ($mybb->input['action'] === 'profile') {
     }
 
     $plugins->run_hooks('usercp_profile_end');
-    stdhead('title');
+    stdhead($lang->usercp['edit_profile']);
     
 	
 	$_tpl_out = '<!DOCTYPE html>
@@ -5167,7 +5240,7 @@ if ($mybb->input['action'] === 'profile') {
                             <div class="section-title-left text-center">
                                 <i class="fas fa-cake-candles section-icon-large"></i>
                                 <div class="fw-bold mt-2">'.$lang->usercp['birthday'].'</div>
-                                <small class="text-muted">Your date of birth</small>
+                                <small class="text-muted">' . $lang->usercp['hint_birthday_sub'] . '</small>
                             </div>
                         </div>
                         <div class="col-lg-9">
@@ -5218,7 +5291,7 @@ if ($mybb->input['action'] === 'profile') {
                                     <option value="age"'.$ageselected.'><i class="fas fa-chart-simple me-1"></i> '.$lang->usercp['birthdayprivacyage'].'</option>
                                 </select>
                                 <small class="text-muted d-block mt-1">
-                                    <i class="fas fa-info-circle me-1"></i> Control who can see your birthday information
+                                    <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_birthday_privacy'] . '
                                 </small>
                             </div>
                         </div>
@@ -5257,7 +5330,7 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
 
     require_once INC_PATH . '/functions_upload.php';
     if (!isset($mybb->input['attachments']) || !is_array($mybb->input['attachments'])) {
-        error('no_attachments_selected');
+        error($lang->usercp['no_attachments_selected']);
     }
 
     $plugins->run_hooks('usercp_do_attachments_start');
@@ -5298,7 +5371,7 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
 if ($mybb->input['action'] === 'attachments') {
     require_once INC_PATH . '/functions_upload.php';
 
-    if ((int) ($enableattachments ?? 1) === 0) { error('attachments_disabled'); }
+    if ((int) ($enableattachments ?? 1) === 0) { error($lang->usercp['err_attachments_disabled']); }
 
     $plugins->run_hooks('usercp_attachments_start');
 
@@ -5350,18 +5423,18 @@ if ($mybb->input['action'] === 'attachments') {
                 $comment_link = get_comment_link((int)$attachment['comment_id'], (int)$attachment['cmt_torrentid']);
                 $location_badge = '<span class="badge text-success bg-success bg-opacity-10 border border-success border-opacity-25">
                     <i class="fas fa-comments me-1"></i>
-                    Comment
+                    ' . $lang->usercp['lbl_badge_comment_type'] . '
                 </span>
                 <a href="' . $comment_link . '#pid' . $attachment['comment_id'] . '"
                    class="text-truncate text-decoration-none text-secondary hover-primary">
-                    Comment #' . (int)$attachment['comment_id'] . '
+                    ' . sprintf($lang->usercp['lbl_badge_comment'], (int)$attachment['comment_id']) . '
                 </a>';
             }
 
             $size           = mksize($attachment['filesize']);
             $icon           = get_attachment_icon(get_extension($attachment['filename']));
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
-            $sizedownloads  = '(' . $size . ', ' . $attachment['downloads'] . ' Downloads)';
+            $sizedownloads  = sprintf($lang->usercp['attachment_size_downloads'], $size, $attachment['downloads']);
             $attachdate     = my_datee('relative', (int)$attachment['dateuploaded']);
             $altbg          = alt_trow();
 
@@ -5450,14 +5523,14 @@ if ($mybb->input['action'] === 'attachments') {
                     <a href="'.$view_url.'" 
                        target="_blank" 
                        class="btn btn-sm btn-outline-primary" 
-                       title="Предпросмотр">
+                       title="' . $lang->usercp['tip_preview'] . '">
                         <i class="fas fa-eye"></i>
                     </a>
                     
                     <!-- Кнопка скачивания -->
                     <a href="'.$download_url.'" 
                        class="btn btn-sm btn-outline-success" 
-                       title="Скачать">
+                       title="' . $lang->usercp['tip_download'] . '">
                         <i class="fas fa-download"></i>
                     </a>
                 </div>
@@ -5473,19 +5546,19 @@ if ($mybb->input['action'] === 'attachments') {
                     <div class="row small text-muted">
                         <div class="col-md-3">
                             <i class="fas fa-file me-1"></i>
-                            Тип: <span class="text-dark">'.$attachment['filetype'].'</span>
+                            ' . $lang->usercp['lbl_type'] . ': <span class="text-dark">'.$attachment['filetype'].'</span>
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-expand-alt me-1"></i>
-                            Размер: <span class="text-dark">'.$attachment['filesize'].'</span>
+                            ' . $lang->usercp['lbl_size'] . ': <span class="text-dark">'.$attachment['filesize'].'</span>
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-chart-line me-1"></i>
-                            Загрузок: <span class="text-dark">'.$attachment['downloads'].'</span>
+                            ' . $lang->usercp['lbl_downloads'] . ': <span class="text-dark">'.$attachment['downloads'].'</span>
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-user me-1"></i>
-                            Загрузил: <span class="text-dark">'.$attachment['username'].'</span>
+                            ' . $lang->usercp['lbl_uploaded_by'] . ': <span class="text-dark">'.$attachment['username'].'</span>
                         </div>
                     </div>
                 </div>
@@ -5579,11 +5652,7 @@ if ($mybb->input['action'] === 'attachments') {
             justify-content: flex-start !important;
         }
     }
-</style>
-
-
-
-<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1901"></script>';
+</style>';
 
 
 
@@ -5617,7 +5686,7 @@ if ($mybb->input['action'] === 'attachments') {
         $percent       = round(($totalusage / ($usergroups['attachquota'] * 1024)) * 100);
         $friendlyusage .= sprintf($lang->usercp['attachments_usage_percent'], $percent);
         $attachquota   = mksize($usergroups['attachquota'] * 1024);
-        $usagenote     = sprintf('- Using ' . $friendlyusage . ' of ' . $attachquota . ' in ' . $totalattachments . ' Attachments');
+        $usagenote     = sprintf($lang->usercp['attachments_usage_quota'], $friendlyusage, $attachquota, $totalattachments);
     } else {
         $usagenote = sprintf($lang->usercp['attachments_usage'], $friendlyusage, $totalattachments);
     }
@@ -5634,7 +5703,7 @@ if ($mybb->input['action'] === 'attachments') {
             <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
                 <i class="fa-regular fa-paperclip"></i>
             </div>
-            <h5 class="mb-2 fw-semibold">You currently do not have any files attached to your posts</h5>
+            <h5 class="mb-2 fw-semibold">' . $lang->usercp['no_attachments'] . '</h5>
         </div>';
 		
         $usagenote     = '';
@@ -5642,7 +5711,7 @@ if ($mybb->input['action'] === 'attachments') {
     }
 
     $plugins->run_hooks('usercp_attachments_end');
-    stdhead('title');
+    stdhead($lang->usercp['attachments_manager']);
     
 	$_tpl_out = '
 	
@@ -5829,7 +5898,7 @@ if ($mybb->input['action'] === 'attachments') {
 
                 <div class="att-page-header">
                     <h2><i class="fas fa-paperclip"></i>'.$lang->usercp['attachments_manager'].'</h2>
-                    <p>'.$totalattachments.' attachments &bull; '.$friendlyusage.' used</p>
+                    <p>'.sprintf($lang->usercp['lbl_attach_header'], $totalattachments, $friendlyusage).'</p>
                 </div>
 
                 <div class="att-stats-row">
@@ -5878,7 +5947,7 @@ if ($mybb->input['action'] === 'attachments') {
                         <div class="att-card-header">
                             <h5><i class="fas fa-list"></i>'.$lang->usercp['attachments_manager'].'</h5>
                             <div class="d-flex align-items-center gap-2">
-                                <span class="text-muted small">Select All</span>
+                                <span class="text-muted small">' . $lang->usercp['lbl_select_all'] . '</span>
                                 <label class="form-switch-custom">
                                     <input type="checkbox" name="allbox" class="checkall">
                                     <span class="switch-slider"></span>
@@ -5896,7 +5965,7 @@ if ($mybb->input['action'] === 'attachments') {
 
                         '.$delete_button.'
                         '.(!empty($attachments_present) ? '<div class="att-footer">
-                            <button type="submit" class="att-delete-btn" name="delete" onclick="return confirm('.$lang->usercp['confirm_deletion'].')">
+                            <button type="submit" class="att-delete-btn" name="delete" data-ags-confirm="'.htmlspecialchars_uni($lang->usercp['confirm_deletion']).'" data-ags-danger="1">
                                 <i class="fas fa-trash-alt me-2"></i>'.$lang->usercp['delete_attachments'].'
                             </button>
                         </div>' : '').'
@@ -5908,6 +5977,8 @@ if ($mybb->input['action'] === 'attachments') {
             </div>
         </div>
     </div>
+' . $swal_assets . '
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript" src="' . $BASEURL . '/scripts/attachments.js"></script>
 </body>
 </html>';
@@ -5935,8 +6006,6 @@ if (!$mybb->input['action']) {
     $bonus   = $CURUSER['seedbonus'];
     $com     = $CURUSER['comms'];
 
-    echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
-    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     $useravatar    = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
     $currentavatar = build_avatar_html($useravatar);
@@ -5950,7 +6019,7 @@ if (!$mybb->input['action']) {
     $mybb->user['posts'] = ts_nf($CURUSER['postnum']);
 
     $plugins->run_hooks('usercp_end');
-    stdhead('title');
+    stdhead($lang->usercp['user_cp']);
     
 	$_tpl_out = '<!DOCTYPE html>
 <html>
@@ -5985,7 +6054,7 @@ if (!$mybb->input['action']) {
                                      style="width: 20px; height: 20px;"></div>
                            
                             <div class="mt-2">
-                                <span class="badge-status">Online</span>
+                                <span class="badge-status">' . $lang->usercp['online'] . '</span>
                             </div>
                         </div>
                         
@@ -6076,6 +6145,12 @@ if (!$mybb->input['action']) {
 </html>'; 
 	
 	echo $_tpl_out;
+
+    // Скрипты — после разметки страницы (раньше выводились до stdhead())
+    echo $swal_assets;
+    echo avatar_js_lang();
+    echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js?ver=5"></script>';
 }
 
 
@@ -6096,7 +6171,7 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
     $mode = $mybb->get_input('mode'); // 'enable' | 'disable' | 'confirm'
 
     // ── Notify the account owner of a 2FA status change ─────────────────────
-    $notify_2fa_change = function (int $uid, bool $enabled) use ($db, $SITENAME): void {
+    $notify_2fa_change = function (int $uid, bool $enabled) use ($db, $SITENAME, $lang): void {
         $query = $db->sql_query_prepared("SELECT username, email FROM users WHERE id = ? LIMIT 1", [$uid]);
         $user  = $query ? $db->fetch_array($query) : null;
 
@@ -6108,18 +6183,17 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
         $geo  = geo_by_ip($ip);
         $time = date('Y-m-d H:i:s');
 
-        $action  = $enabled ? 'enabled' : 'disabled';
-        $subject = '[' . $SITENAME . '] Two-factor authentication ' . $action;
+        $action  = $enabled ? $lang->usercp['email_2fa_word_enabled'] : $lang->usercp['email_2fa_word_disabled'];
+        $subject = sprintf($lang->usercp['email_2fa_subject'], $SITENAME, $action);
 
-        $message = "Two-factor authentication on your account has just been {$action}.\n\n"
-                 . "IP       : {$ip}\n"
-                 . "Location : " . $geo['country'] . ' / ' . $geo['city'] . "\n"
-                 . "Time     : {$time}\n\n"
-                 . ($enabled
-                    ? "Your account now requires a 6-digit code from your authenticator app at login."
-                    : "Your account no longer requires a 2FA code at login. ")
-                 . "\n\nIf you didn't make this change, your account may be compromised. "
-                 . "Please change your password immediately and review your active session.";
+        $message = sprintf(
+            $lang->usercp['email_2fa_body'],
+            $action,
+            $ip,
+            $geo['country'] . ' / ' . $geo['city'],
+            $time,
+            $enabled ? $lang->usercp['email_2fa_note_enabled'] : $lang->usercp['email_2fa_note_disabled']
+        );
 
         my_mail($user['email'], $subject, $message);
     };
@@ -6127,11 +6201,11 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
     if ($mode === 'disable') {
         if (!validate_password_from_uid($uid, $mybb->get_input('password'))) {
             $mybb->input['action']    = '2fa';
-            $mybb->input['2fa_error'] = 'Incorrect password. Please enter your current password to confirm disabling two-factor authentication.';
+            $mybb->input['2fa_error'] = $lang->usercp['err_2fa_bad_password'];
         } else {
             totp_disable($uid);
             $notify_2fa_change($uid, false);
-            redirect('usercp.php?action=2fa', 'Two-factor authentication has been disabled.');
+            redirect('usercp.php?action=2fa', $lang->usercp['flash_2fa_disabled']);
         }
 
     } elseif ($mode === 'confirm') {
@@ -6139,17 +6213,17 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
         $code   = preg_replace('/\D/', '', $mybb->get_input('totp_code'));
 
         if (empty($secret)) {
-            redirect('usercp.php?action=2fa', 'Invalid secret. Please try again.');
+            redirect('usercp.php?action=2fa', $lang->usercp['err_2fa_bad_secret']);
         }
 
         if (!totp_verify($secret, $code)) {
             $mybb->input['action']    = '2fa';
-            $mybb->input['2fa_error'] = 'Invalid code. Please scan the QR code again and try once more.';
+            $mybb->input['2fa_error'] = $lang->usercp['err_2fa_bad_code'];
             $mybb->input['2fa_secret'] = $secret;
         } else {
             totp_enable($uid, $secret);
             $notify_2fa_change($uid, true);
-            redirect('usercp.php?action=2fa', 'Two-factor authentication has been enabled successfully!');
+            redirect('usercp.php?action=2fa', $lang->usercp['flash_2fa_enabled']);
         }
 
     } elseif ($mode === 'enable') {
@@ -6183,7 +6257,7 @@ if ($mybb->input['action'] === '2fa') {
         $secret = $otpauth_uri = $error = '';
     }
 
-    stdhead('Two-Factor Authentication');
+    stdhead($lang->usercp['nav_2fa']);
     build_breadcrumb();
 
     echo '<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">';
@@ -6207,21 +6281,20 @@ if ($mybb->input['action'] === '2fa') {
                     <div class="col-lg-3 d-none d-lg-flex">
                         <div class="text-center p-3 border-end w-100">
                             <i class="fas fa-shield-halved fa-3x mb-3 text-success"></i>
-                            <div class="fw-bold mt-2">Two-Factor Auth</div>
-                            <small class="text-muted">Account protected</small>
+                            <div class="fw-bold mt-2">' . $lang->usercp['lbl_2fa_short'] . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_2fa_protected'] . '</small>
                         </div>
                     </div>
                     <div class="col-lg-9">
                         <div class="alert alert-success d-flex align-items-center gap-3 mb-4">
                             <i class="fas fa-check-circle fa-2x"></i>
                             <div>
-                                <strong>2FA is enabled!</strong><br>
-                                <small>Your account is protected with two-factor authentication.</small>
+                                <strong>' . $lang->usercp['lbl_2fa_enabled'] . '</strong><br>
+                                <small>' . $lang->usercp['hint_2fa_enabled'] . '</small>
                             </div>
                         </div>
                         <p class="text-muted">
-                            When you log in, you will be asked for a 6-digit code from your authenticator app
-                            (Google Authenticator, Authy, or similar).
+                            ' . $lang->usercp['hint_2fa_login_code'] . '
                         </p>
                         <hr>
                         <form method="post" action="usercp.php">
@@ -6230,12 +6303,12 @@ if ($mybb->input['action'] === '2fa') {
                             <input type="hidden" name="my_post_key" value="' . $postCode . '" />
                             ' . (!empty($mybb->input['2fa_error']) ? '<div class="alert alert-danger py-2 mb-3">' . htmlspecialchars($mybb->input['2fa_error']) . '</div>' : '') . '
                             <div class="mb-3" style="max-width:320px;">
-                                <label class="form-label small text-muted">Confirm your current password to disable 2FA</label>
+                                <label class="form-label small text-muted">' . $lang->usercp['lbl_2fa_confirm_pwd'] . '</label>
                                 <input type="password" name="password" class="form-control" required autocomplete="current-password">
                             </div>
                             <button type="submit" class="btn btn-danger"
-                                onclick="return confirm(\'Disable two-factor authentication? Your account will be less secure.\')">
-                                <i class="fas fa-shield-xmark me-2"></i>Disable 2FA
+                                data-ags-confirm="' . htmlspecialchars_uni($lang->usercp['js_confirm_disable_2fa']) . '" data-ags-danger="1">
+                                <i class="fas fa-shield-xmark me-2"></i>' . $lang->usercp['btn_2fa_disable'] . '
                             </button>
                         </form>
                     </div>
@@ -6253,24 +6326,22 @@ if ($mybb->input['action'] === '2fa') {
                     <div class="col-lg-3 d-none d-lg-flex">
                         <div class="text-center p-3 border-end w-100">
                             <i class="fas fa-qrcode fa-3x mb-3 text-primary"></i>
-                            <div class="fw-bold mt-2">Setup 2FA</div>
-                            <small class="text-muted">Scan & confirm</small>
+                            <div class="fw-bold mt-2">' . $lang->usercp['lbl_2fa_setup'] . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_2fa_scan'] . '</small>
                         </div>
                     </div>
                     <div class="col-lg-9">
                         ' . (!empty($error) ? '<div class="alert alert-danger"><i class="fas fa-triangle-exclamation me-2"></i>' . $error . '</div>' : '') . '
                         <div class="info-hint mb-4">
                             <i class="fas fa-info-circle me-2 text-info"></i>
-                            <strong>Step 1:</strong> Install an authenticator app —
-                            <a href="https://googleauthenticator.net/" target="_blank">Google Authenticator</a>,
-                            <a href="https://authy.com/" target="_blank">Authy</a>, or similar.<br>
-                            <strong>Step 2:</strong> Scan the QR code below.<br>
-                            <strong>Step 3:</strong> Enter the 6-digit code to confirm.
+                            <strong>' . sprintf($lang->usercp['lbl_2fa_step'], 1) . '</strong> ' . sprintf($lang->usercp['hint_2fa_step1'], '<a href="https://googleauthenticator.net/" target="_blank" rel="noopener">Google Authenticator</a>', '<a href="https://authy.com/" target="_blank" rel="noopener">Authy</a>') . '<br>
+                            <strong>' . sprintf($lang->usercp['lbl_2fa_step'], 2) . '</strong> ' . $lang->usercp['hint_2fa_step2'] . '<br>
+                            <strong>' . sprintf($lang->usercp['lbl_2fa_step'], 3) . '</strong> ' . $lang->usercp['hint_2fa_step3'] . '
                         </div>
                         <div class="text-center mb-4">
                             <div id="totp-qr" class="d-inline-block border rounded p-2"></div>
                             <div class="mt-2">
-                                <small class="text-muted">Manual entry key:</small><br>
+                                <small class="text-muted">' . $lang->usercp['lbl_2fa_manual_key'] . '</small><br>
                                 <code class="user-select-all fs-6 fw-bold">' . $secret . '</code>
                             </div>
                         </div>
@@ -6290,7 +6361,7 @@ if ($mybb->input['action'] === '2fa') {
                             <div class="mb-3">
                                 <label class="form-label fw-bold">
                                     <i class="fas fa-mobile-screen me-1"></i>
-                                    Enter the 6-digit code from your app
+                                    ' . $lang->usercp['lbl_2fa_enter_code'] . '
                                 </label>
                                 <input type="text" name="totp_code"
                                        class="form-control form-control-lg text-center fw-bold"
@@ -6300,10 +6371,10 @@ if ($mybb->input['action'] === '2fa') {
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-check me-2"></i>Confirm & Enable 2FA
+                                    <i class="fas fa-check me-2"></i>' . $lang->usercp['btn_2fa_confirm'] . '
                                 </button>
                                 <a href="usercp.php?action=2fa" class="btn btn-outline-secondary">
-                                    Cancel
+                                    ' . $lang->usercp['cancel'] . '
                                 </a>
                             </div>
                         </form>
@@ -6325,22 +6396,20 @@ if ($mybb->input['action'] === '2fa') {
                     <div class="col-lg-3 d-none d-lg-flex">
                         <div class="text-center p-3 border-end w-100">
                             <i class="fas fa-shield-halved fa-3x mb-3 text-muted"></i>
-                            <div class="fw-bold mt-2">Two-Factor Auth</div>
-                            <small class="text-muted">Not enabled</small>
+                            <div class="fw-bold mt-2">' . $lang->usercp['lbl_2fa_short'] . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_2fa_not_enabled'] . '</small>
                         </div>
                     </div>
                     <div class="col-lg-9">
                         <div class="alert alert-warning d-flex align-items-center gap-3 mb-4">
                             <i class="fas fa-triangle-exclamation fa-2x"></i>
                             <div>
-                                <strong>2FA is not enabled.</strong><br>
-                                <small>Add an extra layer of security to your account.</small>
+                                <strong>' . $lang->usercp['lbl_2fa_not_enabled'] . '</strong><br>
+                                <small>' . $lang->usercp['hint_2fa_extra'] . '</small>
                             </div>
                         </div>
                         <p class="text-muted">
-                            Two-factor authentication adds a second verification step when you log in.
-                            Even if someone gets your password, they cannot access your account
-                            without the code from your phone.
+                            ' . $lang->usercp['hint_2fa_about'] . '
                         </p>
                         <hr>
                         <form method="post" action="usercp.php">
@@ -6348,7 +6417,7 @@ if ($mybb->input['action'] === '2fa') {
                             <input type="hidden" name="mode" value="enable" />
                             <input type="hidden" name="my_post_key" value="' . $postCode . '" />
                             <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-shield-halved me-2"></i>Enable Two-Factor Authentication
+                                <i class="fas fa-shield-halved me-2"></i>' . $lang->usercp['btn_2fa_enable'] . '
                             </button>
                         </form>
                     </div>
@@ -6362,6 +6431,7 @@ if ($mybb->input['action'] === '2fa') {
 </div><!-- row -->
 </div><!-- container -->';
 
+    echo $swal_assets;
     stdfoot();
     exit;
 }
@@ -6383,7 +6453,7 @@ if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post'
         if ($device_id > 0) {
             $db->sql_query_prepared("DELETE FROM user_devices WHERE id = ? AND uid = ?", [$device_id, $uid]);
         }
-        redirect('usercp.php?action=sessions', 'Device removed from your known devices list.');
+        redirect('usercp.php?action=sessions', $lang->usercp['flash_device_removed']);
     }
 
     // ── Log out everywhere ────────────────────────────────────────────────
@@ -6401,7 +6471,7 @@ if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post'
     unset($_SESSION['admin_2fa_fail_count']);
 	
 
-    redirect('member.php?action=login', 'You have been logged out of all sessions. Please log in again.');
+    redirect('member.php?action=login', $lang->usercp['flash_logged_out_all']);
 }
 
 
@@ -6419,7 +6489,7 @@ if ($mybb->input['action'] === 'sessions') {
     // ── Parse user agent into a friendly browser / OS label ────────────────
     $ua = $session_row['useragent'] ?? '';
 
-    $browser = 'Unknown browser';
+    $browser = $lang->usercp['lbl_unknown_browser'];
     if (preg_match('/Edg\/([\d.]+)/i', $ua, $m))        { $browser = 'Microsoft Edge ' . $m[1]; }
     elseif (preg_match('/OPR\/([\d.]+)/i', $ua, $m))    { $browser = 'Opera ' . $m[1]; }
     elseif (preg_match('/Firefox\/([\d.]+)/i', $ua, $m)){ $browser = 'Firefox ' . $m[1]; }
@@ -6427,7 +6497,7 @@ if ($mybb->input['action'] === 'sessions') {
     elseif (preg_match('/Version\/([\d.]+).*Safari/i', $ua, $m)) { $browser = 'Safari ' . $m[1]; }
     elseif (preg_match('/Safari\/([\d.]+)/i', $ua, $m)) { $browser = 'Safari ' . $m[1]; }
 
-    $os = 'Unknown OS';
+    $os = $lang->usercp['lbl_unknown_os'];
     if (str_contains($ua, 'Windows NT 10.0'))      { $os = 'Windows 10/11'; }
     elseif (str_contains($ua, 'Windows NT 6.3'))   { $os = 'Windows 8.1'; }
     elseif (str_contains($ua, 'Windows NT 6.1'))   { $os = 'Windows 7'; }
@@ -6454,18 +6524,18 @@ if ($mybb->input['action'] === 'sessions') {
     $geo      = $ip ? geo_by_ip($ip) : ['country' => '', 'city' => ''];
     $location = trim(($geo['city'] ?? '') . (($geo['city'] && $geo['country']) ? ', ' : '') . ($geo['country'] ?? ''));
     if ($location === '') {
-        $location = 'Unknown location';
+        $location = $lang->usercp['lbl_unknown_location'];
     }
 
     $last_active = !empty($session_row['time'])
         ? my_datee('relative', (int)$session_row['time'])
-        : 'Unknown';
+        : $lang->usercp['lbl_unknown'];
 
     // Current cookie sid vs stored sid — should always match for the active session
     $current_sid = $mybb->cookies['sid'] ?? '';
     $is_current   = !empty($session_row['sid']) && $session_row['sid'] === $current_sid;
 
-    stdhead('Active Session');
+    stdhead($lang->usercp['lbl_active_session']);
     build_breadcrumb();
 
     echo '
@@ -6483,8 +6553,8 @@ if ($mybb->input['action'] === 'sessions') {
                     <div class="col-lg-3 d-none d-lg-flex">
                         <div class="text-center p-3 border-end w-100">
                             <i class="fas fa-shield-halved fa-3x mb-3 text-primary"></i>
-                            <div class="fw-bold mt-2">Session Security</div>
-                            <small class="text-muted">Your current login</small>
+                            <div class="fw-bold mt-2">' . $lang->usercp['lbl_session_security'] . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_session_sub'] . '</small>
                         </div>
                     </div>
                     <div class="col-lg-9">
@@ -6492,9 +6562,8 @@ if ($mybb->input['action'] === 'sessions') {
                         <div class="alert alert-info d-flex align-items-center gap-3 mb-4">
                             <i class="fas fa-circle-info fa-2x"></i>
                             <div>
-                                <strong>One active session per account.</strong><br>
-                                <small>Logging in on a new device automatically replaces this session.
-                                If you don\'t recognize the details below, log out everywhere and change your password immediately.</small>
+                                <strong>' . $lang->usercp['lbl_one_session'] . '</strong><br>
+                                <small>' . $lang->usercp['hint_one_session'] . '</small>
                             </div>
                         </div>
 
@@ -6506,16 +6575,16 @@ if ($mybb->input['action'] === 'sessions') {
                                     </div>
                                     <div class="flex-grow-1">
                                         <div class="fw-bold fs-5">
-                                            ' . htmlspecialchars($browser) . ' on ' . htmlspecialchars($os) . '
-                                            ' . ($is_current ? '<span class="badge bg-success ms-2"><i class="fas fa-check-circle me-1"></i>This device</span>' : '') . '
+                                            ' . htmlspecialchars(sprintf($lang->usercp['lbl_browser_on_os'], $browser, $os)) . '
+                                            ' . ($is_current ? '<span class="badge bg-success ms-2"><i class="fas fa-check-circle me-1"></i>' . $lang->usercp['lbl_this_device'] . '</span>' : '') . '
                                         </div>
                                         <div class="text-muted small mt-1">
                                             <i class="fas fa-location-dot me-1"></i>' . htmlspecialchars($location) . '
                                             &nbsp;&bull;&nbsp;
-                                            <i class="fas fa-network-wired me-1"></i>' . htmlspecialchars($ip ?: 'Unknown IP') . '
+                                            <i class="fas fa-network-wired me-1"></i>' . htmlspecialchars($ip ?: $lang->usercp['lbl_unknown_ip']) . '
                                         </div>
                                         <div class="text-muted small mt-1">
-                                            <i class="fas fa-clock me-1"></i>Last active: ' . $last_active . '
+                                            <i class="fas fa-clock me-1"></i>' . $lang->usercp['lbl_last_active'] . ': ' . $last_active . '
                                         </div>
                                     </div>
                                 </div>
@@ -6525,7 +6594,7 @@ if ($mybb->input['action'] === 'sessions') {
                         <hr>
 
                         <!-- Known Devices -->
-                        <h6 class="fw-bold mb-3"><i class="fas fa-list me-2 text-secondary"></i>Known Devices</h6>';
+                        <h6 class="fw-bold mb-3"><i class="fas fa-list me-2 text-secondary"></i>' . $lang->usercp['lbl_known_devices'] . '</h6>';
 
     // Load known devices
     $devices_query = $db->sql_query_prepared("SELECT * FROM user_devices WHERE uid = ? ORDER BY last_seen DESC", [$uid]);
@@ -6534,7 +6603,7 @@ if ($mybb->input['action'] === 'sessions') {
     while ($devices_query && ($dev = $db->fetch_array($devices_query))) {
         $dev_ua = $dev['user_agent'];
 
-        $dev_browser = 'Unknown browser';
+        $dev_browser = $lang->usercp['lbl_unknown_browser'];
         if (preg_match('/Edg\/([\d.]+)/i', $dev_ua, $m))        { $dev_browser = 'Microsoft Edge ' . $m[1]; }
         elseif (preg_match('/OPR\/([\d.]+)/i', $dev_ua, $m))    { $dev_browser = 'Opera ' . $m[1]; }
         elseif (preg_match('/Firefox\/([\d.]+)/i', $dev_ua, $m)){ $dev_browser = 'Firefox ' . $m[1]; }
@@ -6542,7 +6611,7 @@ if ($mybb->input['action'] === 'sessions') {
         elseif (preg_match('/Version\/([\d.]+).*Safari/i', $dev_ua, $m)) { $dev_browser = 'Safari ' . $m[1]; }
         elseif (preg_match('/Safari\/([\d.]+)/i', $dev_ua, $m)) { $dev_browser = 'Safari ' . $m[1]; }
 
-        $dev_os = 'Unknown OS';
+        $dev_os = $lang->usercp['lbl_unknown_os'];
         if (str_contains($dev_ua, 'Windows NT 10.0'))      { $dev_os = 'Windows 10/11'; }
         elseif (str_contains($dev_ua, 'Windows NT 6.3'))   { $dev_os = 'Windows 8.1'; }
         elseif (str_contains($dev_ua, 'Windows NT 6.1'))   { $dev_os = 'Windows 7'; }
@@ -6566,11 +6635,11 @@ if ($mybb->input['action'] === 'sessions') {
                 <i class="fas ' . $dev_icon . '"></i>
             </div>
             <div class="flex-grow-1">
-                <div class="fw-semibold small">' . htmlspecialchars($dev_browser) . ' on ' . htmlspecialchars($dev_os) . '</div>
+                <div class="fw-semibold small">' . htmlspecialchars(sprintf($lang->usercp['lbl_browser_on_os'], $dev_browser, $dev_os)) . '</div>
                 <div class="text-muted" style="font-size:.78rem;">
-                    First seen: ' . $first_seen . '
+                    ' . $lang->usercp['lbl_first_seen'] . ': ' . $first_seen . '
                     &nbsp;&bull;&nbsp;
-                    Last used: ' . $last_seen . '
+                    ' . $lang->usercp['lbl_last_used'] . ': ' . $last_seen . '
                 </div>
             </div>
             <form method="post" action="usercp.php" class="mb-0">
@@ -6579,30 +6648,28 @@ if ($mybb->input['action'] === 'sessions') {
                 <input type="hidden" name="device_id" value="' . (int)$dev['id'] . '" />
                 <input type="hidden" name="my_post_key" value="' . $postCode . '" />
                 <button type="submit" class="btn btn-sm btn-outline-danger"
-                    onclick="return confirm(\'Remove this device from your known devices list?\')">
+                    data-ags-confirm="' . htmlspecialchars_uni($lang->usercp['js_confirm_remove_device']) . '" data-ags-danger="1">
                     <i class="fas fa-times"></i>
                 </button>
             </form>
         </div>';
     }
 
-    echo ($devices_html ?: '<p class="text-muted small">No known devices yet. They will appear here after your next login.</p>');
+    echo ($devices_html ?: '<p class="text-muted small">' . $lang->usercp['hint_no_devices'] . '</p>');
 
     echo '
                         <hr class="mt-3">
 
                         <p class="text-muted">
-                            If you suspect someone else has access to your account, you can immediately
-                            log out of this session everywhere. This will also invalidate any
-                            "remember me" cookies, requiring a fresh login (and 2FA code, if enabled).
+                            ' . $lang->usercp['hint_logout_everywhere'] . '
                         </p>
 
                         <form method="post" action="usercp.php">
                             <input type="hidden" name="action" value="do_sessions" />
                             <input type="hidden" name="my_post_key" value="' . $postCode . '" />
                             <button type="submit" class="btn btn-danger"
-                                onclick="return confirm(\'This will log you out everywhere and require you to sign in again. Continue?\')">
-                                <i class="fas fa-right-from-bracket me-2"></i>Log Out Everywhere
+                                data-ags-confirm="' . htmlspecialchars_uni($lang->usercp['js_confirm_logout_all']) . '" data-ags-danger="1">
+                                <i class="fas fa-right-from-bracket me-2"></i>' . $lang->usercp['btn_logout_everywhere'] . '
                             </button>
                         </form>
 
@@ -6614,6 +6681,7 @@ if ($mybb->input['action'] === 'sessions') {
 </div><!-- row -->
 </div><!-- container -->';
 
+    echo $swal_assets;
     stdfoot();
     exit;
 }

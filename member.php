@@ -31,6 +31,7 @@ require_once INC_PATH . '/functions_icons.php';
 require_once INC_PATH . '/function_loginattemptcheck.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/class_parser.php';
+require_once INC_PATH . '/functions_additions.php';
 
 $parser = new postParser();
 
@@ -2250,7 +2251,13 @@ $modoptions = '<!-- Moderator Options (compact) -->
     $is_mod_flag      = is_mod($usergroups);
     $can_change_avatar = ($is_own_profile || $is_mod_flag) ? 1 : 0;
 
-    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
+    // SweetAlert2 + ags-dialog.js (кнопки ОК/Да/Отмена — из global.lang.php)
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+    . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+    . ags_js_lang('global', ['dlg_ok' => 'js_dlg_ok', 'dlg_yes' => 'js_dlg_yes', 'dlg_cancel' => 'js_dlg_cancel'])
+    . '<script src="' . $BASEURL . '/scripts/ags-dialog.js?ver=1"></script>';
+    echo avatar_js_lang();
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js?ver=5"></script>';
 
     // Report button
     $report_button = '';
@@ -2340,9 +2347,10 @@ $modoptions = '<!-- Moderator Options (compact) -->
             $ags_js_lang[substr((string)$js_key, 3)] = (string)$js_val;
         }
     }
-    $ags_lang_script = '<script>const AGS_LANG = '
+    // Object.assign, not const: avatar_js_lang() and the SweetAlert button labels add their keys to the same object
+    $ags_lang_script = '<script>window.AGS_LANG = Object.assign(window.AGS_LANG || {}, '
         . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
-        . ';</script>';
+        . ');</script>';
 
     $formattedname = format_name($memprofile['username'], $memprofile['usergroup'], $memprofile['displaygroup']);
 

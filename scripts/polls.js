@@ -5,6 +5,7 @@
  * Loaded on both pages — detects which form is present at init.
  *
  * Dependencies (loaded by the page before this file):
+ *   - AGS_LANG    (const, printed by polls.php; optional — English fallback)
  *   - SortableJS  (window.Sortable)
  *   - SweetAlert2 (window.Swal)
  */
@@ -12,15 +13,28 @@
 (function () {
   'use strict';
 
+  // ─── i18n ───────────────────────────────────────────────────────────────────
+
+  const LANG = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};
+
+  /**
+   * Translate key with English fallback; substitutes {1}, {2}… and %1$s, %2$s….
+   */
+  function t(key, fallback, ...args) {
+    let s = (typeof LANG[key] === 'string') ? LANG[key] : fallback;
+    args.forEach((arg, i) => {
+      const n = i + 1;
+      s = s.split('{' + n + '}').join(String(arg))
+           .split('%' + n + '$s').join(String(arg));
+    });
+    return s;
+  }
+
   // ─── Utilities ──────────────────────────────────────────────────────────────
 
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  /** SweetAlert2 with plain-text title/body (shorthand Swal.fire(a, b) renders HTML). */
+  function alertText(title, text, icon) {
+    return Swal.fire({ titleText: title, text: text, icon: icon });
   }
 
   function $(sel, ctx) {
@@ -34,7 +48,7 @@
   // ─── Option builder ─────────────────────────────────────────────────────────
 
   /**
-   * @param {string}  text       Pre-escaped option text
+   * @param {string}  text       Raw option text (assigned via .value)
    * @param {number}  votes      Vote count (edit mode only)
    * @param {boolean} showVotes  Whether to show the votes input
    * @param {number}  num        Display number (#1, #2 …)
@@ -43,19 +57,42 @@
     const div = document.createElement('div');
     div.className = 'input-group mb-2 option-item';
 
-    const votesInput = showVotes
-      ? `<input type="number" name="votes[${num}]" class="form-control votes-input"
-               style="max-width:90px" value="${votes}" min="0">`
-      : '';
+    const label = document.createElement('span');
+    label.className = 'input-group-text';
+    label.title = t('drag_hint', 'Drag to reorder');
+    label.textContent = `#${num}`;
+    div.appendChild(label);
 
-    div.innerHTML = `
-      <span class="input-group-text">#${num}</span>
-      <input type="text" name="options[${num}]" class="form-control option-input"
-             value="${text}" required>
-      ${votesInput}
-      <button class="btn btn-outline-danger btn-remove-option" type="button"
-              aria-label="Remove option">✕</button>
-    `;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = `options[${num}]`;
+    input.className = 'form-control option-input';
+    input.required = true;
+    input.value = text || '';
+    input.setAttribute('aria-label', t('option_n', 'Option {1}', num));
+    div.appendChild(input);
+
+    if (showVotes) {
+      const vi = document.createElement('input');
+      vi.type = 'number';
+      vi.name = `votes[${num}]`;
+      vi.className = 'form-control votes-input';
+      vi.style.maxWidth = '90px';
+      vi.min = '0';
+      vi.value = String(parseInt(votes, 10) || 0);
+      vi.title = t('votes', 'Votes');
+      vi.setAttribute('aria-label', t('votes', 'Votes'));
+      div.appendChild(vi);
+    }
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline-danger btn-remove-option';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', t('remove_option', 'Remove option'));
+    btn.title = t('remove_option', 'Remove option');
+    btn.textContent = '✕';
+    div.appendChild(btn);
+
     return div;
   }
 
@@ -100,7 +137,7 @@
         if (e.target.classList.contains('btn-remove-option')) {
           const item = e.target.closest('.option-item');
           if (this._optionCount() <= this.minOptions) {
-            Swal.fire('', `Minimum ${this.minOptions} options required`, 'warning');
+            alertText('', t('min_options', 'Minimum {1} options required', this.minOptions), 'warning');
             return;
           }
           item.remove();
@@ -153,7 +190,7 @@
     addOption(text = '', votes = 0) {
       this.optionCount++;
       const row = buildOptionRow(
-        escHtml(text),
+        text,
         votes,
         this.showVotes,
         this.optionCount
@@ -174,7 +211,10 @@
         if (label) label.textContent = `#${num}`;
 
         const textInput = row.querySelector('.option-input');
-        if (textInput) textInput.name = `options[${num}]`;
+        if (textInput) {
+          textInput.name = `options[${num}]`;
+          textInput.setAttribute('aria-label', t('option_n', 'Option {1}', num));
+        }
 
         const votesInput = row.querySelector('.votes-input');
         if (votesInput) votesInput.name = `votes[${num}]`;
@@ -191,12 +231,25 @@
 
     _updatePreview() {
       if (!this.preview) return;
-      const lines = $$('.option-input', this.list)
+      const values = $$('.option-input', this.list)
         .map((el) => el.value.trim())
-        .filter(Boolean)
-        .map((v) => `<div>• ${escHtml(v)}</div>`)
-        .join('');
-      this.preview.innerHTML = lines || '<span class="text-muted">No options yet</span>';
+        .filter(Boolean);
+
+      this.preview.replaceChildren();
+
+      if (!values.length) {
+        const empty = document.createElement('span');
+        empty.className = 'text-muted';
+        empty.textContent = t('no_options', 'No options yet');
+        this.preview.appendChild(empty);
+        return;
+      }
+
+      values.forEach((v) => {
+        const line = document.createElement('div');
+        line.textContent = `• ${v}`;
+        this.preview.appendChild(line);
+      });
     }
 
     // ── Submission ───────────────────────────────────────────────────────────
@@ -204,12 +257,15 @@
     _validate() {
       const question = $('[name=question]', this.form)?.value.trim();
       if (!question) {
-        Swal.fire('Error', 'Please enter a question', 'error');
+        alertText(t('error', 'Error'), t('question_required', 'Please enter a question'), 'error');
         return false;
       }
       const valid = $$('.option-input', this.list).filter((el) => el.value.trim()).length;
       if (valid < this.minOptions) {
-        Swal.fire('Error', `At least ${this.minOptions} options are required`, 'error');
+        alertText(t('error', 'Error'),
+          t('at_least_options', 'At least {1} options are required', this.minOptions),
+          'error'
+        );
         return false;
       }
       return true;
@@ -240,20 +296,20 @@
           if (data.status === 'success') {
             Swal.fire({
               icon: 'success',
-              title: 'Done!',
-              text: data.message || 'Saved successfully',
+              titleText: t('done', 'Done!'),
+              text: data.message || t('saved', 'Saved successfully'),
               timer: 1500,
               showConfirmButton: false,
             }).then(() => {
               window.location.href = data.redirect;
             });
           } else {
-            Swal.fire('Error', data.message || 'Something went wrong', 'error');
+            alertText(t('error', 'Error'), data.message || t('something_wrong', 'Something went wrong'), 'error');
             this.submitting = false;
           }
         })
         .catch(() => {
-          Swal.fire('Error', 'Server unavailable', 'error');
+          alertText(t('error', 'Error'), t('server_unavailable', 'Server unavailable'), 'error');
           this.submitting = false;
         });
     }

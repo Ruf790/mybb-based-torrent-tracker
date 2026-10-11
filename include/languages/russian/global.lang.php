@@ -663,6 +663,24 @@ $language['global'] = array(
 'js_toast_close' => 'Закрыть',
 
 
+// ── avatar_upload.js (window.AGS_LANG via avatar_js_lang()) ──
+    'js_avatar_bad_type'      => 'Выберите изображение JPG, PNG, GIF или WebP',
+    'js_avatar_too_big'       => 'Файл слишком большой (макс. {1} МБ)',
+    'js_avatar_no_profile'    => 'Не найден ID профиля',
+    'js_avatar_alt'           => 'Аватар',
+    'js_avatar_updated'       => 'Аватар обновлён',
+    'js_avatar_server_error'  => 'Ошибка сервера: {1}',
+    'js_avatar_uploading'     => 'Загрузка аватара...',
+    'js_avatar_unknown_error' => 'Неизвестная ошибка',
+    'js_avatar_error'         => 'Ошибка: {1}',
+    'js_avatar_upload_error'  => 'Ошибка загрузки: {1}',
+	
+	// ── ags-dialog.js (SweetAlert buttons, ags_js_lang() next to the sweetalert2 tags) ──
+    'js_dlg_ok'                 => 'ОК',
+    'js_dlg_yes'                => 'Да',
+    'js_dlg_cancel'             => 'Отмена',
+
+
 
 
 

@@ -1,0 +1,90 @@
+/* Update Check (admin/check_update.php) — всё под .cu */
+.cu { font-size: 1.055rem; padding-bottom: 4.5rem; }
+.cu .cu-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 1rem; }
+.cu .cu-muted { color: var(--bs-secondary-color); font-size: .9em; }
+.cu .cu-min0 { min-width: 0; }
+.cu .cu-mono, .cu .cu-sha { font-family: var(--bs-font-monospace); font-size: .85em; }
+.cu .cu-sha { color: var(--bs-primary); text-decoration: none; padding: .05rem .4rem; border-radius: .4rem; background: rgba(var(--bs-primary-rgb), .08); }
+
+/* Шапка */
+.cu .cu-head { display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.25rem; }
+.cu .cu-head-icon { width: 3rem; height: 3rem; flex: 0 0 3rem; display: grid; place-items: center; border-radius: .85rem;
+    background: rgba(var(--bs-primary-rgb), .12); color: var(--bs-primary); font-size: 1.45rem; }
+.cu .cu-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.cu .cu-sub { color: var(--bs-secondary-color); }
+
+/* KPI */
+.cu .cu-kpi { display: flex; align-items: center; gap: .85rem; padding: 1rem 1.1rem; height: 100%; }
+.cu .cu-kpi-icon, .cu .cu-sec-icon { width: 2.6rem; height: 2.6rem; flex: 0 0 2.6rem; display: grid; place-items: center; border-radius: .75rem; }
+.cu .cu-kpi-label { color: var(--bs-secondary-color); font-size: .85em; }
+.cu .cu-kpi-value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+.cu .ic-blue  { background: rgba(var(--bs-primary-rgb), .12); color: var(--bs-primary); }
+.cu .ic-green { background: rgba(var(--bs-success-rgb), .12); color: var(--bs-success); }
+.cu .ic-amber { background: rgba(var(--bs-warning-rgb), .15); color: var(--bs-warning-text-emphasis); }
+.cu .ic-red   { background: rgba(var(--bs-danger-rgb), .12);  color: var(--bs-danger); }
+.cu .ic-slate { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+
+/* Секции */
+.cu .cu-sec-head { display: flex; align-items: center; gap: .85rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--bs-border-color); }
+.cu .cu-sec-title { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.cu .cu-body { padding: 1rem 1.25rem; display: grid; gap: .75rem; }
+.cu .cu-ok { color: var(--bs-success-text-emphasis); }
+
+.cu .cu-dl { display: grid; grid-template-columns: max-content 1fr; gap: .45rem 1.25rem; margin: 0; }
+.cu .cu-dl dt { font-weight: 600; color: var(--bs-secondary-color); }
+.cu .cu-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 575.98px) { .cu .cu-dl { grid-template-columns: 1fr; } .cu .cu-dl dd { margin-bottom: .4rem; } }
+
+.cu .cu-chip { font-size: .78em; padding: .15rem .6rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.cu .cu-badge { font-size: .75em; font-weight: 600; padding: .2rem .65rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); white-space: nowrap; }
+.cu .cu-badge.is-ok    { background: rgba(var(--bs-success-rgb), .12); color: var(--bs-success-text-emphasis); }
+.cu .cu-badge.is-warn  { background: rgba(var(--bs-warning-rgb), .18); color: var(--bs-warning-text-emphasis); }
+.cu .cu-badge.is-error { background: rgba(var(--bs-danger-rgb), .12);  color: var(--bs-danger-text-emphasis); }
+.cu .cu-badge.is-info  { background: rgba(var(--bs-info-rgb), .14);    color: var(--bs-info-text-emphasis); }
+
+/* Плашка состояния */
+.cu .cu-state { display: flex; align-items: flex-start; gap: .6rem; padding: .7rem .9rem; border-radius: .75rem; font-weight: 600; }
+.cu .cu-state > i { margin-top: .2rem; }
+.cu .cu-state.is-ok    { background: rgba(var(--bs-success-rgb), .09); color: var(--bs-success-text-emphasis); }
+.cu .cu-state.is-warn  { background: rgba(var(--bs-warning-rgb), .14); color: var(--bs-warning-text-emphasis); }
+.cu .cu-state.is-error { background: rgba(var(--bs-danger-rgb), .09);  color: var(--bs-danger-text-emphasis); }
+.cu .cu-state.is-info  { background: rgba(var(--bs-info-rgb), .1);     color: var(--bs-info-text-emphasis); font-weight: 500; }
+
+.cu .cu-details summary { cursor: pointer; color: var(--bs-secondary-color); font-size: .9em; }
+.cu .cu-sha-form { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.cu .cu-sha-form input { width: 22rem; max-width: 100%; border-radius: 50rem; }
+
+/* Списки коммитов и файлов */
+.cu .cu-list { list-style: none; margin: 0; padding: 0; }
+.cu .cu-list li { border-bottom: 1px solid var(--bs-border-color); }
+.cu .cu-list li:last-child { border-bottom: 0; }
+.cu .cu-list a { display: flex; align-items: center; gap: .75rem; padding: .55rem 1.25rem; color: var(--bs-body-color); text-decoration: none; }
+.cu .cu-list a:hover { background: var(--bs-tertiary-bg); }
+.cu .cu-grow { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cu .cu-add { color: var(--bs-success); font-size: .85em; }
+.cu .cu-del { color: var(--bs-danger); font-size: .85em; }
+.cu .cu-scroll { max-height: 22rem; overflow-y: auto; }
+
+/* Блоки проблем */
+.cu .cu-issue { border-radius: .75rem; padding: .6rem .8rem; }
+.cu .cu-issue.is-error { background: rgba(var(--bs-danger-rgb), .07); }
+.cu .cu-issue.is-warn  { background: rgba(var(--bs-warning-rgb), .1); }
+.cu .cu-issue-head { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; font-weight: 600; }
+.cu .cu-issue.is-error .cu-issue-head > i { color: var(--bs-danger); }
+.cu .cu-issue.is-warn  .cu-issue-head > i { color: var(--bs-warning); }
+.cu .cu-keys { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .45rem; }
+.cu .cu-keys a { text-decoration: none; }
+.cu .cu-keys code { font-size: .8em; padding: .1rem .45rem; border-radius: .4rem; background: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color); }
+.cu .cu-keys a:hover code { border-color: rgba(var(--bs-primary-rgb), .5); }
+
+/* Нижняя панель */
+.cu .cu-bar { position: sticky; bottom: .75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem;
+    padding: .65rem 1rem; border-radius: 50rem; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12); }
+@media (max-width: 767.98px) { .cu .cu-bar { border-radius: 1rem; } }
+.cu .cu-pill { border-radius: 50rem; padding: .35rem 1rem; border: 1px solid var(--bs-border-color); color: var(--bs-body-color); background: transparent; }
+.cu .cu-pill:hover { background: var(--bs-tertiary-bg); }
+.cu .cu-pill.cu-go { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.cu .cu-pill.cu-go:hover { filter: brightness(1.08); }
+.cu .cu-pill.cu-ok-btn { background: rgba(var(--bs-success-rgb), .12); border-color: rgba(var(--bs-success-rgb), .35); color: var(--bs-success-text-emphasis); }
+.cu .cu-pill:disabled { opacity: .65; }

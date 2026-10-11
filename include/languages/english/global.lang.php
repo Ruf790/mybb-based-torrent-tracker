@@ -646,6 +646,25 @@ You do not have permission to access this page. This could be because of one of 
 	'js_toast_info' => 'Information',
 
 	'js_toast_close' => 'Close',
+	
+	
+	// ── avatar_upload.js (window.AGS_LANG via avatar_js_lang()) ──
+    'js_avatar_bad_type'      => 'Please select a JPG, PNG, GIF or WebP image',
+    'js_avatar_too_big'       => 'File is too big (max. {1} MB)',
+    'js_avatar_no_profile'    => 'Profile ID not found',
+    'js_avatar_alt'           => 'Avatar',
+    'js_avatar_updated'       => 'Avatar updated',
+    'js_avatar_server_error'  => 'Server error: {1}',
+    'js_avatar_uploading'     => 'Uploading avatar...',
+    'js_avatar_unknown_error' => 'Unknown error occurred',
+    'js_avatar_error'         => 'Error: {1}',
+    'js_avatar_upload_error'  => 'Upload error: {1}',
+	
+	
+	// ── ags-dialog.js (SweetAlert buttons, ags_js_lang() next to the sweetalert2 tags) ──
+    'js_dlg_ok'                 => 'OK',
+    'js_dlg_yes'                => 'Yes',
+    'js_dlg_cancel'             => 'Cancel',
 
 
 	

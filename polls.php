@@ -5,12 +5,73 @@ define("SCRIPTNAME", "polls.php");
 define('IN_FORUM', true);
 
 require_once 'global.php';
+$lang->load("polls");
 require_once INC_PATH . "/functions_post.php";
 
-$lang->load("polls");
 $plugins->run_hooks("polls_start");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s, %2$s… produced by $lang->load()) placeholders.
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * Lang strings of this page, HTML-escaped for use inside heredoc templates.
+ *
+ * @return array<string,string>
+ */
+function poll_lang_esc(): array
+{
+    global $lang;
+    return array_map('htmlspecialchars_uni', $lang->polls);
+}
+
+/**
+ * js_* keys of this page without the prefix, for const AGS_LANG.
+ *
+ * @return array<string,string>
+ */
+function poll_js_lang(): array
+{
+    global $lang;
+    $out = [];
+    foreach ($lang->polls as $key => $value) {
+        if (str_starts_with($key, 'js_')) {
+            $out[substr($key, 3)] = $value;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Print AGS_LANG + page scripts (call after stdhead()).
+ */
+function poll_print_assets(): void
+{
+    global $BASEURL;
+    $json = json_encode(
+        poll_js_lang(),
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    );
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">
+<script>const AGS_LANG = ' . $json . ';</script>
+<script src="' . $BASEURL . '/scripts/Sortable.min.js"></script>
+<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>
+<script src="' . $BASEURL . '/scripts/polls.js?ver=2"></script>';
+}
 
 /**
  * Unified AJAX / redirect responder.
@@ -50,6 +111,11 @@ function poll_error(bool $is_ajax, string $msg): void
  */
 function poll_validate_options(array $raw, bool $is_ajax, int $max = 10): array
 {
+    global $lang;
+
+    $min_options = 2;
+    $max_length  = 250;
+
     $clean = [];
     foreach ($raw as $opt) {
         $opt = trim($opt);
@@ -57,18 +123,18 @@ function poll_validate_options(array $raw, bool $is_ajax, int $max = 10): array
             continue;
         }
         if (strpos($opt, '||~|~||') !== false) {
-            poll_error($is_ajax, 'Invalid option content');
+            poll_error($is_ajax, $lang->polls['err_option_sequence']);
         }
-        if (my_strlen($opt) > 250) {
-            poll_error($is_ajax, 'Option too long (max 250 chars)');
+        if (my_strlen($opt) > $max_length) {
+            poll_error($is_ajax, ags_fmt($lang->polls['err_option_too_long'], $max_length));
         }
         $clean[] = $opt;
     }
-    if (count($clean) < 2) {
-        poll_error($is_ajax, 'At least 2 options required');
+    if (count($clean) < $min_options) {
+        poll_error($is_ajax, ags_fmt($lang->polls['err_min_options'], $min_options));
     }
     if (count($clean) > $max) {
-        poll_error($is_ajax, "Too many options (max {$max})");
+        poll_error($is_ajax, ags_fmt($lang->polls['err_max_options_count'], $max));
     }
     return $clean;
 }
@@ -100,14 +166,14 @@ function poll_parse_postoptions(array $raw): array
  */
 function poll_get_or_die(int $pid, bool $is_ajax): array
 {
-    global $db;
+    global $db, $lang;
     $query = $db->sql_query_prepared(
         "SELECT * FROM polls WHERE pid = ?",
         [$pid]
     );
     $poll  = $db->fetch_array($query);
     if (!$poll) {
-        poll_error($is_ajax, 'Invalid poll');
+        poll_error($is_ajax, $lang->polls['err_invalid_poll']);
     }
     return $poll;
 }
@@ -117,9 +183,10 @@ function poll_get_or_die(int $pid, bool $is_ajax): array
  */
 function poll_get_thread_or_die(int $tid, bool $is_ajax): array
 {
+    global $lang;
     $thread = get_thread($tid);
     if (!$thread) {
-        poll_error($is_ajax, 'Invalid thread');
+        poll_error($is_ajax, $lang->polls['err_invalid_thread']);
     }
     return $thread;
 }
@@ -136,6 +203,7 @@ if (!empty($mybb->input['updateoptions'])) {
 $action   = $mybb->input['action'];
 $is_ajax  = ($mybb->get_input('ajax') == 1);
 $is_post  = ($mybb->request_method === 'post');
+$is_staff = is_mod($usergroups ?? []);
 
 // ─── ACTION: newpoll (show form) ──────────────────────────────────────────────
 
@@ -146,26 +214,26 @@ if ($action === 'newpoll') {
     $tid    = $mybb->get_input('tid', MyBB::INPUT_INT);
     $thread = get_thread($tid);
     if (!$thread || $thread['visible'] == -1) {
-        stderr('error_invalidthread');
+        stderr($lang->polls['err_invalid_thread']);
     }
 
     $fid   = $thread['fid'];
     $forum = get_forum($fid);
     if (!$forum) {
-        stderr('error_invalidforum');
+        stderr($lang->polls['err_invalid_forum']);
     }
-    if ($forum['open'] == 0 && !is_moderator($fid, 'canmanagepolls')) {
-        stderr('error_closedinvalidforum');
+    if ($forum['open'] == 0 && !$is_staff) {
+        stderr($lang->polls['err_forum_closed']);
     }
     if ($thread['poll']) {
-        stderr('error_pollalready');
+        stderr($lang->polls['err_poll_exists']);
     }
 
     $polltimelimit  = 12;
     $maxpolloptions = 10;
 
-    if ($thread['dateline'] < (TIMENOW - $polltimelimit * 3600) && $polltimelimit && !$ismod) {
-        stderr('poll_time_limit');
+    if ($thread['dateline'] < (TIMENOW - $polltimelimit * 3600) && $polltimelimit && !$is_staff) {
+        stderr(ags_fmt($lang->polls['err_poll_time_limit'], $polltimelimit));
     }
 
     build_forum_breadcrumb($fid);
@@ -174,15 +242,9 @@ if ($action === 'newpoll') {
 
     $plugins->run_hooks('polls_newpoll_end');
 
-    stdhead($lang->polls['post_new_poll']);
-	
-	
-	
-	echo '<script src="'.$BASEURL.'/scripts/Sortable.min.js"></script>
-<script src="'.$BASEURL.'/scripts/sweetalert2.min.js"></script>
-<script src="'.$BASEURL.'/scripts/polls.js"></script>';
-	
-	
+    stdhead($lang->polls['title_newpoll']);
+    poll_print_assets();
+
     build_breadcrumb();
     $polloptions = max(2, min($maxpolloptions, $mybb->get_input('polloptions', MyBB::INPUT_INT) ?: 2));
     echo poll_render_new_form($tid, $mybb->post_code, $polloptions);
@@ -201,15 +263,15 @@ if ($action === 'do_newpoll' && $is_post) {
     $thread = poll_get_thread_or_die($tid, $is_ajax);
     $forum  = get_forum($thread['fid']);
     if (!$forum) {
-        poll_error($is_ajax, 'Invalid forum');
+        poll_error($is_ajax, $lang->polls['err_invalid_forum']);
     }
     if ($thread['poll']) {
-        poll_error($is_ajax, 'Poll already exists for this thread');
+        poll_error($is_ajax, $lang->polls['err_poll_exists']);
     }
 
     $question = trim($mybb->get_input('question'));
     if ($question === '') {
-        poll_error($is_ajax, 'Question is required');
+        poll_error($is_ajax, $lang->polls['err_question_required']);
     }
 
     $clean_options = poll_validate_options(
@@ -254,7 +316,7 @@ if ($action === 'do_newpoll' && $is_post) {
 
     $plugins->run_hooks('polls_do_newpoll_end');
 
-    poll_respond($is_ajax, get_thread_link($thread['tid']), 'Poll created successfully');
+    poll_respond($is_ajax, get_thread_link($thread['tid']), $lang->polls['flash_poll_created']);
 }
 
 // ─── ACTION: editpoll (show edit form) ────────────────────────────────────────
@@ -272,16 +334,16 @@ if ($action === 'editpoll') {
     );
     $thread = $db->fetch_array($query);
     if (!$thread) {
-        stderr('error_invalidthread');
+        stderr($lang->polls['err_invalid_thread']);
     }
 
     $fid   = $thread['fid'];
     $forum = get_forum($fid);
     if (!$forum) {
-        stderr('error_invalidforum');
+        stderr($lang->polls['err_invalid_forum']);
     }
-    if ($forum['open'] == 0 && !is_moderator($fid, 'canmanagepolls')) {
-        stderr($lang->error_closedinvalidforum);
+    if ($forum['open'] == 0 && !$is_staff) {
+        stderr($lang->polls['err_forum_closed']);
     }
 
     build_forum_breadcrumb($fid);
@@ -290,14 +352,9 @@ if ($action === 'editpoll') {
 
     $plugins->run_hooks('polls_editpoll_end');
 
-    stdhead($lang->polls['edit_poll']);
-	
-	
-	echo '<script src="'.$BASEURL.'/scripts/Sortable.min.js"></script>
-<script src="'.$BASEURL.'/scripts/sweetalert2.min.js"></script>
-<script src="'.$BASEURL.'/scripts/polls.js"></script>';
-	
-	
+    stdhead($lang->polls['title_editpoll']);
+    poll_print_assets();
+
     build_breadcrumb();
     echo poll_render_edit_form($poll, $mybb->post_code, $lang);
     stdfoot();
@@ -315,7 +372,7 @@ if ($action === 'do_editpoll' && $is_post) {
 
     $question = trim($mybb->input['question'] ?? '');
     if ($question === '') {
-        poll_error($is_ajax, 'Question is empty');
+        poll_error($is_ajax, $lang->polls['err_question_required']);
     }
 
     $raw_options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
@@ -357,7 +414,7 @@ if ($action === 'do_editpoll' && $is_post) {
     );
 
     $thread = poll_get_thread_or_die($poll['tid'], $is_ajax);
-    poll_respond($is_ajax, get_thread_link($thread['tid']), 'Poll updated successfully');
+    poll_respond($is_ajax, get_thread_link($thread['tid']), $lang->polls['flash_poll_updated']);
 }
 
 // ─── ACTION: showresults ──────────────────────────────────────────────────────
@@ -369,7 +426,7 @@ if ($action === 'showresults') {
 
     $thread = get_thread($poll['tid']);
     if (!$thread || $thread['visible'] != 1) {
-        stderr('error_invalidthread');
+        stderr($lang->polls['err_invalid_thread']);
     }
 
     $fid              = $thread['fid'];
@@ -377,7 +434,7 @@ if ($action === 'showresults') {
     $forumpermissions = forum_permissions($fid);
 
     if (!$forum) {
-        stderr('error_invalidforum');
+        stderr($lang->polls['err_invalid_forum']);
     }
     if ($forumpermissions['canviewthreads'] == 0 || $forumpermissions['canview'] == 0) {
         print_no_permission();
@@ -387,7 +444,7 @@ if ($action === 'showresults') {
 
     build_forum_breadcrumb($fid);
     add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
-    add_breadcrumb('nav_pollresults');
+    add_breadcrumb($lang->polls['nav_pollresults']);
 
     // Gather voter data
     $voters = $votedfor = $guest_voters = [];
@@ -415,9 +472,8 @@ if ($action === 'showresults') {
 
     $poll['question'] = htmlspecialchars_uni($poll['question']);
 
-    stdhead('Poll Result');
-	
-	
+    stdhead($lang->polls['title_results']);
+
     echo poll_render_results($poll, $voters, $guest_voters, $votedfor, $fid, $lang, $parser);
     stdfoot();
     exit;
@@ -436,7 +492,7 @@ if ($action === 'vote' && $is_post) {
 
     $thread = get_thread($poll['tid']);
     if (!$thread || $thread['visible'] != 1) {
-        stderr('error_invalidthread');
+        stderr($lang->polls['err_invalid_thread']);
     }
 
     $fid              = $thread['fid'];
@@ -447,16 +503,16 @@ if ($action === 'vote' && $is_post) {
         print_no_permission();
     }
     if (!$forum || $forum['open'] == 0) {
-        stderr('error_closedinvalidforum');
+        stderr($lang->polls['err_forum_closed']);
     }
 
     $expire = $poll['dateline'] + $poll['timeout'] * 86400;
     if ($poll['closed'] == 1 || $thread['closed'] == 1 || ($poll['timeout'] && $expire < TIMENOW)) {
-        stderr('error_pollclosed');
+        stderr($lang->polls['err_poll_closed']);
     }
 
     if (!isset($mybb->input['option'])) {
-        stderr('error_nopolloptions');
+        stderr($lang->polls['err_no_option']);
     }
 
     // Duplicate-vote check
@@ -474,7 +530,7 @@ if ($action === 'vote' && $is_post) {
         [...$uid_params, $poll['pid']]
     ));
     if ($votecheck) {
-        stderr('error_alreadyvoted');
+        stderr($lang->polls['err_already_voted']);
     }
 
     $votesarray = explode('||~|~||', $poll['votes']);
@@ -484,7 +540,7 @@ if ($action === 'vote' && $is_post) {
 
     if ($poll['multiple'] == 1) {
         if (!is_array($option)) {
-            stderr('error_nopolloptions');
+            stderr($lang->polls['err_no_option']);
         }
         $total = 0;
         foreach ($option as $voteoption => $vote) {
@@ -502,11 +558,11 @@ if ($action === 'vote' && $is_post) {
             }
         }
         if ($poll['maxoptions'] > 0 && $total > $poll['maxoptions']) {
-            stderr(sprintf('error_maxpolloptions', $poll['maxoptions']));
+            stderr(ags_fmt($lang->polls['err_max_votes'], (int)$poll['maxoptions']));
         }
     } else {
         if (is_array($option) || !isset($votesarray[$option - 1])) {
-            stderr('error_nopolloptions');
+            stderr($lang->polls['err_no_option']);
         }
         $votesql = [
             'pid'        => $poll['pid'],
@@ -520,7 +576,7 @@ if ($action === 'vote' && $is_post) {
     }
 
     if (!$votesql) {
-        stderr('error_nopolloptions');
+        stderr($lang->polls['err_no_option']);
     }
 
     $plugins->run_hooks('polls_vote_process');
@@ -541,7 +597,7 @@ if ($action === 'vote' && $is_post) {
 
     $plugins->run_hooks('polls_vote_end');
 
-    redirect(get_thread_link($poll['tid']), 'redirect_votethanks');
+    redirect(get_thread_link($poll['tid']), $lang->polls['flash_vote_thanks']);
 }
 
 // ─── ACTION: do_undovote ──────────────────────────────────────────────────────
@@ -557,18 +613,18 @@ if ($action === 'do_undovote') {
 
     $thread = get_thread($poll['tid']);
     if (!$thread || $thread['visible'] != 1) {
-        stderr('error_invalidthread');
+        stderr($lang->polls['err_invalid_thread']);
     }
 
     $fid   = $thread['fid'];
     $forum = get_forum($fid);
     if (!$forum || $forum['open'] == 0) {
-        stderr('error_closedinvalidforum');
+        stderr($lang->polls['err_forum_closed']);
     }
 
     $expire = $poll['dateline'] + $poll['timeout'] * 86400;
     if ($poll['closed'] == 1 || $thread['closed'] == 1 || ($poll['timeout'] && $expire < TIMENOW)) {
-        stderr('error_pollclosed');
+        stderr($lang->polls['err_poll_closed']);
     }
 
     $cur_uid = (int)($CURUSER['id'] ?? 0);
@@ -589,7 +645,7 @@ if ($action === 'do_undovote') {
         $vote_options[$row['vid']] = $row['voteoption'];
     }
     if (empty($vote_options)) {
-        stderr('error_notvoted');
+        stderr($lang->polls['err_not_voted']);
     }
 
     $votesarray = array_slice(explode('||~|~||', $poll['votes']), 0, $poll['numoptions']);
@@ -627,19 +683,21 @@ if ($action === 'do_undovote') {
 
     $plugins->run_hooks('polls_do_undovote_end');
 
-    redirect(get_thread_link($poll['tid']), 'redirect_unvoted');
+    redirect(get_thread_link($poll['tid']), $lang->polls['flash_unvoted']);
 }
 
 // ─── Template functions ───────────────────────────────────────────────────────
 
 function poll_render_new_form(int $tid, string $post_code, int $polloptions = 2): string
 {
+    $L = poll_lang_esc();
+
     $count_js = '<script>window.__POLL_COUNT__ = ' . $polloptions . ';</script>';
     return $count_js . <<<HTML
 <div class="container py-4">
 <div class="card shadow border-0 rounded-4">
     <div class="card-header bg-dark text-white fw-bold">
-        <i class="fa-solid fa-chart-simple me-2"></i> Create Poll
+        <i class="fa-solid fa-chart-simple me-2"></i> {$L['sec_create_poll']}
     </div>
     <div class="card-body">
         <form id="pollForm">
@@ -649,16 +707,16 @@ function poll_render_new_form(int $tid, string $post_code, int $polloptions = 2)
             <input type="hidden" name="ajax"        value="1" />
 
             <div class="mb-4">
-                <label class="form-label fw-semibold">Question</label>
+                <label class="form-label fw-semibold">{$L['lbl_question']}</label>
                 <input type="text" name="question" class="form-control form-control-lg" required
-                       placeholder="For example: Which tracker is the best?" />
+                       placeholder="{$L['ph_question']}" />
             </div>
 
             <div class="mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <label class="fw-semibold">Answer Options</label>
+                    <label class="fw-semibold">{$L['lbl_answer_options']}</label>
                     <button type="button" id="addOption" class="btn btn-sm btn-primary">
-                        <i class="fa fa-plus"></i> Add Option
+                        <i class="fa fa-plus"></i> {$L['btn_add_option']}
                     </button>
                 </div>
                 <div id="optionsList"></div>
@@ -667,30 +725,31 @@ function poll_render_new_form(int $tid, string $post_code, int $polloptions = 2)
             <div class="mb-4">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="multiVote" name="postoptions[multiple]" value="1">
-                    <label class="form-check-label">Allow multiple answers</label>
+                    <label class="form-check-label">{$L['lbl_multiple']}</label>
                 </div>
                 <div id="maxOptionsBlock" class="mt-2" style="display:none;">
-                    <input type="number" name="maxoptions" class="form-control w-auto" placeholder="Max selections">
+                    <input type="number" name="maxoptions" class="form-control w-auto"
+                           placeholder="{$L['ph_maxoptions']}" title="{$L['hint_maxoptions']}" aria-label="{$L['hint_maxoptions']}">
                 </div>
                 <div class="form-check mt-2">
                     <input class="form-check-input" type="checkbox" name="postoptions[public]" value="1">
-                    <label class="form-check-label">Show who voted</label>
+                    <label class="form-check-label">{$L['lbl_public']}</label>
                 </div>
             </div>
 
             <div class="mb-4">
-                <label class="form-label fw-semibold">Duration (days)</label>
-                <input type="number" name="timeout" class="form-control w-auto" value="0">
+                <label class="form-label fw-semibold">{$L['lbl_timeout']}</label>
+                <input type="number" name="timeout" class="form-control w-auto" value="0" title="{$L['hint_timeout']}">
             </div>
 
             <div class="mb-4">
-                <label class="fw-semibold">Preview</label>
-                <div id="previewBox" class="border rounded p-3 bg-light small">No options yet</div>
+                <label class="fw-semibold">{$L['lbl_preview']}</label>
+                <div id="previewBox" class="border rounded p-3 bg-light small">{$L['txt_no_options']}</div>
             </div>
 
             <div class="text-center">
                 <button type="submit" class="btn btn-success px-4">
-                    <i class="fa fa-check"></i> Create Poll
+                    <i class="fa fa-check"></i> {$L['btn_create_poll']}
                 </button>
             </div>
         </form>
@@ -702,6 +761,8 @@ HTML;
 
 function poll_render_edit_form(array $poll, string $post_code, object $lang): string
 {
+    $L = poll_lang_esc();
+
     $pid      = (int)$poll['pid'];
     $question = htmlspecialchars_uni($poll['question']);
     $timeout  = (int)$poll['timeout'];
@@ -711,31 +772,27 @@ function poll_render_edit_form(array $poll, string $post_code, object $lang): st
     $chk_public   = $poll['public']   ? 'checked' : '';
     $chk_closed   = $poll['closed']   ? 'checked' : '';
 
-    // Build initial option rows as JSON for JS
+    // Build initial option rows as JSON for JS.
+    // Raw text: JS assigns it via input.value, json_encode flags make it safe inside <script>.
     $options_arr = explode('||~|~||', $poll['options']);
     $votes_arr   = explode('||~|~||', $poll['votes']);
     $initial     = [];
     foreach ($options_arr as $i => $opt) {
         $initial[] = [
-            'text'  => htmlspecialchars_uni($opt),
+            'text'  => $opt,
             'votes' => (int)($votes_arr[$i] ?? 0),
         ];
     }
-    $initial_json = json_encode($initial, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP);
-
-    $label_edit   = htmlspecialchars_uni($lang->polls['edit_poll']   ?? 'Edit Poll');
-    $label_opts   = htmlspecialchars_uni($lang->polls['poll_options'] ?? 'Options');
-    $label_multi  = htmlspecialchars_uni($lang->polls['option_multiple'] ?? 'Allow multiple answers');
-    $label_public = htmlspecialchars_uni($lang->polls['option_public']   ?? 'Show who voted');
-    $label_closed = htmlspecialchars_uni($lang->polls['option_closed']   ?? 'Close poll');
-    $label_tout   = htmlspecialchars_uni($lang->polls['poll_timeout']    ?? 'Duration (days)');
-    $label_update = htmlspecialchars_uni($lang->polls['update_poll']     ?? 'Update Poll');
+    $initial_json = json_encode(
+        $initial,
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    );
 
     return <<<HTML
 <div class="container py-4">
 <div class="card shadow border-0 rounded-4">
     <div class="card-header bg-dark text-white fw-bold">
-        <i class="fa-solid fa-pen me-2"></i> {$label_edit}
+        <i class="fa-solid fa-pen me-2"></i> {$L['sec_edit_poll']}
     </div>
     <div class="card-body">
         <form id="pollForm">
@@ -745,15 +802,15 @@ function poll_render_edit_form(array $poll, string $post_code, object $lang): st
             <input type="hidden" name="ajax"        value="1" />
 
             <div class="mb-4">
-                <label class="form-label fw-semibold">Question</label>
+                <label class="form-label fw-semibold">{$L['lbl_question']}</label>
                 <input type="text" name="question" class="form-control form-control-lg" value="{$question}">
             </div>
 
             <div class="mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <label class="fw-semibold">{$label_opts}</label>
+                    <label class="fw-semibold">{$L['lbl_options']}</label>
                     <button type="button" id="addOption" class="btn btn-sm btn-primary">
-                        <i class="fa fa-plus"></i> Add
+                        <i class="fa fa-plus"></i> {$L['btn_add_option']}
                     </button>
                 </div>
                 <div id="optionsList"></div>
@@ -763,34 +820,35 @@ function poll_render_edit_form(array $poll, string $post_code, object $lang): st
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="multiVote"
                            name="postoptions[multiple]" value="1" {$chk_multiple}>
-                    <label class="form-check-label">{$label_multi}</label>
+                    <label class="form-check-label">{$L['lbl_multiple']}</label>
                 </div>
                 <div id="maxOptionsBlock" class="mt-2" style="display:none;">
-                    <input type="number" name="maxoptions" class="form-control w-auto" value="{$maxopts}">
+                    <input type="number" name="maxoptions" class="form-control w-auto" value="{$maxopts}"
+                           placeholder="{$L['ph_maxoptions']}" title="{$L['hint_maxoptions']}" aria-label="{$L['hint_maxoptions']}">
                 </div>
                 <div class="form-check mt-2">
                     <input class="form-check-input" type="checkbox" name="postoptions[public]" value="1" {$chk_public}>
-                    <label class="form-check-label">{$label_public}</label>
+                    <label class="form-check-label">{$L['lbl_public']}</label>
                 </div>
                 <div class="form-check mt-2">
                     <input class="form-check-input" type="checkbox" name="postoptions[closed]" value="1" {$chk_closed}>
-                    <label class="form-check-label">{$label_closed}</label>
+                    <label class="form-check-label">{$L['lbl_closed']}</label>
                 </div>
             </div>
 
             <div class="mb-4">
-                <label class="form-label fw-semibold">{$label_tout}</label>
-                <input type="number" name="timeout" class="form-control w-auto" value="{$timeout}">
+                <label class="form-label fw-semibold">{$L['lbl_timeout']}</label>
+                <input type="number" name="timeout" class="form-control w-auto" value="{$timeout}" title="{$L['hint_timeout']}">
             </div>
 
             <div class="mb-4">
-                <label class="fw-semibold">Preview</label>
-                <div id="previewBox" class="border rounded p-3 bg-light small">No options</div>
+                <label class="fw-semibold">{$L['lbl_preview']}</label>
+                <div id="previewBox" class="border rounded p-3 bg-light small">{$L['txt_no_options']}</div>
             </div>
 
             <div class="text-center">
                 <button type="submit" class="btn btn-success px-4">
-                    <i class="fa fa-check"></i> {$label_update}
+                    <i class="fa fa-check"></i> {$L['btn_update_poll']}
                 </button>
             </div>
         </form>
@@ -805,6 +863,8 @@ function poll_render_results(
     array $poll, array $voters, array $guest_voters, array $votedfor,
     int $fid, object $lang, object $parser
 ): string {
+    $L = poll_lang_esc();
+
     $options_arr = explode('||~|~||', $poll['options']);
     $votes_arr   = explode('||~|~||', $poll['votes']);
     $totvotes    = array_sum($votes_arr);
@@ -818,11 +878,11 @@ function poll_render_results(
             'allow_imgcode' => 1, 'allow_videocode' => 1, 'filter_badwords' => 1,
         ]);
         $pct    = $totvotes > 0 ? number_format($votes / $totvotes * 100, 2) : 0;
-        $star   = !empty($votedfor[$num]) ? ' *' : '';
+        $star   = !empty($votedfor[$num]) ? ' <span title="' . $L['tip_your_vote'] . '">*</span>' : '';
 
         // Build voter list
         $userlist = '';
-        //if ($poll['public'] == 1 || is_moderator($fid, 'canmanagepolls')) {
+        //if ($poll['public'] == 1 || is_mod($usergroups)) {
             $comma = '';
             if (!empty($voters[$num]) && is_array($voters[$num])) {
                 foreach ($voters[$num] as $uid => $uname) {
@@ -831,8 +891,8 @@ function poll_render_results(
                 }
             }
             if (!empty($guest_voters[$num])) {
-                $gc        = $guest_voters[$num];
-                $userlist .= ($comma ?: '') . ($gc === 1 ? $lang->guest_count : sprintf('guest_count_multiple', $gc));
+                $gc        = (int)$guest_voters[$num];
+                $userlist .= ($comma ?: '') . ($gc === 1 ? $L['lbl_guest_one'] : ags_fmt($L['lbl_guest_many'], $gc));
             }
         //}
 
@@ -854,13 +914,14 @@ HTML;
     }
 
     $totpct = $totvotes ? '100%' : '0%';
+    $total  = ags_fmt($L['lbl_total_votes'], (int)$poll['numvotes'], $totpct);
     return <<<HTML
 <div class="container-md">
 <div class="card mb-4">
     <div class="card-header bg-white fw-bold mt-2 pb-0">{$poll['question']}</div>
     <div class="card-body">{$rows}</div>
     <div class="card-footer text-center">
-        Total: {$poll['numvotes']} votes — {$totpct}
+        {$total}
     </div>
 </div>
 </div>

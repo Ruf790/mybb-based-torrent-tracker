@@ -1,6 +1,6 @@
 <?php
 /**
- * Installer v2.0
+ * Installer v2.1.6
  * 
  */
 
@@ -12,6 +12,82 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/install_error.log');
+
+// Запущены ли мы из консоли (php install.php --config=install.json).
+$IS_CLI = (PHP_SAPI === 'cli');
+
+// ── Заголовки безопасности ──────────────────────────────────────────────────
+// В формах установщика вводятся пароли БД и администратора: запрещаем
+// встраивание во фрейм (clickjacking), кеширование страниц и индексацию.
+if (!$IS_CLI) {
+    header('X-Frame-Options: DENY');
+    header("Content-Security-Policy: frame-ancestors 'none'");
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('X-Robots-Tag: noindex, nofollow');
+}
+
+/**
+ * Ротация install_error.log: если файл вырос больше 512 КБ, оставляем только
+ * последние ~100 КБ. Лог лежит в корне сайта, поэтому не даём ему расти вечно.
+ */
+function rotate_install_log(): void
+{
+    $f = __DIR__ . '/install_error.log';
+    if (!is_file($f) || (int)@filesize($f) <= 512 * 1024) return;
+    $tail = @file_get_contents($f, false, null, -100 * 1024);
+    if ($tail === false) return;
+    @file_put_contents($f, "[installer] log rotated\n" . $tail, LOCK_EX);
+}
+rotate_install_log();
+
+// ── Локальные ресурсы интерфейса ─────────────────────────────────────────────
+// CSS/JS/шрифты лежат в sql/ (Bootstrap, FontAwesome) и отдаются самим
+// install.php по белому списку: сама папка sql/ закрывается от веба (.htaccess),
+// поэтому прямые ссылки на неё после установки не работали бы, а страница
+// завершения установки осталась бы без стилей. Если файлов нет — используется CDN.
+const INSTALLER_ASSETS = [
+    'bootstrap.min.css'            => 'text/css; charset=utf-8',
+    'fontawesome.min.css'          => 'text/css; charset=utf-8',
+    'bootstrap.bundle.min.js'      => 'application/javascript; charset=utf-8',
+    'webfonts/fa-solid-900.woff2'  => 'font/woff2',
+    'webfonts/fa-regular-400.woff2' => 'font/woff2',
+    'webfonts/fa-v4compatibility.woff2' => 'font/woff2',
+];
+
+function installer_serve_asset(string $name): void
+{
+    $path = __DIR__ . '/sql/' . $name;
+    if (!isset(INSTALLER_ASSETS[$name]) || !is_file($path)) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Not found';
+        exit;
+    }
+    $etag = '"' . md5($name . '|' . filemtime($path) . '|' . filesize($path)) . '"';
+    header('Content-Type: ' . INSTALLER_ASSETS[$name]);
+    header('Cache-Control: public, max-age=86400');
+    header_remove('Pragma');
+    header('ETag: ' . $etag);
+    if (($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) {
+        http_response_code(304);
+        exit;
+    }
+    if ($name === 'fontawesome.min.css') {
+        // Пути к шрифтам в оригинальном CSS — ../webfonts/…: перенаправляем на этот же скрипт.
+        echo str_replace('../webfonts/', basename(__FILE__) . '?asset=webfonts/', (string)file_get_contents($path));
+        exit;
+    }
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+}
+
+if (PHP_SAPI !== 'cli' && isset($_GET['asset'])) {
+    installer_serve_asset((string)$_GET['asset']);
+}
 
 /**
  * Логирует техническую деталь ошибки и возвращает безопасное для показа
@@ -46,22 +122,37 @@ define('INC_PATH', __DIR__ . '/include');
 // (и всё остальное, что на него смотрит через defined('INSTALL_MODE')) сразу
 // знало, что сайта ещё нет, и не пыталось писать в БД-таблицы, которых
 // на этом этапе может ещё не существовать.
-
+define('INSTALL_MODE', true);
 
 require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_user.php';
 
-define('INSTALLER_VERSION', '2.0');
+define('INSTALLER_VERSION', '2.1.6');
 define('LOCK_FILE', __DIR__ . '/install.lock');
+// Версия схемы БД, записываемая в settings.schema_version (используется upgrade.php).
+const INSTALLER_SCHEMA_VERSION = '1';
+// Закрывать ли torrents/ от прямых HTTP-запросов (.torrent отдаются через PHP с passkey).
+// Если ваш трекер отдаёт файлы из torrents/ напрямую — поставьте false.
+const PROTECT_TORRENTS_DIR = true;
 
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path'     => '/',
-    'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-session_start();
+if ($IS_CLI) {
+    // В консольном режиме сессии не нужны: $_SESSION — обычный массив в памяти.
+    $_SESSION = [];
+} else {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+    // Защита от фиксации сессии: новый идентификатор при первом заходе.
+    if (empty($_SESSION['_init'])) {
+        session_regenerate_id(true);
+        $_SESSION['_init'] = 1;
+    }
+}
 
 // ── CSRF token ───────────────────────────────────────────────────────────
 // Перенесено сюда (было ниже, после блокировки install.lock) - AJAX-запросы
@@ -88,6 +179,10 @@ function csrf_check(): bool
 // Выбор хранится в сессии; ?lang=ru|en переключает. Если не выбран — берём из
 // Accept-Language (ru → русский, иначе английский). Ключи словаря — английские
 // строки: если перевода нет, t() просто вернёт оригинал.
+$CLI_OPTS = $IS_CLI ? (getopt('', ['config:', 'lang:', 'help']) ?: []) : [];
+if ($IS_CLI && isset($CLI_OPTS['lang']) && in_array($CLI_OPTS['lang'], ['ru', 'en'], true)) {
+    $_SESSION['lang'] = $CLI_OPTS['lang'];
+}
 if (isset($_GET['lang']) && in_array($_GET['lang'], ['ru', 'en'], true)) {
     $_SESSION['lang'] = $_GET['lang'];
 }
@@ -193,7 +288,7 @@ function i18n_ru(): array
         'You\'re already logged in!' => 'Вы уже вошли в систему!',
         'An auto-login cookie was set for your new admin account — just hit the button below, no need to fill in the login form.' => 'Для нового аккаунта администратора установлена cookie автовхода — просто нажмите кнопку ниже, форму входа заполнять не нужно.',
         'Security:' => 'Безопасность:',
-        'Delete <code>install.php</code> from your server immediately!' => 'Немедленно удалите <code>install.php</code> с сервера!',
+        'The installer is locked by <code>install.lock</code>. Keep install.php for reinstalls, or delete it if you no longer need it.' => 'Установщик заблокирован файлом <code>install.lock</code>. install.php можно оставить для переустановок или удалить, если он больше не нужен.',
         'Delete install.php Now' => 'Удалить install.php сейчас',
         'Installation Log' => 'Журнал установки',
         '{n} steps' => 'шагов: {n}',
@@ -209,7 +304,6 @@ function i18n_ru(): array
         'Your site uses http:// — passkeys and login cookies travel unencrypted. Enable HTTPS, then update the Site URL in the admin panel.' => 'Сайт работает по http:// — passkey и cookie входа передаются в открытом виде. Включите HTTPS и затем обновите URL сайта в админ-панели.',
         'HTTPS is enabled — good.' => 'HTTPS включён — отлично.',
         'Local address detected — remember to enable HTTPS on the production server.' => 'Обнаружен локальный адрес — не забудьте включить HTTPS на боевом сервере.',
-        'Make sure the sql/ folder and install_error.log are not accessible from the web.' => 'Убедитесь, что папка sql/ и файл install_error.log недоступны из интернета.',
         'Installation failed — stopped' => 'Установка прервана из-за ошибки',
         '{label} failed:' => 'Ошибка на шаге «{label}»:',
         'Installation plan' => 'План установки',
@@ -288,6 +382,86 @@ function i18n_ru(): array
         'Installer is locked.' => 'Установщик заблокирован.',
         'Not allowed.' => 'Недоступно.',
         'Could not delete the file automatically — remove install.php manually via FTP/SSH.' => 'Не удалось удалить файл автоматически — удалите install.php вручную через FTP/SSH.',
+        'Server:' => 'Сервер:',
+        'Database server {server} is older than recommended (MySQL 5.7 / MariaDB 10.3). The installation may fail.' => 'Версия сервера БД {server} старше рекомендуемой (MySQL 5.7 / MariaDB 10.3). Установка может завершиться ошибкой.',
+        'Collation utf8mb4_0900_ai_ci (MySQL 8.0+) is not supported by {server}; tables will use the server default collation instead.' => 'Collation utf8mb4_0900_ai_ci (MySQL 8.0+) не поддерживается сервером {server}; таблицы будут созданы с collation сервера по умолчанию.',
+        'permissions set to 0640' => 'права 0640 установлены',
+        'could not set permissions 0640 on: {files}' => 'не удалось установить права 0640 на: {files}',
+        'Set permissions 0640 on: {files} (they contain the database password and encryption key).' => 'Установите права 0640 на: {files} (в них пароль БД и ключ шифрования).',
+        'sql/ and install_error.log are closed from the web (checked).' => 'Папка sql/ и файл install_error.log закрыты от доступа из интернета (проверено).',
+        'Still accessible from the web: {urls}. Block them in the web server config (see below).' => 'Всё ещё доступно из интернета: {urls}. Закройте доступ в настройках веб-сервера (примеры ниже).',
+        'Could not verify automatically that sql/ and install_error.log are closed. Open {url} in your browser — it should give 403 or 404.' => 'Не удалось автоматически проверить, закрыты ли sql/ и install_error.log. Откройте {url} в браузере — должна быть ошибка 403 или 404.',
+        'Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).' => 'Не удалось записать .htaccess автоматически ({files}). Создайте его вручную или закройте доступ в настройках веб-сервера (примеры ниже).',
+        'Server config examples' => 'Примеры настроек веб-сервера',
+        'Local interface files in sql/' => 'Локальные файлы интерфейса в sql/',
+        'Missing — the CDN will be used (needs internet access in the browser)' => 'Отсутствуют — будет использован CDN (в браузере нужен доступ к интернету)',
+        'A previous installation attempt stopped after step {n}. You can resume from there or wipe the created tables and start over.' => 'Предыдущая попытка установки остановилась после шага {n}. Можно продолжить с этого места или удалить созданные таблицы и начать заново.',
+        'Cannot connect to {host}:{port} — {err}' => 'Не удаётся подключиться к {host}:{port} — {err}',
+        'Complete the previous steps first.' => 'Сначала пройдите предыдущие шаги.',
+        'Continue anyway with this database server' => 'Всё равно продолжить с этим сервером БД',
+        'Could not be checked from the server itself (normal behind NAT or a CDN). Open the URL from outside — it should return a short text starting with “d”.' => 'С самого сервера проверить не удалось (это нормально за NAT или CDN). Откройте адрес снаружи — должен вернуться короткий текст, начинающийся с «d».',
+        'Create the database if it does not exist (requires the CREATE privilege)' => 'Создать базу данных, если её нет (нужно право CREATE)',
+        'Database server {server} is older than the supported minimum (MySQL 5.7 / MariaDB 10.3). Tick the box below to continue at your own risk.' => 'Версия сервера БД {server} ниже минимально поддерживаемой (MySQL 5.7 / MariaDB 10.3). Отметьте галочку ниже, чтобы продолжить на свой риск.',
+        'Download installation report' => 'Скачать отчёт об установке',
+        'Drop all tracker tables created so far and start the installation from scratch?' => 'Удалить все созданные на данный момент таблицы трекера и начать установку заново?',
+        'Drop the existing tracker tables listed above and continue' => 'Удалить перечисленные выше таблицы трекера и продолжить',
+        'Enter a valid Site Email first — the test message is sent to it.' => 'Сначала укажите корректный Email сайта — тестовое письмо отправляется на него.',
+        'Existing tracker tables in this database will be dropped before the installation starts.' => 'Существующие таблицы трекера в этой базе будут удалены перед началом установки.',
+        'Fair' => 'Средний',
+        'Files in torrents/ can be downloaded directly, bypassing passkey checks. Block /torrents/ in the web server config (see below).' => 'Файлы из torrents/ скачиваются напрямую, в обход проверки passkey. Закройте /torrents/ в настройках веб-сервера (примеры ниже).',
+        'Functions in disable_functions' => 'Функции в disable_functions',
+        'Good' => 'Хороший',
+        'Leave the host empty to send mail with PHP mail(). The test message is sent to the Site Email. Port 465 uses SSL, other ports use STARTTLS.' => 'Оставьте хост пустым, чтобы отправлять почту через PHP mail(). Тестовое письмо уходит на Email сайта. Порт 465 — SSL, остальные порты — STARTTLS.',
+        'Off — .torrent and avatar uploads will not work' => 'Выключено — загрузка .torrent и аватаров работать не будет',
+        'Off — some features that fetch remote data may not work' => 'Выключено — функции, загружающие внешние данные, могут не работать',
+        'On' => 'Включено',
+        'Outgoing mail (SMTP) — optional' => 'Исходящая почта (SMTP) — необязательно',
+        'Outgoing mail:' => 'Исходящая почта:',
+        'PHP files inside uploads/ can be executed from the web! Disable script execution there in the web server config (see below).' => 'PHP-файлы внутри uploads/ можно выполнить из интернета! Запретите исполнение скриптов в этой папке в настройках веб-сервера (примеры ниже).',
+        'PHP mail()' => 'PHP mail()',
+        'PHP setting: {name}' => 'Параметр PHP: {name}',
+        'Request failed — check your connection and install_error.log.' => 'Запрос не выполнен — проверьте соединение и install_error.log.',
+        'Resume installation' => 'Продолжить установку',
+        'Retry from this step' => 'Повторить с этого шага',
+        'Runs every minute; adjust the interval if your tracker documentation says otherwise.' => 'Запускается каждую минуту; измените интервал, если в документации трекера указано иное.',
+        'SMTP host' => 'SMTP-хост',
+        'SMTP host looks invalid.' => 'SMTP-хост указан некорректно.',
+        'SMTP password' => 'SMTP-пароль',
+        'SMTP port' => 'SMTP-порт',
+        'SMTP port must be a number from 1 to 65535.' => 'SMTP-порт должен быть числом от 1 до 65535.',
+        'SMTP test failed unexpectedly. Details were saved to install_error.log — check the log on the server.' => 'Тест SMTP неожиданно завершился ошибкой. Подробности сохранены в install_error.log — проверьте лог на сервере.',
+        'SMTP username' => 'SMTP-логин',
+        'Send test email' => 'Отправить тестовое письмо',
+        'Sending…' => 'Отправка…',
+        'Steps must run in order — expected step {n}.' => 'Шаги выполняются строго по порядку — ожидался шаг {n}.',
+        'Strong' => 'Надёжный',
+        'TLS handshake failed (check the certificate and port).' => 'Не удалось установить TLS-соединение (проверьте сертификат и порт).',
+        'Test message accepted by the SMTP server. Check the inbox.' => 'Тестовое письмо принято SMTP-сервером. Проверьте почтовый ящик.',
+        'The cron script name could not be detected automatically — replace it with the one from your tracker documentation.' => 'Имя cron-скрипта определить не удалось — замените его на указанное в документации трекера.',
+        'The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to drop these tables (all their data will be lost).' => 'В базе уже есть таблицы трекера ({tables}). Выберите пустую базу или отметьте галочку ниже, чтобы удалить эти таблицы (все данные в них будут потеряны).',
+        'The database user lacks required privileges: {ops}. Grant CREATE, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT and DROP on this database.' => 'У пользователя БД не хватает прав: {ops}. Выдайте ему CREATE, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT и DROP на эту базу.',
+        'The server does not offer encryption (STARTTLS); refusing to send the password in clear text.' => 'Сервер не предлагает шифрование (STARTTLS); пароль в открытом виде отправлять отказываюсь.',
+        'The server returned an invalid response — see install_error.log.' => 'Сервер вернул некорректный ответ — смотрите install_error.log.',
+        'Too many test attempts in this session.' => 'Слишком много попыток теста в этой сессии.',
+        'Warning' => 'Предупреждение',
+        'Warnings are recommendations: they do not block the installation, but fixing them avoids problems later.' => 'Предупреждения — это рекомендации: они не блокируют установку, но их исправление убережёт от проблем позже.',
+        'Weak' => 'Слабый',
+        'Wipe and start over' => 'Очистить и начать заново',
+        'all data in them will be lost' => 'все данные в них будут потеряны',
+        'announce.php answered like a tracker (checked from the server itself).' => 'announce.php ответил как трекер (проверено с самого сервера).',
+        'announce.php responded, but not with a tracker reply. Check the web server and rewrite rules.' => 'announce.php ответил, но не как трекер. Проверьте веб-сервер и правила rewrite.',
+        'announce.php returned an HTTP error. Check that the file exists and PHP works.' => 'announce.php вернул HTTP-ошибку. Проверьте, что файл существует и PHP работает.',
+        'mail() accepted the message. Check the inbox (delivery is not guaranteed).' => 'mail() принял письмо. Проверьте почтовый ящик (доставка не гарантируется).',
+        'mail() failed to send the message.' => 'mail() не смог отправить письмо.',
+        'mail() is not available on this server.' => 'Функция mail() недоступна на этом сервере.',
+        'no response' => 'нет ответа',
+        'recommended' => 'рекомендуется',
+        'sql/{file} present' => 'sql/{file} на месте',
+        '{value} (recommended: at least {rec})' => '{value} (рекомендуется: не менее {rec})',
+        'Password is too common — choose a less predictable one.' => 'Слишком распространённый пароль — выберите менее предсказуемый.',
+        'Password must not consist of a single repeated character.' => 'Пароль не должен состоять из одного повторяющегося символа.',
+        'Password must not contain the username or the e-mail name.' => 'Пароль не должен содержать логин или имя из email.',
+        'Could not drop the existing tables' => 'Не удалось удалить существующие таблицы',
     ];
 }
 
@@ -312,6 +486,16 @@ function js_i18n(): array
         'HTTPS is not enabled for this address. Passkeys and login cookies would travel unencrypted — use https:// if you can.',
         'Cookie domain will be: {domain}',
         '(host only)',
+        'Retry from this step',
+        'Wipe and start over',
+        'Drop all tracker tables created so far and start the installation from scratch?',
+        'Request failed — check your connection and install_error.log.',
+        'The server returned an invalid response — see install_error.log.',
+        'Sending…',
+        'Weak',
+        'Fair',
+        'Good',
+        'Strong',
     ] as $k) {
         $out[$k] = t($k);
     }
@@ -342,6 +526,723 @@ function derive_cookie_domain(string $url): string
     return '.' . $host;
 }
 
+/**
+ * Определяет тип и версию сервера БД (MySQL / MariaDB) и решает, нужны ли
+ * поправки схемы. COLLATE=utf8mb4_0900_ai_ci существует только в MySQL 8.0.1+;
+ * на MariaDB и старом MySQL такие CREATE TABLE падают с «Unknown collation».
+ */
+function detect_db_info($db): array
+{
+    $info = ['version' => '', 'flavor' => 'mysql', 'server' => '', 'collation_fix' => false, 'too_old' => false];
+    $raw = '';
+    try {
+        $q   = $db->sql_query_prepared('SELECT VERSION() AS v');
+        $row = $q ? $db->fetch_array($q) : null;
+        if (is_array($row) && $row) {
+            $raw = (string)($row['v'] ?? reset($row));
+        }
+    } catch (Throwable $e) {
+        error_log('[installer] Could not detect DB version: ' . $e->getMessage());
+    }
+    if ($raw === '') return $info;
+
+    $isMaria = stripos($raw, 'mariadb') !== false;
+    // MariaDB иногда отдаёт версию с префиксом репликации: «5.5.5-10.11.6-MariaDB».
+    $clean = $isMaria ? (string)preg_replace('/^5\.5\.5-/', '', $raw) : $raw;
+    if (!preg_match('/^(\d+(?:\.\d+){0,2})/', $clean, $m)) return $info;
+    $ver = $m[1];
+
+    $info['version']       = $ver;
+    $info['flavor']        = $isMaria ? 'mariadb' : 'mysql';
+    $info['server']        = ($isMaria ? 'MariaDB ' : 'MySQL ') . $ver;
+    $info['collation_fix'] = $isMaria || version_compare($ver, '8.0.1', '<');
+    $info['too_old']       = version_compare($ver, $isMaria ? '10.3.0' : '5.7.0', '<');
+    return $info;
+}
+
+/**
+ * Убирает COLLATE=utf8mb4_0900_ai_ci там, где сервер его не знает: таблица
+ * получает collation сервера по умолчанию — ровно то же, что на MySQL 8
+ * получали таблицы без явного COLLATE, так что соотношение между таблицами
+ * сохраняется.
+ */
+function apply_collation_fix(string $sql, array $info): string
+{
+    if (empty($info['collation_fix'])) return $sql;
+    return str_replace(' COLLATE=utf8mb4_0900_ai_ci', '', $sql);
+}
+
+/** Плашки про сервер БД для шагов 3 и 5. */
+function db_notes_html(): string
+{
+    $i = $_SESSION['db_info'] ?? null;
+    if (!is_array($i) || empty($i['server'])) return '';
+    $h = '';
+    if (!empty($i['too_old'])) {
+        $h .= '<div class="alert alert-warning alert-custom mb-3" style="border-left-color:#ff9800"><i class="fas fa-triangle-exclamation me-2"></i>'
+            . htmlspecialchars(t('Database server {server} is older than recommended (MySQL 5.7 / MariaDB 10.3). The installation may fail.', ['server' => $i['server']]))
+            . '</div>';
+    }
+    if (!empty($i['collation_fix'])) {
+        $h .= '<div class="alert alert-info alert-custom mb-3" style="border-left-color:#0dcaf0"><i class="fas fa-circle-info me-2"></i>'
+            . htmlspecialchars(t('Collation utf8mb4_0900_ai_ci (MySQL 8.0+) is not supported by {server}; tables will use the server default collation instead.', ['server' => $i['server']]))
+            . '</div>';
+    }
+    return $h;
+}
+
+/**
+ * Проверяет, отдаётся ли файл из интернета: 'open' (содержимое доступно),
+ * 'blocked' (403/404/другая страница) или 'unknown' (проверить не удалось).
+ * Читает файл потоком и обрывает загрузку, как только нашёл $needle.
+ */
+function probe_public(string $url, string $needle): string
+{
+    if (!function_exists('curl_init')) return 'unknown';
+    $found = false; $total = 0; $tail = '';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 3,
+        CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_TIMEOUT        => 4,
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_USERAGENT      => 'installer-selfcheck',
+        CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$found, &$total, &$tail, $needle) {
+            $total += strlen($data);
+            $buf = $tail . $data;
+            if ($needle !== '' && stripos($buf, $needle) !== false) { $found = true; return 0; }
+            $tail = strlen($needle) > 1 ? substr($buf, -(strlen($needle) - 1)) : '';
+            return $total > 2 * 1024 * 1024 ? 0 : strlen($data);
+        },
+    ]);
+    curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $err  = curl_errno($ch);
+    unset($ch); // curl_close() в PHP 8.5 устарел
+
+    if ($code === 0) return 'unknown';
+    // Ошибка 23 (CURLE_WRITE_ERROR) — наш намеренный обрыв загрузки.
+    if ($err !== 0 && $err !== 23) return 'unknown';
+    if ($code === 200) return $found ? 'open' : 'blocked';
+    if (in_array($code, [401, 403, 404, 410], true)) return 'blocked';
+    return 'unknown';
+}
+
+/**
+ * Добавляет в .htaccess блок правил между маркерами BEGIN/END (один раз) и не
+ * трогает уже существующее содержимое файла.
+ */
+function installer_append_block(string $file, string $block, string $id = 'installer-protect'): bool
+{
+    $begin    = '# BEGIN ' . $id;
+    $existing = is_file($file) ? @file_get_contents($file) : '';
+    if ($existing === false) return false;
+    if (strpos($existing, $begin) !== false) return true;
+    $prefix = ($existing !== '' && substr($existing, -1) !== "\n") ? "\n" : '';
+    return @file_put_contents($file, $prefix . "\n" . $begin . "\n" . $block . '# END ' . $id . "\n", FILE_APPEND | LOCK_EX) !== false;
+}
+
+/**
+ * Закрывает от веба служебные файлы и каталоги:
+ *  - sql/.htaccess — запрет всей папки (в ней схема и начальные данные);
+ *  - блок в корневом .htaccess — запрет install_error.log и install.lock;
+ *  - uploads/ — запрет исполнения PHP и других скриптов (загрузки пользователей);
+ *  - torrents/ и cache/ — запрет прямого доступа (.torrent отдаются через PHP с
+ *    passkey; сначала проверьте PROTECT_TORRENTS_DIR, если у вас иначе);
+ *  - include/ — запрет config.php, settings.php, config_announce.php.
+ * Существующие .htaccess только дополняются, правила не перезаписываются.
+ * Затем самопроверка HTTP-запросом: .htaccess не работает на nginx и при
+ * AllowOverride None, поэтому результат проверяем, а не верим.
+ */
+function protect_installer_files(string $siteUrl): array
+{
+    $res = ['failed' => [], 'sql' => 'unknown', 'log' => 'unknown', 'uploads' => 'unknown', 'torrents' => 'unknown'];
+
+    $deny = "# Apache 2.4+\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+          . "# Apache 2.2\n<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n";
+    $noExec = '<FilesMatch "(?i)\.(php[0-9]?|phtml|phar|pht|phps|cgi|pl|py|sh)$">' . "\n" . $deny . "</FilesMatch>\n";
+    $cfgDeny = '<FilesMatch "^(config|settings|config_announce)\.php$">' . "\n" . $deny . "</FilesMatch>\n";
+
+    if (is_dir(__DIR__ . '/sql')) {
+        if (@file_put_contents(__DIR__ . '/sql/.htaccess', "# Created by installer: SQL files must not be public.\n" . $deny) === false) {
+            $res['failed'][] = 'sql/.htaccess';
+        }
+    }
+
+    $root = __DIR__ . '/.htaccess';
+    $rootBlock = '<FilesMatch "^(install_error\.log|install\.lock|(install|upgrade)-[0-9a-f]{32}\.key)$">' . "\n" . $deny . "</FilesMatch>\n";
+    if (!installer_append_block($root, $rootBlock)) {
+        $res['failed'][] = '.htaccess';
+    }
+
+    $dirs = ['uploads' => $noExec, 'cache' => $deny, 'include' => $cfgDeny];
+    if (PROTECT_TORRENTS_DIR) $dirs['torrents'] = $deny;
+    foreach ($dirs as $d => $block) {
+        if (!is_dir(__DIR__ . '/' . $d)) continue;
+        if (!installer_append_block(__DIR__ . '/' . $d . '/.htaccess', $block)) {
+            $res['failed'][] = $d . '/.htaccess';
+        }
+    }
+    // Пустой index.html — чтобы веб-сервер не показывал листинг каталога.
+    foreach (['uploads', 'uploads/avatars', 'torrents', 'cache'] as $d) {
+        $p = __DIR__ . '/' . $d;
+        if (is_dir($p) && !is_file($p . '/index.html') && !is_file($p . '/index.php') && !is_file($p . '/index.htm')) {
+            @file_put_contents($p . '/index.html', '');
+        }
+    }
+
+    // Метка в логе — по ней самопроверка отличает настоящий лог от «заглушки».
+    @file_put_contents(__DIR__ . '/install_error.log', "[installer] public-access self-check marker\n", FILE_APPEND | LOCK_EX);
+
+    $base = rtrim($siteUrl, '/');
+    if ($base !== '') {
+        if (is_file(__DIR__ . '/sql/faq.sql')) {
+            $res['sql'] = probe_public($base . '/sql/faq.sql', 'INSERT INTO');
+        }
+        $res['log'] = probe_public($base . '/install_error.log', 'public-access self-check marker');
+
+        // uploads/: временный PHP-файл. Если в ответе есть его вывод, значит
+        // PHP из uploads/ исполняется ('open' = опасно).
+        if (is_dir(__DIR__ . '/uploads')) {
+            $probe = __DIR__ . '/uploads/installer-probe.php';
+            if (@file_put_contents($probe, "<?php echo 'php-exec-' . 'probe-ok';\n") !== false) {
+                $res['uploads'] = probe_public($base . '/uploads/installer-probe.php', 'php-exec-probe-ok');
+                @unlink($probe);
+            }
+        }
+        // torrents/: можно ли скачать файл напрямую, минуя download.php ('open' = можно).
+        if (is_dir(__DIR__ . '/torrents')) {
+            $probe = __DIR__ . '/torrents/installer-probe.torrent';
+            if (@file_put_contents($probe, 'public-access torrents probe marker') !== false) {
+                $res['torrents'] = probe_public($base . '/torrents/installer-probe.torrent', 'public-access torrents probe marker');
+                @unlink($probe);
+            }
+        }
+    }
+    return $res;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// v2.1: новые вспомогательные функции
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Теги CDN с SRI-хэшами. Если файл на CDN подменят, браузер откажется его
+ * выполнять. Шрифты Google не подключаем: они недоступны в ряде регионов и
+ * сети, а установщик не должен зависеть от лишнего внешнего домена.
+ */
+function installer_local_asset(string $name): ?string
+{
+    return is_file(__DIR__ . '/sql/' . $name) ? basename(__FILE__) . '?asset=' . $name : null;
+}
+
+/** Все ли локальные файлы интерфейса на месте (иначе подключается CDN). */
+function installer_assets_complete(): bool
+{
+    foreach (array_keys(INSTALLER_ASSETS) as $n) {
+        if (!is_file(__DIR__ . '/sql/' . $n)) return false;
+    }
+    return true;
+}
+
+/**
+ * Стили: сначала локальные файлы из sql/, при их отсутствии — CDN с SRI-хэшами
+ * (если файл на CDN подменят, браузер откажется его применять). Шрифты Google
+ * не подключаем: они недоступны в ряде регионов, а установщик не должен
+ * зависеть от лишнего внешнего домена.
+ */
+function cdn_head_tags(): string
+{
+    $bs = installer_local_asset('bootstrap.min.css');
+    $fa = installer_local_asset('fontawesome.min.css');
+    return ($bs !== null
+            ? '<link href="' . $bs . '" rel="stylesheet">'
+            : '<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet" integrity="sha512-b2QcS5SsA8tZodcDtGRELiGv5SaKSk1vDHDaQRda0htPYWZ6046lr3kJ5bAAQdpV2mmA/4v0wQF9MyU6/pDIAg==" crossorigin="anonymous" referrerpolicy="no-referrer">') . "\n"
+         . ($fa !== null
+            ? '<link href="' . $fa . '" rel="stylesheet">'
+            : '<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">');
+}
+
+function cdn_js_tag(): string
+{
+    $js = installer_local_asset('bootstrap.bundle.min.js');
+    return $js !== null
+        ? '<script src="' . $js . '"></script>'
+        : '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>';
+}
+
+/** Предполагаемый URL сайта (для предзаполнения формы; значение экранируется при выводе). */
+function installer_guess_url(): string
+{
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    if (!preg_match('/^(?:[A-Za-z0-9.\-]+|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/', $host)) return '';
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+          || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    $dir = str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/install.php')));
+    $dir = ($dir === '/' || $dir === '.') ? '' : rtrim($dir, '/');
+    if (!preg_match('#^[A-Za-z0-9._~/\-]*$#', $dir)) $dir = '';
+    return ($https ? 'https' : 'http') . '://' . $host . $dir;
+}
+
+/** Пройдены ли шаги 2–4 (БД, сайт, админ) — иначе установку запускать нельзя. */
+function installer_ready(): bool
+{
+    $p = $_SESSION['progress'] ?? [];
+    return !empty($p['db']) && !empty($p['site']) && !empty($p['admin']);
+}
+
+// ── Валидация (общая для веб-формы и консольного режима) ─────────────────────
+
+function installer_validate_site(array &$site): array
+{
+    $errors = [];
+    $site['url'] = rtrim((string)$site['url'], '/');
+    if (!$site['name'])  $errors[] = t('Site name is required.');
+    if (!$site['url'])   $errors[] = t('Site URL is required.');
+    elseif (!filter_var($site['url'], FILTER_VALIDATE_URL)
+        || !in_array(parse_url($site['url'], PHP_URL_SCHEME), ['http', 'https'], true)) {
+        $errors[] = t('Site URL must be a valid http:// or https:// address.');
+    }
+    if (!$site['email']) $errors[] = t('Site email is required.');
+    elseif (!filter_var($site['email'], FILTER_VALIDATE_EMAIL)) $errors[] = t('Site email is not a valid address.');
+    if (!preg_match('/^-?\d{1,2}(\.\d{1,2})?$/', (string)$site['timezone'])) $errors[] = t('Timezone must be a number, e.g. 2 or 5.5.');
+    if ($site['cookie_domain'] !== '') {
+        $cd = strtolower(ltrim($site['cookie_domain'], '.'));
+        $hostOfUrl = strtolower((string)parse_url($site['url'], PHP_URL_HOST));
+        if (!preg_match('/^[A-Za-z0-9.-]+$/', $cd)) {
+            $errors[] = t('Cookie domain looks invalid.');
+        } elseif ($hostOfUrl !== '' && $hostOfUrl !== $cd && !str_ends_with($hostOfUrl, '.' . $cd)) {
+            $errors[] = t('Cookie domain must match the host of the Site URL.');
+        }
+    }
+    if ($site['smtp_host'] !== '') {
+        if (!preg_match('/^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/', $site['smtp_host'])) {
+            $errors[] = t('SMTP host looks invalid.');
+        }
+        $p = (string)$site['smtp_port'];
+        if (!ctype_digit($p) || (int)$p < 1 || (int)$p > 65535) {
+            $errors[] = t('SMTP port must be a number from 1 to 65535.');
+        }
+    }
+    // Режим приватного трекера всегда включён (выбора в форме и в консольном конфиге нет).
+    $site['privatepatch'] = 'yes';
+    return $errors;
+}
+
+/** Возвращает ключ сообщения об ошибке или null, если пароль приемлем. */
+function installer_password_problem(string $pass, string $user, string $email): ?string
+{
+    $low = mb_strtolower($pass);
+    static $common = ['password', 'password1', 'password123', '12345678', '123456789', '1234567890', '11111111',
+        'qwertyui', 'qwerty123', 'qwertyuiop', '1q2w3e4r', 'iloveyou', 'admin123', 'administrator', 'letmein1',
+        'abcd1234', '12341234', 'qazwsxedc', 'trustno1', 'zaq12wsx'];
+    if (in_array($low, $common, true)) return 'Password is too common — choose a less predictable one.';
+    if (preg_match('/^(.)\1+$/us', $pass)) return 'Password must not consist of a single repeated character.';
+    $u = mb_strtolower($user);
+    $local = mb_strtolower(explode('@', $email)[0] ?? '');
+    if (($u !== '' && mb_strlen($u) >= 4 && str_contains($low, $u)) || (mb_strlen($local) >= 4 && str_contains($low, $local))) {
+        return 'Password must not contain the username or the e-mail name.';
+    }
+    return null;
+}
+
+function installer_validate_admin(array $a): array
+{
+    $errors = [];
+    if (!$a['username']) $errors[] = t('Admin username is required.');
+    elseif (mb_strlen($a['username']) < 3 || mb_strlen($a['username']) > 40
+        || preg_match('/[\x00-\x1F:<>&"\']/u', $a['username'])) {
+        $errors[] = t('Username must be 3–40 characters and must not contain : < > & " \' or control characters.');
+    }
+    if (!$a['email'])    $errors[] = t('Admin email is required.');
+    elseif (!filter_var($a['email'], FILTER_VALIDATE_EMAIL)) $errors[] = t('Admin email is not a valid address.');
+    if (strlen($a['password']) < 8) {
+        $errors[] = t('Password must be at least 8 characters.');
+    } elseif (($why = installer_password_problem($a['password'], $a['username'], $a['email'])) !== null) {
+        $errors[] = t($why);
+    }
+    if ($a['password'] !== $a['confirm']) $errors[] = t('Passwords do not match.');
+    return $errors;
+}
+
+// ── База данных: создание, проверка прав, конфликты ──────────────────────────
+
+/** Создаёт БД (если у пользователя есть право CREATE на сервере). */
+function installer_create_database(array $cfg): void
+{
+    $name = (string)($cfg['database'] ?? '');
+    if (!preg_match('/^[A-Za-z0-9_$\-]{1,64}$/', $name)) {
+        throw new RuntimeException('Invalid database name');
+    }
+    $host = (string)($cfg['hostname'] ?? 'localhost');
+    $port = (int)(ini_get('mysqli.default_port') ?: 3306);
+    if (substr_count($host, ':') === 1 && preg_match('/^(.+):(\d{1,5})$/', $host, $m)) {
+        $host = $m[1];
+        $port = (int)$m[2];
+    }
+    $c = new mysqli($host, (string)($cfg['username'] ?? ''), (string)($cfg['password'] ?? ''), '', $port);
+    if ($c->connect_errno) {
+        throw new RuntimeException('Cannot connect: ' . $c->connect_error);
+    }
+    $ok = $c->query('CREATE DATABASE IF NOT EXISTS `' . $name . '` CHARACTER SET utf8mb4');
+    $err = $c->error;
+    $c->close();
+    if (!$ok) throw new RuntimeException('CREATE DATABASE failed: ' . $err);
+}
+
+/**
+ * Проверяет реальные права пользователя БД: создаёт, меняет и удаляет временную
+ * таблицу. Возвращает список недостающих прав (строкой) или null, если всё есть.
+ */
+function installer_check_privileges($db): ?string
+{
+    $t = '_installer_probe_' . bin2hex(random_bytes(3));
+    $ops = [
+        'CREATE' => "CREATE TABLE `{$t}` (`id` INT NOT NULL, `v` VARCHAR(10) NOT NULL DEFAULT '', PRIMARY KEY (`id`)) ENGINE=InnoDB",
+        'ALTER'  => "ALTER TABLE `{$t}` ADD COLUMN `extra` INT NULL",
+        'INDEX'  => "CREATE INDEX `probe_idx` ON `{$t}` (`v`)",
+        'INSERT' => "INSERT INTO `{$t}` (`id`, `v`) VALUES (1, 'a')",
+        'UPDATE' => "UPDATE `{$t}` SET `v` = 'b' WHERE `id` = 1",
+        'SELECT' => "SELECT `id` FROM `{$t}` WHERE `id` = 1",
+        'DELETE' => "DELETE FROM `{$t}` WHERE `id` = 1",
+        'DROP'   => "DROP TABLE `{$t}`",
+    ];
+    $failed = [];
+    foreach ($ops as $name => $sql) {
+        try {
+            $r = $db->sql_query_prepared($sql, [], 1);
+        } catch (Throwable $e) {
+            $r = false;
+        }
+        if ($r === false) {
+            $failed[] = $name;
+            error_log('[installer] privilege probe failed for ' . $name);
+            if ($name === 'CREATE') break; // дальше без таблицы проверять нечего
+        }
+    }
+    return $failed ? implode(', ', $failed) : null;
+}
+
+/** Таблицы трекера, которые уже есть в выбранной базе. */
+function installer_find_conflicts($db): array
+{
+    $known = array_map('strtolower', array_column(getTableStatements(), 'table'));
+    $found = [];
+    $q = $db->sql_query_prepared('SHOW TABLES', [], 1);
+    if ($q) {
+        while ($row = $db->fetch_array($q)) {
+            $n = (string)reset($row);
+            if (in_array(strtolower($n), $known, true)) $found[] = $n;
+        }
+    }
+    sort($found);
+    return $found;
+}
+
+/** Удаляет только таблицы, которые создаёт этот установщик. Возвращает их число. */
+function installer_drop_known_tables($db): int
+{
+    $n = 0;
+    $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 0', [], 1);
+    foreach (array_column(getTableStatements(), 'table') as $t) {
+        if (!preg_match('/^\w+$/', (string)$t)) continue;
+        $db->sql_query_prepared("DROP TABLE IF EXISTS `{$t}`", [], 1);
+        $n++;
+    }
+    $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 1', [], 1);
+    return $n;
+}
+
+// ── Тест исходящей почты ─────────────────────────────────────────────────────
+
+/**
+ * Отправляет тестовое письмо: через SMTP (простой клиент на сокетах, STARTTLS
+ * или неявный SSL на порту 465) либо через mail(), если хост не указан.
+ * Пароль по открытому каналу не отправляется никогда.
+ *
+ * @return array{ok: bool, message: string}
+ */
+function installer_smtp_test(string $host, int $port, string $user, string $pass, string $from, string $to): array
+{
+    $fail = static fn(string $m): array => ['ok' => false, 'message' => $m];
+
+    if ($host === '') {
+        if (!function_exists('mail')) return $fail(t('mail() is not available on this server.'));
+        $subject = '=?UTF-8?B?' . base64_encode('Installer test message') . '?=';
+        $ok = @mail($to, $subject, "This is a test message from the tracker installer.\r\n", "From: {$from}\r\nContent-Type: text/plain; charset=UTF-8");
+        return $ok
+            ? ['ok' => true, 'message' => t('mail() accepted the message. Check the inbox (delivery is not guaranteed).')]
+            : $fail(t('mail() failed to send the message.'));
+    }
+
+    $implicit = ($port === 465);
+    $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $host]]);
+    $fp  = @stream_socket_client(($implicit ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $ctx);
+    if (!$fp) {
+        return $fail(t('Cannot connect to {host}:{port} — {err}', ['host' => $host, 'port' => $port, 'err' => $errstr ?: ('#' . $errno)]));
+    }
+    stream_set_timeout($fp, 8);
+
+    $last = '';
+    $step = static function (?string $cmd, array $ok, string $stage) use ($fp, &$last): ?string {
+        if ($cmd !== null) fwrite($fp, $cmd . "\r\n");
+        $text = '';
+        $code = 0;
+        while (($line = fgets($fp, 2048)) !== false) {
+            $text .= $line;
+            if (strlen($line) >= 4 && $line[3] === ' ') { $code = (int)substr($line, 0, 3); break; }
+            if (strlen($line) < 4) break;
+        }
+        $last = trim($text);
+        return in_array($code, $ok, true) ? null : ($stage . ': ' . ($last !== '' ? $last : t('no response')));
+    };
+    $run = static function (array $seq) use ($step, $fp, $fail): ?array {
+        foreach ($seq as [$cmd, $ok, $stage]) {
+            if (($e = $step($cmd, $ok, $stage)) !== null) { @fclose($fp); return $fail($e); }
+        }
+        return null;
+    };
+
+    $ehlo = preg_replace('/[^A-Za-z0-9.\-]/', '', (string)gethostname()) ?: 'localhost';
+    if (($r = $run([[null, [220], 'greeting'], ['EHLO ' . $ehlo, [250], 'EHLO']])) !== null) return $r;
+
+    $encrypted = $implicit;
+    if (!$implicit && stripos($last, 'STARTTLS') !== false) {
+        if (($r = $run([['STARTTLS', [220], 'STARTTLS']])) !== null) return $r;
+        if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            @fclose($fp);
+            return $fail(t('TLS handshake failed (check the certificate and port).'));
+        }
+        $encrypted = true;
+        if (($r = $run([['EHLO ' . $ehlo, [250], 'EHLO']])) !== null) return $r;
+    }
+    if ($user !== '') {
+        if (!$encrypted) {
+            @fclose($fp);
+            return $fail(t('The server does not offer encryption (STARTTLS); refusing to send the password in clear text.'));
+        }
+        if (($r = $run([['AUTH LOGIN', [334], 'AUTH'], [base64_encode($user), [334], 'AUTH'], [base64_encode($pass), [235], 'AUTH']])) !== null) return $r;
+    }
+    if (($r = $run([['MAIL FROM:<' . $from . '>', [250], 'MAIL FROM'], ['RCPT TO:<' . $to . '>', [250, 251], 'RCPT TO'], ['DATA', [354], 'DATA']])) !== null) return $r;
+
+    $msg = 'Date: ' . date('r') . "\r\nFrom: <{$from}>\r\nTo: <{$to}>\r\n"
+         . 'Subject: =?UTF-8?B?' . base64_encode('Installer SMTP test') . "?=\r\n"
+         . "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"
+         . "This is a test message sent by the tracker installer. Your SMTP settings work.\r\n.\r\n";
+    fwrite($fp, $msg);
+    if (($e = $step(null, [250], 'send')) !== null) { @fclose($fp); return $fail($e); }
+    @fwrite($fp, "QUIT\r\n");
+    @fclose($fp);
+    return ['ok' => true, 'message' => t('Test message accepted by the SMTP server. Check the inbox.')];
+}
+
+// ── Проверка announce.php ────────────────────────────────────────────────────
+
+/**
+ * Запрашивает announce.php без параметров: живой трекер отвечает bencode-ошибкой
+ * («d14:failure reason…»). Возвращает 'ok' | 'unexpected' | 'error' | 'unknown'.
+ * 'unknown' — достучаться с самого сервера не вышло (часто так и бывает: нет
+ * hairpin-NAT или DNS), это не значит, что снаружи он недоступен.
+ */
+function probe_announce(string $url): string
+{
+    if (!function_exists('curl_init')) return 'unknown';
+    $buf = '';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 2,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        CURLOPT_USERAGENT      => 'installer-selfcheck',
+        CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$buf) {
+            $buf .= $data;
+            return strlen($buf) > 65536 ? 0 : strlen($data);
+        },
+    ]);
+    curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $err  = curl_errno($ch);
+    unset($ch); // curl_close() в PHP 8.5 устарел
+    if ($code === 0 || ($err !== 0 && $err !== 23)) return 'unknown';
+    if ($code >= 400) return 'error';
+    return (substr($buf, 0, 1) === 'd' && strpos($buf, 'failure reason') !== false) ? 'ok' : 'unexpected';
+}
+
+// ── Отчёт об установке ───────────────────────────────────────────────────────
+
+/** Текстовый отчёт (без паролей и ключей) — для скачивания и приложения к тикетам. */
+function installer_build_report(): string
+{
+    $L = [];
+    $L[] = 'Mybb Based Torrent Tracker: installation report';
+    $L[] = 'Installer: v' . INSTALLER_VERSION . ' | ' . date('Y-m-d H:i:s T');
+    $L[] = 'PHP: ' . PHP_VERSION . ' (' . PHP_SAPI . ') | OS: ' . PHP_OS_FAMILY;
+    $L[] = 'Database server: ' . ($_SESSION['db_info']['server'] ?? 'n/a');
+    $L[] = 'Site: ' . ($_SESSION['site']['name'] ?? '') . ' — ' . ($_SESSION['site']['url'] ?? '');
+    $L[] = 'Admin user: ' . ($_SESSION['admin']['username'] ?? '');
+    $L[] = '';
+    $L[] = 'Steps:';
+    foreach ((array)($_SESSION['install_log'] ?? []) as $row) {
+        $L[] = sprintf('  [%s] %s', strtoupper((string)($row[0] ?? '')), (string)($row[1] ?? ''));
+    }
+    $p = $_SESSION['protect'] ?? null;
+    $L[] = '';
+    $L[] = 'Web access self-check (open = reachable from the internet):';
+    foreach (['sql' => 'sql/faq.sql', 'log' => 'install_error.log', 'uploads' => 'uploads/ PHP execution', 'torrents' => 'torrents/ direct download'] as $k => $label) {
+        $L[] = sprintf('  %-28s %s', $label, is_array($p) ? ($p[$k] ?? 'n/a') : 'n/a');
+    }
+    $L[] = '  ' . str_pad('announce.php', 28) . ($_SESSION['announce_probe'] ?? 'n/a');
+    return implode("\n", $L) . "\n";
+}
+
+// ── Консольный (unattended) режим ────────────────────────────────────────────
+// php install.php --config=install.json [--lang=en|ru]
+// Секреты можно передать переменными окружения: INSTALL_DB_PASS,
+// INSTALL_ADMIN_PASS, INSTALL_SMTP_PASS (они приоритетнее значений из файла).
+
+function installer_cli_main(array $opts): void
+{
+    $say = static function (string $s): void { fwrite(STDOUT, $s . PHP_EOL); };
+    $die = static function (string $s, int $code = 1): void { fwrite(STDERR, $s . PHP_EOL); exit($code); };
+
+    if (isset($opts['help']) || empty($opts['config'])) {
+        $say('Usage: php install.php --config=install.json [--lang=en|ru]');
+        $say('Secrets may be passed via env: INSTALL_DB_PASS, INSTALL_ADMIN_PASS, INSTALL_SMTP_PASS.');
+        $say('See install.config.example.json for the config format.');
+        exit(isset($opts['help']) ? 0 : 2);
+    }
+    if (file_exists(LOCK_FILE)) $die('Installer is locked: install.lock exists. Delete it to reinstall.', 3);
+
+    $path = (string)$opts['config'];
+    $raw  = is_file($path) ? @file_get_contents($path) : false;
+    if ($raw === false) $die('Cannot read config file: ' . $path, 2);
+    $cfg = json_decode($raw, true);
+    if (!is_array($cfg)) $die('Config file is not valid JSON.', 2);
+
+    $env = static function (string $k): ?string {
+        $v = getenv($k);
+        return ($v !== false && $v !== '') ? $v : null;
+    };
+    $d = (array)($cfg['db'] ?? []);
+    $s = (array)($cfg['site'] ?? []);
+    $a = (array)($cfg['admin'] ?? []);
+    $m = (array)($s['smtp'] ?? []);
+
+    $_SESSION['db'] = [
+        'type'     => 'mysqli',
+        'hostname' => trim((string)($d['host'] ?? 'localhost')),
+        'database' => trim((string)($d['name'] ?? '')),
+        'username' => trim((string)($d['user'] ?? '')),
+        'password' => $env('INSTALL_DB_PASS') ?? (string)($d['pass'] ?? ''),
+        'wipe'     => false,
+    ];
+    $site = [
+        'name'          => trim((string)($s['name'] ?? '')),
+        'url'           => trim((string)($s['url'] ?? '')),
+        'email'         => trim((string)($s['email'] ?? '')),
+        'timezone'      => (string)($s['timezone'] ?? '2'),
+        'cookie_domain' => trim((string)($s['cookie_domain'] ?? '')),
+        'smtp_host'     => trim((string)($m['host'] ?? '')),
+        'smtp_user'     => trim((string)($m['user'] ?? '')),
+        'smtp_pass'     => $env('INSTALL_SMTP_PASS') ?? (string)($m['pass'] ?? ''),
+        'smtp_port'     => (string)($m['port'] ?? '587'),
+    ];
+    $apass = $env('INSTALL_ADMIN_PASS') ?? (string)($a['password'] ?? '');
+    $admin = [
+        'username' => trim((string)($a['username'] ?? '')),
+        'email'    => trim((string)($a['email'] ?? '')),
+        'password' => $apass,
+        'confirm'  => $apass,
+    ];
+    $errors = array_merge(installer_validate_site($site), installer_validate_admin($admin));
+    if ($errors) {
+        foreach ($errors as $err) fwrite(STDERR, '  - ' . $err . PHP_EOL);
+        $die('Configuration is invalid.', 2);
+    }
+    $_SESSION['site']  = $site;
+    $_SESSION['admin'] = $admin;
+
+    $bad = false;
+    foreach (checkRequirements() as $r) {
+        if ($r[1]) continue;
+        $warn = (($r[3] ?? '') === 'warn');
+        $say(sprintf('[%s] %s: %s', $warn ? 'WARN' : 'FAIL', strip_tags((string)$r[0]), $r[2]));
+        if (!$warn) $bad = true;
+    }
+    if ($bad) $die('System requirements are not met.', 4);
+
+    try {
+        if (!empty($d['create'])) installer_create_database($_SESSION['db']);
+        $db = getDb();
+        $db->sql_query_prepared('SELECT 1');
+        $_SESSION['db_info'] = detect_db_info($db);
+        $priv = installer_check_privileges($db);
+        if ($priv !== null) $die('Database user lacks privileges: ' . $priv, 4);
+        if (!empty($_SESSION['db_info']['too_old']) && empty($d['allow_old'])) {
+            $die('Database server ' . $_SESSION['db_info']['server'] . ' is older than the supported minimum; set "allow_old": true to continue anyway.', 4);
+        }
+        $conflicts = installer_find_conflicts($db);
+        if ($conflicts) {
+            if (empty($d['wipe'])) $die('Database already contains tracker tables: ' . implode(', ', $conflicts) . '. Set "wipe": true to drop them.', 4);
+            installer_drop_known_tables($db);
+            $say('Dropped ' . count($conflicts) . ' existing tracker table(s).');
+        }
+    } catch (Throwable $e) {
+        error_log('[installer] CLI database error: ' . $e->getMessage());
+        $die('Database error: ' . $e->getMessage(), 4);
+    }
+
+    $steps = getInstallSteps();
+    $total = count($steps);
+    foreach ($steps as $i => $st) {
+        $res = executeInstallStep($i);
+        $say(sprintf('[%d/%d] %s %s — %s (%d ms)', $i + 1, $total, $res['status'] === 'ok' ? 'OK  ' : 'FAIL', strip_tags((string)$res['label']), strip_tags((string)$res['message']), (int)($res['elapsed_ms'] ?? 0)));
+        if ($res['status'] !== 'ok') $die('Installation stopped. See install_error.log for details.', 1);
+    }
+    $say('Installation complete. Delete install.php from the server.');
+    exit(0);
+}
+
+if ($IS_CLI) {
+    installer_cli_main($CLI_OPTS);
+    exit(0);
+}
+
+// ── AJAX: тестовое письмо (шаг 3) ────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === 'test_smtp') {
+    header('Content-Type: application/json; charset=utf-8');
+    $out = static function (string $status, string $message): void {
+        echo json_encode(['status' => $status, 'message' => $message], JSON_UNESCAPED_UNICODE);
+        exit;
+    };
+    if (!csrf_check()) $out('fail', t('Invalid security token'));
+    if (file_exists(LOCK_FILE)) $out('fail', t('Installer is locked.'));
+    $_SESSION['smtp_tests'] = (int)($_SESSION['smtp_tests'] ?? 0) + 1;
+    if ($_SESSION['smtp_tests'] > 15) $out('fail', t('Too many test attempts in this session.'));
+
+    $host = trim((string)($_POST['smtp_host'] ?? ''));
+    $port = (int)($_POST['smtp_port'] ?? 587);
+    $user = trim((string)($_POST['smtp_user'] ?? ''));
+    $pass = (string)($_POST['smtp_pass'] ?? '');
+    $mail = trim((string)($_POST['site_email'] ?? ''));
+    if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) $out('fail', t('Enter a valid Site Email first — the test message is sent to it.'));
+    if ($host !== '' && !preg_match('/^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/', $host)) $out('fail', t('SMTP host looks invalid.'));
+    if ($port < 1 || $port > 65535) $out('fail', t('SMTP port must be a number from 1 to 65535.'));
+    @set_time_limit(40);
+    try {
+        $r = installer_smtp_test($host, $port, $user, $pass, $mail, $mail);
+        $out($r['ok'] ? 'ok' : 'fail', $r['message']);
+    } catch (Throwable $e) {
+        error_log('[installer] SMTP test error: ' . $e->getMessage());
+        $out('fail', t('SMTP test failed unexpectedly. Details were saved to install_error.log — check the log on the server.'));
+    }
+}
+
 // ── AJAX: самоудаление install.php (шаг 6, кнопка "Delete install.php") ────
 // Тоже стоит ДО проверки install.lock ниже - иначе, раз install.lock к этому
 // моменту уже существует (установка завершена), запрос перехватывался бы
@@ -349,10 +1250,9 @@ function derive_cookie_domain(string $url): string
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === 'self_destruct') {
     header('Content-Type: application/json; charset=utf-8');
     // Разрешаем только когда установка реально завершена (install.lock
-    // существует) - деструктивное действие ограничено удалением только
-    // самого install.php, ничего больше на сайте оно затронуть не может,
-    // так что этой проверки достаточно вместе с CSRF.
-    if (!csrf_check() || !file_exists(LOCK_FILE)) {
+    // существует) и только в той сессии, в которой она прошла: иначе любой
+    // посетитель мог бы удалить install.php, который держат для переустановок.
+    if (!csrf_check() || !file_exists(LOCK_FILE) || empty($_SESSION['install_done'])) {
         echo json_encode(['status' => 'error', 'message' => t('Not allowed.')]);
         exit;
     }
@@ -375,13 +1275,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
         echo json_encode(['status' => 'error', 'message' => t('Installer is locked.')]);
         exit;
     }
+    if (!installer_ready()) {
+        echo json_encode(['status' => 'error', 'message' => t('Complete the previous steps first.')]);
+        exit;
+    }
     $steps = getInstallSteps();
+    // Номер следующего шага: после сбоя установку можно продолжить с места ошибки.
+    $resume = (int)($_SESSION['inst_next'] ?? 0);
+    if ($resume < 0 || $resume >= count($steps)) $resume = 0;
+    if ($resume === 0) {
+        $_SESSION['install_log'] = [];
+        $_SESSION['inst_next'] = 0;
+    }
     echo json_encode([
         'status' => 'ok',
         'total'  => count($steps),
         'tables' => count(getTableStatements()),
         'labels' => array_column($steps, 'label'),
+        'resume' => $resume,
     ]);
+    exit;
+}
+
+// ── AJAX: сбросить незавершённую установку (удалить созданные таблицы) ───────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === 'reset_install') {
+    header('Content-Type: application/json; charset=utf-8');
+    if (!csrf_check()) {
+        echo json_encode(['status' => 'error', 'message' => t('Invalid security token')]);
+        exit;
+    }
+    if (file_exists(LOCK_FILE) || !installer_ready()) {
+        echo json_encode(['status' => 'error', 'message' => t('Installer is locked.')]);
+        exit;
+    }
+    try {
+        installer_drop_known_tables(getDb());
+    } catch (Throwable $e) {
+        echo json_encode(['status' => 'error', 'message' => safe_error('Could not drop the existing tables', $e)], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $_SESSION['inst_next'] = 0;
+    $_SESSION['install_log'] = [];
+    unset($_SESSION['install_ctx']);
+    $_SESSION['db']['wipe'] = false;
+    echo json_encode(['status' => 'ok']);
     exit;
 }
 
@@ -396,8 +1333,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
         echo json_encode(['status' => 'fail', 'label' => t('Security'), 'message' => t('Installer is locked.'), 'elapsed_ms' => 0]);
         exit;
     }
-    $index = (int)($_POST['step_index'] ?? -1);
-    echo json_encode(executeInstallStep($index));
+    if (!installer_ready()) {
+        echo json_encode(['status' => 'fail', 'label' => t('Security'), 'message' => t('Complete the previous steps first.'), 'elapsed_ms' => 0]);
+        exit;
+    }
+    // Шаги выполняются строго по порядку и по одному разу: нельзя пропустить
+    // шаг или выполнить 'admin' дважды (иначе — дубли пользователей).
+    $index    = (int)($_POST['step_index'] ?? -1);
+    $expected = (int)($_SESSION['inst_next'] ?? 0);
+    if ($index !== $expected) {
+        echo json_encode(['status' => 'fail', 'label' => t('Security'), 'message' => t('Steps must run in order — expected step {n}.', ['n' => $expected + 1]), 'elapsed_ms' => 0], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // Перед самым первым шагом — удаляем старые таблицы, если пользователь
+    // подтвердил это на шаге 2 («удалить существующие таблицы трекера»).
+    if ($index === 0 && !empty($_SESSION['db']['wipe'])) {
+        try {
+            installer_drop_known_tables(getDb());
+            $_SESSION['db']['wipe'] = false;
+        } catch (Throwable $e) {
+            echo json_encode(['status' => 'fail', 'label' => t('Database'), 'message' => safe_error('Could not drop the existing tables', $e), 'elapsed_ms' => 0], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+    $result = executeInstallStep($index);
+    $_SESSION['install_log'][] = [
+        ($result['status'] ?? '') === 'ok' ? 'ok' : 'fail',
+        strip_tags((string)($result['label'] ?? '')) . ' — ' . strip_tags((string)($result['message'] ?? '')),
+    ];
+    if (($result['status'] ?? '') === 'ok') {
+        $_SESSION['inst_next'] = $index + 1;
+    }
+    echo json_encode($result);
     exit;
 }
 
@@ -424,11 +1391,7 @@ if (file_exists(LOCK_FILE) && !$justInstalled) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🔒 ' . t('Already Installed') . ' | Mybb Based Torrent Tracker</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+    ' . cdn_head_tags() . '
     <style>
         body { background: radial-gradient(circle at top left, #eef0fd 0%, #f7f7fb 55%, #ffffff 100%); }
         .lock-card { backdrop-filter:blur(10px); background:rgba(255,255,255,.97); border-radius:30px; box-shadow:0 25px 60px -12px rgba(0,0,0,.2); transition:transform .3s ease; }
@@ -486,6 +1449,22 @@ $steps = [
 $step   = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 $step   = max(1, min(6, $step));
 $errors = [];
+$showForceOld  = false;   // показать чекбокс «продолжить с устаревшей БД»
+$conflictTables = [];     // таблицы трекера, уже существующие в выбранной БД
+
+// ── Контроль порядка шагов ──────────────────────────────────────────────────
+// На шаг N можно попасть, только пройдя предыдущие: нельзя открыть ?step=5
+// напрямую и запустить установку без проверенных настроек БД/сайта/админа.
+$allowedStep = 1;
+if (!empty($_SESSION['req_ok']))              $allowedStep = 2;
+if (!empty($_SESSION['progress']['db']))      $allowedStep = 3;
+if (!empty($_SESSION['progress']['site']))    $allowedStep = 4;
+if (!empty($_SESSION['progress']['admin']))   $allowedStep = 5;
+if ($justInstalled)                           $allowedStep = 6;
+if ($step > $allowedStep) {
+    header('Location: install.php?step=' . $allowedStep);
+    exit;
+}
 
 // ── Initialize DB class from session (starting at step 3) ─────────────────
 function getDb(): mixed
@@ -546,13 +1525,40 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'database' => trim($_POST['db_name'] ?? ''),
             'username' => trim($_POST['db_user'] ?? ''),
             'password' => $_POST['db_pass'] ?? '',
+            'wipe'     => false,
         ];
+        $createDb = !empty($_POST['create_db']);
+        $wipeOk   = !empty($_POST['wipe_existing']);
+        $forceOld = !empty($_POST['force_old_db']);
+        unset($_SESSION['progress']['db']);
 
         try {
+            if ($createDb) installer_create_database($_SESSION['db']);
             $db = getDb();
             // Simple test: version query
             $db->sql_query_prepared("SELECT 1");
-            header('Location: install.php?step=3'); exit;
+            $_SESSION['db_info'] = detect_db_info($db);
+
+            $privMissing = installer_check_privileges($db);
+            if ($privMissing !== null) {
+                $errors[] = t('The database user lacks required privileges: {ops}. Grant CREATE, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT and DROP on this database.', ['ops' => $privMissing]);
+            } elseif (!empty($_SESSION['db_info']['too_old']) && !$forceOld) {
+                $errors[] = t('Database server {server} is older than the supported minimum (MySQL 5.7 / MariaDB 10.3). Tick the box below to continue at your own risk.', ['server' => $_SESSION['db_info']['server']]);
+                $showForceOld = true;
+            } else {
+                $conflicts = installer_find_conflicts($db);
+                if ($conflicts && !$wipeOk) {
+                    $errors[] = t('The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to drop these tables (all their data will be lost).', ['tables' => implode(', ', array_slice($conflicts, 0, 8)) . (count($conflicts) > 8 ? ', …' : '')]);
+                    $conflictTables = $conflicts;
+                } else {
+                    // Само удаление — непосредственно перед первым шагом установки.
+                    $_SESSION['db']['wipe'] = (bool)$conflicts;
+                    $_SESSION['progress']['db'] = true;
+                    $_SESSION['inst_next'] = 0;
+                    unset($_SESSION['install_log'], $_SESSION['install_ctx']);
+                    header('Location: install.php?step=3'); exit;
+                }
+            }
         } catch (Throwable $e) {
             $errors[] = safe_error('Cannot connect to the database. Please check your credentials', $e);
         }
@@ -560,40 +1566,23 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Step 3: site settings ────────────────────────────────────────────────
     if ($step === 3) {
-        $url = rtrim(trim($_POST['site_url'] ?? ''), '/');
         $_SESSION['site'] = [
             'name'          => trim($_POST['site_name']      ?? ''),
-            'url'           => $url,
+            'url'           => trim($_POST['site_url']       ?? ''),
             'email'         => trim($_POST['site_email']     ?? ''),
             'timezone'      => trim($_POST['timezone']       ?? '2'),
             'cookie_domain' => trim($_POST['cookie_domain']  ?? ''),
-            // SMTP в установщике не настраивается (настраивается позже в админ-панели);
-            // значения нужны только для плейсхолдеров {{SMTP_*}} в default_settings.sql.
-            'smtp_host'     => '',
-            'smtp_user'     => '',
-            'smtp_pass'     => '',
-            'smtp_port'     => '587',
-            'privatepatch'  => 'yes', // Private Tracker Mode всегда включён (в форме опции больше нет)
+            // SMTP необязателен: если host пустой — письма идут через mail().
+            // Значения подставляются в плейсхолдеры {{SMTP_*}} default_settings.sql.
+            'smtp_host'     => trim((string)($_POST['smtp_host'] ?? '')),
+            'smtp_user'     => trim((string)($_POST['smtp_user'] ?? '')),
+            'smtp_pass'     => (string)($_POST['smtp_pass'] ?? ''),
+            'smtp_port'     => trim((string)($_POST['smtp_port'] ?? '')) ?: '587',
+            'privatepatch'  => 'yes', // приватный режим всегда включён
         ];
-        if (!$_SESSION['site']['name'])  $errors[] = t('Site name is required.');
-        if (!$_SESSION['site']['url'])   $errors[] = t('Site URL is required.');
-        elseif (!filter_var($_SESSION['site']['url'], FILTER_VALIDATE_URL)
-            || !in_array(parse_url($_SESSION['site']['url'], PHP_URL_SCHEME), ['http', 'https'], true)) {
-            $errors[] = t('Site URL must be a valid http:// or https:// address.');
-        }
-        if (!$_SESSION['site']['email']) $errors[] = t('Site email is required.');
-        elseif (!filter_var($_SESSION['site']['email'], FILTER_VALIDATE_EMAIL)) $errors[] = t('Site email is not a valid address.');
-        if (!preg_match('/^-?\d{1,2}(\.\d{1,2})?$/', $_SESSION['site']['timezone'])) $errors[] = t('Timezone must be a number, e.g. 2 or 5.5.');
-        if ($_SESSION['site']['cookie_domain'] !== '') {
-            $cd = strtolower(ltrim($_SESSION['site']['cookie_domain'], '.'));
-            $hostOfUrl = strtolower((string)parse_url($_SESSION['site']['url'], PHP_URL_HOST));
-            if (!preg_match('/^[A-Za-z0-9.-]+$/', $cd)) {
-                $errors[] = t('Cookie domain looks invalid.');
-            } elseif ($hostOfUrl !== '' && $hostOfUrl !== $cd && !str_ends_with($hostOfUrl, '.' . $cd)) {
-                $errors[] = t('Cookie domain must match the host of the Site URL.');
-            }
-        }
-        if (!$errors) { header('Location: install.php?step=4'); exit; }
+        unset($_SESSION['progress']['site']);
+        $errors = array_merge($errors, installer_validate_site($_SESSION['site']));
+        if (!$errors) { $_SESSION['progress']['site'] = true; header('Location: install.php?step=4'); exit; }
     }
 
     // ── Step 4: admin account ────────────────────────────────────────────────
@@ -604,16 +1593,9 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'password' => $_POST['admin_pass']         ?? '',
             'confirm'  => $_POST['admin_confirm']      ?? '',
         ];
-        if (!$_SESSION['admin']['username']) $errors[] = t('Admin username is required.');
-        elseif (mb_strlen($_SESSION['admin']['username']) < 3 || mb_strlen($_SESSION['admin']['username']) > 40
-            || preg_match('/[\x00-\x1F:<>&"\']/u', $_SESSION['admin']['username'])) {
-            $errors[] = t('Username must be 3–40 characters and must not contain : < > & " \' or control characters.');
-        }
-        if (!$_SESSION['admin']['email'])    $errors[] = t('Admin email is required.');
-        elseif (!filter_var($_SESSION['admin']['email'], FILTER_VALIDATE_EMAIL)) $errors[] = t('Admin email is not a valid address.');
-        if (strlen($_SESSION['admin']['password']) < 8) $errors[] = t('Password must be at least 8 characters.');
-        if ($_SESSION['admin']['password'] !== $_SESSION['admin']['confirm']) $errors[] = t('Passwords do not match.');
-        if (!$errors) { header('Location: install.php?step=5'); exit; }
+        unset($_SESSION['progress']['admin']);
+        $errors = array_merge($errors, installer_validate_admin($_SESSION['admin']));
+        if (!$errors) { $_SESSION['progress']['admin'] = true; header('Location: install.php?step=5'); exit; }
     }
 
     // Шаг 5 (сама установка) больше не обрабатывается здесь как обычный
@@ -2037,7 +3019,10 @@ function executeInstallStep(int $index): array
 
             case 'table': {
                 $t = getTableStatements()[$index];
-                $result = $db->sql_query_prepared($t['sql'], [], 1);
+                if (!isset($_SESSION['db_info'])) {
+                    $_SESSION['db_info'] = detect_db_info($db);
+                }
+                $result = $db->sql_query_prepared(apply_collation_fix($t['sql'], $_SESSION['db_info']), [], 1);
                 if ($result === false) {
                     $errNo  = $db->error_number();
                     $errMsg = $db->error_string();
@@ -2098,11 +3083,14 @@ function executeInstallStep(int $index): array
                 // Автологин: та же кука, что и на обычном сайте (uid_loginkey).
                 // Это отдельный AJAX-ответ (не продолжение застриженного вывода
                 // прогресса) - setcookie() тут отрабатывает штатно.
-                $cookieHost = parse_url($site['url'] ?? '', PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? '');
+                // Домен — тот же, что сайт пишет в settings.cookiedomain (шаг config_files):
+                // иначе на www.-адресе получались две куки mybbuser с разными доменами,
+                // и выход с сайта не удалял куку, поставленную установщиком.
+                $cookieDomain = (string)($site['cookie_domain'] ?? '') ?: derive_cookie_domain((string)($site['url'] ?? ''));
                 setcookie('mybbuser', $admin_id . '_' . $loginkey, [
                     'expires'  => time() + 60 * 60 * 24 * 365,
                     'path'     => '/',
-                    'domain'   => $cookieHost,
+                    'domain'   => $cookieDomain,
                     'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
                     'httponly' => true,
                     'samesite' => 'Lax',
@@ -2198,12 +3186,20 @@ function executeInstallStep(int $index): array
                     '{{DB_NAME}}'        => $db_cfg['database'],
                 ];
 
+                // Любой SQL-литерал, в котором есть плейсхолдер, — целиком или внутри
+                // текста ('{{SITENAME}} - Torrent Tracker'), — превращается в параметр «?»,
+                // а плейсхолдеры в нём заменяются значениями. Раньше заменялись только
+                // литералы вида '{{X}}', и metadesc попадал в базу с «{{SITENAME}}».
                 $settings_params = [];
                 $settings_sql = preg_replace_callback(
-                    "/'\{\{(\w+)\}\}'/",
+                    "/'((?:[^'\\\\]|\\\\.|'')*?\{\{\w+\}\}(?:[^'\\\\]|\\\\.|'')*)'/s",
                     function (array $m) use ($placeholders, &$settings_params): string {
-                        $key = '{{' . $m[1] . '}}';
-                        $settings_params[] = $placeholders[$key] ?? '';
+                        $literal = strtr($m[1], ["''" => "'", "\\'" => "'", "\\\\" => "\\"]);
+                        $settings_params[] = preg_replace_callback(
+                            '/\{\{(\w+)\}\}/',
+                            static fn(array $p): string => (string)($placeholders['{{' . $p[1] . '}}'] ?? ''),
+                            $literal
+                        );
                         return '?';
                     },
                     $settings_sql
@@ -2215,10 +3211,27 @@ function executeInstallStep(int $index): array
                     return ['status' => 'fail', 'label' => t('Config files'), 'message' => safe_error('Failed to insert default settings', $e, $settings_sql), 'elapsed_ms' => $elapsed()];
                 }
 
+                // Версия схемы — точка отсчёта для upgrade.php (миграции).
+                try {
+                    $db->sql_query_prepared(
+                        'INSERT INTO settings (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+                        ['schema_version', INSTALLER_SCHEMA_VERSION]
+                    );
+                } catch (Throwable $e) {
+                    return ['status' => 'fail', 'label' => t('Config files'), 'message' => safe_error('Failed to insert default settings', $e), 'elapsed_ms' => $elapsed()];
+                }
+
                 $settings_out = '';
                 $q = $db->sql_query_prepared('SELECT name, value FROM settings');
                 while ($row = $db->fetch_array($q)) {
                     $n = $row['name'];
+                    // Имя попадает в генерируемый PHP-код как имя переменной.
+                    // Суффикс [] допустим: так хранятся настройки-массивы
+                    // (announce_urls[] → $announce_urls[] = "…"), как и в rebuild_settings().
+                    if (!preg_match('/^[A-Za-z_]\w*(?:\[\])?$/', (string)$n)) {
+                        error_log('[installer] skipped setting with unsafe name: ' . mb_substr((string)$n, 0, 60));
+                        continue;
+                    }
                     $v = addcslashes($row['value'], '\\"$');
                     $settings_out .= "\${$n} = \"{$v}\";\n";
                 }
@@ -2256,7 +3269,17 @@ function executeInstallStep(int $index): array
                 if ($writeErrors) {
                     return ['status' => 'fail', 'label' => t('Config files'), 'message' => t('Cannot write: {files} — check permissions', ['files' => implode(', ', $writeErrors)]), 'elapsed_ms' => $elapsed()];
                 }
-                return ['status' => 'ok', 'label' => t('Config files'), 'message' => t('config.php, settings.php, config_announce.php written'), 'elapsed_ms' => $elapsed()];
+                // В этих файлах пароль БД и ключ шифрования — закрываем от чтения «остальным».
+                $permFailed = [];
+                foreach (['config.php', 'settings.php', 'config_announce.php'] as $cf) {
+                    if (!@chmod(__DIR__ . '/include/' . $cf, 0640)) { $permFailed[] = $cf; }
+                }
+                $_SESSION['perm_warn'] = $permFailed;
+                $okMsg = t('config.php, settings.php, config_announce.php written') . '; '
+                       . ($permFailed
+                            ? t('could not set permissions 0640 on: {files}', ['files' => implode(', ', $permFailed)])
+                            : t('permissions set to 0640'));
+                return ['status' => 'ok', 'label' => t('Config files'), 'message' => $okMsg, 'elapsed_ms' => $elapsed()];
             }
 
             case 'install_data': {
@@ -2318,13 +3341,26 @@ function executeInstallStep(int $index): array
             }
 
             case 'finalize': {
+                try {
+                    $_SESSION['protect'] = protect_installer_files((string)($site['url'] ?? ''));
+                } catch (Throwable $e) {
+                    error_log('[installer] protect_installer_files failed: ' . $e->getMessage());
+                    $_SESSION['protect'] = null;
+                }
+                // Проверка announce.php: отвечает ли трекер bencode-ошибкой на пустой запрос.
+                try {
+                    $_SESSION['announce_probe'] = probe_announce(rtrim((string)($site['url'] ?? ''), '/') . '/announce.php');
+                } catch (Throwable $e) {
+                    $_SESSION['announce_probe'] = 'unknown';
+                }
                 if (@file_put_contents(LOCK_FILE, date('Y-m-d H:i:s'), LOCK_EX) === false) {
                     return ['status' => 'fail', 'label' => t('Finalizing'), 'message' => t('Could not create install.lock — create an empty install.lock file in the site root manually and delete install.php, otherwise the installer stays open!'), 'elapsed_ms' => $elapsed()];
                 }
                 $_SESSION['just_installed'] = true;
+                $_SESSION['install_done']   = true; // право на кнопку «Удалить install.php»
                 unset($_SESSION['install_ctx']);
                 // пароли после установки в сессии больше не нужны
-                unset($_SESSION['db']['password'], $_SESSION['admin']['password'], $_SESSION['admin']['confirm']);
+                unset($_SESSION['db']['password'], $_SESSION['admin']['password'], $_SESSION['admin']['confirm'], $_SESSION['site']['smtp_pass']);
                 return ['status' => 'ok', 'label' => t('Finalizing'), 'message' => t('Installation locked and complete'), 'elapsed_ms' => $elapsed()];
             }
 
@@ -2338,6 +3374,33 @@ function executeInstallStep(int $index): array
 
 
 // ── Requirements check ───────────────────────────────────────────────────────
+
+/** Значение ini («2M», «128M», «-1») в байтах. */
+function installer_ini_bytes(string $v): int
+{
+    $v = trim($v);
+    if ($v === '') return 0;
+    if ($v === '-1') return PHP_INT_MAX;
+    $n = (int)$v;
+    switch (strtolower(substr($v, -1))) {
+        case 'g': $n *= 1024; // no break: каскадное умножение G → M → K
+        case 'm': $n *= 1024;
+        case 'k': $n *= 1024;
+    }
+    return $n;
+}
+
+/** Какие из нужных функций отключены в disable_functions. */
+function installer_disabled_functions(array $needed): array
+{
+    $off = array_filter(array_map('trim', explode(',', (string)ini_get('disable_functions'))));
+    return array_values(array_intersect($needed, $off));
+}
+
+/**
+ * Список проверок: [название, пройдена ли, подробности, уровень].
+ * Уровень 'warn' — рекомендация: не блокирует установку, но показывается.
+ */
 function checkRequirements(): array
 {
     // Рабочие директории трекера — пути соответствуют дефолтам из
@@ -2348,6 +3411,7 @@ function checkRequirements(): array
         'uploads'         => __DIR__ . '/uploads',
         'torrents'        => __DIR__ . '/torrents',
         'uploads/avatars' => __DIR__ . '/uploads/avatars',
+        'cache'           => __DIR__ . '/cache',
     ];
     $dirChecks = [];
     foreach ($workDirs as $label => $path) {
@@ -2369,7 +3433,7 @@ function checkRequirements(): array
     $missT = t('Missing');
     $dbBase = file_exists(INC_PATH . '/db_base.php');
 
-    return array_merge([
+    $rows = array_merge([
         [t('PHP Version ≥ 8.0'), version_compare(PHP_VERSION, '8.0.0', '>='), PHP_VERSION],
         ['MySQLi',               extension_loaded('mysqli'),   extension_loaded('mysqli') ? $okT : $missT],
         ['GD',                   extension_loaded('gd'),       extension_loaded('gd') ? $okT : $missT],
@@ -2382,22 +3446,56 @@ function checkRequirements(): array
         [t('include/{file} writable', ['file' => 'settings.php']),        $cfgOk('settings.php'),        $cfgOk('settings.php')        ? t('Writable') : t('include/ or {file} not writable', ['file' => 'settings.php'])],
         [t('include/{file} writable', ['file' => 'config_announce.php']), $cfgOk('config_announce.php'), $cfgOk('config_announce.php') ? t('Writable') : t('include/ or {file} not writable', ['file' => 'config_announce.php'])],
     ], $dirChecks);
+
+    // SQL-файлы нужны установке: раньше об их отсутствии узнавали только на шаге 5.
+    foreach (['default_settings.sql', 'install_data.sql', 'faq.sql', 'group.sql'] as $f) {
+        $p  = __DIR__ . '/sql/' . $f;
+        $ok = is_file($p) && is_readable($p);
+        $rows[] = [t('sql/{file} present', ['file' => $f]), $ok, $ok ? $okT : t('Missing or unreadable')];
+    }
+
+    // Рекомендации (не блокируют установку).
+    $warn = static fn(string $label, bool $ok, string $detail): array => [$label, $ok, $detail, 'warn'];
+    $cli  = (PHP_SAPI === 'cli');
+    $cliNote = $cli ? ' [CLI]' : '';
+
+    $rows[] = $warn(t('PHP setting: {name}', ['name' => 'file_uploads']), (bool)ini_get('file_uploads'),
+        ini_get('file_uploads') ? t('On') : t('Off — .torrent and avatar uploads will not work'));
+    foreach (['upload_max_filesize' => '2M', 'post_max_size' => '2M', 'memory_limit' => '128M'] as $name => $need) {
+        $cur = (string)ini_get($name);
+        $ok  = installer_ini_bytes($cur) >= installer_ini_bytes($need);
+        $rows[] = $warn(t('PHP setting: {name}', ['name' => $name]), $ok,
+            t('{value} (recommended: at least {rec})', ['value' => $cur === '' ? '—' : $cur, 'rec' => $need]) . $cliNote);
+    }
+    $met = (int)ini_get('max_execution_time');
+    $rows[] = $warn(t('PHP setting: {name}', ['name' => 'max_execution_time']), ($met === 0 || $met >= 30),
+        t('{value} (recommended: at least {rec})', ['value' => (string)$met, 'rec' => '30']) . $cliNote);
+    $rows[] = $warn(t('PHP setting: {name}', ['name' => 'allow_url_fopen']), (bool)ini_get('allow_url_fopen'),
+        ini_get('allow_url_fopen') ? t('On') : t('Off — some features that fetch remote data may not work'));
+    foreach (['fileinfo' => 'Fileinfo', 'ctype' => 'Ctype', 'zlib' => 'Zlib'] as $ext => $label) {
+        $ok = extension_loaded($ext);
+        $rows[] = $warn($label . ' (' . t('recommended') . ')', $ok, $ok ? $okT : $missT);
+    }
+    $assetsOk = installer_assets_complete();
+    $rows[] = $warn(t('Local interface files in sql/'), $assetsOk,
+        $assetsOk ? $okT : t('Missing — the CDN will be used (needs internet access in the browser)'));
+    $off = installer_disabled_functions(['chmod', 'unlink', 'mkdir', 'file_put_contents', 'curl_init', 'curl_exec']);
+    $rows[] = $warn(t('Functions in disable_functions'), !$off, $off ? implode(', ', $off) : $okT);
+
+    return $rows;
 }
 
 $reqs  = ($step === 1) ? checkRequirements() : [];
 $allOk = true;
-foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
+foreach ($reqs as $r) { if (!$r[1] && ($r[3] ?? '') !== 'warn') { $allOk = false; break; } }
+if ($step === 1) { $_SESSION['req_ok'] = $allOk; }
 ?><!DOCTYPE html>
 <html lang="<?= htmlspecialchars($LANG) ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mybb Based Torrent Tracker — <?= t('Installer') ?> v<?= INSTALLER_VERSION ?></title>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<?= cdn_head_tags() ?>
 <style>
     :root {
         --accent: #6366f1;
@@ -2407,7 +3505,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
     }
 
     body {
-        font-family: 'Inter', -apple-system, sans-serif;
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         background: radial-gradient(circle at top left, #eef0fd 0%, #f7f7fb 55%, #ffffff 100%);
         min-height: 100vh;
         margin: 0;
@@ -2594,16 +3692,26 @@ function __(key, vars) {
             <?php if ($step === 1): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-clipboard-list fa-2x me-3"></i><h5 class="mb-0"><?= t('System Requirements Check') ?></h5></div><p class="text-muted small mb-0"><?= t('All checks must pass before proceeding.') ?></p></div>
             <div class="mb-4">
-                <?php foreach ($reqs as $req): ?>
+                <?php foreach ($reqs as $req):
+                    $isWarn = (($req[3] ?? '') === 'warn');
+                    $state  = $req[1] ? 'ok' : ($isWarn ? 'warn' : 'fail');
+                    $icon   = ['ok' => 'check-circle text-success', 'warn' => 'exclamation-triangle text-warning', 'fail' => 'times-circle text-danger'][$state];
+                    $color  = ['ok' => 'success', 'warn' => 'warning', 'fail' => 'danger'][$state];
+                    $bIcon  = ['ok' => 'check', 'warn' => 'exclamation', 'fail' => 'times'][$state];
+                    $bText  = ['ok' => t('Passed'), 'warn' => t('Warning'), 'fail' => t('Failed')][$state];
+                ?>
                 <div class="requirement-item">
-                    <div class="requirement-status"><i class="fas fa-<?= $req[1] ? 'check-circle text-success' : 'times-circle text-danger' ?> fa-lg"></i></div>
+                    <div class="requirement-status"><i class="fas fa-<?= $icon ?> fa-lg"></i></div>
                     <div class="flex-grow-1"><strong><?= $req[0] ?></strong><div class="small text-muted"><?= htmlspecialchars($req[2]) ?></div></div>
-                    <span class="badge bg-<?= $req[1] ? 'success' : 'danger' ?> bg-opacity-10 text-<?= $req[1] ? 'success' : 'danger' ?> px-3 py-1 rounded-pill">
-                        <i class="fas fa-<?= $req[1] ? 'check' : 'times' ?> me-1"></i><?= $req[1] ? t('Passed') : t('Failed') ?>
+                    <span class="badge bg-<?= $color ?> bg-opacity-10 text-<?= $color ?> px-3 py-1 rounded-pill">
+                        <i class="fas fa-<?= $bIcon ?> me-1"></i><?= $bText ?>
                     </span>
                 </div>
                 <?php endforeach; ?>
             </div>
+            <?php if (array_filter($reqs, static fn($r) => !$r[1] && ($r[3] ?? '') === 'warn')): ?>
+                <div class="alert alert-warning small mb-3"><i class="fas fa-circle-info me-2"></i><?= t('Warnings are recommendations: they do not block the installation, but fixing them avoids problems later.') ?></div>
+            <?php endif; ?>
             <?php if ($allOk): ?>
                 <a href="install.php?step=2" class="btn btn-primary btn-lg w-100"><i class="fas fa-arrow-right me-2"></i><?= t('Continue to Database Setup') ?></a>
             <?php else: ?>
@@ -2633,11 +3741,32 @@ function __(key, vars) {
                         <input type="password" class="form-control" name="db_pass" value="<?= htmlspecialchars($_SESSION['db']['password'] ?? '') ?>">
                     </div>
                 </div>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="create_db" id="create_db" value="1" <?= !empty($_POST['create_db']) ? 'checked' : '' ?>>
+                    <label class="form-check-label small" for="create_db"><?= t('Create the database if it does not exist (requires the CREATE privilege)') ?></label>
+                </div>
+                <?php if ($conflictTables): ?>
+                <div class="alert alert-danger mt-3 mb-0">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="wipe_existing" id="wipe_existing" value="1">
+                        <label class="form-check-label" for="wipe_existing"><strong><?= t('Drop the existing tracker tables listed above and continue') ?></strong> — <?= t('all data in them will be lost') ?></label>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($showForceOld): ?>
+                <div class="alert alert-warning mt-3 mb-0">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="force_old_db" id="force_old_db" value="1">
+                        <label class="form-check-label" for="force_old_db"><?= t('Continue anyway with this database server') ?></label>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-database me-2"></i><?= t('Test Connection & Continue') ?></button>
             </form>
 
             <?php elseif ($step === 3): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-globe fa-2x me-3"></i><h5 class="mb-0"><?= t('Site Configuration') ?></h5></div><p class="text-muted small mb-0"><?= t('Basic tracker settings.') ?></p></div>
+            <?= db_notes_html() ?>
             <form method="post" action="install.php?step=3"><?= csrf_field() ?>
                 <div class="row g-3">
                     <div class="col-12">
@@ -2646,7 +3775,7 @@ function __(key, vars) {
                     </div>
                     <div class="col-12">
                         <label class="form-label fw-semibold"><i class="fas fa-link me-1"></i><?= t('Site URL') ?></label>
-                        <input type="url" class="form-control" name="site_url" value="<?= htmlspecialchars($_SESSION['site']['url'] ?? '') ?>" placeholder="https://tracker.example.com" required>
+                        <input type="url" class="form-control" name="site_url" value="<?= htmlspecialchars($_SESSION['site']['url'] ?? installer_guess_url()) ?>" placeholder="https://tracker.example.com" required>
                         <small class="text-muted"><?= t('No trailing slash.') ?></small>
                         <div id="urlHint" class="small mt-1"></div>
                     </div>
@@ -2657,12 +3786,43 @@ function __(key, vars) {
                     <div class="col-md-6">
                         <label class="form-label fw-semibold"><i class="fas fa-clock me-1"></i><?= t('Timezone') ?></label>
                         <select class="form-select" name="timezone">
-                            <?php for ($i=-12;$i<=14;$i++): ?>
-                            <option value="<?=$i?>" <?=(($_SESSION['site']['timezone']??2)==$i)?'selected':''?>>UTC <?=$i>=0?'+'.$i:$i?></option>
-                            <?php endfor; ?>
+                            <?php
+                            $tzOffsets = [-12, -11, -10, -9.5, -9, -8, -7, -6, -5, -4, -3.5, -3, -2, -1, 0, 1, 2, 3, 3.5, 4, 4.5, 5, 5.5, 5.75, 6, 6.5, 7, 8, 8.75, 9, 9.5, 10, 10.5, 11, 12, 12.75, 13, 14];
+                            $tzCur = isset($_SESSION['site']['timezone']) ? (float)$_SESSION['site']['timezone'] : round(((int)date('Z')) / 3600 * 4) / 4;
+                            foreach ($tzOffsets as $o):
+                                $abs = abs($o);
+                                $lbl = sprintf('UTC%s%02d:%02d', $o < 0 ? '-' : '+', (int)floor($abs), (int)round(($abs - floor($abs)) * 60));
+                            ?>
+                            <option value="<?= $o ?>" <?= abs($tzCur - $o) < 0.01 ? 'selected' : '' ?>><?= $lbl ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                 </div>
+                
+                <details class="mt-3" <?= !empty($_SESSION['site']['smtp_host']) ? 'open' : '' ?>>
+                    <summary class="fw-semibold"><i class="fas fa-envelope-open-text me-1"></i><?= t('Outgoing mail (SMTP) — optional') ?></summary>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-8">
+                            <label class="form-label"><?= t('SMTP host') ?></label>
+                            <input type="text" class="form-control" name="smtp_host" value="<?= htmlspecialchars($_SESSION['site']['smtp_host'] ?? '') ?>" placeholder="smtp.example.com" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label"><?= t('SMTP port') ?></label>
+                            <input type="number" class="form-control" name="smtp_port" min="1" max="65535" value="<?= htmlspecialchars($_SESSION['site']['smtp_port'] ?? '587') ?>">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><?= t('SMTP username') ?></label>
+                            <input type="text" class="form-control" name="smtp_user" value="<?= htmlspecialchars($_SESSION['site']['smtp_user'] ?? '') ?>" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><?= t('SMTP password') ?></label>
+                            <input type="password" class="form-control" name="smtp_pass" value="<?= htmlspecialchars($_SESSION['site']['smtp_pass'] ?? '') ?>" autocomplete="new-password">
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2"><?= t('Leave the host empty to send mail with PHP mail(). The test message is sent to the Site Email. Port 465 uses SSL, other ports use STARTTLS.') ?></div>
+                    <button type="button" id="smtpTestBtn" class="btn btn-outline-secondary btn-sm mt-2"><i class="fas fa-paper-plane me-1"></i><?= t('Send test email') ?></button>
+                    <div id="smtpTestResult" class="small mt-2"></div>
+                </details>
                 <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-arrow-right me-2"></i><?= t('Continue to Admin Setup') ?></button>
             </form>
 
@@ -2697,6 +3857,34 @@ function __(key, vars) {
                 update();
             })();
             </script>
+            <script>
+            (function () {
+                const btn = document.getElementById('smtpTestBtn');
+                if (!btn) return;
+                const out = document.getElementById('smtpTestResult');
+                const val = n => { const el = document.querySelector('[name="' + n + '"]'); return el ? el.value : ''; };
+                btn.addEventListener('click', async function () {
+                    out.className = 'small mt-2 text-muted';
+                    out.textContent = __('Sending…');
+                    btn.disabled = true;
+                    try {
+                        const body = new URLSearchParams({
+                            ajax_action: 'test_smtp', csrf_token: <?= json_encode($csrfToken) ?>,
+                            smtp_host: val('smtp_host'), smtp_port: val('smtp_port') || '587',
+                            smtp_user: val('smtp_user'), smtp_pass: val('smtp_pass'), site_email: val('site_email')
+                        });
+                        const resp = await fetch('install.php?step=3', { method: 'POST', body });
+                        const d = await resp.json();
+                        out.className = 'small mt-2 ' + (d.status === 'ok' ? 'text-success' : 'text-danger');
+                        out.textContent = (d.status === 'ok' ? '✓ ' : '✗ ') + (d.message || '');
+                    } catch (e) {
+                        out.className = 'small mt-2 text-danger';
+                        out.textContent = '✗ ' + __('Request failed — check your connection and install_error.log.');
+                    }
+                    btn.disabled = false;
+                });
+            })();
+            </script>
 
 
 
@@ -2721,6 +3909,8 @@ function __(key, vars) {
                             <input type="password" id="admin_pass" class="form-control" name="admin_pass" required minlength="8">
                             <button type="button" class="btn btn-outline-secondary toggle-pass" data-target="admin_pass"><i class="fas fa-eye"></i></button>
                         </div>
+                        <div class="progress mt-2" style="height:6px"><div id="passMeter" class="progress-bar" style="width:0"></div></div>
+                        <small id="passMeterLabel" class="text-muted"></small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-semibold"><i class="fas fa-check-double me-1"></i><?= t('Confirm Password') ?></label>
@@ -2745,6 +3935,33 @@ function __(key, vars) {
                 });
             });
 
+            const passInput = document.getElementById('admin_pass');
+            function updateMeter() {
+                const p = passInput.value;
+                let sc = 0;
+                if (p.length >= 8) sc++;
+                if (p.length >= 12) sc++;
+                if (p.length >= 16) sc++;
+                if (/[a-z]/.test(p) && /[A-Z]/.test(p)) sc++;
+                if (/\d/.test(p)) sc++;
+                if (/[^A-Za-z0-9]/.test(p)) sc++;
+                let lvl = 0;
+                if (p.length > 0) lvl = sc <= 1 ? 1 : (sc <= 3 ? 2 : (sc <= 4 ? 3 : 4));
+                const cfg = [
+                    ['0%', 'bg-secondary', ''],
+                    ['25%', 'bg-danger', __('Weak')],
+                    ['50%', 'bg-warning', __('Fair')],
+                    ['75%', 'bg-info', __('Good')],
+                    ['100%', 'bg-success', __('Strong')]
+                ][lvl];
+                const bar = document.getElementById('passMeter');
+                bar.style.width = cfg[0];
+                bar.className = 'progress-bar ' + cfg[1];
+                document.getElementById('passMeterLabel').textContent = cfg[2];
+            }
+            passInput.addEventListener('input', updateMeter);
+            updateMeter();
+
             document.getElementById('genPassBtn')?.addEventListener('click', function () {
                 const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
                 let pass = '';
@@ -2758,6 +3975,7 @@ function __(key, vars) {
                 confirmField.type = 'text';
                 passField.value = pass;
                 confirmField.value = pass;
+                updateMeter();
                 document.querySelectorAll('.toggle-pass i').forEach(function (icon) {
                     icon.classList.remove('fa-eye');
                     icon.classList.add('fa-eye-slash');
@@ -2773,21 +3991,34 @@ function __(key, vars) {
                     <div class="row g-2 small">
                         <div class="col-4 fw-semibold"><?= t('Driver:') ?></div><div class="col-8"><?= htmlspecialchars(strtoupper($_SESSION['db']['type'] ?? 'mysqli')) ?></div>
                         <div class="col-4 fw-semibold"><?= t('Database:') ?></div><div class="col-8"><?= htmlspecialchars(($_SESSION['db']['database']??'').'@'.($_SESSION['db']['hostname']??'')) ?></div>
+                        <div class="col-4 fw-semibold"><?= t('Server:') ?></div><div class="col-8"><?= htmlspecialchars($_SESSION['db_info']['server'] ?? '—') ?></div>
                         <div class="col-4 fw-semibold"><?= t('Site:') ?></div><div class="col-8"><?= htmlspecialchars($_SESSION['site']['name']??'') ?> — <?= htmlspecialchars($_SESSION['site']['url']??'') ?></div>
                         <div class="col-4 fw-semibold"><?= t('Admin:') ?></div><div class="col-8"><?= htmlspecialchars($_SESSION['admin']['username']??'') ?> &lt;<?= htmlspecialchars($_SESSION['admin']['email']??'') ?>&gt;</div>
                         <div class="col-4 fw-semibold"><?= t('Cookie domain:') ?></div><div class="col-8"><?= htmlspecialchars(($_SESSION['site']['cookie_domain'] ?? '') ?: (derive_cookie_domain($_SESSION['site']['url'] ?? '') ?: t('(host only)'))) ?></div>
+
+                        <div class="col-4 fw-semibold"><?= t('Outgoing mail:') ?></div><div class="col-8"><?= !empty($_SESSION['site']['smtp_host']) ? htmlspecialchars($_SESSION['site']['smtp_host'] . ':' . ($_SESSION['site']['smtp_port'] ?? '587')) : t('PHP mail()') ?></div>
                     </div>
                 </div>
+                <?= db_notes_html() ?>
                 <?php $s5url = $_SESSION['site']['url'] ?? ''; if (stripos($s5url, 'http://') === 0 && !is_local_host((string)parse_url($s5url, PHP_URL_HOST))): ?>
                 <div class="alert alert-warning alert-custom mb-4" style="border-left-color:#ff9800">
                     <i class="fas fa-lock-open me-2"></i><?= t('HTTPS is not enabled for this address. Passkeys and login cookies would travel unencrypted — use https:// if you can.') ?>
                 </div>
                 <?php endif; ?>
+                <?php $resumeAt = (int)($_SESSION['inst_next'] ?? 0); if ($resumeAt > 0): ?>
+                <div class="alert alert-info alert-custom mb-4" style="border-left-color:#0dcaf0">
+                    <i class="fas fa-rotate-right me-2"></i><?= t('A previous installation attempt stopped after step {n}. You can resume from there or wipe the created tables and start over.', ['n' => $resumeAt]) ?>
+                    <div class="mt-2"><button type="button" id="wipeBtn" class="btn btn-outline-danger btn-sm"><i class="fas fa-broom me-1"></i><?= t('Wipe and start over') ?></button></div>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($_SESSION['db']['wipe'])): ?>
+                <div class="alert alert-danger alert-custom mb-4"><i class="fas fa-triangle-exclamation me-2"></i><?= t('Existing tracker tables in this database will be dropped before the installation starts.') ?></div>
+                <?php endif; ?>
                 <div class="alert alert-warning alert-custom mb-4" style="border-left-color:#ffc107">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong><?= t('Warning:') ?></strong> <?= t('This will create all database tables and config files. Cannot be undone.') ?>
                 </div>
-                <button type="button" id="startInstallBtn" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i><?= t('Install Mybb Based Torrent Tracker Now!') ?></button>
+                <button type="button" id="startInstallBtn" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i><?= $resumeAt > 0 ? t('Resume installation') : t('Install Mybb Based Torrent Tracker Now!') ?></button>
             </div>
 
             <div id="installProgressSection" style="display:none">
@@ -2817,6 +4048,7 @@ function __(key, vars) {
                 const csrfToken = <?= json_encode($csrfToken) ?>;
                 const startBtn  = document.getElementById('startInstallBtn');
                 if (!startBtn) return;
+                let plan = null;
 
                 function escapeHtml(s) {
                     const d = document.createElement('div');
@@ -2845,7 +4077,26 @@ function __(key, vars) {
                     box.scrollTop = box.scrollHeight;
                 }
 
-                function showFailure(result) {
+                function resetProgressStyle() {
+                    const bar = document.getElementById('installProgressBar');
+                    bar.classList.add('progress-bar-animated', 'progress-bar-striped');
+                    bar.style.background = 'linear-gradient(135deg,var(--accent) 0%,var(--accent-dark) 100%)';
+                    document.getElementById('installFailureBox').style.display = 'none';
+                }
+
+                async function wipeAndReload() {
+                    if (!confirm(__('Drop all tracker tables created so far and start the installation from scratch?'))) return;
+                    try {
+                        const r = await postAjax('reset_install');
+                        if (r.status !== 'ok') { alert(r.message || ''); return; }
+                    } catch (e) {
+                        alert(__('Request failed — check your connection and install_error.log.'));
+                        return;
+                    }
+                    window.location.reload();
+                }
+
+                function showFailure(result, failedIndex) {
                     const bar = document.getElementById('installProgressBar');
                     bar.classList.remove('progress-bar-animated', 'progress-bar-striped');
                     bar.style.background = '#dc3545';
@@ -2853,46 +4104,62 @@ function __(key, vars) {
 
                     const box = document.getElementById('installFailureBox');
                     box.style.display = 'block';
-                    let html = '<strong><i class="fas fa-exclamation-triangle me-2"></i>' + escapeHtml(__('{label} failed:', {label: result.label})) + '</strong>' +
-                               '<p class="mb-2 mt-1">' + escapeHtml(result.message) + '</p>';
-                    html += '<a href="install.php?step=1" class="btn btn-outline-secondary w-100 mt-1"><i class="fas fa-sync-alt me-2"></i>' + escapeHtml(__('Start Over')) + '</a>';
-                    box.innerHTML = html;
+                    box.innerHTML =
+                        '<strong><i class="fas fa-exclamation-triangle me-2"></i>' + escapeHtml(__('{label} failed:', {label: result.label})) + '</strong>' +
+                        '<p class="mb-2 mt-1">' + escapeHtml(result.message) + '</p>';
+
+                    const row = document.createElement('div');
+                    row.className = 'd-grid gap-2 mt-2';
+                    if (failedIndex !== null && plan) {
+                        const retry = document.createElement('button');
+                        retry.type = 'button';
+                        retry.className = 'btn btn-primary';
+                        retry.innerHTML = '<i class="fas fa-rotate-right me-2"></i>' + escapeHtml(__('Retry from this step'));
+                        retry.addEventListener('click', function () { resetProgressStyle(); run(failedIndex); });
+                        row.appendChild(retry);
+                    }
+                    const wipe = document.createElement('button');
+                    wipe.type = 'button';
+                    wipe.className = 'btn btn-outline-danger';
+                    wipe.innerHTML = '<i class="fas fa-broom me-2"></i>' + escapeHtml(__('Wipe and start over'));
+                    wipe.addEventListener('click', wipeAndReload);
+                    row.appendChild(wipe);
+                    const back = document.createElement('a');
+                    back.href = 'install.php?step=1';
+                    back.className = 'btn btn-outline-secondary';
+                    back.innerHTML = '<i class="fas fa-sync-alt me-2"></i>' + escapeHtml(__('Start Over'));
+                    row.appendChild(back);
+                    box.appendChild(row);
                 }
 
-                startBtn.addEventListener('click', async function () {
-                    startBtn.disabled = true;
-                    document.getElementById('installSummary').style.display = 'none';
-                    document.getElementById('installProgressSection').style.display = 'block';
-
+                async function run(from) {
                     const progressLabel = document.getElementById('installProgressLabel');
                     const progressCount = document.getElementById('installProgressCount');
                     const progressBar   = document.getElementById('installProgressBar');
-
-                    const plan = await postAjax('get_install_plan');
-                    if (plan.status !== 'ok') {
-                        showFailure({ label: __('Installation plan'), message: plan.message || __('Could not load the install plan.') });
-                        return;
-                    }
-                    const total = plan.total;
+                    const total  = plan.total;
                     const tables = plan.tables || 0;
 
-                    for (let i = 0; i < total; i++) {
+                    for (let i = from; i < total; i++) {
                         progressLabel.textContent = plan.labels[i];
                         progressCount.textContent = (i < tables)
                             ? __('Table {n} / {total}', { n: i + 1, total: tables })
                             : __('Step {n} / {total}', { n: i + 1, total: total });
 
-                        const result = await postAjax('install_step', { step_index: i });
+                        let result;
+                        try {
+                            result = await postAjax('install_step', { step_index: i });
+                        } catch (e) {
+                            result = { status: 'fail', label: plan.labels[i], message: __('The server returned an invalid response — see install_error.log.'), elapsed_ms: 0 };
+                        }
                         addLogLine(result);
 
+                        if (result.status !== 'ok') {
+                            showFailure(result, i);
+                            return;
+                        }
                         const pct = Math.round(((i + 1) / total) * 100);
                         progressBar.style.width = pct + '%';
                         progressBar.textContent = pct + '%';
-
-                        if (result.status === 'fail') {
-                            showFailure(result);
-                            return;
-                        }
                     }
 
                     progressLabel.textContent = __('Installation complete!');
@@ -2900,7 +4167,26 @@ function __(key, vars) {
                     progressBar.style.background = '#10b981';
                     document.getElementById('installSuccessBox').style.display = 'block';
                     setTimeout(() => { window.location.href = 'install.php?step=6'; }, 700);
+                }
+
+                startBtn.addEventListener('click', async function () {
+                    startBtn.disabled = true;
+                    document.getElementById('installSummary').style.display = 'none';
+                    document.getElementById('installProgressSection').style.display = 'block';
+
+                    try {
+                        plan = await postAjax('get_install_plan');
+                    } catch (e) {
+                        plan = { status: 'error', message: __('The server returned an invalid response — see install_error.log.') };
+                    }
+                    if (plan.status !== 'ok') {
+                        showFailure({ label: __('Installation plan'), message: plan.message || __('Could not load the install plan.') }, null);
+                        return;
+                    }
+                    await run(plan.resume || 0);
                 });
+
+                document.getElementById('wipeBtn')?.addEventListener('click', wipeAndReload);
             })();
             </script>
 
@@ -2913,13 +4199,13 @@ function __(key, vars) {
                     <i class="fas fa-right-to-bracket me-2"></i>
                     <strong><?= t("You're already logged in!") ?></strong> <?= t('An auto-login cookie was set for your new admin account — just hit the button below, no need to fill in the login form.') ?>
                 </div>
-                <div class="alert alert-danger text-start mb-4" id="deleteInstallAlert">
+                <div class="alert alert-warning text-start mb-4" id="deleteInstallAlert">
                     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <div>
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <strong><?= t('Security:') ?></strong> <?= t('Delete <code>install.php</code> from your server immediately!') ?>
+                            <i class="fas fa-lock me-2"></i>
+                            <strong><?= t('Security:') ?></strong> <?= t('The installer is locked by <code>install.lock</code>. Keep install.php for reinstalls, or delete it if you no longer need it.') ?>
                         </div>
-                        <button type="button" id="selfDestructBtn" class="btn btn-danger btn-sm">
+                        <button type="button" id="selfDestructBtn" class="btn btn-outline-danger btn-sm">
                             <i class="fas fa-trash-alt me-1"></i><?= t('Delete install.php Now') ?>
                         </button>
                     </div>
@@ -2975,13 +4261,41 @@ function __(key, vars) {
                 $isHttps     = stripos($siteUrl, 'https://') === 0;
                 $isLocalHost = is_local_host($siteHost);
                 $announceUrl = $siteUrl . '/announce.php';
+
+                // Готовая строка для cron: PHP-бинарник и путь к скрипту определяются автоматически.
+                $isWin  = (DIRECTORY_SEPARATOR === '\\');
+                $phpExe = PHP_BINDIR . DIRECTORY_SEPARATOR . ($isWin ? 'php.exe' : 'php');
+                $phpBin = is_file($phpExe) ? $phpExe : 'php';
+                $cronScript = null;
+                foreach (['cron.php', 'cron_run.php', 'cronjob.php', 'cron/cron.php', 'tasks.php'] as $cronName) {
+                    if (is_file(__DIR__ . '/' . $cronName)) { $cronScript = __DIR__ . '/' . $cronName; break; }
+                }
+                $cronFound  = $cronScript !== null;
+                $cronTarget = $cronScript ?? (__DIR__ . DIRECTORY_SEPARATOR . 'cron.php');
+                $cronLine   = $isWin
+                    ? '"' . $phpBin . '" "' . $cronTarget . '"   (Task Scheduler)'
+                    : '* * * * * ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($cronTarget) . ' >/dev/null 2>&1';
+                $announceProbe = (string)($_SESSION['announce_probe'] ?? 'unknown');
                 ?>
                 <div class="info-card text-start mb-4">
                     <h6 class="mb-3"><i class="fas fa-list-check me-2"></i><?= t('Next steps') ?></h6>
                     <ol class="small mb-0 ps-3">
                         <li class="mb-2"><?= t('Set up outgoing mail: configure SMTP in the admin panel and send a test message. Registration and password-reset e-mails depend on it.') ?></li>
-                        <li class="mb-2"><?= t('Set up cron for the scheduled tasks of the tracker (the cron table was created during installation).') ?></li>
-                        <li class="mb-2"><?= t('Check that the announce URL is reachable from the internet (BitTorrent clients use it):') ?> <code><?= htmlspecialchars($announceUrl) ?></code></li>
+                        <li class="mb-2"><?= t('Set up cron for the scheduled tasks of the tracker (the cron table was created during installation).') ?>
+                            <pre class="small bg-light border rounded p-2 mt-1 mb-1" style="white-space:pre-wrap"><?= htmlspecialchars($cronLine) ?></pre>
+                            <div class="text-muted small"><?= $cronFound ? t('Runs every minute; adjust the interval if your tracker documentation says otherwise.') : t('The cron script name could not be detected automatically — replace it with the one from your tracker documentation.') ?></div>
+                        </li>
+                        <li class="mb-2"><?= t('Check that the announce URL is reachable from the internet (BitTorrent clients use it):') ?> <code><?= htmlspecialchars($announceUrl) ?></code>
+                            <?php if ($announceProbe === 'ok'): ?>
+                            <div class="text-success small"><i class="fas fa-circle-check me-1"></i><?= t('announce.php answered like a tracker (checked from the server itself).') ?></div>
+                            <?php elseif ($announceProbe === 'unexpected'): ?>
+                            <div class="text-danger small"><i class="fas fa-triangle-exclamation me-1"></i><?= t('announce.php responded, but not with a tracker reply. Check the web server and rewrite rules.') ?></div>
+                            <?php elseif ($announceProbe === 'error'): ?>
+                            <div class="text-danger small"><i class="fas fa-triangle-exclamation me-1"></i><?= t('announce.php returned an HTTP error. Check that the file exists and PHP works.') ?></div>
+                            <?php else: ?>
+                            <div class="text-muted small"><?= t('Could not be checked from the server itself (normal behind NAT or a CDN). Open the URL from outside — it should return a short text starting with “d”.') ?></div>
+                            <?php endif; ?>
+                        </li>
                         <?php if ($isHttps): ?>
                         <li class="mb-2 text-success"><i class="fas fa-lock me-1"></i><?= t('HTTPS is enabled — good.') ?></li>
                         <?php elseif ($isLocalHost): ?>
@@ -2989,47 +4303,129 @@ function __(key, vars) {
                         <?php else: ?>
                         <li class="mb-2 text-danger fw-semibold"><i class="fas fa-lock-open me-1"></i><?= t('Your site uses http:// — passkeys and login cookies travel unencrypted. Enable HTTPS, then update the Site URL in the admin panel.') ?></li>
                         <?php endif; ?>
-                        <li><?= t('Make sure the sql/ folder and install_error.log are not accessible from the web.') ?></li>
+                        <?php
+                        $permWarn = (array)($_SESSION['perm_warn'] ?? []);
+                        $pr       = $_SESSION['protect'] ?? null;
+                        $prSql    = is_array($pr) ? ($pr['sql'] ?? 'unknown') : 'unknown';
+                        $prLog    = is_array($pr) ? ($pr['log'] ?? 'unknown') : 'unknown';
+                        $prFailed = is_array($pr) ? (array)($pr['failed'] ?? []) : [];
+                        $prBase   = rtrim($siteUrl, '/');
+                        $prOpen   = [];
+                        if ($prSql === 'open') $prOpen[] = $prBase . '/sql/faq.sql';
+                        if ($prLog === 'open') $prOpen[] = $prBase . '/install_error.log';
+                        $prUploads  = is_array($pr) ? ($pr['uploads'] ?? 'unknown') : 'unknown';
+                        $prTorrents = is_array($pr) ? ($pr['torrents'] ?? 'unknown') : 'unknown';
+                        $prAllClosed = ($prSql === 'blocked' || $prSql === 'unknown' && !is_file(__DIR__ . '/sql/faq.sql')) && $prLog === 'blocked';
+                        ?>
+                        <?php if ($prUploads === 'open'): ?>
+                        <li class="mb-2 text-danger fw-semibold"><i class="fas fa-triangle-exclamation me-1"></i><?= t('PHP files inside uploads/ can be executed from the web! Disable script execution there in the web server config (see below).') ?></li>
+                        <?php endif; ?>
+                        <?php if ($prTorrents === 'open'): ?>
+                        <li class="mb-2 text-danger fw-semibold"><i class="fas fa-triangle-exclamation me-1"></i><?= t('Files in torrents/ can be downloaded directly, bypassing passkey checks. Block /torrents/ in the web server config (see below).') ?></li>
+                        <?php endif; ?>
+                        <?php if ($permWarn): ?>
+                        <li class="mb-2 text-danger"><?= t('Set permissions 0640 on: {files} (they contain the database password and encryption key).', ['files' => '<code>' . htmlspecialchars(implode(', ', $permWarn)) . '</code>']) ?></li>
+                        <?php endif; ?>
+                        <li>
+                            <?php if ($prAllClosed): ?>
+                            <span class="text-success"><i class="fas fa-shield-halved me-1"></i><?= t('sql/ and install_error.log are closed from the web (checked).') ?></span>
+                            <?php elseif ($prOpen): ?>
+                            <span class="text-danger fw-semibold"><i class="fas fa-triangle-exclamation me-1"></i><?= t('Still accessible from the web: {urls}. Block them in the web server config (see below).', ['urls' => '<code>' . htmlspecialchars(implode(', ', $prOpen)) . '</code>']) ?></span>
+                            <?php else: ?>
+                            <?= t('Could not verify automatically that sql/ and install_error.log are closed. Open {url} in your browser — it should give 403 or 404.', ['url' => '<code>' . htmlspecialchars($prBase . '/sql/faq.sql') . '</code>']) ?>
+                            <?php endif; ?>
+                            <?php if ($prFailed): ?>
+                            <div class="text-danger mt-1"><?= t('Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).', ['files' => '<code>' . htmlspecialchars(implode(', ', $prFailed)) . '</code>']) ?></div>
+                            <?php endif; ?>
+                            <?php if (!$prAllClosed || $prUploads === 'open' || $prTorrents === 'open'): ?>
+                            <details class="mt-1">
+                                <summary class="text-muted"><?= t('Server config examples') ?></summary>
+<pre class="small bg-light border rounded p-2 mt-1 mb-0"><?= htmlspecialchars('# Apache — .htaccess in the site root
+<FilesMatch "^(install_error\.log|install\.lock)$">
+    Require all denied
+</FilesMatch>
+
+# Apache — sql/.htaccess
+Require all denied
+
+# Apache — uploads/.htaccess (no script execution)
+<FilesMatch "(?i)\.(php[0-9]?|phtml|phar)$">
+    Require all denied
+</FilesMatch>
+
+# nginx — inside server { }
+location ^~ /sql/ { deny all; return 404; }
+location ~ ^/(install_error\.log|install\.lock)$ { deny all; return 404; }
+location ^~ /torrents/ { deny all; return 404; }
+location ^~ /uploads/ { location ~* \.(php[0-9]?|phtml|phar)$ { deny all; } }') ?></pre>
+                            </details>
+                            <?php endif; ?>
+                        </li>
                     </ol>
                 </div>
                 <div class="d-grid gap-3">
                     <a href="<?= htmlspecialchars($_SESSION['site']['url']??'/') ?>" class="btn btn-primary btn-lg"><i class="fas fa-right-to-bracket me-2"></i><?= t('Login Here &amp; Go to Tracker') ?></a>
                     <a href="<?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>" class="btn btn-outline-primary btn-lg"><i class="fas fa-crown me-2"></i><?= t('Admin Panel') ?></a>
+                    <button type="button" id="downloadReportBtn" class="btn btn-outline-secondary"><i class="fas fa-file-arrow-down me-2"></i><?= t('Download installation report') ?></button>
                 </div>
             </div>
 
             <script>
-            document.getElementById('selfDestructBtn')?.addEventListener('click', async function () {
-                if (!confirm(__('Delete install.php from the server right now? This cannot be undone.'))) return;
-
-                const btn = this;
+            (function () {
+                const REPORT = <?= json_encode(installer_build_report(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+                const btn = document.getElementById('selfDestructBtn');
                 const resultBox = document.getElementById('selfDestructResult');
-                const originalHtml = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + __('Deleting...');
 
-                try {
-                    const body = new URLSearchParams({
-                        ajax_action: 'self_destruct',
-                        csrf_token: <?= json_encode($csrfToken) ?>,
-                    });
-                    const resp = await fetch('install.php', { method: 'POST', body });
-                    const data = await resp.json();
+                // Отчёт собирается прямо в браузере — скачивается и после удаления install.php.
+                document.getElementById('downloadReportBtn')?.addEventListener('click', function () {
+                    const blob = new Blob([REPORT], { type: 'text/plain;charset=utf-8' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'install-report.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                });
 
-                    if (data.status === 'success') {
-                        document.getElementById('deleteInstallAlert').outerHTML =
-                            '<div class="alert alert-success text-start mb-4"><i class="fas fa-check-circle me-2"></i><strong>' + __('Done!') + '</strong> ' + __('install.php has been deleted from the server.') + '</div>';
-                    } else {
-                        resultBox.innerHTML = '<span class="text-danger"><i class="fas fa-triangle-exclamation me-1"></i>' + data.message + '</span>';
+                if (!btn) return;
+                async function destroy(skipConfirm) {
+                    if (!skipConfirm && !confirm(__('Delete install.php from the server right now? This cannot be undone.'))) return;
+
+                    const originalHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + __('Deleting...');
+
+                    function showError(text) {
+                        resultBox.textContent = '';
+                        const span = document.createElement('span');
+                        span.className = 'text-danger';
+                        span.textContent = '⚠ ' + text;
+                        resultBox.appendChild(span);
                         btn.disabled = false;
                         btn.innerHTML = originalHtml;
                     }
-                } catch (err) {
-                    resultBox.innerHTML = '<span class="text-danger"><i class="fas fa-triangle-exclamation me-1"></i>' + __('Network error — delete the file manually via FTP/SSH.') + '</span>';
-                    btn.disabled = false;
-                    btn.innerHTML = originalHtml;
+
+                    try {
+                        const body = new URLSearchParams({
+                            ajax_action: 'self_destruct',
+                            csrf_token: <?= json_encode($csrfToken) ?>,
+                        });
+                        const resp = await fetch('install.php', { method: 'POST', body });
+                        const data = await resp.json();
+
+                        if (data.status === 'success') {
+                            document.getElementById('deleteInstallAlert').outerHTML =
+                                '<div class="alert alert-success text-start mb-4"><i class="fas fa-check-circle me-2"></i><strong>' + __('Done!') + '</strong> ' + __('install.php has been deleted from the server.') + '</div>';
+                        } else {
+                            showError(data.message || '');
+                        }
+                    } catch (err) {
+                        showError(__('Network error — delete the file manually via FTP/SSH.'));
+                    }
                 }
-            });
+                btn.addEventListener('click', function () { destroy(false); });
+            })();
             </script>
 
             <?php endif; ?>
@@ -3042,6 +4438,6 @@ function __(key, vars) {
         </small>
     </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<?= cdn_js_tag() ?>
 </body>
 </html>

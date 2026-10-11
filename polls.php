@@ -874,7 +874,7 @@ function poll_render_results(
         $num    = $i + 1;
         $votes  = (int)($votes_arr[$i] ?? 0);
         $option = $parser->parse_message($option_raw, [
-            'allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1,
+            'allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1,
             'allow_imgcode' => 1, 'allow_videocode' => 1, 'filter_badwords' => 1,
         ]);
         $pct    = $totvotes > 0 ? number_format($votes / $totvotes * 100, 2) : 0;

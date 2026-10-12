@@ -69,12 +69,16 @@ $CQueryCount++;
 $db->sql_query_prepared("DELETE FROM forumsread WHERE dateline < ?", [(int)$time_limits['threadreadcut']]);
 $CQueryCount++;
 
-// ======= Moderator log pruning =======
-if (!empty($config['log_pruning']['mod_logs']) && $config['log_pruning']['mod_logs'] > 0) {
-    $cut = TIMENOW - $config['log_pruning']['mod_logs'] * DAY_IN_SECONDS;
-    $db->sql_query_prepared("DELETE FROM moderatorlog WHERE dateline < ?", [$cut]);
-    $CQueryCount++;
-}
+
+
+$db->sql_query_prepared(
+    "UPDATE torrents t
+     LEFT JOIN peers p ON p.torrent = t.id
+     SET t.seeders = 0, t.leechers = 0
+     WHERE p.torrent IS NULL AND (t.seeders <> 0 OR t.leechers <> 0)"
+);
+$CQueryCount++;
+
 
 // ======= Torrent statistics update =======
 $torrents_data = [];

@@ -1,0 +1,141 @@
+<?php
+if(!defined('IN_TRACKER')) die('Hacking attempt!');
+
+$language['requests_offers'] = array (
+	// ── Page ──
+	'pane_title'               => 'Requests & Offers',
+	'pane_subtitle'            => 'Change statuses, link the uploaded torrent and clean up what members asked for or offered.',
+	'aria_section'             => 'Section',
+
+	// ── Tabs / nouns ──
+	'lbl_tab_requests'         => 'Requests',
+	'lbl_tab_offers'           => 'Offers',
+	'th_req_item'              => 'Request',
+	'th_off_item'              => 'Offer',
+	'lbl_votes'                => 'Votes',
+	'lbl_wants'                => 'Wants',
+
+	// ── Statuses ──
+	'opt_req_open'             => 'Open',
+	'opt_req_filled'           => 'Filled',
+	'opt_req_cancelled'        => 'Cancelled',
+	'opt_off_open'             => 'Open',
+	'opt_off_uploaded'         => 'Uploaded',
+	'opt_off_cancelled'        => 'Cancelled',
+
+	// ── KPI ──
+	'kpi_req_total'            => 'Total requests',
+	'kpi_off_total'            => 'Total offers',
+	'kpi_cancelled_sub'        => '{1} cancelled',
+	'kpi_open'                 => 'Open',
+	'kpi_req_open_sub'         => '{1}% of all requests',
+	'kpi_off_open_sub'         => '{1}% of all offers',
+	'kpi_req_done'             => 'Filled',
+	'kpi_off_done'             => 'Uploaded',
+	'kpi_done_sub'             => '{1}% completion rate',
+	'kpi_bounty'               => 'Total bounty',
+	'kpi_bounty_value'         => '{1} BP',
+	'kpi_bounty_sub'           => '{1} BP still on open requests',
+	'kpi_wants'                => 'Total wants',
+	'kpi_wants_sub'            => 'Members waiting on offers',
+
+	// ── Filters ──
+	'aria_status_filter'       => 'Filter by status',
+	'lbl_all'                  => 'All',
+	'lbl_search'               => 'Search by title',
+	'aria_category'            => 'Category',
+	'opt_all_categories'       => 'All categories',
+	'aria_sort'                => 'Sort',
+	'opt_sort_newest'          => 'Newest first',
+	'opt_sort_votes'           => 'Most votes',
+	'opt_sort_wants'           => 'Most wants',
+	'opt_sort_bounty'          => 'Highest bounty',
+	'btn_filter'               => 'Filter',
+	'btn_reset'                => 'Reset',
+
+	// ── Table ──
+	'aria_select_all'          => 'Select all on this page',
+	'th_by'                    => 'By',
+	'th_status'                => 'Status',
+	'th_bounty'                => 'Bounty',
+	'th_created'               => 'Created',
+	'th_actions'               => 'Actions',
+	'aria_select_row'          => 'Select #{1}',
+	'lbl_no_category'          => 'No category',
+	'lbl_torrent'              => 'Torrent #{1}',
+	'lbl_user_deleted'         => 'deleted',
+	'lbl_ago'                  => '{1} ago',
+	'tip_open_public'          => 'Open public page',
+	'tip_more_actions'         => 'More actions',
+	'lbl_change_status'        => '#{1} · change status',
+	'lbl_mark_as'              => 'Mark as {1}',
+	'btn_delete'               => 'Delete',
+
+	// ── Empty state ──
+	'empty_req_filtered'       => 'No requests match these filters',
+	'empty_off_filtered'       => 'No offers match these filters',
+	'empty_filtered_hint'      => 'Clear the search or pick another status or category.',
+	'btn_reset_filters'        => 'Reset filters',
+	'empty_req_none'           => 'No requests yet',
+	'empty_off_none'           => 'No offers yet',
+	'empty_req_none_hint'      => 'New requests from members will show up here.',
+	'empty_off_none_hint'      => 'New offers from members will show up here.',
+
+	// ── Footer / bulk bar ──
+	'lbl_showing'              => 'Showing {1}–{2} of {3}',
+	'lbl_selected'             => '{1} selected',
+	'btn_clear'                => 'Clear',
+	'aria_bulk_action'         => 'Bulk action',
+	'opt_choose_action'        => 'Choose action…',
+	'opt_delete_selected'      => 'Delete selected',
+	'btn_apply'                => 'Apply',
+
+	// ── Modal ──
+	'modal_req_title'          => 'Mark as Filled',
+	'modal_off_title'          => 'Mark as Uploaded',
+	'modal_req_label'          => 'Torrent ID that fulfils this request',
+	'modal_off_label'          => 'Torrent ID that fulfils this offer',
+	'hint_torrent_id'          => 'The ID from the torrent\'s details page URL.',
+	'btn_close'                => 'Close',
+	'btn_cancel'               => 'Cancel',
+
+	// ── Flash messages ──
+	'flash_security'           => 'Security check failed. Please try again.',
+	'flash_no_torrent_id'      => 'Missing torrent ID.',
+	'flash_torrent_missing'    => 'Torrent ID {1} does not exist.',
+	'flash_req_completed'      => 'Request #{1} marked as Filled.',
+	'flash_off_completed'      => 'Offer #{1} marked as Uploaded.',
+	'flash_nothing_selected'   => 'Nothing selected.',
+	'flash_req_deleted'        => 'Request #{1} deleted.',
+	'flash_off_deleted'        => 'Offer #{1} deleted.',
+	'flash_req_status'         => 'Request #{1} marked as {2}.',
+	'flash_off_status'         => 'Offer #{1} marked as {2}.',
+	'flash_unknown_action'     => 'Unknown action.',
+	'flash_bulk_deleted'       => '{1} {2} deleted.',
+	'flash_bulk_status'        => '{1} {2} marked as {3}.',
+
+	// ── JS (also used by PHP: locale, nouns) ──
+	'js_locale'                => 'en',
+	'js_req_noun_one'          => 'request',
+	'js_req_noun_few'          => 'requests',
+	'js_req_noun_many'         => 'requests',
+	'js_off_noun_one'          => 'offer',
+	'js_off_noun_few'          => 'offers',
+	'js_off_noun_many'         => 'offers',
+	'js_confirm'               => 'Confirm',
+	'js_cancel'                => 'Cancel',
+	'js_choose_action'         => 'Choose a bulk action first.',
+	'js_bulk_del_title'        => 'Delete {1} {2}?',
+	'js_bulk_del_text'         => 'Their votes and comments will be removed too. This cannot be undone.',
+	'js_bulk_del_btn'          => 'Delete {1}',
+	'js_bulk_status_title'     => '{1} — {2} selected?',
+	'js_req_bulk_status_text'  => 'The status of every selected request will change.',
+	'js_off_bulk_status_text'  => 'The status of every selected offer will change.',
+	'js_req_del_title'         => 'Delete request #{1}?',
+	'js_off_del_title'         => 'Delete offer #{1}?',
+	'js_del_text'              => 'Its votes and comments will be removed too. This cannot be undone.',
+	'js_delete'                => 'Delete',
+	'js_status_title'          => 'Mark #{1} as {2}?',
+	'js_status_btn'            => 'Mark as {1}',
+);
+?>

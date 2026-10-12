@@ -42,7 +42,7 @@ if ($reseedid <= 0 || $userid <= 0) {
 }
 
 $sql = "
-    SELECT s.uploaded, s.downloaded, s.userid, t.name, u.username
+    SELECT s.uploaded, s.downloaded, s.userid, t.name, u.username, u.language
     FROM snatched s
     INNER JOIN torrents t ON s.torrentid = t.id
     INNER JOIN users u ON s.userid = u.id
@@ -57,25 +57,26 @@ if ($db->num_rows($res) === 0) {
     stderr($lang->takewhatever['takereseednouser']);
 }
 
-$subject = sprintf($lang->takewhatever['reseedsubject'], $reseedid);
-
 while ($row = $db->fetch_array($res)) {
     $name_torrent = $db->escape_string($row['name']);
-    $reseedmsg = sprintf(
-        $lang->takewhatever['reseedmsg'],
-        $row['username'],
-        '[URL=' . $BASEURL . '/' . get_torrent_link($reseedid) . ']' . $name_torrent . '[/URL]',
-        mksize($row['uploaded']),
-        mksize($row['downloaded'])
-    );
 
+    // Lang keys instead of ready text: send_pm() builds the PM from the
+    // takewhatever lang in the recipient's language (users.language)
     $pm = [
-        'subject' => $subject,
-        'message' => $reseedmsg,
-        'touid'   => (int)$row['userid']
+        'subject'       => ['reseedsubject', $reseedid],
+        'message'       => [
+            'reseedmsg',
+            $row['username'],
+            '[URL=' . $BASEURL . '/' . get_torrent_link($reseedid) . ']' . $name_torrent . '[/URL]',
+            mksize($row['uploaded']),
+            mksize($row['downloaded']),
+        ],
+        'touid'         => (int)$row['userid'],
+        'language'      => (string)($row['language'] ?? ''),
+        'language_file' => 'takewhatever',
     ];
 
-    send_pm($pm, $CURUSER['id'], true);
+    send_pm($pm, (int)$CURUSER['id'], true);
 }
 
 redirect(get_torrent_link($reseedid));

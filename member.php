@@ -634,6 +634,19 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
     } else {
         $user_info = $userhandler->insert_user();
 
+        // Language chosen in the form: same cookie as language.php, and switch this
+        // request so the activation e-mail / welcome PM / success page use it too
+        $reg_lang = (string)($user['language'] ?? '');
+        if (in_array($reg_lang, ['english', 'russian'], true)) {
+            setcookie('ts_language', $reg_lang, time() + 365 * 24 * 3600, '/');
+            $_COOKIE['ts_language'] = $reg_lang;
+
+            if ($reg_lang !== (string)($lang->language ?? '') && $lang->language_exists($reg_lang)) {
+                $lang->set_language($reg_lang);
+                $lang->load('member');
+            }
+        }
+
         my_setcookie('mybbuser', $user_info['uid'] . '_' . $user_info['loginkey'], null, true, 'lax');
 
          
@@ -694,6 +707,24 @@ if ($mybb->input['action'] === 'register') {
 
         $timezoneoffset = $mybb->input['timezoneoffset'] ?? $timezoneoffset;
         $tzselect       = build_timezone_select('timezoneoffset', $timezoneoffset, true);
+
+        // Language: re-posted value → ts_language cookie → site default
+        $reg_languages = [
+            'english' => 'English',
+            'russian' => 'Русский',
+        ];
+        $reg_lang = (string)($mybb->input['language'] ?? $_COOKIE['ts_language'] ?? $defaultlanguage ?? 'english');
+        if (!isset($reg_languages[$reg_lang])) {
+            $reg_lang = 'english';
+        }
+        $langoptions = '';
+        foreach ($reg_languages as $lang_key => $lang_title) {
+            if (!$lang->language_exists($lang_key)) {
+                continue;
+            }
+            $sel = $lang_key === $reg_lang ? ' selected="selected"' : '';
+            $langoptions .= '<option value="' . $lang_key . '"' . $sel . '>' . hsafe($lang_title) . '</option>';
+        }
 
         $tppselect = $pppselect = '';
         if ($usertppoptions) {
@@ -905,6 +936,18 @@ if ($mybb->input['action'] === 'register') {
                             </h5>
                             
                             <div class="row">
+                                <!-- Язык -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="language" class="form-label">'.$lang->member['lbl_language'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-language form-icon"></i>
+                                        <select name="language" id="language" class="form-select input-with-icon">
+                                            '.$langoptions.'
+                                        </select>
+                                    </div>
+                                    <div class="form-text">'.$lang->member['hint_language'].'</div>
+                                </div>
+
                                 <!-- Часовой пояс -->
                                 <div class="col-md-6 mb-3">
                                     <label for="timezone" class="form-label">'.$lang->member['time_offset'].'</label>

@@ -8,6 +8,21 @@ define('IN_FORUM', true);
 require_once 'global.php';
 
 $lang->load('showteam');
+
+/* ── Lang helper: {1}/{2}… and %1$s/%2$s… placeholders ──────────────── */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}'] = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 add_breadcrumb($lang->showteam['nav_showteam']);
 $plugins->run_hooks('showteam_start');
 
@@ -22,7 +37,7 @@ while ($query && ($ug = $db->fetch_array($query))) {
     $usergroups[$ug['gid']] = $ug;
 }
 
-if (empty($usergroups)) stderr('error_noteamstoshow');
+if (empty($usergroups)) stderr($lang->showteam['error_noteamstoshow']);
 
 /* ── Forum moderators ───────────────────────────────────────────────── */
 if (!empty($usergroups[5]['gid'])) {
@@ -111,15 +126,21 @@ function build_member_card(array $user, string $scopeHtml, bool $showScope,
                             bool $online, string $emailcode, string $pmcode,
                             string $lastvisit): string
 {
+    global $lang;
+
     // Avatar
     $av = format_avatar($user['avatar'] ?? '', $user['avatardimensions'] ?? '');
     $avatar_html = str_starts_with($av['image'], '<svg')
         ? '<div class="team-avatar-svg">' . $av['image'] . '</div>'
         : '<img src="' . htmlspecialchars($av['image']) . '" alt="" class="team-avatar">';
 
+    $lbl_online  = htmlspecialchars_uni($lang->showteam['lbl_online']);
+    $lbl_offline = htmlspecialchars_uni($lang->showteam['lbl_offline']);
     $online_dot = $online
-        ? '<span class="online-dot" title="Online"></span>'
-        : '<span class="offline-dot" title="Offline"></span>';
+        ? '<span class="online-dot" title="' . $lbl_online . '" aria-label="' . $lbl_online . '"></span>'
+        : '<span class="offline-dot" title="' . $lbl_offline . '" aria-label="' . $lbl_offline . '"></span>';
+
+    $tip_lastvisit = htmlspecialchars_uni($lang->showteam['tip_lastvisit']);
 
     $scope_block = ($showScope && $scopeHtml)
         ? '<div class="scope-list mt-2">' . $scopeHtml . '</div>'
@@ -140,8 +161,8 @@ function build_member_card(array $user, string $scopeHtml, bool $showScope,
             <div class="team-info">
                 <div class="team-name"><a href="{$user['profilelink']}">{$user['username']}</a></div>
                 {$scope_block}
-                <div class="team-meta">
-                    <i class="fas fa-clock me-1"></i>{$lastvisit}
+                <div class="team-meta" title="{$tip_lastvisit}">
+                    <i class="fas fa-clock me-1" aria-hidden="true"></i>{$lastvisit}
                 </div>
                 {$actions}
             </div>
@@ -160,6 +181,7 @@ foreach ($usergroups as $usergroup) {
     $modrows = $usergrouprows = '';
 
     foreach ($usergroup['user_list'] as $user) {
+        $plainname           = (string)$user['username'];
         $user['username']    = format_name(htmlspecialchars_uni($user['username']),
                                            $user['usergroup'], $user['displaygroup']);
         $user['profilelink'] = get_profile_link($user['id']);
@@ -182,13 +204,17 @@ foreach ($usergroups as $usergroup) {
         $emailcode = $pmcode = '';
         if (!$user['hideemail']) {
             $emailcode = '<a href="member.php?action=emailuser&amp;id=' . $user['id']
-                . '" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-at me-1"></i>'
-                . $lang->showteam['postbit_button_email'] . '</a>';
+                . '" class="btn btn-sm btn-outline-secondary" title="'
+                . htmlspecialchars_uni(ags_fmt($lang->showteam['tip_email'], $plainname))
+                . '"><i class="fa-solid fa-at me-1" aria-hidden="true"></i>'
+                . htmlspecialchars_uni($lang->showteam['btn_email']) . '</a>';
         }
         if ($user['receivepms'] && my_strpos(',' . $user['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false) {
             $pmcode = '<a href="private.php?action=send&amp;uid=' . $user['id']
-                . '" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-envelope me-1"></i>'
-                . $lang->showteam['postbit_button_pm'] . '</a>';
+                . '" class="btn btn-sm btn-outline-secondary" title="'
+                . htmlspecialchars_uni(ags_fmt($lang->showteam['tip_pm'], $plainname))
+                . '"><i class="fa-solid fa-envelope me-1" aria-hidden="true"></i>'
+                . htmlspecialchars_uni($lang->showteam['btn_pm']) . '</a>';
         }
 
         $plugins->run_hooks('showteam_user');
@@ -217,7 +243,7 @@ foreach ($usergroups as $usergroup) {
 HTML;
 }
 
-if (empty($grouplist)) stderr('error_noteamstoshow');
+if (empty($grouplist)) stderr($lang->showteam['error_noteamstoshow']);
 
 $plugins->run_hooks('showteam_end');
 

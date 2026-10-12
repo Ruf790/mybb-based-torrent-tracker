@@ -53,8 +53,8 @@ foreach (explode('$%%$', $CURUSER['pmfolders']) as $folders) {
 $from_fid = $mybb->input['fid'];
 
 $folderjump  = '<select name="jumpto" class="form-select form-select-sm border">' . $folderjump_folder . '</select>';
-$folderoplist = '<input type="hidden" value="' . $from_fid . '" name="fromfid" />
-<select name="fid" class="form-select form-select-sm border w-auto pe-5">' . $folderoplist_folder . '</select>';
+$folderoplist = '<input type="hidden" value="' . $from_fid . '" name="fromfid" form="pmForm" />
+<select name="fid" form="pmForm" class="form-select form-select-sm border w-auto pe-5">' . $folderoplist_folder . '</select>';
 $foldersearch = '<select name="folder[]" id="folder" class="form-select form-select-sm border w-auto pe-5">
 <option selected="selected">' . $lang->private['all_folders'] . '</option>' . $foldersearch_folder . '</select>';
 
@@ -811,25 +811,59 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
 
     } elseif (!empty($mybb->input['delete'])) {
         $check = $mybb->get_input('check', MyBB::INPUT_ARRAY);
-        if (!empty($check)) {
-            $pmid_list = array_map('intval', array_keys($check));
-            $ph        = implode(',', array_fill(0, count($pmid_list), '?'));
-            $deletepms = [];
-            $query     = $db->sql_query_prepared("SELECT pmid, folder FROM privatemessages WHERE pmid IN ({$ph}) AND uid = ? AND folder='4'", [...$pmid_list, $CURUSER['id']]);
-            while ($query && ($dp = $db->fetch_array($query))) $deletepms[$dp['pmid']] = 1;
+        $uid   = (int)$CURUSER['id'];
 
-            foreach ($check as $key => $val) {
-                $key = (int)$key;
-                if (!empty($deletepms[$key])) {
-                    $db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid = ? AND uid = ?", [$key, $CURUSER['id']]);
-                } else {
-                    $db->sql_query_prepared(
-                        "UPDATE privatemessages SET folder = ?, deletetime = ? WHERE pmid = ? AND uid = ?",
-                        [4, TIMENOW, $key, $CURUSER['id']]
-                    );
-                }
+        // Раньше при пустом выборе, ненайденных сообщениях или ошибке БД всё равно
+        // показывалось «удалено» — теперь каждый из этих случаев виден явно.
+        $pmid_list = array_values(array_unique(array_filter(array_map('intval', array_keys($check)))));
+        if (empty($pmid_list)) {
+            error($lang->private['err_no_pms_selected'] ?? 'You did not select any messages.');
+        }
+
+        $ph = implode(',', array_fill(0, count($pmid_list), '?'));
+
+        // Какие из выбранных реально принадлежат пользователю и где лежат
+        $found = [];   // pmid => folder
+        $query = $db->sql_query_prepared(
+            "SELECT pmid, folder FROM privatemessages WHERE pmid IN ({$ph}) AND uid = ?",
+            [...$pmid_list, $uid]
+        );
+        while ($query && ($dp = $db->fetch_array($query))) {
+            $found[(int)$dp['pmid']] = (int)$dp['folder'];
+        }
+
+        if (empty($found)) {
+            error($lang->private['err_pms_not_found'] ?? 'The selected messages were not found.');
+        }
+
+        $in_trash = array_keys(array_filter($found, fn(int $f): bool => $f === 4));
+        $to_trash = array_keys(array_filter($found, fn(int $f): bool => $f !== 4));
+        $errors   = [];
+
+        // Из корзины — удаляем насовсем, одним запросом
+        if ($in_trash) {
+            $ph_t = implode(',', array_fill(0, count($in_trash), '?'));
+            if (!$db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid IN ({$ph_t}) AND uid = ?", [...$in_trash, $uid])) {
+                $errors[] = 'DELETE: ' . (string)$db->error();
             }
         }
+        // Из остальных папок — в корзину, одним запросом
+        if ($to_trash) {
+            $ph_m = implode(',', array_fill(0, count($to_trash), '?'));
+            if (!$db->sql_query_prepared(
+                "UPDATE privatemessages SET folder = 4, deletetime = ? WHERE pmid IN ({$ph_m}) AND uid = ?",
+                [TIMENOW, ...$to_trash, $uid]
+            )) {
+                $errors[] = 'UPDATE: ' . (string)$db->error();
+            }
+        }
+
+        if ($errors) {
+            write_log('private.php: PM delete failed for uid ' . $uid . ' — ' . implode(' | ', $errors));
+            error(($lang->private['err_pms_delete_failed'] ?? 'Could not delete the selected messages. Database error:')
+                . '<br><code>' . htmlspecialchars_uni(implode(' | ', $errors)) . '</code>');
+        }
+
         update_pm_count();
         redirect(!empty($mybb->input['fromfid'])
             ? 'private.php?fid=' . $mybb->get_input('fromfid', MyBB::INPUT_INT)
@@ -1082,7 +1116,7 @@ if (!$mybb->input['action']) {
                     <span class="status-badge ' . $badge_class . ' d-none d-lg-inline-flex flex-shrink-0" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body" title="' . $msgalt . '">' . $fa_icon_html . '</span>
                     <span class="text-muted small text-nowrap"><i class="far fa-clock me-1"></i>' . $senddate . '</span>
                     <div class="form-check form-switch message-select-switch">
-                        <input type="checkbox" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">
+                        <input type="checkbox" form="pmForm" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">
                     </div>
                 </div>
             </div>
@@ -1122,8 +1156,9 @@ if (!$mybb->input['action']) {
     <div class="col-lg-3">' . $usercpnav . '</div>
     <div class="col">
         ' . $limitwarning . '
-        <form action="private.php" method="post" name="pmForm">
+        <form action="private.php" method="post" name="pmForm" id="pmForm">
         <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+        <input type="hidden" name="action" value="do_stuff" />
         <div class="card border-0 mb-3">
             <div class="card-header py-3 bg-nav rounded border-bottom-0">
                 <div class="row g-2 text-forum">
@@ -1145,25 +1180,24 @@ if (!$mybb->input['action']) {
             </div>
         </div>
         ' . $messagelist . '
-        ' . $multipage . '
         <div class="card border-0 mt-3">
             <div class="card-header py-3 bg-nav rounded border-bottom-0">
                 <div class="row g-1">
                     <div class="col">&nbsp;</div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-primary btn-sm" name="moveto" value="' . $lang->private['move_to'] . '">' . $lang->private['move_to'] . ' &nbsp;<i class="fa-solid fa-arrow-right"></i></button>
+                        <button type="submit" form="pmForm" class="btn btn-primary btn-sm" name="moveto" value="' . $lang->private['move_to'] . '">' . $lang->private['move_to'] . ' &nbsp;<i class="fa-solid fa-arrow-right"></i></button>
                     </div>
                     <div class="col-auto">' . $folderoplist . '</div>
                     <div class="col-auto">&nbsp;' . $lang->private['or'] . '&nbsp;
-                        <button type="submit" class="btn btn-primary btn-sm" name="delete" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['delete'] . '</button>
+                        <button type="submit" form="pmForm" class="btn btn-primary btn-sm" name="delete" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['delete'] . '</button>
                     </div>
                     <div class="col">&nbsp;</div>
                 </div>
             </div>
         </div>
-        ' . $pmspacebar . '
-        <input type="hidden" name="action" value="do_stuff" />
         </form>
+        ' . $multipage . '
+        ' . $pmspacebar . '
     </div>
 </div></div>
 <style>

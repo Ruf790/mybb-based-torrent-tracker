@@ -12,6 +12,25 @@ require './global.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_comment_attachments.php';
 
+$lang->load('uploads');
+$UL = $lang->uploads;
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s, %2$s… — $lang->load() converts {n} into those)
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 function json_out(bool $ok, array $data = []): never {
     echo json_encode(['success' => $ok] + $data, JSON_UNESCAPED_UNICODE);
     exit;
@@ -24,13 +43,13 @@ header('Content-Type: application/json');
 
 // Только залогиненные
 if (!$CURUSER || !isset($CURUSER['id'])) {
-    echo json_encode(['error' => 'Not logged in']);
+    echo json_encode(['error' => $UL['err_login_required']]);
     exit;
 }
 
 // CSRF проверка
 if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== $mybb->post_code) {
-    echo json_encode(['error' => 'Invalid post key']);
+    echo json_encode(['error' => $UL['err_csrf']]);
     exit;
 }
 
@@ -39,18 +58,18 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 // ── DELETE ────────────────────────────────────────────────────────────────────
 if ($action === 'delete') {
     $aid = (int)($_POST['aid'] ?? 0);
-    if (!$aid) { echo json_encode(['error' => 'Invalid ID']); exit; }
+    if (!$aid) { echo json_encode(['error' => $UL['err_invalid_id']]); exit; }
 
     $att = $db->fetch_array($db->sql_query_prepared(
         "SELECT * FROM attachments WHERE aid = ?",
         [$aid]
     ));
 
-    if (!$att) { echo json_encode(['error' => 'Not found']); exit; }
+    if (!$att) { echo json_encode(['error' => $UL['err_not_found']]); exit; }
 
     // Владелец вложения может удалять своё; стафф (модерация) - чужое тоже
     if ((int)$att['uid'] !== (int)$CURUSER['id'] && !is_mod($usergroups)) {
-        echo json_encode(['error' => 'No permission']);
+        echo json_encode(['error' => $UL['err_no_permission']]);
         exit;
     }
 
@@ -66,7 +85,7 @@ if ($action === 'delete') {
 
 // ── UPLOAD ────────────────────────────────────────────────────────────────────
 if (!isset($_FILES['attachment'])) {
-    echo json_encode(['error' => 'No file']);
+    echo json_encode(['error' => $UL['err_no_file']]);
     exit;
 }
 
@@ -103,7 +122,7 @@ if ($hasCountLimit) {
         );
     }
     if ($currentCount >= $attLimit) {
-        json_out(false, ['error' => "Attachment limit reached ({$attLimit} files max)."]);
+        json_out(false, ['error' => ags_fmt($UL['err_limit'], $attLimit)]);
     }
 }
 
@@ -159,23 +178,16 @@ $fileCategory = match(true) {
     str_starts_with($mimeType, 'image/') => 'image',
     default                              => 'other',
 };
-$maxSize = match($fileCategory) {
-    'video' => 2  * 1024 * 1024 * 1024, // 2 GB
-    'audio' => 200 * 1024 * 1024,        // 200 MB
-    'image' => 200 * 1024 * 1024,        // 200 MB ← было 50
-    default => 100 * 1024 * 1024,        // 100 MB
-};
+// Limits come from the admin settings (Settings → Tracker → Attachments)
+$maxSize = att_size_limits()[$fileCategory];
 
 // Проверки
 if ($file['error'] !== UPLOAD_ERR_OK) {
     $uploadErr = check_parse_php_upload_err($file);
-    json_out(false, ['error' => $uploadErr ?: 'Upload error: ' . $file['error']]);
+    json_out(false, ['error' => $uploadErr ?: ags_fmt($UL['err_upload_code'], (int)$file['error'])]);
 }
 if ($file['size'] > $maxSize) {
-    $maxHuman = $maxSize >= 1073741824
-        ? round($maxSize / 1073741824, 1) . ' GB'
-        : round($maxSize / 1048576, 0) . ' MB';
-    json_out(false, ['error' => 'File too large (max ' . $maxHuman . ' for ' . $fileCategory . ')']);
+    json_out(false, ['error' => ags_fmt($UL['err_file_too_large_cat'], att_size_human($maxSize), $UL['opt_cat_' . $fileCategory])]);
 }
 
 // ── Квота на вложения (общая с форумом — та же таблица attachments) ───────────
@@ -187,19 +199,19 @@ if (($usergroups['attachquota'] ?? 0) > 0) {
         'ausage'
     );
     if ($usedBytes + $file['size'] > $quotaBytes) {
-        json_out(false, ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($quotaBytes)]);
+        json_out(false, ['error' => ags_fmt($UL['err_quota'], mksize($quotaBytes))]);
     }
 }
 
 if (!in_array($mimeType, $allowedMime, true)) {
-    json_out(false, ['error' => 'File type not allowed: ' . $mimeType]);
+    json_out(false, ['error' => ags_fmt($UL['err_mime'], $mimeType)]);
 }
 
 $origName = basename($file['name']);
 $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
 
 if (!in_array($ext, $allowedExt, true)) {
-    json_out(false, ['error' => 'Extension not allowed: ' . $ext]);
+    json_out(false, ['error' => ags_fmt($UL['err_ext'], $ext)]);
 }
 
 // Папка для загрузок
@@ -213,7 +225,7 @@ $saveName = uniqid('att_', true) . '.' . $ext;
 
 $uploaded = upload_file($file, rtrim($uploadDir, '/'), $saveName);
 if (!empty($uploaded['error'])) {
-    json_out(false, ['error' => 'Failed to save file (code ' . $uploaded['error'] . ')']);
+    json_out(false, ['error' => ags_fmt($UL['err_save_failed_code'], (string)$uploaded['error'])]);
 }
 
 $savePath = $uploadDir . $saveName;
@@ -227,7 +239,7 @@ if (str_starts_with($mimeType, 'image/')) {
     $recodedSize = recode_image_file($savePath, $mimeType);
     if ($recodedSize === false) {
         @unlink($savePath);
-        json_out(false, ['error' => 'Uploaded file is corrupted or is not a valid image.']);
+        json_out(false, ['error' => $UL['err_not_image']]);
     }
     $actualFileSize = $recodedSize;
 }
@@ -318,11 +330,11 @@ if ($aid <= 0) {
             'ausage'
         );
         if ($usedNow + $actualFileSize > $quotaBytes) {
-            json_out(false, ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($quotaBytes)]);
+            json_out(false, ['error' => ags_fmt($UL['err_quota'], mksize($quotaBytes))]);
         }
     }
 
-    json_out(false, ['error' => "Attachment limit reached ({$attLimit} files max)."]);
+    json_out(false, ['error' => ags_fmt($UL['err_limit'], $attLimit)]);
 }
 
 $thumbUrl = $thumbName ? $BASEURL . '/uploads/attachments/' . $thumbName : null;

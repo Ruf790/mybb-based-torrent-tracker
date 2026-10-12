@@ -5,13 +5,34 @@ define('SCRIPTNAME', 'upload_image.php');
 require_once 'global.php';
 require_once INC_PATH . '/functions_image_recode.php';
 
+$lang->load('uploads');
+$UL = $lang->uploads;
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s, %2$s… — $lang->load() converts {n} into those)
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 header('Content-Type: application/json');
+
+// Max editor image size from the admin settings (Settings → Tracker → Attachments), MB; default 20
+$maxSizeBytes = max(1, (int)($upload_editor_img_mb ?? 0) ?: 20) * 1048576;
 
 /* ── Constants ───────────────────────────────────────────────────── */
 
 const ALLOWED_MIME   = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
 const ALLOWED_EXT    = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
-const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB - more than enough for any real screenshot/photo
 const UPLOAD_SUBDIR  = '/uploads/';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -24,38 +45,54 @@ function json_out(bool $ok, array $data = []): never
 
 function upload_error_msg(int $code): string
 {
+    global $lang;
+    $UL = $lang->uploads;
+
     return match ($code) {
         UPLOAD_ERR_INI_SIZE,
-        UPLOAD_ERR_FORM_SIZE => 'File exceeds the allowed size.',
-        UPLOAD_ERR_PARTIAL   => 'File was only partially uploaded.',
-        UPLOAD_ERR_NO_FILE   => 'No file was selected.',
-        UPLOAD_ERR_NO_TMP_DIR=> 'Missing temporary folder.',
-        UPLOAD_ERR_CANT_WRITE=> 'Failed to write file to disk.',
-        UPLOAD_ERR_EXTENSION => 'Upload stopped by a PHP extension.',
-        default              => 'Unknown upload error.',
+        UPLOAD_ERR_FORM_SIZE => $UL['err_php_size'],
+        UPLOAD_ERR_PARTIAL   => $UL['err_php_partial'],
+        UPLOAD_ERR_NO_FILE   => $UL['err_php_no_file'],
+        UPLOAD_ERR_NO_TMP_DIR=> $UL['err_php_no_tmp'],
+        UPLOAD_ERR_CANT_WRITE=> $UL['err_php_cant_write'],
+        UPLOAD_ERR_EXTENSION => $UL['err_php_extension'],
+        default              => $UL['err_php_unknown'],
     };
+}
+
+/**
+ * Human-readable size limit in the current language ("20 MB" / "20 МБ")
+ */
+function upload_size_human(int $bytes): string
+{
+    global $lang;
+    $UL = $lang->uploads;
+
+    return $bytes >= 1073741824
+        ? ags_fmt($UL['lbl_size_gb'], round($bytes / 1073741824, 1))
+        : ags_fmt($UL['lbl_size_mb'], round($bytes / 1048576, 0));
 }
 
 /* ── Route guard ─────────────────────────────────────────────────── */
 
 if (($_POST['upload_type'] ?? '') !== 'editor_image') {
-    json_out(false, ['error' => 'Unknown upload type.']);
+    json_out(false, ['error' => $UL['err_unknown_type']]);
 }
 
 if (empty($CURUSER['id'])) {
-    json_out(false, ['error' => 'Authentication required.']);
+    json_out(false, ['error' => $UL['err_login_required']]);
 }
 
 // CSRF check - previously missing entirely. Without it a third-party page
 if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-    json_out(false, ['error' => 'Security check failed. Please refresh the page and try again.']);
+    json_out(false, ['error' => $UL['err_csrf']]);
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
 
 try {
     if (empty($_FILES['image'])) {
-        throw new RuntimeException('No file was provided.');
+        throw new RuntimeException($UL['err_no_file']);
     }
 
     $file = $_FILES['image'];
@@ -64,33 +101,34 @@ try {
         throw new RuntimeException(upload_error_msg($file['error']));
     }
 
-    if ($file['size'] > MAX_SIZE_BYTES) {
-        throw new RuntimeException('File is too large (max 20 MB).');
+    if ($file['size'] > $maxSizeBytes) {
+        // The message uses the same value, so it always matches the real limit
+        throw new RuntimeException(ags_fmt($UL['err_file_too_large'], upload_size_human($maxSizeBytes)));
     }
 
     // MIME by content — never trust the client-supplied header
     $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
     if (!in_array($realMime, ALLOWED_MIME, true)) {
-        throw new RuntimeException('Invalid file type: ' . $realMime);
+        throw new RuntimeException(ags_fmt($UL['err_img_type'], (string)$realMime));
     }
 
     // Extra check on top of finfo - catches rare "polyglot" files whose
     // magic bytes look like a valid image but the rest of the file isn't.
     $imgInfo = @getimagesize($file['tmp_name']);
     if ($imgInfo === false) {
-        throw new RuntimeException('File is corrupted or is not a valid image.');
+        throw new RuntimeException($UL['err_not_image']);
     }
 
     // Two independent detectors (finfo content-sniffing vs getimagesize()'s
     // own header parsing) must agree on the type. A mismatch is a strong
     // signal of a malformed or deliberately crafted file.
     if (($imgInfo['mime'] ?? null) !== $realMime) {
-        throw new RuntimeException('Image type mismatch — file header is inconsistent.');
+        throw new RuntimeException($UL['err_img_mismatch']);
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, ALLOWED_EXT, true)) {
-        throw new RuntimeException('Invalid file extension.');
+        throw new RuntimeException($UL['err_img_ext']);
     }
 
     // ── Target (comment_id / news_id / torrent_id) ──────────────────────
@@ -108,7 +146,7 @@ try {
     ], static fn($v) => $v !== null);
 
     if (count($providedTargets) > 1) {
-        throw new RuntimeException('More than one attachment target was specified.');
+        throw new RuntimeException($UL['err_multi_target']);
     }
 
     if ($comment_id !== null) {
@@ -116,31 +154,31 @@ try {
         $row   = $check ? $db->fetch_array($check) : null;
 
         if (!$row) {
-            throw new RuntimeException('Comment not found.');
+            throw new RuntimeException($UL['err_comment_not_found']);
         }
         if ((int)$row['user'] !== $user_id && !is_mod($usergroups)) {
-            throw new RuntimeException("You don't have permission for this comment.");
+            throw new RuntimeException($UL['err_comment_perm']);
         }
     }
 
     if ($torrent_id !== null) {
         $check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
         if (!$check || $db->num_rows($check) === 0) {
-            throw new RuntimeException('Torrent not found.');
+            throw new RuntimeException($UL['err_torrent_not_found']);
         }
     }
 
     if ($news_id !== null) {
         $check = $db->sql_query_prepared('SELECT id FROM news WHERE id = ?', [$news_id]);
         if (!$check || $db->num_rows($check) === 0) {
-            throw new RuntimeException('News post not found.');
+            throw new RuntimeException($UL['err_news_not_found']);
         }
     }
 
     // Upload dir
     $uploadDir = rtrim($_SERVER['DOCUMENT_ROOT'], '/') . UPLOAD_SUBDIR;
     if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
-        throw new RuntimeException('Failed to create upload directory.');
+        throw new RuntimeException($UL['err_mkdir']);
     }
 
     // Save
@@ -148,7 +186,7 @@ try {
     $destination = $uploadDir . $filename;
 
     if (!move_uploaded_file($file['tmp_name'], $destination)) {
-        throw new RuntimeException('Failed to save file.');
+        throw new RuntimeException($UL['err_save_failed']);
     }
 
    
@@ -160,7 +198,7 @@ try {
     $fileSize = recode_image_file($destination, $realMime);
     if ($fileSize === false) {
         @unlink($destination);
-        throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
+        throw new RuntimeException($UL['err_not_image']);
     }
 
     // URL
@@ -187,7 +225,7 @@ try {
 
     if (!$result) {
         @unlink($destination);
-        throw new RuntimeException('Database write error.');
+        throw new RuntimeException($UL['err_db']);
     }
 
     $insert_id = $db->insert_id();

@@ -1,0 +1,291 @@
+/* ArtCore Gangsta — getrss.php (RSS link generator)
+ * All rules are scoped under .grss-page; colours come from Bootstrap 5.3
+ * CSS variables, so the dark theme works without extra rules. */
+
+.grss-page {
+    font-size: 1.055rem;
+}
+
+/* ── Cards ── */
+.grss-page .grss-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 18px rgba(0, 0, 0, .04);
+    padding: 1.25rem 1.35rem;
+}
+
+/* ── Soft colours ── */
+.grss-page .grss-soft-primary { background: var(--bs-primary-bg-subtle);   color: var(--bs-primary-text-emphasis); }
+.grss-page .grss-soft-success { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.grss-page .grss-soft-info    { background: var(--bs-info-bg-subtle);      color: var(--bs-info-text-emphasis); }
+.grss-page .grss-soft-warning { background: var(--bs-warning-bg-subtle);   color: var(--bs-warning-text-emphasis); }
+.grss-page .grss-soft-danger  { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+.grss-page .grss-soft-muted   { background: var(--bs-secondary-bg);        color: var(--bs-secondary-color); }
+
+/* ── Header ── */
+.grss-page .grss-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.grss-page .grss-head__icon {
+    flex: 0 0 auto;
+    width: 3.25rem;
+    height: 3.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: .9rem;
+    font-size: 1.45rem;
+}
+.grss-page .grss-title {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--bs-emphasis-color);
+    line-height: 1.2;
+}
+.grss-page .grss-head p {
+    margin: .2rem 0 0;
+    color: var(--bs-secondary-color);
+    font-size: .92em;
+}
+
+/* ── Section header inside a card ── */
+.grss-page .grss-sec {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-bottom: 1rem;
+}
+.grss-page .grss-sec__icon {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: .65rem;
+    font-size: 1rem;
+}
+.grss-page .grss-sec__title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--bs-emphasis-color);
+}
+.grss-page .grss-sec__hint {
+    margin: .1rem 0 0;
+    font-size: .85em;
+    color: var(--bs-secondary-color);
+}
+.grss-page .grss-sec__actions {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.grss-page .grss-meta {
+    font-size: .85em;
+    color: var(--bs-secondary-color);
+}
+
+/* ── Pill buttons ── */
+.grss-page .grss-pill {
+    border-radius: 50rem;
+    padding-left: 1.05rem;
+    padding-right: 1.05rem;
+}
+.grss-page .grss-pill.btn-sm {
+    padding-left: .8rem;
+    padding-right: .8rem;
+}
+
+/* ── Category picker ── */
+.grss-page .category-icon-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    transition: opacity .2s ease;
+}
+.grss-page .category-icon-picker.grss-picker--off {
+    opacity: .45;
+    pointer-events: none;
+}
+
+.grss-page .cat-pick-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 18px;
+    min-width: 96px;
+    border: 1.5px solid var(--bs-border-color);
+    border-radius: 14px;
+    background: var(--bs-body-bg);
+    cursor: pointer;
+    transition: all .2s ease;
+    color: var(--bs-secondary-color);
+    font-size: .78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
+}
+.grss-page .cat-pick-btn i {
+    font-size: 1.8rem;
+    transition: transform .2s ease;
+}
+.grss-page .cat-pick-btn:hover,
+.grss-page .cat-pick-btn:focus-visible {
+    border-color: var(--bs-primary);
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-primary-bg-subtle);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(var(--bs-primary-rgb), .15);
+    outline: none;
+}
+.grss-page .cat-pick-btn:hover i {
+    transform: scale(1.2);
+}
+.grss-page .cat-pick-btn.active {
+    border-color: var(--bs-primary);
+    border-width: 2px;
+    background: var(--bs-primary-bg-subtle);
+    color: var(--bs-primary-text-emphasis);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .12);
+    transform: translateY(-2px);
+}
+.grss-page .cat-pick-btn.active span {
+    font-weight: 700;
+}
+
+.grss-page .grss-catlabel {
+    margin-top: .85rem;
+    font-size: .88em;
+    color: var(--bs-secondary-color);
+}
+
+/* "All categories incl. future" switch */
+.grss-page .grss-switch {
+    margin-top: 1rem;
+    padding: .75rem 1rem .75rem 3.4rem;
+    border-radius: .8rem;
+    background: var(--bs-tertiary-bg);
+}
+.grss-page .grss-switch .form-check-input {
+    margin-left: -2.6rem;
+    width: 2.2em;
+}
+.grss-page .grss-switch .form-check-label {
+    font-weight: 600;
+    color: var(--bs-emphasis-color);
+}
+
+/* ── Feed type options ── */
+.grss-page .grss-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: .75rem;
+}
+.grss-page .grss-option {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: .8rem;
+    margin: 0;
+    padding: .9rem 1rem;
+    border: 1.5px solid var(--bs-border-color);
+    border-radius: .9rem;
+    cursor: pointer;
+    transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+.grss-page .grss-option:hover {
+    border-color: rgba(var(--bs-primary-rgb), .55);
+}
+.grss-page .grss-option .form-check-input {
+    flex: 0 0 auto;
+    margin: .3rem 0 0;
+}
+.grss-page .grss-option__icon {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: .65rem;
+}
+.grss-page .grss-option__title {
+    display: block;
+    font-weight: 600;
+    color: var(--bs-emphasis-color);
+}
+.grss-page .grss-option__hint {
+    display: block;
+    font-size: .85em;
+    color: var(--bs-secondary-color);
+}
+.grss-page .grss-option:has(.form-check-input:checked) {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), .06);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .12);
+}
+
+/* ── Form controls ── */
+.grss-page .form-label {
+    font-weight: 600;
+    font-size: .92em;
+}
+.grss-page .input-group-text {
+    color: var(--bs-secondary-color);
+}
+
+/* ── Sticky action bar ── */
+.grss-page .grss-actionbar {
+    position: sticky;
+    bottom: 1rem;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem 1rem;
+    padding: .85rem 1.1rem;
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, .03), 0 8px 24px rgba(0, 0, 0, .1);
+}
+.grss-page .grss-actionbar__info {
+    flex: 1 1 auto;
+    font-size: .9em;
+    color: var(--bs-secondary-color);
+}
+.grss-page .grss-actionbar__info strong {
+    color: var(--bs-emphasis-color);
+}
+
+/* ── Result page ── */
+.grss-page .grss-link {
+    font-family: var(--bs-font-monospace);
+    font-size: .88em;
+}
+.grss-page .grss-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    margin-top: 1rem;
+    padding: .7rem .9rem;
+    border-radius: .8rem;
+    font-size: .88em;
+}
+
+@media (max-width: 575.98px) {
+    .grss-page .grss-sec__actions {
+        margin-left: 0;
+        width: 100%;
+    }
+    .grss-page .grss-actionbar .btn {
+        width: 100%;
+    }
+}

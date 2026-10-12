@@ -6,6 +6,22 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     $toolbar_output = '';
     $modal_output = '';
 
+    // ── Lang: bbeditor (escaped for HTML; js_* go to window.AGS_EDITOR_LANG) ──
+    global $lang;
+    $lang->load('bbeditor');
+    $E = array_map(static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), (array)$lang->bbeditor);
+    $edJs = [];
+    foreach ((array)$lang->bbeditor as $k => $v) {
+        if (str_starts_with((string)$k, 'js_')) {
+            $edJs[substr((string)$k, 3)] = (string)$v;
+        }
+    }
+    // SweetAlert2 for editor toasts — output once per page
+    $loadSwal = !defined('AGS_SWAL_LOADED');
+    if ($loadSwal) {
+        define('AGS_SWAL_LOADED', true);
+    }
+
     // Generate ID suffixes based on textarea_id
     $suffix = '';
     switch($textarea_id) {
@@ -22,67 +38,72 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     
     <script>
         const smilies = <?php echo json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        window.AGS_EDITOR_LANG = <?php echo json_encode($edJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     </script>
     <link rel="stylesheet" href="<?php echo $BASEURL; ?>/include/templates/default/style/bbcode.css" type="text/css">
-    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js"></script>
+<?php if ($loadSwal): ?>
+    <link rel="stylesheet" href="<?php echo $BASEURL; ?>/include/templates/default/style/sweetalert2.min.css">
+    <script src="<?php echo $BASEURL; ?>/scripts/sweetalert2.min.js"></script>
+<?php endif; ?>
+    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js?ver=2"></script>
 
     <!-- BBCode Toolbar -->
     <div class="mb-2 d-flex flex-wrap gap-1">
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[b]', '[/b]', '<?php echo $textarea_id; ?>')"><strong>B</strong></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[i]', '[/i]', '<?php echo $textarea_id; ?>')"><em>I</em></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[u]', '[/u]', '<?php echo $textarea_id; ?>')"><u>U</u></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[s]', '[/s]', '<?php echo $textarea_id; ?>')">S</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[url]', '[/url]', '<?php echo $textarea_id; ?>')">URL</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[email]', '[/email]', '<?php echo $textarea_id; ?>')">Email</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[b]', '[/b]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_bold'] ?>"><strong>B</strong></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[i]', '[/i]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_italic'] ?>"><em>I</em></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[u]', '[/u]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_underline'] ?>"><u>U</u></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[s]', '[/s]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_strike'] ?>"><s>S</s></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[url]', '[/url]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_url'] ?>"><i class="fa-solid fa-link me-1"></i>URL</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[email]', '[/email]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_email'] ?>"><i class="fa-solid fa-at me-1"></i><?= $E['btn_email'] ?></button>
 
         <!-- Image upload button -->
         <button type="button" class="btn btn-sm btn-outline-secondary" id="imageUploadBtn" data-bs-toggle="modal" data-bs-target="#imageUploadModal">
-            <i class="fas fa-image"></i> Upload Image
+            <i class="fa-solid fa-image"></i> <?= $E['btn_upload_image'] ?>
         </button>
 
         <div class="btn-group position-relative">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn" data-textarea="<?php echo $textarea_id; ?>">🎨 Color</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn" data-textarea="<?php echo $textarea_id; ?>">🎨 <?= $E['btn_color'] ?></button>
             <div class="color-palette d-none"></div>
         </div>
         <div class="btn-group position-relative">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="smileyBtn<?php echo $suffix; ?>" data-textarea="<?php echo $textarea_id; ?>">😊</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="smileyBtn<?php echo $suffix; ?>" data-textarea="<?php echo $textarea_id; ?>" title="<?= $E['tip_smilies'] ?>">😊</button>
             <div class="smiley-panel d-none border p-2 bg-white shadow-sm position-absolute" id="smileyPanel<?php echo $suffix; ?>" style="z-index:1000;"></div>
         </div>
 
         <!-- Size selection -->
         <div class="btn-group position-relative">
-            <button type="button" class="btn btn-sm btn-outline-secondary size-picker-btn" id="sizeBtn-<?php echo $textarea_id; ?>" data-textarea="<?php echo $textarea_id; ?>">Size</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary size-picker-btn" id="sizeBtn-<?php echo $textarea_id; ?>" data-textarea="<?php echo $textarea_id; ?>"><i class="fa-solid fa-text-height me-1"></i><?= $E['btn_size'] ?></button>
             <div class="size-menu dropdown-menu p-2" id="sizeMenu-<?php echo $textarea_id; ?>"></div>
         </div>
 
         <!-- Font selection -->
         <div class="btn-group position-relative">
-            <button type="button" class="btn btn-sm btn-outline-secondary font-picker-btn" id="fontBtn-<?php echo $textarea_id; ?>" data-textarea="<?php echo $textarea_id; ?>">Font</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary font-picker-btn" id="fontBtn-<?php echo $textarea_id; ?>" data-textarea="<?php echo $textarea_id; ?>"><i class="fa-solid fa-font me-1"></i><?= $E['btn_font'] ?></button>
             <div class="font-menu dropdown-menu p-2 shadow" id="fontMenu-<?php echo $textarea_id; ?>"></div>
         </div>
 
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[center]', '[/center]', '<?php echo $textarea_id; ?>')">Center</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[left]', '[/left]', '<?php echo $textarea_id; ?>')">Left</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[right]', '[/right]', '<?php echo $textarea_id; ?>')">Right</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[align=justify]', '[/align]', '<?php echo $textarea_id; ?>')">Justify</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[hr]', '', '<?php echo $textarea_id; ?>')" title="Horizontal Rule">HR</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[quote]', '[/quote]', '<?php echo $textarea_id; ?>')">Quote</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]', '[/code]', '<?php echo $textarea_id; ?>')">Code</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[php]', '[/php]', '<?php echo $textarea_id; ?>')">PHP</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[nfo]', '[/nfo]', '<?php echo $textarea_id; ?>')" title="NFO Block">NFO</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#torrentModal<?php echo $suffix; ?>" title="Embed Torrent Card"><i class="fa-solid fa-magnet"></i> Torrent</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#tableModal<?php echo $suffix; ?>" title="Insert Table"><i class="fas fa-table"></i> Table</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[list]\n[*]', '\n[/list]', '<?php echo $textarea_id; ?>')" title="Bulleted List"><i class="fas fa-list-ul"></i></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[list=1]\n[*]', '\n[/list]', '<?php echo $textarea_id; ?>')" title="Numbered List"><i class="fas fa-list-ol"></i></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[*]', '', '<?php echo $textarea_id; ?>')" title="List Item">[*]</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]', '[/spoiler]', '<?php echo $textarea_id; ?>')">Spoiler</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[video=youtube]', '[/video]', '<?php echo $textarea_id; ?>')">YouTube</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[center]', '[/center]', '<?php echo $textarea_id; ?>')" title="<?= $E['btn_center'] ?>"><i class="fa-solid fa-align-center me-1"></i><?= $E['btn_center'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[left]', '[/left]', '<?php echo $textarea_id; ?>')" title="<?= $E['btn_left'] ?>"><i class="fa-solid fa-align-left me-1"></i><?= $E['btn_left'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[right]', '[/right]', '<?php echo $textarea_id; ?>')" title="<?= $E['btn_right'] ?>"><i class="fa-solid fa-align-right me-1"></i><?= $E['btn_right'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[align=justify]', '[/align]', '<?php echo $textarea_id; ?>')" title="<?= $E['btn_justify'] ?>"><i class="fa-solid fa-align-justify me-1"></i><?= $E['btn_justify'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[hr]', '', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_hr'] ?>">HR</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[quote]', '[/quote]', '<?php echo $textarea_id; ?>')"><i class="fa-solid fa-quote-left me-1"></i><?= $E['btn_quote'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]', '[/code]', '<?php echo $textarea_id; ?>')"><i class="fa-solid fa-code me-1"></i><?= $E['btn_code'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[php]', '[/php]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_php'] ?>">PHP</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[nfo]', '[/nfo]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_nfo'] ?>">NFO</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#torrentModal<?php echo $suffix; ?>" title="<?= $E['tip_torrent'] ?>"><i class="fa-solid fa-magnet"></i> <?= $E['btn_torrent'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#tableModal<?php echo $suffix; ?>" title="<?= $E['tip_table'] ?>"><i class="fa-solid fa-table"></i> <?= $E['btn_table'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[list]\n[*]', '\n[/list]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_ul'] ?>"><i class="fa-solid fa-list-ul"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[list=1]\n[*]', '\n[/list]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_ol'] ?>"><i class="fa-solid fa-list-ol"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[*]', '', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_li'] ?>">[*]</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]', '[/spoiler]', '<?php echo $textarea_id; ?>')"><i class="fa-solid fa-eye-slash me-1"></i><?= $E['btn_spoiler'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[video=youtube]', '[/video]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_youtube'] ?>"><i class="fa-solid fa-circle-play me-1"></i>YouTube</button>
 		
 		<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#videoModal">
-    🎬 Video
+    🎬 <?= $E['btn_video'] ?>
 </button>
 		
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn<?php echo $suffix; ?>">Preview</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn<?php echo $suffix; ?>"><?= $E['btn_preview'] ?></button>
     </div>
 	
 	
@@ -92,25 +113,25 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         <div class="modal-content">
 
             <div class="modal-header">
-                <h5 class="modal-title">Insert Video</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><i class="fa-solid fa-film me-2"></i><?= $E['sec_video'] ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $E['aria_close'] ?>"></button>
             </div>
 
             <div class="modal-body">
 
                 <!-- URL -->
                 <div class="mb-3">
-                    <label class="form-label">Video URL</label>
+                    <label class="form-label" for="videoUrl"><?= $E['lbl_video_url'] ?></label>
                     <input type="text" class="form-control" id="videoUrl" placeholder="https://...">
                 </div>
 
                 <!-- TYPE -->
                 <div class="mb-3">
-                    <label class="form-label">Type</label>
+                    <label class="form-label" for="videoType"><?= $E['lbl_video_type'] ?></label>
                     <select class="form-select" id="videoType">
-                        <option value="auto">Auto Detect</option>
+                        <option value="auto"><?= $E['opt_video_auto'] ?></option>
                         <option value="youtube">YouTube</option>
-                        <option value="mp4">MP4 / WebM</option>
+                        <option value="mp4"><?= $E['opt_video_mp4'] ?></option>
                     </select>
                 </div>
 
@@ -120,8 +141,8 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
             </div>
 
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="insertVideoBtn">Insert</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $E['btn_cancel'] ?></button>
+                <button type="button" class="btn btn-primary" id="insertVideoBtn"><?= $E['btn_insert'] ?></button>
             </div>
 
         </div>
@@ -133,24 +154,24 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Insert Table</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><i class="fa-solid fa-table me-2"></i><?= $E['sec_table'] ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $E['aria_close'] ?>"></button>
             </div>
             <div class="modal-body">
                 <div class="row g-2">
                     <div class="col">
-                        <label class="form-label">Rows</label>
+                        <label class="form-label"><?= $E['lbl_rows'] ?></label>
                         <input type="number" class="form-control" id="tableRows<?php echo $suffix; ?>" value="2" min="1" max="20">
                     </div>
                     <div class="col">
-                        <label class="form-label">Columns</label>
+                        <label class="form-label"><?= $E['lbl_cols'] ?></label>
                         <input type="number" class="form-control" id="tableCols<?php echo $suffix; ?>" value="2" min="1" max="10">
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="insertTableBtn<?php echo $suffix; ?>">Insert</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $E['btn_cancel'] ?></button>
+                <button type="button" class="btn btn-primary" id="insertTableBtn<?php echo $suffix; ?>"><?= $E['btn_insert'] ?></button>
             </div>
         </div>
     </div>
@@ -161,18 +182,18 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fa-solid fa-magnet me-2"></i>Embed Torrent</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><i class="fa-solid fa-magnet me-2"></i><?= $E['sec_torrent'] ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $E['aria_close'] ?>"></button>
             </div>
             <div class="modal-body">
-                <label class="form-label">Torrent ID</label>
-                <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput<?php echo $suffix; ?>" placeholder="e.g. 17 or paste the torrent link/URL">
-                <div class="form-text">You can also paste the full torrent URL or link — the ID will be extracted automatically.</div>
+                <label class="form-label"><?= $E['lbl_torrent_id'] ?></label>
+                <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput<?php echo $suffix; ?>" placeholder="<?= $E['ph_torrent_id'] ?>">
+                <div class="form-text"><?= $E['hint_torrent_id'] ?></div>
                 <div id="torrentPreview<?php echo $suffix; ?>" class="mt-2"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="insertTorrentBtn<?php echo $suffix; ?>">Insert</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $E['btn_cancel'] ?></button>
+                <button type="button" class="btn btn-primary" id="insertTorrentBtn<?php echo $suffix; ?>"><?= $E['btn_insert'] ?></button>
             </div>
         </div>
     </div>
@@ -207,7 +228,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
             for (var r = 0; r < rows; r++) {
                 out += '[tr]';
                 for (var c = 0; c < cols; c++) {
-                    out += '[td]cell[/td]';
+                    out += '[td]' + agsEdT('table_cell', 'cell') + '[/td]';
                 }
                 out += '[/tr]\n';
             }
@@ -251,7 +272,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
                 return;
             }
             torrentTimer = setTimeout(function() {
-                torrentPreview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                torrentPreview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>' + escapeHtmlLocal(agsEdT('loading_preview', 'Loading preview…')) + '</div>';
                 fetch('<?php echo $BASEURL; ?>/ajax_torrent_preview.php?id=' + id)
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
@@ -267,12 +288,12 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
                             '<div class="card-body py-2 px-3">' +
                             '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtmlLocal(data.name) + '</div>' +
                             '<div class="text-muted small">' + escapeHtmlLocal(data.catname) + ' &middot; ' + escapeHtmlLocal(data.size) +
-                            ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>' +
-                            ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>' +
+                            ' &middot; <span class="text-success">' + escapeHtmlLocal(agsEdT('seeders', '{1} seeders', data.seeders)) + '</span>' +
+                            ' &middot; <span class="text-danger">' + escapeHtmlLocal(agsEdT('leechers', '{1} leechers', data.leechers)) + '</span>' +
                             '</div></div></div>';
                     })
                     .catch(function() {
-                        torrentPreview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                        torrentPreview.innerHTML = '<div class="text-danger small">' + escapeHtmlLocal(agsEdT('preview_failed', 'Failed to load preview.')) + '</div>';
                     });
             }, 400);
         });
@@ -315,37 +336,37 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Insert Image</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" tabindex="-1"></button>
+                    <h5 class="modal-title"><i class="fa-solid fa-image me-2"></i><?= $E['sec_image'] ?></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $E['aria_close'] ?>" tabindex="-1"></button>
                 </div>
                 <ul class="nav nav-tabs px-3">
                     <li class="nav-item">
-                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-url" tabindex="-1">By URL</a>
+                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-url" tabindex="-1"><i class="fa-solid fa-link me-1"></i><?= $E['tab_url'] ?></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-bs-toggle="tab" href="#tab-upload" tabindex="-1">Upload</a>
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-upload" tabindex="-1"><i class="fa-solid fa-upload me-1"></i><?= $E['tab_upload'] ?></a>
                     </li>
                 </ul>
                 <div class="modal-body tab-content">
                     <div class="tab-pane fade show active" id="tab-url">
                         <div class="mb-3">
-                            <label class="form-label">Image URL</label>
+                            <label class="form-label" for="imageUrl5"><?= $E['lbl_image_url'] ?></label>
                             <input type="text" class="form-control" id="imageUrl5" placeholder="https://">
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label">Width (optional)</label>
+                                <label class="form-label" for="imageWidth"><?= $E['lbl_width'] ?></label>
                                 <input type="number" class="form-control" id="imageWidth">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Height (optional)</label>
+                                <label class="form-label" for="imageHeight"><?= $E['lbl_height'] ?></label>
                                 <input type="number" class="form-control" id="imageHeight">
                             </div>
                         </div>
                     </div>
                     <div class="tab-pane fade" id="tab-upload">
                         <div class="mb-3">
-                            <label class="form-label">Select Image</label>
+                            <label class="form-label" for="imageUpload"><?= $E['lbl_select_image'] ?></label>
                             <input type="file" class="form-control" id="imageUpload" accept="image/*">
                         </div>
                         <div class="progress d-none" id="uploadProgress">
@@ -355,8 +376,8 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="insertImageBtn">Insert</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $E['btn_cancel'] ?></button>
+                    <button type="button" class="btn btn-primary" id="insertImageBtn"><?= $E['btn_insert'] ?></button>
                 </div>
             </div>
         </div>

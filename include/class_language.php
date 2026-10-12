@@ -173,6 +173,20 @@ class trackerlanguage
 	
 	public $settings_history;
 	
+	public $check_update;
+	
+	public $docleanup;
+	
+	public $allagents;
+	
+	public $delundeletedtorrents;
+	
+	public $banning;
+	
+	public $csseditor;
+	
+	public $phpeditor;
+	
 	
 	
 
@@ -190,6 +204,57 @@ class trackerlanguage
         }
 
         $this->language = $language;
+    }
+
+    /**
+     * Is there a language folder with this name? (english, russian…)
+     */
+    function language_exists($language): bool
+    {
+        $language = (string)$language;
+
+        return $language !== ''
+            && preg_match('/^[a-z0-9_]+$/', $language) === 1
+            && is_dir($this->path . '/' . $language);
+    }
+
+    /**
+     * Read one lang section in a given language WITHOUT touching the current
+     * language or $this->{section} (load() uses require_once, so it can't be
+     * used to switch back and forth). {1} → %1$s like load().
+     * Returns [] if the language or the file doesn't exist.
+     */
+    function get_section($section, $language): array
+    {
+        $section = str_replace(array('/', '\\', '..'), '', (string)$section);
+
+        if ($section === '' || !$this->language_exists($language)) {
+            return [];
+        }
+
+        $lfile = $this->path . '/' . $language . '/' . $section . '.lang.php';
+        if (!is_file($lfile)) {
+            return [];
+        }
+
+        $data = (static function (string $__lfile): array {
+            $language = [];
+            include $__lfile;
+            return is_array($language) ? $language : [];
+        })($lfile);
+
+        $out = $data[$section] ?? [];
+        if (!is_array($out)) {
+            return [];
+        }
+
+        foreach ($out as $key => $val) {
+            if (is_string($val)) {
+                $out[$key] = preg_replace('#\\{([0-9]+)\\}#', '%$1\\$s', $val);
+            }
+        }
+
+        return $out;
     }
 
     function load($section)

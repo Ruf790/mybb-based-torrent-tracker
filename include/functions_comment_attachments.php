@@ -8,6 +8,67 @@ declare(strict_types=1);
  * Подключить: require_once INC_PATH . '/functions_comment_attachments.php';
  */
 
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s, %2$s… — $lang->load() converts {n} into those)
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+/**
+ * Strings of the "uploads" lang (loaded on first use, so every page that
+ * includes this file gets them without its own $lang->load()).
+ */
+function ca_lang(): array
+{
+    global $lang;
+    if (empty($lang->uploads)) {
+        $lang->load('uploads');
+    }
+    return (array)$lang->uploads;
+}
+
+/**
+ * Upload size limits in bytes, from the admin settings (Settings → Tracker →
+ * Attachments, values in MB). Defaults = the old hardcoded limits.
+ * Used by upload_attachment.php and the hint of the uploader widget.
+ *
+ * @return array{video:int, audio:int, image:int, other:int}
+ */
+function att_size_limits(): array
+{
+    $mb = static function (string $name, int $default): int {
+        $v = (int)($GLOBALS[$name] ?? 0);
+        return ($v > 0 ? $v : $default) * 1048576;
+    };
+    return [
+        'video' => $mb('upload_att_video_mb', 2048),
+        'audio' => $mb('upload_att_audio_mb', 200),
+        'image' => $mb('upload_att_image_mb', 200),
+        'other' => $mb('upload_att_other_mb', 100),
+    ];
+}
+
+/**
+ * "2 GB" / "200 МБ" in the current language
+ */
+function att_size_human(int $bytes): string
+{
+    $UL = ca_lang();
+    return $bytes >= 1073741824
+        ? ags_fmt($UL['lbl_size_gb'], round($bytes / 1073741824, 1))
+        : ags_fmt($UL['lbl_size_mb'], round($bytes / 1048576, 0));
+}
+
 /**
  * Привязать загруженные вложения к комментарию
  */
@@ -161,10 +222,32 @@ function render_attachment_uploader(string $posthash, int $user_id, array $exist
 
     static $js_loaded = false;
 
+    $UL = ca_lang();
+    $E  = static fn(string $k): string => htmlspecialchars($UL[$k], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    // Limits shown in the hint — the same settings upload_attachment.php checks
+    $lim  = att_size_limits();
+    $hint = ags_fmt(
+        $E('hint_dropzone'),
+        htmlspecialchars(att_size_human($lim['video']), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        htmlspecialchars(att_size_human($lim['audio']), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        htmlspecialchars(att_size_human($lim['image']), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        htmlspecialchars(att_size_human($lim['other']), ENT_QUOTES | ENT_HTML5, 'UTF-8')
+    );
+
     ob_start();
     ?>
-    <?php if (!$js_loaded): $js_loaded = true; ?>
-    <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/comment_attachments.js"></script>
+    <?php if (!$js_loaded): $js_loaded = true;
+        $attJs = [];
+        foreach ($UL as $k => $v) {
+            if (str_starts_with((string)$k, 'js_')) {
+                $attJs[substr((string)$k, 3)] = (string)$v;
+            }
+        }
+    ?>
+    <script>
+    window.AGS_ATTACH_LANG = <?= json_encode($attJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    </script>
+    <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/comment_attachments.js?ver=3"></script>
     <?php endif; ?>
 
     <div class="comment-attachments-uploader mt-3" data-posthash="<?= htmlspecialchars($posthash) ?>">
@@ -175,10 +258,10 @@ function render_attachment_uploader(string $posthash, int $user_id, array $exist
             <div class="att-dropzone-inner">
                 <i class="fas fa-paperclip att-dropzone-icon"></i>
                 <div class="att-dropzone-text">
-                    <strong>Drag & drop files here</strong>
-                    <span>or <label class="att-browse-label">browse<input type="file" class="att-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z,.txt,.srt,.vtt,.sub,.ass,.ssa"></label></span>
+                    <strong><?= $E('lbl_dropzone') ?></strong>
+                    <span><?= $E('lbl_dropzone_or') ?> <label class="att-browse-label"><?= $E('lbl_browse') ?><input type="file" class="att-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z,.txt,.srt,.vtt,.sub,.ass,.ssa"></label></span>
                 </div>
-                <div class="att-dropzone-hint">Images, video, audio, documents, archives, subtitles · up to 2GB for video, 200MB for images/audio, 100MB for other files</div>
+                <div class="att-dropzone-hint"><?= $hint ?></div>
             </div>
         </div>
 
@@ -272,7 +355,7 @@ function render_attachment_preview_item(array $att, string $BASEURL, bool $delet
             <?php endif; ?>
         </div>
         <?php if ($deletable): ?>
-        <button type="button" class="att-delete-btn" title="Remove">
+        <button type="button" class="att-delete-btn" title="<?= htmlspecialchars(ca_lang()['tip_remove'], ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
             <i class="fas fa-times"></i>
         </button>
         <?php endif; ?>
@@ -300,7 +383,8 @@ function render_comment_attachments_from_array(array $atts): string
 
 function format_filesize(int $bytes): string
 {
-    if ($bytes < 1024) return $bytes . ' B';
-    if ($bytes < 1048576) return round($bytes / 1024, 1) . ' KB';
-    return round($bytes / 1048576, 1) . ' MB';
+    $UL = ca_lang();
+    if ($bytes < 1024) return ags_fmt($UL['lbl_size_b'], $bytes);
+    if ($bytes < 1048576) return ags_fmt($UL['lbl_size_kb'], round($bytes / 1024, 1));
+    return ags_fmt($UL['lbl_size_mb'], round($bytes / 1048576, 1));
 }

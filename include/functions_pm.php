@@ -22,7 +22,7 @@ if (!function_exists('get_lang_section')) {
         }
 
         // Язык получателя совпадает с текущим: берём из $lang
-        if ($name === $lang->language) {
+        if ($name === (string)($lang->language ?? '')) {
             if (empty($lang->$section)) {
                 $lang->load($section);
             }
@@ -34,19 +34,12 @@ if (!function_exists('get_lang_section')) {
             return $cache[$key];
         }
 
-        // load() делает exit() при отсутствии файла, поэтому проверяем заранее
-        if (!is_file($lang->path . '/' . $name . '/' . $section . '.lang.php')) {
-            return (array)$lang->$section;
-        }
+        // get_section() читает файл через include (не require_once, как load()),
+        // поэтому работает, даже если этот файл уже подключался в запросе.
+        // Сам заменяет {1} на %1$s; если языка/файла нет — вернёт [].
+        $strings = $lang->get_section($section, $name);
 
-        $userlang = new trackerlanguage();
-        $userlang->set_path($lang->path);
-        $userlang->set_language($name);
-        $userlang->load($section); // сам заменит {1} на %1$s
-
-        $strings = (array)($userlang->$section ?? []);
-
-        return $cache[$key] = $strings ?: (array)$lang->$section;
+        return $cache[$key] = $strings ?: (array)($lang->$section ?? []);
     }
 }
 

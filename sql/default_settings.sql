@@ -81,6 +81,12 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('attachthumbw',          '96'),
 ('attachthumbnails',      'yes'),
 ('maxattachments',      '5'),
+-- upload size limits, MB (Settings → Tracker → Attachments → Upload size limits)
+('upload_editor_img_mb',  '20'),
+('upload_att_video_mb',   '2048'),
+('upload_att_audio_mb',   '200'),
+('upload_att_image_mb',   '200'),
+('upload_att_other_mb',   '100'),
 
 
 

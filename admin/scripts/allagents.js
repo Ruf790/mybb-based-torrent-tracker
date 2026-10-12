@@ -2,6 +2,28 @@
 (function () {
     'use strict';
 
+    // Lang strings from PHP (AGS_LANG); English fallback, {1} or %1$s placeholders
+    function t(key, fallback) {
+        const args = Array.prototype.slice.call(arguments, 2);
+        let s = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG[key] === 'string')
+            ? AGS_LANG[key]
+            : fallback;
+        args.forEach(function (a, i) {
+            s = s.split('{' + (i + 1) + '}').join(String(a))
+                 .split('%' + (i + 1) + '$s').join(String(a));
+        });
+        return s;
+    }
+
+    // Icon + text label, text inserted as a text node
+    function setIconLabel(el, iconClass, text) {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid ' + iconClass;
+        const span = document.createElement('span');
+        span.textContent = text;
+        el.replaceChildren(icon, span);
+    }
+
     function confirmAction(opts) {
         if (window.Swal && typeof window.Swal.fire === 'function') {
             return window.Swal.fire({
@@ -10,7 +32,7 @@
                 icon: opts.icon || 'question',
                 showCancelButton: true,
                 confirmButtonText: opts.confirm,
-                cancelButtonText: 'Cancel',
+                cancelButtonText: t('btn_cancel', 'Cancel'),
                 reverseButtons: true,
                 focusCancel: true
             }).then(function (r) { return r.isConfirmed; });
@@ -50,9 +72,11 @@
 
             const label = row.querySelector('.aa-state');
             if (label) {
-                label.innerHTML = box.checked
-                    ? '<i class="fa-solid fa-circle-check"></i><span>Allowed</span>'
-                    : '<i class="fa-solid fa-ban"></i><span>Blocked</span>';
+                if (box.checked) {
+                    setIconLabel(label, 'fa-circle-check', t('state_allowed', 'Allowed'));
+                } else {
+                    setIconLabel(label, 'fa-ban', t('state_blocked', 'Blocked'));
+                }
             }
         }
 
@@ -70,9 +94,11 @@
             }
             const n = dirtyCount();
             saveBar.classList.toggle('is-dirty', n > 0);
-            status.innerHTML = n > 0
-                ? '<i class="fa-solid fa-pen"></i><span>' + n + (n === 1 ? ' unsaved change' : ' unsaved changes') + '</span>'
-                : '<i class="fa-solid fa-circle-check"></i><span>No unsaved changes</span>';
+            if (n > 0) {
+                setIconLabel(status, 'fa-pen', t('dirty_count', 'Unsaved changes: {1}', n));
+            } else {
+                setIconLabel(status, 'fa-circle-check', t('dirty_none', 'No unsaved changes'));
+            }
         }
 
         function repaintAll() {
@@ -150,10 +176,10 @@
                     return;
                 }
                 confirmAction({
-                    title: 'Discard changes?',
-                    text: 'Every switch goes back to its saved position.',
+                    title: t('reset_title', 'Discard changes?'),
+                    text: t('reset_text', 'Every switch goes back to its saved position.'),
                     icon: 'warning',
-                    confirm: 'Discard changes'
+                    confirm: t('reset_confirm', 'Discard changes')
                 }).then(function (ok) {
                     if (ok) {
                         form.reset();
@@ -174,10 +200,10 @@
             }
             e.preventDefault();
             confirmAction({
-                title: 'Block every client?',
-                text: 'No client will be on the allowed list after saving.',
+                title: t('blockall_title', 'Block every client?'),
+                text: t('blockall_text', 'No client will be on the allowed list after saving.'),
                 icon: 'warning',
-                confirm: 'Save anyway'
+                confirm: t('blockall_confirm', 'Save anyway')
             }).then(function (ok) {
                 if (ok) {
                     submitting = true;

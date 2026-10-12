@@ -145,18 +145,29 @@ function buildJumpToPage(
     array $options, 
     bool $isBreadcrumb
 ): string {
+    global $lang;
+
     if (!$options['show_jump'] || $totalPages <= $options['max_links'] + 1 || $isBreadcrumb) {
         return '';
     }
 
     $jumpUrl = fetch_page_url($url, 1);
+    // Global lang strings (plain text) → escaped for HTML; {1} became %1$s in $lang->load()
+    $e       = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $jTitle  = $e($lang->global['mp_jump']);
+    $jOf     = $e(sprintf($lang->global['mp_of_total'], $totalPages));
+    $jPh     = $e($lang->global['mp_page_ph']);
+    $jGo     = $e($lang->global['mp_go']);
+    $jHint   = $e(sprintf($lang->global['mp_range'], $totalPages));
+    $jAria   = $jTitle;
     
     return <<<HTML
     <div class="dropdown d-inline-block ms-2">
         <a class="btn btn-outline-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" 
            data-bs-toggle="dropdown" 
            data-bs-offset="10,5"
-           aria-expanded="false">
+           aria-expanded="false"
+           title="{$jAria}" aria-label="{$jAria}">
             <i class="fa-solid fa-file-lines"></i>
         </a>
         
@@ -170,9 +181,9 @@ function buildJumpToPage(
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <label class="small fw-semibold text-primary mb-0">
                         <i class="fa-solid fa-arrow-right-to-bracket me-1"></i>
-                        Jump to Page
+                        {$jTitle}
                     </label>
-                    <span class="badge bg-light text-dark small">of {$totalPages} total</span>
+                    <span class="badge bg-light text-dark small">{$jOf}</span>
                 </div>
                 
                 <div class="row g-2 align-items-center">
@@ -187,14 +198,14 @@ function buildJumpToPage(
                                    value="{$currentPage}" 
                                    min="1" 
                                    max="{$totalPages}"
-                                   placeholder="Page #"
+                                   placeholder="{$jPh}"
                                    style="border-radius: 0 6px 6px 0;">
                         </div>
                     </div>
                     <div class="col-auto">
                         <button type="submit" class="btn btn-sm btn-primary px-3 rounded-pill">
                             <i class="fa-solid fa-arrow-right me-1"></i>
-                            Go
+                            {$jGo}
                         </button>
                     </div>
                 </div>
@@ -202,7 +213,7 @@ function buildJumpToPage(
                 <div class="mt-2 text-center">
                     <small class="text-muted">
                         <i class="fa-solid fa-info-circle me-1"></i>
-                        Enter page number 1-{$totalPages}
+                        {$jHint}
                     </small>
                 </div>
             </form>
@@ -277,15 +288,20 @@ function buildNormalPagination(
     int $currentPage,
     int $totalPages
 ): string {
-    $pagesText = "Pages ({$totalPages}):";
+    global $lang;
+
+    $e         = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $pagesText = $e(sprintf($lang->global['mp_pages'], $totalPages));
     
     $stats = '';
     if ($options['show_stats']) {
         $startItem = (($currentPage - 1) * $perpage) + 1;
         $endItem = min($currentPage * $perpage, $count);
+        // Lang text escaped first, then the <strong> numbers are inserted
+        $statsText = sprintf($e($lang->global['mp_showing']), '<strong>' . $startItem . '</strong>', '<strong>' . $endItem . '</strong>', '<strong>' . $count . '</strong>');
         $stats = <<<HTML
         <div class="text-muted small">
-            Showing <strong>{$startItem}</strong> to <strong>{$endItem}</strong> of <strong>{$count}</strong> entries
+            {$statsText}
         </div>
 HTML;
     }

@@ -6,9 +6,25 @@ if (!defined('STAFF_PANEL')) {
 }
 
 const AA_VERSION   = '0.8';
-const AA_ASSET_VER = 1;
+const AA_ASSET_VER = 2;
 
-global $db, $mybb, $BASEURL, $allowed_clients, $_this_script_;
+global $db, $mybb, $BASEURL, $allowed_clients, $_this_script_, $lang;
+
+$lang->load('allagents');
+
+// Placeholder substitution: {1} in the lang file, %1$s after $lang->load() converted it
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 $aaEsc = static fn(string $s): string => htmlspecialchars_uni($s);
 
@@ -92,8 +108,9 @@ $aaMainline = ['M' => 'BitTorrent Mainline', 'T' => 'BitTornado', 'S' => 'Shadow
 
 $aaClientInfo = static function (string $prefix, array $agents) use ($aaKnown, $aaMainline): array {
     $fromAgent = static function (array $agents): string {
+        global $lang;
         $first = $agents !== [] ? strtok((string)$agents[0], '/ ') : false;
-        return ($first !== false && $first !== '') ? $first : 'Unknown client';
+        return ($first !== false && $first !== '') ? $first : $lang->allagents['lbl_unknown_client'];
     };
 
     if (preg_match('/^-([A-Za-z~]{2})/', $prefix, $m)) {
@@ -152,13 +169,13 @@ $aaBlocked = $aaTotal - $aaAllowed;
 /* ------------------------------------------------------------------ *
  *  Output
  * ------------------------------------------------------------------ */
-stdhead('Allowed Clients');
+stdhead($lang->allagents['page_title']);
 
 $aaFlash = match ($mybb->get_input('aa')) {
-    'saved'    => ['success', 'fa-circle-check',         'Client list saved.'],
-    'nochange' => ['info',    'fa-circle-info',          'Nothing changed, so there was nothing to save.'],
-    'csrf'     => ['danger',  'fa-shield-halved',        'The security token expired. Reload the page and save again.'],
-    'dberror'  => ['danger',  'fa-triangle-exclamation', 'The database rejected the update. The client list was not saved.'],
+    'saved'    => ['success', 'fa-circle-check',         $lang->allagents['flash_saved']],
+    'nochange' => ['info',    'fa-circle-info',          $lang->allagents['flash_nochange']],
+    'csrf'     => ['danger',  'fa-shield-halved',        $lang->allagents['flash_csrf']],
+    'dberror'  => ['danger',  'fa-triangle-exclamation', $lang->allagents['flash_dberror']],
     default    => null,
 };
 ?>
@@ -171,8 +188,8 @@ $aaFlash = match ($mybb->get_input('aa')) {
         <div class="card-body">
             <div class="aa-header-icon"><i class="fa-solid fa-plug-circle-check"></i></div>
             <div class="aa-header-text">
-                <h1 class="aa-title">Allowed clients <span class="aa-version">v<?= AA_VERSION ?></span></h1>
-                <p class="aa-subtitle">Choose which BitTorrent clients the tracker accepts. Each row groups every peer that announces with the same peer ID prefix.</p>
+                <h1 class="aa-title"><?= $aaEsc($lang->allagents['sec_title']) ?> <span class="aa-version">v<?= AA_VERSION ?></span></h1>
+                <p class="aa-subtitle"><?= $aaEsc($lang->allagents['sec_subtitle']) ?></p>
             </div>
         </div>
     </div>
@@ -180,26 +197,26 @@ $aaFlash = match ($mybb->get_input('aa')) {
     <?php if ($aaFlash !== null): ?>
     <div class="aa-flash aa-flash-<?= $aaFlash[0] ?>" role="status">
         <i class="fa-solid <?= $aaFlash[1] ?>"></i>
-        <span><?= $aaFlash[2] ?></span>
+        <span><?= $aaEsc($aaFlash[2]) ?></span>
     </div>
     <?php endif; ?>
 
     <div class="aa-kpis">
         <div class="aa-kpi aa-tone-primary">
             <div class="aa-kpi-icon"><i class="fa-solid fa-plug"></i></div>
-            <div><div class="aa-kpi-value" data-kpi="total"><?= $aaTotal ?></div><div class="aa-kpi-label">Clients</div></div>
+            <div><div class="aa-kpi-value" data-kpi="total"><?= $aaTotal ?></div><div class="aa-kpi-label"><?= $aaEsc($lang->allagents['kpi_clients']) ?></div></div>
         </div>
         <div class="aa-kpi aa-tone-success">
             <div class="aa-kpi-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <div><div class="aa-kpi-value" data-kpi="allowed"><?= $aaAllowed ?></div><div class="aa-kpi-label">Allowed</div></div>
+            <div><div class="aa-kpi-value" data-kpi="allowed"><?= $aaAllowed ?></div><div class="aa-kpi-label"><?= $aaEsc($lang->allagents['kpi_allowed']) ?></div></div>
         </div>
         <div class="aa-kpi aa-tone-danger">
             <div class="aa-kpi-icon"><i class="fa-solid fa-ban"></i></div>
-            <div><div class="aa-kpi-value" data-kpi="blocked"><?= $aaBlocked ?></div><div class="aa-kpi-label">Blocked</div></div>
+            <div><div class="aa-kpi-value" data-kpi="blocked"><?= $aaBlocked ?></div><div class="aa-kpi-label"><?= $aaEsc($lang->allagents['kpi_blocked']) ?></div></div>
         </div>
         <div class="aa-kpi aa-tone-info">
             <div class="aa-kpi-icon"><i class="fa-solid fa-users"></i></div>
-            <div><div class="aa-kpi-value"><?= number_format($aaPeers) ?></div><div class="aa-kpi-label">Active peers</div></div>
+            <div><div class="aa-kpi-value"><?= number_format($aaPeers) ?></div><div class="aa-kpi-label"><?= $aaEsc($lang->allagents['kpi_peers']) ?></div></div>
         </div>
     </div>
 
@@ -212,16 +229,16 @@ $aaFlash = match ($mybb->get_input('aa')) {
             <div class="aa-toolbar">
                 <div class="aa-search">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="search" id="aaSearch" class="form-control" placeholder="Search by client, version or prefix" autocomplete="off">
+                    <input type="search" id="aaSearch" class="form-control" placeholder="<?= $aaEsc($lang->allagents['ph_search']) ?>" autocomplete="off">
                 </div>
-                <div class="aa-filters" role="group" aria-label="Show">
-                    <button type="button" class="aa-pill is-active" data-aa-filter="all"><i class="fa-solid fa-layer-group"></i>All</button>
-                    <button type="button" class="aa-pill" data-aa-filter="allowed"><i class="fa-solid fa-circle-check"></i>Allowed</button>
-                    <button type="button" class="aa-pill" data-aa-filter="blocked"><i class="fa-solid fa-ban"></i>Blocked</button>
+                <div class="aa-filters" role="group" aria-label="<?= $aaEsc($lang->allagents['aria_filters']) ?>">
+                    <button type="button" class="aa-pill is-active" data-aa-filter="all"><i class="fa-solid fa-layer-group"></i><?= $aaEsc($lang->allagents['opt_all']) ?></button>
+                    <button type="button" class="aa-pill" data-aa-filter="allowed"><i class="fa-solid fa-circle-check"></i><?= $aaEsc($lang->allagents['opt_allowed']) ?></button>
+                    <button type="button" class="aa-pill" data-aa-filter="blocked"><i class="fa-solid fa-ban"></i><?= $aaEsc($lang->allagents['opt_blocked']) ?></button>
                 </div>
                 <div class="aa-bulk">
-                    <button type="button" class="aa-pill aa-pill-soft-success" data-aa-bulk="allow" title="Allow every client shown below"><i class="fa-solid fa-check-double"></i>Allow shown</button>
-                    <button type="button" class="aa-pill aa-pill-soft-danger" data-aa-bulk="block" title="Block every client shown below"><i class="fa-solid fa-xmark"></i>Block shown</button>
+                    <button type="button" class="aa-pill aa-pill-soft-success" data-aa-bulk="allow" title="<?= $aaEsc($lang->allagents['tip_allow_shown']) ?>"><i class="fa-solid fa-check-double"></i><?= $aaEsc($lang->allagents['btn_allow_shown']) ?></button>
+                    <button type="button" class="aa-pill aa-pill-soft-danger" data-aa-bulk="block" title="<?= $aaEsc($lang->allagents['tip_block_shown']) ?>"><i class="fa-solid fa-xmark"></i><?= $aaEsc($lang->allagents['btn_block_shown']) ?></button>
                 </div>
             </div>
 
@@ -229,10 +246,10 @@ $aaFlash = match ($mybb->get_input('aa')) {
                 <table class="aa-table">
                     <thead>
                         <tr>
-                            <th><i class="fa-solid fa-desktop"></i>Client</th>
-                            <th><i class="fa-solid fa-fingerprint"></i>Peer ID prefix</th>
-                            <th class="text-end"><i class="fa-solid fa-users"></i>Peers</th>
-                            <th class="text-center"><i class="fa-solid fa-toggle-on"></i>Access</th>
+                            <th><i class="fa-solid fa-desktop"></i><?= $aaEsc($lang->allagents['col_client']) ?></th>
+                            <th><i class="fa-solid fa-fingerprint"></i><?= $aaEsc($lang->allagents['col_prefix']) ?></th>
+                            <th class="text-end"><i class="fa-solid fa-users"></i><?= $aaEsc($lang->allagents['col_peers']) ?></th>
+                            <th class="text-center"><i class="fa-solid fa-toggle-on"></i><?= $aaEsc($lang->allagents['col_access']) ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -259,7 +276,7 @@ $aaFlash = match ($mybb->get_input('aa')) {
                                         <?php if ($shown !== []): ?>
                                         <div class="aa-agents">
                                             <?php foreach ($shown as $a): ?><span class="aa-chip"><?= $aaEsc($a) ?></span><?php endforeach; ?>
-                                            <?php if ($more > 0): ?><span class="aa-chip aa-chip-more" title="<?= $aaEsc(implode("\n", array_slice($c['agents'], 3))) ?>">+<?= $more ?> more</span><?php endif; ?>
+                                            <?php if ($more > 0): ?><span class="aa-chip aa-chip-more" title="<?= $aaEsc(implode("\n", array_slice($c['agents'], 3))) ?>"><?= $aaEsc(ags_fmt($lang->allagents['lbl_more'], $more)) ?></span><?php endif; ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -270,7 +287,7 @@ $aaFlash = match ($mybb->get_input('aa')) {
                                 <?php if ($c['peers'] > 0): ?>
                                     <span class="aa-peers"><?= number_format($c['peers']) ?></span>
                                 <?php else: ?>
-                                    <span class="aa-offline" title="Whitelisted, but no peers are connected with this client right now"><i class="fa-solid fa-moon"></i>No peers</span>
+                                    <span class="aa-offline" title="<?= $aaEsc($lang->allagents['tip_no_peers']) ?>"><i class="fa-solid fa-moon"></i><?= $aaEsc($lang->allagents['lbl_no_peers']) ?></span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-center">
@@ -285,8 +302,8 @@ $aaFlash = match ($mybb->get_input('aa')) {
                                            <?= $isAllowed ? 'checked' : '' ?>>
                                     <label class="form-check-label aa-state" for="agent_<?= $i ?>">
                                         <?= $isAllowed
-                                            ? '<i class="fa-solid fa-circle-check"></i><span>Allowed</span>'
-                                            : '<i class="fa-solid fa-ban"></i><span>Blocked</span>' ?>
+                                            ? '<i class="fa-solid fa-circle-check"></i><span>' . $aaEsc($lang->allagents['lbl_state_allowed']) . '</span>'
+                                            : '<i class="fa-solid fa-ban"></i><span>' . $aaEsc($lang->allagents['lbl_state_blocked']) . '</span>' ?>
                                     </label>
                                 </div>
                             </td>
@@ -298,12 +315,12 @@ $aaFlash = match ($mybb->get_input('aa')) {
 
             <div class="aa-empty" id="aaNoResults" hidden>
                 <i class="fa-solid fa-filter-circle-xmark"></i>
-                <p>No clients match this search. Clear the search or pick another filter.</p>
+                <p><?= $aaEsc($lang->allagents['empty_no_match']) ?></p>
             </div>
             <?php else: ?>
             <div class="aa-empty">
                 <i class="fa-solid fa-satellite-dish"></i>
-                <p>No clients yet. They appear here as soon as peers announce to the tracker.</p>
+                <p><?= $aaEsc($lang->allagents['empty_no_clients']) ?></p>
             </div>
             <?php endif; ?>
         </div>
@@ -311,17 +328,27 @@ $aaFlash = match ($mybb->get_input('aa')) {
         <?php if ($aaTotal > 0): ?>
         <div class="aa-savebar">
             <div class="aa-savebar-status" id="aaDirty">
-                <i class="fa-solid fa-circle-check"></i><span>No unsaved changes</span>
+                <i class="fa-solid fa-circle-check"></i><span><?= $aaEsc($lang->allagents['lbl_no_unsaved']) ?></span>
             </div>
             <div class="aa-savebar-actions">
-                <button type="reset" class="aa-pill aa-pill-outline"><i class="fa-solid fa-rotate-left"></i>Reset</button>
-                <button type="submit" class="aa-pill aa-pill-primary"><i class="fa-solid fa-floppy-disk"></i>Save changes</button>
+                <button type="reset" class="aa-pill aa-pill-outline"><i class="fa-solid fa-rotate-left"></i><?= $aaEsc($lang->allagents['btn_reset']) ?></button>
+                <button type="submit" class="aa-pill aa-pill-primary"><i class="fa-solid fa-floppy-disk"></i><?= $aaEsc($lang->allagents['btn_save']) ?></button>
             </div>
         </div>
         <?php endif; ?>
     </form>
 </div>
 
+<?php
+// js_* keys go to the script without the prefix
+$aaJsLang = [];
+foreach ($lang->allagents as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $aaJsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+?>
+<script>const AGS_LANG = <?= json_encode($aaJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/allagents.js?ver=<?= AA_ASSET_VER ?>"></script>
 <?php

@@ -1,0 +1,84 @@
+/* PHP Editor (admin/phpeditor.php) — all rules scoped under .phpeditor-page */
+
+.phpeditor-page {
+    --pe-editor-height: 70vh;
+    --pe-card-bg:       var(--bs-body-bg, #fff);
+    --pe-border:        var(--bs-border-color, #dee2e6);
+    --pe-text:          var(--bs-body-color, #212529);
+    --pe-muted-bg:      var(--bs-tertiary-bg, #f8f9fa);
+    --pe-hover-bg:      var(--bs-secondary-bg, #e9ecef);
+    --pe-active-bg:     var(--bs-primary-bg-subtle, #cfe2ff);
+    --pe-active-text:   var(--bs-primary-text-emphasis, #052c65);
+    --pe-primary:       var(--bs-primary, #0d6efd);
+    --pe-ok:            var(--bs-success-text-emphasis, #198754);
+    --pe-err:           var(--bs-danger-text-emphasis, #dc3545);
+
+    font-size: 1.055rem;
+}
+
+/* ── Editor ── */
+.phpeditor-page .CodeMirror {
+    height: var(--pe-editor-height);
+    font-size: 14px;
+    border: 1px solid var(--pe-border);
+    border-radius: 4px;
+}
+
+/* Search / replace dialog */
+.phpeditor-page .CodeMirror-dialog {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 15;
+    padding: 5px;
+    overflow: hidden;
+    background: var(--pe-card-bg);
+    color: var(--pe-text);
+    border-bottom: 1px solid var(--pe-border);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, .2);
+}
+.phpeditor-page .CodeMirror-dialog input {
+    width: 80%;
+    padding: 5px 10px;
+    border: 1px solid var(--pe-border);
+    background: var(--pe-card-bg);
+    color: var(--pe-text);
+    outline: none;
+}
+.phpeditor-page .CodeMirror-dialog button {
+    margin-left: 5px;
+    padding: 5px 10px;
+    border: 1px solid var(--pe-primary);
+    background: var(--pe-primary);
+    color: #fff;
+    cursor: pointer;
+}
+
+/* ── File info bar ── */
+.phpeditor-page .file-info-bar {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: var(--pe-muted-bg);
+    border: 1px solid var(--pe-border);
+    border-radius: 4px;
+}
+.phpeditor-page .syntax-ok  { color: var(--pe-ok); }
+.phpeditor-page .syntax-err { color: var(--pe-err); }
+
+/* ── Tabs ── */
+.phpeditor-page .tab-content {
+    padding: 15px;
+    background-color: var(--pe-card-bg);
+    border: 1px solid var(--pe-border);
+    border-top: 0;
+}
+
+/* ── Backups list ── */
+.phpeditor-page .backup-item { cursor: pointer; transition: background-color .2s; }
+.phpeditor-page .backup-item:hover > td { background-color: var(--pe-hover-bg); }
+.phpeditor-page .backup-item.active-file > td {
+    background-color: var(--pe-active-bg);
+    color: var(--pe-active-text);
+    font-weight: bold;
+}
+.phpeditor-page .backup-item .badge { margin-right: 5px; font-size: .75rem; }

@@ -1,0 +1,26 @@
+/* Advanced CSS Editor (admin/csseditor.php) */
+:root {
+    --editor-height: 70vh;
+    --card-bg: #ffffff;
+    --border-color: #dee2e6;
+    --text-color: #212529;
+    --primary-color: #0d6efd;
+    --hover-bg: #f1f1f1;
+}
+.CodeMirror { height: var(--editor-height); font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px; }
+.CodeMirror-dialog { position: absolute; left: 0; right: 0; background: white; z-index: 15; padding: 5px; border-bottom: 1px solid var(--border-color); overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+.CodeMirror-dialog input { border: 1px solid var(--border-color); padding: 5px 10px; width: 80%; outline: none; }
+.CodeMirror-dialog button { border: 1px solid var(--border-color); background: var(--primary-color); color: white; padding: 5px 10px; margin-left: 5px; cursor: pointer; }
+#previewContainer { border: 1px solid var(--border-color); padding: 15px; margin-top: 20px; background-color: var(--card-bg); display: none; border-radius: 4px; }
+.preview-box { min-height: 300px; padding: 15px; background: white; border-radius: 4px; overflow: auto; }
+.preview-section { margin-bottom: 20px; padding-bottom: 15px; }
+.preview-section:not(:last-child) { border-bottom: 1px solid #eee; }
+.preview-box .btn { margin-right: 8px; margin-bottom: 8px; }
+.preview-box .alert { margin-bottom: 15px; }
+.preview-box .card { margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.backup-item { cursor: pointer; transition: background-color 0.2s; }
+.backup-item:hover { background-color: var(--hover-bg); }
+.template-btn { margin-right: 5px; margin-bottom: 5px; border: 1px solid var(--border-color); }
+.tab-content { background-color: var(--card-bg); border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 15px; }
+.backup-item.active-file { background-color: #e7f3ff !important; font-weight: bold; }
+.backup-item .badge { margin-right: 5px; font-size: 0.75rem; }

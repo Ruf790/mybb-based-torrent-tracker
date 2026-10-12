@@ -706,4 +706,9 @@ IP: {1}
 'js_report_tpl_user'      => '- Пользователь: {1}',
 'js_report_tpl_evidence'  => '- Доказательства:',
 
+
+// russian
+'lbl_language'  => "Язык",
+'hint_language' => "На этом языке будут интерфейс сайта и письма.",
+
 );

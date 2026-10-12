@@ -1,40 +1,102 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English Language File
-Translation by xam Version: 0.2
----Recoded in v5.0---
-*/
+
+
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// getrss.php, rss.php
-$language['getrss'] = array 
+$language['getrss'] = array
 (
-	'title'						=>'RSS Feeds',		
-	'done2'					=>'Use the following url in your RSS reader:',
-	'field1'					=>'Categories to retrieve:',
-	'field2'					=>'ALL',
-	'field3'					=>'Feed Type:',
-	'field4'					=>'Web Link',
-	'field5'					=>'Download Link',
-	'field6'					=>'Select Your TimeZone:',
-	'field7'					=>'Rows Per Page:',
-	'field8'					=>'Generate RSS link'
+	// ── Page ──
+	'title'					=> 'RSS-ленты',
+	'sec_subtitle'			=> 'Персональная лента новых раздач для RSS-ридера или торрент-клиента с автозагрузкой.',
+
+	// ── Result (after submit) ──
+	'pane_result'			=> 'RSS-лента готова',
+	'hint_copy_link'		=> 'Скопируйте ссылку ниже и добавьте её в свой RSS-ридер.',
+	'lbl_rss_link'			=> 'Ваша RSS-ссылка',
+	'hint_passkey'			=> 'В ссылке ваш персональный passkey. Не передавайте её и не публикуйте — по ней можно качать от вашего имени.',
+	'btn_copy'				=> 'Копировать',
+	'btn_test'				=> 'Открыть ленту',
+	'btn_generate_another'	=> 'Создать другую',
+
+	// ── Categories ──
+	'pane_categories'		=> 'Категории',
+	'hint_cat_click'		=> 'Нажмите на категорию, чтобы выбрать её или снять выбор',
+	'hint_categories'		=> 'Выберите, какие категории попадут в ленту. Если ничего не выбрано — будут все.',
+
+	// ── Quick selection (inside Categories) ──
+	'btn_select_all'		=> 'Выбрать все',
+	'btn_deselect_all'		=> 'Снять выбор',
+	'lbl_showall'			=> 'Все категории (включая те, что появятся в будущем)',
+	'hint_showall'			=> 'Категории, которые появятся на трекере позже, попадут в ленту автоматически.',
+
+	// ── Feed type ──
+	'pane_feedtype'			=> 'Тип ссылок в ленте',
+	'opt_feed_details'		=> 'Страница раздачи',
+	'opt_feed_download'		=> 'Файл .torrent',
+	'hint_feed_details'		=> 'Ссылки ведут на страницу раздачи на сайте.',
+	'hint_feed_download'	=> 'Ссылки ведут прямо на .torrent — для автозагрузки в клиенте.',
+
+	// ── Settings ──
+	'pane_settings'			=> 'Настройки',
+	'lbl_timezone'			=> 'Ваш часовой пояс:',
+	'lbl_showrows'			=> 'Раздач в ленте:',
+	'hint_showrows'			=> 'Сколько последних раздач отдаёт лента.',
+	'err_timezone'			=> 'Выберите часовой пояс.',
+	'err_showrows'			=> 'Выберите, сколько раздач показывать.',
+	'btn_submit'			=> 'Получить RSS-ссылку',
+
+	// ── Timezone options ──
+	'opt_tz_m12'			=> '(GMT -12:00) Эниветок, Кваджалейн',
+	'opt_tz_m11'			=> '(GMT -11:00) о. Мидуэй, Самоа',
+	'opt_tz_m10'			=> '(GMT -10:00) Гавайи',
+	'opt_tz_m9'				=> '(GMT -9:00) Аляска',
+	'opt_tz_m8'				=> '(GMT -8:00) Тихоокеанское время (США и Канада)',
+	'opt_tz_m7'				=> '(GMT -7:00) Горное время (США и Канада)',
+	'opt_tz_m6'				=> '(GMT -6:00) Центральное время (США и Канада), Мехико',
+	'opt_tz_m5'				=> '(GMT -5:00) Восточное время (США и Канада), Богота, Лима',
+	'opt_tz_m4'				=> '(GMT -4:00) Атлантическое время (Канада), Каракас, Ла-Пас',
+	'opt_tz_m3_5'			=> '(GMT -3:30) Ньюфаундленд',
+	'opt_tz_m3'				=> '(GMT -3:00) Бразилия, Буэнос-Айрес, Джорджтаун',
+	'opt_tz_m2'				=> '(GMT -2:00) Среднеатлантическое время',
+	'opt_tz_m1'				=> '(GMT -1:00) Азорские острова, острова Зелёного Мыса',
+	'opt_tz_0'				=> '(GMT) Западноевропейское время, Лондон, Лиссабон, Касабланка',
+	'opt_tz_1'				=> '(GMT +1:00) Брюссель, Копенгаген, Мадрид, Париж',
+	'opt_tz_2'				=> '(GMT +2:00) Калининград, ЮАР',
+	'opt_tz_3'				=> '(GMT +3:00) Багдад, Эр-Рияд, Москва, Санкт-Петербург',
+	'opt_tz_3_5'			=> '(GMT +3:30) Тегеран',
+	'opt_tz_4'				=> '(GMT +4:00) Абу-Даби, Маскат, Баку, Тбилиси',
+	'opt_tz_4_5'			=> '(GMT +4:30) Кабул',
+	'opt_tz_5'				=> '(GMT +5:00) Екатеринбург, Исламабад, Карачи, Ташкент',
+	'opt_tz_5_5'			=> '(GMT +5:30) Мумбаи, Калькутта, Ченнаи, Нью-Дели',
+	'opt_tz_6'				=> '(GMT +6:00) Алматы, Дакка, Коломбо',
+	'opt_tz_7'				=> '(GMT +7:00) Бангкок, Ханой, Джакарта',
+	'opt_tz_8'				=> '(GMT +8:00) Пекин, Перт, Сингапур, Гонконг',
+	'opt_tz_9'				=> '(GMT +9:00) Токио, Сеул, Осака, Саппоро, Якутск',
+	'opt_tz_9_5'			=> '(GMT +9:30) Аделаида, Дарвин',
+	'opt_tz_10'				=> '(GMT +10:00) Восточная Австралия, Гуам, Владивосток',
+	'opt_tz_11'				=> '(GMT +11:00) Магадан, Соломоновы острова, Новая Каледония',
+	'opt_tz_12'				=> '(GMT +12:00) Окленд, Веллингтон, Фиджи, Камчатка',
+
+	// ── JS strings (passed to AGS_LANG without the js_ prefix) ──
+	'js_copied'				=> 'Скопировано!',
+	'js_copy_failed'		=> 'Не удалось скопировать ссылку. Скопируйте её вручную.',
+	'js_cat_hint'			=> 'Нажмите на категорию, чтобы выбрать её или снять выбор',
+	'js_cats_selected_one'	=> 'Выбрано категорий: {1}',
+	'js_cats_selected_other'=> 'Выбрано категорий: {1}',
+	'js_cats_all'			=> 'Выбраны все категории',
+	'js_cats_all_future'	=> 'Все категории, включая будущие',
+
+	// ── Legacy (old TS SE keys, may still be used by rss.php) ──
+	'done2'					=> 'Добавьте эту ссылку в свой RSS-ридер:',
+	'field1'				=> 'Категории в ленте:',
+	'field2'				=> 'ВСЕ',
+	'field3'				=> 'Тип ссылок:',
+	'field4'				=> 'Страница раздачи',
+	'field5'				=> 'Скачивание .torrent',
+	'field6'				=> 'Ваш часовой пояс:',
+	'field7'				=> 'Раздач в ленте:',
+	'field8'				=> 'Получить RSS-ссылку',
 );
 ?>

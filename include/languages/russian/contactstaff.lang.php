@@ -1,34 +1,50 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English Language File
-Translation by xam Version: 0.4
-*/
+
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// contactstaff.php
 $language['contactstaff'] = array
 (
-	'contactstaff'	=>'Contact Staff',
-	'invalidlink'		=>'Invalid Link: {1}',
-	'sendmessage'	=>'Send message to Staff',
-	'floodcomment'	=>'staff messages',
-	'info'				=>'Contact the Sysop asking for Technical Help, or questions yet answered in the <a href=faq.php>FAQ</a> or <a href=tsf_forums/index.php>Forums</a> isn\'t good idea, please only contact the Sysop for very important matters, otherwise use the proper ways to get help, as <a href=tsf_forums/index.php>Forums</a>, etc.<br />All software support questions and those already answered in the <a href=faq.php>FAQ</a> will be ignored.', // Added v3.6
+	// ── Page ──────────────────────────────────────────────────────────────
+	'title'                 => 'Связь с администрацией',
+	'subtitle'              => 'Личное сообщение администрации трекера',
+
+	// ── Notice / tips ─────────────────────────────────────────────────────
+	'hint_important'        => 'Пишите администрации только по действительно важным вопросам. Со всем остальным — в FAQ и на форум.',
+	'sec_before'            => 'Прежде чем писать',
+	'tip_faq_title'         => 'Загляните в FAQ',
+	'tip_faq_text'          => 'Ответы на большинство частых вопросов уже там.',
+	'tip_forum_title'       => 'Спросите на форуме',
+	'tip_forum_text'        => 'Техническая помощь и общие вопросы — в соответствующих разделах форума.',
+	'tip_ignore_title'      => 'Что останется без ответа',
+	'tip_ignore_text'       => 'Вопросы по настройке софта и торрент-клиентов, а также всё, что уже описано в FAQ, рассматриваться не будут.',
+	'tip_private_title'     => 'Только для администрации',
+	'tip_private_text'      => 'Ваше сообщение увидят только сотрудники трекера.',
+	'btn_open_faq'          => 'Открыть FAQ',
+	'btn_open_forums'       => 'Перейти на форум',
+
+	// ── Form ──────────────────────────────────────────────────────────────
+	'sec_form'              => 'Новое сообщение',
+	'lbl_subject'           => 'Тема',
+	'ph_subject'            => 'Кратко опишите суть вопроса',
+	'hint_subject'          => 'До {1} символов',
+	'lbl_message'           => 'Сообщение',
+	'ph_message'            => 'Опишите ваш вопрос подробно…',
+	'btn_send'              => 'Отправить',
+	'btn_back'              => 'Назад',
+	'aria_close'            => 'Закрыть',
+
+	// ── Messages ──────────────────────────────────────────────────────────
+	'flash_invalid_request' => 'Неверный запрос. Обновите страницу и попробуйте ещё раз.',
+	'flash_fields_blank'    => 'Заполните и тему, и текст сообщения.',
+	'flash_sent'            => 'Сообщение отправлено администрации. Спасибо!',
+	'txt_flood_what'        => 'сообщения администрации',
+	'txt_invalid_link'      => 'Нерабочая ссылка: {1}',
+
+	// ── JS ────────────────────────────────────────────────────────────────
+	'js_char_count'         => '{1} / {2}',
+	'js_sending'            => 'Отправка…',
+	'js_submit_failed'      => 'Не удалось отправить сообщение. Попробуйте ещё раз.',
 );
 ?>

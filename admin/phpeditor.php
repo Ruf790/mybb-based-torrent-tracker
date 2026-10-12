@@ -6,6 +6,22 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger text-center"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('phpeditor');
+
+// {1}, {2}… (и %1$s, в которые их превращает $lang->load()) → аргументы
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
 const PHP_EDITOR_BASE_DIR  = TSDIR . '/';
 const PHP_MAX_BACKUPS      = 10;
 const PHP_HISTORY_DAYS     = 30;
@@ -69,23 +85,25 @@ class PhpEditor
     public function getFileContent(string $filename): string
     {
         $this->assertAllowed($filename);
+        global $lang;
         $path = $this->baseDir . $filename;
         if (!file_exists($path)) {
-            throw new RuntimeException("Файл не найден: {$filename}");
+            throw new RuntimeException(ags_fmt($lang->phpeditor['err_file_not_found'], $filename));
         }
         return file_get_contents($path) ?: '';
     }
 
     public function saveFile(string $filename, string $content, bool $makeBackup = true): void
     {
+        global $lang;
         $this->assertAllowed($filename);
         $path = $this->baseDir . $filename;
 
         if (!is_writable($path)) {
-            throw new RuntimeException("Нет прав на запись: {$filename}");
+            throw new RuntimeException(ags_fmt($lang->phpeditor['err_not_writable'], $filename));
         }
         if (trim($content) === '') {
-            throw new RuntimeException("Содержимое не может быть пустым");
+            throw new RuntimeException($lang->phpeditor['err_empty_content']);
         }
 
         // Проверка синтаксиса PHP
@@ -96,7 +114,7 @@ class PhpEditor
             exec('php -l ' . escapeshellarg($tmpFile) . ' 2>&1', $output, $code);
             unlink($tmpFile);
             if ($code !== 0) {
-                throw new RuntimeException('PHP syntax error: ' . implode(' ', $output));
+                throw new RuntimeException(ags_fmt($lang->phpeditor['err_php_syntax'], implode(' ', $output)));
             }
         }
 
@@ -104,7 +122,7 @@ class PhpEditor
             $this->createBackup($filename);
         }
         if (file_put_contents($path, $content) === false) {
-            throw new RuntimeException("Ошибка сохранения файла");
+            throw new RuntimeException($lang->phpeditor['err_save_failed']);
         }
         $this->logHistory($filename, $content);
     }
@@ -130,17 +148,18 @@ class PhpEditor
 
     public function getBackupContent(string $backupFilename): string
     {
+        global $lang;
         $safe = basename($backupFilename);
         if ($safe !== $backupFilename || str_contains($backupFilename, '..')) {
-            throw new RuntimeException("Недопустимое имя файла");
+            throw new RuntimeException($lang->phpeditor['err_invalid_filename']);
         }
         $path = $this->backupDir . 'daily' . DIRECTORY_SEPARATOR . $safe;
         if (!file_exists($path)) {
-            throw new RuntimeException("Файл бэкапа не найден");
+            throw new RuntimeException($lang->phpeditor['err_backup_not_found']);
         }
         $content = file_get_contents($path);
         if ($content === false) {
-            throw new RuntimeException("Не удалось прочитать файл бэкапа");
+            throw new RuntimeException($lang->phpeditor['err_backup_read_failed']);
         }
         return $content;
     }
@@ -160,12 +179,13 @@ class PhpEditor
 
     private function createBackup(string $filename): void
     {
+        global $lang;
         $source  = $this->baseDir . $filename;
         $safe    = str_replace(['/', '\\'], '__', $filename);
         $bakFile = $this->backupDir . 'daily' . DIRECTORY_SEPARATOR
                  . $safe . '.' . date('Y-m-d_His') . '.bak';
         if (!copy($source, $bakFile)) {
-            throw new RuntimeException("Не удалось создать бэкап");
+            throw new RuntimeException($lang->phpeditor['err_backup_failed']);
         }
         $this->cleanupOldBackups();
     }
@@ -209,12 +229,13 @@ class PhpEditor
 
     private function assertAllowed(string $filename): void
     {
+        global $lang;
         // Защита от path traversal
         if (str_contains($filename, '..') || str_contains($filename, "\0")) {
-            throw new RuntimeException("Недопустимое имя файла");
+            throw new RuntimeException($lang->phpeditor['err_invalid_filename']);
         }
         if (!in_array($filename, $this->allowedFiles, true)) {
-            throw new RuntimeException("Доступ запрещён: {$filename}");
+            throw new RuntimeException(ags_fmt($lang->phpeditor['err_access_denied'], $filename));
         }
     }
 }
@@ -253,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
 
     if (!verify_post_check($mybb->get_input('my_post_key'))) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid security token. Please reload the page.']);
+        echo json_encode(['status' => 'error', 'message' => $lang->phpeditor['err_invalid_token']], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -271,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
                 $editor->saveFile($filename, $content, $makeBackup);
                 echo json_encode([
                     'status'  => 'success',
-                    'message' => $makeBackup ? 'Файл сохранён с бэкапом!' : 'Файл сохранён!',
+                    'message' => $makeBackup ? $lang->phpeditor['flash_saved_backup'] : $lang->phpeditor['flash_saved'],
                     'info'    => $editor->getFileInfo($filename),
                 ]);
                 break;
@@ -294,7 +315,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
                 break;
 
             default:
-                throw new RuntimeException("Неизвестное действие: {$action}");
+                throw new RuntimeException(ags_fmt($lang->phpeditor['err_unknown_action'], $action));
         }
     } catch (Exception $e) {
         http_response_code(400);
@@ -309,12 +330,23 @@ try {
     $backups         = $editor->getBackups($currentFile);
     $fileInfo        = $editor->getFileInfo($currentFile);
 } catch (Exception $e) {
-    die('Ошибка: ' . htmlspecialchars($e->getMessage()));
+    die(htmlspecialchars(ags_fmt($lang->phpeditor['err_page'], $e->getMessage())));
 }
 
 $cmMode = getCodemirrorMode($currentFile);
 
-stdhead('PHP Editor');
+// js_* → массив без префикса для AGS_LANG
+$jsLang = [];
+foreach ($lang->phpeditor as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = $v;
+    }
+}
+
+global $BASEURL;
+$h = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+stdhead($lang->phpeditor['page_title']);
 ?>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
@@ -324,37 +356,17 @@ stdhead('PHP Editor');
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 
-<style>
-:root {
-    --editor-height: 70vh;
-    --card-bg: #ffffff;
-    --border-color: #dee2e6;
-    --text-color: #212529;
-    --primary-color: #0d6efd;
-    --hover-bg: #f1f1f1;
-}
-.CodeMirror { height: var(--editor-height); font-size: 14px; border: 1px solid var(--border-color); border-radius: 4px; }
-.CodeMirror-dialog { position: absolute; left: 0; right: 0; background: white; z-index: 15; padding: 5px; border-bottom: 1px solid var(--border-color); overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-.CodeMirror-dialog input { border: 1px solid var(--border-color); padding: 5px 10px; width: 80%; outline: none; }
-.CodeMirror-dialog button { border: 1px solid var(--border-color); background: var(--primary-color); color: white; padding: 5px 10px; margin-left: 5px; cursor: pointer; }
-.backup-item { cursor: pointer; transition: background-color 0.2s; }
-.backup-item:hover { background-color: var(--hover-bg); }
-.backup-item.active-file { background-color: #e7f3ff !important; font-weight: bold; }
-.backup-item .badge { margin-right: 5px; font-size: 0.75rem; }
-.tab-content { background-color: var(--card-bg); border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 15px; }
-.file-info-bar { font-size: 12px; background: #f8f9fa; border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 10px; }
-.syntax-ok  { color: #198754; }
-.syntax-err { color: #dc3545; }
-</style>
+<link rel="stylesheet" href="<?= $h((string)$BASEURL) ?>/admin/templates/phpeditor.css?ver=22">
 
+<div class="phpeditor-page">
 <div class="container mt-3">
     <div class="card shadow-sm">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-file-code me-2"></i>PHP Editor</h5>
+            <h5 class="mb-0"><i class="fas fa-file-code me-2"></i><?= $h($lang->phpeditor['hdr_title']) ?></h5>
             <div class="d-flex align-items-center gap-2">
                 <form method="get" action="index.php" class="me-2 mb-0">
                     <input type="hidden" name="act" value="phpeditor">
-                    <select name="file" class="form-select form-select-sm" onchange="this.form.submit()" style="max-width:300px">
+                    <select name="file" class="form-select form-select-sm" onchange="this.form.submit()" style="max-width:300px" aria-label="<?= $h($lang->phpeditor['aria_select_file']) ?>">
                         <?php foreach (PHP_ALLOWED_FILES as $file): ?>
                         <option value="<?= htmlspecialchars($file) ?>" <?= $file === $currentFile ? 'selected' : '' ?>>
                             <?= htmlspecialchars($file) ?>
@@ -370,39 +382,39 @@ stdhead('PHP Editor');
             <div class="file-info-bar d-flex gap-3 align-items-center" id="fileInfoBar">
                 <span><i class="fas fa-file me-1 text-muted"></i><?= htmlspecialchars($currentFile) ?></span>
                 <span><i class="fas fa-weight me-1 text-muted"></i><?= phpFormatSize($fileInfo['size'] ?? 0) ?></span>
-                <span><i class="fas fa-list-ol me-1 text-muted"></i><?= ($fileInfo['lines'] ?? 0) ?> lines</span>
+                <span><i class="fas fa-list-ol me-1 text-muted"></i><?= $h(ags_fmt($lang->phpeditor['lbl_info_lines'], (int)($fileInfo['lines'] ?? 0))) ?></span>
                 <span><i class="fas fa-clock me-1 text-muted"></i><?= htmlspecialchars($fileInfo['modified'] ?? '') ?></span>
                 <span id="syntaxStatus"></span>
                 <?php if (!($fileInfo['writable'] ?? false)): ?>
-                <span class="text-danger"><i class="fas fa-lock me-1"></i>Read only</span>
+                <span class="text-danger"><i class="fas fa-lock me-1"></i><?= $h($lang->phpeditor['lbl_read_only']) ?></span>
                 <?php endif; ?>
             </div>
         </div>
 
         <div class="card-body">
             <input type="hidden" id="myPostKey" value="<?= htmlspecialchars($mybb->post_code) ?>">
-            <textarea id="codeEditor" data-file="<?= htmlspecialchars($currentFile) ?>"><?= htmlspecialchars($currentContent) ?></textarea>
+            <textarea id="codeEditor" data-file="<?= htmlspecialchars($currentFile) ?>" data-cm-mode="<?= $h($cmMode) ?>"><?= htmlspecialchars($currentContent) ?></textarea>
 
             <div class="d-flex justify-content-between align-items-center mt-3">
                 <div class="d-flex gap-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="backupCheck" checked>
                         <label class="form-check-label" for="backupCheck">
-                            <i class="fas fa-copy me-1"></i>Backup
+                            <i class="fas fa-copy me-1"></i><?= $h($lang->phpeditor['lbl_backup']) ?>
                         </label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="syntaxCheckToggle" checked>
                         <label class="form-check-label" for="syntaxCheckToggle">
-                            <i class="fas fa-check-circle me-1"></i>Syntax check
+                            <i class="fas fa-check-circle me-1"></i><?= $h($lang->phpeditor['lbl_syntax_check']) ?>
                         </label>
                     </div>
                 </div>
                 <div class="btn-group btn-group-sm">
-                    <button id="findBtn"   class="btn btn-warning"><i class="fas fa-search me-1"></i>Search</button>
-                    <button id="formatBtn" class="btn btn-info"><i class="fas fa-indent me-1"></i>Format</button>
-                    <button id="saveBtn"   class="btn btn-success"><i class="fas fa-save me-1"></i>Save</button>
-                    <button id="reloadBtn" class="btn btn-outline-secondary"><i class="fas fa-sync-alt me-1"></i>Reload</button>
+                    <button id="findBtn"   class="btn btn-warning"><i class="fas fa-search me-1"></i><?= $h($lang->phpeditor['btn_search']) ?></button>
+                    <button id="formatBtn" class="btn btn-info"><i class="fas fa-indent me-1"></i><?= $h($lang->phpeditor['btn_format']) ?></button>
+                    <button id="saveBtn"   class="btn btn-success"><i class="fas fa-save me-1"></i><?= $h($lang->phpeditor['btn_save']) ?></button>
+                    <button id="reloadBtn" class="btn btn-outline-secondary"><i class="fas fa-sync-alt me-1"></i><?= $h($lang->phpeditor['btn_reload']) ?></button>
                 </div>
             </div>
         </div>
@@ -412,17 +424,17 @@ stdhead('PHP Editor');
             <ul class="nav nav-tabs card-header-tabs" role="tablist">
                 <li class="nav-item">
                     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#backups">
-                        <i class="fas fa-history me-1"></i>Backups
+                        <i class="fas fa-history me-1"></i><?= $h($lang->phpeditor['tab_backups']) ?>
                     </button>
                 </li>
                 <li class="nav-item">
                     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">
-                        <i class="fas fa-chart-bar me-1"></i>Statistics
+                        <i class="fas fa-chart-bar me-1"></i><?= $h($lang->phpeditor['tab_stats']) ?>
                     </button>
                 </li>
                 <li class="nav-item">
                     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#help">
-                        <i class="fas fa-question-circle me-1"></i>Help
+                        <i class="fas fa-question-circle me-1"></i><?= $h($lang->phpeditor['tab_help']) ?>
                     </button>
                 </li>
             </ul>
@@ -431,15 +443,15 @@ stdhead('PHP Editor');
                 <!-- Backups -->
                 <div class="tab-pane fade show active" id="backups">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="mb-0">Backups for <code><?= htmlspecialchars($currentFile) ?></code></h6>
+                        <h6 class="mb-0"><?= ags_fmt($h($lang->phpeditor['sec_backups_for']), '<code>' . $h($currentFile) . '</code>') ?></h6>
                         <button id="refreshBackups" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-sync-alt me-1"></i>Reload
+                            <i class="fas fa-sync-alt me-1"></i><?= $h($lang->phpeditor['btn_refresh_backups']) ?>
                         </button>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
                             <thead>
-                                <tr><th>Date</th><th>Size</th><th>Action</th></tr>
+                                <tr><th><?= $h($lang->phpeditor['th_date']) ?></th><th><?= $h($lang->phpeditor['th_size']) ?></th><th><?= $h($lang->phpeditor['th_action']) ?></th></tr>
                             </thead>
                             <tbody id="backupsList">
                             <?php foreach ($backups as $backup):
@@ -454,17 +466,17 @@ stdhead('PHP Editor');
                                 </td>
                                 <td><?= phpFormatSize($backup['size']) ?></td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-primary view-backup" title="View">
+                                    <button class="btn btn-sm btn-outline-primary view-backup" title="<?= $h($lang->phpeditor['title_view']) ?>">
                                         <i class="fas fa-eye"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-success restore-backup" title="Restore">
+                                    <button class="btn btn-sm btn-outline-success restore-backup" title="<?= $h($lang->phpeditor['title_restore']) ?>">
                                         <i class="fas fa-undo"></i>
                                     </button>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
                             <?php if (empty($backups)): ?>
-                            <tr><td colspan="3" class="text-center text-muted py-3">No backups yet</td></tr>
+                            <tr><td colspan="3" class="text-center text-muted py-3"><?= $h($lang->phpeditor['lbl_no_backups']) ?></td></tr>
                             <?php endif; ?>
                             </tbody>
                         </table>
@@ -475,30 +487,30 @@ stdhead('PHP Editor');
                 <div class="tab-pane fade" id="stats">
                     <div class="row">
                         <div class="col-md-6">
-                            <h6>File Statistics:</h6>
+                            <h6><?= $h($lang->phpeditor['sec_file_stats']) ?></h6>
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item d-flex justify-content-between">
-                                    Lines <span class="badge bg-primary rounded-pill" id="statsLines">0</span>
+                                    <?= $h($lang->phpeditor['lbl_lines']) ?> <span class="badge bg-primary rounded-pill" id="statsLines">0</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between">
-                                    Functions <span class="badge bg-primary rounded-pill" id="statsFunctions">0</span>
+                                    <?= $h($lang->phpeditor['lbl_functions']) ?> <span class="badge bg-primary rounded-pill" id="statsFunctions">0</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between">
-                                    Classes <span class="badge bg-primary rounded-pill" id="statsClasses">0</span>
+                                    <?= $h($lang->phpeditor['lbl_classes']) ?> <span class="badge bg-primary rounded-pill" id="statsClasses">0</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between">
-                                    Comments <span class="badge bg-secondary rounded-pill" id="statsComments">0</span>
+                                    <?= $h($lang->phpeditor['lbl_comments']) ?> <span class="badge bg-secondary rounded-pill" id="statsComments">0</span>
                                 </li>
                             </ul>
                         </div>
                         <div class="col-md-6">
-                            <h6>File Size:</h6>
+                            <h6><?= $h($lang->phpeditor['sec_file_size']) ?></h6>
                             <div class="progress mb-2" style="height:20px">
                                 <div class="progress-bar bg-dark" id="sizeBar" style="width:0%"></div>
                             </div>
                             <div class="d-flex justify-content-between">
-                                <small>Current: <strong id="currentSize">0 B</strong></small>
-                                <small>Original: <strong id="originalSize"><?= phpFormatSize($fileInfo['size'] ?? 0) ?></strong></small>
+                                <small><?= $h($lang->phpeditor['lbl_current_size']) ?> <strong id="currentSize">0 B</strong></small>
+                                <small><?= $h($lang->phpeditor['lbl_original_size']) ?> <strong id="originalSize"><?= phpFormatSize($fileInfo['size'] ?? 0) ?></strong></small>
                             </div>
                         </div>
                     </div>
@@ -508,30 +520,29 @@ stdhead('PHP Editor');
                 <div class="tab-pane fade" id="help">
                     <div class="row">
                         <div class="col-md-6">
-                            <h6>Keyboard Shortcuts:</h6>
+                            <h6><?= $h($lang->phpeditor['sec_shortcuts']) ?></h6>
                             <ul class="list-unstyled small">
-                                <li><kbd>Ctrl+S</kbd> — Save file</li>
-                                <li><kbd>Ctrl+F</kbd> — Search</li>
-                                <li><kbd>Ctrl+H</kbd> — Find & Replace</li>
-                                <li><kbd>Ctrl+G</kbd> — Go to line</li>
-                                <li><kbd>Ctrl+Space</kbd> — Autocomplete</li>
-                                <li><kbd>Alt+F</kbd> — Format code</li>
-                                <li><kbd>Ctrl+/</kbd> — Toggle comment</li>
-                                <li><kbd>Ctrl+Z</kbd> — Undo</li>
-                                <li><kbd>Ctrl+Y</kbd> — Redo</li>
+                                <li><kbd>Ctrl+S</kbd> — <?= $h($lang->phpeditor['hint_key_save']) ?></li>
+                                <li><kbd>Ctrl+F</kbd> — <?= $h($lang->phpeditor['hint_key_search']) ?></li>
+                                <li><kbd>Ctrl+H</kbd> — <?= $h($lang->phpeditor['hint_key_replace']) ?></li>
+                                <li><kbd>Ctrl+G</kbd> — <?= $h($lang->phpeditor['hint_key_goto']) ?></li>
+                                <li><kbd>Ctrl+Space</kbd> — <?= $h($lang->phpeditor['hint_key_autocomplete']) ?></li>
+                                <li><kbd>Alt+F</kbd> — <?= $h($lang->phpeditor['hint_key_format']) ?></li>
+                                <li><kbd>Ctrl+/</kbd> — <?= $h($lang->phpeditor['hint_key_comment']) ?></li>
+                                <li><kbd>Ctrl+Z</kbd> — <?= $h($lang->phpeditor['hint_key_undo']) ?></li>
+                                <li><kbd>Ctrl+Y</kbd> — <?= $h($lang->phpeditor['hint_key_redo']) ?></li>
                             </ul>
                         </div>
                         <div class="col-md-6">
-                            <h6>Supported file types:</h6>
+                            <h6><?= $h($lang->phpeditor['sec_file_types']) ?></h6>
                             <ul class="list-unstyled small">
                                 <?php foreach (PHP_ALLOWED_EXTENSIONS as $ext): ?>
                                 <li><span class="badge bg-dark">.<?= $ext ?></span></li>
                                 <?php endforeach; ?>
                             </ul>
-                            <h6 class="mt-3">Notes:</h6>
+                            <h6 class="mt-3"><?= $h($lang->phpeditor['sec_notes']) ?></h6>
                             <p class="small text-muted">
-                                PHP files are syntax-checked before save.
-                                Always backup before major edits.
+                                <?= $h($lang->phpeditor['hint_notes']) ?>
                             </p>
                         </div>
                     </div>
@@ -546,19 +557,20 @@ stdhead('PHP Editor');
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Backup preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><?= $h($lang->phpeditor['modal_backup_title']) ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $h($lang->phpeditor['btn_close']) ?>"></button>
             </div>
             <div class="modal-body p-0" style="overflow:hidden">
                 <div id="backupViewerContainer"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="restoreFromModal">Load into editor</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $h($lang->phpeditor['btn_close']) ?></button>
+                <button type="button" class="btn btn-primary" id="restoreFromModal"><?= $h($lang->phpeditor['btn_load_into_editor']) ?></button>
             </div>
         </div>
     </div>
 </div>
+</div><!-- /.phpeditor-page -->
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -583,256 +595,8 @@ stdhead('PHP Editor');
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchtags.min.js"></script>
 
 <script>
-'use strict';
-
-const AJAX_URL    = (() => {
-    const p = new URLSearchParams(window.location.search);
-    return window.location.pathname + '?act=' + (p.get('act') || 'phpeditor');
-})();
-const CURRENT_FILE = document.getElementById('codeEditor').dataset.file;
-const CM_MODE      = <?= json_encode($cmMode) ?>;
-
-// ── Редактор ──────────────────────────────────────────────
-const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
-    lineNumbers:       true,
-    mode:              CM_MODE,
-    theme:             'eclipse',
-    indentUnit:        4,
-    tabSize:           4,
-    indentWithTabs:    false,
-    lineWrapping:      false,
-    autoCloseBrackets: true,
-    matchBrackets:     true,
-    matchTags:         true,
-    foldGutter:        true,
-    gutters:           ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
-    extraKeys: {
-        'Ctrl-S':       () => saveFile(),
-        'Ctrl-F':       'findPersistent',
-        'Ctrl-H':       'replace',
-        'Ctrl-G':       'findNext',
-        'Shift-Ctrl-G': 'findPrev',
-        'Ctrl-Space':   'autocomplete',
-        'Alt-F':        () => formatCode(),
-        'Ctrl-/':       'toggleComment',
-    },
-    hintOptions: { completeSingle: false },
-});
-
-// ── Просмотрщик бэкапов ───────────────────────────────────
-let backupViewerCM = null;
-function getBackupViewer() {
-    if (backupViewerCM) return backupViewerCM;
-    backupViewerCM = CodeMirror(document.getElementById('backupViewerContainer'), {
-        lineNumbers: true,
-        mode:        CM_MODE,
-        theme:       'eclipse',
-        readOnly:    true,
-        value:       '',
-    });
-    backupViewerCM.setSize('100%', '60vh');
-    return backupViewerCM;
-}
-
-const backupModal = new bootstrap.Modal(document.getElementById('backupModal'));
-
-// ── Toast ─────────────────────────────────────────────────
-function showAlert(type, message, timer = 3000) {
-    Swal.fire({ icon: type, title: message, timer, showConfirmButton: false, toast: true, position: 'top-end' });
-}
-
-// ── AJAX ──────────────────────────────────────────────────
-function ajaxPost(data) {
-    const myPostKey = document.getElementById('myPostKey')?.value || '';
-    return fetch(AJAX_URL, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    new URLSearchParams({ ajax: '1', file: CURRENT_FILE, my_post_key: myPostKey, ...data }),
-    }).then(r => r.json());
-}
-
-// ── Сохранение ────────────────────────────────────────────
-function saveFile() {
-    const content = editor.getValue();
-    const backup  = document.getElementById('backupCheck').checked;
-
-    ajaxPost({ action: 'save', content, backup: backup ? '1' : '0' })
-        .then(d => {
-            if (d.status === 'success') {
-                showAlert('success', d.message);
-                if (d.info) updateFileInfoBar(d.info);
-                updateStats();
-            } else {
-                showAlert('error', d.message);
-            }
-        })
-        .catch(e => showAlert('error', e.message));
-}
-
-// ── Форматирование ────────────────────────────────────────
-function formatCode() {
-    const cur = editor.getCursor();
-    const content = editor.getValue();
-
-    // Простое форматирование отступов
-    const lines    = content.split('\n');
-    let   indent   = 0;
-    const formatted = lines.map(line => {
-        const trimmed = line.trim();
-        if (!trimmed) return '';
-        if (trimmed.match(/^[}\])]/) ) indent = Math.max(0, indent - 1);
-        const result = '    '.repeat(indent) + trimmed;
-        if (trimmed.match(/[{[(]$/)  ) indent++;
-        return result;
-    });
-
-    editor.setValue(formatted.join('\n'));
-    editor.setCursor(cur);
-    showAlert('success', 'Отформатировано');
-}
-
-// ── Статистика ────────────────────────────────────────────
-function updateStats() {
-    const c = editor.getValue();
-    const lines     = c.split('\n').length;
-    const functions = (c.match(/function\s+\w+\s*\(/g)    || []).length;
-    const classes   = (c.match(/\bclass\s+\w+/g)           || []).length;
-    const comments  = (c.match(/\/\/.*|\/\*[\s\S]*?\*\//g) || []).length;
-    const bytes     = new TextEncoder().encode(c).length;
-
-    document.getElementById('statsLines').textContent     = lines;
-    document.getElementById('statsFunctions').textContent = functions;
-    document.getElementById('statsClasses').textContent   = classes;
-    document.getElementById('statsComments').textContent  = comments;
-    document.getElementById('currentSize').textContent    = formatBytes(bytes);
-
-    const origBytes = parseInt(document.getElementById('originalSize').textContent) || bytes;
-    const pct       = Math.min(Math.round((bytes / Math.max(origBytes, 1)) * 100), 100);
-    document.getElementById('sizeBar').style.width   = pct + '%';
-    document.getElementById('sizeBar').textContent   = pct + '%';
-
-    // Подсветка синтаксиса в строке статуса
-    if (document.getElementById('syntaxCheckToggle').checked && CM_MODE.includes('php')) {
-        checkSyntax(c);
-    }
-}
-
-function formatBytes(b) {
-    if (!b) return '0 B';
-    const u = ['B','KB','MB'], i = Math.floor(Math.log(b) / Math.log(1024));
-    return (b / 1024**i).toFixed(2) + ' ' + u[i];
-}
-
-// Простая клиентская проверка синтаксиса (только базовые ошибки)
-function checkSyntax(code) {
-    const el     = document.getElementById('syntaxStatus');
-    const errors = [];
-
-    // Проверяем баланс скобок
-    let braces = 0, parens = 0, brackets = 0;
-    let inStr = false, strChar = '', inComment = false;
-
-    for (let i = 0; i < code.length; i++) {
-        const ch = code[i];
-        if (inComment) {
-            if (ch === '*' && code[i+1] === '/') { inComment = false; i++; }
-            continue;
-        }
-        if (!inStr && ch === '/' && code[i+1] === '*') { inComment = true; i++; continue; }
-        if (!inStr && ch === '/' && code[i+1] === '/') { while (i < code.length && code[i] !== '\n') i++; continue; }
-        if (!inStr && (ch === '"' || ch === "'")) { inStr = true; strChar = ch; continue; }
-        if (inStr && ch === strChar && code[i-1] !== '\\') { inStr = false; continue; }
-        if (inStr) continue;
-
-        if (ch === '{') braces++;   else if (ch === '}') braces--;
-        if (ch === '(') parens++;   else if (ch === ')') parens--;
-        if (ch === '[') brackets++; else if (ch === ']') brackets--;
-    }
-
-    if (braces   !== 0) errors.push('Unbalanced {}');
-    if (parens   !== 0) errors.push('Unbalanced ()');
-    if (brackets !== 0) errors.push('Unbalanced []');
-
-    if (errors.length) {
-        el.innerHTML = '<span class="syntax-err"><i class="fas fa-times-circle me-1"></i>' + errors.join(', ') + '</span>';
-    } else {
-        el.innerHTML = '<span class="syntax-ok"><i class="fas fa-check-circle me-1"></i>OK</span>';
-    }
-}
-
-function updateFileInfoBar(info) {
-    if (info.lines)    document.querySelector('.file-info-bar span:nth-child(3)').textContent = '📄 ' + info.lines + ' lines';
-    if (info.modified) document.querySelector('.file-info-bar span:nth-child(4)').textContent = '🕐 ' + info.modified;
-}
-
-// ── Бэкапы ────────────────────────────────────────────────
-document.getElementById('backupsList').addEventListener('click', function (e) {
-    const row  = e.target.closest('.backup-item');
-    if (!row) return;
-    const file = row.dataset.file;
-    if (e.target.closest('.view-backup'))    loadBackup(file, false);
-    if (e.target.closest('.restore-backup')) loadBackup(file, true);
-});
-
-function loadBackup(backupFile, intoEditor = false) {
-    ajaxPost({ action: 'get_backup_content', backup_file: backupFile })
-        .then(d => {
-            if (d.status !== 'success') { showAlert('error', d.message); return; }
-            if (intoEditor) {
-                editor.setValue(d.content);
-                showAlert('success', 'Бэкап загружен в редактор');
-                return;
-            }
-            getBackupViewer().setValue(d.content);
-            backupModal.show();
-            backupModal._element.addEventListener('shown.bs.modal', () => getBackupViewer().refresh(), { once: true });
-        })
-        .catch(e => showAlert('error', e.message));
-}
-
-document.getElementById('restoreFromModal').addEventListener('click', () => {
-    editor.setValue(getBackupViewer().getValue());
-    backupModal.hide();
-    showAlert('success', 'Содержимое загружено в редактор');
-});
-
-document.getElementById('refreshBackups').addEventListener('click', () => {
-    ajaxPost({ action: 'get_backups' })
-        .then(d => {
-            if (d.status !== 'success') { showAlert('error', d.message); return; }
-            const tbody = document.getElementById('backupsList');
-            if (!d.backups.length) {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">No backups yet</td></tr>';
-                return;
-            }
-            const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-            tbody.innerHTML = d.backups.map(b => `
-                <tr class="backup-item" data-file="${esc(b.file)}">
-                    <td><span class="badge bg-secondary">${esc(b.file.replace(/\.\d{4}-\d{2}-\d{2}.*\.bak$/, '').replace(/__/g, '/'))}</span> ${esc(b.date)}</td>
-                    <td>${esc(b.size_fmt)}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary view-backup"><i class="fas fa-eye"></i></button>
-                        <button class="btn btn-sm btn-outline-success restore-backup"><i class="fas fa-undo"></i></button>
-                    </td>
-                </tr>`).join('');
-            showAlert('success', 'Список обновлён');
-        });
-});
-
-// ── Кнопки ────────────────────────────────────────────────
-document.getElementById('saveBtn').addEventListener('click',   saveFile);
-document.getElementById('formatBtn').addEventListener('click', formatCode);
-document.getElementById('findBtn').addEventListener('click',   () => editor.execCommand('findPersistent'));
-document.getElementById('reloadBtn').addEventListener('click', () => location.reload());
-
-// ── Изменения в редакторе ─────────────────────────────────
-editor.on('change', () => {
-    clearTimeout(window._statsTimer);
-    window._statsTimer = setTimeout(updateStats, 800);
-});
-
-// ── Инициализация ─────────────────────────────────────────
-updateStats();
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
+<script src="<?= $h((string)$BASEURL) ?>/admin/scripts/phpeditor.js?ver=1"></script>
 
 <?php stdfoot(); ?>

@@ -667,6 +667,18 @@ You do not have permission to access this page. This could be because of one of 
     'js_dlg_cancel'             => 'Cancel',
 
 
+
+// english — ── Pager (functions_multipage.php) ──
+'mp_pages'    => 'Pages ({1}):',
+'mp_showing'  => 'Showing {1} to {2} of {3} entries',
+'mp_jump'     => 'Jump to Page',
+'mp_of_total' => 'of {1} total',
+'mp_page_ph'  => 'Page #',
+'mp_go'       => 'Go',
+'mp_range'    => 'Enter page number 1-{1}',
+
+
+
 	
 	
 	

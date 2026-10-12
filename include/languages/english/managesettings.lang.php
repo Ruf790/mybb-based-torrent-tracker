@@ -624,9 +624,20 @@ $language['managesettings'] = array
 	'hint_iu_deleteafter'     => 'How many days after the warning e-mail the account may be deleted. Also shown in the e-mail.',
 	'lbl_iu_protect_groups'   => 'Protected groups',
 	'hint_iu_protect_groups'  => 'Accounts in these groups can never be deleted from this tool. Moderators, administrators and sysops are always protected.',
-	
-	
-	
+
+	// ── Tracker: upload size limits ──────────────────────────────
+	'sec_upload_limits'           => 'Upload size limits',
+	'hint_upload_limits_server'   => 'Values in MB. The server itself accepts at most upload_max_filesize = {1}, post_max_size = {2} (php.ini) — a larger value here will not take effect.',
+	'lbl_upload_editor_img_mb'    => 'Editor images, MB',
+	'hint_upload_editor_img_mb'   => 'Largest picture that can be uploaded with the "Upload Image" button of the BBCode editor',
+	'lbl_upload_att_video_mb'     => 'Attachments: video, MB',
+	'hint_upload_att_video_mb'    => 'Largest video file attached to a comment. 2048 = 2 GB',
+	'lbl_upload_att_audio_mb'     => 'Attachments: audio, MB',
+	'hint_upload_att_audio_mb'    => 'Largest audio file attached to a comment',
+	'lbl_upload_att_image_mb'     => 'Attachments: images, MB',
+	'hint_upload_att_image_mb'    => 'Largest picture attached to a comment',
+	'lbl_upload_att_other_mb'     => 'Attachments: other files, MB',
+	'hint_upload_att_other_mb'    => 'Documents, archives, subtitles and other attached files',
 
 );
 ?>

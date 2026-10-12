@@ -706,4 +706,10 @@ Thank you,
 'js_report_tpl_user'      => '- Reported User: {1}',
 'js_report_tpl_evidence'  => '- Evidence:',
 
+
+// english
+'lbl_language'  => "Language",
+'hint_language' => "Site interface and e-mails will be in this language.",
+
+
 );

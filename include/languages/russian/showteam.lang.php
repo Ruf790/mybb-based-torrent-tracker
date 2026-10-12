@@ -1,44 +1,23 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- */
-
-
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
 // showteam.php
-$language['showteam'] = array 
+$language['showteam'] = array
 (
+// ── Page ──
+'nav_showteam'        => 'Команда трекера',
+'error_noteamstoshow' => 'Сейчас в команде трекера некого показать.',
 
-'postbit_email' => "Send this user an email",
+// ── Status ──
+'lbl_online'          => 'В сети',
+'lbl_offline'         => 'Не в сети',
+'tip_lastvisit'       => 'Последний визит',
 
-'postbit_button_email' => 'Email',
-
-'postbit_pm' => "Send this user a private message",
-
-'postbit_button_pm' => 'PM',
-
-'nav_showteam' => "Tracker Team",
-'forum_team' => "Forum Team",
-'moderators' => "Moderators",
-'username' => "Username",
-'lastvisit' => "Last Visit",
-'email' => "Email",
-'pm' => "PM",
-'mod_forums' => "Forum(s)",
-'mod_groups' => "Group(s)",
-'online' => "Online",
-'offline' => "Offline",
-'away' => "Away",
-
-'group_leaders' => "Group Leaders",
-'group_members' => "Member(s)",
-
-'no_members' => "No members in this group",
-'showteam_disabled' => "The forum team listing functionality has been disabled by the Administrator.",
-'error_noteamstoshow' => "There are no forum staff to be shown.",
-
+// ── Contact buttons ──
+'btn_email'           => 'E-mail',
+'btn_pm'              => 'ЛС',
+'tip_email'           => 'Написать {1} на e-mail',
+'tip_pm'              => 'Отправить {1} личное сообщение',
 );
+?>

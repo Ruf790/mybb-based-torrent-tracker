@@ -1,24 +1,5 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English Language File
-Translation by xam Version: 0.2
 
-*/
 
 if(!defined('IN_TRACKER'))
  die('Hacking attempt!');
@@ -33,27 +14,27 @@ $language['takewhatever'] = array
 	'takereseedhead'			=>'Reseed Request!',
 	'message'					=>'Message:',
 	'takereseednouser'			=>'No users found for reseed request!',
-	'nodupe'					=>'No dublicate reseed request allowed!',	
+	'nodupe'					=>'No duplicate reseed request allowed!',	
 	'thankyou'					=>'Thank You!',
-	'reseedsubject'				=>'Reseed request (TID: {1})',
+	'reseedsubject'				=>'🌱 Reseed request (TID: {1})',
 	'cantthankowntorrent'		=>'You can\'t thank your own torrents!',
 	'alreadythanked'				=>'You have already thanked this torrent!',
-	'reseedmsg'=>'Hello {1},
+	'reseedmsg'=>'👋 Hello {1}!
 
-This torrent: {2} Requires seeding.
+🔥 This torrent needs seeders: {2}
 
-In checking the snatched list I see that you you have downloaded it.
-As there are people stuck on it, could I please get you to reseed it to help them out.
-Your help and commitment in seeding this torrent would be greatly appreciated.
+📋 The snatch list shows that you have downloaded it.
+⏳ People are stuck on it right now, so could you please seed it again and help them finish?
+💚 Your help in seeding this torrent would be greatly appreciated.
 
-Please reply to this message and indicate if you are seeding, or if not, why.
-Please seed so we don\'t have to send a second request
+✉️ Please reply to this message and let us know whether you are seeding, and if not, why.
+🙏 Please seed, so we don\'t have to send a second request.
 
-You have the following stats on this torrent:
-Your upload was {3}, 
-Your download was {4}.
+📊 Your stats on this torrent:
+⬆️ Uploaded: {3}
+⬇️ Downloaded: {4}
 
-Thank You in advance,
-Please note: This is a Automatically generated request. ',// added in v4.0
+Thank you in advance!
+🤖 Please note: this is an automatically generated request.',// added in v4.0
 );
 ?>

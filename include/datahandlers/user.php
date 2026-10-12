@@ -394,6 +394,7 @@ class UserDataHandler extends DataHandler
         global $lang;
 
         $language = &$this->data['language'];
+        $language = (string)($language ?? '');
 
         if ($language !== '' && !$lang->language_exists($language)) {
             $this->set_error('invalid_language');
@@ -514,6 +515,7 @@ public function validate_user(): bool
         'lastvisit'      => 'verify_lastvisit',
         'lastactive'     => 'verify_lastactive',
         'timezone'       => 'verify_timezone',
+        'language'       => 'verify_language',
         'signature'      => 'verify_signature',
     ];
     foreach ($checks as $key => $method) {
@@ -612,6 +614,7 @@ public function validate_user(): bool
             'pmnotify'           => (int)$user['options']['pmnotify'],
             'invisible'          => (int)$user['options']['invisible'],
             'timezone'           => $user['timezone'],
+            'language'           => ($user['language'] ?? '') !== '' ? (string)$user['language'] : 'english',
             'dstcorrection'      => (int)$user['options']['dstcorrection'],
             'threadmode'         => $user['options']['threadmode'],
             'dateformat'         => $user['dateformat'],

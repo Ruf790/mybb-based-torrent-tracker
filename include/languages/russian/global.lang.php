@@ -682,6 +682,14 @@ $language['global'] = array(
 
 
 
+// russian — ── Pager (functions_multipage.php) ──
+'mp_pages'    => 'Страницы ({1}):',
+'mp_showing'  => 'Показано {1}–{2} из {3}',
+'mp_jump'     => 'Перейти к странице',
+'mp_of_total' => 'всего {1}',
+'mp_page_ph'  => 'Номер',
+'mp_go'       => 'Перейти',
+'mp_range'    => 'Введите номер страницы от 1 до {1}',
 
 
 

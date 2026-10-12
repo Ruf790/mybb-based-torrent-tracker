@@ -5,12 +5,30 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger text-center">Error! Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('delundeletedtorrents');
+
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     http_response_code(403);
-    exit('<div class="alert alert-danger text-center">Error! You do not have permission to access this page.</div>');
+    exit('<div class="alert alert-danger text-center">' . htmlspecialchars($lang->delundeletedtorrents['err_no_permission'], ENT_QUOTES, 'UTF-8') . '</div>');
 }
 
 require_once INC_PATH . '/functions_comment_attachments.php';
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Подстановка {1}, {2}… (и %1$s, %2$s… — в них $lang->load() превращает {N}).
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
 
 /**
  * Удаляет файлы одного торрента с диска (без единого SQL-запроса —
@@ -149,9 +167,10 @@ function delete_batch(array $batch): array
 }
 
 $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+$L = $lang->delundeletedtorrents;
 
 $page_url    = $BASEURL . '/admin/index.php?act=delundeletedtorrents';
-$asset_ver   = 1;
+$asset_ver   = 2;
 $batch_limit = 200;
 
 // ── Все ID торрентов из БД (как ключи — isset() вместо in_array()) ──
@@ -160,12 +179,10 @@ $sql = $db->sql_query_prepared('SELECT id FROM torrents');
 // Критично: если запрос провалится, $sql будет false, и пустой набор ID означал бы,
 // что ВСЕ реальные раздачи сайта "осиротевшие". Прерываемся сразу.
 if (!$sql) {
-    stdhead('Delete Undeleted Torrent Files');
+    stdhead($L['page_title']);
     echo '<div class="container mt-3"><div class="alert alert-danger d-flex gap-2 align-items-start">
         <i class="fa-solid fa-database mt-1"></i>
-        <div><b>Database error</b> while fetching existing torrent IDs. Aborting for safety -
-        proceeding here would have treated every torrent on the site as "orphaned".
-        Please check the database connection and try again.</div>
+        <div><b>' . $e($L['err_db_title']) . '</b> ' . $e($L['err_db_text']) . '</div>
     </div></div>';
     stdfoot();
     exit;
@@ -202,7 +219,7 @@ sort($delete, SORT_NUMERIC);
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['sure'] ?? '') === 'yes') {
     if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
-        $error = 'Security check failed. The page may have expired - reload it and try again.';
+        $error = $L['flash_csrf'];
     } else {
         $batch = array_slice($delete, 0, $batch_limit);
         $result = delete_batch($batch);
@@ -238,9 +255,18 @@ $done_shots  = max(0, (int)($_GET['shots'] ?? 0));
 $orphans     = count($delete);
 $next_batch  = min($orphans, $batch_limit);
 
-stdhead('Delete Undeleted Torrent Files');
+stdhead($L['page_title']);
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">
+// ── Строки для JS (js_* без префикса) ──
+$js_lang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $js_lang[substr((string)$k, 3)] = $v;
+    }
+}
+
+echo '<script>const AGS_LANG = ' . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="' . $BASEURL . '/admin/templates/delundeletedtorrents.css?ver=' . $asset_ver . '">
 <script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>
 <script src="' . $BASEURL . '/admin/scripts/delundeletedtorrents.js?ver=' . $asset_ver . '"></script>';
@@ -252,8 +278,8 @@ echo '
         <div class="card-body d-flex align-items-center gap-3">
             <div class="dut-icon-square dut-soft-danger"><i class="fa-solid fa-broom"></i></div>
             <div>
-                <h1 class="dut-title">Delete undeleted torrent files</h1>
-                <div class="dut-subtitle">Finds .torrent files in <code>' . $e((string)$torrent_dir) . '/</code> that no longer have a database record and removes them together with covers, screenshots, comments and attachments.</div>
+                <h1 class="dut-title">' . $e($L['sec_title']) . '</h1>
+                <div class="dut-subtitle">' . ags_fmt($e($L['hint_subtitle']), '<code>' . $e((string)$torrent_dir) . '/</code>') . '</div>
             </div>
         </div>
     </div>';
@@ -268,10 +294,10 @@ if ($error !== '') {
 // ── KPI ──
 $orphan_tone = $orphans > 0 ? 'danger' : 'success';
 $kpis = [
-    ['fa-database',   'primary',    number_format(count($torrent_id_set)), 'Torrents in database'],
-    ['fa-hard-drive', 'info',       number_format($disk_count),            '.torrent files on disk'],
-    ['fa-link-slash', $orphan_tone, number_format($orphans),               'Orphaned files'],
-    ['fa-trash-can',  'secondary',  number_format(count($done_ids)),       'Deleted in last batch'
+    ['fa-database',   'primary',    number_format(count($torrent_id_set)), $e($L['lbl_kpi_db'])],
+    ['fa-hard-drive', 'info',       number_format($disk_count),            $e($L['lbl_kpi_disk'])],
+    ['fa-link-slash', $orphan_tone, number_format($orphans),               $e($L['lbl_kpi_orphans'])],
+    ['fa-trash-can',  'secondary',  number_format(count($done_ids)),       $e($L['lbl_kpi_last'])
         . ($done_shots > 0 ? ' <span class="dut-kpi-extra"><i class="fa-solid fa-images"></i> ' . number_format($done_shots) . '</span>' : '')],
 ];
 
@@ -297,10 +323,10 @@ if (!empty($done_ids)) {
         <div class="dut-panel-head">
             <div class="dut-icon-square dut-icon-sm dut-soft-success"><i class="fa-solid fa-circle-check"></i></div>
             <div class="flex-grow-1">
-                <div class="fw-semibold">Deleted ' . count($done_ids) . ' orphaned torrent(s)</div>
+                <div class="fw-semibold">' . $e(ags_fmt($L['flash_deleted'], count($done_ids))) . '</div>
                 <div class="dut-subtitle">' . ($done_shots > 0
-                    ? 'Also removed ' . number_format($done_shots) . ' screenshot(s). '
-                    : '') . 'Full list is saved in the staff log.</div>
+                    ? $e(ags_fmt($L['hint_done_shots'], number_format($done_shots))) . ' '
+                    : '') . $e($L['hint_done_log']) . '</div>
             </div>
         </div>
         <div class="dut-chips dut-chips-short">';
@@ -314,8 +340,8 @@ if (!empty($done_ids)) {
     <div class="toast-container position-fixed top-0 end-0 p-3">
         <div id="deletedToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
-                <div class="toast-body"><i class="fa-solid fa-circle-check me-2"></i>Deleted ' . count($done_ids) . ' orphaned torrent(s)</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                <div class="toast-body"><i class="fa-solid fa-circle-check me-2"></i>' . $e(ags_fmt($L['flash_deleted'], count($done_ids))) . '</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="' . $e($L['lbl_close']) . '"></button>
             </div>
         </div>
     </div>';
@@ -328,15 +354,15 @@ if ($orphans > 0) {
         <div class="dut-panel-head">
             <div class="dut-icon-square dut-icon-sm dut-soft-danger"><i class="fa-solid fa-file-circle-xmark"></i></div>
             <div class="flex-grow-1">
-                <div class="fw-semibold">' . number_format($orphans) . ' orphaned .torrent file(s)</div>
-                <div class="dut-subtitle">' . ($orphans > $batch_limit
-                    ? 'Deleted in batches of ' . $batch_limit . '. Highlighted files go in the next batch.'
-                    : 'All of them will be deleted in one batch.') . '</div>
+                <div class="fw-semibold">' . $e(ags_fmt($L['sec_orphans'], number_format($orphans))) . '</div>
+                <div class="dut-subtitle">' . $e($orphans > $batch_limit
+                    ? ags_fmt($L['hint_batches'], $batch_limit)
+                    : $L['hint_one_batch']) . '</div>
             </div>
             <div class="dut-filter-wrap">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="dutFilter" class="form-control form-control-sm dut-filter" inputmode="numeric" placeholder="Find ID" aria-label="Find torrent ID">
-                <span class="dut-filter-count"><span id="dutFilterCount">' . $orphans . '</span> shown</span>
+                <input type="text" id="dutFilter" class="form-control form-control-sm dut-filter" inputmode="numeric" placeholder="' . $e($L['ph_filter']) . '" aria-label="' . $e($L['lbl_filter']) . '">
+                <span class="dut-filter-count">' . ags_fmt($e($L['lbl_shown']), '<span id="dutFilterCount">' . $orphans . '</span>') . '</span>
             </div>
         </div>
         <div class="dut-chips" id="dutOrphanList">';
@@ -353,18 +379,18 @@ if ($orphans > 0) {
         <input type="hidden" name="my_post_key" value="' . $e((string)($mybb->post_code ?? '')) . '">
         <div class="d-flex align-items-center gap-2">
             <i class="fa-solid fa-layer-group text-body-secondary"></i>
-            <span>Next batch: <b>' . $next_batch . '</b> of ' . number_format($orphans) . '</span>
+            <span>' . ags_fmt($e($L['lbl_next_batch']), '<b>' . $next_batch . '</b>', number_format($orphans)) . '</span>
         </div>
         <button type="submit" class="btn btn-danger dut-btn-pill">
-            <i class="fa-solid fa-trash-can me-2"></i>' . ($orphans > $batch_limit ? 'Delete next ' . $next_batch : 'Delete all ' . $next_batch) . '
+            <i class="fa-solid fa-trash-can me-2"></i>' . $e(ags_fmt($orphans > $batch_limit ? $L['btn_delete_next'] : $L['btn_delete_all'], $next_batch)) . '
         </button>
     </form>';
 } else {
     echo '
     <div class="dut-panel dut-empty">
         <div class="dut-icon-square dut-soft-success"><i class="fa-solid fa-circle-check"></i></div>
-        <div class="fw-semibold fs-5 mt-3">All clean</div>
-        <div class="dut-subtitle">Every .torrent file on disk has a matching torrent in the database.</div>
+        <div class="fw-semibold fs-5 mt-3">' . $e($L['sec_clean']) . '</div>
+        <div class="dut-subtitle">' . $e($L['hint_clean']) . '</div>
     </div>';
 }
 

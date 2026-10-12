@@ -26,7 +26,7 @@ if (!defined('IN_TRACKER')) {
     </script>
     
   
-    <script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/scripts/general.js?ver=1827"></script>
+    <script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/scripts/core.js?ver=12"></script>
     <script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/scripts/bootstrap.bundle.min.js"></script>
     
     <?= isset($includeCSS) ? $includeCSS : '' ?>
@@ -46,33 +46,10 @@ if (!defined('IN_TRACKER')) {
 
     <script type="text/javascript">
         <!--
-        lang.expcol_collapse = "[-]";
-        lang.expcol_expand = "[+]";
-		
-        lang.select2_match = "<?= htmlspecialchars($lang->header['select2_match'] ?? 'One result is available, press enter to select it.', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_matches = "<?= htmlspecialchars($lang->header['select2_matches'] ?? '{1} results are available, use up and down arrow keys to navigate.', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_nomatches = "<?= htmlspecialchars($lang->header['select2_nomatches'] ?? 'No matches found', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_inputtooshort_single = "<?= htmlspecialchars($lang->header['select2_inputtooshort'] ?? 'Please enter one or more character', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_inputtooshort_plural = "<?= htmlspecialchars($lang->header['select2_inputtooshort_plural'] ?? 'Please enter {1} or more characters', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_inputtoolong_single = "<?= htmlspecialchars($lang->header['select2_inputtoolong'] ?? 'Please delete one character', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_inputtoolong_plural = "<?= htmlspecialchars($lang->header['select2_inputtoolong_plural'] ?? 'Please delete {1} characters', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_selectiontoobig_single = "<?= htmlspecialchars($lang->header['select2_toobig'] ?? 'You can only select one item', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_selectiontoobig_plural = "<?= htmlspecialchars($lang->header['select2_toobig_plural'] ?? 'You can only select {1} items', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_loadmore = "<?= htmlspecialchars($lang->header['select2_loadmore'] ?? 'Loading more results...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        lang.select2_searching = "<?= htmlspecialchars($lang->header['select2_searching'] ?? 'Searching...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-
+     
         var use_xmlhttprequest = "<?= (int)($use_xmlhttprequest ?? 0) ?>";
         var my_post_key = "<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        var cookieDomain = "<?= htmlspecialchars($cookiedomain ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        var cookiePath = "<?= htmlspecialchars($cookiepath ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        var cookiePrefix = "<?= htmlspecialchars($cookieprefix ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
-        var cookieSecureFlag = "<?= (int)($cookiesecureflag ?? 0) ?>";
-        
     
-        var spinner_image = "<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/pic/spinner.gif";
-        var spinner = "<img src='" + spinner_image + "' alt='' />";
-        var loading_text = 'Loading. <br />Please Wait&hellip;';
-        var saving_changes = 'Saving changes&hellip;';
         // -->
     </script>
 	

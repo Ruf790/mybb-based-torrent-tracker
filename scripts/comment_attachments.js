@@ -3,6 +3,37 @@
  * Attachment uploader for comments
  */
 
+/* i18n: attT(key, fallback, ...args) — window.AGS_ATTACH_LANG is printed by
+   render_attachment_uploader() (functions_comment_attachments.php) from the
+   "uploads" lang (js_* keys without the prefix). Substitutes {1} and %1$s.
+   The result is plain text: textContent, or escape it before any HTML. */
+function attT(key, fallback, ...args) {
+    const L = window.AGS_ATTACH_LANG;
+    let s = (L && typeof L === 'object' && typeof L[key] === 'string') ? L[key] : fallback;
+    args.forEach((a, i) => {
+        const n = i + 1;
+        s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+    });
+    return s;
+}
+
+/* Corner notice (SweetAlert2 toast); alert() if Swal is missing. Text only. */
+function attToast(message, icon) {
+    if (window.Swal) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: icon || 'error',
+            text: String(message ?? ''),
+            showConfirmButton: false,
+            timer: 4500,
+            timerProgressBar: true
+        });
+    } else {
+        alert(String(message ?? ''));
+    }
+}
+
 function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
 
     commentId = commentId || 0;
@@ -78,7 +109,7 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                 bindDeleteBtn(list.querySelector('[data-aid="' + resp.aid + '"]'));
             } else {
                 item.classList.add('att-item--error');
-                item.querySelector('.att-item-size').textContent = resp?.error || 'Upload failed';
+                item.querySelector('.att-item-size').textContent = resp?.error || attT('upload_failed', 'Upload failed');
                 item.querySelector('.att-progress')?.remove();
                 setTimeout(() => item.remove(), 4000);
             }
@@ -86,7 +117,7 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
 
         xhr.addEventListener('error', () => {
             item.classList.add('att-item--error');
-            item.querySelector('.att-item-size').textContent = 'Network error';
+            item.querySelector('.att-item-size').textContent = attT('network', 'Network error');
             setTimeout(() => item.remove(), 4000);
         });
 
@@ -130,7 +161,7 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                     <div class="att-item-size">${formatSize(resp.size)}</div>
                     ${extraHtml}
                 </div>
-                <button type="button" class="att-delete-btn" title="Remove">
+                <button type="button" class="att-delete-btn" title="${escHtml(attT('remove', 'Remove'))}">
                     <i class="fas fa-times"></i>
                 </button>
             </div>`;
@@ -153,8 +184,8 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                   <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content border-0 shadow">
                       <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>${escHtml(attT('delete_confirm_title', 'Confirm Deletion'))}</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="${escHtml(attT('aria_close', 'Close'))}"></button>
                       </div>
                       <div class="modal-body">
                         <div class="d-flex align-items-center mb-3">
@@ -162,7 +193,7 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                             <i class="fas fa-trash-alt text-danger fs-1"></i>
                           </div>
                           <div>
-                            <h5 class="fw-bold mb-1">Delete Attachment?</h5>
+                            <h5 class="fw-bold mb-1">${escHtml(attT('delete_title', 'Delete attachment?'))}</h5>
                             <p class="text-muted mb-0 att-delete-filename"></p>
                           </div>
                         </div>
@@ -170,16 +201,16 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                         <div class="alert alert-warning mt-2 mb-0">
                           <div class="d-flex">
                             <i class="fas fa-exclamation-circle me-2 mt-1"></i>
-                            <div><strong>Warning:</strong> This action cannot be undone!</div>
+                            <div><strong>${escHtml(attT('warning_label', 'Warning:'))}</strong> ${escHtml(attT('delete_warning', 'This action cannot be undone!'))}</div>
                           </div>
                         </div>
                       </div>
                       <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                          <i class="fas fa-times me-1"></i> Cancel
+                          <i class="fas fa-times me-1"></i> ${escHtml(attT('btn_cancel', 'Cancel'))}
                         </button>
                         <button type="button" class="btn btn-danger" id="attDeleteConfirmBtn">
-                          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+                          <i class="fas fa-trash-alt me-1"></i> ${escHtml(attT('btn_delete', 'Yes, Delete'))}
                         </button>
                       </div>
                     </div>
@@ -275,10 +306,12 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
                             item.remove();
                         } else {
                             console.warn('[comment_attachments] server reported failure, not removing item', resp);
+                            attToast(resp.error || attT('delete_failed', 'Failed to delete the attachment.'), 'error');
                         }
                     })
                     .catch(err => {
                         console.error('[comment_attachments] delete request failed', err);
+                        attToast(attT('network', 'Network error'), 'error');
                     });
             });
         });
@@ -295,8 +328,8 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
     }
 
     function formatSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / 1048576).toFixed(1) + ' MB';
+        if (bytes < 1024) return attT('size_b', '{1} B', bytes);
+        if (bytes < 1048576) return attT('size_kb', '{1} KB', (bytes / 1024).toFixed(1));
+        return attT('size_mb', '{1} MB', (bytes / 1048576).toFixed(1));
     }
 }

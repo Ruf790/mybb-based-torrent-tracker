@@ -1,5 +1,38 @@
 // === BBCode Tools Bundle ===
 
+/* i18n: agsEdT(key, fallback, ...args) — window.AGS_EDITOR_LANG is printed by
+   insert_bbcode_editor() (include/editor.php) from the bbeditor lang (js_* keys
+   without the prefix). Substitutes {1} and %1$s. The result is plain text:
+   insert it with textContent, or escape it before any HTML. A separate object
+   (not AGS_LANG), because the page that hosts the editor has its own AGS_LANG. */
+function agsEdT(key, fallback, ...args) {
+  const L = window.AGS_EDITOR_LANG;
+  let s = (L && typeof L === 'object' && typeof L[key] === 'string') ? L[key] : fallback;
+  args.forEach((a, i) => {
+    const n = i + 1;
+    s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
+  });
+  return s;
+}
+
+/* Non-blocking notice in the corner (SweetAlert2 toast); alert() if Swal is missing.
+   The message goes in as text, never as HTML. */
+function agsEdToast(message, icon) {
+  if (window.Swal) {
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: icon || 'error',
+      text: String(message ?? ''),
+      showConfirmButton: false,
+      timer: 4500,
+      timerProgressBar: true
+    });
+  } else {
+    alert(String(message ?? ''));
+  }
+}
+
 function charCountInit(textareaId, counterId) {
   const textarea = document.getElementById(textareaId);
   const charCount = document.getElementById(counterId);
@@ -123,12 +156,12 @@ function loadTorrentPreviewsIn(container) {
           '<div class="card-body py-2 px-3">' +
           '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtmlPreview(data.name) + '</div>' +
           '<div class="text-muted small">' + escapeHtmlPreview(data.catname) + ' &middot; ' + escapeHtmlPreview(data.size) +
-          ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>' +
-          ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>' +
+          ' &middot; <span class="text-success">' + escapeHtmlPreview(agsEdT('seeders', '{1} seeders', data.seeders)) + '</span>' +
+          ' &middot; <span class="text-danger">' + escapeHtmlPreview(agsEdT('leechers', '{1} leechers', data.leechers)) + '</span>' +
           '</div></div></div>';
       })
       .catch(function () {
-        node.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+        node.innerHTML = '<div class="text-danger small">' + escapeHtmlPreview(agsEdT('preview_failed', 'Failed to load preview.')) + '</div>';
       });
   });
 }
@@ -154,6 +187,9 @@ function initViewSource(textareaId, btnId) {
       previewDiv.style.whiteSpace = "pre-wrap";
       previewDiv.style.overflowY = "auto";
       
+      const spoilerLabel = escapeHtmlPreview(agsEdT('spoiler', 'Spoiler'));
+      const loadingTorrent = escapeHtmlPreview(agsEdT('loading_torrent', 'Loading torrent preview…'));
+
       // Обрабатываем BBCode с учетом пробелов
       let html = bbcodeBackup
         // Основные теги (добавлены \s* для пробелов)
@@ -201,8 +237,8 @@ function initViewSource(textareaId, btnId) {
         .replace(/\[td\]\s*(.*?)\s*\[\/td\]/gis, '<td>$1</td>')
         
         // Специальные теги
-        .replace(/\[spoiler\]\s*(.*?)\s*\[\/spoiler\]/gis, '<details class="bbcode-spoiler border rounded p-2 my-2"><summary style="cursor:pointer;font-weight:bold;">Spoiler</summary><div class="mt-2">$1</div></details>')
-        .replace(/\[torrent=(\d+)\]/gi, '<div class="bbcode-torrent-embed border rounded p-2 my-2" data-torrent-id="$1"><div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading torrent preview...</div></div>')
+        .replace(/\[spoiler\]\s*(.*?)\s*\[\/spoiler\]/gis, '<details class="bbcode-spoiler border rounded p-2 my-2"><summary style="cursor:pointer;font-weight:bold;">' + spoilerLabel + '</summary><div class="mt-2">$1</div></details>')
+        .replace(/\[torrent=(\d+)\]/gi, '<div class="bbcode-torrent-embed border rounded p-2 my-2" data-torrent-id="$1"><div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>' + loadingTorrent + '</div></div>')
         .replace(/\[video=youtube\]\s*(.*?)\s*\[\/video\]/gi, '<iframe width="300" height="200" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen></iframe>')
 		
         .replace(/\[video=mp4\](.*?)\[\/video\]/gi, '<video src="$1" controls style="max-width:200px;"></video>')
@@ -226,7 +262,7 @@ function initViewSource(textareaId, btnId) {
       // Подгружаем карточки торрентов асинхронно (т.к. это отдельный запрос к серверу)
       loadTorrentPreviewsIn(previewDiv);
 
-      toggleBtn.textContent = "Edit BBCode";
+      toggleBtn.textContent = agsEdT('edit_bbcode', 'Edit BBCode');
       toggleBtn.classList.add("btn-dark");
       previewMode = true;
     } else {
@@ -235,7 +271,7 @@ function initViewSource(textareaId, btnId) {
       if (previewDiv) previewDiv.remove();
       textarea.style.display = "";
       textarea.value = bbcodeBackup;
-      toggleBtn.textContent = "Preview";
+      toggleBtn.textContent = agsEdT('preview', 'Preview');
       toggleBtn.classList.remove("btn-dark");
       previewMode = false;
     }
@@ -392,13 +428,13 @@ function initFontPicker() {
 // === Size Picker Initialization ===
 function initSizePicker() {
   const sizes = [
-    {name: 'XX-Small', value: 'xx-small', size: '0.6em'},
-    {name: 'X-Small', value: 'x-small', size: '0.75em'},
-    {name: 'Small', value: 'small', size: '0.9em'},
-    {name: 'Medium', value: 'medium', size: '1em'},
-    {name: 'Large', value: 'large', size: '1.2em'},
-    {name: 'X-Large', value: 'x-large', size: '1.5em'},
-    {name: 'XX-Large', value: 'xx-large', size: '2em'}
+    {name: agsEdT('size_xxs', 'XX-Small'), value: 'xx-small', size: '0.6em'},
+    {name: agsEdT('size_xs',  'X-Small'),  value: 'x-small',  size: '0.75em'},
+    {name: agsEdT('size_s',   'Small'),    value: 'small',    size: '0.9em'},
+    {name: agsEdT('size_m',   'Medium'),   value: 'medium',   size: '1em'},
+    {name: agsEdT('size_l',   'Large'),    value: 'large',    size: '1.2em'},
+    {name: agsEdT('size_xl',  'X-Large'),  value: 'x-large',  size: '1.5em'},
+    {name: agsEdT('size_xxl', 'XX-Large'), value: 'xx-large', size: '2em'}
   ];
 
   document.querySelectorAll('.size-picker-btn').forEach(btn => {
@@ -530,7 +566,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Валидация URL
     if (!url) {
-      alert('Пожалуйста, введите URL изображения');
+      agsEdToast(agsEdT('err_image_url', 'Please enter the image URL.'), 'warning');
       urlInput.focus();
       return;
     }
@@ -539,7 +575,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let bbCode;
     if (width || height) {
       if ((width && isNaN(width)) || (height && isNaN(height))) {
-        alert('Ширина и высота должны быть числами');
+        agsEdToast(agsEdT('err_dimensions', 'Width and height must be numbers.'), 'warning');
         return;
       }
       bbCode = `[img=${width || ''}${height ? 'x' + height : ''}]${url}[/img]`;
@@ -583,7 +619,7 @@ heightInput.value = '';
    */
   async function uploadAndInsertImage() {
     if (!imageUpload.files || imageUpload.files.length === 0) {
-      alert('Пожалуйста, выберите изображение');
+      agsEdToast(agsEdT('err_select_image', 'Please choose an image.'), 'warning');
       return;
     }
 
@@ -591,7 +627,7 @@ heightInput.value = '';
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
     
     if (!validTypes.includes(file.type)) {
-      alert('Допустимые форматы: JPG, PNG, GIF, WEBP');
+      agsEdToast(agsEdT('err_image_formats', 'Allowed formats: JPG, PNG, GIF, BMP, WEBP.'), 'warning');
       return;
     }
 
@@ -625,7 +661,7 @@ heightInput.value = '';
       const result = await response.json();
       
       if (!result.success || result.type !== 'editor_image') {
-        throw new Error(result.error || 'Ошибка загрузки');
+        throw new Error(result.error || agsEdT('err_upload_generic', 'Upload failed.'));
       }
 
       // Вставляем BB-код
@@ -656,7 +692,7 @@ heightInput.value = '';
       
     } catch (error) {
       console.error('Ошибка загрузки:', error);
-      alert(`Ошибка: ${error.message}`);
+      agsEdToast(agsEdT('err_upload', 'Upload error: {1}', error.message), 'error');
     } finally {
       progressContainer.classList.add('d-none');
       insertImageBtn.disabled = false;
@@ -685,10 +721,16 @@ heightInput.value = '';
         reader.onload = function(event) {
           const preview = document.getElementById('uploadPreview');
           if (preview) {
-            preview.innerHTML = `
-              <img src="${event.target.result}" class="img-thumbnail" style="max-height: 150px;">
-              <div class="mt-2 small">${file.name} (${(file.size/1024).toFixed(1)} KB)</div>
-            `;
+            preview.textContent = '';
+            const img = document.createElement('img');
+            img.src = event.target.result;
+            img.className = 'img-thumbnail';
+            img.style.maxHeight = '150px';
+            const info = document.createElement('div');
+            info.className = 'mt-2 small';
+            info.textContent = file.name + ' (' + agsEdT('size_kb', '{1} KB', (file.size / 1024).toFixed(1)) + ')';
+            preview.appendChild(img);
+            preview.appendChild(info);
           }
         };
         reader.readAsDataURL(file);
@@ -779,7 +821,7 @@ document.addEventListener("DOMContentLoaded", function () {
       let type = typeSelect ? typeSelect.value : 'auto';
 
       if (!url) {
-        alert("Enter video URL");
+        agsEdToast(agsEdT('err_video_url', 'Please enter the video URL.'), 'warning');
         return;
       }
 
@@ -792,7 +834,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (type === "youtube") {
         const id = getYouTubeId(url);
         if (!id) {
-          alert("Invalid YouTube URL");
+          agsEdToast(agsEdT('err_youtube', 'Invalid YouTube link.'), 'warning');
           return;
         }
         bbcode = `[video=youtube]${id}[/video]`;

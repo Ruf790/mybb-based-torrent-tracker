@@ -1164,6 +1164,16 @@ stdhead();
                                 <?php ftxt('attachthumbh', (string)($s['attachthumbh'] ?? '96'), $lang->managesettings['lbl_attachthumbh'], $lang->managesettings['tip_attachthumbh'], 'number', 'fa-arrows-up-down'); ?>
                                 <?php ftxt('attachthumbw', (string)($s['attachthumbw'] ?? '96'), $lang->managesettings['lbl_attachthumbw'], $lang->managesettings['tip_attachthumbw'], 'number', 'fa-arrows-left-right'); ?>
                             </div>
+
+                            <?php fsec('fa-weight-hanging', $lang->managesettings['sec_upload_limits'],
+                                ags_fmt((string)$lang->managesettings['hint_upload_limits_server'], (string)ini_get('upload_max_filesize'), (string)ini_get('post_max_size'))); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('upload_editor_img_mb', (string)($s['upload_editor_img_mb'] ?? '20'),   $lang->managesettings['lbl_upload_editor_img_mb'], '', 'number', 'fa-image'); ?>
+                                <?php ftxt('upload_att_video_mb',  (string)($s['upload_att_video_mb']  ?? '2048'), $lang->managesettings['lbl_upload_att_video_mb'],  '', 'number', 'fa-film'); ?>
+                                <?php ftxt('upload_att_audio_mb',  (string)($s['upload_att_audio_mb']  ?? '200'),  $lang->managesettings['lbl_upload_att_audio_mb'],  '', 'number', 'fa-music'); ?>
+                                <?php ftxt('upload_att_image_mb',  (string)($s['upload_att_image_mb']  ?? '200'),  $lang->managesettings['lbl_upload_att_image_mb'],  '', 'number', 'fa-images'); ?>
+                                <?php ftxt('upload_att_other_mb',  (string)($s['upload_att_other_mb']  ?? '100'),  $lang->managesettings['lbl_upload_att_other_mb'],  '', 'number', 'fa-file-zipper'); ?>
+                            </div>
                         </div>
                         <?php savebar(); ?>
                     </form>

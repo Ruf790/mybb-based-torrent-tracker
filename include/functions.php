@@ -178,7 +178,7 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
     $ts_tzoffset = $CURUSER['timezone'] ?? $timezoneoffset;
 
     
-	$title = $SITENAME.' :: '.($title != '' ? htmlspecialchars_uni($title) : TS_MESSAGE);
+	$title = $SITENAME . ($title != '' ? ' :: ' . htmlspecialchars_uni($title) : '');
 
     if ($CURUSER) {
         include_once(INC_PATH.'/functions_ratio.php');

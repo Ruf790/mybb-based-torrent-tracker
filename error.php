@@ -1,258 +1,128 @@
 <?php
 declare(strict_types=1);
 
-
-
 require_once __DIR__ . '/global.php';
 require_once INC_PATH . '/settings.php';
 
-/**
- * Define application version
- */
-define('E_VERSION', '0.2');
+define('E_VERSION', '0.3');
 
 /**
- * Display error page
+ * Text from global.lang.php, or the English fallback
+ * (error 3 = broken language file, so the page must work without lang).
  */
-function show_error(
-    string $errorMessage, 
-    string $title = 'An error has occurred!', 
-    string $errorTitle = 'An error has occurred!'
-): void {
-    global $rootpath, $BASEURL;
-    
-    // Escape output for security
-    $escapedTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
-    $escapedIp = htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
-    $escapedUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
-    $currentDate = date('F j, Y, g:i a');
-    
+function errpage_t(string $key, string $fallback): string
+{
+    global $lang;
+    try {
+        if (isset($lang) && is_object($lang) && isset($lang->global[$key]) && is_string($lang->global[$key])) {
+            return $lang->global[$key];
+        }
+    } catch (\Throwable) {
+    }
+    return $fallback;
+}
+
+/**
+ * One full-screen error page for every code.
+ * $anim = true  -> the "404 astronaut" Lottie animation (only for 404 — it has "404" drawn in it)
+ * $anim = false -> a big Bootstrap icon ($icon)
+ */
+function show_error_page(int $status, string $heading, string $text, string $icon = 'bi-exclamation-triangle', bool $anim = false): void
+{
+    global $BASEURL;
+
+    if (!headers_sent()) {
+        // Before this every error page was answered with "200 OK"
+        http_response_code($status);
+        header('Content-Type: text/html; charset=UTF-8');
+    }
+
+    $e        = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $base     = $e((string)$BASEURL);
+    $htmlLang = $e(errpage_t('errpage_html_lang', 'en'));
+    $title    = $e($heading);
+    $headingH = $e($heading);
+    $textH    = $text;                        // may contain a link (code 6) — texts come from this file / lang only
+    $homeBtn  = $e(errpage_t('errpage_home', 'Back to homepage'));
+
+    $visual = $anim
+        ? <<<HTML
+            <script src="{$base}/scripts/lottie-player.js"></script>
+            <lottie-player src="{$base}/scripts/lf20_u1xuufn3.json" class="err-anim mx-auto"
+                background="transparent" speed="1" loop autoplay></lottie-player>
+HTML
+        : "<i class=\"bi {$e($icon)} err-icon\"></i>";
+
     echo <<<HTML
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>{$escapedTitle} => IP: {$escapedIp} --- Date: {$currentDate} -- URL: {$escapedUri} <=</title>
-    </head>
-    <body>
-        {$errorMessage}
-    </body>
-    </html>
+<!doctype html>
+<html lang="{$htmlLang}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{$title}</title>
+    <link rel="stylesheet" href="{$base}/include/templates/default/style/bootstrap.min.css">
+    <link rel="stylesheet" href="{$base}/include/templates/default/style/bootstrap-icons.css">
+    <style>
+        /* Full screen: no white strip under the content, everything centred */
+        html, body { height: 100%; margin: 0; }
+        body {
+            min-height: 100vh;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        /* Text and button centred under the picture; the animation keeps its own size */
+        .err-wrap { width: 100%; max-width: 1200px; text-align: center; }
+        .err-text { max-width: 640px; margin: 0 auto 1.5rem; }
+        .err-icon { font-size: clamp(5rem, 18vw, 10rem); color: #0d6efd; opacity: .85; display: block; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <main class="err-wrap">
+        {$visual}
+        <h2 class="mt-3 mb-2">{$headingH}</h2>
+        <p class="err-text fw-light text-muted">{$textH}</p>
+        <a class="btn btn-lg btn-primary" href="{$base}/" role="button">{$homeBtn}</a>
+    </main>
+</body>
+</html>
 HTML;
 }
 
-/**
- * Get error ID from request or constants
- */
-$errorId = $_GET['errorid'] ?? 0;
-$errorId = (int) $errorId;
+// ── Which error ─────────────────────────────────────────────────────────────
+$errorId = (int)($_GET['errorid'] ?? 0);
 if ($errorId === 0 && defined('errorid')) {
-    $errorId = (int) constant('errorid');
+    $errorId = (int)constant('errorid');
 }
 
-/**
- * Error messages configuration
- */
-$errorMessages = [
-    // Custom errors
-    0 => 'An unknown error has occurred, please contact us.',
-    
-    1 => 'Request tainting attempted!',
-    
-    2 => 'In order to accept POST request originating from this domain, the admin must add this domain to the whitelist.',
-    
-    3 => <<<HTML
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/bootstrap.min.css" media="all">
-</head>
-<body>
-    <section class="bg-light">
-        <div class="container-fluid">
-            <div class="row row-cols-1 justify-content-center py-5">
-                <div class="col-xxl-7 mb-4">
-                    <div class="lc-block">
-                        <script src="{$BASEURL}/scripts/lottie-player.js"></script>
-                        <lottie-player src="{$BASEURL}/scripts/lf20_u1xuufn3.json" 
-                            class="mx-auto" 
-                            background="transparent" 
-                            speed="1" 
-                            loop 
-                            autoplay>
-                        </lottie-player>
-                    </div>
-                </div>
-                <div class="col text-center">
-                    <div class="lc-block">
-                        <div class="lc-block mb-4">
-                            <div editable="rich">
-                                <h2>Missing or Corrupted language file!</h2>
-                            </div>
-                        </div>
-                        <div class="lc-block">
-                            <a class="btn btn-lg btn-primary" href="{$BASEURL}" role="button">
-                                Back to homepage
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    <script defer src="{$BASEURL}/scripts/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-HTML,
-    
-    4 => 'Please refresh the page and try again!',
-    
-    5 => 'MySQL Error!',
-    
-    6 => <<<HTML
-The server is too busy at the moment. Please try again later.<br>
-Click <a href="JavaScript:location.reload(true);">here</a> to refresh this page.
-HTML,
-    
-    7 => 'Prefetching is not allowed due to the various privacy issues that arise.',
-    
-    
-    9 => 'Your account has either been suspended or you have been banned from accessing this tracker.',
-    
-    // HTTP errors
-    400 => <<<HTML
-<strong>400 Bad Request</strong> -- This means that a request for a URL has been made 
-but the server is not configured or capable of responding to it. This might be the case 
-for URLs that are handed-off to a servlet engine where no default document or servlet is 
-configured, or the HTTP request method is not implemented.
-HTML,
-    
-    401 => <<<HTML
-<strong>401 Authorization Required</strong> -- "Authorization is required to view this page. 
-You have not provided valid username/password information." This means that the required 
-username and/or password was not properly entered to access a password protected page or 
-area of the web site space.
-HTML,
-    
-    
-	
-   403 => <<<HTML
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/bootstrap.min.css" media="all">
-</head>
-<body>
-    <section class="bg-light">
-        <div class="container-fluid">
-            <div class="row row-cols-1 justify-content-center py-5">
-                <div class="col-xxl-7 mb-4">
-                    <div class="lc-block">
-                        <script src="{$BASEURL}/scripts/lottie-player.js"></script>
-                        <lottie-player src="{$BASEURL}/scripts/lf20_u1xuufn3.json" 
-                            class="mx-auto" 
-                            background="transparent" 
-                            speed="1" 
-                            loop 
-                            autoplay>
-                        </lottie-player>
-                    </div>
-                </div>
-                <div class="col text-center">
-                    <div class="lc-block">
-                        <div class="lc-block mb-4">
-                            <div editable="rich">
-                                <h2>403 Forbidden</h2>
-                                <p class="rfs-11 fw-light">
-                                    You are not allowed to access this page.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="lc-block">
-                            <a class="btn btn-lg btn-primary" href="{$BASEURL}" role="button">
-                                Back to homepage
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    <script defer src="{$BASEURL}/scripts/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-HTML,	
-	
-	
-    
-    404 => <<<HTML
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/bootstrap.min.css" media="all">
-</head>
-<body>
-    <section class="bg-light">
-        <div class="container-fluid">
-            <div class="row row-cols-1 justify-content-center py-5">
-                <div class="col-xxl-7 mb-4">
-                    <div class="lc-block">
-                        <script src="{$BASEURL}/scripts/lottie-player.js"></script>
-                        <lottie-player src="{$BASEURL}/scripts/lf20_u1xuufn3.json" 
-                            class="mx-auto" 
-                            background="transparent" 
-                            speed="1" 
-                            loop 
-                            autoplay>
-                        </lottie-player>
-                    </div>
-                </div>
-                <div class="col text-center">
-                    <div class="lc-block">
-                        <div class="lc-block mb-4">
-                            <div editable="rich">
-                                <p class="rfs-11 fw-light">
-                                    The page you are looking for was moved, removed or might never existed.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="lc-block">
-                            <a class="btn btn-lg btn-primary" href="{$BASEURL}" role="button">
-                                Back to homepage
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    <script defer src="{$BASEURL}/scripts/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-HTML,
-    
-    500 => <<<HTML
-<strong>500 Internal Server Error</strong> -- "The server encountered an internal error 
-or misconfiguration and was unable to complete your request. Please contact the server 
-administrator and inform them of the time the error occurred, and anything you might 
-have done to produce this error."
-HTML
+// code => [HTTP status, heading key, heading, text key, text, icon, animation]
+$errors = [
+    0   => [500, 'errpage_0_h',   'Something went wrong',      'errpage_0',   'An unknown error has occurred, please contact us.', 'bi-question-circle', false],
+    1   => [400, 'errpage_1_h',   'Request blocked',           'errpage_1',   'Request tainting attempted!', 'bi-shield-exclamation', false],
+    2   => [403, 'errpage_2_h',   'Domain not allowed',        'errpage_2',   'In order to accept POST requests originating from this domain, the admin must add this domain to the whitelist.', 'bi-globe2', false],
+    3   => [500, 'errpage_3_h',   'Language file error',       'errpage_3',   'Missing or corrupted language file!', 'bi-translate', false],
+    4   => [400, 'errpage_4_h',   'Please try again',          'errpage_4',   'Please refresh the page and try again!', 'bi-arrow-clockwise', false],
+    5   => [500, 'errpage_5_h',   'Database error',            'errpage_5',   'MySQL Error!', 'bi-database-exclamation', false],
+    6   => [503, 'errpage_6_h',   'Server is busy',            'errpage_6',   'The server is too busy at the moment. Please try again later.', 'bi-hourglass-split', false],
+    7   => [403, 'errpage_7_h',   'Prefetching not allowed',   'errpage_7',   'Prefetching is not allowed due to the various privacy issues that arise.', 'bi-eye-slash', false],
+    9   => [403, 'errpage_9_h',   'Account suspended',         'errpage_9',   'Your account has either been suspended or you have been banned from accessing this tracker.', 'bi-person-x', false],
+    400 => [400, 'errpage_400_h', '400 Bad Request',           'errpage_400', 'The server could not understand this request.', 'bi-exclamation-octagon', false],
+    401 => [401, 'errpage_401_h', '401 Authorization Required','errpage_401', 'You need to log in with a valid username and password to view this page.', 'bi-lock', false],
+    403 => [403, 'errpage_403_h', '403 Forbidden',             'errpage_403', 'You are not allowed to access this page.', 'bi-shield-lock', false],
+    404 => [404, 'errpage_404_h', '404 Not Found',             'errpage_404', 'The page you are looking for was moved, removed or might never have existed.', '', true],
+    500 => [500, 'errpage_500_h', '500 Internal Server Error', 'errpage_500', 'The server encountered an internal error. Please try again later or contact the staff.', 'bi-bug', false],
 ];
 
-/**
- * Display appropriate error message
- */
-if (isset($errorMessages[$errorId])) {
-    show_error($errorMessages[$errorId]);
-} else {
-    show_error('An unknown error has occurred, please contact us.');
+[$status, $hKey, $hFallback, $tKey, $tFallback, $icon, $anim] = $errors[$errorId] ?? $errors[0];
+
+$text = htmlspecialchars(errpage_t($tKey, $tFallback), ENT_QUOTES, 'UTF-8');
+if ($errorId === 6) {
+    // "Refresh" link for the busy page
+    $text .= '<br><a href="javascript:location.reload();">'
+           . htmlspecialchars(errpage_t('errpage_refresh', 'Refresh the page'), ENT_QUOTES, 'UTF-8') . '</a>';
 }
 
+show_error_page($status, errpage_t($hKey, $hFallback), $text, $icon, $anim);
 exit(0);

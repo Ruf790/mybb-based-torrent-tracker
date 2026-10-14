@@ -7,10 +7,14 @@ if (!defined('IN_TRACKER')) {
     die('Hacking attempt!');
 }
 
+/** Header text from header.lang.php (English fallback), escaped for HTML */
+$hl = static fn(string $key, string $fallback): string
+    => htmlspecialchars((string)($lang->header[$key] ?? $fallback), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
 
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="<?= $hl('html_lang', "en") ?>">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=<?= htmlspecialchars($charset ?? 'UTF-8', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
     <meta name="generator" content="<?= htmlspecialchars($title ?? 'ArtCore Gangsta', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
@@ -143,6 +147,13 @@ if (!defined('IN_TRACKER')) {
             display: none;
         }
         
+        /* Russian labels are longer: tighter menu items on desktop so the language
+           switch and the theme toggle stay inside the 1100px header */
+        @media (min-width: 992px) {
+            .header-fixed .navbar .navbar-nav .nav-link { padding-left: .45rem; padding-right: .45rem; white-space: nowrap; }
+            .header-fixed .navbar-brand { margin-right: .5rem; }
+        }
+
         .nav-avatar {
             width: 44px;
             height: 44px;
@@ -181,7 +192,7 @@ $pmslink = '
 
 $usercplink = '
 <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/usercp.php" class="dropdown-item pb-2 ms-0 ps-0" style="border-bottom: 1px solid #b3b3b3">
-    <i class="fa-solid fa-user-gear"></i> &nbsp;User CP
+    <i class="fa-solid fa-user-gear"></i> &nbsp;' . $hl('hdr_user_cp', "User CP") . '
 </a>';
 
 if (is_array($usergroups) && 
@@ -192,7 +203,7 @@ if (is_array($usergroups) &&
     
     $admincplink = '
     <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/admin/index.php" class="dropdown-item ms-0 ps-0">
-        <i class="fa-solid fa-gears"></i> &nbsp;Admin CP
+        <i class="fa-solid fa-gears"></i> &nbsp;' . $hl('hdr_admin_cp', "Admin CP") . '
     </a>';
 
 }
@@ -218,11 +229,11 @@ $seedtorrentscount     = (int)($pr['seeding']  ?? 0);
 $leechingtorrentscount = (int)($pr['leeching'] ?? 0);
 
 if ($seedtorrentscount > 0) {
-    $seederOrLeecher = '<span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i> Seeder</span>';
+    $seederOrLeecher = '<span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i> ' . $hl('hdr_seeder', "Seeder") . '</span>';
 } elseif ($leechingtorrentscount > 0) {
-    $seederOrLeecher = '<span class="badge bg-danger"><i class="fas fa-arrow-down me-1"></i> Leecher</span>';
+    $seederOrLeecher = '<span class="badge bg-danger"><i class="fas fa-arrow-down me-1"></i> ' . $hl('hdr_leecher', "Leecher") . '</span>';
 } else {
-    $seederOrLeecher = '<span class="badge bg-secondary"><i class="fas fa-minus me-1"></i> Idle</span>';
+    $seederOrLeecher = '<span class="badge bg-secondary"><i class="fas fa-minus me-1"></i> ' . $hl('hdr_idle', "Idle") . '</span>';
 }
 
 // Avatar handling
@@ -233,7 +244,7 @@ if (str_starts_with($useravatar['image'] ?? '', '<')) {
     $avatar_mini = '
     <svg class="nav-avatar rounded border avatar-ring2" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
         <circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/>
-        <text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text>
+        <text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">' . $hl('hdr_no_avatar', "No Avatar") . '</text>
     </svg>';
     $avataar = $avatar_mini;
 } else {
@@ -266,7 +277,7 @@ if (!empty($CURUSER['id'])): ?>
                             <?= $usercplink ?>
                             <?= $admincplink ?>
                             <button type="button" class="dropdown-item text-danger ps-0" data-bs-toggle="modal" data-bs-target="#logoutModal">
-                                <i class="fa-solid fa-right-from-bracket"></i> &nbsp;&nbsp;Log Out
+                                <i class="fa-solid fa-right-from-bracket"></i> &nbsp;&nbsp;<?= $hl('hdr_logout', "Log Out") ?>
                             </button>
                         </div>
                         <div class="col-auto align-self-center">
@@ -278,9 +289,9 @@ if (!empty($CURUSER['id'])): ?>
 
             <!-- Statistics -->
             <small class="text-dark d-flex flex-wrap justify-content-center gap-2 align-items-center">
-                <span><i class="fa-solid fa-upload me-1"></i>Uploaded: <strong><?= mksize($uploaded ?? 0) ?></strong></span>
-                <span><i class="fa-solid fa-download me-1"></i>Downloaded: <strong><?= mksize($downloaded ?? 0) ?></strong></span>
-                <span><i class="fa-solid fa-chart-simple me-1"></i>Ratio: <strong>
+                <span><i class="fa-solid fa-upload me-1"></i><?= $hl('hdr_uploaded', "Uploaded:") ?> <strong><?= mksize($uploaded ?? 0) ?></strong></span>
+                <span><i class="fa-solid fa-download me-1"></i><?= $hl('hdr_downloaded', "Downloaded:") ?> <strong><?= mksize($downloaded ?? 0) ?></strong></span>
+                <span><i class="fa-solid fa-chart-simple me-1"></i><?= $hl('hdr_ratio', "Ratio:") ?> <strong>
     <?php 
     $ratio_display = $ratio ?? '0.00';
     // Если ratio содержит HTML тег, выводим как есть (без экранирования)
@@ -291,7 +302,7 @@ if (!empty($CURUSER['id'])): ?>
     }
     ?>
 </strong></span>
-                <span><i class="fa-solid fa-coins me-1"></i>Bonus: <strong><?= number_format((float)($CURUSER['seedbonus'] ?? 0), 1) ?></strong></span>
+                <span><i class="fa-solid fa-coins me-1"></i><?= $hl('hdr_bonus', "Bonus:") ?> <strong><?= number_format((float)($CURUSER['seedbonus'] ?? 0), 1) ?></strong></span>
                 <span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i><?= (int)$seedtorrentscount ?></span>
                 <span class="badge bg-danger"><i class="fas fa-arrow-down me-1"></i><?= (int)$leechingtorrentscount ?></span>
             </small>
@@ -306,7 +317,7 @@ if (!empty($CURUSER['id'])): ?>
             <a class="navbar-brand" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/index.php">
                 <?= htmlspecialchars($lang->global['home'] ?? 'Home', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="<?= $hl('hdr_toggle_nav', "Toggle navigation") ?>">
                 <span class="navbar-toggler-icon"></span>
             </button>
            
@@ -319,7 +330,7 @@ if (!empty($CURUSER['id'])): ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php"><i class="fas fa-table-list me-2"></i> <?= htmlspecialchars($lang->header['nav_browse_torrents'] ?? 'Browse Torrents', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/upload.php"><i class="fas fa-upload me-2"></i> Upload</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/upload.php"><i class="fas fa-upload me-2"></i> <?= $hl('hdr_upload', "Upload") ?></a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=mybookmarks"><i class="fas fa-bookmark me-2"></i> <?= htmlspecialchars($lang->header['nav_my_bookmarks'] ?? 'My Bookmarks', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=myreseeds"><i class="fas fa-seedling me-2"></i> <?= htmlspecialchars($lang->header['nav_my_reseeds'] ?? 'My Reseeds', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
@@ -334,8 +345,8 @@ if (!empty($CURUSER['id'])): ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/index2.php"><i class="fas fa-forumbee me-2"></i> <?= htmlspecialchars($lang->header['nav_forums_home'] ?? 'Forums', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getnew"><i class="fas fa-star me-2"></i> New Posts</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getdaily"><i class="fas fa-calendar-day me-2"></i> Today's Posts</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getnew"><i class="fas fa-star me-2"></i> <?= $hl('hdr_new_posts', "New Posts") ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getdaily"><i class="fas fa-calendar-day me-2"></i> <?= $hl('hdr_todays_posts', "Today's Posts") ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php"><i class="fas fa-search me-2"></i> <?= htmlspecialchars($lang->header['nav_search'] ?? 'Search', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                         </ul>
                     </li>
@@ -343,7 +354,7 @@ if (!empty($CURUSER['id'])): ?>
                     <!-- User CP Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link nav-link-card dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user me-1"></i> User CP
+                            <i class="fas fa-user me-1"></i> <?= $hl('hdr_user_cp', "User CP") ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
 							<li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/usercp.php"><i class="fas fa-cog me-2"></i> <?= htmlspecialchars($lang->header['nav_usercp_home'] ?? 'User CP Home', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
@@ -355,7 +366,7 @@ if (!empty($CURUSER['id'])): ?>
                     <!-- Top 10 Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link nav-link-card dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-chart-line me-1"></i> Top 10
+                            <i class="fas fa-chart-line me-1"></i> <?= $hl('hdr_top10', "Top 10") ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=1"><i class="fas fa-users me-2"></i> <?= htmlspecialchars($lang->header['nav_top_users'] ?? 'Users', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
@@ -501,7 +512,7 @@ if (!empty($CURUSER['id'])): ?>
                                 <input type="hidden" name="search_type" value="t_both" />
                                 <input type="hidden" name="do" value="search" />
                                 <div class="input-group">
-                                    <input class="form-control" type="text" value="" name="keywords" placeholder="<?= htmlspecialchars($lang->header['nav_search_placeholder'] ?? 'Search torrents...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" aria-label="Search">
+                                    <input class="form-control" type="text" value="" name="keywords" placeholder="<?= htmlspecialchars($lang->header['nav_search_placeholder'] ?? 'Search torrents...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" aria-label="<?= $hl('hdr_search', "Search") ?>">
                                     <button class="btn btn-primary" type="submit">
                                         <i class="fas fa-search"></i>
                                     </button>
@@ -551,7 +562,7 @@ $languages = [
                     <!-- Dark Mode Switch -->
                     <li class="nav-item">
                         <div class="form-check form-switch ms-2">
-                            <input class="form-check-input" type="checkbox" id="darkModeSwitch" checked aria-label="Switch between light and dark mode" data-bs-toggle="tooltip" data-bs-placement="top" title="Switch between light and dark mode">
+                            <input class="form-check-input" type="checkbox" id="darkModeSwitch" checked aria-label="<?= $hl('hdr_theme_switch', "Switch between light and dark mode") ?>" data-bs-toggle="tooltip" data-bs-placement="top" title="<?= $hl('hdr_theme_switch', "Switch between light and dark mode") ?>">
                             <label class="form-check-label" for="darkModeSwitch"></label>
                         </div>
                     </li>
@@ -573,17 +584,17 @@ $languages = [
                 <h5 class="modal-title">
                     <i class="fa-solid fa-right-from-bracket me-2"></i> <?= htmlspecialchars($lang->header['nav_confirm_logout'] ?? 'Confirm Logout', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= $hl('hdr_close', "Close") ?>"></button>
             </div>
             <div class="modal-body text-center">
                 <p class="mb-0 fs-6"><?= htmlspecialchars($lang->header['logout_confirm_text'] ?? 'Are you sure you want to log out?', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></p>
             </div>
             <div class="modal-footer justify-content-center">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                    <i class="fa-solid fa-xmark me-1"></i> Cancel
+                    <i class="fa-solid fa-xmark me-1"></i> <?= $hl('hdr_cancel', "Cancel") ?>
                 </button>
                 <a href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/member.php?action=logout&amp;logoutkey=<?= htmlspecialchars($logoutkey, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" class="btn btn-danger px-4">
-                    <i class="fa-solid fa-right-from-bracket me-1"></i> Log Out
+                    <i class="fa-solid fa-right-from-bracket me-1"></i> <?= $hl('hdr_logout', "Log Out") ?>
                 </a>
             </div>
         </div>
@@ -596,7 +607,7 @@ $languages = [
 <!-- Guest navigation -->
 <nav class="navbar navbar-expand-lg bg-white shadow-sm border-bottom py-3">
     <div class="container">
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#guestNavbar" aria-controls="guestNavbar" aria-expanded="false" aria-label="Toggle navigation">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#guestNavbar" aria-controls="guestNavbar" aria-expanded="false" aria-label="<?= $hl('hdr_toggle_nav', "Toggle navigation") ?>">
             <span class="navbar-toggler-icon"></span>
         </button>
 
@@ -604,12 +615,12 @@ $languages = [
             <ul class="navbar-nav ms-auto align-items-center">
                 <li class="nav-item me-3">
                     <a class="nav-link text-secondary fw-semibold" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/faq.php">
-                        <i class="fa-solid fa-circle-question me-1"></i> FAQ
+                        <i class="fa-solid fa-circle-question me-1"></i> <?= $hl('nav_faq', "FAQ") ?>
                     </a>
                 </li>
                 <li class="nav-item me-3">
                     <a class="nav-link text-secondary fw-semibold" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/contact.php">
-                        <i class="fa-solid fa-envelope me-1"></i> Contact
+                        <i class="fa-solid fa-envelope me-1"></i> <?= $hl('hdr_contact', "Contact") ?>
                     </a>
                 </li>
                 <li class="nav-item me-2">
@@ -665,8 +676,8 @@ if (is_array($usergroups) &&
                 <div class="card-header22">
                     <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
                     <div>
-                        <h2 class="mb-0">Attention</h2>
-                        <p class="mb-0 opacity-75">Awaiting Activation</p>
+                        <h2 class="mb-0">' . $hl('hdr_attention', "Attention") . '</h2>
+                        <p class="mb-0 opacity-75">' . $hl('hdr_awaiting_activation', "Awaiting Activation") . '</p>
                     </div>
                 </div>
                 <div class="card-body">
@@ -720,7 +731,7 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
                     </div>
                     <div class="ban-header-text">
                         <h1>'.$lang->global['banned_warning'].'</h1>
-                        <p>'.$lang->global['banned_warning'].' - Access Restricted</p>
+                        <p>'.$lang->global['banned_warning'].' - ' . $hl('hdr_access_restricted', "Access Restricted") . '</p>
                     </div>
                 </div>
             </div>
@@ -730,7 +741,7 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
                 <!-- Бейдж -->
                 <div class="ban-badge">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    ACCOUNT SUSPENDED
+                    ' . $hl('hdr_account_suspended', "ACCOUNT SUSPENDED") . '
                 </div>
                 
                 <!-- Сообщение о бане -->
@@ -765,7 +776,7 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
                 <div class="alert alert-warning d-flex align-items-center" role="alert" style="border-radius: 15px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.2);">
                     <i class="bi bi-info-circle-fill me-3" style="color: #ffc107; font-size: 1.5rem;"></i>
                     <div>
-                        <strong>Important:</strong> If you believe this is a mistake, please contact the administrator for assistance.
+                        <strong>' . $hl('hdr_important', "Important:") . '</strong> ' . $hl('hdr_ban_mistake', "If you believe this is a mistake, please contact the administrator for assistance.") . '
                     </div>
                 </div>
                 
@@ -773,11 +784,11 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
                 <div class="ban-actions">
                     <button onclick="history.back()" class="ban-btn ban-btn-secondary">
                         <i class="bi bi-arrow-left"></i>
-                        Go Back
+                        ' . $hl('hdr_go_back', "Go Back") . '
                     </button>
                     <a href="'.$BASEURL.'/" class="ban-btn ban-btn-primary">
                         <i class="bi bi-house-door"></i>
-                        Home Page
+                        ' . $hl('hdr_home_page', "Home Page") . '
                     </a>
                 </div>
             </div>
@@ -786,8 +797,8 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
             <div class="ban-footer">
                 <small>
                     <i class="bi bi-envelope me-1"></i>
-                    Need help? Contact 
-                    <a href="'.$BASEURL.'/contact.php">Support Team</a>
+                    ' . $hl('hdr_need_help', "Need help? Contact") . '
+                    <a href="'.$BASEURL.'/contact.php">' . $hl('hdr_support_team', "Support Team") . '</a>
                 </small>
             </div>
         </div>
@@ -826,7 +837,7 @@ if (($mybb->usergroup['canview'] ?? 0) != 1) {
 			$output = '<div class="modal p-0 m-0">
 		<div class="card border" style="overflow-y: auto; max-height: 500px;">
 			<div class="card-header text-19 fw-bold border-0 py-3">'.$SITENAME.'</div>
-			<div class="card-body">You do not have permission to access this page</div>
+			<div class="card-body">' . $hl('hdr_no_permission', "You do not have permission to access this page") . '</div>
 	</div>
 </div>';
 			
@@ -850,7 +861,7 @@ if (is_banned_ip($session->ipaddress ?? '', true)) {
             [$session->packedip ?? '']
         );
     }
-    error('I\'m sorry, but you are banned. You may not post, read threads, or access the Tracker. Please contact your forum administrator should you have any questions');
+    error($lang->header['hdr_banned_ip'] ?? "I'm sorry, but you are banned. You may not post, read threads, or access the Tracker. Please contact your forum administrator should you have any questions");
 }
 
 // Warning messages
@@ -865,13 +876,13 @@ if ($offlinemsg ?? false) {
         <div class="card-header22">
             <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
             <div>
-                <h2 class="mb-0">The tracker is currently offline!</h2>
+                <h2 class="mb-0">' . $hl('hdr_offline_title', "The tracker is currently offline!") . '</h2>
                 <p class="mb-0 opacity-75"></p>
             </div>
         </div>
         <div class="card-body">
             <div class="alert alert-danger" role="alert">
-                <strong>Danger!</strong> ' . sprintf($lang->header['trackeroffline'] ?? '', $BASEURL ?? '') . '
+                <strong>' . $hl('hdr_danger', "Danger!") . '</strong> ' . sprintf($lang->header['trackeroffline'] ?? '', $BASEURL ?? '') . '
             </div>
         </div>
     </div>';
@@ -894,7 +905,7 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
         </div>
         <div class="card-body">
             <div class="alert alert-danger" role="alert">
-                <strong>Danger!</strong> ' . sprintf($lang->header['warned'] ?? '', $leechwarn_remove_ratio ?? '', mkprettytime(($CURUSER['leechwarnuntil'] ?? 0) - TIMENOW)) . '
+                <strong>' . $hl('hdr_danger', "Danger!") . '</strong> ' . sprintf($lang->header['warned'] ?? '', $leechwarn_remove_ratio ?? '', mkprettytime(($CURUSER['leechwarnuntil'] ?? 0) - TIMENOW)) . '
             </div>
         </div>
     </div>';
@@ -936,8 +947,8 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no')
                         <i class="fas fa-bullhorn"></i>
                     </div>
                     <div class="btn-text">
-                        <span class="badge">New</span>
-                        Announcement
+                        <span class="badge">' . $hl('hdr_new', "New") . '</span>
+                        ' . $hl('hdr_announcement', "Announcement") . '
                     </div>
                 </div>
             </button>
@@ -964,7 +975,7 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no')
                                     </span>
                                 </div>
                             </div>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . $hl('hdr_close', "Close") . '"></button>
                         </div>
                     </div>
                     
@@ -982,16 +993,16 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no')
                         <div class="d-flex justify-content-between align-items-center w-100">
                             <div class="text-muted small">
                                 <i class="fas fa-info-circle me-1"></i>
-                                This announcement will be marked as read
+                                ' . $hl('hdr_ann_note', "This announcement will be marked as read") . '
                             </div>
                             <div class="btn-group">
                                 <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/clear_ann.php?id=' . $announcement_id . '" class="btn btn-success px-4">
                                    <i class="fas fa-check me-2"></i>
-                                   Mark as Read
+                                   ' . $hl('hdr_mark_read', "Mark as Read") . '
                                 </a>
                                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
                                     <i class="fas fa-times me-2"></i>
-                                    Close
+                                    ' . $hl('hdr_close', "Close") . '
                                 </button>
                             </div>
                         </div>
@@ -1069,7 +1080,7 @@ else
     <div class="card error-card4 fade show" id="pm_notice">
         <div class="card-header4">
             <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
-            <div><h2 class="mb-0">You have a private Message</h2></div>
+            <div><h2 class="mb-0">' . $hl('hdr_new_pm', "You have a new private message") . '</h2></div>
             <div class="float-end ms-auto">
                 <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/private.php?action=dismiss_notice&amp;my_post_key=' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"
                     title="' . htmlspecialchars($lang->header['dismiss_notice'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"
@@ -1094,7 +1105,7 @@ if (isset($nummessages) && (int)$nummessages > 0) {
     <div class="container mt-3">
         <div class="alert alert-primary alert-dismissible fade show">
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            <strong>Primary!</strong><a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/admin/index.php?act=staffbox">' . sprintf($lang->header['staffmess'] ?? '', (int)$nummessages) . '</a>
+            <i class="fa-solid fa-inbox me-1"></i><a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/admin/index.php?act=staffbox">' . sprintf($lang->header['staffmess'] ?? '', (int)$nummessages) . '</a>
         </div>
     </div>';
 }

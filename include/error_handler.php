@@ -146,7 +146,7 @@ function GlobalErrorHandler(int $errno, string $errstr, string $errfile, int $er
  */
 function FatalErrorHandler(): void
 {
-    global $BASEURL;
+    global $BASEURL, $lang;
     
     $error = error_get_last();
     
@@ -193,9 +193,25 @@ function FatalErrorHandler(): void
 	
     $phpVersion = PHP_VERSION;
 
-    $title = "Fatal Error";
+    // Texts from global.lang.php when the language is already loaded, otherwise English
+    // (a fatal error can happen before $lang exists, or inside the lang file itself).
+    $t = static function (string $key, string $fallback) use ($lang): string {
+        try {
+            if (isset($lang) && is_object($lang) && isset($lang->global[$key]) && is_string($lang->global[$key])) {
+                return $lang->global[$key];
+            }
+        } catch (\Throwable) {
+        }
+        return $fallback;
+    };
 
     // Send headers if not already sent
+    // Drop the half-rendered page (header, menu…) so the error page is not
+    // printed in the middle of it
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+
     if (!headers_sent()) {
         header('HTTP/1.1 500 Internal Server Error');
         header('Content-Type: text/html; charset=UTF-8');
@@ -236,13 +252,17 @@ function FatalErrorHandler(): void
 
     if ($isStaff) {
         // Стафф видит полную картину — как и раньше.
-        $errorMessage = "File: <strong>{$e($errfile)}</strong><br>Line: <strong>{$errline}</strong><br>Message: <strong>{$e($errstr)}</strong><br><small class='text-muted'>{$e($handlerInfo)}</small>";
-        $alertHeading = 'System Error Detected';
+        $errorMessage = $e($t('fatal_file', 'File:')) . " <strong>{$e($errfile)}</strong><br>"
+                      . $e($t('fatal_line', 'Line:')) . " <strong>{$errline}</strong><br>"
+                      . $e($t('fatal_message', 'Message:')) . " <strong>{$e($errstr)}</strong>";
+        $alertHeading = $t('fatal_staff_heading', 'System Error Detected');
     } else {
         // Гость видит только факт ошибки и ID для поддержки — без путей,
         // текста сообщения и информации об обработчиках.
-        $errorMessage = "Something went wrong on our end. Our team has already been notified.<br>If you need help, please reference Error ID <strong>ERR-{$errorId}</strong> when contacting support.";
-        $alertHeading = 'Something Went Wrong';
+        $errorMessage = $e($t('fatal_user_text', 'Something went wrong on our end. Our team has already been notified.')) . '<br>'
+                      . str_replace(['{1}', '%1$s'], "<strong>ERR-{$errorId}</strong>",
+                            $e($t('fatal_user_id', 'If you need help, give the staff this code: {1}')));
+        $alertHeading = $t('fatal_user_heading', 'Something Went Wrong');
         $handlerInfo = '';
     }
 
@@ -252,12 +272,22 @@ function FatalErrorHandler(): void
 
     // Modern HTML with heredoc and variables
     $handlerInfoBlock = $handlerInfo !== ''
-        ? "<div class=\"handler-info mt-3\"><i class=\"bi bi-gear me-1\"></i>Current Error Handler: <code>{$e($handlerInfo)}</code></div>"
+        ? "<div class=\"handler-info mt-3\"><i class=\"bi bi-gear me-1\"></i>" . $e($t('fatal_handler', 'Current Error Handler:')) . " <code>{$e($handlerInfo)}</code></div>"
         : '';
+
+    $htmlLang     = $e($t('fatal_html_lang', 'en'));
+    $title        = $e($t('fatal_title', 'Fatal Error'));
+    $subtitle     = $e($t('fatal_subtitle', 'A critical problem occurred while processing your request'));
+    $alertHeading = $e($alertHeading);
+    $btnBack      = $e($t('fatal_back', 'Go Back'));
+    $btnHome      = $e($t('fatal_home', 'Home Page'));
+    $btnRetry     = $e($t('fatal_retry', 'Retry'));
+    $errIdLabel   = $e($t('fatal_id_label', 'Error ID:'));
+    $generatedAt  = json_encode($t('fatal_generated', 'Generated at'), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
     echo <<<HTML
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{$htmlLang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -298,8 +328,8 @@ function FatalErrorHandler(): void
             <div class="card-header22">
                 <i class="bi bi-exclamation-triangle-fill error-icon"></i>
                 <div>
-                    <h1 class="h2 mb-1">Fatal Error</h1>
-                    <p class="mb-0 opacity-85">A critical problem occurred while processing your request</p>
+                    <h1 class="h2 mb-1">{$title}</h1>
+                    <p class="mb-0 opacity-85">{$subtitle}</p>
                 </div>
             </div>
             
@@ -322,20 +352,20 @@ function FatalErrorHandler(): void
                     <div class="d-flex flex-column flex-sm-row gap-3">
                         <button onclick="history.back()" 
                                 class="btn btn-outline-danger flex-fill d-flex align-items-center justify-content-center">
-                            <i class="bi bi-arrow-left me-2"></i> 
-                            Go Back
+                            <i class="bi bi-arrow-left me-2"></i>
+                            {$btnBack}
                         </button>
                         
                         <a href="{$BASEURL}/" 
                            class="btn btn-danger flex-fill d-flex align-items-center justify-content-center">
-                            <i class="bi bi-house me-2"></i> 
-                            Home Page
+                            <i class="bi bi-house me-2"></i>
+                            {$btnHome}
                         </a>
                         
                         <button onclick="location.reload()" 
                                 class="btn btn-outline-secondary flex-fill d-flex align-items-center justify-content-center">
-                            <i class="bi bi-arrow-clockwise me-2"></i> 
-                            Retry
+                            <i class="bi bi-arrow-clockwise me-2"></i>
+                            {$btnRetry}
                         </button>
                     </div>
                 </div>
@@ -343,7 +373,7 @@ function FatalErrorHandler(): void
                 <div class="mt-4 text-center">
                     <small class="text-muted">
                         <i class="bi bi-info-circle me-1"></i>
-                        Error ID: <code>ERR-{$errorId}</code>{$phpInfoBlock} • 
+                        {$errIdLabel} <code>ERR-{$errorId}</code>{$phpInfoBlock} • 
                         <span id="timestamp"></span>
                     </small>
                 </div>
@@ -354,7 +384,7 @@ function FatalErrorHandler(): void
     <script src="{$BASEURL}/scripts/bootstrap.bundle.min.js"></script>
     <script>
         document.getElementById('timestamp').textContent = 
-            'Generated at ' + new Date().toLocaleString();
+            {$generatedAt} + ' ' + new Date().toLocaleString();
             
         document.addEventListener('DOMContentLoaded', function() {
             var buttons = document.querySelectorAll('.btn');

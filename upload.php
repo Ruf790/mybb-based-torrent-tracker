@@ -6,11 +6,27 @@ define("IN_MYBB", 1);
 define("SCRIPTNAME", "upload.php");
 require_once 'global.php';
 
+// Max .torrent size in MB — the same limit is passed to upload_torrent.js (maxTorrentMb)
+const UPLOAD_MAX_TORRENT_MB = 5;
+
+// Lang is needed already by the AJAX handlers below (they run before the page code)
+$lang->load('upload');
+
+/** Error text from upload.lang.php; {1}, {2}… (or %1$s after $lang->load()) are filled with $args. */
+$ue = static function (string $key, string $fallback, string|int ...$args) use ($lang): string {
+    $s = $lang->upload[$key] ?? $fallback;
+    foreach ($args as $i => $v) {
+        $n = $i + 1;
+        $s = str_replace(['{' . $n . '}', '%' . $n . '$s'], (string)$v, $s);
+    }
+    return $s;
+};
+
 
 if (empty($CURUSER['id'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['action'])) {
         header("Content-type: application/json; charset=utf-8");
-        echo json_encode(['success' => false, 'error' => 'Not logged in']);
+        echo json_encode(['success' => false, 'error' => $ue('err_not_logged_in', 'Not logged in')]);
         exit;
     }
     print_no_permission();
@@ -62,13 +78,13 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
 
     if (!verify_post_check($mybb->get_input('my_post_key'))) {
         http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        echo json_encode(['success' => false, 'error' => $ue('err_security', 'Invalid security token. Please refresh the page and try again.')]);
         exit;
     }
 
     if (empty($_POST['screenshot_id'])) 
     {
-        echo json_encode(['success' => false, 'error' => 'Invalid ID']);
+        echo json_encode(['success' => false, 'error' => $ue('err_invalid_id', 'Invalid ID')]);
         exit;
     }
 
@@ -85,7 +101,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
         $is_mod = is_mod($usergroups);
 
         if (!$torrent_owner || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent_owner['owner'])) {
-            echo json_encode(['success' => false, 'error' => 'Access denied']);
+            echo json_encode(['success' => false, 'error' => $ue('err_access_denied', 'Access denied')]);
             exit;
         }
 
@@ -103,7 +119,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
     } 
     else 
     {
-        echo json_encode(['success' => false, 'error' => 'Screenshot not found']);
+        echo json_encode(['success' => false, 'error' => $ue('err_screenshot_not_found', 'Screenshot not found')]);
         exit;
     }
 }
@@ -116,12 +132,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshots')
 
     if (!verify_post_check($mybb->get_input('my_post_key'))) {
         http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        echo json_encode(['success' => false, 'error' => $ue('err_security', 'Invalid security token. Please refresh the page and try again.')]);
         exit;
     }
 
     if (empty($_POST['screenshot_ids']) || !is_array($_POST['screenshot_ids'])) {
-        echo json_encode(['success' => false, 'error' => 'No IDs provided']);
+        echo json_encode(['success' => false, 'error' => $ue('err_no_ids', 'No screenshots selected')]);
         exit;
     }
 
@@ -132,7 +148,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshots')
     )));
 
     if (empty($ids)) {
-        echo json_encode(['success' => false, 'error' => 'No valid IDs']);
+        echo json_encode(['success' => false, 'error' => $ue('err_no_ids', 'No screenshots selected')]);
         exit;
     }
 
@@ -154,7 +170,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshots')
     }
 
     if (empty($rows)) {
-        echo json_encode(['success' => false, 'error' => 'No screenshots found']);
+        echo json_encode(['success' => false, 'error' => $ue('err_no_screenshots', 'No screenshots found')]);
         exit;
     }
 
@@ -173,7 +189,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshots')
     }
 
     if (empty($allowedIds)) {
-        echo json_encode(['success' => false, 'error' => 'Access denied']);
+        echo json_encode(['success' => false, 'error' => $ue('err_access_denied', 'Access denied')]);
         exit;
     }
 
@@ -211,12 +227,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'reorder_screenshots')
 
     if (!verify_post_check($mybb->get_input('my_post_key'))) {
         http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        echo json_encode(['success' => false, 'error' => $ue('err_security', 'Invalid security token. Please refresh the page and try again.')]);
         exit;
     }
 
     if (empty($_POST['order']) || !is_array($_POST['order'])) {
-        echo json_encode(['success' => false, 'error' => 'No order provided']);
+        echo json_encode(['success' => false, 'error' => $ue('err_no_order', 'No order provided')]);
         exit;
     }
 
@@ -255,7 +271,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_hash')
     $info_hash = trim($_GET['info_hash'] ?? '');
 
     if (empty($info_hash)) {
-        echo json_encode(['exists' => false, 'error' => 'No hash provided']);
+        echo json_encode(['exists' => false, 'error' => $ue('err_no_hash', 'No hash provided')]);
         exit;
     }
 
@@ -333,13 +349,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_imdb_data' && $_SERVER['R
     $imdb_url = trim($_GET['imdb_url'] ?? '');
 
     if (empty($imdb_url)) {
-        echo json_encode(['success' => false, 'error' => 'No URL provided']);
+        echo json_encode(['success' => false, 'error' => $ue('imdb_error_empty', 'Please enter an IMDb URL')]);
         exit;
     }
 
     // Валидация URL
     if (!preg_match('@^https?://www\.imdb\.com/title/tt\d+/@i', $imdb_url)) {
-        echo json_encode(['success' => false, 'error' => 'Invalid IMDb URL']);
+        echo json_encode(['success' => false, 'error' => $ue('imdb_error_invalid', 'Invalid IMDb URL — it must contain /title/ttXXXXXXX/')]);
         exit;
     }
 
@@ -372,7 +388,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_imdb_data' && $_SERVER['R
             'country' => !empty($data['countries']) ? implode(', ', $data['countries']) : '',
         ]);
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        // English details go to the log; the user gets a translated message by the exception code
+        error_log('upload.php IMDb: ' . $e->getMessage());
+        $msg = match ($e->getCode()) {
+            IMDB::ERR_INVALID_ID => $ue('imdb_error_invalid',   'Invalid IMDb URL — it must contain /title/ttXXXXXXX/'),
+            IMDB::ERR_NOT_FOUND  => $ue('imdb_error_not_found', 'This title was not found in the movie database.'),
+            default              => $ue('imdb_error_failed',    'Could not get data from IMDb'),
+        };
+        echo json_encode(['success' => false, 'error' => $msg]);
     }
     exit;
 }
@@ -408,7 +431,7 @@ header('Content-Type: application/json');
 
 if (!verify_post_check($mybb->get_input('my_post_key'))) {
     http_response_code(403);
-    echo json_encode(["success" => false, "error" => "Invalid security token. Please refresh the page and try again."]);
+    echo json_encode(["success" => false, "error" => $ue('err_security', 'Invalid security token. Please refresh the page and try again.')]);
     exit;
 }
 
@@ -497,7 +520,7 @@ $newFileUploaded = ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK);
 
 if (!$isEdit && (!$torrentFile || $torrentFile['error'] !== UPLOAD_ERR_OK)) {
     http_response_code(400);
-    echo json_encode(["success" => false, "error" => "Torrent file is required for new uploads."]);
+    echo json_encode(["success" => false, "error" => $ue('torrent_file_required', 'A torrent file is required for a new upload.')]);
     exit;
 }
 
@@ -519,9 +542,9 @@ if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK))
 {
     // Проверка размера .torrent — 5MB это с большим запасом,
     // реальные торренты редко превышают 500KB.
-    if ($torrentFile['size'] > 5 * 1024 * 1024) {
+    if ($torrentFile['size'] > UPLOAD_MAX_TORRENT_MB * 1024 * 1024) {
         http_response_code(400);
-        echo json_encode(["success" => false, "error" => "Torrent file too large (max 5MB)"]);
+        echo json_encode(["success" => false, "error" => $ue('err_torrent_too_large', 'Torrent file is too large (max {1} MB).', UPLOAD_MAX_TORRENT_MB)]);
         exit;
     }
 
@@ -531,7 +554,7 @@ if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK))
     if (!$torrentFilename) 
 	{
         http_response_code(400);
-        echo json_encode(["success" => false, "error" => "Invalid or unsupported torrent file format."]);
+        echo json_encode(["success" => false, "error" => $ue('torrent_file_invalid', 'Invalid or unsupported torrent file format.')]);
         exit;
     }
     $torrentPath = $torrentDir . $torrentFilename;
@@ -546,7 +569,8 @@ elseif ($isEdit)
     if (!file_exists($torrentPath)) 
 	{
         http_response_code(400);
-        echo json_encode(["success" => false, "error" => "Existing torrent file not found at path: " . $torrentPath]);
+        error_log("upload.php: existing torrent file not found: {$torrentPath}");
+        echo json_encode(["success" => false, "error" => $ue('torrent_not_found', 'Existing torrent file not found.')]);
         exit;
     }
 }
@@ -697,7 +721,7 @@ if (!empty($_FILES['screenshotsUpload']['tmp_name'][0]))
 	$uploaded_count = count(array_filter($_FILES['screenshotsUpload']['tmp_name']));
 
     if ($uploaded_count > $max_screenshots) {
-        $errors[] = sprintf('Your group allows maximum %d screenshots. You tried to upload %d.', $max_screenshots, $uploaded_count);
+        $errors[] = $ue('err_screens_limit', 'Your group allows a maximum of {1} screenshots. You tried to upload {2}.', (int)$max_screenshots, (int)$uploaded_count);
     } 
 	
 	
@@ -730,7 +754,7 @@ if (!empty($_FILES['screenshotsUpload']['tmp_name'][0]))
                     $shotInfo['mime'] ?? 'unknown',
                     $shotInfo === false ? 'false' : 'ok'
                 ));
-                $errors[] = "Screenshot \"{$file['name']}\": could not be processed (corrupted or unsupported image).";
+                $errors[] = $ue('err_screen_bad_file', 'Screenshot "{1}": could not be processed (corrupted or unsupported image).', (string)$file['name']);
                 @unlink($savedPath);
             } else {
                 $screenshotFilenames[] = $filename;
@@ -760,7 +784,7 @@ $description = trim($_POST['description'] ?? '');
 if (empty($description)) 
 {
     http_response_code(400);
-    echo json_encode(["success" => false, "error" => "Description is required."]);
+    echo json_encode(["success" => false, "error" => $ue('description_required', 'Description is required.')]);
     exit;
 }
 
@@ -769,7 +793,7 @@ $torrentName = trim($_POST['formName'] ?? '');
 if (empty($torrentName)) 
 {
     http_response_code(400);
-    echo json_encode(["success" => false, "error" => "Torrent name is required."]);
+    echo json_encode(["success" => false, "error" => $ue('torrent_name_required', 'Torrent name is required.')]);
     exit;
 }
 
@@ -778,7 +802,7 @@ $category = isset($_POST['category']) ? (int) $_POST['category'] : 0;
 if ($category <= 0) 
 {
     http_response_code(400);
-    echo json_encode(["success" => false, "error" => "Category is required."]);
+    echo json_encode(["success" => false, "error" => $ue('category_required', 'Category is required.')]);
     exit;
 }
 
@@ -989,7 +1013,7 @@ if ($torrentFilename)
             ));
 
             http_response_code(403);
-            echo json_encode(["success" => false, "error" => "You do not have permission to edit this torrent."]);
+            echo json_encode(["success" => false, "error" => $ue('no_permission_edit', 'You do not have permission to edit this torrent.')]);
             exit;
         }
 
@@ -1216,7 +1240,7 @@ if (($newFileUploaded || !$isEdit) && $torrentFilename && file_exists($originalT
     if (!rename($originalTorrentPath, $finalTorrentPath)) 
 	{
         http_response_code(500);
-        echo json_encode(["success" => false, "error" => "Failed to rename the torrent file."]);
+        echo json_encode(["success" => false, "error" => $ue('torrent_rename_error', 'Failed to rename the torrent file.')]);
         exit;
     }
 }
@@ -1388,7 +1412,7 @@ if (!empty($_POST['imageUrl']))
                 if ($imgCheck === false || !str_starts_with((string)$realMime, 'image/')
                     || recode_image_file($uploadPath, $realMime) === false) {
                     @unlink($uploadPath);
-                    $errors[] = "Image from URL (imageUrl) is not a valid image.";
+                    $errors[] = $ue('err_image_not_valid', 'Image {1}: the link does not point to a valid image.', 1);
                 } else {
                     $NewImageURL = 'torrents/images/' . $imageName;
                     $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
@@ -1396,17 +1420,17 @@ if (!empty($_POST['imageUrl']))
             } 
 			else 
 			{
-                $errors[] = "Image from URL (imageUrl) could not be saved.";
+                $errors[] = $ue('err_image_save', 'Image {1}: could not be saved.', 1);
             }
         } 
 		else 
 		{
-            $errors[] = "Could not download image from imageUrl.";
+            $errors[] = $ue('err_image_download', 'Image {1}: could not be downloaded.', 1);
         }
     } 
 	else 
 	{
-        $errors[] = "Invalid image URL (imageUrl).";
+        $errors[] = $ue('err_image_url', 'Image {1}: invalid link (it must end in .jpg, .png, .gif or .webp).', 1);
     }
 }
 
@@ -1434,7 +1458,7 @@ if (!empty($_POST['imageUrl2']))
                 if ($imgCheck2 === false || !str_starts_with((string)$realMime2, 'image/')
                     || recode_image_file($uploadPath2, $realMime2) === false) {
                     @unlink($uploadPath2);
-                    $errors[] = "Image from URL (imageUrl2) is not a valid image.";
+                    $errors[] = $ue('err_image_not_valid', 'Image {1}: the link does not point to a valid image.', 2);
                 } else {
                     $NewImageURL2 = 'torrents/images/' . $imageName2;
                     $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
@@ -1442,17 +1466,17 @@ if (!empty($_POST['imageUrl2']))
             } 
 			else 
 			{
-                $errors[] = "Image from URL (imageUrl2) could not be saved.";
+                $errors[] = $ue('err_image_save', 'Image {1}: could not be saved.', 2);
             }
         } 
 		else 
 		{
-            $errors[] = "Could not download image from imageUrl2.";
+            $errors[] = $ue('err_image_download', 'Image {1}: could not be downloaded.', 2);
         }
     } 
 	else 
 	{
-        $errors[] = "Invalid image URL (imageUrl2).";
+        $errors[] = $ue('err_image_url', 'Image {1}: invalid link (it must end in .jpg, .png, .gif or .webp).', 2);
     }
 }
 
@@ -1489,19 +1513,19 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
         $rawUrl = trim($screenshotUrl);
         $screenshotUrl = filter_var($rawUrl, FILTER_VALIDATE_URL);
         if (!$screenshotUrl) {
-            $errors[] = "Screenshot URL \"{$rawUrl}\": not a valid URL.";
+            $errors[] = $ue('err_shot_url_invalid', 'Screenshot link "{1}": not a valid URL.', $rawUrl);
             continue;
         }
 	
 		
         if (!preg_match('/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i', $screenshotUrl)) {
-            $errors[] = "Screenshot URL \"{$rawUrl}\": must end in .jpg/.jpeg/.png/.gif/.webp (viewer/gallery page links are not supported - use the direct image link).";
+            $errors[] = $ue('err_shot_url_ext', 'Screenshot link "{1}": must end in .jpg/.jpeg/.png/.gif/.webp (gallery page links are not supported — use the direct image link).', $rawUrl);
             continue;
         }
 
         $ext = strtolower(pathinfo(parse_url($screenshotUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
         if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
-            $errors[] = "Screenshot URL \"{$rawUrl}\": unsupported extension.";
+            $errors[] = $ue('err_shot_url_ext2', 'Screenshot link "{1}": unsupported file type.', $rawUrl);
             continue;
         }
 
@@ -1524,7 +1548,7 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
         }
 
         if (!$imgData) {
-            $errors[] = "Screenshot URL \"{$rawUrl}\": could not be downloaded.";
+            $errors[] = $ue('err_shot_url_download', 'Screenshot link "{1}": could not be downloaded.', $rawUrl);
             continue;
         }
 
@@ -1538,7 +1562,7 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
             if ($imgCheckShot === false || !str_starts_with((string)$realMimeShot, 'image/')
                 || recode_image_file($filePath, $realMimeShot) === false) {
                 @unlink($filePath);
-                $errors[] = "Screenshot URL \"{$rawUrl}\": downloaded content is not a valid image (mime: " . ($realMimeShot ?: 'unknown') . "). If this is a viewer/gallery page link, use the direct image link instead.";
+                $errors[] = $ue('err_shot_url_not_image', 'Screenshot link "{1}": the downloaded file is not an image ({2}). If this is a gallery page link, use the direct image link.', $rawUrl, (string)($realMimeShot ?: 'unknown'));
                 continue;
             }
 
@@ -1550,7 +1574,7 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
             if (!$insertOk) {
                 @unlink($filePath);
                 error_log("upload.php: screenshot INSERT failed (URL), removed orphan file {$filePath}");
-                $errors[] = "Screenshot URL \"{$rawUrl}\": database error.";
+                $errors[] = $ue('err_shot_url_db', 'Screenshot link "{1}": database error.', $rawUrl);
                 continue;
             }
 
@@ -1811,7 +1835,7 @@ function copyAnnounceUrl() {
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header" style="background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%);border:none;">
                 <div class="d-flex align-items-center gap-2">
-                    <div class="rounded-circle bg-white bg-opacity-20 p-1">
+                    <div class="rounded-circle p-1" style="background:rgba(255,255,255,.2);">
                         <i class="fas fa-exclamation-triangle text-white" style="font-size:1.2rem;"></i>
                     </div>
                     <h5 class="modal-title text-white fw-semibold" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
@@ -1822,7 +1846,7 @@ function copyAnnounceUrl() {
                 <div class="bg-light bg-opacity-25 p-3 border-bottom border-danger border-opacity-25">
                     <div class="d-flex align-items-center gap-2 text-danger">
                         <i class="fas fa-bug"></i>
-                        <span class="small fw-semibold">Error Details</span>
+                        <span class="small fw-semibold"><?= $lang->upload['error_details'] ?? 'Error details' ?></span>
                     </div>
                 </div>
                 <div id="errorModalBody"
@@ -1834,13 +1858,13 @@ function copyAnnounceUrl() {
             </div>
             <div class="modal-footer border-0 bg-light bg-opacity-50">
                 <div class="d-flex justify-content-between align-items-center w-100">
-                    <div class="text-muted small"><i class="fas fa-info-circle me-1"></i>Check your input and try again</div>
+                    <div class="text-muted small"><i class="fas fa-info-circle me-1"></i><?= $lang->upload['error_check_input'] ?? 'Check your input and try again' ?></div>
                     <div>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
                             <i class="fas fa-times me-1"></i><?= $lang->upload['error_close'] ?>
                         </button>
                         <button type="button" class="btn btn-danger btn-sm ms-2" id="copyErrorBtn">
-                            <i class="fas fa-copy me-1"></i>Copy Error
+                            <i class="fas fa-copy me-1"></i><?= $lang->upload['error_copy'] ?? 'Copy error' ?>
                         </button>
                     </div>
                 </div>
@@ -2124,7 +2148,18 @@ function copyAnnounceUrl() {
 	
 <form method="post" action="<?php echo htmlspecialchars($_SERVER['SCRIPT_NAME']) . ($EditTorrent ? '?id=' . urlencode((string)$EditTorrentID) : ''); ?>" id="torrent-upload-form" enctype="multipart/form-data">
 <input type="hidden" name="my_post_key" value="<?php echo $mybb->post_code; ?>" />
-<script>var myPostKey = <?= json_encode($mybb->post_code) ?>;</script>
+<?php
+// JS strings for upload_torrent.js (js_ut_*) and tags_category.js (js_tc_*): js_* keys of the upload lang -> AGS_LANG without the prefix
+// (const AGS_LANG must exist only once on the page)
+$ags_lang = [];
+foreach ((array)$lang->upload as $ags_key => $ags_val) {
+    if (str_starts_with((string)$ags_key, 'js_')) {
+        $ags_lang[substr((string)$ags_key, 3)] = $ags_val;
+    }
+}
+?>
+<script>const AGS_LANG = <?= json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script>var myPostKey = <?= json_encode($mybb->post_code) ?>; var maxTorrentMb = <?= (int)UPLOAD_MAX_TORRENT_MB ?>;</script>
   
   
   <!-- Скрытый контейнер для добавления file_ids -->
@@ -2174,7 +2209,7 @@ function copyAnnounceUrl() {
   
   <script>var existingScreenshotsCount = <?= count($screenshots ?? []) ?>;</script>
   <script src="<?= $BASEURL; ?>/scripts/Sortable.min.js"></script>
-<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js"></script>
+<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js?ver=7"></script>
   
  
 <!-- Torrent File -->
@@ -2446,7 +2481,7 @@ function copyAnnounceUrl() {
             <strong><?= htmlspecialchars($activeCatName) ?></strong>
         <?php else: ?>
             <span class="text-muted">
-                <i class="fas fa-hand-pointer me-1"></i>Click a category to select
+                <i class="fas fa-hand-pointer me-1"></i><?= htmlspecialchars($lang->upload['category_click_select'] ?? 'Click a category to select') ?>
             </span>
         <?php endif; ?>
     </div>
@@ -2476,7 +2511,7 @@ function copyAnnounceUrl() {
 <div class="mb-4">
     <label for="tags" class="form-label fw-semibold">
         <i class="fas fa-tags me-2 text-gradient"></i><?= $lang->upload['tags'] ?>
-        <span class="text-muted fw-normal small">(optional)</span>
+        <span class="text-muted fw-normal small"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
     </label>
 
     <div class="input-group mb-3">
@@ -2524,26 +2559,31 @@ function copyAnnounceUrl() {
         $currentTags = array_map('trim', explode(',', $torrent['tags'] ?? ''));
         
         foreach ($genres as [$label, $icon, $color]):
+            // $label stays English (it is what goes into the tags field); $shown is the translated name
+            $shown  = $lang->upload['genre_' . strtolower(str_replace('-', '_', $label))] ?? $label;
             $active = in_array($label, $currentTags) ? 'genre-active' : '';
             $bgColor = $active ? $color : 'transparent';
             $textColor = $active ? 'white' : ($color ?? '#6c757d');
         ?>
         <button type="button"
                 class="btn genre-tag-btn <?= $active ?>"
-                data-genre="<?= $label ?>"
+                data-genre="<?= htmlspecialchars($label) ?>"
+                data-label="<?= htmlspecialchars($shown) ?>"
                 data-color="<?= $color ?>"
                 onclick="toggleGenreTag(this)"
                 style="border-color: <?= $color ?>80; color: <?= $textColor ?>;">
             <i class="<?= $icon ?> me-2" style="font-size: 1.1rem;"></i>
-            <span><?= $label ?></span>
+            <span><?= htmlspecialchars($shown) ?></span>
         </button>
         <?php endforeach; ?>
     </div>
 
     <div class="alert alert-info alert-dismissible fade show border-0 shadow-sm" role="alert" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);">
         <i class="fas fa-info-circle me-2 text-primary"></i>
-        <?= $lang->upload['tags_hint'] ?> to add or remove it from tags. 
-        Tags will be automatically filled from IMDb when you click the <strong>Fetch Movie Info</strong> button.
+        <?= $lang->upload['tags_hint'] ?>
+        <?php $fetchBtn = '<strong>' . $lang->upload['imdb_fetch'] . '</strong>'; // {1} (or %1$s after $lang->load()) = the button name ?>
+        <?= strtr($lang->upload['tags_hint_imdb'] ?? 'Tags will be automatically filled from IMDb when you click the {1} button.',
+                  ['{1}' => $fetchBtn, '%1$s' => $fetchBtn]) ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 </div>
@@ -3433,7 +3473,7 @@ https://example.com/screen3.webp"></textarea>
 <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/tags_category.css">
 
 
-<script src="<?= $BASEURL ?>/scripts/tags_category.js"></script>
+<script src="<?= $BASEURL ?>/scripts/tags_category.js?ver=21"></script>
 
 
 <?

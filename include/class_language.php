@@ -188,6 +188,14 @@ class trackerlanguage
 	public $phpeditor;
 	
 	
+	public $bbeditor;
+	
+	public $uploads;
+	
+	
+	
+	
+	
 	
 
 

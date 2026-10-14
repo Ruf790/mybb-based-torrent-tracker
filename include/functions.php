@@ -178,7 +178,7 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
     $ts_tzoffset = $CURUSER['timezone'] ?? $timezoneoffset;
 
     
-	$title = $SITENAME . ($title != '' ? ' :: ' . htmlspecialchars_uni($title) : '');
+	$title = $SITENAME.' :: '.($title != '' ? htmlspecialchars_uni($title) : TS_MESSAGE);
 
     if ($CURUSER) {
         include_once(INC_PATH.'/functions_ratio.php');
@@ -293,84 +293,116 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
 {
     global $SITENAME, $BASEURL, $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins;
 
+    // Строка из global.lang.php с английским запасным вариантом:
+    // stderr() может сработать до загрузки лангов, и под strict_types отсутствующий ключ не должен ронять страницу ошибки
+    $t = static function (string $key, string $fallback) use ($lang): string {
+        $v = (is_object($lang) && isset($lang->global[$key]) && is_string($lang->global[$key])) ? $lang->global[$key] : $fallback;
+        return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    };
+
     if (empty($error)) {
-        $error = 'An unknown error occurred';
+        $error = $t('stderr_unknown', 'An unknown error occurred');
     }
 
     if (empty($title)) {
-        $title = $SITENAME . ' - Error';
+        $title = $SITENAME . ' - ' . $t('stderr_title_suffix', 'Error');
     }
 
     // Маппинг типов ошибок на иконки и заголовки
     $errorTypes = [
         '404' => [
-            'code' => 404,
-            'title' => 'Not Found',
-            'icon' => 'bi-exclamation-triangle-fill',
+            'code'        => 404,
+            'title'       => $t('stderr_404_title', 'Not Found'),
+            'icon'        => 'bi-exclamation-triangle-fill',
             'messageIcon' => 'bi-database-slash',
-            'description' => 'The page or resource you\'re looking for doesn\'t exist'
+            'description' => $t('stderr_404_desc', 'The page or resource you\'re looking for doesn\'t exist'),
+            'hint'        => $t('stderr_hint_default', 'Please check your input and try again.'),
         ],
         '403' => [
-            'code' => 403,
-            'title' => 'Access Denied',
-            'icon' => 'bi-shield-lock-fill',
+            'code'        => 403,
+            'title'       => $t('stderr_403_title', 'Access Denied'),
+            'icon'        => 'bi-shield-lock-fill',
             'messageIcon' => 'bi-lock-fill',
-            'description' => 'You don\'t have permission to access this resource'
+            'description' => $t('stderr_403_desc', 'You don\'t have permission to access this resource'),
+            'hint'        => $t('stderr_hint_default', 'Please check your input and try again.'),
         ],
         '401' => [
-            'code' => 401,
-            'title' => 'Unauthorized',
-            'icon' => 'bi-person-x-fill',
+            'code'        => 401,
+            'title'       => $t('stderr_401_title', 'Unauthorized'),
+            'icon'        => 'bi-person-x-fill',
             'messageIcon' => 'bi-key-fill',
-            'description' => 'Please login to access this resource'
+            'description' => $t('stderr_401_desc', 'Please login to access this resource'),
+            'hint'        => $t('stderr_hint_default', 'Please check your input and try again.'),
         ],
         '500' => [
-            'code' => 500,
-            'title' => 'Server Error',
-            'icon' => 'bi-gear-fill',
+            'code'        => 500,
+            'title'       => $t('stderr_500_title', 'Server Error'),
+            'icon'        => 'bi-gear-fill',
             'messageIcon' => 'bi-exclamation-octagon-fill',
-            'description' => 'An internal server error occurred'
+            'description' => $t('stderr_500_desc', 'An internal server error occurred'),
+            'hint'        => $t('stderr_hint_default', 'Please check your input and try again.'),
         ],
         '403upload' => [
-            'code' => 403,
-            'title' => 'Upload Forbidden',
-            'icon' => 'bi-cloud-upload-fill',
+            'code'        => 403,
+            'title'       => $t('stderr_upload_title', 'Upload Forbidden'),
+            'icon'        => 'bi-cloud-upload-fill',
             'messageIcon' => 'bi-ban-fill',
-            'description' => 'You don\'t have permission to upload'
+            'description' => $t('stderr_upload_desc', 'You don\'t have permission to upload'),
+            'hint'        => $t('stderr_upload_hint', 'You need special permissions to upload torrents.'),
         ],
         'torrent' => [
-            'code' => 404,
-            'title' => 'Torrent Not Found',
-            'icon' => 'bi-file-zip-fill',
+            'code'        => 404,
+            'title'       => $t('stderr_torrent_title', 'Torrent Not Found'),
+            'icon'        => 'bi-file-zip-fill',
             'messageIcon' => 'bi-database-slash',
-            'description' => 'The requested torrent could not be found'
+            'description' => $t('stderr_torrent_desc', 'The requested torrent could not be found'),
+            'hint'        => $t('stderr_torrent_hint', 'Try browsing the torrent list instead.'),
         ],
-		'forum' => [
-            'code' => 404,
-            'title' => 'Forum Not Found',
-            'icon' => 'bi-chat-square-text-fill',
+        'forum' => [
+            'code'        => 404,
+            'title'       => $t('stderr_forum_title', 'Forum Not Found'),
+            'icon'        => 'bi-chat-square-text-fill',
             'messageIcon' => 'bi-database-slash',
-            'description' => 'The requested forum could not be found'
+            'description' => $t('stderr_forum_desc', 'The requested forum could not be found'),
+            'hint'        => $t('stderr_forum_hint', 'Try browsing the forum list instead.'),
+        ],
+        'thread' => [
+            'code'        => 404,
+            'title'       => $t('stderr_thread_title', 'Thread Not Found'),
+            'icon'        => 'bi-chat-left-text-fill',
+            'messageIcon' => 'bi-chat-square-dots',
+            'description' => $t('stderr_thread_desc', 'The requested thread could not be found'),
+            'hint'        => $t('stderr_thread_hint', 'The thread may have been deleted or moved. Try finding it in the forum list.'),
+        ],
+        'user' => [
+            'code'        => 404,
+            'title'       => $t('stderr_user_title', 'User Not Found'),
+            'icon'        => 'bi-person-x-fill',
+            'messageIcon' => 'bi-person-slash',
+            'description' => $t('stderr_user_desc', 'The requested user could not be found'),
+            'hint'        => $t('stderr_user_hint', 'The account may have been deleted. Try finding the user in the member list.'),
         ],
         'hitrun' => [
-            'code' => 403,
-            'title' => 'Download Restricted',
-            'icon' => 'bi-graph-down-arrow',
+            'code'        => 403,
+            'title'       => $t('stderr_hitrun_title', 'Download Restricted'),
+            'icon'        => 'bi-graph-down-arrow',
             'messageIcon' => 'bi-arrow-down-up',
-            'description' => 'Your upload/download ratio is below the required minimum'
+            'description' => $t('stderr_hitrun_desc', 'Your upload/download ratio is below the required minimum'),
+            'hint'        => $t('stderr_hitrun_hint', 'Seed your completed torrents to raise your ratio above the minimum.'),
         ],
         'general' => [
-            'code' => $errorCode,
-            'title' => 'Error',
-            'icon' => 'bi-exclamation-triangle-fill',
+            'code'        => $errorCode,
+            'title'       => $t('stderr_general_title', 'Error'),
+            'icon'        => 'bi-exclamation-triangle-fill',
             'messageIcon' => 'bi-info-circle-fill',
-            'description' => 'A problem occurred while processing your request'
-        ]
+            'description' => $t('stderr_general_desc', 'A problem occurred while processing your request'),
+            'hint'        => $t('stderr_hint_default', 'Please check your input and try again.'),
+        ],
     ];
 
     // Определяем тип ошибки
-    $type = isset($errorTypes[$errorType]) ? $errorTypes[$errorType] : $errorTypes['general'];
-    
+    $type = $errorTypes[$errorType] ?? $errorTypes['general'];
+
     // Устанавливаем HTTP код ответа
     http_response_code($type['code']);
 
@@ -384,10 +416,16 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
         stdhead();
     }
 
+    $htmlLang = (is_object($lang) && ($lang->language ?? '') === 'russian') ? 'ru' : 'en';
+
+    // «…свяжитесь с {1}» — {1} и %1$s (в него {1} превращает $lang->load())
+    $support = '<a href="' . $BASEURL . '/contact.php" class="text-danger text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
+    $footerText = strtr($t('stderr_footer', 'If you believe this is a mistake, please contact {1}'), ['{1}' => $support, '%1$s' => $support]);
+
     // Формируем страницу ошибки
     $errorpage = '
 <!DOCTYPE html>
-<html lang="en">
+<html lang="' . $htmlLang . '">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -401,7 +439,7 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
             <div class="error-card card border-0 shadow-lg overflow-hidden">
                 <div class="error-bg-pattern"></div>
                 <div class="gradient-line"></div>
-                
+
                 <div class="card-body p-4 p-md-5 position-relative">
                     <div class="error-icon-wrapper mb-4 text-center">
                         <div class="error-icon-circle mx-auto">
@@ -409,13 +447,13 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
                         </div>
                         <div class="error-pulse"></div>
                     </div>
-                    
+
                     <div class="text-center mb-4">
                         <h1 class="error-title display-4 fw-bold mb-2">' . $type['code'] . '</h1>
-                        <h2 class="error-subtitle h3 mb-2">' . htmlspecialchars($type['title']) . '</h2>
+                        <h2 class="error-subtitle h3 mb-2">' . $type['title'] . '</h2>
                         <p class="error-description text-muted mb-0">
                             <i class="bi bi-info-circle me-2"></i>
-                            ' . htmlspecialchars($type['description']) . '
+                            ' . $type['description'] . '
                         </p>
                     </div>
 
@@ -427,13 +465,7 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
                             <div class="flex-grow-1">
                                 <h5 class="mb-2">' . $error . '</h5>
                                 <p class="text-muted mb-0 small">
-                                    ' . match($errorType) {
-                                        '403upload' => 'You need special permissions to upload torrents.',
-                                        'hitrun'    => 'Seed your completed torrents to raise your ratio above the minimum.',
-                                        'torrent'   => 'Try browsing the torrent list instead.',
-										'forum'     => 'Try browsing the forum list instead.',
-                                        default     => 'Please check your input and try again.',
-                                    } . '
+                                    ' . $type['hint'] . '
                                 </p>
                             </div>
                         </div>
@@ -444,14 +476,14 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
                             <div class="col-6">
                                 <div class="detail-item p-3 rounded-3">
                                     <i class="bi bi-clock-history text-danger mb-2"></i>
-                                    <h6 class="mb-1">Request Time</h6>
+                                    <h6 class="mb-1">' . $t('stderr_request_time', 'Request Time') . '</h6>
                                     <small class="text-muted">' . date('H:i:s') . '</small>
                                 </div>
                             </div>
                             <div class="col-6">
                                 <div class="detail-item p-3 rounded-3">
                                     <i class="bi bi-calendar-check text-danger mb-2"></i>
-                                    <h6 class="mb-1">Request Date</h6>
+                                    <h6 class="mb-1">' . $t('stderr_request_date', 'Request Date') . '</h6>
                                     <small class="text-muted">' . date('Y-m-d') . '</small>
                                 </div>
                             </div>
@@ -461,40 +493,39 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
                     <div class="actions-wrapper">
                         <div class="d-flex flex-column flex-sm-row gap-3">
                             <button onclick="history.back()" class="btn btn-outline-danger btn-lg flex-grow-1 hover-lift">
-                                <i class="bi bi-arrow-left me-2"></i> 
-                                <span>Go Back</span>
+                                <i class="bi bi-arrow-left me-2"></i>
+                                <span>' . $t('stderr_btn_back', 'Go Back') . '</span>
                             </button>
                             <a href="' . $BASEURL . '/" class="btn btn-danger btn-lg flex-grow-1 hover-lift">
-                                <i class="bi bi-house-door me-2"></i> 
-                                <span>Home Page</span>
+                                <i class="bi bi-house-door me-2"></i>
+                                <span>' . $t('stderr_btn_home', 'Home Page') . '</span>
                             </a>
                         </div>
-                        
+
                         <div class="quick-links mt-4 pt-3 border-top">
-                            <small class="text-muted d-block mb-2">Quick Links:</small>
+                            <small class="text-muted d-block mb-2">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
                             <div class="d-flex flex-wrap gap-2">
                                 <a href="' . $BASEURL . '/browse.php" class="quick-link">
-                                    <i class="bi bi-grid"></i> Browse
+                                    <i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '
                                 </a>
                                 <a href="' . $BASEURL . '/search.php" class="quick-link">
-                                    <i class="bi bi-search"></i> Search
+                                    <i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '
                                 </a>
                                 <a href="' . $BASEURL . '/upload.php" class="quick-link">
-                                    <i class="bi bi-cloud-upload"></i> Upload
+                                    <i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '
                                 </a>
                                 <a href="' . $BASEURL . '/index2.php" class="quick-link">
-                                    <i class="bi bi-chat"></i> Forum
+                                    <i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '
                                 </a>
                             </div>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card-footer bg-transparent border-0 text-center py-3">
                     <small class="text-muted">
                         <i class="bi bi-bug me-1"></i>
-                        If you believe this is a mistake, please contact 
-                        <a href="' . $BASEURL . '/contact.php" class="text-danger text-decoration-none">support</a>
+                        ' . $footerText . '
                     </small>
                 </div>
             </div>
@@ -504,11 +535,11 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
 </html>';
 
     echo $errorpage;
-    
+
     if (function_exists('stdfoot')) {
         stdfoot();
     }
-    
+
     exit;
 }
 
@@ -517,13 +548,21 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
 
 
 
-function stdok(string $message = "", string $title = "Success", string $subtitle = "Operation completed without errors"): void
+function stdok(string $message = "", string $title = "", string $subtitle = ""): void
 {
-    global $SITENAME, $BASEURL;
+    global $SITENAME, $BASEURL, $lang;
 
-    if (empty($message)) {
-        $message = 'Operation completed successfully.';
-    }
+    // Строка из global.lang.php с английским запасным вариантом (как в stderr())
+    $t = static function (string $key, string $fallback) use ($lang): string {
+        $v = (is_object($lang) && isset($lang->global[$key]) && is_string($lang->global[$key])) ? $lang->global[$key] : $fallback;
+        return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    };
+    $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+    // Пустые аргументы — тексты по умолчанию из ланга (уже экранированы); переданные — экранируем
+    $message  = $message  !== '' ? $e($message)  : $t('stdok_message',  'Operation completed successfully.');
+    $title    = $title    !== '' ? $e($title)    : $t('stdok_title',    'Success');
+    $subtitle = $subtitle !== '' ? $e($subtitle) : $t('stdok_subtitle', 'Operation completed without errors');
 
     while (ob_get_level()) {
         ob_end_clean();
@@ -533,9 +572,14 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
         stdhead();
     }
 
-    $e    = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
     $time = date('H:i:s');
     $date = date('Y-m-d');
+
+    // «…загляните в {1} или обратитесь в {2}» — {n} и %n$s (в него {n} превращает $lang->load())
+    $faq     = '<a href="' . $e($BASEURL) . '/faq.php" class="text-success text-decoration-none">' . $t('stdok_faq', 'FAQ') . '</a>';
+    $support = '<a href="' . $e($BASEURL) . '/contact.php" class="text-success text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
+    $footerText = strtr($t('stdok_footer', 'Need help? Visit our {1} or contact {2}'),
+        ['{1}' => $faq, '%1$s' => $faq, '{2}' => $support, '%2$s' => $support]);
 
     $okpage = '
 <link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">
@@ -556,11 +600,11 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
                 </div>
 
                 <div class="text-center mb-4">
-                    <h1 class="ok-title display-4 fw-bold mb-2">Success</h1>
-                    <h2 class="ok-subtitle h3 mb-2">' . $e($title) . '</h2>
+                    <h1 class="ok-title display-4 fw-bold mb-2">' . $t('stdok_heading', 'Success') . '</h1>
+                    <h2 class="ok-subtitle h3 mb-2">' . $title . '</h2>
                     <p class="ok-description text-muted mb-0">
                         <i class="bi bi-info-circle me-2"></i>
-                        ' . $e($subtitle) . '
+                        ' . $subtitle . '
                     </p>
                 </div>
 
@@ -570,8 +614,8 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
                             <i class="bi bi-check-circle-fill"></i>
                         </div>
                         <div class="flex-grow-1">
-                            <h5 class="mb-2">' . $e($message) . '</h5>
-                            <p class="text-muted mb-0 small">No further action is required.</p>
+                            <h5 class="mb-2">' . $message . '</h5>
+                            <p class="text-muted mb-0 small">' . $t('stdok_no_action', 'No further action is required.') . '</p>
                         </div>
                     </div>
                 </div>
@@ -581,14 +625,14 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
                         <div class="col-6">
                             <div class="ok-detail-item p-3 rounded-3">
                                 <i class="bi bi-clock-history text-success mb-2"></i>
-                                <h6 class="mb-1">Completed at</h6>
+                                <h6 class="mb-1">' . $t('stdok_completed_at', 'Completed at') . '</h6>
                                 <small class="text-muted">' . $time . '</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="ok-detail-item p-3 rounded-3">
                                 <i class="bi bi-calendar-check text-success mb-2"></i>
-                                <h6 class="mb-1">Date</h6>
+                                <h6 class="mb-1">' . $t('stdok_date', 'Date') . '</h6>
                                 <small class="text-muted">' . $date . '</small>
                             </div>
                         </div>
@@ -599,28 +643,28 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
                     <div class="d-flex flex-column flex-sm-row gap-3">
                         <button onclick="history.back()" class="btn btn-outline-success btn-lg flex-grow-1 hover-lift-ok">
                             <i class="bi bi-arrow-left me-2"></i>
-                            <span>Go Back</span>
+                            <span>' . $t('stderr_btn_back', 'Go Back') . '</span>
                         </button>
                         <a href="' . $e($BASEURL) . '/" class="btn btn-success btn-lg flex-grow-1 hover-lift-ok">
                             <i class="bi bi-house-door me-2"></i>
-                            <span>Home Page</span>
+                            <span>' . $t('stderr_btn_home', 'Home Page') . '</span>
                         </a>
                     </div>
 
                     <div class="quick-links-ok mt-4 pt-3 border-top">
-                        <small class="text-muted d-block mb-2">Quick Links:</small>
+                        <small class="text-muted d-block mb-2">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
                         <div class="d-flex flex-wrap gap-2">
                             <a href="' . $e($BASEURL) . '/browse.php" class="quick-link-ok">
-                                <i class="bi bi-grid"></i> Browse
+                                <i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '
                             </a>
                             <a href="' . $e($BASEURL) . '/search.php" class="quick-link-ok">
-                                <i class="bi bi-search"></i> Search
+                                <i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '
                             </a>
                             <a href="' . $e($BASEURL) . '/upload.php" class="quick-link-ok">
-                                <i class="bi bi-cloud-upload"></i> Upload
+                                <i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '
                             </a>
                             <a href="' . $e($BASEURL) . '/index2.php" class="quick-link-ok">
-                                <i class="bi bi-chat"></i> Forum
+                                <i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '
                             </a>
                         </div>
                     </div>
@@ -630,10 +674,7 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
             <div class="card-footer bg-transparent border-0 text-center py-3">
                 <small class="text-muted">
                     <i class="bi bi-question-circle me-1"></i>
-                    Need help? Visit our
-                    <a href="' . $e($BASEURL) . '/faq.php" class="text-success text-decoration-none">FAQ</a>
-                    or contact
-                    <a href="' . $e($BASEURL) . '/contact.php" class="text-success text-decoration-none">support</a>
+                    ' . $footerText . '
                 </small>
             </div>
         </div>

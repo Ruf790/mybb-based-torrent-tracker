@@ -1,3 +1,15 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   Strings come from AGS_LANG (js_tc_* keys in the page's lang file);
+   missing -> English fallback. {1} and %1$s are both substituted. */
+function tcT(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
 // ===== Category picker =====
 function selectCategory(btn) {
     document.querySelectorAll('.cat-pick-btn').forEach(b => {
@@ -8,14 +20,20 @@ function selectCategory(btn) {
     btn.classList.add('active');
     document.getElementById('categorySelected').value = btn.dataset.id;
     document.getElementById('categoryError').style.display = 'none';
-    document.getElementById('categoryLabel').innerHTML =
-        '<i class="fas fa-check-circle text-success me-1"></i>' +
-        'Selected: <strong>' + btn.dataset.name + '</strong>';
+    // Built from nodes: the category name is inserted as text, not HTML
+    const label  = document.getElementById('categoryLabel');
+    const icon   = document.createElement('i');
+    const strong = document.createElement('strong');
+    icon.className     = 'fas fa-check-circle text-success me-1';
+    strong.textContent = btn.dataset.name || '';
+    label.textContent  = '';
+    label.append(icon, tcT('tc_selected', 'Selected:') + ' ', strong);
 }
 
 // ===== Genre tags =====
 function toggleGenreTag(button) {
-    const genre = button.getAttribute('data-genre');
+    const genre = button.getAttribute('data-genre');   // English value — goes into the tags field
+    const label = button.getAttribute('data-label') || genre;   // translated name — only for messages
     const color = button.getAttribute('data-color');
     const tagsInput = document.getElementById('tags');
     let currentTags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t);
@@ -49,7 +67,10 @@ function toggleGenreTag(button) {
     tagsInput.dispatchEvent(new Event('change'));
 
     // Show feedback
-    showToastFeedback(genre, button.classList.contains('genre-active'));
+    const added = button.classList.contains('genre-active');
+    showToastFeedback(added
+        ? tcT('tc_tag_added',   '{1} added to tags',     label)
+        : tcT('tc_tag_removed', '{1} removed from tags', label), added);
 }
 
 function clearAllTags() {
@@ -68,11 +89,11 @@ function clearAllTags() {
     });
 
     // Show clear feedback
-    showToastFeedback('All tags cleared', false);
+    showToastFeedback(tcT('tc_tags_cleared', 'All tags cleared'), false);
 }
 
 function showToastFeedback(message, isAdd) {
-    // Create temporary toast notification
+    // Temporary toast; the message is inserted as text (it contains a tag/category name)
     const toast = document.createElement('div');
     toast.className = 'position-fixed bottom-0 end-0 p-3';
     toast.style.zIndex = '9999';
@@ -80,13 +101,13 @@ function showToastFeedback(message, isAdd) {
         <div class="toast align-items-center text-white bg-${isAdd ? 'success' : 'danger'} border-0" role="alert">
             <div class="d-flex">
                 <div class="toast-body">
-                    <i class="fas fa-${isAdd ? 'check-circle' : 'trash-alt'} me-2"></i>
-                    ${message} ${isAdd ? 'added to' : 'removed from'} tags
+                    <i class="fas fa-${isAdd ? 'check-circle' : 'trash-alt'} me-2"></i><span></span>
                 </div>
                 <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
             </div>
         </div>
     `;
+    toast.querySelector('.toast-body span').textContent = message;
 
     document.body.appendChild(toast);
     const bsToast = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 1500 });

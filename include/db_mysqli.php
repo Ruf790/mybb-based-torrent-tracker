@@ -499,7 +499,23 @@ class DB_MySQLi implements DB_Base
 
     function output_error(int $type, array|string $message, string $file, int $line): never
     {
-        global $SITENAME, $BASEURL, $charset, $usergroups, $CURUSER;
+        global $SITENAME, $BASEURL, $charset, $usergroups, $CURUSER, $lang;
+
+        // Error text and the query may contain user input (torrent name, search…) —
+        // without escaping that is XSS against the staff member who sees the page.
+        $e = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        // Texts for the page: global lang when it is already loaded, otherwise English
+        // (the error can happen before $lang exists, e.g. on connect).
+        $t = static function (string $key, string $fallback) use ($lang): string {
+            try {
+                if (isset($lang) && is_object($lang) && isset($lang->global[$key]) && is_string($lang->global[$key])) {
+                    return $lang->global[$key];
+                }
+            } catch (\Throwable) {
+            }
+            return $fallback;
+        };
 
         $title    = "System Error";
         $charset  = $charset ?? 'UTF-8';
@@ -523,21 +539,21 @@ class DB_MySQLi implements DB_Base
 
         // Тип ошибки
         if ($type == MYBB_SQL || $type == CONNECT_SQL) {
-            $error_type    = "Database Error";
+            $error_type    = $t('db_error_database', 'Database Error');
             $error_icon    = "bi-database-exclamation";
             $error_details = "
                 <div class='alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25'>
                     <i class='bi bi-exclamation-triangle-fill me-2'></i>
-                    <strong>SQL Error #{$message['error_no']}:</strong> {$message['error']}
+                    <strong>SQL Error #{$e($message['error_no'])}:</strong> {$e($message['error'])}
                 </div>
                 <div class='mb-3'>
-                    <h5 class='mb-2'>Failed Query:</h5>
+                    <h5 class='mb-2'>{$e($t('db_error_failed_query', 'Failed Query:'))}</h5>
                     <div class='p-3 bg-light rounded overflow-auto'>
-                        <code>{$message['query']}</code>
+                        <code>{$e($message['query'])}</code>
                     </div>
                 </div>";
         } else {
-            $error_type    = "Application Error";
+            $error_type    = $t('db_error_application', 'Application Error');
             $error_icon    = "bi-bug-fill";
             $error_message = is_array($message)
                 ? "SQL Error #{$message['error_no']}: {$message['error']}"
@@ -545,7 +561,7 @@ class DB_MySQLi implements DB_Base
             $error_details = "
                 <div class='alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25'>
                     <i class='bi bi-exclamation-triangle-fill me-2'></i>
-                    <strong>Error Message:</strong> {$error_message}
+                    <strong>{$e($t('db_error_message', 'Error Message:'))}</strong> {$e($error_message)}
                 </div>";
         }
 
@@ -611,12 +627,17 @@ class DB_MySQLi implements DB_Base
 
         if (!$isStaff) {
             // Гость/обычный юзер — только факт ошибки и ID для поддержки.
-            $error_type    = "System Error";
+            // ID стоит внутри .alert-danger: окно ошибки загрузки (upload_torrent.js)
+            // берёт текст именно из этого блока, так пользователь увидит и код.
+            $error_type    = $t('db_error_title', 'System Error');
             $error_icon    = "bi-tools";
+            $userText      = $t('db_error_user', 'Server error. Please try again later.');
+            $idText        = str_replace(['{1}', '%1$s'], "ERR-{$randomId}",
+                                 $t('db_error_id', 'If the error repeats, tell the staff this code: {1}'));
             $error_details = "
                 <div class='alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25'>
                     <i class='bi bi-exclamation-triangle-fill me-2'></i>
-                    Something went wrong on our end. Our team has already been notified.
+                    {$e($userText)}<br>{$e($idText)}
                 </div>";
         }
 
@@ -630,26 +651,36 @@ class DB_MySQLi implements DB_Base
 
         $locationBlock = $isStaff ? "
       <div class='mb-4'>
-        <h5 class='mb-2'>Error Location:</h5>
+        <h5 class='mb-2'>{$e($t('db_error_location', 'Error Location:'))}</h5>
         <div class='file-path mb-2'>
-          <strong>Called from:</strong> {$caller_file}<br>
-          <strong>Line:</strong> {$caller_line}
+          <strong>{$e($t('db_error_called_from', 'Called from:'))}</strong> {$e($caller_file)}<br>
+          <strong>{$e($t('db_error_line', 'Line:'))}</strong> {$caller_line}
         </div>
         <div class='file-path'>
-          <strong>DB Layer:</strong> {$file}<br>
-          <strong>Line:</strong> {$line}
+          <strong>{$e($t('db_error_db_layer', 'DB Layer:'))}</strong> {$e($file)}<br>
+          <strong>{$e($t('db_error_line', 'Line:'))}</strong> {$line}
         </div>
       </div>" : "";
 
-        $headerTitle = $isStaff ? "{$error_type} in {$currentFile}" : $error_type;
+        $headerTitle = $e($isStaff
+            ? str_replace(['{1}', '{2}', '%1$s', '%2$s'], [$error_type, $currentFile, $error_type, $currentFile],
+                          $t('db_error_in_file', '{1} in {2}'))
+            : $error_type);
+        $protection  = $e(str_replace(['{1}', '%1$s'], (string)$SITENAME, $t('db_error_protection', '{1} System Protection')));
+        $errIdLabel  = $e($t('db_error_id_label', 'Error ID:'));
+        $pageTitle   = $e($t('db_error_page_title', 'System Error'));
+        $bbname      = $e($bbname);
+        $btnBack     = $e($t('db_error_back', 'Go Back'));
+        $btnHome     = $e($t('db_error_home', 'Home Page'));
+        $htmlLang    = $e($t('db_error_html_lang', 'en'));
 
         echo <<<HTML
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{$htmlLang}">
 <head>
   <meta charset="{$charset}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{$title} | {$bbname}</title>
+  <title>{$pageTitle} | {$bbname}</title>
   <link href="{$BASEURL}/include/templates/default/style/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/bootstrap-icons.css">
   <style>
@@ -669,7 +700,7 @@ class DB_MySQLi implements DB_Base
       <i class="bi {$error_icon} error-icon"></i>
       <div>
         <h2 class="mb-0">{$headerTitle}</h2>
-        <p class="mb-0 opacity-75">{$bbname} System Protection</p>
+        <p class="mb-0 opacity-75">{$protection}</p>
       </div>
     </div>
     <div class="card-body">
@@ -677,15 +708,15 @@ class DB_MySQLi implements DB_Base
       {$locationBlock}
       <div class='d-flex flex-column flex-sm-row gap-3'>
         <button onclick='history.back()' class='btn btn-outline-danger flex-grow-1'>
-          <i class='bi bi-arrow-left me-2'></i> Go Back
+          <i class='bi bi-arrow-left me-2'></i> {$btnBack}
         </button>
         <a href='/' class='btn btn-danger flex-grow-1'>
-          <i class='bi bi-house me-2'></i> Home Page
+          <i class='bi bi-house me-2'></i> {$btnHome}
         </a>
       </div>
       <div class='mt-4 text-center text-muted small'>
         <i class='bi bi-info-circle me-1'></i>
-        Error ID: <strong>ERR-{$randomId}</strong> •
+        {$errIdLabel} <strong>ERR-{$randomId}</strong> •
         <span id='timestamp'></span>
       </div>
     </div>

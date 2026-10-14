@@ -1,11 +1,17 @@
 <?php
 
 class IMDB {
+    // Exception codes: the caller shows a translated message by code;
+    // the English text of the exception is for logs only.
+    public const ERR_INVALID_ID = 1;   // bad IMDb link / ID
+    public const ERR_REQUEST    = 2;   // TMDB unreachable / bad answer
+    public const ERR_NOT_FOUND  = 3;   // title not found on TMDB
+
     protected string $imdbId;
     protected array $data = [];
 
     // Вставь сюда свой TMDB API ключ
-    private const TMDB_API_KEY = '';
+    private const TMDB_API_KEY = 'e83184074867f8e290402cc1dd71f0d5';
     private const TMDB_BASE    = 'https://api.themoviedb.org/3';
     private const TMDB_IMG     = 'https://image.tmdb.org/t/p/w500';
 
@@ -15,7 +21,7 @@ class IMDB {
         } elseif (preg_match('/^tt\d+$/', $imdbIdOrUrl)) {
             $this->imdbId = $imdbIdOrUrl;
         } else {
-            throw new InvalidArgumentException("Invalid IMDb ID or URL format");
+            throw new InvalidArgumentException("Invalid IMDb ID or URL format", self::ERR_INVALID_ID);
         }
     }
 
@@ -35,16 +41,16 @@ class IMDB {
         
 
         if (!$response || $err) {
-            throw new Exception("TMDB API request failed: {$err}");
+            throw new Exception("TMDB API request failed: {$err}", self::ERR_REQUEST);
         }
 
         $decoded = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("TMDB API JSON decode error: " . json_last_error_msg());
+            throw new Exception("TMDB API JSON decode error: " . json_last_error_msg(), self::ERR_REQUEST);
         }
 
         if (isset($decoded['status_code']) && $decoded['status_code'] !== 1) {
-            throw new Exception("TMDB API error: " . ($decoded['status_message'] ?? 'Unknown'));
+            throw new Exception("TMDB API error: " . ($decoded['status_message'] ?? 'Unknown'), self::ERR_REQUEST);
         }
 
         return $decoded;
@@ -66,7 +72,7 @@ class IMDB {
             return ['type' => 'tv', 'id' => $data['tv_results'][0]['id']];
         }
 
-        throw new Exception("Title not found on TMDB for IMDb ID: {$this->imdbId}");
+        throw new Exception("Title not found on TMDB for IMDb ID: {$this->imdbId}", self::ERR_NOT_FOUND);
     }
 
     // ── Получить детали фильма/сериала ───────────────────────

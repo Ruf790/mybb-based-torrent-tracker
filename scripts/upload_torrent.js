@@ -1,3 +1,21 @@
+/* ── i18n ─────────────────────────────────────────────────────────────────
+   Strings come from AGS_LANG (js_ut_* keys in upload.lang.php, printed by upload.php
+   before this script). Missing key -> English fallback. {1} and %1$s are both substituted.
+   Result is plain text: escape it before putting it into innerHTML. */
+function ut(key, fallback, ...args) {
+    const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
+    const str  = (dict && typeof dict['ut_' + key] === 'string') ? dict['ut_' + key] : fallback;
+    return String(str).replace(/\{(\d+)\}|%(\d+)\$s/g, function (m, a, b) {
+        const i = parseInt(a || b, 10) - 1;
+        return (i >= 0 && i < args.length) ? String(args[i]) : m;
+    });
+}
+
+// Translated text escaped for innerHTML / template literals
+function utH(key, fallback, ...args) {
+    return escapeHtml(ut(key, fallback, ...args));
+}
+
 function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, function (ch) {
         switch (ch) {
@@ -43,7 +61,7 @@ function openDeleteModal(id, filename, imageSrc) {
   
   // Обновляем только если элементы существуют
   if (titleElement) {
-    titleElement.textContent = 'Delete Screenshot?';
+    titleElement.textContent = ut('delete_title', 'Delete screenshot?');
   } else {
     console.warn('Element deleteScreenshotTitle not found');
   }
@@ -90,13 +108,13 @@ function openDeleteModal(id, filename, imageSrc) {
     } catch (error) {
       console.error('Error showing modal:', error);
       if (typeof showToast === 'function') {
-        showToast('Error showing modal', 'error');
+        showToast(ut('modal_error', 'Could not open the dialog'), 'error');
       }
     }
   } else {
     console.error('Modal element not found');
     if (typeof showToast === 'function') {
-      showToast('Error: Modal not found', 'error');
+      showToast(ut('modal_error', 'Could not open the dialog'), 'error');
     }
   }
 }
@@ -107,7 +125,7 @@ if (confirmBtn) {
   confirmBtn.addEventListener('click', function() {
     if (!deleteId) {
       if (typeof showToast === 'function') {
-        showToast('No screenshot selected for deletion', 'error');
+        showToast(ut('no_selected', 'No screenshot selected for deletion'), 'error');
       }
       return;
     }
@@ -115,7 +133,7 @@ if (confirmBtn) {
     const btn = this;
     const originalHtml = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Deleting...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> ' + escapeHtml(ut('deleting', 'Deleting...'));
 
     // Создаем FormData для отправки
     const formData = new FormData();
@@ -162,7 +180,7 @@ if (confirmBtn) {
         
         // Показываем toast с успехом
         if (typeof showToast === 'function') {
-          showToast('Screenshot deleted successfully!', 'success');
+          showToast(ut('shot_deleted', 'Screenshot deleted!'), 'success');
         } else {
           console.log('Screenshot deleted successfully!');
         }
@@ -172,13 +190,13 @@ if (confirmBtn) {
         if (remainingScreenshots === 0) {
           const container = document.getElementById('existingScreenshots');
           if (container) {
-            container.innerHTML = '<p class="text-muted text-center py-3">No screenshots yet</p>';
+            container.innerHTML = '<p class="text-muted text-center py-3">' + escapeHtml(ut('no_shots', 'No screenshots yet')) + '</p>';
           }
         }
       } else {
         // Показываем toast с ошибкой
         if (typeof showToast === 'function') {
-          showToast(data.error || 'Failed to delete screenshot.', 'error');
+          showToast(data.error || ut('delete_failed', 'Could not delete the screenshot.'), 'error');
         } else {
           console.error('Failed to delete screenshot:', data.error);
         }
@@ -188,7 +206,7 @@ if (confirmBtn) {
       console.error('Error:', error);
       
       if (typeof showToast === 'function') {
-        showToast('An error occurred while deleting the screenshot.', 'error');
+        showToast(ut('delete_error', 'An error occurred while deleting the screenshot.'), 'error');
       }
     })
     .finally(() => {
@@ -255,7 +273,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const previewLabelEl = document.getElementById('bulkDeleteScreenshotsPreviewLabel');
 
         if (previewLabelEl) {
-            previewLabelEl.textContent = 'Selected screenshots (' + checked.length + ')';
+            previewLabelEl.textContent = ut('selected_shots', 'Selected screenshots ({1})', checked.length);
             previewLabelEl.classList.remove('d-none');
         }
 
@@ -293,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const originalHtml = deleteBtn.innerHTML;
             deleteBtn.disabled = true;
-            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>' + escapeHtml(ut('deleting', 'Deleting...'));
 
             // Тот же эндпоинт, что и для одиночного удаления - вызываем по
             // очереди для каждого выбранного ID, без изменений на бэкенде.
@@ -312,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (!data.success) {
                     if (typeof showToast === 'function') {
-                        showToast(data.error || 'Failed to delete screenshots.', 'error');
+                        showToast(data.error || ut('delete_many_failed', 'Could not delete the screenshots.'), 'error');
                     }
                     return;
                 }
@@ -335,15 +353,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 if (typeof showToast === 'function') {
-                    let msg = actualDeleted + ' screenshot(s) deleted.';
+                    let msg = ut('deleted_many', '{1} screenshot(s) deleted.', actualDeleted);
                     if (data.denied) {
-                        msg += ' ' + data.denied + ' skipped (no permission).';
+                        msg += ' ' + ut('skipped_denied', '{1} skipped (no permission).', data.denied);
                     }
                     showToast(msg, data.denied ? 'warning' : 'success');
                 }
 
                 if (container.querySelectorAll('.screenshot-item').length === 0) {
-                    container.innerHTML = '<p class="text-muted text-center py-3">No screenshots yet</p>';
+                    container.innerHTML = '<p class="text-muted text-center py-3">' + escapeHtml(ut('no_shots', 'No screenshots yet')) + '</p>';
                 }
 
                 pendingBulkDeleteIds = [];
@@ -351,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .catch(() => {
                 if (typeof showToast === 'function') {
-                    showToast('Network error while deleting screenshots.', 'error');
+                    showToast(ut('network_delete', 'Network error while deleting screenshots.'), 'error');
                 }
             })
             .finally(() => {
@@ -414,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (!allElementsFound) {
     console.error('Some required modal elements are missing!');
     if (typeof showToast === 'function') {
-      showToast('Error: Modal elements missing', 'error');
+      showToast(ut('modal_error', 'Could not open the dialog'), 'error');
     }
   }
   
@@ -431,7 +449,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!screenshotItem) {
       console.error('Could not find screenshot item');
       if (typeof showToast === 'function') {
-        showToast('Could not find screenshot item', 'error');
+        showToast(ut('item_missing', 'Screenshot not found on the page'), 'error');
       }
       return;
     }
@@ -441,7 +459,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!id) {
       console.error('No ID found for screenshot');
       if (typeof showToast === 'function') {
-        showToast('Cannot delete: Missing screenshot ID', 'error');
+        showToast(ut('missing_id', 'Cannot delete: screenshot ID is missing'), 'error');
       }
       return;
     }
@@ -515,13 +533,13 @@ function handleImageUpload(input, previewContainerId) {
         
         // Валидация файла
         if (!file.type.match('image.*')) {
-            alert('Please select a valid image file (JPG, PNG, GIF, WebP)');
+            alert(ut('image_type', 'Please choose an image file (JPG, PNG, GIF, WebP)'));
             input.value = '';
             return;
         }
         
         if (file.size > 10 * 1024 * 1024) { // 10MB
-            alert('Image size should be less than 10MB');
+            alert(ut('image_size', 'The image must be smaller than 10 MB'));
             input.value = '';
             return;
         }
@@ -542,11 +560,11 @@ function updateImagePreview(imageSrc, previewContainerId) {
         <div class="preview-item">
             <img src="${imageSrc}" 
                  class="preview-poster" 
-                 alt="Image preview">
+                 alt="${utH('image_preview', 'Image preview')}">
             <button type="button" 
                     class="delete-btn" 
                     onclick="removeImage('${previewContainerId}', '${previewContainerId === 'imagePreview' ? 'imageUrl' : 'imageUrl2'}', '${previewContainerId === 'imagePreview' ? 'imagesUpload' : 'imagesUpload2'}')"
-                    title="Remove image">
+                    title="${escapeHtml(ut('image_remove', 'Remove image'))}">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -561,7 +579,7 @@ window.updateImagePreviewFromUrl = function(url, previewContainerId) {
     }
     
     const previewContainer = document.getElementById(previewContainerId);
-    previewContainer.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    previewContainer.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> ' + escapeHtml(ut('loading', 'Loading...')) + '</div>';
     
     const img = new Image();
     img.onload = function() {
@@ -572,7 +590,7 @@ window.updateImagePreviewFromUrl = function(url, previewContainerId) {
         previewContainer.innerHTML = `
             <div class="alert alert-warning p-2">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Cannot load image from URL
+                ${escapeHtml(ut('image_url_fail', 'Cannot load the image from this link'))}
             </div>
         `;
     };
@@ -681,7 +699,7 @@ function showErrorModal(message) {
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(text.trim()).then(() => {
                     const orig = copyBtn.innerHTML;
-                    copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                    copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>' + escapeHtml(ut('copied', 'Copied!'));
                     copyBtn.classList.replace('btn-danger', 'btn-success');
                     setTimeout(() => {
                         copyBtn.innerHTML = orig;
@@ -723,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Обработчик скрытия модального окна загрузки
     uploadModalEl.addEventListener('hidden.bs.modal', function() {
         stopUploadTimer();
-        updateUploadProgress(0, 'Ready to upload');
+        updateUploadProgress(0, ut('ready', 'Ready to upload'));
     });
 });
 
@@ -770,7 +788,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (selectedCount > maxScreenshots) {
             count.innerHTML = `<span class="text-danger">
                 <i class="fas fa-exclamation-circle me-1"></i>
-                Too many! Max <strong>${maxScreenshots}</strong>, selected <strong>${selectedCount}</strong>.
+                ${ut('too_many', 'Too many! Max {1}, selected {2}.', '<strong>' + Number(maxScreenshots) + '</strong>', '<strong>' + Number(selectedCount) + '</strong>')}
             </span>`;
             confirmBtn.disabled = true;
         } else {
@@ -780,11 +798,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (totalAfter > maxScreenshots) {
         count.innerHTML = `<span class="text-danger">
             <i class="fas fa-exclamation-circle me-1"></i>
-            You already have <strong>${existingCount}</strong> screenshot(s). Max ${maxScreenshots} total - you can add up to <strong>${Math.max(0, maxScreenshots - existingCount)}</strong> more.
+            ${ut('limit_total', 'You already have {1} screenshot(s). Max {2} in total — you can add up to {3} more.', '<strong>' + Number(existingCount) + '</strong>', Number(maxScreenshots), '<strong>' + Math.max(0, maxScreenshots - existingCount) + '</strong>')}
         </span>`;
         confirmBtn.disabled = true;
     } else {
-        count.textContent = totalAfter + ' / ' + maxScreenshots + ' screenshots';
+        count.textContent = ut('count', '{1} / {2} screenshots', totalAfter, maxScreenshots);
         confirmBtn.disabled = false;
     }
 }
@@ -880,7 +898,7 @@ function validateForm() {
         categoryError.style.display = 'block';
         categoryLabel.innerHTML =
             '<span class="text-danger">' +
-            '<i class="fas fa-exclamation-circle me-1"></i>Please select a category' +
+            '<i class="fas fa-exclamation-circle me-1"></i>' + escapeHtml(ut('select_category', 'Please select a category')) +
             '</span>';
         // Подсвечиваем все кнопки красной рамкой
         document.querySelectorAll('.cat-pick-btn').forEach(btn => {
@@ -950,11 +968,11 @@ function updateUploadProgress(percentage, statusText = '') {
 }
 
 function getStatusText(progress) {
-    if (progress < 25) return 'Uploading torrent file...';
-    if (progress < 50) return 'Processing metadata...';
-    if (progress < 75) return 'Uploading screenshots...';
-    if (progress < 90) return 'Finalizing...';
-    return 'Almost done!';
+    if (progress < 25) return ut('st_torrent', 'Uploading torrent file...');
+    if (progress < 50) return ut('st_meta', 'Processing metadata...');
+    if (progress < 75) return ut('st_screens', 'Uploading screenshots...');
+    if (progress < 90) return ut('st_final', 'Finalizing...');
+    return ut('st_almost', 'Almost done!');
 }
 
 // Обработчик отправки формы
@@ -985,473 +1003,213 @@ document.getElementById("torrent-upload-form").addEventListener("submit", async 
             data = JSON.parse(rawText);
         } catch (e) {
             // Ответ не JSON — парсим HTML ошибку
+            // Only the error itself: the alert text (+ the failed query for staff),
+            // not the whole card with "Go Back / Home Page" buttons
             const tmp = document.createElement('div');
             tmp.innerHTML = rawText;
-            const errorText = (tmp.querySelector('.alert-danger, code, .card-body') || tmp).textContent.trim().slice(0, 400);
+            tmp.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            const alertEl = tmp.querySelector('.alert-danger');
+            const codeEl  = tmp.querySelector('code');
+            let errorText = alertEl
+                ? alertEl.textContent + (codeEl ? '\n' + codeEl.textContent : '')
+                : (tmp.querySelector('.card-body') || tmp).textContent;
+            errorText = errorText
+                .split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean)
+                .join('\n').slice(0, 1000);
             stopUploadTimer();
             uploadModal.hide();
-            showErrorModal('Server Error:\n' + errorText);
+            showErrorModal(ut('server_error', 'Server error:') + '\n' + errorText);
             return;
         }
 
-               // При редактировании — показываем модалку сразу без ожидания uploadModal
-
-
-if (isEditMode && data.success && data.id) {
-    stopUploadTimer();
-    if (data.hash_changed) {
-        // Новый торрент файл загружен
-        const oldModal = document.getElementById("uploadSuccessModal");
-        if (oldModal) oldModal.remove();
-        
-        const modalHtml = `
-            <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content shadow">
-                        <div class="modal-header bg-primary text-white">
-                            <div class="d-flex align-items-center w-100">
-                                <i class="fas fa-cloud-upload-alt fa-2x me-3"></i>
-                                <h5 class="modal-title mb-0" id="uploadSuccessModalLabel">Upload Completed</h5>
-                            </div>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body text-center py-4">
-                            <div class="success-animation mb-3">
-                                <i class="fas fa-check-circle text-primary" style="font-size: 3.5rem;"></i>
-                            </div>
-                            <p class="mb-2">Your torrent has been successfully uploaded and updated with a private flag.</p>
-                            <div class="redirect-timer mt-3">
-                                <div class="d-flex align-items-center justify-content-center gap-2">
-                                    <span class="text-muted">Redirecting in</span>
-                                    <span id="editCountdownHash" class="badge bg-primary fs-5 px-3 py-2 rounded-pill">10</span>
-                                    <span class="text-muted">seconds</span>
-                                </div>
-                                <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
-                                    <div id="redirectProgressHash" class="progress-bar bg-primary" style="width: 0%;"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer border-0 justify-content-center pb-4">
-                            <a href="${data.download}" class="btn btn-primary me-2">
-                                <i class="fa fa-download me-2"></i> Download Torrent
-                            </a>
-                            <a href="${data.link}" class="btn btn-outline-primary">
-                                <i class="fa fa-info-circle me-2"></i> View Details
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
-        
-        // Запускаем таймер и прогресс после показа модалки
-        successModal._element.addEventListener('shown.bs.modal', function onShown() {
-            let s = 10;
-            const countdownEl = document.getElementById('editCountdownHash');
-            const progressBar = document.getElementById('redirectProgressHash');
-            
-            if (!countdownEl || !progressBar) {
-                console.error('Elements not found!');
-                return;
-            }
-            
-            // Инициализация
-            countdownEl.textContent = s;
-            progressBar.style.width = '0%';
-            progressBar.style.transition = 'width 1s linear';
-            
-            // Исправленный интервал - 1000 мс
-            const iv = setInterval(() => {
-                s--;
-                
-                // Обновляем текст
-                countdownEl.textContent = s;
-                
-                // Эффект пульсации
-                countdownEl.style.transform = 'scale(1.1)';
-                setTimeout(() => {
-                    if (countdownEl) countdownEl.style.transform = 'scale(1)';
-                }, 200);
-                
-                // Обновляем прогресс-бар (от 0% до 100% за 10 секунд)
-                const percent = ((10 - s) / 10) * 100;
-                progressBar.style.width = percent + '%';
-                progressBar.setAttribute('aria-valuenow', percent);
-                
-                if (s <= 0) {
-                    clearInterval(iv);
-                }
-            }, 1000); // ← ИСПРАВЛЕНО: 1000 мс (было 10000)
-            
-            const redirectTimeout = setTimeout(() => {
-                window.location.href = data.link;
-            }, 10000);
-            
-            // Очищаем таймеры при закрытии модалки
-            successModal._element.addEventListener('hidden.bs.modal', function() {
-                clearInterval(iv);
-                clearTimeout(redirectTimeout);
-            }, { once: true });
-            
-            // Удаляем обработчик, чтобы не запускался повторно
-            successModal._element.removeEventListener('shown.bs.modal', onShown);
-        });
-        
-        successModal.show();
-        
-    } else {
-        // Редактирование без нового файла - ЭТОТ КОД УЖЕ ХОРОШИЙ
-        const oldModal = document.getElementById("uploadSuccessModal");
-        if (oldModal) oldModal.remove();
-        
-        const modalHtml = `
-            <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content shadow-lg border-0">
-                        <div class="modal-header bg-success text-white border-0">
-                            <div class="d-flex align-items-center w-100">
-                                <i class="fas fa-check-circle fa-2x me-3"></i>
-                                <h5 class="modal-title mb-0">Changes Saved</h5>
-                            </div>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body text-center py-4">
-                            <div class="success-animation mb-3">
-                                <i class="fas fa-check-circle text-success" style="font-size: 3.5rem;"></i>
-                            </div>
-                            <h4 class="text-success mb-2">Success!</h4>
-                            <p class="text-muted mb-1">Your torrent has been updated successfully.</p>
-                            <div class="redirect-timer mt-3">
-                                <div class="d-flex align-items-center justify-content-center gap-2">
-                                    <span class="text-muted">Redirecting in</span>
-                                    <span id="editCountdown" class="badge bg-success fs-5 px-3 py-2 rounded-pill">3</span>
-                                    <span class="text-muted">seconds</span>
-                                </div>
-                                <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
-                                    <div id="redirectProgress" class="progress-bar bg-success" style="width: 0%; transition: width 3s linear;"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer border-0 justify-content-center pb-4">
-                            <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-2"></i>Stay Here
-                            </button>
-                            <button type="button" class="btn btn-success" onclick="window.location.href='${data.link}'">
-                                <i class="fas fa-eye me-2"></i>View Torrent
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
-        
-        // Запускаем таймер после показа модалки
-        successModal._element.addEventListener('shown.bs.modal', function onShown() {
-            let s = 3;
-            const countdownEl = document.getElementById('editCountdown');
-            const progressBar = document.getElementById('redirectProgress');
-            
-            if (countdownEl && progressBar) {
-                countdownEl.textContent = s;
-                progressBar.style.width = '0%';
-                
-                const iv = setInterval(() => {
-                    s--;
-                    countdownEl.textContent = s;
-                    
-                    // Эффект пульсации
-                    countdownEl.style.transform = 'scale(1.1)';
-                    setTimeout(() => {
-                        if (countdownEl) countdownEl.style.transform = 'scale(1)';
-                    }, 200);
-                    
-                    // Обновляем прогресс-бар
-                    const percent = ((3 - s) / 3) * 100;
-                    progressBar.style.width = percent + '%';
-                    
-                    if (s <= 0) clearInterval(iv);
-                }, 1000);
-                
-                const redirectTimeout = setTimeout(() => {
-                    window.location.href = data.link;
-                }, 3000);
-                
-                successModal._element.addEventListener('hidden.bs.modal', function() {
-                    clearInterval(iv);
-                    clearTimeout(redirectTimeout);
-                }, { once: true });
-            }
-            
-            successModal._element.removeEventListener('shown.bs.modal', onShown);
-        });
-        
-        successModal.show();
-    }
-    return;
-}
-
-
-
-
-
-// Ждём, пока модал скроется
-// Ждём, пока модал скроется
-uploadModalEl.addEventListener("hidden.bs.modal", () => {
-    if (data.success && data.id) {
-        if (data.hash_changed) {
-            // Приватный торрент
-            const oldModal = document.getElementById("uploadSuccessModal");
-            if (oldModal) oldModal.remove();
-
-            const modalHtml = `
-                <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content shadow">
-                            <div class="modal-header bg-primary text-white">
-                                <h5 class="modal-title" id="uploadSuccessModalLabel">Upload Completed</h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body text-center">
-                                <p>Your torrent has been successfully uploaded and updated with a private flag3333333.</p>
-                                <p id="countdown-text" class="fw-bold">Redirecting in <span id="countdown">10</span> seconds...</p>
-                                <div class="progress" style="height: 20px;">
-                                    <div id="progress-bar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <a href="${data.download}" class="btn btn-primary"><i class="fa fa-download me-1"></i> Download Torrent</a>
-                                <a href="${data.link}" class="btn btn-outline-primary"><i class="fa fa-info-circle me-1"></i> View Details</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-            const uploadSuccessModalEl = document.getElementById("uploadSuccessModal");
-            const uploadSuccessModal = new bootstrap.Modal(uploadSuccessModalEl);
-
-            uploadSuccessModal.show();
-
-            // Обновляем прогресс синхронно с таймером
-            let secondsLeft = 10;
-            const countdownEl = document.getElementById("countdown");
-            const progressBar = document.getElementById("progress-bar");
-            
-            // Начальный сброс
-            if (progressBar) {
-                progressBar.style.width = "0%";
-            }
-            
-            const countdownInterval = setInterval(() => {
-                secondsLeft--;
-                
-                // Обновляем текст
-                if (countdownEl) {
-                    countdownEl.textContent = secondsLeft;
-                }
-                
-                // Обновляем прогресс-бар (от 0% до 100% за 10 секунд)
-                if (progressBar) {
-                    const progressPercent = ((10 - secondsLeft) / 10) * 100;
-                    progressBar.style.width = progressPercent + "%";
-                    progressBar.setAttribute('aria-valuenow', progressPercent);
-                }
-                
-                if (secondsLeft <= 0) {
-                    clearInterval(countdownInterval);
-                }
-            }, 1000);
-            
-            // Редирект через 10 секунд
-            const redirectTimeout = setTimeout(() => {
-                window.location.href = data.link;
-            }, 10000);
-            
-            // Отмена редиректа при закрытии модалки
-            uploadSuccessModalEl.addEventListener('hidden.bs.modal', () => {
-                clearTimeout(redirectTimeout);
-                clearInterval(countdownInterval);
-            }, { once: true });
-
-        } else {
-            // Обычный торрент
-            const completeModalEl = new bootstrap.Modal(document.getElementById('uploadCompleteModal'));
-            completeModalEl.show();
-            setTimeout(() => {
-                window.location.href = data.link;
-            }, 3000);
+        // ── Result: one place for upload and edit ─────────────────────────
+        if (isEditMode) {
+            // Edit: the upload modal is not shown, so the result is shown right away
+            stopUploadTimer();
+            showUploadResult(data, true);
+            return;
         }
-    } else {
-        showErrorModal(
-                    data.error
-                        ? data.error
-                        : data.errors
-                            ? data.errors.join("\n")
-                            : "Upload failed (no details)"
-                );
-    }
-}, { once: true });
 
-
-
-
-
-
-
-
-      
-	  
-	  
-// Скрываем модал + fallback если hidden.bs.modal не сработал
-stopUploadTimer();
-let _done = false;
-const _finish = () => { if (!_done) { _done = true; } };
-uploadModalEl.addEventListener('hidden.bs.modal', _finish, { once: true });
-uploadModal.hide();
-setTimeout(() => {
-    if (!_done) {
-        _done = true;
-        // Принудительно закрываем
-        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-        uploadModalEl.classList.remove('show');
-        uploadModalEl.style.display = 'none';
-        uploadModalEl.setAttribute('aria-hidden', 'true');
-        // Показываем результат вручную
-        if (data?.success && data?.id) {
-            if (data.hash_changed) {
-                const oldM = document.getElementById('uploadSuccessModal');
-                if (oldM) oldM.remove();
-                
-                document.body.insertAdjacentHTML('beforeend', `<div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content shadow">
-                            <div class="modal-header bg-primary text-white">
-                                <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>Upload Completed</h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body text-center">
-                                <div class="mb-3">
-                                    <i class="fas fa-cloud-upload-alt text-primary" style="font-size: 3rem;"></i>
-                                </div>
-                                <p>Your torrent has been successfully uploaded and updated with a private flag222.</p>
-                                <div class="redirect-info mt-3">
-                                    <p class="fw-bold mb-2">Redirecting in <span id="countdown2" class="badge bg-primary fs-5 px-3 py-2 rounded-pill">10</span> seconds...</p>
-                                    <div class="progress mx-auto" style="height: 10px; max-width: 80%; border-radius: 10px;">
-                                        <div id="progressBar2" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
-                                             role="progressbar" style="width: 0%; border-radius: 10px;"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="modal-footer justify-content-center">
-                                <a href="${data.download}" class="btn btn-primary">
-                                    <i class="fa fa-download me-1"></i> Download Torrent
-                                </a>
-                                <a href="${data.link}" class="btn btn-outline-primary">
-                                    <i class="fa fa-info-circle me-1"></i> View Details
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>`);
-                
-                const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
-                
-                // Запускаем таймер ПОСЛЕ того как модалка полностью откроется
-                successModal._element.addEventListener('shown.bs.modal', function onShown() {
-                    // Прогресс и таймер
-                    let s = 10;
-                    const progressBar = document.getElementById('progressBar2');
-                    const countdownEl = document.getElementById('countdown2');
-                    
-                    console.log('Таймер запущен, s=', s); // Для отладки
-                    
-                    const iv = setInterval(() => {
-                        s--;
-                        
-                        console.log('Тик таймера, s=', s); // Для отладки
-                        
-                        if (countdownEl) {
-                            countdownEl.textContent = s;
-                            // Эффект пульсации
-                            countdownEl.style.transform = 'scale(1.1)';
-                            setTimeout(() => {
-                                if (countdownEl) countdownEl.style.transform = 'scale(1)';
-                            }, 200);
-                        } else {
-                            console.error('countdown2 элемент не найден!');
-                        }
-                        
-                        if (progressBar) {
-                            const percent = ((10 - s) / 10) * 100;
-                            progressBar.style.width = percent + '%';
-                            progressBar.setAttribute('aria-valuenow', percent);
-                        } else {
-                            console.error('progressBar2 элемент не найден!');
-                        }
-                        
-                        if (s <= 0) {
-                            clearInterval(iv);
-                            console.log('Таймер завершен, редирект...');
-                        }
-                    }, 1000);
-                    
-                    // Редирект через 10 секунд
-                    const redirectTimeout = setTimeout(() => {
-                        window.location.href = data.link;
-                    }, 10000);
-                    
-                    // Очищаем таймеры при закрытии модалки
-                    successModal._element.addEventListener('hidden.bs.modal', function() {
-                        clearInterval(iv);
-                        clearTimeout(redirectTimeout);
-                    }, { once: true });
-                    
-                    // Удаляем этот обработчик, чтобы не запускался повторно
-                    successModal._element.removeEventListener('shown.bs.modal', onShown);
-                });
-                
-                successModal.show();
-                
-            } else {
-                const m = new bootstrap.Modal(document.getElementById('uploadCompleteModal'));
-                m.show();
-                setTimeout(() => {
-                    window.location.href = data.link;
-                }, 3000);
-            }
-        } else {
-            // Upload failed — show the error since hidden.bs.modal may not
-            // have fired (we removed the 'show' class manually above).
-            showErrorModal(
-                data?.error
-                    ? data.error
-                    : data?.errors
-                        ? data.errors.join("\n")
-                        : "Upload failed (no details)"
-            );
-        }
-    }
-}, 700);
-	  
-	  
-	  
-	  
+        // New upload: close the progress modal first, then show the result.
+        // Fallback after 700 ms in case 'hidden.bs.modal' never fires; the flag
+        // guarantees the result is shown only once.
+        stopUploadTimer();
+        let resultShown = false;
+        const finish = () => {
+            if (resultShown) return;
+            resultShown = true;
+            showUploadResult(data, false);
+        };
+        uploadModalEl.addEventListener('hidden.bs.modal', finish, { once: true });
+        uploadModal.hide();
+        setTimeout(() => {
+            if (resultShown) return;
+            forceCloseModal(uploadModalEl);
+            finish();
+        }, 700);
 
     } catch (error) {
         uploadModal.hide();
         stopUploadTimer();
-        showErrorModal("An error occurred: " + error.message);
+        showErrorModal(ut('error_occurred', 'An error occurred: {1}', error.message));
     }
 });
+
+// ========== Upload result ==========
+
+/** Error text from the server answer (error or errors[]). */
+function uploadErrorText(data) {
+    if (data && data.error) return data.error;
+    if (data && Array.isArray(data.errors) && data.errors.length) return data.errors.join('\n');
+    return ut('upload_failed', 'Upload failed (no details)');
+}
+
+/** Close a Bootstrap modal by hand (when its own events did not fire). */
+function forceCloseModal(el) {
+    document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+    if (el) {
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+    }
+}
+
+/**
+ * What to show after a successful upload / edit:
+ *  - hash_changed (the private flag was added, the .torrent changed) -> "download the torrent" modal, 10 s;
+ *    the user must re-download it, otherwise the client has the old file
+ *  - edit without a new file -> "changes saved", 3 s
+ *  - new upload without changes -> the static #uploadCompleteModal from upload.php, 3 s
+ */
+function showUploadResult(data, isEdit) {
+    if (!data || !data.success || !data.id) {
+        showErrorModal(uploadErrorText(data));
+        return;
+    }
+
+    if (data.hash_changed) {
+        showRedirectModal({
+            tone:    'primary',
+            icon:    'fa-cloud-upload-alt',
+            title:   ut('done_title', 'Upload completed'),
+            text:    ut('done_private', 'Your torrent has been uploaded and updated with the private flag.'),
+            seconds: 10,
+            link:    data.link,
+            buttons: `
+                <a href="${escapeHtml(data.download)}" class="btn btn-primary me-2">
+                    <i class="fa fa-download me-2"></i>${utH('download', 'Download torrent')}
+                </a>
+                <a href="${escapeHtml(data.link)}" class="btn btn-outline-primary">
+                    <i class="fa fa-info-circle me-2"></i>${utH('view_details', 'View details')}
+                </a>`
+        });
+        return;
+    }
+
+    if (isEdit) {
+        showRedirectModal({
+            tone:    'success',
+            icon:    'fa-check-circle',
+            title:   ut('saved_title', 'Changes saved'),
+            heading: ut('success', 'Success!'),
+            text:    ut('saved_text', 'Your torrent has been updated.'),
+            seconds: 3,
+            link:    data.link,
+            buttons: `
+                <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>${utH('stay', 'Stay here')}
+                </button>
+                <a href="${escapeHtml(data.link)}" class="btn btn-success">
+                    <i class="fas fa-eye me-2"></i>${utH('view_torrent', 'View torrent')}
+                </a>`
+        });
+        return;
+    }
+
+    // Plain new upload: static modal from upload.php
+    const completeEl = document.getElementById('uploadCompleteModal');
+    if (completeEl) new bootstrap.Modal(completeEl).show();
+    setTimeout(() => { window.location.href = data.link; }, 3000);
+}
+
+/**
+ * Modal with a countdown and redirect to opts.link after opts.seconds.
+ * Closing the modal cancels the redirect ("stay here").
+ * opts: tone, icon, title, heading (optional), text, seconds, link, buttons (HTML).
+ */
+function showRedirectModal(opts) {
+    const old = document.getElementById('uploadSuccessModal');
+    if (old) old.remove();
+
+    const tone = opts.tone;
+    document.body.insertAdjacentHTML('beforeend', `
+        <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content shadow-lg border-0">
+                    <div class="modal-header bg-${tone} text-white border-0">
+                        <div class="d-flex align-items-center w-100">
+                            <i class="fas ${opts.icon} fa-2x me-3"></i>
+                            <h5 class="modal-title mb-0" id="uploadSuccessModalLabel">${escapeHtml(opts.title)}</h5>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body text-center py-4">
+                        <div class="success-animation mb-3">
+                            <i class="fas fa-check-circle text-${tone}" style="font-size: 3.5rem;"></i>
+                        </div>
+                        ${opts.heading ? `<h4 class="text-${tone} mb-2">${escapeHtml(opts.heading)}</h4>` : ''}
+                        <p class="mb-2">${escapeHtml(opts.text)}</p>
+                        <div class="redirect-timer mt-3">
+                            <div class="d-flex align-items-center justify-content-center gap-2">
+                                <span class="text-muted">${utH('redirect_in', 'Redirecting in')}</span>
+                                <span id="redirectCountdown" class="badge bg-${tone} fs-5 px-3 py-2 rounded-pill">${opts.seconds}</span>
+                                <span class="text-muted">${utH('seconds', 'seconds')}</span>
+                            </div>
+                            <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
+                                <div id="redirectProgress" class="progress-bar bg-${tone}" style="width: 0%; transition: width 1s linear;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 justify-content-center pb-4">${opts.buttons}</div>
+                </div>
+            </div>
+        </div>`);
+
+    const el    = document.getElementById('uploadSuccessModal');
+    const modal = new bootstrap.Modal(el);
+
+    // The timer starts once the modal is fully shown
+    el.addEventListener('shown.bs.modal', () => {
+        const total     = opts.seconds;
+        let   left      = total;
+        const countdown = document.getElementById('redirectCountdown');
+        const progress  = document.getElementById('redirectProgress');
+
+        const iv = setInterval(() => {
+            left--;
+            if (countdown) {
+                countdown.textContent = Math.max(0, left);
+                countdown.style.transform = 'scale(1.1)';
+                setTimeout(() => { countdown.style.transform = 'scale(1)'; }, 200);
+            }
+            if (progress) progress.style.width = ((total - left) / total * 100) + '%';
+            if (left <= 0) clearInterval(iv);
+        }, 1000);
+
+        const redirect = setTimeout(() => { window.location.href = opts.link; }, total * 1000);
+
+        // Closing the modal = stay on the page
+        el.addEventListener('hidden.bs.modal', () => {
+            clearInterval(iv);
+            clearTimeout(redirect);
+        }, { once: true });
+    }, { once: true });
+
+    modal.show();
+}
 
 // Счетчик символов для названия торрента
 document.getElementById('formName').addEventListener('input', function() {
@@ -1586,7 +1344,7 @@ dropZone.addEventListener('click', function(e) {
 
         // Проверяем расширение
         if (!file.name.toLowerCase().endsWith('.torrent')) {
-            showTorrentDropError('Only .torrent files are accepted!');
+            showTorrentDropError(ut('only_torrent', 'Only .torrent files are accepted!'));
             return;
         }
 
@@ -1605,13 +1363,15 @@ dropZone.addEventListener('click', function(e) {
 
 function handleTorrentFile(file) {
     if (!file.name.toLowerCase().endsWith('.torrent')) {
-        showTorrentDropError('Only .torrent files are accepted!');
+        showTorrentDropError(ut('only_torrent', 'Only .torrent files are accepted!'));
         return;
     }
 
-    const maxSize = 50 * 1024 * 1024;
+    // Same limit as the server (UPLOAD_MAX_TORRENT_MB in upload.php, printed as maxTorrentMb)
+    const maxMb   = (typeof maxTorrentMb === 'number' && maxTorrentMb > 0) ? maxTorrentMb : 5;
+    const maxSize = maxMb * 1024 * 1024;
     if (file.size > maxSize) {
-        showTorrentDropError('File is too large (max 50MB).');
+        showTorrentDropError(ut('torrent_too_big', 'File is too large (max {1} MB).', maxMb));
         return;
     }
 
@@ -1842,7 +1602,7 @@ async function checkTorrentPasskey(file) {
         const result = await response.json();
 
         if (!result.valid) {
-            showTorrentDropError(result.error || 'This torrent does not belong to your account.');
+            showTorrentDropError(result.error || ut('not_yours', 'This torrent does not belong to your account.'));
 
             // Блокируем отправку, как и при обнаружении дубликата
             if (submitBtn) {
@@ -1854,7 +1614,7 @@ async function checkTorrentPasskey(file) {
             var badge = document.querySelector('#torrentFileSelected .badge');
             if (badge) {
                 badge.className = 'badge bg-danger mt-1';
-                badge.innerHTML = '<i class="fas fa-times-circle me-1"></i>' + (result.error || 'Invalid passkey');
+                badge.innerHTML = '<i class="fas fa-times-circle me-1"></i>' + escapeHtml(result.error || ut('bad_passkey', 'Invalid passkey'));
             }
             var dropZone = document.getElementById('torrentDropZone');
             if (dropZone) {
@@ -1882,7 +1642,7 @@ async function checkTorrentDuplicate(file) {
         if (progressEl) progressEl.style.display = 'none';
 
         if (!infoHash) {
-            showToast('Could not read torrent file info_hash.', 'warning');
+            showToast(ut('no_hash', 'Could not read the torrent info_hash.'), 'warning');
             return;
         }
 
@@ -1911,7 +1671,7 @@ async function checkTorrentDuplicate(file) {
             var badge = document.querySelector('#torrentFileSelected .badge');
             if (badge) {
                 badge.className = 'badge bg-success mt-1';
-                badge.innerHTML = '<i class="fas fa-check me-1"></i>Ready to upload — No duplicates found';
+                badge.innerHTML = '<i class="fas fa-check me-1"></i>' + escapeHtml(ut('no_dupes', 'Ready to upload — no duplicates found'));
             }
         }
 
@@ -1926,7 +1686,7 @@ function showTorrentDuplicateWarning(data) {
     var badge = document.querySelector('#torrentFileSelected .badge');
     if (badge) {
         badge.className = 'badge bg-warning text-dark mt-1';
-        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Duplicate detected!';
+        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + escapeHtml(ut('dupe', 'Duplicate detected!'));
     }
 
     // Меняем фон зоны
@@ -1946,16 +1706,16 @@ function showTorrentDuplicateWarning(data) {
     warning.innerHTML =
         '<i class="fas fa-exclamation-triangle fa-lg mt-1 text-warning"></i>' +
         '<div>' +
-            '<strong>Duplicate torrent detected!</strong><br>' +
-            'A torrent with the same info_hash already exists: ' +
-            '<a href="' + data.link + '" target="_blank" class="fw-bold">' + data.name + '</a>' +
-            '<span class="text-muted small ms-2">uploaded ' + data.added + '</span>' +
+            '<strong>' + utH('dupe_title', 'Duplicate torrent detected!') + '</strong><br>' +
+            utH('dupe_exists', 'A torrent with the same info_hash already exists:') + ' ' +
+            '<a href="' + escapeHtml(data.link) + '" target="_blank" class="fw-bold">' + escapeHtml(data.name) + '</a>' +
+            '<span class="text-muted small ms-2">' + utH('dupe_uploaded', 'uploaded {1}', data.added) + '</span>' +
             '<div class="mt-2">' +
                 '<button type="button" class="btn btn-sm btn-outline-warning me-2" onclick="ignoreDuplicateWarning()">' +
-                    '<i class="fas fa-upload me-1"></i>Upload Anyway' +
+                    '<i class="fas fa-upload me-1"></i>' + utH('dupe_upload_anyway', 'Upload anyway') +
                 '</button>' +
-                '<a href="' + data.link + '" target="_blank" class="btn btn-sm btn-outline-secondary">' +
-                    '<i class="fas fa-eye me-1"></i>View Existing' +
+                '<a href="' + escapeHtml(data.link) + '" target="_blank" class="btn btn-sm btn-outline-secondary">' +
+                    '<i class="fas fa-eye me-1"></i>' + utH('dupe_view', 'View existing') +
                 '</a>' +
             '</div>' +
         '</div>';
@@ -1985,10 +1745,10 @@ function ignoreDuplicateWarning() {
     var badge = document.querySelector('#torrentFileSelected .badge');
     if (badge) {
         badge.className = 'badge bg-warning text-dark mt-1';
-        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Duplicate — uploading anyway';
+        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + escapeHtml(ut('dupe_anyway', 'Duplicate — uploading anyway'));
     }
 
-    showToast('Duplicate warning ignored. You can now upload.', 'warning');
+    showToast(ut('dupe_ignored', 'Duplicate warning ignored. You can now upload.'), 'warning');
 }
 
 
@@ -2033,7 +1793,7 @@ function loadScreenshotUrls() {
         .filter(function(l) { return l.length > 0; });
 
     if (lines.length === 0) {
-        showToast('Please enter at least one URL.', 'warning');
+        showToast(ut('enter_url', 'Please enter at least one link.'), 'warning');
         return;
     }
 
@@ -2056,11 +1816,11 @@ function loadScreenshotUrls() {
     });
 
     if (invalidUrls.length > 0) {
-        showToast('Skipped ' + invalidUrls.length + ' invalid URL(s). Only jpg, png, gif, webp supported.', 'warning');
+        showToast(ut('skipped_urls', 'Skipped invalid links: {1}. Only jpg, png, gif, webp are supported.', invalidUrls.length), 'warning');
     }
 
     if (validUrls.length === 0) {
-        showToast('No valid image URLs found.', 'danger');
+        showToast(ut('no_valid_urls', 'No valid image links found.'), 'danger');
         return;
     }
 
@@ -2073,7 +1833,7 @@ function loadScreenshotUrls() {
     var total    = validUrls.length;
 
     // Показываем счётчик загрузки
-    previewEl.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading ' + total + ' image(s)...</div>';
+    previewEl.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>' + escapeHtml(ut('loading_images', 'Loading {1} image(s)...', total)) + '</div>';
 
     var tempContainer = document.createElement('div');
     tempContainer.className = 'preview-container';
@@ -2090,7 +1850,7 @@ function loadScreenshotUrls() {
             item.dataset.url = url;
             item.innerHTML =
                 '<img src="' + url + '" class="preview-screenshot" alt="Screenshot ' + (index + 1) + '" style="width:120px;height:90px;object-fit:cover;border-radius:6px;">' +
-                '<button type="button" class="delete-btn position-absolute top-0 end-0" onclick="removeScreenshotUrl(this, \'' + url.replace(/'/g, "\\'") + '\')" title="Remove">' +
+                '<button type="button" class="delete-btn position-absolute top-0 end-0" onclick="removeScreenshotUrl(this, \'' + url.replace(/'/g, "\\'") + '\')" title="' + escapeHtml(ut('remove', 'Remove')) + '">' +
                     '<i class="fas fa-times"></i>' +
                 '</button>' +
                 '<div class="text-center mt-1">' +
@@ -2123,8 +1883,8 @@ function loadScreenshotUrls() {
             previewEl.innerHTML = '';
             previewEl.appendChild(tempContainer);
 
-           var msg = 'Loaded ' + loaded + ' screenshot(s)';
-           if (failed > 0) msg += ', ' + failed + ' failed to load';
+           var msg = ut('loaded_shots', 'Loaded {1} screenshot(s)', loaded);
+           if (failed > 0) msg += ', ' + ut('failed_shots', '{1} failed to load', failed);
            showToast(msg, failed > 0 ? 'warning' : 'success');
 
         }
@@ -2343,13 +2103,13 @@ function renderTorrentMeta(files, infoHash) {
     var listEl = document.getElementById('torrentFileList');
     if (listEl) {
         if (files.length === 0) {
-            listEl.innerHTML = '<small class="text-muted">No file list available</small>';
+            listEl.innerHTML = '<small class="text-muted">' + escapeHtml(ut('no_file_list', 'No file list available')) + '</small>';
         } else {
             var html = '<table class="table table-sm table-hover mb-0" style="font-size:0.8rem;">' +
                 '<thead><tr>' +
                     '<th class="text-muted fw-normal">#</th>' +
-                    '<th class="text-muted fw-normal">File</th>' +
-                    '<th class="text-muted fw-normal text-end">Size</th>' +
+                    '<th class="text-muted fw-normal">' + utH('th_file', 'File') + '</th>' +
+                    '<th class="text-muted fw-normal text-end">' + utH('th_size', 'Size') + '</th>' +
                 '</tr></thead><tbody>';
 
             files.forEach(function(file, index) {
@@ -2514,7 +2274,7 @@ function saveExistingScreenshotOrder() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            showToast('Screenshot order saved!', 'success');
+            showToast(ut('order_saved', 'Screenshot order saved!'), 'success');
         }
     })
     .catch(function() {
@@ -2544,18 +2304,18 @@ function fetchImdbData() {
     var errorEl = document.getElementById('imdbError');
 
     if (!url) {
-        showToast('Please enter an IMDb URL first.', 'warning');
+        showToast(ut('imdb_empty', 'Please enter an IMDb link first.'), 'warning');
         return;
     }
 
     if (!url.match(/https?:\/\/www\.imdb\.com\/title\/tt\d+/i)) {
-        showToast('Invalid IMDb URL. Example: https://www.imdb.com/title/tt1234567/', 'warning');
+        showToast(ut('imdb_invalid', 'Invalid IMDb link. Example: https://www.imdb.com/title/tt1234567/'), 'warning');
         return;
     }
 
     // UI — загрузка
     btn.disabled     = true;
-    btn.innerHTML    = '<i class="fas fa-spinner fa-spin me-1"></i>Fetching...';
+    btn.innerHTML    = '<i class="fas fa-spinner fa-spin me-1"></i>' + escapeHtml(ut('fetching', 'Fetching...'));
     loading.style.display = 'flex';
     preview.style.display = 'none';
     errorEl.style.display = 'none';
@@ -2565,24 +2325,24 @@ function fetchImdbData() {
         .then(function(data) {
             loading.style.display = 'none';
             btn.disabled          = false;
-            btn.innerHTML         = '<i class="fab fa-imdb me-1"></i>Fetch';
+            btn.innerHTML         = '<i class="fab fa-imdb me-1"></i>' + escapeHtml(ut('fetch', 'Fetch'));
 
             if (!data.success) {
                 errorEl.style.display = 'block';
-                document.getElementById('imdbErrorText').textContent = data.error || 'Failed to fetch IMDb data';
+                document.getElementById('imdbErrorText').textContent = data.error || ut('imdb_failed', 'Could not get IMDb data');
                 return;
             }
 
             imdbData = data;
             renderImdbPreview(data);
-            showToast('IMDb data loaded successfully!', 'success');
+            showToast(ut('imdb_loaded', 'IMDb data loaded!'), 'success');
         })
         .catch(function(e) {
             loading.style.display = 'none';
             btn.disabled          = false;
-            btn.innerHTML         = '<i class="fab fa-imdb me-1"></i>Fetch';
+            btn.innerHTML         = '<i class="fab fa-imdb me-1"></i>' + escapeHtml(ut('fetch', 'Fetch'));
             errorEl.style.display = 'block';
-            document.getElementById('imdbErrorText').textContent = 'Network error: ' + e.message;
+            document.getElementById('imdbErrorText').textContent = ut('network_error', 'Network error: {1}', e.message);
         });
 }
 
@@ -2635,7 +2395,7 @@ function renderImdbPreview(data) {
 // Применяем постер к полю изображения
 function applyImdbPoster(target) {
     if (!imdbData || !imdbData.poster) {
-        showToast('No poster available.', 'warning');
+        showToast(ut('no_poster', 'No poster available.'), 'warning');
         return;
     }
 
@@ -2653,7 +2413,7 @@ function applyImdbPoster(target) {
             radioUrl.checked = true;
             radioUrl.dispatchEvent(new Event('change'));
         }
-        showToast('Poster set as Main Image!', 'success');
+        showToast(ut('poster_main', 'Poster set as the main image!'), 'success');
     } else {
         var urlInput2 = document.getElementById('imageUrl2');
         if (urlInput2) {
@@ -2665,7 +2425,7 @@ function applyImdbPoster(target) {
             radioUrl2.checked = true;
             radioUrl2.dispatchEvent(new Event('change'));
         }
-        showToast('Poster set as Secondary Image!', 'success');
+        showToast(ut('poster_2nd', 'Poster set as the secondary image!'), 'success');
     }
 }
 
@@ -2691,7 +2451,7 @@ function applyImdbToDescription() {
         textarea.value = textarea.value + '\n\n' + info;
     }
 
-    showToast('IMDb info added to description!', 'success');
+    showToast(ut('imdb_added', 'IMDb info added to the description!'), 'success');
 }
 
 // Автофетч при потере фокуса если URL валидный
@@ -2759,8 +2519,8 @@ function toggleNfoPreview() {
     var btn = document.getElementById('nfoPreviewBtn');
     if (btn) {
         btn.innerHTML = isHidden
-            ? '<i class="fas fa-eye-slash me-1"></i>Hide'
-            : '<i class="fas fa-eye me-1"></i>Preview';
+            ? '<i class="fas fa-eye-slash me-1"></i>' + escapeHtml(ut('hide', 'Hide'))
+            : '<i class="fas fa-eye me-1"></i>' + escapeHtml(ut('preview', 'Preview'));
     }
 }
 
@@ -2771,6 +2531,6 @@ function hideNfoPreview() {
     var btn = document.getElementById('nfoPreviewBtn');
     if (btn) {
         btn.style.display = 'none';
-        btn.innerHTML = '<i class="fas fa-eye me-1"></i>Preview';
+        btn.innerHTML = '<i class="fas fa-eye me-1"></i>' + escapeHtml(ut('preview', 'Preview'));
     }
 }

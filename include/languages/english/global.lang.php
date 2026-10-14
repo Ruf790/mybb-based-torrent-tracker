@@ -9,6 +9,162 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+
+
+	// ── Fatal error page (error_handler.php) ──
+	'fatal_html_lang'     => 'en',
+	'fatal_title'         => 'Fatal Error',
+	'fatal_subtitle'      => 'A critical problem occurred while processing your request',
+	'fatal_user_heading'  => 'Something Went Wrong',
+	'fatal_user_text'     => 'Something went wrong on our end. Our team has already been notified.',
+	'fatal_user_id'       => 'If you need help, give the staff this code: {1}',
+	'fatal_staff_heading' => 'System Error Detected',
+	'fatal_file'          => 'File:',
+	'fatal_line'          => 'Line:',
+	'fatal_message'       => 'Message:',
+	'fatal_handler'       => 'Current Error Handler:',
+	'fatal_back'          => 'Go Back',
+	'fatal_home'          => 'Home Page',
+	'fatal_retry'         => 'Retry',
+	'fatal_id_label'      => 'Error ID:',
+	'fatal_generated'     => 'Generated at',
+
+
+
+
+'db_error_title'        => 'System Error',
+'db_error_page_title'   => 'System Error',
+'db_error_user'         => 'Server error. Please try again later.',
+'db_error_id'           => 'If the error repeats, tell the staff this code: {1}',
+'db_error_id_label'     => 'Error ID:',
+'db_error_back'         => 'Go Back',
+'db_error_home'         => 'Home Page',
+'db_error_html_lang'    => 'en',
+'db_error_protection'   => '{1} System Protection',
+'db_error_database'     => 'Database Error',
+'db_error_application'  => 'Application Error',
+'db_error_in_file'      => '{1} in {2}',
+'db_error_failed_query' => 'Failed Query:',
+'db_error_message'      => 'Error Message:',
+'db_error_location'     => 'Error Location:',
+'db_error_called_from'  => 'Called from:',
+'db_error_db_layer'     => 'DB Layer:',
+'db_error_line'         => 'Line:',
+
+
+
+
+
+// ── Error pages (error.php) ──
+	'errpage_html_lang' => 'en',
+	'errpage_home'      => 'Back to homepage',
+	'errpage_refresh'   => 'Refresh the page',
+	'errpage_0_h'       => 'Something went wrong',
+	'errpage_0'         => 'An unknown error has occurred, please contact us.',
+	'errpage_1_h'       => 'Request blocked',
+	'errpage_1'         => 'Request tainting attempted!',
+	'errpage_2_h'       => 'Domain not allowed',
+	'errpage_2'         => 'In order to accept POST requests originating from this domain, the admin must add this domain to the whitelist.',
+	'errpage_3_h'       => 'Language file error',
+	'errpage_3'         => 'Missing or corrupted language file!',
+	'errpage_4_h'       => 'Please try again',
+	'errpage_4'         => 'Please refresh the page and try again!',
+	'errpage_5_h'       => 'Database error',
+	'errpage_5'         => 'MySQL Error!',
+	'errpage_6_h'       => 'Server is busy',
+	'errpage_6'         => 'The server is too busy at the moment. Please try again later.',
+	'errpage_7_h'       => 'Prefetching not allowed',
+	'errpage_7'         => 'Prefetching is not allowed due to the various privacy issues that arise.',
+	'errpage_9_h'       => 'Account suspended',
+	'errpage_9'         => 'Your account has either been suspended or you have been banned from accessing this tracker.',
+	'errpage_400_h'     => '400 Bad Request',
+	'errpage_400'       => 'The server could not understand this request.',
+	'errpage_401_h'     => '401 Authorization Required',
+	'errpage_401'       => 'You need to log in with a valid username and password to view this page.',
+	'errpage_403_h'     => '403 Forbidden',
+	'errpage_403'       => 'You are not allowed to access this page.',
+	'errpage_404_h'     => '404 Not Found',
+	'errpage_404'       => 'The page you are looking for was moved, removed or might never have existed.',
+	'errpage_500_h'     => '500 Internal Server Error',
+	'errpage_500'       => 'The server encountered an internal error. Please try again later or contact the staff.',
+
+
+
+
+
+
+
+
+
+
+
+// ── Error page: stderr() ──
+	'stderr_unknown'       => 'An unknown error occurred',
+	'stderr_title_suffix'  => 'Error',
+	'stderr_404_title'     => 'Not Found',
+	'stderr_404_desc'      => 'The page or resource you\'re looking for doesn\'t exist',
+	'stderr_403_title'     => 'Access Denied',
+	'stderr_403_desc'      => 'You don\'t have permission to access this resource',
+	'stderr_401_title'     => 'Unauthorized',
+	'stderr_401_desc'      => 'Please log in to access this resource',
+	'stderr_500_title'     => 'Server Error',
+	'stderr_500_desc'      => 'An internal server error occurred',
+	'stderr_upload_title'  => 'Upload Forbidden',
+	'stderr_upload_desc'   => 'You don\'t have permission to upload',
+	'stderr_upload_hint'   => 'You need special permissions to upload torrents.',
+	'stderr_torrent_title' => 'Torrent Not Found',
+	'stderr_torrent_desc'  => 'The requested torrent could not be found',
+	'stderr_torrent_hint'  => 'Try browsing the torrent list instead.',
+	'stderr_forum_title'   => 'Forum Not Found',
+	'stderr_forum_desc'    => 'The requested forum could not be found',
+	'stderr_forum_hint'    => 'Try browsing the forum list instead.',
+	'stderr_hitrun_title'  => 'Download Restricted',
+	'stderr_hitrun_desc'   => 'Your upload/download ratio is below the required minimum',
+	'stderr_hitrun_hint'   => 'Seed your completed torrents to raise your ratio above the minimum.',
+	'stderr_general_title' => 'Error',
+	'stderr_general_desc'  => 'A problem occurred while processing your request',
+	'stderr_hint_default'  => 'Please check your input and try again.',
+	'stderr_request_time'  => 'Request Time',
+	'stderr_request_date'  => 'Request Date',
+	'stderr_btn_back'      => 'Go Back',
+	'stderr_btn_home'      => 'Home Page',
+	'stderr_quick_links'   => 'Quick Links:',
+	'stderr_link_browse'   => 'Browse',
+	'stderr_link_search'   => 'Forum search',
+	'stderr_link_upload'   => 'Upload',
+	'stderr_link_forum'    => 'Forum',
+	'stderr_footer'        => 'If you believe this is a mistake, please contact {1}',
+	'stderr_support'       => 'support',
+	
+	
+	'stderr_user_title'    => 'User Not Found',
+'stderr_user_desc'     => 'The requested user could not be found',
+'stderr_user_hint'     => 'The account may have been deleted. Try finding the user in the member list.',
+
+
+'stderr_thread_title'  => 'Thread Not Found',
+'stderr_thread_desc'   => 'The requested thread could not be found',
+'stderr_thread_hint'   => 'The thread may have been deleted or moved. Try finding it in the forum list.',
+
+// ── Success page: stdok() ──
+	'stdok_heading'      => 'Success',
+	'stdok_title'        => 'Success',
+	'stdok_subtitle'     => 'Operation completed without errors',
+	'stdok_message'      => 'Operation completed successfully.',
+	'stdok_no_action'    => 'No further action is required.',
+	'stdok_completed_at' => 'Completed at',
+	'stdok_date'         => 'Date',
+	'stdok_faq'          => 'FAQ',
+	'stdok_footer'       => 'Need help? Visit our {1} or contact {2}',
+
+
+
+
+
+
+
+
+
 'rel_minutes_plural' => 'minutes',
 
 	// ── Units: forms separated by | (English: one|other, Russian: one|few|many) ──

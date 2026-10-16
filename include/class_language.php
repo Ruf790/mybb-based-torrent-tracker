@@ -77,7 +77,7 @@ class trackerlanguage
     public $top_stats;
     public $topten;
     public $transfer;
-    public $tsf_forums;
+
     public $unbaniprequest;
     public $upload;
     public $uploaderform;
@@ -171,7 +171,7 @@ class trackerlanguage
 	
 	public $post3;
 	
-	public $settings_history;
+	
 	
 	public $check_update;
 	
@@ -192,7 +192,7 @@ class trackerlanguage
 	
 	public $uploads;
 	
-	
+	public $torrents_promo;
 	
 	
 	

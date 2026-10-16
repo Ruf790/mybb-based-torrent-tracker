@@ -5,7 +5,7 @@ if (!defined('IN_TRACKER')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-$lang->load('timezone');
+
 $lang->load('usercp');
 
 // ---------------------------------------------------------------------------

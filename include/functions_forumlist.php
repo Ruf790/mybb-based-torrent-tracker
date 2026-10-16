@@ -391,7 +391,7 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
                 $expaltext   = 'expcol_collapse';
             }
 
-            $bgcolor = alt_trow();
+           
 
             // ── Замена eval() #2 ──────────────────────────────────────────
             // Было: eval("\$forum_list .= \"".$templates->get("forumbit_depth$depth$forumcat")."\";");
@@ -408,7 +408,7 @@ if ($depth == 2 && $sub_forums) {
 
 $forum_list .= _forumbit_render($depth, $forumcat, $forum, $forum_url, $lightbulb, $unapproved,
     $subforums, $lastpost, $posts, $threads, $modlist, $forum_viewers_text,
-    $expdisplay, $bgcolor);
+    $expdisplay);
         }
     }
 
@@ -485,7 +485,6 @@ function _forumbit_render(
     string $modlist,
     string $forum_viewers_text,
     string $expdisplay,
-    string $bgcolor
 ): string {
     global $BASEURL, $lang;
     // depth=1, type=cat → forumbit_depth1_cat

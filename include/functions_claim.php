@@ -297,38 +297,97 @@ function claim_settle_user(int $uid): array
         bonus_log($uid, -$deduct, 'claim', "Claims {$month}: " . count($removed) . ' torrent(s) removed, not seeded enough');
     }
 
-    claim_notify($uid, "{$month} claim settlement", claim_settle_message($month, $reached, $remain, $removed, $bonus, $deduct));
+    // PM in the recipient's language (users.language)
+    $ul = $db->fetch_array($db->sql_query_prepared('SELECT language FROM users WHERE id = ?', [$uid]));
+    $L  = claim_pm_lang((string)($ul['language'] ?? ''));
+    claim_notify($uid, claim_fmt($L['pm_settle_subject'], $month),
+        claim_settle_message($L, $month, $reached, $remain, $removed, $bonus, $deduct));
+
+    // Bell: short summary, the details stay in the PM
+    require_once INC_PATH . '/functions_notify.php';
+    $net = round($bonus - $deduct, 1);
+    notify($uid, 'claim_settled', 0, 0, [
+        $month,
+        (string)count($reached),
+        (string)count($removed),
+        ($net > 0 ? '+' : ($net < 0 ? '−' : '')) . number_format(abs($net), 1),
+    ], 'claim.php');
     return ['reached' => count($reached), 'removed' => count($removed), 'bonus' => $bonus];
 }
 
-function claim_settle_message(string $month, array $reached, array $remain, array $removed, float $bonus, int $deduct): string
+/**
+ * PM texts of the monthly settlement, in the recipient's language (claim.lang.php,
+ * pm_settle_* keys). The English defaults are used for a key the lang file doesn't have
+ * (so a missing key never breaks the cron under strict_types).
+ */
+const CLAIM_PM_DEFAULTS = [
+    'pm_settle_subject' => 'Claim results for {1}',
+    'pm_settle_total'   => 'Your claimed torrents for [b]{1}[/b]: [b]{2}[/b].',
+    'pm_settle_reached' => 'Reached the norm: [b]{1}[/b]',
+    'pm_settle_bonus'   => 'You get [b]{1}[/b] bonus points ({2} per hour seeded).',
+    'pm_settle_remain'  => 'Not reached, kept for one more month (first month after claiming): [b]{1}[/b]',
+    'pm_settle_removed' => 'Not reached, claim removed: [b]{1}[/b]',
+    'pm_settle_deduct'  => '[b]{1}[/b] bonus points deducted ({2} per torrent).',
+    'pm_settle_more'    => '... and {1} more',
+    'pm_settle_norm'    => 'Norm per torrent and month: {1} hours of seeding or uploading {2} times its size. [url={3}/claim.php]My claims[/url]',
+];
+
+/** Lang strings for one language (cached per language). */
+function claim_pm_lang(string $language): array
+{
+    global $lang;
+    static $cache = [];
+    if (isset($cache[$language])) {
+        return $cache[$language];
+    }
+    $strings = [];
+    if (isset($lang) && method_exists($lang, 'get_section')) {
+        $strings = (array)$lang->get_section('claim', $language !== '' ? $language : 'english');
+    }
+    return $cache[$language] = array_merge(CLAIM_PM_DEFAULTS, array_intersect_key($strings, CLAIM_PM_DEFAULTS));
+}
+
+/** {1}, {2}… and %1$s… (get_section() converts {n} like $lang->load()) */
+function claim_fmt(string $str, string|int|float ...$args): string
+{
+    $map = [];
+    foreach ($args as $i => $a) {
+        $n = $i + 1;
+        $map['{' . $n . '}']  = (string)$a;
+        $map['%' . $n . '$s'] = (string)$a;
+    }
+    return strtr($str, $map);
+}
+
+function claim_settle_message(array $L, string $month, array $reached, array $remain, array $removed, float $bonus, int $deduct): string
 {
     global $BASEURL;
-    $list = static function (array $rows) use ($BASEURL): string {
+    $list = static function (array $rows) use ($BASEURL, $L): string {
         $out = [];
         foreach (array_slice($rows, 0, CLAIM_MSG_LIST_LIMIT) as $p) {
-            $out[] = '[*][url=' . $BASEURL . '/details.php?id=' . (int)$p['torrent_id'] . ']' . $p['torrent_name'] . '[/url]';
+            // [ ] in the name would break [url]
+            $name  = str_replace(['[', ']'], ['(', ')'], (string)$p['torrent_name']);
+            $out[] = '[*][url=' . $BASEURL . '/details.php?id=' . (int)$p['torrent_id'] . ']' . $name . '[/url]';
         }
         $more = count($rows) - CLAIM_MSG_LIST_LIMIT;
-        return $out ? "[list]\n" . implode("\n", $out) . "\n[/list]" . ($more > 0 ? "... and {$more} more" : '') : '';
+        return $out ? "[list]\n" . implode("\n", $out) . "\n[/list]" . ($more > 0 ? claim_fmt($L['pm_settle_more'], $more) : '') : '';
     };
-    $total = count($reached) + count($remain) + count($removed);
+    $total   = count($reached) + count($remain) + count($removed);
+    $perHour = rtrim(rtrim(number_format(CLAIM_BONUS_PER_HOUR * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.');
 
-    $m   = ["Your claimed torrents for [b]{$month}[/b]: [b]{$total}[/b]."];
-    $m[] = 'Reached the norm: [b]' . count($reached) . '[/b]' . ($reached ? "\n" . $list($reached) : '');
+    $m   = [claim_fmt($L['pm_settle_total'], $month, $total)];
+    $m[] = claim_fmt($L['pm_settle_reached'], count($reached)) . ($reached ? "\n" . $list($reached) : '');
     if ($reached) {
-        $m[] = 'You get [b]' . number_format($bonus, 1) . '[/b] bonus points ('
-             . rtrim(rtrim(number_format(CLAIM_BONUS_PER_HOUR * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.') . ' per hour seeded).';
+        $m[] = claim_fmt($L['pm_settle_bonus'], number_format($bonus, 1), $perHour);
     }
     if ($remain) {
-        $m[] = 'Not reached, kept for one more month (first month after claiming): [b]' . count($remain) . "[/b]\n" . $list($remain);
+        $m[] = claim_fmt($L['pm_settle_remain'], count($remain)) . "\n" . $list($remain);
     }
     if ($removed) {
-        $m[] = 'Not reached, claim removed: [b]' . count($removed) . "[/b]\n" . $list($removed)
-             . "\n[b]" . number_format($deduct) . '[/b] bonus points deducted (' . number_format(CLAIM_REMOVE_DEDUCT) . ' per torrent).';
+        $m[] = claim_fmt($L['pm_settle_removed'], count($removed)) . "\n" . $list($removed)
+             . "\n" . claim_fmt($L['pm_settle_deduct'], number_format($deduct), number_format(CLAIM_REMOVE_DEDUCT));
     }
-    $m[] = 'Norm per torrent and month: ' . CLAIM_SEED_HOURS . ' hours of seeding or uploading ' . CLAIM_UPLOAD_TIMES
-         . ' times its size. [url=' . $BASEURL . '/claim.php]My claims[/url]';
+    $m[] = claim_fmt($L['pm_settle_norm'], CLAIM_SEED_HOURS, CLAIM_UPLOAD_TIMES, $BASEURL);
     return implode("\n\n", $m);
 }
 

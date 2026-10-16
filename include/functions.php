@@ -211,7 +211,7 @@ $lwarn = (!empty($CURUSER['leechwarn'] ?? null) && $CURUSER['leechwarn'] === 'ye
             );
             $c_count = $connectablequery ? $db->num_rows($connectablequery) : 0;
             if ($c_count > 0) {
-                $connectablealert = sprintf($lang->global['connectablealert'], $c_count, $BASEURL.'/tsf_forums/', $BASEURL.'/faq.php');
+                $connectablealert = sprintf($lang->global['connectablealert'], $c_count, $BASEURL.'/index2.php', $BASEURL.'/faq.php');
                 $warnmessages[] = $connectablealert;
             }
         }
@@ -1966,14 +1966,9 @@ function match_sequence(string $string, array $array, int $i = 0, int $n = 0): i
     return 0;
 }
 
-function get_memory_usage(): int|false
+function get_memory_usage(): int
 {
-    if(function_exists('memory_get_peak_usage')) {
-        return memory_get_peak_usage(true);
-    } elseif(function_exists('memory_get_usage')) {
-        return memory_get_usage(true);
-    }
-    return false;
+    return memory_get_peak_usage();
 }
 
 function get_server_load(): string
@@ -2409,20 +2404,7 @@ function random_str(int $length = 8, bool $complex = false): string
     return implode($str);
 }
 
-function alt_trow(bool $reset = false): string
-{
-    global $alttrow;
 
-    if($alttrow == "trow1" && !$reset) {
-        $trow = "trow2";
-    } else {
-        $trow = "trow1";
-    }
-
-    $alttrow = $trow;
-
-    return $trow;
-}
 
 function rebuild_settings(): void
 {

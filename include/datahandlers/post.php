@@ -587,7 +587,7 @@ class PostDataHandler extends DataHandler
                     );
                     $queued_email = true;
                 } elseif ($member['notification'] == 2) {
-                    $lang->load('tsf_forums');
+                    
 					require_once INC_PATH . '/functions_pm.php';
                     
 					send_pm([
@@ -601,7 +601,7 @@ class PostDataHandler extends DataHandler
                        ],
                        'touid'         => (int)$member['id'],
                        'language'      => $member['language'],
-                       'language_file' => 'tsf_forums',
+                       'language_file' => 'datahandler_post',
                        'sender'        => ['uid' => -1],
                     ], -1, true);
 

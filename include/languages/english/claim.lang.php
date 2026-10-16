@@ -52,5 +52,22 @@ $language['claim'] = array
 	'confirm_give_up' => 'Give up this claim? {1} bonus points will be deducted.',
 	'yes' => 'Yes',
 	'cancel' => 'Cancel',
+	
+	
+// ── PM: monthly settlement (functions_claim.php, sent by cron) ──
+'pm_settle_subject' => "📊 Claim results for {1}",
+'pm_settle_total'   => "Your claimed torrents for [b]{1}[/b]: [b]{2}[/b].",
+'pm_settle_reached' => "✅ Reached the norm: [b]{1}[/b]",
+'pm_settle_bonus'   => "💰 You get [b]{1}[/b] bonus points ({2} per hour seeded).",
+'pm_settle_remain'  => "⏳ Not reached, kept for one more month (first month after claiming): [b]{1}[/b]",
+'pm_settle_removed' => "❌ Not reached, claim removed: [b]{1}[/b]",
+'pm_settle_deduct'  => "💸 [b]{1}[/b] bonus points deducted ({2} per torrent).",
+'pm_settle_more'    => "... and {1} more",
+'pm_settle_norm'    => "📏 Norm per torrent and month: {1} hours of seeding or uploading {2} times its size. [url={3}/claim.php]My claims[/url]",
+
+'ok' => 'OK',      
+	
+	
+	
 );
 ?>

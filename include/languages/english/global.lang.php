@@ -9,6 +9,14 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+		
+
+'jdate'			=>'Joined: ',
+
+'lastseen'			=>'Last Seen: ',
+
+
+
 
 
 	// ── Fatal error page (error_handler.php) ──

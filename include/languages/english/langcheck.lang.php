@@ -68,5 +68,33 @@ $language['langcheck'] = array (
 	'rep_more'            => '+{1} more',
 	'js_copied'           => 'Copied — paste it into the chat',
 	'js_copy_failed'      => 'Copy blocked — the report is shown below, press Ctrl+C',
+	
+	
+	
+	// ── Unused files ──
+    'opt_show_unused'      => 'Unused files',
+    'sec_unused'           => 'Unused lang files',
+    'hint_unused_scope'    => 'A file counts as used if it is loaded with $lang->load(\'page\') or get_section(), passed to send_pm() as language_file, or its strings are read. Commented-out code is ignored.',
+    'hint_unused_dynamic'  => 'Before deleting anything, check the dynamic load() calls: a file loaded through a variable is invisible to the scan.',
+    'msg_unused_ok'        => 'All lang files are in use.',
+    'issue_unused_file'    => 'Not loaded or referenced anywhere — candidates for deletion',
+    'issue_loaded_only'    => 'Loaded, but none of its strings are used',
+    'issue_missing_lang'   => 'Loaded, but the lang file does not exist',
+    'issue_refs_only'      => 'Strings are used, but the file is never loaded by name',
+    'issue_dynamic_load'   => 'Dynamic load() calls — check by hand',
+    'issue_loaded_dynamic' => 'Loaded; strings are read through a variable — most likely in use',
+	
+	// ── Hard-coded text tab ──
+	'opt_show_hardcoded' => 'Hard-coded text',
+	'sec_hardcoded'      => 'Hard-coded text in PHP',
+	'hint_hardcoded'     => 'Text written straight into PHP/HTML instead of a lang file — users see it in this language only. Lang fallbacks (?? \'…\'), logs, SQL and comments are skipped. This is a heuristic: some lines may be technical.',
+	'msg_hardcoded_ok'   => 'No hard-coded text found.',
+	'lbl_hc_files'       => 'Files',
+	'lbl_hc_strings'     => 'Strings',
+	'lbl_hc_line'        => 'line {1}',
+	
+	
+
+	
 );
 ?>

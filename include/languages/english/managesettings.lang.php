@@ -638,6 +638,66 @@ $language['managesettings'] = array
 	'hint_upload_att_image_mb'    => 'Largest picture attached to a comment',
 	'lbl_upload_att_other_mb'     => 'Attachments: other files, MB',
 	'hint_upload_att_other_mb'    => 'Documents, archives, subtitles and other attached files',
+	
+	
+	
+	
+	// ── Settings history page (admin/settings_history.php) — was settings_history.lang.php ──
+	'hist_page_title'          => 'Settings History',
+	'hist_badge_total'         => 'Total: {1}',
+	'hist_btn_back'            => 'Back to Settings',
+	'hist_stat_info'           => 'Info',
+	'hist_stat_warnings'       => 'Warnings',
+	'hist_stat_errors'         => 'Errors',
+	'hist_stat_today'          => 'Today',
+	'hist_stat_week'           => 'This Week',
+	'hist_ph_search'           => 'Search in logs...',
+	'hist_ph_user'             => 'Search by user...',
+	'hist_btn_filter'          => 'Filter',
+	'hist_btn_reset'           => 'Reset',
+	'hist_th_datetime'         => 'Date/Time',
+	'hist_th_user'             => 'User',
+	'hist_th_event'            => 'Event',
+	'hist_th_level'            => 'Level',
+	'hist_th_ip'               => 'IP',
+	'hist_th_actions'          => 'Actions',
+	'hist_badge_new'           => 'NEW',
+	'hist_lbl_unknown'         => 'Unknown',
+	'hist_lbl_system'          => 'System',
+	'hist_btn_show_more'       => 'Show more',
+	'hist_tip_profile'         => 'View user profile',
+	'hist_tip_copy'            => 'Copy log',
+	'hist_lvl_info'            => 'Info',
+	'hist_lvl_warning'         => 'Warning',
+	'hist_lvl_error'           => 'Error',
+	'hist_empty_title'         => 'No history found',
+	'hist_empty_text'          => 'Settings changes will appear here as they happen',
+	'hist_btn_autorefresh'     => 'Auto-refresh',
+	'hist_lbl_on'              => 'ON',
+	'hist_btn_cleanup'         => 'Cleanup Old Logs ({1}+ days)',
+	'hist_btn_export_csv'      => 'Export CSV',
+	'hist_btn_export_json'     => 'Export JSON',
+	'hist_btn_refresh'         => 'Refresh',
+	'hist_flash_csrf'          => 'Security check failed. Please try again.',
+	'hist_flash_deleted'       => 'Old logs deleted: {1}',
+	'hist_csv_datetime'        => 'Date/Time',
+	'hist_csv_uid'             => 'User ID',
+	'hist_csv_user'            => 'User',
+	'hist_csv_event'           => 'Event',
+	'hist_csv_level'           => 'Level',
+	'hist_csv_ip'              => 'IP Address',
+	'hist_js_show_more'        => 'Show more',
+	'hist_js_show_less'        => 'Show less',
+	'hist_js_on'               => 'ON',
+	'hist_js_off'              => 'OFF',
+	'hist_js_confirm_cleanup'  => "⚠️ Are you sure you want to delete settings logs older than {1} days?\n\nThis action cannot be undone!",
+	
+	
+	
+	
+	
+	
+	
 
 );
 ?>

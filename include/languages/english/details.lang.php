@@ -446,6 +446,7 @@ $language['details'] = array
 
 	// ── JS: rating.js ─────────────────────────────────────────────────────────
 	'js_rate_saved'				=> 'Rating saved!',
+	'js_rate_error'             => 'Could not save your rating. Reload the page and try again.',
 
 	// ── JS: quick_comment.js ──────────────────────────────────────────────────
 	'js_qc_ajax_error'			=> 'There was a problem with the request. Please report this to the administrator.',

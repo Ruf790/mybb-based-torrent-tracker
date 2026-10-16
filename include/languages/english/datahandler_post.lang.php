@@ -35,4 +35,38 @@ $language['datahandler_post'] = array
 'thread_stuck' => "Thread Stuck",
 'thread_unstuck' => "Thread Unstuck",
 
+
+
+
+// ── PM to thread subscribers (notification = 2) ──
+// {1} recipient, {2} who replied, {3} thread title, {4} excerpt, {5} $BASEURL, {6} link to the new post, {7} thread id
+'pmsubject_subscription' => "New Reply to {1}",
+'pm_subscription'        => "{1},
+
+{2} has just replied to a thread which you have subscribed to. This thread is titled {3}.
+
+Here is an excerpt of the message:
+------------------------------------------
+{4}
+------------------------------------------
+
+To view the thread, you can go to the following URL:
+[url]{5}/{6}[/url]
+
+There may also be other replies to this thread but you will not receive anymore notifications until you visit the thread again.
+
+------------------------------------------
+Unsubscription Information:
+
+If you would not like to receive any more notifications of replies to this thread, visit the following URL in your browser:
+[url]{5}/usercp.php?action=removesubscription&tid={7}[/url]
+
+------------------------------------------",
+
+
+
+
+
+
+
 );

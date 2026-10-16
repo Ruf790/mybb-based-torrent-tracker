@@ -52,5 +52,21 @@ $language['claim'] = array
 	'confirm_give_up' => 'Отказаться от закрепления? Будет списано бонусных очков: {1}.',
 	'yes' => 'Да',
 	'cancel' => 'Отмена',
+	
+	
+// ── PM: monthly settlement (functions_claim.php, sent by cron) ──
+'pm_settle_subject' => "📊 Итоги claim за {1}",
+'pm_settle_total'   => "Ваши claim-раздачи за [b]{1}[/b]: [b]{2}[/b].",
+'pm_settle_reached' => "✅ Норма выполнена: [b]{1}[/b]",
+'pm_settle_bonus'   => "💰 Начислено бонусов: [b]{1}[/b] ({2} за каждый час сидирования).",
+'pm_settle_remain'  => "⏳ Норма не выполнена, но claim сохранён ещё на месяц (первый месяц после взятия): [b]{1}[/b]",
+'pm_settle_removed' => "❌ Норма не выполнена, claim снят: [b]{1}[/b]",
+'pm_settle_deduct'  => "💸 Списано бонусов: [b]{1}[/b] ({2} за каждую раздачу).",
+'pm_settle_more'    => "... и ещё {1}",
+'pm_settle_norm'    => "📏 Норма на раздачу в месяц: {1} ч сидирования или отдача в {2} раза больше её размера. [url={3}/claim.php]Мои claim[/url]",
+
+'ok' => 'Понятно',
+	
+	
 );
 ?>

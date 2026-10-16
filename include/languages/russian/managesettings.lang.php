@@ -637,6 +637,64 @@ $language['managesettings'] = array
 	'hint_upload_att_image_mb'    => 'Самая большая картинка, которую можно прикрепить к комментарию',
 	'lbl_upload_att_other_mb'     => 'Вложения: остальные файлы, МБ',
 	'hint_upload_att_other_mb'    => 'Документы, архивы, субтитры и прочие прикреплённые файлы',
+	
+	
+	
+	
+	
+	
+	// ── Страница истории настроек (admin/settings_history.php) — бывший settings_history.lang.php ──
+	'hist_page_title'          => 'История настроек',
+	'hist_badge_total'         => 'Всего: {1}',
+	'hist_btn_back'            => 'К настройкам',
+	'hist_stat_info'           => 'Инфо',
+	'hist_stat_warnings'       => 'Предупреждения',
+	'hist_stat_errors'         => 'Ошибки',
+	'hist_stat_today'          => 'Сегодня',
+	'hist_stat_week'           => 'За неделю',
+	'hist_ph_search'           => 'Поиск по журналу...',
+	'hist_ph_user'             => 'Поиск по пользователю...',
+	'hist_btn_filter'          => 'Фильтр',
+	'hist_btn_reset'           => 'Сбросить',
+	'hist_th_datetime'         => 'Дата/время',
+	'hist_th_user'             => 'Пользователь',
+	'hist_th_event'            => 'Событие',
+	'hist_th_level'            => 'Уровень',
+	'hist_th_ip'               => 'IP',
+	'hist_th_actions'          => 'Действия',
+	'hist_badge_new'           => 'НОВОЕ',
+	'hist_lbl_unknown'         => 'Неизвестно',
+	'hist_lbl_system'          => 'Система',
+	'hist_btn_show_more'       => 'Показать полностью',
+	'hist_tip_profile'         => 'Профиль пользователя',
+	'hist_tip_copy'            => 'Копировать запись',
+	'hist_lvl_info'            => 'Инфо',
+	'hist_lvl_warning'         => 'Предупреждение',
+	'hist_lvl_error'           => 'Ошибка',
+	'hist_empty_title'         => 'История пуста',
+	'hist_empty_text'          => 'Здесь будут появляться изменения настроек',
+	'hist_btn_autorefresh'     => 'Автообновление',
+	'hist_lbl_on'              => 'ВКЛ',
+	'hist_btn_cleanup'         => 'Удалить старые записи ({1}+ дн.)',
+	'hist_btn_export_csv'      => 'Экспорт CSV',
+	'hist_btn_export_json'     => 'Экспорт JSON',
+	'hist_btn_refresh'         => 'Обновить',
+	'hist_flash_csrf'          => 'Ошибка проверки безопасности. Попробуйте ещё раз.',
+	'hist_flash_deleted'       => 'Удалено старых записей: {1}',
+	'hist_csv_datetime'        => 'Дата/время',
+	'hist_csv_uid'             => 'ID пользователя',
+	'hist_csv_user'            => 'Пользователь',
+	'hist_csv_event'           => 'Событие',
+	'hist_csv_level'           => 'Уровень',
+	'hist_csv_ip'              => 'IP-адрес',
+	'hist_js_show_more'        => 'Показать полностью',
+	'hist_js_show_less'        => 'Свернуть',
+	'hist_js_on'               => 'ВКЛ',
+	'hist_js_off'              => 'ВЫКЛ',
+	'hist_js_confirm_cleanup'  => "⚠️ Удалить записи журнала настроек старше {1} дн.?\n\nОтменить это нельзя!",
+	
+	
+	
 
 );
 ?>

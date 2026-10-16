@@ -5,10 +5,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Конфиг из PHP ─────────────────────────────────────
     const { ratioData: RATIO_DATA, baseUrl: BASEURL, torrentId: TORRENT_ID, scriptName: SCRIPT_NAME, postCode: POST_CODE } = window.VS_CONFIG;
 
+    // ── Texts: VS_CONFIG.lang (js_vs_* keys of viewsnatches.lang.php), English fallback ──
+    const LANG = window.VS_CONFIG.lang || {};
+    const t = (key, fallback, ...args) =>
+        String(typeof LANG['vs_' + key] === 'string' ? LANG['vs_' + key] : fallback)
+            .replace(/\{(\d+)\}|%(\d+)\$s/g, (m, a, b) => {
+                const i = parseInt(a || b, 10) - 1;
+                return i >= 0 && i < args.length ? String(args[i]) : m;
+            });
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
     // ── Ratio Chart ───────────────────────────────────────
     const ratioContainer = document.getElementById('ratioChart');
     if (ratioContainer && window.Highcharts) {
-        const RATIO_LABELS = ['Ratio < 0.5', 'Ratio 0.5–1.0', 'Ratio 1.0–2.0', 'Ratio > 2.0'];
+        const RATIO_LABELS = [
+            t('ratio_1', 'Ratio < 0.5'), t('ratio_2', 'Ratio 0.5–1.0'),
+            t('ratio_3', 'Ratio 1.0–2.0'), t('ratio_4', 'Ratio > 2.0'),
+        ];
         const RATIO_COLORS = ['#dc3545', '#ffc107', '#198754', '#0d6efd'];
 
         Highcharts.chart('ratioChart', {
@@ -20,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
             title: { text: null },
             credits: { enabled: false },
             tooltip: {
-                pointFormat: '<b>{point.y}</b> users ({point.percentage:.1f}%)'
+                pointFormat: '<b>{point.y}</b> ' + esc(t('users_word', 'users')) + ' ({point.percentage:.1f}%)'
             },
             legend: {
                 enabled: true,
@@ -44,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             },
             series: [{
-                name: 'Users',
+                name: t('users', 'Users'),
                 colorByPoint: true,
                 data: RATIO_LABELS.map((name, i) => ({
                     name,
@@ -103,9 +116,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Массовое сообщение ────────────────────────────────
+    // Default texts as shown to the moderator: if they are sent unchanged, PHP replaces them
+    // with the same texts in each recipient's language
+    const DEFAULT_SUBJECT = t('default_subject', 'Regarding torrent download');
+    const DEFAULT_BODY    = t('default_body', 'Hello {username},\n\nRegarding the torrent {torrenturl}...\n\nBest regards, Staff').replace(/\\n/g, '\n');
+
     function sendMassMessage() {
         const selected = getSelectedUsers();
-        if (!selected.length) { alert('Please select at least one user'); return; }
+        if (!selected.length) { alert(t('select_user', 'Please select at least one user')); return; }
 
         const existing = document.getElementById('massMessageModal');
         if (existing) existing.remove();
@@ -115,24 +133,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title"><i class="fas fa-envelope me-2"></i>Send to ${selected.length} Users</h5>
+                            <h5 class="modal-title"><i class="fas fa-envelope me-2"></i>${esc(t('send_to', 'Send to {1} users', selected.length))}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label class="form-label">Subject</label>
-                                <input type="text" class="form-control" id="msgSubject" value="Regarding torrent download">
+                                <label class="form-label">${esc(t('subject', 'Subject'))}</label>
+                                <input type="text" class="form-control" id="msgSubject" value="${esc(DEFAULT_SUBJECT)}">
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Message</label>
-                                <textarea class="form-control" id="msgText" rows="8">Hello {username},\n\nRegarding the torrent {torrenturl}...\n\nBest regards, Staff</textarea>
-                                <div class="form-text">Placeholders: <code>{username}</code> <code>{torrentname}</code> <code>{torrenturl}</code></div>
+                                <label class="form-label">${esc(t('message', 'Message'))}</label>
+                                <textarea class="form-control" id="msgText" rows="8">${esc(DEFAULT_BODY)}</textarea>
+                                <div class="form-text">${esc(t('placeholders', 'Placeholders:'))} <code>{username}</code> <code>{torrentname}</code> <code>{torrenturl}</code></div>
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${esc(t('cancel', 'Cancel'))}</button>
                             <button type="button" class="btn btn-primary" onclick="submitMassMessage()">
-                                <i class="fas fa-paper-plane me-1"></i>Send
+                                <i class="fas fa-paper-plane me-1"></i>${esc(t('send', 'Send'))}
                             </button>
                         </div>
                     </div>
@@ -145,19 +163,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const subject  = document.getElementById('msgSubject').value.trim();
         const message  = document.getElementById('msgText').value.trim();
         const selected = getSelectedUsers();
-        if (!subject || !message) { alert('Please fill subject and message'); return; }
-        submitAction('send_message', selected, { message, subject });
+        if (!subject || !message) { alert(t('fill_fields', 'Please fill in the subject and the message')); return; }
+        // Normalise line breaks: the textarea may give \r\n
+        const untouched = subject === DEFAULT_SUBJECT.trim()
+            && message.replace(/\r\n/g, '\n') === DEFAULT_BODY.trim();
+        submitAction('send_message', selected, { message, subject, use_default: untouched ? '1' : '' });
     }
 
     // ── Быстрые действия ──────────────────────────────────
     function quickAction(action) {
         const selected = getSelectedUsers();
-        if (!selected.length) { alert('Please select users first'); return; }
+        if (!selected.length) { alert(t('select_user', 'Please select at least one user')); return; }
 
         const cfg = {
-            reseed_request: { title: 'Send Reseed Requests', cls: 'btn-warning', icon: 'fas fa-seedling' },
-            delete_snatches:{ title: 'Delete Snatch Records', cls: 'btn-danger',  icon: 'fas fa-trash' },
-            mark_as_seeding:{ title: 'Mark as Seeding',       cls: 'btn-success', icon: 'fas fa-check' },
+            reseed_request: { title: t('act_reseed', 'Send reseed requests'),   cls: 'btn-warning', icon: 'fas fa-seedling' },
+            delete_snatches:{ title: t('act_delete', 'Delete snatch records'),  cls: 'btn-danger',  icon: 'fas fa-trash' },
+            mark_as_seeding:{ title: t('act_mark',   'Mark as seeding'),        cls: 'btn-success', icon: 'fas fa-check' },
         }[action];
         if (!cfg) return;
 
@@ -172,16 +193,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title"><i class="${cfg.icon} me-2"></i>${cfg.title}</h5>
+                        <h5 class="modal-title"><i class="${cfg.icon} me-2"></i>${esc(cfg.title)}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        Confirm action for <strong>${selected.length}</strong> selected users?
+                        ${esc(t('confirm_for', 'Confirm the action for {1} selected users?', '\u0000')).replace('\u0000', '<strong>' + selected.length + '</strong>')}
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${esc(t('cancel', 'Cancel'))}</button>
                         <button type="button" class="btn ${cfg.cls}" id="confirmActionBtn">
-                            <i class="${cfg.icon} me-1"></i>Confirm
+                            <i class="${cfg.icon} me-1"></i>${esc(t('confirm', 'Confirm'))}
                         </button>
                     </div>
                 </div>
@@ -209,7 +230,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Авто-обновление ───────────────────────────────────
-    setInterval(() => { if (!document.hidden) window.location.reload(); }, 30000);
+    // Not while the moderator is working: an open dialog, ticked users or a search
+    // would be lost on reload (before, the page reloaded in the middle of writing a PM)
+    setInterval(() => {
+        if (document.hidden) return;
+        if (document.querySelector('.modal.show')) return;
+        if (document.querySelector('.user-checkbox:checked')) return;
+        const search = document.getElementById('searchInput');
+        if (search && search.value.trim() !== '') return;
+        window.location.reload();
+    }, 30000);
 
     // ── Экспорт в window ──────────────────────────────────
     Object.assign(window, {

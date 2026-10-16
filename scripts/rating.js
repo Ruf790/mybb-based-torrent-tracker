@@ -30,11 +30,28 @@ function agsEsc(str) {
 var userRating = 0;
 var torrentId  = 0;
 var ratingBaseUrl = '';
+var ratingPostKey = '';
 
-function ratingInit(uid, tid, baseUrl) {
-    userRating   = uid;
-    torrentId    = tid;
+/* CSRF key: 4th argument of ratingInit(), otherwise taken from the page
+   (MyBB's global my_post_key or any <input name="my_post_key">). */
+function ratingGetPostKey() {
+    if (ratingPostKey) return ratingPostKey;
+    if (typeof my_post_key !== 'undefined' && my_post_key) return String(my_post_key);
+    var inp = document.querySelector('input[name="my_post_key"]');
+    if (inp && inp.value) return inp.value;
+    var meta = document.querySelector('meta[name="my_post_key"]');
+    return meta ? (meta.getAttribute('content') || '') : '';
+}
+
+/* ratingInit(rating, id, baseUrl, postKey)            — torrent (details.php)
+   ratingInit(rating, id, baseUrl, 'thread', postKey)  — forum thread (showthread.php)
+   The 'thread'/'torrent' label is only a marker and is skipped. */
+function ratingInit(uid, tid, baseUrl, postKey, postKey2) {
+    if (postKey === 'thread' || postKey === 'torrent') postKey = postKey2;
+    userRating    = uid;
+    torrentId     = tid;
     ratingBaseUrl = baseUrl;
+    ratingPostKey = postKey || '';
 
     document.querySelectorAll('.user-star').forEach(function(s, idx, all) {
         s.addEventListener('mouseover', function() {
@@ -50,73 +67,48 @@ function ratingInit(uid, tid, baseUrl) {
     });
 }
 
-function rateTorrent(val) {
+// Torrent and thread rating share everything except the action and the id field
+function rateTorrent(val) { ratingSend('rate_torrent', 'torrent_id', val); }
+function rateThread(val)  { ratingSend('rate_thread',  'tid',        val); }
+
+function ratingSend(action, idField, val) {
     var stars = document.querySelectorAll('.user-star');
+    var setStars = function (rating) {
+        stars.forEach(function(s, i) {
+            s.style.pointerEvents = 'auto';
+            s.style.opacity = '1';
+            s.classList.toggle('active', i < rating);
+            s.style.color = i < rating ? '#f59e0b' : '#dee2e6';
+        });
+    };
     stars.forEach(function(s) {
         s.style.pointerEvents = 'none';
         s.style.opacity = '0.5';
     });
 
-    fetch(ratingBaseUrl + '/xmlhttp.php?action=rate_torrent', {
+    var body = new URLSearchParams();
+    body.set(idField, String(torrentId));
+    body.set('rating', String(val));
+    body.set('my_post_key', ratingGetPostKey());
+
+    fetch(ratingBaseUrl + '/xmlhttp.php?action=' + action, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'torrent_id=' + torrentId + '&rating=' + val
+        body: body.toString()
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (!data.success) return;
-
-        userRating = val;
-        stars.forEach(function(s, i) {
-            s.style.pointerEvents = 'auto';
-            s.style.opacity = '1';
-            s.classList.toggle('active', i < val);
-            s.style.color = i < val ? '#f59e0b' : '#dee2e6';
-        });
-
-        var scoreEl = document.querySelector('.rating-score');
-        if (scoreEl) scoreEl.textContent = data.avg;
-
-        var hintEl = document.getElementById('rating-hint');
-        if (hintEl) hintEl.textContent = val + '/10';
-
-        var displayEl = document.getElementById('rating-display');
-        if (displayEl) {
-            var html = '';
-            for (var i = 1; i <= 10; i++) {
-                if (data.avg >= i)       html += '<i class="bi bi-star-fill rating-star-filled"></i>';
-                else if (data.avg >= i - 0.5) html += '<i class="bi bi-star-half rating-star-filled"></i>';
-                else                     html += '<i class="bi bi-star rating-star-empty"></i>';
+        if (!data || !data.success) {
+            setStars(userRating);   // unlock the stars, keep the previous rating
+            if (typeof showToast === 'function') {
+                showToast((data && data.error) || t('rate_error', 'Could not save your rating. Reload the page and try again.'), 'error');
             }
-            displayEl.innerHTML = html;
+            return;
         }
 
-        if (typeof showToast === 'function') showToast(t('rate_saved', 'Rating saved!'), 'success');
-    });
-}
-function rateThread(val) {
-    var stars = document.querySelectorAll('.user-star');
-    stars.forEach(function(s) {
-        s.style.pointerEvents = 'none';
-        s.style.opacity = '0.5';
-    });
-
-    fetch(ratingBaseUrl + '/xmlhttp.php?action=rate_thread', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'tid=' + torrentId + '&rating=' + val
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (!data.success) return;
-
         userRating = val;
-        stars.forEach(function(s, i) {
-            s.style.pointerEvents = 'auto';
-            s.style.opacity = '1';
-            s.classList.toggle('active', i < val);
-            s.style.color = i < val ? '#f59e0b' : '#dee2e6';
-        });
+        setStars(val);
 
         var scoreEl = document.querySelector('.rating-score');
         if (scoreEl) scoreEl.textContent = data.avg;
@@ -136,5 +128,9 @@ function rateThread(val) {
         }
 
         if (typeof showToast === 'function') showToast(t('rate_saved', 'Rating saved!'), 'success');
+    })
+    .catch(function() {
+        setStars(userRating);
+        if (typeof showToast === 'function') showToast(t('rate_error', 'Could not save your rating. Reload the page and try again.'), 'error');
     });
-}
+}

@@ -180,20 +180,14 @@ function TSajaxquickcomment(TorrentID) {
             var fileIdsContainer = document.getElementById('fileIdsContainer');
             if (fileIdsContainer) fileIdsContainer.innerHTML = '';
 
-            // Очищаем превью вложений
-            var oldPosthash = posthashInput ? posthashInput.value : '';
-            var attList = document.getElementById('attPreviewList-' + oldPosthash);
+            // Очищаем превью вложений.
+            // posthash НЕ меняем: виджет загрузки (initAttachmentUploader) запомнил
+            // его при загрузке страницы и продолжает слать файлы со старым хешем.
+            // Новый хеш в форме = файлы следующего коммента не находились
+            // (comment_id оставался 0). Повторно использовать хеш безопасно:
+            // attach_to_comment() берёт только непривязанные черновики (comment_id = 0).
+            var attList = document.getElementById('attPreviewList-' + posthashValue);
             if (attList) attList.innerHTML = '';
-
-            // Генерируем новый posthash
-            if (posthashInput) {
-                var newHash = [...crypto.getRandomValues(new Uint8Array(16))]
-                    .map(b => b.toString(16).padStart(2, '0')).join('');
-                posthashInput.value = newHash;
-                // Обновляем data-posthash на виджете
-                var uploader = document.querySelector('.comment-attachments-uploader');
-                if (uploader) uploader.dataset.posthash = newHash;
-            }
         }
     })
     .catch(error => {
@@ -205,4 +199,4 @@ function TSajaxquickcomment(TorrentID) {
             button.disabled = false;
         });
     });
-}
+}

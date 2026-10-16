@@ -171,7 +171,7 @@
         var limit = this.getMaxSelectionSize();
         
         if (this.counterElement) {
-            this.counterElement.innerHTML = '<i class="fas fa-user-plus me-1"></i> Recipients: ' + count + '/' + limit;
+            this.counterElement.innerHTML = '<i class="fas fa-user-plus me-1"></i> ' + this.escapeHtml(this.texts.counterLabel) + ' ' + count + '/' + limit;
             
             this.counterElement.classList.remove('near-limit', 'limit-reached');
             if (count >= limit) {
@@ -291,7 +291,7 @@
     };
     
     Select2Field.prototype.showMessage = function(message) {
-        this.dropdown.innerHTML = '<div class="select2-message"><i class="fas fa-info-circle me-1"></i> ' + message + '</div>';
+        this.dropdown.innerHTML = '<div class="select2-message"><i class="fas fa-info-circle me-1"></i> ' + this.escapeHtml(message) + '</div>';
         this.dropdown.style.display = 'block';
         this.updateDropdownPosition();
     };
@@ -397,14 +397,23 @@
     
     // Инициализация при загрузке DOM
     document.addEventListener("DOMContentLoaded", function() {
+        // Limit: hidden #maxRecipientsData, or window.maxRecipients printed by private.php
+        // (before, only the hidden field was read, so the limit was always 5)
         var maxRecipientsElement = document.getElementById('maxRecipientsData');
-        var maxRecipients = maxRecipientsElement ? parseInt(maxRecipientsElement.value) : 5;
-        
+        var maxRecipients = maxRecipientsElement
+            ? parseInt(maxRecipientsElement.value, 10)
+            : (parseInt(window.maxRecipients, 10) || 5);
+
+        // Texts: window.SELECT2_LANG from the page (lang files), English fallback.
+        // {1} and %1$s are both replaced ($lang->load() turns {1} into %1$s).
+        var L = window.SELECT2_LANG || {};
+        var fmt = function (str, n) { return String(str).replace(/\{1\}|%1\$s/g, String(n)); };
         var texts = {
-            searchUser: "Search for users...",
-            noMatches: "No matches found",
-            inputTooShort: "Please enter at least 2 characters",
-            selectionTooBig: "You are only allowed to send messages to " + maxRecipients + " users at a time"
+            searchUser:      L.searchUser      || "Search for users",
+            noMatches:       L.noMatches       || "No matches found",
+            inputTooShort:   fmt(L.inputTooShort   || "Please enter {1} or more characters", 2),
+            selectionTooBig: fmt(L.selectionTooBig || "You can only select {1} items", maxRecipients),
+            counterLabel:    L.counterLabel    || "Recipients:"
         };
         
         try {

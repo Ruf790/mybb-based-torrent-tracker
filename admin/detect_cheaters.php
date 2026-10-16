@@ -78,8 +78,8 @@ function getUserPopoverHtml(array $u): string
 
     return sprintf(
         '<div class="small"><b>%s:</b> %s<br><b>%s:</b> %s<br><b>Downloaded:</b> %s<br><b>Uploaded:</b> %s<br><b>Ratio:</b> %s</div>',
-        e($lang->tsf_forums['jdate'] ?? 'Joined'),   e(fmtDate((int)($u['added'] ?? 0))),
-        e($lang->tsf_forums['lastseen'] ?? 'Last Seen'), e(fmtDate((int)($u['lastactive'] ?? 0))),
+        e($lang->global['jdate'] ?? 'Joined'),   e(fmtDate((int)($u['added'] ?? 0))),
+        e($lang->global['lastseen'] ?? 'Last Seen'), e(fmtDate((int)($u['lastactive'] ?? 0))),
         e(mksize($down)), e(mksize($up)), e(calculateUserRatio($down, $up))
     );
 }
@@ -148,7 +148,7 @@ if ($query === false) {
 
 $multipage = multipage($totalRecords, $perPage, (int)$page, $_this_script_ . '&page=');
 
-$lang->load('tsf_forums');
+
 include_once INC_PATH . '/functions_icons.php';
 include_once INC_PATH . '/functions_ratio.php';
 require_once INC_PATH . '/functions_mkprettytime.php';

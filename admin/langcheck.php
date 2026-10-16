@@ -12,12 +12,37 @@ if (!defined('STAFF_PANEL')) {
 }
 
 $lang->load('langcheck');
+// Fallback для ключей вкладки «Неиспользуемые»: если ланг-файл ещё не обновлён, страница не падает
+if (is_array($lang->langcheck)) {
+    $lang->langcheck += [
+        'opt_show_unused'     => 'Unused files',
+        'sec_unused'          => 'Unused lang files',
+        'hint_unused_scope'   => 'A file counts as used if it is loaded by name, passed to send_pm() as language_file, or its strings are read. Commented-out code is ignored.',
+        'hint_unused_dynamic' => 'Before deleting anything, check the dynamic load() calls: a file loaded through a variable is invisible to the scan.',
+        'msg_unused_ok'       => 'All lang files are in use.',
+        'issue_unused_file'   => 'Not loaded or referenced anywhere — candidates for deletion',
+        'issue_loaded_only'   => 'Loaded, but none of its strings are used',
+        'issue_missing_lang'  => 'Loaded, but the lang file does not exist',
+        'issue_refs_only'     => 'Strings are used, but the file is never loaded by name',
+        'issue_dynamic_load'  => 'Dynamic load() calls — check by hand',
+        'issue_loaded_dynamic' => 'Loaded; strings are read through a variable — most likely in use',
+        'opt_show_hardcoded'  => 'Hard-coded text',
+        'sec_hardcoded'       => 'Hard-coded text in PHP',
+        'hint_hardcoded'      => 'Text written straight into PHP/HTML instead of a lang file — users see it in this language only. Lang fallbacks (?? \'…\'), logs, SQL and comments are skipped. This is a heuristic: some lines may be technical.',
+        'msg_hardcoded_ok'    => 'No hard-coded text found.',
+        'lbl_hc_files'        => 'Files',
+        'lbl_hc_strings'      => 'Strings',
+        'lbl_hc_line'         => 'line {1}',
+    ];
+}
 
 use function htmlspecialchars as e;
 
-const LC_VERSION  = '3.2';
+const LC_VERSION  = '3.9';
 const LC_REF_LANG = 'english';
 /** Сканируется весь проект рекурсивно; пропускаются только папки без кода (по имени, на любом уровне) */
+/** Hard-coded tab: folders with third-party code / installers (by name, at any level) */
+const LC_HC_SKIP_DIRS = ['wolraf', 'phpmyadmin', 'pma', 'sql', 'install', 'upgrade', 'test', 'tests', 'tmp', 'twig', 'libraries'];
 const LC_SKIP_DIRS = ['.git', '.svn', '.idea', 'node_modules', 'vendor', 'cache', 'uploads', 'torrents',
                       'attachments', 'avatars', 'screenshots', 'backups', 'logs'];
 
@@ -122,6 +147,8 @@ function lc_load_lang(string $file, string $page): array
     }
     ob_end_clean();
     $alias = null;
+    // MyBB-формат: $l['key'] = ... (announce.lang.php читается напрямую, без $lang)
+    if (!$language && isset($l) && is_array($l)) $language[$page] = $l;
     if (!isset($language[$page]) || !is_array($language[$page])) {
         // Массив назван иначе ($language['announcements'] в announcements2.lang.php) — берём его и предупреждаем
         $arrays = array_filter($language, 'is_array');
@@ -144,6 +171,8 @@ function lc_load_lang(string $file, string $page): array
 function lc_expr_keys(string $expr, array &$used, bool &$dynamic, bool $optional = false): array
 {
     if (str_contains($expr, '.') || preg_match('/^\s*\$\w+\s*$/', $expr)) $dynamic = true;
+    // Вложенный индекс — ключ другого массива, не ланга: ['type_' . $row['type']] → 'type' не наш
+    $expr = (string)preg_replace('/\[\s*([\'"])[^\'"]*\1/', '[', $expr);
     preg_match_all('/(?<![=!]=\s)(?<!===\s)([\'"])([A-Za-z0-9_]+)\1(?!\s*\.)/', $expr, $k);
     foreach ($k[2] as $x) $used[$x] = (!$optional || ($used[$x] ?? 'opt') === 'req') ? 'req' : 'opt';
     return $k[2];
@@ -279,6 +308,254 @@ function lc_placeholders(string $s): array
     return $n;
 }
 
+/** PHP без комментариев: закомментированная загрузка ланга — не использование. Номера строк сохраняются. */
+function lc_strip_php_comments(string $code): string
+{
+    $out = '';
+    foreach (token_get_all($code) as $t) {
+        if (!is_array($t)) { $out .= $t; continue; }
+        $out .= ($t[0] === T_COMMENT || $t[0] === T_DOC_COMMENT) ? str_repeat("\n", substr_count($t[1], "\n")) : $t[1];
+    }
+    return $out;
+}
+
+/**
+ * Неиспользуемые ланг-файлы. «Использование»:
+ *   load() по имени страницы · language_file в send_pm() · обращения к массиву страницы (или к ключам MyBB-формата $l[...])
+ * Статусы: unused | loaded_only | refs_only | used; плюс загрузки несуществующих файлов и динамические загрузки через переменную.
+ */
+function lc_unused_files(string $langDir, array $langs, array $php): array
+{
+    $loads = $pm = $props = $dynamic = $dynProps = [];
+    $methods = ['load', 'set_language', 'set_path', 'set_decoding', 'parse', 'get_languages', 'language_exists', 'get_section'];
+    foreach ($php as $rel => $code) {
+        if (!str_contains($code, 'lang')) continue;
+        $c   = lc_strip_php_comments($code);
+        $rel = (string)$rel;
+        preg_match_all('/\$\w*lang\w*\s*->\s*load\s*\(\s*([\'"])([\w\/\-]+)\1/i', $c, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[2] as [$n, $off]) $loads[$n][] = $rel . ':' . lc_line($c, (int)$off);
+        preg_match_all('/\$\w*lang\w*\s*->\s*load\s*\(\s*(?![\'"])([^;]*?)\)\s*;/i', $c, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[1] as [$arg, $off]) $dynamic[] = $rel . ':' . lc_line($c, (int)$off) . '  ->load(' . trim($arg) . ')';
+        // 'language_file' => 'x' (send_pm) и свойство датахендлеров MyBB: public $language_file = 'x'; / ->language_file = 'x';
+        // ... и get_section('x', $язык) — строки для другого языка (ЛС на языке получателя)
+        preg_match_all('/(?:[\'"]language_file[\'"]\s*=>|\$language_file\s*=|->\s*language_file\s*=|->\s*get_section\s*\()\s*([\'"])([\w\/\-]+)\1/', $c, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[2] as [$n, $off]) $pm[$n][] = $rel . ':' . lc_line($c, (int)$off);
+        // Прямое подключение по пути: require '.../english/announce.lang.php' (announce.php читает свой $l без $lang)
+        preg_match_all('/([A-Za-z0-9_\-]+)\.lang\.php/', $c, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[1] as [$n, $off]) $pm[$n][] = $rel . ':' . lc_line($c, (int)$off);
+        // Строки по переменной: $lang->{'x_' . $y}, $lang->$name — для файлов, которые грузит этот код, ключи не определить
+        if (preg_match('/\$lang\s*->\s*(?:\{|\$)/', $c)) $dynProps[$rel] = true;
+        preg_match_all('/\$lang\s*->\s*(\w++)(?!\s*\()/', $c, $m);
+        foreach ($m[1] as $p) if (!in_array($p, $methods, true)) $props[$p] = ($props[$p] ?? 0) + 1;
+    }
+
+    // Ланг-файлы всех языков: страница => [языки], [свойства]
+    $files = [];
+    foreach ($langs as $l) {
+        foreach (glob("{$langDir}/{$l}/*.lang.php") ?: [] as $f) {
+            $pg  = basename($f, '.lang.php');
+            $src = lc_strip_php_comments((string)file_get_contents($f));
+            $files[$pg]['langs'][] = $l;
+            $files[$pg]['props'] ??= [];
+            if (preg_match_all('/\$language\s*\[\s*[\'"](\w+)[\'"]\s*\]\s*=/', $src, $m)
+                || preg_match_all('/\$l\s*\[\s*[\'"](\w+)[\'"]\s*\]\s*=/', $src, $m)) {
+                foreach ($m[1] as $p) $files[$pg]['props'][$p] = true;
+            }
+        }
+    }
+    ksort($files);
+
+    $out = ['unused' => [], 'loaded_only' => [], 'loaded_dynamic' => [], 'refs_only' => [], 'missing' => [], 'dynamic' => $dynamic, 'used' => 0];
+    foreach ($files as $pg => $f) {
+        $pg   = (string)$pg;
+        $refs = 0;
+        foreach (array_keys($f['props']) as $p) $refs += $props[$p] ?? 0;
+        $by   = $loads[$pg] ?? [];
+        $tag  = $pg . '.lang.php (' . implode('+', $f['langs']) . ')';
+        if (!empty($pm[$pg]) || ($by && $refs > 0)) { $out['used']++; continue; }
+        // Грузится кодом, который читает строки по переменной — скорее всего используется
+        $dynBy = array_filter($by, fn($w) => isset($dynProps[substr($w, 0, (int)strrpos($w, ':'))]));
+        if ($dynBy)         $out['loaded_dynamic'][] = $pg . '.lang.php — ' . implode(', ', array_slice($dynBy, 0, 3));
+        elseif ($by)        $out['loaded_only'][] = $pg . '.lang.php — ' . implode(', ', array_slice($by, 0, 3));
+        elseif ($refs > 0)  $out['refs_only'][]   = $tag . ' — ' . $refs . '×';
+        else                $out['unused'][]      = $tag;
+    }
+    foreach ([$loads, $pm] as $src) {
+        foreach ($src as $n => $where) {
+            if (!isset($files[(string)$n])) $out['missing'][] = $n . '.lang.php — ' . implode(', ', array_slice($where, 0, 3));
+        }
+    }
+    $out['missing'] = array_values(array_unique($out['missing']));
+    return $out;
+}
+
+// ── Захардкоженный текст (вкладка «Hard-coded») ───────────────────────
+
+/** Does this look like text a person reads (not SQL / CSS / key / path)? */
+function lc_hc_is_text(string $s, bool $html): bool
+{
+    $s = trim(preg_replace('/\s+/u', ' ', html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8')) ?? '');
+    if ($s === '' || mb_strlen($s) < 3 || mb_strlen($s) > 400) return false;
+    if (!preg_match('/\p{L}{2,}/u', $s)) return false;                                  // no words
+    if (preg_match('~^(https?:|//|/|\./|#|\{|\$|<\?|&)~', $s)) return false;             // urls, paths, vars
+    if (preg_match('/^\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|SHOW|SET|TRUNCATE|WITH|LOCK|OPTIMIZE)\b/i', $s)) return false;
+    if (preg_match('/\b(FROM|WHERE|JOIN|ORDER BY|GROUP BY|LIMIT|VALUES|INNER|LEFT JOIN)\b/', $s)) return false;
+    if (preg_match('/[;{}]\s*$|:\s*[\w#.-]+\s*;/', $s)) return false;                    // css / js
+    if (preg_match('/[=;{}]|\w\(|\)\.|=>|&&|\|\|/', $s)) return false;                          // code fragments
+    if (preg_match('/^(AND|OR|NOT|IN|ON|AS|IS|NULL|ASC|DESC)\b|\b(IN|NOT IN)\s*\($/', $s)) return false;          // SQL pieces
+    if (preg_match('/^[\w.-]+\.(php|js|css|png|jpe?g|gif|webp|svg|json|txt|log|torrent|nfo)$/i', $s)) return false;
+    if (preg_match('/^[a-z0-9_\-:.\/ ]+$/', $s) && !preg_match('/[.!?]$/', $s)) return false;  // class lists, keys, lowercase ids
+    if (preg_match('/^[A-Z0-9_]+$/', $s)) return false;                                   // CONSTANTS
+    if (preg_match('/^(Content-|Location:|HTTP\/|X-|Cache-|Pragma|Expires|Status:|Referer:|User-Agent:|Accept)/i', $s)) return false;
+    if (preg_match('/^%[\d$sdf.-]+$|^[dDjlNSwzWFmMntLoYyaABgGhHisuveIOPTZcrU\s:\/.,-]{1,20}$/', $s) && !preg_match('/\p{L}{4,}/u', $s)) return false; // date()/printf formats
+    $words = preg_match_all('/\p{L}{2,}/u', $s);
+    if ($html) {
+        // HTML text node: one capitalised word is enough (button labels "Save", "Delete")
+        return $words >= 2 || preg_match('/^\p{Lu}\p{Ll}{2,}/u', $s) || preg_match('/\p{Cyrillic}{3,}/u', $s);
+    }
+    // PHP string: a phrase — two words with a space, or Cyrillic
+    return ($words >= 2 && str_contains($s, ' ') && preg_match('/\p{Lu}|[.!?:]$|\p{Cyrillic}/u', $s)) || preg_match('/\p{Cyrillic}{3,}/u', $s);
+}
+
+/** Visible texts inside an HTML fragment: text nodes + placeholder/title/alt/aria-label */
+function lc_hc_from_html(string $html, int $baseLine, array &$out): void
+{
+    // script/style blocks out, keeping the line count
+    $html = preg_replace_callback('#<(script|style)\b.*?</\1\s*>#is', fn($m) => str_repeat("\n", substr_count($m[0], "\n")), $html) ?? $html;
+    $html = preg_replace_callback('#<!--.*?-->#s', fn($m) => str_repeat("\n", substr_count($m[0], "\n")), $html) ?? $html;
+    $hasTags = str_contains($html, '<');
+    if ($hasTags && preg_match_all('/(?:^|>)([^<>]+)(?=<|$)/', $html, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[1] as [$txt, $off]) {
+            if (lc_hc_is_text($txt, true)) $out[] = [$baseLine + substr_count(substr($html, 0, $off), "\n") + (strlen($txt) - strlen(ltrim($txt)) > 0 ? substr_count(substr($txt, 0, strlen($txt) - strlen(ltrim($txt))), "\n") : 0), trim(preg_replace('/\s+/u', ' ', $txt))];
+        }
+    }
+    if (preg_match_all('/\b(placeholder|title|alt|aria-label|data-bs-original-title|data-confirm|value)\s*=\s*(["\'])([^"\'<>{}$]*)\2/i', $html, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[3] as $i => [$txt, $off]) {
+            // value="" only on buttons (submit/button/reset), not on form fields
+            if (strtolower($m[1][$i][0]) === 'value') {
+                $tagStart = strrpos(substr($html, 0, $off), '<');
+                $tag      = $tagStart === false ? substr($html, max(0, $off - 120), 240) : substr($html, $tagStart, 240);
+                if (!preg_match('/^<button\b|type\s*=\s*["\']?(submit|button|reset)/i', $tag)) continue;
+            }
+            if (lc_hc_is_text($txt, true)) $out[] = [$baseLine + substr_count(substr($html, 0, $off), "\n"), $m[1][$i][0] . '="' . trim($txt) . '"'];
+        }
+    }
+}
+
+/**
+ * Hard-coded user-visible text in one PHP file: [[line, text], ...].
+ * Skipped: comments, lang fallbacks (`?? '…'`, second argument after a key: t('key', '…')),
+ * strings passed to log/header/define/regex functions.
+ */
+function lc_hc_file(string $code): array
+{
+    $out = [];
+    try {
+        $tokens = token_get_all($code);
+    } catch (\Throwable) {
+        return [];
+    }
+    $skipFn = ['error_log', 'write_log', 'trigger_error', 'define', 'header', 'setcookie', 'my_setcookie', 'preg_match', 'preg_match_all',
+               'preg_replace', 'preg_replace_callback', 'preg_split', 'str_replace', 'date', 'gmdate', 'my_datee', 'sprintf_log', 'file_put_contents',
+               'sql_query_prepared', 'sql_query', 'query', 'in_array', 'array_key_exists', 'get_input', 'ini_set', 'mb_internal_encoding', 'json_decode',
+               'debug_log', 'log_action', 'kps', 'bonus_log', 'seedbonus_log', 'stafflog', 'log_staff_action', 'strtotime', 'number_format', 'hash', 'md5', 'error_reporting', 'class_exists', 'function_exists', 'method_exists'];
+    $n = count($tokens);
+    // previous meaningful token (skip whitespace/comments)
+    $prev = function (int $i, int $steps = 1) use ($tokens) {
+        for ($j = $i - 1; $j >= 0; $j--) {
+            $t = $tokens[$j];
+            if (is_array($t) && in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) continue;
+            if (--$steps === 0) return $t;
+        }
+        return null;
+    };
+    // names of all calls this token sits in, inner first: write_log(sprintf('…')) -> [sprintf, write_log]
+    $callNames = function (int $i) use ($tokens): array {
+        $names = [];
+        $depth = 0;
+        for ($j = $i - 1; $j >= 0 && $j > $i - 600; $j--) {
+            $t = $tokens[$j];
+            if ($t === ')' || $t === ']') { $depth++; continue; }
+            if ($t === '[') { if ($depth > 0) $depth--; continue; }
+            if ($t === '(') {
+                if ($depth > 0) { $depth--; continue; }
+                for ($k = $j - 1; $k >= 0; $k--) {
+                    $u = $tokens[$k];
+                    if (is_array($u) && $u[0] === T_WHITESPACE) continue;
+                    if (is_array($u) && in_array($u[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+                        $names[] = strtolower(ltrim($u[1], '\\'));
+                    }
+                    break;
+                }
+                continue;
+            }
+            if ($t === ';' || $t === '{' || $t === '}') break;
+        }
+        return $names;
+    };
+
+    for ($i = 0; $i < $n; $i++) {
+        $t = $tokens[$i];
+        if (!is_array($t)) continue;
+        [$id, $text, $line] = $t;
+
+        if ($id === T_INLINE_HTML) {
+            lc_hc_from_html($text, $line, $out);
+            continue;
+        }
+        if ($id !== T_CONSTANT_ENCAPSED_STRING && $id !== T_ENCAPSED_AND_WHITESPACE) continue;
+
+        $p1 = $prev($i);
+        // `?? 'fallback'`, array keys ['key'], `case 'x':`
+        if (is_array($p1) && $p1[0] === T_COALESCE) continue;
+        if ($p1 === '[' || (is_array($p1) && $p1[0] === T_CASE)) continue;
+        $nx = null;
+        for ($j = $i + 1; $j < $n; $j++) { if (is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) continue; $nx = $tokens[$j]; break; }
+        if ($nx === ']' || (is_array($nx) && $nx[0] === T_DOUBLE_ARROW)) continue;       // key => …
+        // t('lang_key', 'Fallback'): previous argument is a lang key
+        if ($p1 === ',') {
+            $p2 = $prev($i, 2);
+            if (is_array($p2) && $p2[0] === T_CONSTANT_ENCAPSED_STRING && preg_match('/^[\'"][a-z][a-z0-9_]*[\'"]$/', $p2[1])) continue;
+        }
+        if (array_intersect($callNames($i), $skipFn)) continue;
+
+        $raw = $id === T_CONSTANT_ENCAPSED_STRING ? substr($text, 1, -1) : $text;
+        if (str_contains($raw, '<') || preg_match('/\w\s*=\s*["\']/', $raw)) {
+            lc_hc_from_html($raw, $line, $out);
+        } elseif (lc_hc_is_text($raw, false)) {
+            $out[] = [$line, trim(preg_replace('/\s+/u', ' ', stripcslashes($raw)))];
+        }
+    }
+    // unique by line+text
+    $seen = [];
+    $res  = [];
+    foreach ($out as [$l, $s]) {
+        $k = $l . '|' . $s;
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+        $res[] = [$l, mb_strimwidth($s, 0, 160, '…')];
+    }
+    usort($res, fn($a, $b) => $a[0] <=> $b[0]);
+    return $res;
+}
+
+/** All files: [rel path => [[line, text], ...]], most strings first. The scan itself skips this file. */
+function lc_hardcoded(array $php): array
+{
+    $self = basename(__FILE__);
+    $res  = [];
+    foreach ($php as $rel => $code) {
+        if (basename($rel) === $self) continue;
+        // third-party code (phpMyAdmin in wolraf/, Twig cache) and installers are not ours to translate
+        $segs = array_map('strtolower', explode('/', $rel));
+        if (array_intersect($segs, LC_HC_SKIP_DIRS)) continue;
+        $found = lc_hc_file($code);
+        if ($found) $res[$rel] = $found;
+    }
+    uasort($res, fn($a, $b) => count($b) <=> count($a));
+    return $res;
+}
+
 // ── Сканирование ──────────────────────────────────────────────────────
 $t0    = hrtime(true);
 $root  = lc_root();
@@ -379,7 +656,22 @@ $ms = (int)round((hrtime(true) - $t0) / 1e6);
 $stat = ['ok' => 0, 'warn' => 0, 'error' => 0];
 foreach ($pages as $pg) $stat[$pg['status']]++;
 
-$show  = ($_GET['show'] ?? '') === 'problems' ? 'problems' : 'all';
+$unused   = $langDir !== null ? lc_unused_files($langDir, $langs, $php) : ['unused' => [], 'loaded_only' => [], 'loaded_dynamic' => [], 'refs_only' => [], 'missing' => [], 'dynamic' => [], 'used' => 0];
+$unusedN  = count($unused['unused']) + count($unused['loaded_only']) + count($unused['missing']);
+// [код, severity, items] — порядок вывода
+$unusedGroups = [
+    ['unused_file',  'warn',  $unused['unused']],
+    ['loaded_only',  'warn',  $unused['loaded_only']],
+    ['missing_lang', 'error', $unused['missing']],
+    ['loaded_dynamic', 'info', $unused['loaded_dynamic']],
+    ['refs_only',    'info',  $unused['refs_only']],
+    ['dynamic_load', 'info',  $unused['dynamic']],
+];
+
+$show  = match ($_GET['show'] ?? '') { 'problems' => 'problems', 'unused' => 'unused', 'hardcoded' => 'hardcoded', default => 'all' };
+// Hard-coded text: tokenising every file is slower, so only on its own tab
+$hard  = $show === 'hardcoded' ? lc_hardcoded($php) : [];
+$hardN = array_sum(array_map('count', $hard));
 $shown = $show === 'problems' ? array_values(array_filter($pages, fn($p) => $p['status'] !== 'ok')) : $pages;
 
 $self = (string)$_this_script_;
@@ -402,6 +694,12 @@ $issueLabel = fn(string $code, string $pg = '') => match ($code) {
     'missing_opt'    => $lang->langcheck['issue_missing_opt'],
     'missing_js'     => $lang->langcheck['issue_missing_js'],
     'other_name'     => ags_fmt($lang->langcheck['issue_other_name'], $pg),
+    'unused_file'    => $lang->langcheck['issue_unused_file'],
+    'loaded_only'    => $lang->langcheck['issue_loaded_only'],
+    'missing_lang'   => $lang->langcheck['issue_missing_lang'],
+    'refs_only'      => $lang->langcheck['issue_refs_only'],
+    'loaded_dynamic' => $lang->langcheck['issue_loaded_dynamic'],
+    'dynamic_load'   => $lang->langcheck['issue_dynamic_load'],
     default          => $code,
 };
 $sevIcon  = ['error' => 'fa-circle-xmark', 'warn' => 'fa-triangle-exclamation', 'info' => 'fa-circle-info'];
@@ -439,6 +737,25 @@ foreach ($problems as $pg) {
     foreach ($pg['issues'] as [$sev, $l, $code, $items]) {
         $rep[] = '  - ' . ($l !== null ? '[' . $l . '] ' : '') . $issueLabel($code, $pg['page'])
                . ($items ? ' (' . count($items) . '): ' . $repList(array_map('strval', $items)) : '');
+    }
+}
+$rep[] = '';
+$rep[] = '== ' . $lang->langcheck['sec_unused'] . ' ==';
+if ($unusedN === 0) $rep[] = $lang->langcheck['msg_unused_ok'];
+foreach ($unusedGroups as [$code, $sev, $items]) {
+    if (!$items) continue;
+    $rep[] = '  - ' . $issueLabel($code) . ' (' . count($items) . '):';
+    foreach (array_slice($items, 0, LC_REPORT_MAX) as $it) $rep[] = '      ' . $it;
+    if (count($items) > LC_REPORT_MAX) $rep[] = '      ' . ags_fmt($lang->langcheck['rep_more'], count($items) - LC_REPORT_MAX);
+}
+if ($show === 'hardcoded') {
+    $rep[] = '';
+    $rep[] = '== ' . $lang->langcheck['sec_hardcoded'] . ' ==';
+    if (!$hard) $rep[] = $lang->langcheck['msg_hardcoded_ok'];
+    foreach ($hard as $rel => $items) {
+        $rep[] = '  ' . $rel . ' (' . count($items) . '):';
+        foreach (array_slice($items, 0, LC_REPORT_MAX) as [$ln, $txt]) $rep[] = '      ' . $ln . ': ' . $txt;
+        if (count($items) > LC_REPORT_MAX) $rep[] = '      ' . ags_fmt($lang->langcheck['rep_more'], count($items) - LC_REPORT_MAX);
     }
 }
 $report = implode("\n", $rep) . "\n";
@@ -504,6 +821,50 @@ stdhead($lang->langcheck['page_title']);
     </div>
     <?php endif; ?>
 
+    <?php if ($show === 'hardcoded'): ?>
+    <div class="lc-card overflow-hidden mb-3">
+        <div class="lc-sec-head"><span class="lc-sec-icon <?= $hardN ? 'ic-amber' : 'ic-green' ?>"><i class="fa-solid fa-quote-left"></i></span>
+            <div class="flex-grow-1"><h2 class="lc-sec-title"><?= e($lang->langcheck['sec_hardcoded']) ?></h2>
+            <div class="lc-counts mt-1"><span class="lc-chip<?= $hard ? ' is-bad' : '' ?>"><?= e($lang->langcheck['lbl_hc_files']) ?> <b><?= count($hard) ?></b></span><span class="lc-chip<?= $hardN ? ' is-bad' : '' ?>"><?= e($lang->langcheck['lbl_hc_strings']) ?> <b><?= $hardN ?></b></span></div></div></div>
+        <div class="lc-body pt-3">
+            <div class="lc-muted mb-2"><i class="fa-solid fa-circle-info me-1"></i><?= e($lang->langcheck['hint_hardcoded']) ?></div>
+            <?php if (!$hard): ?>
+            <div class="lc-ok"><i class="fa-solid fa-circle-check me-1"></i><?= e($lang->langcheck['msg_hardcoded_ok']) ?></div>
+            <?php endif; ?>
+            <?php foreach ($hard as $rel => $items): ?>
+            <details class="lc-issue is-warn">
+                <summary class="lc-issue-head" style="cursor:pointer"><i class="fa-solid fa-file-code"></i><span><?= e($rel) ?></span><span class="lc-muted">(<?= count($items) ?>)</span></summary>
+                <div class="lc-keys">
+                    <?php foreach ($items as [$ln, $txt]): ?>
+                    <div><span class="lc-muted me-2"><?= e(ags_fmt($lang->langcheck['lbl_hc_line'], $ln)) ?></span><code><?= e($txt) ?></code></div>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php elseif ($show === 'unused'): ?>
+    <div class="lc-card overflow-hidden mb-3">
+        <div class="lc-sec-head"><span class="lc-sec-icon <?= $unusedN ? 'ic-amber' : 'ic-green' ?>"><i class="fa-solid fa-box-archive"></i></span>
+            <div class="flex-grow-1"><h2 class="lc-sec-title"><?= e($lang->langcheck['sec_unused']) ?></h2>
+            <div class="lc-counts mt-1"><span class="lc-chip"><?= e($lang->langcheck['lbl_used']) ?> <b><?= (int)$unused['used'] ?></b></span><?php foreach ($unusedGroups as [$code, $sev, $items]): if ($items && $code !== 'dynamic_load'): ?><span class="lc-chip<?= $sev !== 'info' ? ' is-bad' : '' ?>"><?= e($issueLabel($code)) ?> <b><?= count($items) ?></b></span><?php endif; endforeach; ?></div></div></div>
+        <div class="lc-body pt-3">
+            <div class="lc-muted mb-2"><i class="fa-solid fa-circle-info me-1"></i><?= e($lang->langcheck['hint_unused_scope']) ?></div>
+            <?php if ($unusedN === 0): ?>
+            <div class="lc-ok"><i class="fa-solid fa-circle-check me-1"></i><?= e($lang->langcheck['msg_unused_ok']) ?></div>
+            <?php endif; ?>
+            <?php foreach ($unusedGroups as [$code, $sev, $items]): if (!$items) continue; ?>
+            <div class="lc-issue is-<?= $sev ?>">
+                <div class="lc-issue-head"><i class="fa-solid <?= $sevIcon[$sev] ?>"></i><span><?= e($issueLabel($code)) ?></span><span class="lc-muted">(<?= count($items) ?>)</span></div>
+                <div class="lc-keys"><?php foreach ($items as $it): ?><code><?= e((string)$it) ?></code><?php endforeach; ?></div>
+            </div>
+            <?php endforeach; ?>
+            <?php if ($unused['unused'] && $unused['dynamic']): ?>
+            <div class="lc-muted"><i class="fa-solid fa-triangle-exclamation me-1"></i><?= e($lang->langcheck['hint_unused_dynamic']) ?></div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php else: ?>
     <div class="lc-card overflow-hidden mb-3">
         <div class="lc-sec-head"><span class="lc-sec-icon ic-slate"><i class="fa-solid fa-list-check"></i></span>
             <div><h2 class="lc-sec-title"><?= e($lang->langcheck['sec_pages']) ?></h2>
@@ -563,6 +924,7 @@ stdhead($lang->langcheck['page_title']);
         </ul>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <textarea id="lcReport" class="lc-report form-control mb-3" rows="14" readonly hidden><?= e($report) ?></textarea>
 
@@ -572,7 +934,9 @@ stdhead($lang->langcheck['page_title']);
         <div class="d-flex flex-wrap gap-2 ms-auto" role="group" aria-label="<?= e($lang->langcheck['aria_filter']) ?>">
             <a href="<?= e($url('all')) ?>" class="btn btn-sm lc-pill<?= $show === 'all' ? ' active' : '' ?>"><?= e($lang->langcheck['opt_show_all']) ?></a>
             <a href="<?= e($url('problems')) ?>" class="btn btn-sm lc-pill<?= $show === 'problems' ? ' active' : '' ?>"><?= e($lang->langcheck['opt_show_problems']) ?> <b><?= $stat['warn'] + $stat['error'] ?></b></a>
-            <?php if ($shown): ?>
+            <a href="<?= e($url('unused')) ?>" class="btn btn-sm lc-pill<?= $show === 'unused' ? ' active' : '' ?>"><i class="fa-solid fa-box-archive me-1"></i><?= e($lang->langcheck['opt_show_unused']) ?> <b><?= $unusedN ?></b></a>
+            <a href="<?= e($url('hardcoded')) ?>" class="btn btn-sm lc-pill<?= $show === 'hardcoded' ? ' active' : '' ?>"><i class="fa-solid fa-quote-left me-1"></i><?= e($lang->langcheck['opt_show_hardcoded']) ?><?= $show === 'hardcoded' ? ' <b>' . $hardN . '</b>' : '' ?></a>
+            <?php if ($shown && $show !== 'unused' && $show !== 'hardcoded'): ?>
             <button type="button" class="btn btn-sm lc-pill" id="lcToggleAll" data-expand="<?= e($lang->langcheck['btn_expand_all']) ?>" data-collapse="<?= e($lang->langcheck['btn_collapse_all']) ?>"><i class="fa-solid fa-up-right-and-down-left-from-center me-1"></i><span><?= e($lang->langcheck['btn_expand_all']) ?></span></button>
             <?php endif; ?>
             <button type="button" class="btn btn-sm lc-pill" id="lcCopy"><i class="fa-regular fa-copy me-1"></i><span id="lcCopyText"><?= e($lang->langcheck['btn_copy_report']) ?></span></button>

@@ -11,7 +11,10 @@ define('THIS_SCRIPT', 'settings_history.php');
 $rootpath = './../';
 $thispath = './';
 require_once $rootpath . 'global.php';
-$lang->load('settings_history');
+// Texts: hist_* keys of managesettings.lang.php (the old settings_history.lang.php was merged into it)
+$lang->load('managesettings');
+
+
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
 
@@ -76,9 +79,9 @@ if (!function_exists('admin_redirect')) {
 
 // Названия уровней (интерфейс и CSV)
 $level_names = [
-    $lang->settings_history['lvl_info'],
-    $lang->settings_history['lvl_warning'],
-    $lang->settings_history['lvl_error'],
+    $lang->managesettings['hist_lvl_info'] ?? 'Info',
+    $lang->managesettings['hist_lvl_warning'] ?? 'Warning',
+    $lang->managesettings['hist_lvl_error'] ?? 'Error',
 ];
 
 // ============================================================
@@ -89,14 +92,14 @@ if (isset($_POST['action'])) {
         case 'cleanup':
 
             if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-                flash_message($lang->settings_history['flash_csrf'], 'error');
+                flash_message(($lang->managesettings['hist_flash_csrf'] ?? 'Security check failed. Please try again.'), 'error');
                 admin_redirect('settings_history.php');
             }
             if (isset($_POST['confirm']) && $_POST['confirm'] === 'yes') {
                 $cutoff = time() - (90 * 86400);
                 $query = $db->sql_query_prepared("DELETE FROM sitelog WHERE category = 'settings' AND added < ?", [$cutoff]);
                 $deleted = $db->affected_rows($query);
-                flash_message(ags_fmt($lang->settings_history['flash_deleted'], (int)$deleted), "success");
+                flash_message(ags_fmt(($lang->managesettings['hist_flash_deleted'] ?? 'Old logs deleted: {1}'), (int)$deleted), "success");
             }
             admin_redirect("settings_history.php");
             break;
@@ -112,21 +115,21 @@ if (isset($_POST['action'])) {
 
             $output = fopen('php://output', 'w');
             fputcsv($output, [
-                $lang->settings_history['csv_datetime'],
-                $lang->settings_history['csv_uid'],
-                $lang->settings_history['csv_user'],
-                $lang->settings_history['csv_event'],
-                $lang->settings_history['csv_level'],
-                $lang->settings_history['csv_ip'],
+                ($lang->managesettings['hist_csv_datetime'] ?? 'Date/Time'),
+                ($lang->managesettings['hist_csv_uid'] ?? 'User ID'),
+                ($lang->managesettings['hist_csv_user'] ?? 'User'),
+                ($lang->managesettings['hist_csv_event'] ?? 'Event'),
+                ($lang->managesettings['hist_csv_level'] ?? 'Level'),
+                ($lang->managesettings['hist_csv_ip'] ?? 'IP Address'),
             ]);
 
             foreach ($logs as $log) {
                 fputcsv($output, [
                     date('Y-m-d H:i:s', (int)$log['added']),
                     $log['uid'],
-                    $log['username'] ?? $lang->settings_history['lbl_system'],
+                    $log['username'] ?? ($lang->managesettings['hist_lbl_system'] ?? 'System'),
                     $log['txt'],
-                    $level_names[(int)$log['level']] ?? $lang->settings_history['lvl_info'],
+                    $level_names[(int)$log['level']] ?? ($lang->managesettings['hist_lvl_info'] ?? 'Info'),
                     $log['ipaddress'] ?? '0.0.0.0'
                 ]);
             }
@@ -253,18 +256,15 @@ $page_url = 'settings_history.php?' . http_build_query(array_filter([
 ]));
 $multipage = multipage($total, $per_page, $page, $page_url);
 
-// Короткий алиас для ланга страницы
-$L = $lang->settings_history;
-
-// Строки для JS: js_* → без префикса
+// Строки для JS: hist_js_* → без префикса (show_more, on, confirm_cleanup…)
 $ags_js_lang = [];
-foreach ($L as $k => $v) {
-    if (str_starts_with((string)$k, 'js_')) {
-        $ags_js_lang[substr((string)$k, 3)] = $v;
+foreach ((array)$lang->managesettings as $k => $v) {
+    if (str_starts_with((string)$k, 'hist_js_')) {
+        $ags_js_lang[substr((string)$k, 8)] = (string)$v;
     }
 }
 
-stdhead($L['page_title']);
+stdhead($lang->managesettings['hist_page_title'] ?? 'Settings History');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings.css">
@@ -277,13 +277,13 @@ stdhead($L['page_title']);
     <div class="history-header">
         <h1>
             <i class="fas fa-history text-primary me-2"></i>
-            <?= htmlspecialchars($L['page_title']) ?>
+            <?= htmlspecialchars($lang->managesettings['hist_page_title'] ?? 'Settings History') ?>
             <small>v<?= B_VERSION ?></small>
         </h1>
         <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-secondary"><?= htmlspecialchars(ags_fmt($L['badge_total'], number_format($total))) ?></span>
+            <span class="badge bg-secondary"><?= htmlspecialchars(ags_fmt(($lang->managesettings['hist_badge_total'] ?? 'Total: {1}'), number_format($total))) ?></span>
             <a href="managesettings.php" class="btn btn-primary btn-sm">
-                <i class="fas fa-arrow-left me-1"></i> <?= htmlspecialchars($L['btn_back']) ?>
+                <i class="fas fa-arrow-left me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_back'] ?? 'Back to Settings') ?>
             </a>
         </div>
     </div>
@@ -294,23 +294,23 @@ stdhead($L['page_title']);
     <div class="stats-row">
         <div class="stat-box info">
             <div class="stat-number"><?= $log_stats['info'] ?></div>
-            <div class="stat-label"><i class="fas fa-info-circle me-1"></i> <?= htmlspecialchars($L['stat_info']) ?></div>
+            <div class="stat-label"><i class="fas fa-info-circle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_info'] ?? 'Info') ?></div>
         </div>
         <div class="stat-box warning">
             <div class="stat-number"><?= $log_stats['warning'] ?></div>
-            <div class="stat-label"><i class="fas fa-exclamation-triangle me-1"></i> <?= htmlspecialchars($L['stat_warnings']) ?></div>
+            <div class="stat-label"><i class="fas fa-exclamation-triangle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_warnings'] ?? 'Warnings') ?></div>
         </div>
         <div class="stat-box error">
             <div class="stat-number"><?= $log_stats['error'] ?></div>
-            <div class="stat-label"><i class="fas fa-times-circle me-1"></i> <?= htmlspecialchars($L['stat_errors']) ?></div>
+            <div class="stat-label"><i class="fas fa-times-circle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_errors'] ?? 'Errors') ?></div>
         </div>
         <div class="stat-box today">
             <div class="stat-number"><?= $log_stats['today'] ?></div>
-            <div class="stat-label"><i class="fas fa-calendar-day me-1"></i> <?= htmlspecialchars($L['stat_today']) ?></div>
+            <div class="stat-label"><i class="fas fa-calendar-day me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_today'] ?? 'Today') ?></div>
         </div>
         <div class="stat-box week">
             <div class="stat-number"><?= $log_stats['this_week'] ?></div>
-            <div class="stat-label"><i class="fas fa-calendar-week me-1"></i> <?= htmlspecialchars($L['stat_week']) ?></div>
+            <div class="stat-label"><i class="fas fa-calendar-week me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_week'] ?? 'This Week') ?></div>
         </div>
     </div>
 
@@ -324,7 +324,7 @@ stdhead($L['page_title']);
                     <div class="input-group">
                         <span class="input-group-text"><i class="fas fa-search"></i></span>
                         <input type="text" class="form-control" name="search"
-                               placeholder="<?= htmlspecialchars($L['ph_search']) ?>"
+                               placeholder="<?= htmlspecialchars($lang->managesettings['hist_ph_search'] ?? 'Search in logs...') ?>"
                                value="<?= htmlspecialchars($search) ?>">
                     </div>
                 </div>
@@ -332,16 +332,16 @@ stdhead($L['page_title']);
                     <div class="input-group">
                         <span class="input-group-text"><i class="fas fa-user"></i></span>
                         <input type="text" class="form-control" name="user"
-                               placeholder="<?= htmlspecialchars($L['ph_user']) ?>"
+                               placeholder="<?= htmlspecialchars($lang->managesettings['hist_ph_user'] ?? 'Search by user...') ?>"
                                value="<?= htmlspecialchars($user) ?>">
                     </div>
                 </div>
                 <div class="filter-group" style="flex: 0 0 auto;">
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-filter me-1"></i> <?= htmlspecialchars($L['btn_filter']) ?>
+                        <i class="fas fa-filter me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_filter'] ?? 'Filter') ?>
                     </button>
                     <a href="settings_history.php" class="btn btn-outline-secondary">
-                        <i class="fas fa-undo me-1"></i> <?= htmlspecialchars($L['btn_reset']) ?>
+                        <i class="fas fa-undo me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_reset'] ?? 'Reset') ?>
                     </a>
                 </div>
             </div>
@@ -357,12 +357,12 @@ stdhead($L['page_title']);
             <table class="table history-table">
                 <thead>
                     <tr>
-                        <th style="width: 12%;"><i class="fas fa-clock me-1"></i> <?= htmlspecialchars($L['th_datetime']) ?></th>
-                        <th style="width: 10%;"><i class="fas fa-user me-1"></i> <?= htmlspecialchars($L['th_user']) ?></th>
-                        <th style="width: 48%;"><i class="fas fa-info-circle me-1"></i> <?= htmlspecialchars($L['th_event']) ?></th>
-                        <th style="width: 8%;"><i class="fas fa-flag me-1"></i> <?= htmlspecialchars($L['th_level']) ?></th>
-                        <th style="width: 10%;"><i class="fas fa-network-wired me-1"></i> <?= htmlspecialchars($L['th_ip']) ?></th>
-                        <th style="width: 12%;" class="text-center"><i class="fas fa-cog me-1"></i> <?= htmlspecialchars($L['th_actions']) ?></th>
+                        <th style="width: 12%;"><i class="fas fa-clock me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_datetime'] ?? 'Date/Time') ?></th>
+                        <th style="width: 10%;"><i class="fas fa-user me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_user'] ?? 'User') ?></th>
+                        <th style="width: 48%;"><i class="fas fa-info-circle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_event'] ?? 'Event') ?></th>
+                        <th style="width: 8%;"><i class="fas fa-flag me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_level'] ?? 'Level') ?></th>
+                        <th style="width: 10%;"><i class="fas fa-network-wired me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_ip'] ?? 'IP') ?></th>
+                        <th style="width: 12%;" class="text-center"><i class="fas fa-cog me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_th_actions'] ?? 'Actions') ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -379,29 +379,29 @@ stdhead($L['page_title']);
                                 <?= my_datee('relative', $log['added']) ?>
                             </span>
                             <?php if ($is_new): ?>
-                                <span class="badge bg-success ms-1" style="font-size: 0.6rem;"><?= htmlspecialchars($L['badge_new']) ?></span>
+                                <span class="badge bg-success ms-1" style="font-size: 0.6rem;"><?= htmlspecialchars($lang->managesettings['hist_badge_new'] ?? 'NEW') ?></span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <?php if ($log['uid'] > 0): ?>
                             <a href="<?= get_profile_link($log['uid']) ?>" class="user-link">
-                                <?= htmlspecialchars($log['username'] ?? $L['lbl_unknown']) ?>
+                                <?= htmlspecialchars($log['username'] ?? ($lang->managesettings['hist_lbl_unknown'] ?? 'Unknown')) ?>
                             </a>
                             <?php else: ?>
-                            <span class="text-muted"><?= htmlspecialchars($L['lbl_system']) ?></span>
+                            <span class="text-muted"><?= htmlspecialchars($lang->managesettings['hist_lbl_system'] ?? 'System') ?></span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <div class="log-message <?= $is_long ? 'collapsed' : 'expanded' ?>" data-full="<?= $log_text ?>">
                                 <span class="log-text"><?= $log_text ?></span>
                                 <?php if ($is_long): ?>
-                                    <button class="log-toggle" onclick="toggleLog(this)"><?= htmlspecialchars($L['btn_show_more']) ?></button>
+                                    <button class="log-toggle" onclick="toggleLog(this)"><?= htmlspecialchars($lang->managesettings['hist_btn_show_more'] ?? 'Show more') ?></button>
                                 <?php endif; ?>
                             </div>
                         </td>
                         <td>
                             <span class="log-level level-<?= $level ?>">
-                                <?= htmlspecialchars($level_names[$level] ?? $L['lvl_info']) ?>
+                                <?= htmlspecialchars($level_names[$level] ?? ($lang->managesettings['hist_lvl_info'] ?? 'Info')) ?>
                             </span>
                         </td>
                         <td>
@@ -410,11 +410,11 @@ stdhead($L['page_title']);
                         <td class="text-center">
                             <div class="btn-group btn-group-sm" role="group">
                                 <?php if ($log['uid'] > 0): ?>
-                                <a href="<?= get_profile_link($log['uid']) ?>" class="btn btn-outline-secondary" title="<?= htmlspecialchars($L['tip_profile']) ?>">
+                                <a href="<?= get_profile_link($log['uid']) ?>" class="btn btn-outline-secondary" title="<?= htmlspecialchars($lang->managesettings['hist_tip_profile'] ?? 'View user profile') ?>">
                                     <i class="fas fa-user"></i>
                                 </a>
                                 <?php endif; ?>
-                                <button class="btn btn-outline-info" onclick="copyLog(this)" title="<?= htmlspecialchars($L['tip_copy']) ?>">
+                                <button class="btn btn-outline-info" onclick="copyLog(this)" title="<?= htmlspecialchars($lang->managesettings['hist_tip_copy'] ?? 'Copy log') ?>">
                                     <i class="fas fa-copy"></i>
                                 </button>
                             </div>
@@ -427,11 +427,9 @@ stdhead($L['page_title']);
         <?php else: ?>
         <div class="history-empty">
             <i class="fas fa-history text-muted"></i>
-            <h4 class="text-muted"><?= htmlspecialchars($L['empty_title']) ?></h4>
-            <p class="text-muted"><?= htmlspecialchars($L['empty_text']) ?></p>
-            <a href="managesettings.php" class="btn btn-primary">
-                <i class="fas fa-cog me-1"></i> <?= htmlspecialchars($L['btn_go_settings']) ?>
-            </a>
+            <h4 class="text-muted"><?= htmlspecialchars($lang->managesettings['hist_empty_title'] ?? 'No history found') ?></h4>
+            <p class="text-muted"><?= htmlspecialchars($lang->managesettings['hist_empty_text'] ?? 'Settings changes will appear here as they happen') ?></p>
+            
         </div>
         <?php endif; ?>
     </div>
@@ -447,7 +445,7 @@ stdhead($L['page_title']);
     ============================================================ -->
     <div class="history-actions">
         <button class="btn btn-outline-secondary btn-sm" id="autoRefreshToggle" onclick="toggleAutoRefresh()">
-            <i class="fas fa-sync-alt me-1"></i> <?= htmlspecialchars($L['btn_autorefresh']) ?> <span id="autoRefreshStatus"><?= htmlspecialchars($L['lbl_on']) ?></span>
+            <i class="fas fa-sync-alt me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_autorefresh'] ?? 'Auto-refresh') ?> <span id="autoRefreshStatus"><?= htmlspecialchars($lang->managesettings['hist_lbl_on'] ?? 'ON') ?></span>
         </button>
 
         <form method="post" action="settings_history.php" style="display:inline;">
@@ -455,7 +453,7 @@ stdhead($L['page_title']);
             <input type="hidden" name="confirm" value="yes">
             <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
             <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirmCleanup()">
-                <i class="fas fa-trash me-1"></i> <?= htmlspecialchars(ags_fmt($L['btn_cleanup'], 90)) ?>
+                <i class="fas fa-trash me-1"></i> <?= htmlspecialchars(ags_fmt(($lang->managesettings['hist_btn_cleanup'] ?? 'Cleanup Old Logs ({1}+ days)'), 90)) ?>
             </button>
         </form>
 
@@ -464,7 +462,7 @@ stdhead($L['page_title']);
             <input type="hidden" name="search" value="<?= htmlspecialchars($search) ?>">
             <input type="hidden" name="user" value="<?= htmlspecialchars($user) ?>">
             <button type="submit" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-file-csv me-1"></i> <?= htmlspecialchars($L['btn_export_csv']) ?>
+                <i class="fas fa-file-csv me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_export_csv'] ?? 'Export CSV') ?>
             </button>
         </form>
 
@@ -473,12 +471,12 @@ stdhead($L['page_title']);
             <input type="hidden" name="search" value="<?= htmlspecialchars($search) ?>">
             <input type="hidden" name="user" value="<?= htmlspecialchars($user) ?>">
             <button type="submit" class="btn btn-outline-primary btn-sm">
-                <i class="fas fa-file-code me-1"></i> <?= htmlspecialchars($L['btn_export_json']) ?>
+                <i class="fas fa-file-code me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_export_json'] ?? 'Export JSON') ?>
             </button>
         </form>
 
         <a href="settings_history.php" class="btn btn-outline-info btn-sm">
-            <i class="fas fa-sync-alt me-1"></i> <?= htmlspecialchars($L['btn_refresh']) ?>
+            <i class="fas fa-sync-alt me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_btn_refresh'] ?? 'Refresh') ?>
         </a>
     </div>
 </div>

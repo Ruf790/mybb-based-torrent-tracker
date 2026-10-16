@@ -1126,19 +1126,27 @@ function renderBasicInfoTab(): string
     global $userdata, $lang;
     
 	
-   $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
+   
+	
 
-   // Если аватар — это HTML-заглушка (начинается с '<'), выводим её как есть
-   if (strpos($useravatar['image'], '<') === 0) 
-   {
-       $avatarHtml = $useravatar['image']; // <div class="avatar-ring2">No Avatar</div>
-   } 
-   // Иначе выводим как <img> (стандартный аватар)
-   else 
-   {
-       $avatarHtml = '<img class="rounded img-fluid" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
-   }	
-		
+
+
+$useravatar  = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+
+                        $avatarHtml = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" '
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($userdata['username']) . '" loading="lazy">'
+                           . '</div>';
+
+
+
+
+
+
+
+
+	
 		
 		
 		
@@ -3757,7 +3765,20 @@ function handleEditUser(): void
     permission_check();
     stdhead(ags_fmt($lang->edituser['page_title_edit'], htmlspecialchars_uni($userdata['username']), $userdata['id']));
 	
-	$user_avatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
+
+	
+	
+	$useravatar  = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+
+                        $user_avatar = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" '
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($userdata['username']) . '" loading="lazy">'
+                           . '</div>';
+	
+	
+	
+	
 	
 	
 	$is_own_profile = ((int)$CURUSER['id'] === (int)$userdata['id']);
@@ -3847,7 +3868,7 @@ function handleEditUser(): void
      data-upload-url="edituser.php?action=upload_avatar&amp;userid='.$userdata['id'].'"
      title="' . $lang->edituser['hdr_avatar_title'] . '">
     <div>
-     ' . $user_avatar['html'] . '
+     ' . $user_avatar . '
       <span class="avatar-overlay">' . $lang->edituser['hdr_avatar_change'] . '</span>
     </div>
 

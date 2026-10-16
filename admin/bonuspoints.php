@@ -438,11 +438,22 @@ final class BonusPointsManager
         while ($res && ($u = $this->db->fetch_array($res))) {
             $rank++;
             $name = (string)$u['username'];
-            $av   = function_exists('format_avatar') ? format_avatar($u['avatar'] ?? '', $u['avatardimensions'] ?? '') : [];
-            $pic  = (!empty($av['image']) && empty($av['is_placeholder']))
-                ? '<img class="bp-avatar" src="' . $av['image'] . '" alt="" loading="lazy">'
-                : '<span class="bp-initial">' . $this->e(mb_strtoupper(mb_substr($name !== '' ? $name : '?', 0, 1))) . '</span>';
-            $rows .= '<tr>'
+            
+			
+         
+			$useravatar  = format_avatar($u['avatar'], $u['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'bp-avatar';
+
+                        $pic = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" style="width:50px;height:50px;object-fit:cover;"'
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($u['username']) . '" loading="lazy">'
+                           . '</div>';
+			
+			
+			
+			
+			
+			$rows .= '<tr>'
                 . '<td class="text-center bp-muted fw-bold">' . ($rank <= 3 ? ['', '🥇', '🥈', '🥉'][$rank] : '#' . $rank) . '</td>'
                 . '<td><div class="d-flex align-items-center gap-2">' . $pic . '<div class="bp-minw0">'
                 . '<a href="' . $this->baseUrl . '/' . get_profile_link((int)$u['id']) . '" class="fw-semibold text-decoration-none">' . (function_exists('format_name') ? format_name($this->e($name), (int)$u['usergroup']) : $this->e($name)) . '</a>'

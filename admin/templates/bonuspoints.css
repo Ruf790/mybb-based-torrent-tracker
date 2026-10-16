@@ -74,3 +74,16 @@
 .bp .bp-danger-zone { border: 1px solid rgba(239,68,68,.35); background: rgba(239,68,68,.05); cursor: pointer; }
 .bp .bp-danger-zone .bp-sec-icon { width: 34px; height: 34px; }
 .bp .bp-danger-zone .form-check-input { width: 1.3em; height: 1.3em; }
+
+
+/* Avatar ring (placeholder avatar) */
+.bp { --ring: #dfe7ff; }
+.bp .avatar-ring {
+    position: relative;
+    display: inline-block;
+    padding: 6px;
+    border-radius: 50%;
+    background: conic-gradient(from 140deg,
+        var(--bs-body-bg) 0 20%, var(--ring) 20% 70%, var(--bs-body-bg) 70% 100%);
+}
+.bp .avatar-ring > * { display: block; border-radius: 50%; }

@@ -6,6 +6,29 @@ define('THIS_SCRIPT', 'invite.php');
 
 $templatelist = 'invite';
 require_once './global.php';
+require_once INC_PATH . '/functions_multipage.php';
+
+$lang->load('invites');
+
+if (!function_exists('ags_fmt')) {
+    /**
+     * Substitute {1}, {2}… (and %1$s, %2$s… — $lang->load() converts {n} into those)
+     */
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+// Lang: $L raw (toasts, e-mail, JS), $E escaped for HTML (lang values are plain text)
+$L = $lang->invites;
+$E = array_map(static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $L);
 
 
 
@@ -138,24 +161,57 @@ function expire_old_invites(): void
     );
 }
 
-function get_user_invites(int $user_id): array
+/**
+ * One page of the user's invites ($limit = 0 → all of them)
+ */
+function get_user_invites(int $user_id, int $limit = 0, int $offset = 0): array
+{
+    global $db;
+
+    $sql = "SELECT i.*, u.username AS invitee_name
+            FROM invites i
+            LEFT JOIN users u ON i.invitee_id = u.id
+            WHERE i.inviter_id = ?
+            ORDER BY i.created_at DESC";
+    $params = [$user_id];
+
+    if ($limit > 0) {
+        $sql     .= " LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = max(0, $offset);
+    }
+
+    $q = $db->sql_query_prepared($sql, $params);
+
+    $invites = [];
+    while ($row = $db->fetch_array($q)) $invites[] = $row;
+    return $invites;
+}
+
+/**
+ * Totals for the KPI tiles, over ALL of the user's invites (not just one page)
+ */
+function get_user_invite_counts(int $user_id): array
 {
     global $db;
 
     expire_old_invites();
 
     $q = $db->sql_query_prepared(
-        "SELECT i.*, u.username AS invitee_name
-         FROM invites i
-         LEFT JOIN users u ON i.invitee_id = u.id
-         WHERE i.inviter_id = ?
-         ORDER BY i.created_at DESC",
+        "SELECT COUNT(*) AS total,
+                COALESCE(SUM(status = 'pending'), 0) AS pending,
+                COALESCE(SUM(status = 'used'), 0)    AS used
+         FROM invites
+         WHERE inviter_id = ?",
         [$user_id]
     );
+    $row = $q ? $db->fetch_array($q) : null;
 
-    $invites = [];
-    while ($row = $db->fetch_array($q)) $invites[] = $row;
-    return $invites;
+    return [
+        'total'   => (int)($row['total']   ?? 0),
+        'pending' => (int)($row['pending'] ?? 0),
+        'used'    => (int)($row['used']    ?? 0),
+    ];
 }
 
 function get_invite_by_id(int $id, int $user_id = 0): array|false
@@ -181,13 +237,10 @@ function get_invite_by_id(int $id, int $user_id = 0): array|false
 
 function send_invite_email(string $to_email, string $code, string $inviter_name): bool
 {
-    global $BASEURL, $SITENAME;
+    global $BASEURL, $SITENAME, $lang;
     $invite_url = rtrim($BASEURL, '/') . '/member.php?action=register&invite=' . $code;
-    $subject    = "You've been invited to {$SITENAME}";
-    $message    = "Hello!\n\n{$inviter_name} has invited you to join {$SITENAME}.\n\n"
-                . "Register here:\n{$invite_url}\n\n"
-                . "This invite expires in " . INVITE_EXPIRE_DAYS . " days.\n\n"
-                . "— {$SITENAME} Team";
+    $subject    = ags_fmt($lang->invites['email_subject'], (string)$SITENAME);
+    $message    = ags_fmt($lang->invites['email_body'], $inviter_name, (string)$SITENAME, $invite_url, INVITE_EXPIRE_DAYS);
     return my_mail($to_email, $subject, $message);
 }
 
@@ -218,11 +271,14 @@ function get_invite_stats(): array
 
 function invite_status_badge(string $status): string
 {
+    global $lang;
+    $b = static fn(string $k): string => htmlspecialchars((string)$lang->invites[$k], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
     return match($status) {
-        'pending' => '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Pending</span>',
-        'used'    => '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Used</span>',
-        'expired' => '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>Expired</span>',
-        'revoked' => '<span class="badge bg-danger"><i class="fas fa-ban me-1"></i>Revoked</span>',
+        'pending' => '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>' . $b('opt_status_pending') . '</span>',
+        'used'    => '<span class="badge bg-success"><i class="fas fa-check me-1"></i>' . $b('opt_status_used') . '</span>',
+        'expired' => '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>' . $b('opt_status_expired') . '</span>',
+        'revoked' => '<span class="badge bg-danger"><i class="fas fa-ban me-1"></i>' . $b('opt_status_revoked') . '</span>',
         default   => '<span class="badge bg-light text-dark">' . htmlspecialchars($status) . '</span>',
     };
 }
@@ -283,8 +339,8 @@ $uid    = (int)$CURUSER['id'];
 $action = $_GET['action'] ?? '';
 
 $success = match($_GET['msg'] ?? '') {
-    'created' => 'Invite created successfully!',
-    'revoked' => 'Invite revoked. Your invite has been returned.',
+    'created' => $L['flash_created'],
+    'revoked' => $L['flash_revoked'],
     default   => '',
 };
 
@@ -296,9 +352,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_invite'])) {
     $note  = trim($_POST['note']  ?? '');
 
     if ($email && !validate_email_format($email)) {
-        $error = 'Invalid email address.';
+        $error = $L['err_email'];
     } elseif ((int)$CURUSER['invites'] <= 0) {
-        $error = 'You have no invites left.';
+        $error = $L['err_no_invites'];
     } else {
         $invite = create_invite($uid, $email, $note);
         if ($invite) {
@@ -307,7 +363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_invite'])) {
             }
             header('Location: invite.php?msg=created'); exit;
         } else {
-            $error = 'Failed to create invite. You may have no invites remaining.';
+            $error = $L['err_create_failed'];
         }
     }
 }
@@ -319,20 +375,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['revoke_invite'])) {
     if (revoke_invite($invite_id, $uid)) {
         header('Location: invite.php?msg=revoked'); exit;
     } else {
-        $error = 'Failed to revoke invite.';
+        $error = $L['err_revoke_failed'];
     }
 }
 
-// ── Load invites ──────────────────────────────────────────────────────────────
-$invites = get_user_invites($uid);
+// ── Load invites (one page) ───────────────────────────────────────────────────
+$stats = get_user_invite_counts($uid);
 
-$stats = [
-    'total'   => count($invites),
-    'pending' => count(array_filter($invites, fn($i) => $i['status'] === 'pending')),
-    'used'    => count(array_filter($invites, fn($i) => $i['status'] === 'used')),
-];
+// Rows per page: the site-wide pager setting (Settings → Forum/Legacy → ts_perpage)
+$perpage = max(1, (int)($ts_perpage ?? 20));
+$pages   = max(1, (int)ceil($stats['total'] / $perpage));
+// get_input() merges GET and POST: the pager links send ?page=N, while its
+// "Jump to page" form POSTs the number to invite.php?page=1 (POST wins)
+$page    = min(max(1, $mybb->get_input('page', MyBB::INPUT_INT)), $pages);
 
-stdhead('My Invites');
+$invites   = get_user_invites($uid, $perpage, ($page - 1) * $perpage);
+$multipage = multipage($stats['total'], $perpage, $page, 'invite.php?page={page}');
+
+stdhead($L['page_title']);
 ?>
 <style>
 .invite-card {
@@ -408,12 +468,12 @@ stdhead('My Invites');
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="fw-bold mb-1"><i class="fas fa-envelope-open-text me-2 text-primary"></i>My Invites</h2>
-            <p class="text-muted mb-0">Invite your friends to join <?= htmlspecialchars($SITENAME) ?></p>
+            <h2 class="fw-bold mb-1"><i class="fas fa-envelope-open-text me-2 text-primary"></i><?= $E['page_title'] ?></h2>
+            <p class="text-muted mb-0"><?= ags_fmt($E['pane_subtitle'], htmlspecialchars((string)$SITENAME)) ?></p>
         </div>
         <div class="text-end">
             <div class="fw-bold fs-4 text-primary"><?= (int)$CURUSER['invites'] ?></div>
-            <div class="text-muted small">invites left</div>
+            <div class="text-muted small"><?= $E['lbl_invites_left'] ?></div>
         </div>
     </div>
 
@@ -422,19 +482,19 @@ stdhead('My Invites');
         <div class="col-4">
             <div class="stat-box">
                 <div class="num text-dark"><?= $stats['total'] ?></div>
-                <div class="lbl">Total Sent</div>
+                <div class="lbl"><?= $E['lbl_kpi_total'] ?></div>
             </div>
         </div>
         <div class="col-4">
             <div class="stat-box">
                 <div class="num text-warning"><?= $stats['pending'] ?></div>
-                <div class="lbl">Pending</div>
+                <div class="lbl"><?= $E['lbl_kpi_pending'] ?></div>
             </div>
         </div>
         <div class="col-4">
             <div class="stat-box">
                 <div class="num text-success"><?= $stats['used'] ?></div>
-                <div class="lbl">Accepted</div>
+                <div class="lbl"><?= $E['lbl_kpi_used'] ?></div>
             </div>
         </div>
     </div>
@@ -442,24 +502,24 @@ stdhead('My Invites');
     <!-- Create invite form -->
     <?php if ((int)$CURUSER['invites'] > 0): ?>
     <div class="invite-card p-4 mb-4">
-        <h5 class="fw-bold mb-3"><i class="fas fa-plus-circle me-2 text-success"></i>Create New Invite</h5>
+        <h5 class="fw-bold mb-3"><i class="fas fa-plus-circle me-2 text-success"></i><?= $E['sec_create'] ?></h5>
         <form method="post">
             <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold">Email (optional)</label>
-                    <input type="email" class="form-control" name="email" placeholder="friend@example.com"
+                    <label class="form-label fw-semibold"><?= $E['lbl_email'] ?></label>
+                    <input type="email" class="form-control" name="email" placeholder="<?= $E['ph_email'] ?>"
                            value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
-                    <div class="form-text">If provided, invite will be sent via email.</div>
+                    <div class="form-text"><?= $E['hint_email'] ?></div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold">Note (optional)</label>
-                    <input type="text" class="form-control" name="note" placeholder="e.g. for John from work"
+                    <label class="form-label fw-semibold"><?= $E['lbl_note'] ?></label>
+                    <input type="text" class="form-control" name="note" placeholder="<?= $E['ph_note'] ?>"
                            maxlength="255" value="<?= htmlspecialchars($_POST['note'] ?? '') ?>">
                 </div>
                 <div class="col-12">
                     <button type="submit" name="create_invite" class="btn btn-primary px-4">
-                        <i class="fas fa-paper-plane me-2"></i>Generate Invite
+                        <i class="fas fa-paper-plane me-2"></i><?= $E['btn_generate'] ?>
                     </button>
                 </div>
             </div>
@@ -468,33 +528,33 @@ stdhead('My Invites');
     <?php else: ?>
     <div class="alert alert-warning mb-4">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        You have no invites left. Invites can be earned through activity or purchased with bonus points.
+        <?= $E['hint_no_invites'] ?>
     </div>
     <?php endif; ?>
 
     <!-- Invite list -->
     <div class="invite-card">
         <div class="p-3 border-bottom fw-semibold">
-            <i class="fas fa-list me-2"></i>Invite History
+            <i class="fas fa-list me-2"></i><?= $E['sec_history'] ?>
         </div>
 
         <?php if (empty($invites)): ?>
         <div class="empty-state">
             <i class="fas fa-envelope-open"></i>
-            <p class="mb-0">No invites yet. Create your first invite above!</p>
+            <p class="mb-0"><?= $E['hint_empty'] ?></p>
         </div>
         <?php else: ?>
         <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>Code</th>
-                    <th>Email</th>
-                    <th>Note</th>
-                    <th>Invited User</th>
-                    <th>Status</th>
-                    <th>Expires</th>
-                    <th>Created</th>
+                    <th><?= $E['lbl_col_code'] ?></th>
+                    <th><?= $E['lbl_col_email'] ?></th>
+                    <th><?= $E['lbl_col_note'] ?></th>
+                    <th><?= $E['lbl_col_invitee'] ?></th>
+                    <th><?= $E['lbl_col_status'] ?></th>
+                    <th><?= $E['lbl_col_expires'] ?></th>
+                    <th><?= $E['lbl_col_created'] ?></th>
                     <th></th>
                 </tr>
             </thead>
@@ -504,7 +564,7 @@ stdhead('My Invites');
                 <td>
                     <?php if ($inv['status'] === 'pending'): ?>
                     <span class="invite-code" onclick="copyInvite('<?= $BASEURL ?>/signup.php?invite=<?= $inv['code'] ?>', this)"
-                          title="Click to copy invite link">
+                          title="<?= $E['tip_copy'] ?>">
                         <?= substr($inv['code'], 0, 12) ?>...
                         <i class="fas fa-copy fa-xs"></i>
                     </span>
@@ -525,15 +585,15 @@ stdhead('My Invites');
                 </td>
                 <td><?= invite_status_badge($inv['status']) ?></td>
                 <td class="small text-muted">
-                    <?= $inv['expires_at'] ? date('M j, Y', (int)$inv['expires_at']) : '—' ?>
+                    <?= $inv['expires_at'] ? date($L['fmt_date'], (int)$inv['expires_at']) : '—' ?>
                 </td>
-                <td class="small text-muted"><?= date('M j, Y', (int)$inv['created_at']) ?></td>
+                <td class="small text-muted"><?= date($L['fmt_date'], (int)$inv['created_at']) ?></td>
                 <td>
                     <?php if ($inv['status'] === 'pending'): ?>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Revoke this invite?')">
+                    <form method="post" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($L['js_revoke_confirm'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES) ?>)">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                         <input type="hidden" name="invite_id" value="<?= $inv['id'] ?>">
-                        <button type="submit" name="revoke_invite" class="btn btn-sm btn-outline-danger">
+                        <button type="submit" name="revoke_invite" class="btn btn-sm btn-outline-danger" title="<?= $E['tip_revoke'] ?>" aria-label="<?= $E['tip_revoke'] ?>">
                             <i class="fas fa-ban"></i>
                         </button>
                     </form>
@@ -544,6 +604,11 @@ stdhead('My Invites');
             </tbody>
         </table>
         </div>
+        <?php if ($multipage !== ''): ?>
+        <div class="p-3 border-top">
+            <?= $multipage ?>
+        </div>
+        <?php endif; ?>
         <?php endif; ?>
     </div>
 
@@ -556,13 +621,31 @@ stdhead('My Invites');
 
 <script src="<?= $BASEURL; ?>/scripts/toast.js"></script>
 
+<?php
+$jsLang = [];
+foreach ($L as $k => $v) {
+    if (str_starts_with((string)$k, 'js_')) {
+        $jsLang[substr((string)$k, 3)] = (string)$v;
+    }
+}
+?>
 <script>
+const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+/* i18n: t(key, fallback, ...args) — substitutes {1} and %1$s; result is plain text */
+function t(key, fallback, ...args) {
+    let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach((a, i) => { const n = i + 1; s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a)); });
+    return s;
+}
+
 function copyInvite(url, el) {
     navigator.clipboard.writeText(url).then(() => {
         const orig = el.innerHTML;
-        el.innerHTML = '<i class="fas fa-check fa-xs"></i> Copied!';
+        el.innerHTML = '<i class="fas fa-check fa-xs"></i> ';
+        el.appendChild(document.createTextNode(t('copied', 'Copied!')));
         el.style.color = '#16a34a';
-        showToast('Invite link copied to clipboard!', 'success');
+        showToast(t('copied_toast', 'Invite link copied to clipboard!'), 'success');
         setTimeout(() => { el.innerHTML = orig; el.style.color = ''; }, 2000);
     });
 }

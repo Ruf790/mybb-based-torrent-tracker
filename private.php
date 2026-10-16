@@ -18,6 +18,13 @@ $parser = new postParser();
 
 $lang->load('private');
 
+/** Text from private.lang.php (English fallback), escaped for HTML */
+$pl = static fn(string $key, string $fallback): string
+    => htmlspecialchars((string)($lang->private[$key] ?? $fallback), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+/** "No Avatar" placeholder (the text comes from header.lang.php, loaded on every page) */
+$noAvatarSvg = '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">'
+    . htmlspecialchars((string)($lang->header['hdr_no_avatar'] ?? 'No Avatar'), ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</text></svg>';
+
 if ($enablepms == 0) {
     error($lang->private['pms_disabled']);
 }
@@ -347,27 +354,27 @@ if ($maxpmquotedepth !== 0) {
         <div class="card">
             <div class="card-body">
                 <div class="mb-4 pb-3 border-bottom">
-                    <label class="fw-semibold mb-2"><i class="fas fa-users text-primary me-2"></i> Recipients</label>
-                    <input name="to" id="to" value="' . $to . '" tabindex="1" class="form-control border" placeholder="Search for users" style="display:none;">
+                    <label class="fw-semibold mb-2"><i class="fas fa-users text-primary me-2"></i> ' . $pl('compose_to', "Recipients:") . '</label>
+                    <input name="to" id="to" value="' . $to . '" tabindex="1" class="form-control border" placeholder="' . $pl('pm_search_users', "Search for users") . '" style="display:none;">
                     <div id="to-container"></div>
-                    <div class="select2-counter" id="recipientCounter"><i class="fas fa-user-plus me-1"></i> Recipients: 0/' . (int)$usergroups['maxpmrecipients'] . '</div>
-                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i> Click to search and select users (minimum 2 characters)</small>
+                    <div class="select2-counter" id="recipientCounter"><i class="fas fa-user-plus me-1"></i> ' . $pl('compose_to', "Recipients:") . ' 0/' . (int)$usergroups['maxpmrecipients'] . '</div>
+                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i> ' . $pl('pm_recipients_hint', "Click to search and select users (minimum 2 characters)") . '</small>
                 </div>
                 <div class="mb-4 pb-3 border-bottom">
-                    <label class="fw-semibold mb-2"><i class="fas fa-heading text-primary me-2"></i> Subject</label>
-                    <input type="text" class="form-control" name="subject" maxlength="85" value="' . $subject . '" tabindex="3" placeholder="Enter message subject..." />
+                    <label class="fw-semibold mb-2"><i class="fas fa-heading text-primary me-2"></i> ' . $pl('compose_subject', "Subject:") . '</label>
+                    <input type="text" class="form-control" name="subject" maxlength="85" value="' . $subject . '" tabindex="3" placeholder="' . $pl('pm_subject_placeholder', "Enter message subject...") . '" />
                 </div>
                 <div class="mb-3">
-                    <label class="fw-semibold mb-2"><i class="fas fa-pen-fancy text-primary me-2"></i> Message</label>
+                    <label class="fw-semibold mb-2"><i class="fas fa-pen-fancy text-primary me-2"></i> ' . $pl('compose_message', "Message:") . '</label>
                     ' . $codebuttons . '
-                    <textarea name="message" id="message" class="form-control" style="width:100%;height:350px" tabindex="4" placeholder="Write your message here...">' . $message . '</textarea>
+                    <textarea name="message" id="message" class="form-control" style="width:100%;height:350px" tabindex="4" placeholder="' . $pl('pm_message_placeholder', "Write your message here...") . '">' . $message . '</textarea>
                 </div>
                 <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
                     <a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-pmop" role="button">
-                        <i class="fas fa-cog"></i> Options
+                        <i class="fas fa-cog"></i> ' . $pl('compose_options', "Options:") . '
                     </a>
                     <button type="submit" class="btn-thread" name="preview" value="Preview" tabindex="11">
-                        <i class="fas fa-eye"></i> Preview
+                        <i class="fas fa-eye"></i> ' . $pl('preview', "Preview") . '
                     </button>
                 </div>
                 <div id="collapse-pmop" class="collapse">
@@ -376,7 +383,7 @@ if ($maxpmquotedepth !== 0) {
                             <div class="col-lg-9">
                                 <div class="form-check mb-2">
                                     <input type="checkbox" class="form-check-input" name="options[savecopy]" value="1" tabindex="7" ' . $optionschecked['savecopy'] . ' id="savecopy" />
-                                    <label class="form-check-label" for="savecopy"><i class="fas fa-save text-success me-1"></i> Save a copy in my Sent Items folder</label>
+                                    <label class="form-check-label" for="savecopy"><i class="fas fa-save text-success me-1"></i> ' . ($lang->private['options_save_copy'] ?? 'Save a copy in my Sent Items folder') . '</label>
                                 </div>
                                 ' . $private_send_tracking . '
                             </div>
@@ -389,7 +396,7 @@ if ($maxpmquotedepth !== 0) {
             </div>
             <div class="card-footer text-center">
                 <button type="submit" class="btn btn-primary" name="submit" value="Send Message" tabindex="9">
-                    <i class="fas fa-paper-plane"></i> Send Message
+                    <i class="fas fa-paper-plane"></i> ' . $pl('send_message', "Send Message") . '
                 </button>
             </div>
         </div>
@@ -397,8 +404,16 @@ if ($maxpmquotedepth !== 0) {
 </div>
 </div>
 </form>
-<script>window.maxRecipients = ' . (int)$usergroups['maxpmrecipients'] . ';</script>
-<script src="' . $BASEURL . '/scripts/select2-field.js"></script>
+<script>window.maxRecipients = ' . (int)$usergroups['maxpmrecipients'] . ';
+window.SELECT2_LANG = ' . json_encode([
+    // texts for scripts/select2-field.js: header.lang.php (loaded on every page) + private.lang.php
+    'searchUser'      => (string)($lang->private['pm_search_users'] ?? 'Search for users'),
+    'noMatches'       => (string)($lang->header['select2_nomatches'] ?? 'No matches found'),
+    'inputTooShort'   => (string)($lang->header['select2_inputtooshort_plural'] ?? 'Please enter {1} or more characters'),
+    'selectionTooBig' => (string)($lang->header['select2_toobig_plural'] ?? 'You can only select {1} items'),
+    'counterLabel'    => (string)($lang->private['compose_to'] ?? 'Recipients:'),
+], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>
+<script src="' . $BASEURL . '/scripts/select2-field.js?ver=2"></script>
 </body>
 </html>';
 
@@ -457,7 +472,7 @@ if ($action === 'read') {
         }
     } elseif ($pm['status'] == 3 && $pm['statustime']) {
         $reply_date   = my_datee('relative', $pm['statustime']);
-        $reply_string = (TIMENOW - $pm['statustime']) < 3600 ? $lang->you_replied : $lang->private['you_replied_on'];
+        $reply_string = (TIMENOW - $pm['statustime']) < 3600 ? $lang->private['you_replied'] : $lang->private['you_replied_on'];
         $action_time  = '<div class="mb-4 alert bg-success text-white border-0 little"><i class="fa-solid fa-check"></i> &nbsp;' . sprintf($reply_string, $reply_date) . '</div>';
     } elseif ($pm['status'] == 4 && $pm['statustime']) {
         $forward_date   = my_datee('relative', $pm['statustime']);
@@ -619,7 +634,7 @@ if ($action === 'tracking') {
         // Тот же паттерн format_avatar()/$ava_img, что и в основном инбоксе.
         $rm_useravatar = format_avatar($rm['avatar'], $rm['avatardimensions']);
         $rm_ava_img = str_starts_with($rm_useravatar['image'], '<')
-            ? '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text></svg>'
+            ? $noAvatarSvg
             : '<img class="user-avatar" src="' . $rm_useravatar['image'] . '" alt="" ' . $rm_useravatar['width_height'] . ' />';
         $readmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
             <div class="row g-2 pb-3 border-bottom mb-0">
@@ -671,7 +686,7 @@ if ($action === 'tracking') {
         // read-сообщений выше.
         $um_useravatar = format_avatar($um['avatar'], $um['avatardimensions']);
         $um_ava_img = str_starts_with($um_useravatar['image'], '<')
-            ? '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text></svg>'
+            ? $noAvatarSvg
             : '<img class="user-avatar" src="' . $um_useravatar['image'] . '" alt="" ' . $um_useravatar['width_height'] . ' />';
         $unreadmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
             <div class="row g-2 pb-3 border-bottom mb-0">
@@ -802,7 +817,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
                 $db->sql_query_prepared("UPDATE privatemessages SET folder = ? WHERE pmid IN ({$ph}) AND uid = ?", [$fid_move, ...$pms, $CURUSER['id']]);
                 update_pm_count();
             } else {
-                error($lang->error_invalidmovefid);
+                error($lang->private['error_invalidmovefid']);
             }
         }
         redirect(!empty($mybb->input['fromfid'])
@@ -1002,7 +1017,7 @@ if (!$mybb->input['action']) {
     ", [$folder, $CURUSER['id'], $start, $perpage]);
 
     if ($query && $db->num_rows($query) > 0) {
-        $bgcolor = alt_trow(true);
+        
         while ($message = $db->fetch_array($query)) {
             $msgstatus = $msgalt = $fa_icon_html = $badge_class = $popover_title = $popover_content = '';
 
@@ -1012,32 +1027,32 @@ if (!$mybb->input['action']) {
                     $msgalt        = $lang->private['new_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-envelope fa-fw"></i>',
                     $badge_class   = 'status-new',
-                    $popover_title = 'New Message',
-                    $popover_content = 'This message has not been read yet',
+                    $popover_title = $pl('new_pm', "New Message"),
+                    $popover_content = $pl('pm_status_new_desc', "This message has not been read yet"),
                 ],
                 1 => [
                     $msgstatus     = 'old_pm',
                     $msgalt        = $lang->private['old_pm'],
                     $fa_icon_html  = '<i class="fa-regular fa-envelope-open fa-fw"></i>',
                     $badge_class   = 'status-read',
-                    $popover_title = 'Read Message',
-                    $popover_content = 'This message has been read',
+                    $popover_title = $pl('old_pm', "Read Message"),
+                    $popover_content = $pl('pm_status_read_desc', "This message has been read"),
                 ],
                 3 => [
                     $msgstatus     = 're_pm',
                     $msgalt        = $lang->private['reply_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-reply fa-fw"></i>',
                     $badge_class   = 'status-reply',
-                    $popover_title = 'Reply to Message',
-                    $popover_content = 'This is a reply to a previous message',
+                    $popover_title = $pl('reply_pm', "Reply to Message"),
+                    $popover_content = $pl('pm_status_reply_desc', "This is a reply to a previous message"),
                 ],
                 4 => [
                     $msgstatus     = 'fw_pm',
                     $msgalt        = $lang->private['fwd_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-share fa-fw"></i>',
                     $badge_class   = 'status-forward',
-                    $popover_title = 'Forwarded Message',
-                    $popover_content = 'This message has been forwarded',
+                    $popover_title = $pl('fwd_pm', "Forwarded Message"),
+                    $popover_content = $pl('pm_status_fwd_desc', "This message has been forwarded"),
                 ],
                 default => null,
             };
@@ -1054,7 +1069,7 @@ if (!$mybb->input['action']) {
                         if (!isset($cached_users[$uid])) continue;
                         $user = $cached_users[$uid];
                         $user['username'] = htmlspecialchars_uni($user['username']);
-                        $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: $lang->na;
+                        $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: ($lang->private['pm_na'] ?? 'N/A');
                         $to_users .= '<div class="popup_item_container"><a href="' . get_profile_link($uid) . '" class="popup_item">' . $uname . '</a></div>';
                     }
                     if (isset($recipients['bcc']) && is_array($recipients['bcc']) && count($recipients['bcc'])) {
@@ -1063,7 +1078,7 @@ if (!$mybb->input['action']) {
                             if (!isset($cached_users[$uid])) continue;
                             $user = $cached_users[$uid];
                             $user['username'] = htmlspecialchars_uni($user['username']);
-                            $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: $lang->na;
+                            $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: ($lang->private['pm_na'] ?? 'N/A');
                             $bcc_users .= '<div class="popup_item_container"><a href="' . get_profile_link($uid) . '" class="popup_item">' . $uname . '</a></div>';
                         }
                     }
@@ -1078,23 +1093,23 @@ if (!$mybb->input['action']) {
                 $tofromusername = htmlspecialchars_uni($message['fromusername']);
                 $tofromuid      = $message['fromid'];
                 if ($tofromuid == 0) $tofromusername = $SITENAME . ' Engine';
-                if (!$tofromusername) { $tofromuid = 0; $tofromusername = $lang->na; }
+                if (!$tofromusername) { $tofromuid = 0; $tofromusername = ($lang->private['pm_na'] ?? 'N/A'); }
             }
 
             $tofromusername = build_profile_link($tofromusername, $tofromuid);
 
             $useravatar = format_avatar($message['avatar'], $message['avatardimensions']);
             $ava_img = str_starts_with($useravatar['image'], '<')
-                ? '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text></svg>'
+                ? $noAvatarSvg
                 : '<img class="user-avatar" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
 
             $denyreceipt = ($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
                 ? '<span class="smalltext"><a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '&amp;denyreceipt=1">' . $lang->private['deny_receipt'] . '</a></span>'
                 : '';
 
-            if (!trim($message['subject'])) $message['subject'] = $lang->private['pm_no_subject'];
+            if (!trim($message['subject'])) $message['subject'] = ($lang->private['pm_no_subject'] ?? '[no subject]');
             $message['subject'] = htmlspecialchars_uni($parser->parse_badwords($message['subject']));
-            $senddate = $message['folder'] != '3' ? my_datee('relative', $message['dateline']) : $lang->not_sent;
+            $senddate = $message['folder'] != '3' ? my_datee('relative', $message['dateline']) : ($lang->private['not_sent'] ?? 'N/A (not sent)');
 
             $plugins->run_hooks('private_message');
 
@@ -1123,13 +1138,13 @@ if (!$mybb->input['action']) {
         </div>
     </div>
 </div>';
-            $bgcolor = alt_trow();
+            
         }
     } else {
         $messagelist .= '<div class="text-center py-5">
             <div style="font-size:64px;color:#cbd5e0;margin-bottom:20px;"><i class="fas fa-inbox"></i></div>
             <div style="font-size:18px;color:#4a5568;margin-bottom:10px;"><strong>' . $lang->private['nomessages'] . '</strong></div>
-            <div style="font-size:14px;color:#718096;"><i class="fas fa-envelope-open-text"></i> Your mailbox is empty</div>
+            <div style="font-size:14px;color:#718096;"><i class="fas fa-envelope-open-text"></i> ' . $pl('pm_mailbox_empty', "Your mailbox is empty") . '</div>
         </div>';
     }
 

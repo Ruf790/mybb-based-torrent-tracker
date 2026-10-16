@@ -35,16 +35,20 @@ if (!$User) {
 }
 
 $Username   = format_name($User['username'], (int)$User['usergroup']);
-$useravatar = format_avatar($User['avatar'] ?? '', $User['avatardimensions'] ?? '');
 
-// ── Аватар ────────────────────────────────────────────────────────────────────
-$avatarImg = (!empty($useravatar['image']) && !str_starts_with($useravatar['image'], '<'))
-    ? '<img src="' . htmlspecialchars($useravatar['image'], ENT_QUOTES, 'UTF-8') . '" alt=""'
-      . ' ' . ($useravatar['width_height'] ?? '')
-      . ' class="rounded-circle border" style="width:72px;height:72px;object-fit:cover;">'
-    : '<div class="rounded-circle border bg-body-secondary d-flex align-items-center justify-content-center"'
-      . ' style="width:72px;height:72px;">'
-      . '<i class="fas fa-user text-muted fs-4"></i></div>';
+
+
+$useravatar  = format_avatar($User['avatar'], $User['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'avatar-ring';
+
+                        $avatarImg = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" style="width:100px;height:100px;object-fit:cover;"'
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($User['username']) . '" loading="lazy">'
+                           . '</div>';
+
+
+
+
 
 // ── Пагинация ─────────────────────────────────────────────────────────────────
 $q            = $db->sql_query_prepared("SELECT COUNT(id) AS total FROM comments c WHERE user = ?", [$userid]);
@@ -80,22 +84,39 @@ stdhead($pageTitle);
 
 ?>
 
+
+
 <style>
-/* FIX: style был после stdfoot() — перенесён в правильное место */
+:root { --ring: #dfe7ff; }
+[data-bs-theme="dark"] { --ring: #2b3a5c; }
+
+/* Avatar ring (placeholder avatar) */
+.avatar-ring {
+    position: relative;
+    display: inline-block;
+    padding: 6px;
+    border-radius: 50%;
+    background: conic-gradient(from 140deg,
+        var(--bs-body-bg) 0 20%, var(--ring) 20% 70%, var(--bs-body-bg) 70% 100%);
+}
+.avatar-ring > * { display: block; border-radius: 50%; }
+
+/* Comments */
 .comment-card {
     border-left: 3px solid transparent;
-    transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+    transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease, background-color .2s ease;
 }
 .comment-card:hover {
     border-left-color: var(--bs-primary);
-    transform: translateX(4px) translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0,0,0,.1) !important;
-}
-/* FIX: bg-f8f9fa → var(--bs-body-bg) для dark mode */
-.comment-card:hover {
     background-color: var(--bs-tertiary-bg) !important;
+    transform: translateX(4px) translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .1) !important;
 }
 .comment-body { font-size: .95rem; line-height: 1.6; }
+
+@media (prefers-reduced-motion: reduce) {
+    .comment-card, .comment-card:hover { transition: none; transform: none; }
+}
 </style>
 
 <div class="container my-4">

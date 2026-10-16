@@ -2582,7 +2582,7 @@ if ($mybb->input['action'] === 'subscriptions') {
             $subscription_date = !empty($thread['subscription_dateline'])
                 ? date('d.m.Y', (int)$thread['subscription_dateline'])
                 : '—';
-            $bgcolor  = alt_trow();
+           
             $prefix   = '';
             $thread['threadprefix'] = '';
 
@@ -2629,7 +2629,7 @@ if ($mybb->input['action'] === 'subscriptions') {
             if ($thread['closed'] == 1) { $folder .= 'close'; $folder_label .= 'icon_close'; }
             $folder .= 'folder';
 
-            if ($thread['visible'] == 0) { $bgcolor = 'trow_shaded'; }
+            //if ($thread['visible'] == 0) { $bgcolor = 'trow_shaded'; }
 
             $lastpostdate = '<div><span class="badge bg-light text-dark border">' . my_datee($dateformat, $thread['lastpost']) . '</span><br>'
                           . '<span class="badge bg-light text-dark border">' . my_datee($timeformat, $thread['lastpost']) . '</span></div>';
@@ -4820,7 +4820,7 @@ if ($mybb->input['action'] === 'drafts') {
             ORDER BY p.dateline DESC, p.pid DESC", [(int) $CURUSER['id']]);
 
         while ($draft = $db->fetch_array($query)) {
-            $trow = alt_trow();
+           
             $detail = '';
 
             if ($draft['threadvisible'] == 1) {
@@ -5436,7 +5436,7 @@ if ($mybb->input['action'] === 'attachments') {
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
             $sizedownloads  = sprintf($lang->usercp['attachment_size_downloads'], $size, $attachment['downloads']);
             $attachdate     = my_datee('relative', (int)$attachment['dateuploaded']);
-            $altbg          = alt_trow();
+           
 
             if ($is_comment_attachment) {
                 $view_url     = $BASEURL . '/uploads/attachments/' . rawurlencode($attachment['attachname']);

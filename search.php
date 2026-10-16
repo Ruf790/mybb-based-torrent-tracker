@@ -5,8 +5,7 @@ define('IN_MYBB',                  1);
 define('IGNORE_CLEAN_VARS',        'sid');
 define('THIS_SCRIPT',              'search.php');
 define('SCRIPTNAME',               'search.php');
-define('TSF_FORUMS_TSSEv56',       true);
-define('TSF_FORUMS_GLOBAL_TSSEv56',true);
+
 
 
 

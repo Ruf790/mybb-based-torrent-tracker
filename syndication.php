@@ -15,7 +15,7 @@ define('IN_FORUM',          true);
 
 require_once 'global.php';
 
-$lang->load('syndication');
+
 
 require_once INC_PATH . '/class_feedgeneration.php';
 $feedgenerator = new FeedGenerator();

@@ -1,10 +1,9 @@
-
 Options -MultiViews +FollowSymlinks -Indexes
 RewriteEngine On
 
-<Files .htaccess>
-	order allow,deny
-	deny from all
+# Apache 2.4 syntax (order/deny only worked through mod_access_compat)
+<Files ".ht*">
+	Require all denied
 </Files>
 
 
@@ -21,10 +20,7 @@ RewriteRule ^index.html$ index.php [L,NE]
 RewriteRule ^(.*)-a-(.*)$ announce.php?passkey=$2 [QSA,L]
 
 
-
 RewriteRule ^user-([0-9]+)\.html$ member.php?action=profile&id=$1 [L,QSA]
-RewriteRule ^user-([0-9]+)-page-([0-9]+)\.html$ userdetails.php?id=$1&page=$2 [L,QSA]
-
 
 
 RewriteRule ^forum-([0-9]+)\.html$ forumdisplay.php?fid=$1 [L,QSA]
@@ -46,15 +42,9 @@ RewriteRule ^comment-([0-9]+)\.html$ details.php?pid=$1 [L,QSA]
 RewriteRule ^torrent-([0-9]+)\.html$ details.php?id=$1 [L,QSA]
 RewriteRule ^torrent-([0-9]+)-page-([0-9]+)\.html$ details.php?id=$1&page=$2 [L,QSA]
 
-
-
-
 RewriteRule ^download-([0-9]+)\.html$ download.php?id=$1 [L,QSA]
 
-
 RewriteRule ^announcement-([0-9]+)\.html$ announcements.php?aid=$1 [L,QSA]
-
-
 
 RewriteRule ^category-([0-9]+)\.html$ browse.php?category=$1 [L,QSA]
 RewriteRule ^category-([0-9]+)-page-([0-9]+)\.html$ browse.php?category=$1&page=$2 [L,QSA]
@@ -62,17 +52,18 @@ RewriteRule ^category-([0-9]+)-page-([0-9]+)\.html$ browse.php?category=$1&page=
 
 # //seo_mod_end
 
-<IfModule mod_expires>
-	<FilesMatch "\.(gif|jpg|jpeg|png|swf|css|js|html?)$">
+# "mod_expires" without .c never matched, so this block was skipped
+<IfModule mod_expires.c>
+	<FilesMatch "\.(gif|jpg|jpeg|png|webp|svg|ico|woff2?|css|js)$">
 		ExpiresActive On
 		ExpiresDefault "access plus 10 years"
 	</FilesMatch>
 </IfModule>
 
-<IfModule mod_headers>
+<IfModule mod_headers.c>
   Header unset Last-Modified
 </IfModule>
 
 FileETag none
 php_flag short_open_tag on
-php_flag register_globals on
+# register_globals was removed in PHP 5.4 - the line did nothing

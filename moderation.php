@@ -346,7 +346,7 @@ switch ($action) {
 
         // ── Delayed mods list ────────────────────────────────────────────────
         $delayedmods = '';
-        $trow = alt_trow(true);
+       
 
         if ($tid === 0) {
             $tids = $mybb->get_input('inlinetype') === 'search'
@@ -420,7 +420,7 @@ switch ($action) {
     <div class="col-lg align-self-center">' . $info . '</div>
     <div class="col-lg align-self-center"><a href="moderation.php?action=cancel_delayedmoderation&amp;tid=' . $tid . '&amp;fid=' . $fid . '&amp;did=' . $delayedmod['did'] . '&amp;my_post_key=' . $mybb->post_code . '">' . $lang->moderation['cancel'] . '</a></div>
 </div>';
-            $trow = alt_trow();
+           
         }
 
         if (!$delayedmods) {

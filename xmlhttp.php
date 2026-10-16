@@ -15,6 +15,9 @@ define ('IN_TRACKER', true);
 define ('APP_INITIALIZED', true);
 define ('TIMENOW', time ());
 
+/** Two comments in a row by the same user are merged only within this time (seconds) */
+define('COMMENT_MERGE_SECONDS', 15 * 60);
+
   
 define ('TSDIR', dirname (__FILE__));
 define ('INC_PATH', TSDIR . '/include');
@@ -207,6 +210,12 @@ function handleRateTorrent(): void
         exit;
     }
 
+    global $lang;
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_invalid_post_code']]);
+        exit;
+    }
+
     $torrent_id = (int)($_POST['torrent_id'] ?? 0);
     $rating     = max(1, min(10, (int)($_POST['rating'] ?? 0)));
 
@@ -215,14 +224,27 @@ function handleRateTorrent(): void
         exit;
     }
 
+    // The torrent must exist (otherwise a rating row could be created for any id); owner/name for the bell
+    $tq = $db->sql_query_prepared("SELECT owner, name FROM torrents WHERE id = ?", [$torrent_id]);
+    $torrent = $tq ? $db->fetch_array($tq) : null;
+    if (!$torrent) {
+        echo json_encode(['success' => false]);
+        exit;
+    }
+
+    // Already rated? (checked explicitly — affected_rows() after a prepared query is not reliable)
+    $eq = $db->sql_query_prepared("SELECT 1 FROM torrent_ratings WHERE torrent_id = ? AND user_id = ? LIMIT 1", [$torrent_id, (int)$CURUSER['id']]);
+    $isNew = !($eq && $db->num_rows($eq));
+
     $db->sql_query_prepared(
         "INSERT INTO torrent_ratings (torrent_id, user_id, rating, added) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE rating = ?, added = ?",
         [$torrent_id, $CURUSER['id'], $rating, TIMENOW, $rating, TIMENOW]
     );
 
- 
-    if ($db->affected_rows() === 1) {
+    // Bonus + bell only for a new rating, not for changing it (notify() skips your own torrent)
+    if ($isNew) {
         kps('+', $kpsrate, (int)$CURUSER['id'], "Rated torrent #{$torrent_id} ({$rating}/10)", $torrent_id);
+
     }
 
     $q = $db->sql_query_prepared("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = ?", [$torrent_id]);
@@ -230,8 +252,8 @@ function handleRateTorrent(): void
 
     echo json_encode([
         'success' => true,
-        'avg'     => (float)$row['avg'],
-        'count'   => (int)$row['cnt'],
+        'avg'     => (float)($row['avg'] ?? 0),
+        'count'   => (int)($row['cnt'] ?? 0),
     ]);
     exit;
 }
@@ -250,6 +272,11 @@ function handleRateThread(): void
         exit;
     }
 
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_invalid_post_code']]);
+        exit;
+    }
+
     $tid    = (int)($_POST['tid'] ?? 0);
     $rating = max(1, min(10, (int)($_POST['rating'] ?? 0)));
 
@@ -258,13 +285,25 @@ function handleRateThread(): void
         exit;
     }
 
+    // The thread must exist (otherwise a rating row could be created for any tid)
+    $tq = $db->sql_query_prepared("SELECT tid FROM threads WHERE tid = ? AND visible = 1", [$tid]);
+    if (!$tq || !$db->num_rows($tq)) {
+        echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_invalid_parameters']]);
+        exit;
+    }
+
+    // Already rated? (checked explicitly — affected_rows() after a prepared query is not reliable)
+    $eq = $db->sql_query_prepared("SELECT 1 FROM threadratings WHERE tid = ? AND user_id = ? LIMIT 1", [$tid, (int)$CURUSER['id']]);
+    $isNew = !($eq && $db->num_rows($eq));
+
     // Insert or update user's rating
     $db->sql_query_prepared(
         "INSERT INTO threadratings (tid, user_id, rating, added) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE rating = ?, added = ?",
         [$tid, $CURUSER['id'], $rating, TIMENOW, $rating, TIMENOW]
     );
 	
-    if ($db->affected_rows() === 1) {
+    // Bonus only for a new rating, not for changing it
+    if ($isNew) {
         kps('+', $kpsrate, (int)$CURUSER['id'], "Rated forum thread #{$tid} ({$rating}/10)", $tid);
     }
 
@@ -290,6 +329,9 @@ function handleRateThread(): void
     ]);
     exit;
 }
+
+
+
 
 /**
  * Handle get_thread_info action - реальные данные о треде-назначении
@@ -532,6 +574,9 @@ function handleEditPost(): void
         echo json_encode($post['message']);
         exit;
     } elseif ($mybb->get_input('do') == "update_post") {
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            xmlhttp_error($lang->xmlhttp['err_invalid_post_code']);
+        }
         $message = $mybb->get_input('value');
         $editreason = $mybb->get_input('editreason');
         
@@ -653,6 +698,10 @@ function handleEditSubject(): void
     
     if ($mybb->request_method != "post") {
         exit;
+    }
+
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        xmlhttp_error($lang->xmlhttp['err_invalid_post_code']);
     }
 
     if ($mybb->get_input('tid', MyBB::INPUT_INT)) {
@@ -1078,7 +1127,8 @@ function handleQuickComment(): void
 {
     global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage, $kpscomment;
 
-	if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+	// true = return false instead of printing MyBB's HTML error page (the JS expects <error>…</error>)
+	if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
         show_msg($lang->xmlhttp['err_invalid_post_code']);
     }
 
@@ -1092,15 +1142,14 @@ function handleQuickComment(): void
 	
 
 
-    $torrentid = (int)$_POST['id'];
+    $torrentid = (int)($_POST['id'] ?? 0);
     $lang->load('comment');
     
     if (!allowcomments($torrentid)) {
         show_msg($lang->comment['closed']);
     }
 
-    $text = urldecode($_POST['text']);
-    $text = (string)$text;
+    $text = urldecode((string)($_POST['text'] ?? ''));
     
     if (strtolower($shoutboxcharset) != 'utf-8') {
         if (function_exists('iconv')) {
@@ -1129,7 +1178,7 @@ function handleQuickComment(): void
     } else {
         if (!$arr) {
             show_msg($lang->global['notorrentid']);
-        } elseif (empty($text) || empty($torrentid) || !is_valid_id($torrentid)) {
+        } elseif (trim($text) === '' || empty($torrentid) || !is_valid_id($torrentid)) {
             show_msg($lang->global['dontleavefieldsblank']);
         }
     }
@@ -1137,7 +1186,7 @@ function handleQuickComment(): void
     $commentposted = false;
     if (!$is_mod) {
         $query = $db->sql_query_prepared(
-            "SELECT id, user, text FROM comments WHERE torrent = ? ORDER BY dateline DESC LIMIT 1",
+            "SELECT id, user, text, dateline FROM comments WHERE torrent = ? ORDER BY dateline DESC LIMIT 1",
             [$torrentid]
         );
         
@@ -1145,10 +1194,11 @@ function handleQuickComment(): void
             $last_post55 = $db->fetch_array($query);
             $lastcommentuserid = $last_post55['user'];
             
-            if ($lastcommentuserid == $CURUSER['id']) {
-                $oldtext = $last_post55['text'];
-                $newid = $last_post55['id'];
-                $newtext = $oldtext .="\n[hr]\n".$text;
+            // Merge only into your own last comment, and only if it is fresh
+            if ($lastcommentuserid == $CURUSER['id']
+                && TIMENOW - (int)$last_post55['dateline'] <= COMMENT_MERGE_SECONDS) {
+                $newid   = (int)$last_post55['id'];
+                $newtext = $last_post55['text'] . "\n[hr]\n" . $text;
                 
                 $db->sql_query_prepared(
                     "UPDATE comments SET text = ?, editedat = ?, editedby = ? WHERE id = ?",
@@ -1158,6 +1208,26 @@ function handleQuickComment(): void
                 if ($db->affected_rows()) {
                     $commentposted = true;
 					
+					$cid = (int)$newid; // нужен ниже для вывода коммента
+
+                    // Files uploaded with the merged text belong to this comment too
+                    if (!empty($_POST['file_ids'])) {
+                        $file_ids = array_map('intval', (array)$_POST['file_ids']);
+                        if (!empty($file_ids)) {
+                            $file_placeholders = implode(',', array_fill(0, count($file_ids), '?'));
+                            $db->sql_query_prepared(
+                                "UPDATE comment_files SET comment_id = ? WHERE id IN ({$file_placeholders}) AND user_id = ?",
+                                [$cid, ...$file_ids, $CURUSER['id']]
+                            );
+                        }
+                    }
+                    $posthash = trim($_POST['posthash'] ?? '');
+                    if ($posthash) {
+                        require_once INC_PATH . '/functions_comment_attachments.php';
+                        attach_to_comment($posthash, $cid, (int)$CURUSER['id']);
+                    }
+
+                  
 				
                    // Редирект на последнюю страницу к этому комменту
 $count_query = $db->sql_query_prepared("SELECT COUNT(id) as total FROM comments WHERE torrent = ?", [$torrentid]);
@@ -1215,10 +1285,12 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
           attach_to_comment($posthash, $cid, (int)$CURUSER['id']);
         }	
 		
-		
 
         $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
         $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
+		
+		
+		
 
         $sql = "SELECT commentpm, language FROM users WHERE id = ?";
         $params = [(int)$arr['owner']];
@@ -1227,27 +1299,21 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
 		
 		
 
-        if ($arg['commentpm'] == 1 && $CURUSER['id'] != $arr['owner']) {
+        if ((int)($arg['commentpm'] ?? 0) === 1 && $CURUSER['id'] != $arr['owner']) {
             require_once INC_PATH . '/functions_pm.php';
             $url2 = get_comment_link($cid, $torrentid)."#pid{$cid}";
-                    
-            //$pm = [
-            //    'subject' => sprintf($lang->comment['newcommentsub']),
-            //    'message' => sprintf($lang->comment['newcommenttxt'], '[url=' . $BASEURL.'/'.$url2.']' . $arr['name'] . '[/url]'),
-            //    'touid' => $arr['owner']
-           // ];
-            
-            //$pm['sender']['uid'] = -1;
-            //send_pm($pm, -1, true);
+
+            // Brackets in the name break [url=...]...[/url]
+            $torrent_name = str_replace(['[', ']'], ['(', ')'], (string)$arr['name']);
 
 			send_pm([
                'subject'       => ['newcommentsub'],
                'message'       => [
                 'newcommenttxt',
-                '[url=' . $BASEURL . '/' . $url2 . ']' . $arr['name'] . '[/url]',
+                '[url=' . $BASEURL . '/' . $url2 . ']' . $torrent_name . '[/url]',
                 ],
                 'touid'         => (int)$arr['owner'],
-                'language' => $arg['language'],
+                'language'      => (string)($arg['language'] ?? ''),
                 'language_file' => 'comment',
                 'sender'        => ['uid' => -1],
             ], -1, true);

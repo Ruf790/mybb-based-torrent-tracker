@@ -597,8 +597,8 @@ $rating_html = '
         </div>
     </div>
 </div>
-<script src="' . $BASEURL . '/scripts/rating.js?ver=2"></script>
-<script>ratingInit(' . $rating_data['user_rating'] . ', ' . $id . ', "' . $BASEURL . '");</script>';
+<script src="' . $BASEURL . '/scripts/rating.js?ver=121"></script>
+<script>ratingInit(' . (int)$rating_data['user_rating'] . ', ' . (int)$id . ', "' . $BASEURL . '", "' . htmlspecialchars((string)$mybb->post_code, ENT_QUOTES) . '");</script>';
 
 // ── Comments ────────────────────────────────────────────────────────────────
 $query       = $db->sql_query_prepared("SELECT COUNT(id) AS commentss FROM comments c WHERE torrent = ?", [$id]);
@@ -813,7 +813,7 @@ $showcommenttable .= '
 <div class="container mt-4">
     <h2 class="mb-3"><i class="bi bi-pencil-square me-2 text-primary"></i>' . htmlspecialchars($lang->details['sec_quick_comment']) . '</h2>
     ' . (!empty($cerror) ? '<div class="error">' . $cerror . '</div>' : '') . '
-    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=2"></script>' : '') . '
+    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=72"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">

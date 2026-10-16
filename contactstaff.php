@@ -295,7 +295,7 @@ $prefill    = is_string($_POST['msgtext'] ?? null) ? $_POST['msgtext'] : '';
                         <a href="<?= $h_base ?>/faq.php" class="btn btn-sm btn-outline-info ags-pill">
                             <i class="fa-solid fa-book-open me-1" aria-hidden="true"></i><?= $h($L['btn_open_faq']) ?>
                         </a>
-                        <a href="<?= $h_base ?>/tsf_forums/index.php" class="btn btn-sm btn-outline-success ags-pill">
+                        <a href="<?= $h_base ?>/index2.php" class="btn btn-sm btn-outline-success ags-pill">
                             <i class="fa-solid fa-comments me-1" aria-hidden="true"></i><?= $h($L['btn_open_forums']) ?>
                         </a>
                     </div>

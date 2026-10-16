@@ -111,6 +111,8 @@ $title = $torrentId > 0 ? $lang->claim['title_torrent'] : ($isMine ? $lang->clai
 stdhead($title);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/claim.css?ver=1111">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 
 <div class="cl">
   <div class="cl-card cl-head">
@@ -130,7 +132,9 @@ stdhead($title);
   </div>
 
   <?php if (is_array($flash) && isset($flash['t'], $flash['m'])): ?>
-    <div class="cl-alert cl-alert--<?= $flash['t'] === 'success' ? 'success' : 'danger' ?>" role="alert">
+    <?php // Плашка — запасной вариант без SweetAlert2; при загруженном Swal скрипт ниже её убирает ?>
+    <div class="cl-alert cl-alert--<?= $flash['t'] === 'success' ? 'success' : 'danger' ?>" role="alert" id="clFlash"
+         data-type="<?= $flash['t'] === 'success' ? 'success' : 'error' ?>" data-msg="<?= $e((string)$flash['m']) ?>">
       <i class="fa-solid <?= $flash['t'] === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation' ?>"></i><span><?= $e((string)$flash['m']) ?></span>
     </div>
   <?php endif; ?>
@@ -225,6 +229,23 @@ stdhead($title);
 </div>
 
 <script>
+// Flash message after claim / give up: SweetAlert2 instead of the inline alert (the alert stays if Swal didn't load)
+(function () {
+  var box = document.getElementById('clFlash');
+  if (!box || !window.Swal) return;
+  var ok = box.dataset.type === 'success';
+  box.remove();
+  window.Swal.fire({
+    icon: ok ? 'success' : 'error',
+    text: box.dataset.msg,                       // text, not html: the message may come from an exception
+    timer: ok ? 3500 : undefined,
+    timerProgressBar: ok,
+    showConfirmButton: !ok,
+    confirmButtonText: <?= json_encode($lang->claim['ok'] ?? 'OK', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+    confirmButtonColor: '#0d6efd'
+  });
+})();
+
 // Confirm "Give up" / "Claim" (SweetAlert2 if loaded, otherwise the browser dialog)
 document.addEventListener('submit', function (e) {
   var f = e.target;

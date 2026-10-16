@@ -471,63 +471,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Расчёт бонуса пользователя ────────────────────────────
 
-function getUserStats(int $uid, array $cfg): array
+/**
+ * Every torrent the user is seeding right now, with each multiplier as its own column.
+ * The total (raw_bonus_sum) is summed in PHP from these rows, so the per-torrent table
+ * and the totals above it always agree. Same formula as before, one query.
+ */
+function getUserSeeding(int $uid, array $cfg): array
 {
     global $db;
 
-    $leechNone   = (float)($cfg['leech_none']   ?? 1.2);
-    $leechFew    = (float)($cfg['leech_few']    ?? 1.5);
-    $leechMany   = (float)($cfg['leech_many']   ?? 1.8);
-    $sizeSmall   = (float)($cfg['size_small']   ?? 1.0);
-    $sizeMedium  = (float)($cfg['size_medium']  ?? 1.2);
-    $sizeLarge   = (float)($cfg['size_large']   ?? 1.5);
-    $sizeXlarge  = (float)($cfg['size_xlarge']  ?? 1.8);
-    $sizeHuge    = (float)($cfg['size_huge']    ?? 2.0);
-    $seedersMany = (float)($cfg['seeders_many'] ?? 0.9);
-    $seedersMed  = (float)($cfg['seeders_medium']?? 0.95);
-    $ageOld      = (float)($cfg['age_old']      ?? 1.5);
-    $ageMed      = (float)($cfg['age_medium']   ?? 1.3);
-    $promoFree   = (float)($cfg['promo_free']   ?? 0.7);
-    $promoSilver = (float)($cfg['promo_silver'] ?? 0.5);
-    $promoDouble = (float)($cfg['promo_double'] ?? 0.5);
-    $rare1       = (float)($cfg['rare_1']       ?? 1.0);
-    $rare3       = (float)($cfg['rare_3']       ?? 1.0);
-    $rare5       = (float)($cfg['rare_5']       ?? 1.0);
-    $loyal30     = (float)($cfg['loyal_30']     ?? 1.0);
-    $loyal90     = (float)($cfg['loyal_90']     ?? 1.0);
-    $loyal180    = (float)($cfg['loyal_180']    ?? 1.0);
-    $cronHours   = max(1, (int)($cfg['cron_interval'] ?? 15)) / 60;
+    $f = static fn(string $k, float $d): float => (float)($cfg[$k] ?? $d);
+
+    $leechNone   = $f('leech_none', 1.2);   $leechFew   = $f('leech_few', 1.5);    $leechMany  = $f('leech_many', 1.8);
+    $sizeSmall   = $f('size_small', 1.0);   $sizeMedium = $f('size_medium', 1.2);  $sizeLarge  = $f('size_large', 1.5);
+    $sizeXlarge  = $f('size_xlarge', 1.8);  $sizeHuge   = $f('size_huge', 2.0);
+    $seedersMany = $f('seeders_many', 0.9); $seedersMed = $f('seeders_medium', 0.95);
+    $rare1       = $f('rare_1', 1.0);       $rare3      = $f('rare_3', 1.0);       $rare5      = $f('rare_5', 1.0);
+    $loyal30     = $f('loyal_30', 1.0);     $loyal90    = $f('loyal_90', 1.0);     $loyal180   = $f('loyal_180', 1.0);
+    $ageOld      = $f('age_old', 1.5);      $ageMed     = $f('age_medium', 1.3);
+    $promoFree   = $f('promo_free', 0.7);   $promoSilver = $f('promo_silver', 0.5); $promoDouble = $f('promo_double', 0.5);
 
     $sql = "
         SELECT
-            COUNT(DISTINCT p.torrent) AS torrents_count,
-            {$cronHours} AS avg_hours_seeded,
-            SUM(
-                CASE WHEN t.leechers = 0 THEN {$leechNone}
-                     WHEN t.leechers <= 2 THEN {$leechFew}
-                     ELSE {$leechMany} END *
-                CASE WHEN t.size < 536870912   THEN {$sizeSmall}
-                     WHEN t.size < 2147483648  THEN {$sizeMedium}
-                     WHEN t.size < 8589934592  THEN {$sizeLarge}
-                     WHEN t.size < 21474836480 THEN {$sizeXlarge}
-                     ELSE {$sizeHuge} END *
-                CASE WHEN t.seeders > 100 THEN {$seedersMany}
-                     WHEN t.seeders > 50  THEN {$seedersMed}
-                     WHEN t.seeders <= 1  THEN {$rare1}
-                     WHEN t.seeders <= 3  THEN {$rare3}
-                     WHEN t.seeders <= 5  THEN {$rare5}
-                     ELSE 1.0 END *
-                CASE WHEN COALESCE(st.seedtime, 0) >= 15552000 THEN {$loyal180}
-                     WHEN COALESCE(st.seedtime, 0) >= 7776000  THEN {$loyal90}
-                     WHEN COALESCE(st.seedtime, 0) >= 2592000  THEN {$loyal30}
-                     ELSE 1.0 END *
-                CASE WHEN (UNIX_TIMESTAMP() - t.added) > 15552000 THEN {$ageOld}
-                     WHEN (UNIX_TIMESTAMP() - t.added) > 5184000  THEN {$ageMed}
-                     ELSE 1.0 END *
-                (1.0 + (t.free = 'yes') * {$promoFree}
-                     + (t.silver = 'yes') * {$promoSilver}
-                     + (t.doubleupload = 'yes') * {$promoDouble})
-            ) AS raw_bonus_sum
+            t.id, t.name, t.size, t.seeders, t.leechers, t.added,
+            t.free, t.silver, t.doubleupload,
+            COALESCE(st.seedtime, 0) AS seedtime,
+            CASE WHEN t.leechers = 0 THEN {$leechNone}
+                 WHEN t.leechers <= 2 THEN {$leechFew}
+                 ELSE {$leechMany} END AS f_leech,
+            CASE WHEN t.size < 536870912   THEN {$sizeSmall}
+                 WHEN t.size < 2147483648  THEN {$sizeMedium}
+                 WHEN t.size < 8589934592  THEN {$sizeLarge}
+                 WHEN t.size < 21474836480 THEN {$sizeXlarge}
+                 ELSE {$sizeHuge} END AS f_size,
+            CASE WHEN t.seeders > 100 THEN {$seedersMany}
+                 WHEN t.seeders > 50  THEN {$seedersMed}
+                 WHEN t.seeders <= 1  THEN {$rare1}
+                 WHEN t.seeders <= 3  THEN {$rare3}
+                 WHEN t.seeders <= 5  THEN {$rare5}
+                 ELSE 1.0 END AS f_seed,
+            CASE WHEN COALESCE(st.seedtime, 0) >= 15552000 THEN {$loyal180}
+                 WHEN COALESCE(st.seedtime, 0) >= 7776000  THEN {$loyal90}
+                 WHEN COALESCE(st.seedtime, 0) >= 2592000  THEN {$loyal30}
+                 ELSE 1.0 END AS f_loyal,
+            CASE WHEN (UNIX_TIMESTAMP() - t.added) > 15552000 THEN {$ageOld}
+                 WHEN (UNIX_TIMESTAMP() - t.added) > 5184000  THEN {$ageMed}
+                 ELSE 1.0 END AS f_age,
+            (1.0 + (t.free = 'yes') * {$promoFree}
+                 + (t.silver = 'yes') * {$promoSilver}
+                 + (t.doubleupload = 'yes') * {$promoDouble}) AS f_promo
         FROM peers p
         INNER JOIN torrents t ON t.id = p.torrent
         LEFT JOIN LATERAL (
@@ -539,12 +531,33 @@ function getUserStats(int $uid, array $cfg): array
           AND t.visible    = 'yes'
           AND t.banned     = 'no'
           AND t.isnuked    = 'no'
-          AND p.last_action >= UNIX_TIMESTAMP() - 2700
-        GROUP BY p.userid";
+          AND p.last_action >= UNIX_TIMESTAMP() - 2700";
 
-    $res  = $db->sql_query_prepared($sql, [(int)$uid]);
-    $row  = $db->fetch_array($res);
-    return $row ?: [];
+    $res  = $db->sql_query_prepared($sql, [$uid]);
+    $rows = [];
+    while ($res && ($r = $db->fetch_array($res))) {
+        $tid = (int)$r['id'];
+        if (isset($rows[$tid])) {
+            continue;   // same torrent from two clients: counted once
+        }
+        $r['mul'] = (float)$r['f_leech'] * (float)$r['f_size'] * (float)$r['f_seed']
+                  * (float)$r['f_loyal'] * (float)$r['f_age'] * (float)$r['f_promo'];
+        $rows[$tid] = $r;
+    }
+    return array_values($rows);
+}
+
+/** Totals in the shape calcUserBonus() expects. */
+function getUserStats(array $seeding, array $cfg): array
+{
+    if (!$seeding) {
+        return [];
+    }
+    return [
+        'torrents_count'   => count($seeding),
+        'avg_hours_seeded' => max(1, (int)($cfg['cron_interval'] ?? 15)) / 60,
+        'raw_bonus_sum'    => array_sum(array_column($seeding, 'mul')),
+    ];
 }
 
 function calcUserBonus(array $stats, array $cfg): array
@@ -586,8 +599,21 @@ function calcUserBonus(array $stats, array $cfg): array
     ];
 }
 
-$userStats = getUserStats($userid, $cfg);
+$seeding   = getUserSeeding($userid, $cfg);
+$userStats = getUserStats($seeding, $cfg);
 $ub        = calcUserBonus($userStats, $cfg);  // $ub = userBonus
+
+// Per-torrent share: each torrent gets (its multiplier / sum of all) of the real hourly rate,
+// so the hour cap and the torrent-count factor are spread over the torrents proportionally
+// and the column adds up exactly to the "points per hour" shown above.
+if ($seeding && $ub['rawBonus'] > 0) {
+    foreach ($seeding as &$t) {
+        $t['share']  = $t['mul'] / $ub['rawBonus'];
+        $t['hourly'] = $ub['realHourly'] * $t['share'];
+    }
+    unset($t);
+    usort($seeding, fn($a, $b) => $b['hourly'] <=> $a['hourly']);
+}
 
 // ── Рендер бонусных карточек ──────────────────────────────
 
@@ -770,7 +796,7 @@ foreach ((array)$lang->mybonus as $k => $v) {
     }
 }
 ?>
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/mybonus.css" type="text/css" media="screen" />
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/mybonus.css?ver=2" type="text/css" media="screen" />
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bonuslog.css?ver=1111">
 
 <div class="container py-5">
@@ -985,6 +1011,105 @@ foreach ((array)$lang->mybonus as $k => $v) {
                                     </div>
                                 </div>
                             </div>
+
+                            <?php
+                            // ── Per-torrent breakdown ──
+                            $e      = fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                            $maxH   = max(array_column($seeding, 'hourly') ?: [1]);
+                            $factorLabels = [
+                                'f_leech' => [$lang->mybonus['f_leech'] ?? 'Leechers',  'fa-users'],
+                                'f_size'  => [$lang->mybonus['f_size']  ?? 'Size',      'fa-hard-drive'],
+                                'f_seed'  => [$lang->mybonus['f_seed']  ?? 'Seeders',   'fa-seedling'],
+                                'f_age'   => [$lang->mybonus['f_age']   ?? 'Age',       'fa-hourglass-half'],
+                                'f_loyal' => [$lang->mybonus['f_loyal'] ?? 'Loyalty',   'fa-heart'],
+                                'f_promo' => [$lang->mybonus['f_promo'] ?? 'Promo',     'fa-tag'],
+                            ];
+                            ?>
+                            <div class="card mt-4 mb-tor">
+                                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                                    <h6 class="mb-0"><i class="fas fa-list-ol me-2"></i><?= $e($lang->mybonus['sec_per_torrent'] ?? 'Bonus per torrent') ?></h6>
+                                    <span class="badge rounded-pill bg-secondary"><?= count($seeding) ?></span>
+                                    <input type="search" class="form-control form-control-sm ms-auto mb-tor-filter" id="mbTorFilter"
+                                           placeholder="<?= $e($lang->mybonus['ph_filter_torrents'] ?? 'Filter by name…') ?>">
+                                </div>
+                                <div class="small text-muted px-3 pt-2">
+                                    <?= $e($lang->mybonus['hint_per_torrent'] ?? 'Torrents you are seeding right now. Each one gets its share of your hourly bonus by its total multiplier; the hour cap and the torrent-count factor are spread over all of them.') ?>
+                                </div>
+                                <div class="table-responsive mb-tor-scroll">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th><?= $e($lang->mybonus['col_torrent'] ?? 'Torrent') ?></th>
+                                                <th class="d-none d-lg-table-cell"><?= $e($lang->mybonus['col_factors'] ?? 'Multipliers') ?></th>
+                                                <th class="text-end"><?= $e($lang->mybonus['col_total_mul'] ?? 'Total') ?></th>
+                                                <th class="text-end"><?= $e($lang->mybonus['col_pts_hour'] ?? 'pts/h') ?></th>
+                                                <th class="text-end d-none d-sm-table-cell"><?= $e($lang->mybonus['col_pts_day'] ?? 'pts/day') ?></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="mbTorBody">
+                                        <?php foreach ($seeding as $t):
+                                            $pctBar = $maxH > 0 ? round($t['hourly'] / $maxH * 100, 1) : 0;
+                                        ?>
+                                            <tr data-name="<?= $e(mb_strtolower((string)$t['name'])) ?>">
+                                                <td class="mb-tor-name">
+                                                    <a href="<?= get_torrent_link((int)$t['id']) ?>" title="<?= $e($t['name']) ?>"><?= $e($t['name']) ?></a>
+                                                    <div class="small text-muted">
+                                                        <?= mksize($t['size']) ?>
+                                                        · <i class="fas fa-arrow-up text-success"></i> <?= (int)$t['seeders'] ?>
+                                                        <i class="fas fa-arrow-down text-danger ms-1"></i> <?= (int)$t['leechers'] ?>
+                                                        <?php if ($t['free'] === 'yes'): ?><span class="badge bg-success ms-1">Free</span><?php endif; ?>
+                                                        <?php if ($t['silver'] === 'yes'): ?><span class="badge bg-secondary ms-1">Silver</span><?php endif; ?>
+                                                        <?php if ($t['doubleupload'] === 'yes'): ?><span class="badge bg-warning text-dark ms-1">x2</span><?php endif; ?>
+                                                    </div>
+                                                    <div class="mb-tor-bar"><span style="width: <?= $pctBar ?>%"></span></div>
+                                                </td>
+                                                <td class="d-none d-lg-table-cell">
+                                                    <div class="mb-tor-factors">
+                                                    <?php foreach ($factorLabels as $key => [$label, $icon]):
+                                                        $v = round((float)$t[$key], 2);
+                                                        $cls = $v > 1.0 ? 'is-up' : ($v < 1.0 ? 'is-down' : 'is-flat');
+                                                    ?>
+                                                        <span class="mb-tor-f <?= $cls ?>" title="<?= $e($label) ?>"><i class="fas <?= $icon ?>"></i>×<?= rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.') ?></span>
+                                                    <?php endforeach; ?>
+                                                    </div>
+                                                </td>
+                                                <td class="text-end fw-semibold">×<?= number_format($t['mul'], 2) ?></td>
+                                                <td class="text-end fw-bold text-success"><?= number_format($t['hourly'], 1) ?></td>
+                                                <td class="text-end d-none d-sm-table-cell"><?= number_format($t['hourly'] * 24, 0) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="fw-bold">
+                                                <td><?= $e($lang->mybonus['lbl_total'] ?? 'Total') ?></td>
+                                                <td class="d-none d-lg-table-cell"></td>
+                                                <td class="text-end">×<?= number_format($ub['rawBonus'], 2) ?></td>
+                                                <td class="text-end text-success"><?= number_format($ub['realHourly'], 1) ?></td>
+                                                <td class="text-end d-none d-sm-table-cell"><?= number_format($ub['daily'], 0) ?></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <?php if ($ub['isCapped'] || $ub['capMul'] != 1.0): ?>
+                                <div class="small text-muted px-3 py-2 border-top">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <?php if ($ub['capMul'] != 1.0): ?>
+                                    <?= $e(ags_fmt($lang->mybonus['hint_scaled_mul'] ?? 'Already includes the torrent-count factor ×{1}.', number_format($ub['capMul'], 1))) ?>
+                                    <?php endif; ?>
+                                    <?php if ($ub['isCapped']): ?>
+                                    <?= $e(ags_fmt($lang->mybonus['hint_scaled_cap'] ?? 'Your total is over the hour cap of {1} pts/h, so every torrent is scaled down by the same share.', number_format($HOUR_CAP, 0))) ?>
+                                    <?php endif; ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <script>
+                            document.getElementById('mbTorFilter')?.addEventListener('input', function () {
+                                const q = this.value.trim().toLowerCase();
+                                document.querySelectorAll('#mbTorBody tr').forEach(function (tr) {
+                                    tr.hidden = q !== '' && !tr.dataset.name.includes(q);
+                                });
+                            });
+                            </script>
 
                             <?php else: ?>
                             <div class="alert alert-warning text-center">
@@ -1344,3 +1469,6 @@ const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG 
 </script>
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
 <script src="<?= $BASEURL ?>/scripts/mybonus.js?ver=2"></script>
+
+<?php
+stdfoot();

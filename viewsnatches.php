@@ -110,25 +110,44 @@ function getExtendedStats(int $torrent_id): array
     return $stats;
 }
 
+/**
+ * $langKeys = [subjectKey, bodyKey, subjectArg]: take subject/body from viewsnatches.lang.php
+ * in each recipient's language (users.language) instead of $subject/$messageTemplate.
+ */
 function sendPmToUsers(array $userIds, string $subject, string $messageTemplate,
-                       string $torrentName, string $torrentUrl, int $senderId): int
+                       string $torrentName, string $torrentUrl, int $senderId, ?array $langKeys = null): int
 {
-    global $db;
+    global $db, $lang;
     if (empty($userIds)) return 0;
 
     $userIds   = array_map('intval', $userIds);
     $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-    $res       = $db->sql_query_prepared("SELECT id, username FROM users WHERE id IN ({$placeholders})", $userIds);
+    $res       = $db->sql_query_prepared("SELECT id, username, language FROM users WHERE id IN ({$placeholders})", $userIds);
     $sentCount = 0;
+    $sections  = [];   // language => viewsnatches section
 
     while ($user = $db->fetch_array($res)) {
+        $userSubject = $subject;
+        $template    = $messageTemplate;
+        if ($langKeys !== null) {
+            [$subjKey, $bodyKey, $subjArg] = $langKeys;
+            $ul = (string)($user['language'] ?? '');
+            if (!isset($sections[$ul])) {
+                $sec = method_exists($lang, 'get_section') ? $lang->get_section('viewsnatches', $ul) : null;
+                $sections[$ul] = is_array($sec) ? $sec : (array)$lang->viewsnatches;
+            }
+            $sec         = $sections[$ul];
+            $userSubject = str_replace(['{1}', '%1$s'], (string)$subjArg, (string)($sec[$subjKey] ?? $subject));
+            // Lang strings may keep line breaks as a literal "\n" (the JS default body does)
+            $template    = str_replace('\\n', "\n", (string)($sec[$bodyKey] ?? $messageTemplate));
+        }
         $msg = str_replace(
             ['{username}', '{torrentname}', '{torrenturl}'],
             [$user['username'], $torrentName, $torrentUrl],
-            $messageTemplate
+            $template
         );
         send_pm([
-            'subject' => $subject,
+            'subject' => $userSubject,
             'message' => $msg,
             'touid'   => (int)$user['id'],
         ], $senderId, true);
@@ -161,18 +180,29 @@ function handleMassAction(array $post, int $torrentId): void
 
     switch ($action) {
         case 'send_message':
-            $subject = trim($post['subject'] ?? 'Regarding torrent: ' . $torrentName);
+            $subject = trim($post['subject'] ?? '');
+            if ($subject === '') {
+                $subject = str_replace(['{1}', '%1$s'], $torrentName, (string)($GLOBALS['lang']->viewsnatches['msg_subject_default'] ?? 'Regarding torrent: {1}'));
+            }
             $message = trim($post['message'] ?? '');
             if ($message) {
-                sendPmToUsers($selectedUsers, $subject, $message, $torrentName, $torrentUrl, (int)$CURUSER['id']);
+                // Moderator left the default text untouched → each recipient gets it in their own language
+                // (js_vs_default_subject / js_vs_default_body of viewsnatches.lang.php).
+                // An edited text is the moderator's own words and is sent as written.
+                $langKeys = !empty($post['use_default'])
+                    ? ['js_vs_default_subject', 'js_vs_default_body', $torrentName]
+                    : null;
+                sendPmToUsers($selectedUsers, $subject, $message, $torrentName, $torrentUrl, (int)$CURUSER['id'], $langKeys);
             }
             break;
 
         case 'reseed_request':
+            // Subject and text in each recipient's language (msg_reseed_* in viewsnatches.lang.php)
             $subject = "Reseed request (TID: {$torrentId})";
             $message = "Hello {username},\n\nWe noticed that you have downloaded {torrenturl} but are no longer seeding it.\n"
                      . "Could you please help the community by reseeding it? Thank you!\n\nBest regards, Staff";
-            sendPmToUsers($selectedUsers, $subject, $message, $torrentName, $torrentUrl, (int)$CURUSER['id']);
+            sendPmToUsers($selectedUsers, $subject, $message, $torrentName, $torrentUrl, (int)$CURUSER['id'],
+                          ['msg_reseed_subject', 'msg_reseed_body', $torrentId]);
             break;
 
         case 'delete_snatches':
@@ -260,7 +290,7 @@ if (isset($_GET['export']) && $is_mod) {
 if (isset($_POST['mass_action']) && $is_mod) {
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        die('Invalid security token. Please go back and try again.');
+        die(htmlspecialchars((string)($lang->viewsnatches['err_security'] ?? 'Invalid security token. Please go back and try again.'), ENT_QUOTES, 'UTF-8'));
     }
     handleMassAction($_POST, $id);
 }
@@ -269,7 +299,7 @@ if (isset($_POST['mass_action']) && $is_mod) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete']) && $is_mod) {
     if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        die('Invalid security token. Please go back and try again.');
+        die(htmlspecialchars((string)($lang->viewsnatches['err_security'] ?? 'Invalid security token. Please go back and try again.'), ENT_QUOTES, 'UTF-8'));
     }
     $delUserId = (int)($_POST['userid'] ?? 0);
     if (is_valid_id($delUserId)) {
@@ -291,7 +321,7 @@ $res         = $db->sql_query_prepared(
 );
 $torrentInfo = $db->fetch_array($res);
 
-if (!$torrentInfo) stderr($lang->global['notavailable'], 'Torrent not found');
+if (!$torrentInfo) stderr($lang->global['notavailable'], $lang->viewsnatches['not_found'] ?? 'Torrent not found');
 
 
 // ── Статистика ────────────────────────────────────────────
@@ -481,17 +511,17 @@ stdhead($lang->viewsnatches['headmessage']);
                         <div class="col-md-2">
                             <select name="filter_ratio" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value=""><?= htmlspecialchars($lang->viewsnatches['filter_all_ratios'] ?? 'All Ratios', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
-                                <option value="poor" <?= ($activeFilters['filter_ratio'] ?? '') === 'poor' ? 'selected' : '' ?>>Ratio &lt; 0.5</option>
-                                <option value="good" <?= ($activeFilters['filter_ratio'] ?? '') === 'good' ? 'selected' : '' ?>>Ratio ≥ 1.0</option>
+                                <option value="poor" <?= ($activeFilters['filter_ratio'] ?? '') === 'poor' ? 'selected' : '' ?>><?= htmlspecialchars($lang->viewsnatches['filter_ratio_poor'] ?? "Ratio < 0.5", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
+                                <option value="good" <?= ($activeFilters['filter_ratio'] ?? '') === 'good' ? 'selected' : '' ?>><?= htmlspecialchars($lang->viewsnatches['filter_ratio_good'] ?? "Ratio ≥ 1.0", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
                             </select>
                         </div>
                         <!-- H&R фильтр -->
                         <div class="col-md-2">
                             <select name="filter_warned" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value=""><?= htmlspecialchars($lang->viewsnatches['filter_all_hnr'] ?? 'All H&amp;R', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
-                                <option value="clean"  <?= ($activeFilters['filter_warned'] ?? '') === 'clean'  ? 'selected' : '' ?>>Clean</option>
-                                <option value="warned" <?= ($activeFilters['filter_warned'] ?? '') === 'warned' ? 'selected' : '' ?>>Warned</option>
-                                <option value="banned" <?= ($activeFilters['filter_warned'] ?? '') === 'banned' ? 'selected' : '' ?>>Banned</option>
+                                <option value="clean"  <?= ($activeFilters['filter_warned'] ?? '') === 'clean'  ? 'selected' : '' ?>><?= htmlspecialchars($lang->viewsnatches['filter_clean'] ?? "Clean", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
+                                <option value="warned" <?= ($activeFilters['filter_warned'] ?? '') === 'warned' ? 'selected' : '' ?>><?= htmlspecialchars($lang->viewsnatches['filter_warned'] ?? "Warned", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
+                                <option value="banned" <?= ($activeFilters['filter_warned'] ?? '') === 'banned' ? 'selected' : '' ?>><?= htmlspecialchars($lang->viewsnatches['filter_banned'] ?? "Banned", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></option>
                             </select>
                         </div>
                         <div class="col-md-4 d-flex gap-2">
@@ -543,12 +573,12 @@ stdhead($lang->viewsnatches['headmessage']);
             <p class="text-muted mb-0"><?= htmlspecialchars($torrentInfo['name']) ?></p>
             <div class="small text-muted">
                 <i class="fas fa-hdd me-1"></i><?= htmlspecialchars($lang->viewsnatches['torrent_size'] ?? 'Size', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>: <?= mksize($torrentInfo['size']) ?> |
-                <i class="fas fa-tag me-1"></i><?= htmlspecialchars($lang->viewsnatches['torrent_category'] ?? 'Category', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>: <?= htmlspecialchars($torrentInfo['category_name'] ?? 'Unknown') ?>
+                <i class="fas fa-tag me-1"></i><?= htmlspecialchars($lang->viewsnatches['torrent_category'] ?? 'Category', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>: <?= htmlspecialchars($torrentInfo['category_name'] ?? ($lang->viewsnatches['torrent_unknown'] ?? 'Unknown')) ?>
             </div>
         </div>
         <div class="text-end">
             <span class="badge bg-primary rounded-pill fs-6">
-                <i class="fas fa-download me-1"></i><?= $count ?> snatches
+                <i class="fas fa-download me-1"></i><?= htmlspecialchars(sprintf($lang->viewsnatches['snatches_count'] ?? '%1$s snatches', $count), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </span>
         </div>
     </div>
@@ -633,15 +663,15 @@ stdhead($lang->viewsnatches['headmessage']);
                             ?>
                             <div class="progress mt-2" style="height:8px">
                                 <div class="progress-bar bg-success" style="width:<?= $pct_clean ?>%"
-                                     title="Clean: <?= $pct_clean ?>%"></div>
+                                     title="<?= htmlspecialchars(sprintf($lang->viewsnatches['hnr_title_clean'] ?? 'Clean: %1$s%%', $pct_clean), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>"></div>
                                 <div class="progress-bar bg-warning" style="width:<?= $pct_warned ?>%"
-                                     title="Warned: <?= $pct_warned ?>%"></div>
+                                     title="<?= htmlspecialchars(sprintf($lang->viewsnatches['hnr_title_warned'] ?? 'Warned: %1$s%%', $pct_warned), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>"></div>
                                 <div class="progress-bar bg-danger" style="width:<?= $pct_banned ?>%"
-                                     title="Banned: <?= $pct_banned ?>%"></div>
+                                     title="<?= htmlspecialchars(sprintf($lang->viewsnatches['hnr_title_banned'] ?? 'Banned: %1$s%%', $pct_banned), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>"></div>
                             </div>
                             <div class="d-flex justify-content-between mt-1">
-                                <small class="text-muted"><?= $pct_clean ?>% clean</small>
-                                <small class="text-muted"><?= $pct_banned ?>% banned</small>
+                                <small class="text-muted"><?= $pct_clean ?><?= htmlspecialchars($lang->viewsnatches['hnr_pct_clean'] ?? '% clean', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></small>
+                                <small class="text-muted"><?= $pct_banned ?><?= htmlspecialchars($lang->viewsnatches['hnr_pct_banned'] ?? '% banned', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></small>
                             </div>
                         </div>
                     </div>
@@ -723,8 +753,8 @@ stdhead($lang->viewsnatches['headmessage']);
         <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="small text-muted">
-                    Page <?= $page ?> of <?= ceil($count / $perpage) ?> |
-                    <?= $start + 1 ?>–<?= min($start + $perpage, $count) ?> of <?= $count ?>
+                    <?= htmlspecialchars(sprintf($lang->viewsnatches['page_of'] ?? 'Page %1$s of %2$s', $page, (int)ceil($count / $perpage)), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?> |
+                    <?= htmlspecialchars(sprintf($lang->viewsnatches['showing'] ?? 'Showing %1$s–%2$s of %3$s', $start + 1, min($start + $perpage, $count), $count), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                 </div>
                 <div><?= $multipage ?></div>
             </div>
@@ -749,6 +779,11 @@ stdhead($lang->viewsnatches['headmessage']);
         ['warned',      'fa-exclamation-triangle', $lang->viewsnatches['col_hnr']        ?? 'H&amp;R'],
     ];
     ?>
+	
+	
+	
+	
+	
     <div class="card shadow-sm">
         <div class="card-header bg-transparent py-3">
             <h5 class="mb-0"><i class="fas fa-list me-2"></i><?= htmlspecialchars($lang->viewsnatches['snatch_details'] ?? 'Snatch Details', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></h5>
@@ -817,15 +852,22 @@ stdhead($lang->viewsnatches['headmessage']);
                         $ratio      = $row['user_sum_downloaded'] > 0
                             ? $row['user_sum_uploaded'] / $row['user_sum_downloaded'] : 0;
                         $ratioClass = $ratio >= 1 ? 'text-success' : ($ratio >= 0.5 ? 'text-warning' : 'text-danger');
-                        $avatarData = format_avatar($row['avatar'], $row['avatardimensions']);
-                        $avatarClass = !empty($avatarData['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
-                        $avaHtml    = "<img class='{$avatarClass}' style='width:50px;height:50px;object-fit:cover;' src='{$avatarData['image']}' alt=''>";
-                        $status     = $row['seeder']
+                        
+						$useravatar  = format_avatar($row['avatar'], $row['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+
+                        $avaHtml = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" style="width:50px;height:50px;object-fit:cover;"'
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($row['username']) . '" loading="lazy">'
+                           . '</div>';
+                        
+						
+						$status     = $row['seeder']
                             ? "<span class='badge bg-success'><i class='fas fa-seedling me-1'></i>" . ($lang->viewsnatches['badge_seeding'] ?? 'Seeding') . "</span>"
                             : "<span class='badge bg-secondary'><i class='fas fa-times me-1'></i>" . ($lang->viewsnatches['badge_inactive'] ?? 'Inactive') . "</span>";
                         $connIcon   = $row['connectable']
-                            ? '<i class="fas fa-plug text-success" title="Connectable"></i>'
-                            : '<i class="fas fa-plug text-danger" title="Not Connectable"></i>';
+                            ? '<i class="fas fa-plug text-success" title="' . htmlspecialchars($lang->viewsnatches['badge_connectable'] ?? 'Connectable', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"></i>'
+                            : '<i class="fas fa-plug text-danger" title="' . htmlspecialchars($lang->viewsnatches['badge_not_connectable'] ?? 'Not Connectable', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"></i>';
                         $rowClass   = $CURUSER['id'] == $row['id'] ? 'highlight-row' : '';
 
                         // H&R badge
@@ -885,7 +927,7 @@ stdhead($lang->viewsnatches['headmessage']);
                     <td><?= $hnrBadge ?></td>
                     <td class="text-center">
                         <button class="btn btn-sm btn-outline-primary me-1"
-                                onclick="showUserDetails(<?= (int)$row['id'] ?>)" title="View Details">
+                                onclick="showUserDetails(<?= (int)$row['id'] ?>)" title="<?= htmlspecialchars($lang->viewsnatches['btn_view_details'] ?? "View Details", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
                             <i class="fas fa-eye"></i>
                         </button>
                         <?php if ($is_mod): ?>
@@ -894,7 +936,7 @@ stdhead($lang->viewsnatches['headmessage']);
                             <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                             <input type="hidden" name="delete" value="1">
                             <input type="hidden" name="userid" value="<?= (int)$row['id'] ?>">
-                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="<?= htmlspecialchars($lang->viewsnatches['btn_delete'] ?? "Delete", ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </form>
@@ -920,7 +962,7 @@ stdhead($lang->viewsnatches['headmessage']);
         <div class="card-footer bg-transparent">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="small text-muted">
-                    Showing <?= $start + 1 ?>–<?= min($start + $perpage, $count) ?> of <?= $count ?>
+                    <?= htmlspecialchars(sprintf($lang->viewsnatches['showing'] ?? 'Showing %1$s–%2$s of %3$s', $start + 1, min($start + $perpage, $count), $count), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                 </div>
                 <div><?= $multipage ?></div>
             </div>
@@ -966,9 +1008,17 @@ window.VS_CONFIG = {
     baseUrl:    <?= json_encode($BASEURL) ?>,
     torrentId:  <?= (int)$id ?>,
     scriptName: <?= json_encode($scriptName) ?>,
-    postCode:   <?= json_encode($mybb->post_code) ?>
+    postCode:   <?= json_encode($mybb->post_code) ?>,
+    // js_* keys of viewsnatches.lang.php without the prefix (texts for viewsnatches.js)
+    lang:       <?= json_encode((function () use ($lang): array {
+        $out = [];
+        foreach ((array)$lang->viewsnatches as $k => $v) {
+            if (str_starts_with((string)$k, 'js_')) $out[substr((string)$k, 3)] = (string)$v;
+        }
+        return $out;
+    })(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
 };
 </script>
-<script src="<?= $BASEURL ?>/scripts/viewsnatches.js"></script>
+<script src="<?= $BASEURL ?>/scripts/viewsnatches.js?ver=31"></script>
 
 <?php stdfoot(); ?>

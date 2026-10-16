@@ -545,7 +545,7 @@ if ($has_announcements) {
         $cookie = my_unserialize(stripslashes($mybb->cookies['mybb']['announcements']), false);
     }
 
-    $bgcolor = alt_trow(true);
+    $bgcolor = 'trow1';
 
     while ($announcement = $db->fetch_array($query)) {
         [$new_class, $folder] = ($announcement['startdate'] > $CURUSER['lastvisit'] && empty($cookie[$announcement['id']]))
@@ -586,7 +586,6 @@ if ($has_announcements) {
 </div>';
 		
 		
-        $bgcolor = alt_trow();
     }
 
     if ($announcements) {
@@ -734,7 +733,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         $bgcolor = match (true) {
             $thread['visible'] == 0  => 'trow_shaded',
             $thread['visible'] == -1 => 'trow_shaded trow_deleted',
-            default                  => alt_trow(),
+            default                  => 'trow1',
         };
 
         $thread_type_class = ($thread['sticky'] == 1) ? ' forumdisplay_sticky' : ' forumdisplay_regular';

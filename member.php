@@ -1774,8 +1774,8 @@ if ($mybb->input['action'] === 'profile') {
 
     
 	if (!$memprofile) 
-	{ 
-        stderr($lang->member['error_nomember'], $SITENAME . ' - ' . $lang->member['sec_member_not_found'], 404, '404'); 
+	{     
+		stderr($lang->member['error_nomember'], $SITENAME . ' - ' . $lang->member['sec_member_not_found'], 404, 'user');
 	}
 
     $uid       = $memprofile['id'];
@@ -1836,7 +1836,7 @@ if ($mybb->input['action'] === 'profile') {
 
     if ($usergroups['cansendemail'] == 1 && $uid != $CURUSER['id'] && $memprofile['hideemail'] != 1
         && (str_contains(',' . $memprofile['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false || $usergroups['cansendemailoverride'] != 0)) {
-        $bgcolor = alt_trow();
+        
         
 		$sendemail = '<div class="py-2 border-bottom"><span class="text-muted">'.$lang->member['email'].'</span> <a href="member.php?action=emailuser&amp;id='.$memprofile['id'].'">'.$send_user_email.'</a></div>';
 		
@@ -1847,7 +1847,7 @@ if ($mybb->input['action'] === 'profile') {
         && (($memprofile['receivepms'] != 0 && $memperms['canusepms'] != 0
             && str_contains(',' . $memprofile['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false)
             || $usergroups['canoverridepm'] == 1)) {
-        $bgcolor = alt_trow();
+        
         
 		$sendpm = '<div class="py-2 border-bottom"><span class="text-muted">'.$lang->member['pm'].'</span> <a href="private.php?action=send&amp;uid='.$memprofile['id'].'">'.$send_pms.'</a></div>';
     }

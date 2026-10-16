@@ -757,7 +757,7 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
 </div>';
         
 		
-		$bgcolor = alt_trow();
+		
     }
 
     // ── Save draft button ─────────────────────────────────────────────────────

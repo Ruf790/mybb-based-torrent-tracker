@@ -23,7 +23,7 @@ if (!defined('DEBUGMODE')) {
 
 // --- Misc constants ---
 const VERSION = '';
-
+const TS_MESSAGE = 'Powered by ArtCore Gangsta';
 
 // --- Default Usergroups ---
 const UC_GUEST         = 1;
@@ -101,8 +101,6 @@ if (defined('IN_FORUM') && IN_FORUM === true) {
     gzip();
     maxsysop();
     
-    // Load forum language ONLY in forum
-    //$lang->load('tsf_forums');
     
     // MB string encoding (forum only)
     if (function_exists('mb_internal_encoding') && !empty($charset)) {

@@ -36,7 +36,8 @@ if (!empty($mybb->input['pid']) && empty($mybb->input['tid'])) {
 
 $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
 if (!$thread || str_starts_with((string)$thread['closed'], "moved|")) {
-    stderr($lang->global['error_invalidthread']);
+    
+	stderr($lang->showthread['error_invalidthread'], '', 404, 'thread');
 }
 
 
@@ -595,7 +596,7 @@ while ($getid = $db->fetch_array($query)) {
     $pid_list[] = (int)$getid['pid'];
 }
 if (!$pid_list) {
-    stderr($lang->global['error_invalidthread']);
+    stderr($lang->showthread['error_invalidthread']);
 }
 
 $pid_placeholders = implode(',', array_fill(0, count($pid_list), '?'));
@@ -978,8 +979,8 @@ $rating_html = '
         ' . $user_section . '
     </div>
 </div>
-<script src="' . $BASEURL . '/scripts/rating.js"></script>
-<script>ratingInit(' . $rating_data['user_rating'] . ', ' . $tid . ', "' . $BASEURL . '", "thread");</script>';
+<script src="' . $BASEURL . '/scripts/rating.js?ver=31"></script>
+<script>ratingInit(' . (int)$rating_data['user_rating'] . ', ' . (int)$tid . ', "' . $BASEURL . '", "thread", "' . htmlspecialchars((string)$mybb->post_code, ENT_QUOTES) . '");</script>';
 
 
 

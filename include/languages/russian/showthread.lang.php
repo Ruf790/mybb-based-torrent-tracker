@@ -8,6 +8,8 @@ if(!defined('IN_TRACKER'))
 $language['showthread'] = array 
 (
 
+'invalid_post' => 'Указанное сообщение не существует.',
+
 'mergeposts'=>'Объединить сообщения',
 
 
@@ -19,7 +21,7 @@ $language['showthread'] = array
 
 'standard_mod_tools' => "Стандартные инструменты",
 
-'error_invalidthread22' => "Указанная тема не существует.",
+'error_invalidthread' => "Указанная тема не существует.",
 
 'author' => "Автор",
 'message' => "Сообщение",
@@ -315,6 +317,11 @@ $language['showthread'] = array
 'js_err_mq' => "Ошибка мультицитаты: {1}",
 'js_info_mq_exists' => "Мультицитата уже есть в сообщении",
 'js_ok_mq_added_reply' => "Мультицитата добавлена в быстрый ответ",
+
+
+// ── JS: rating.js ─────────────────────────────────────────────────────────
+'js_rate_saved' => 'Оценка сохранена!',
+'js_rate_error' => 'Не удалось сохранить оценку. Обновите страницу и попробуйте ещё раз.',
 
 
 

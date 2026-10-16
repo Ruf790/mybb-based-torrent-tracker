@@ -210,4 +210,20 @@ $language['private'] = array
 'quickreply_save_copy' => "Сохранить копию",
 'quickreply_read_receipt' => "Запросить уведомление о прочтении",
 
+// ── Добавлено: тексты, вынесенные из private.php ──
+'pm_search_users'        => "Найти пользователей",
+'pm_recipients_hint'     => "Нажмите, чтобы найти и выбрать пользователей (минимум 2 символа)",
+'pm_subject_placeholder' => "Введите тему сообщения...",
+'pm_message_placeholder' => "Напишите сообщение...",
+'pm_status_new_desc'     => "Это сообщение ещё не прочитано",
+'pm_status_read_desc'    => "Это сообщение прочитано",
+'pm_status_reply_desc'   => "Вы ответили на это сообщение",
+'pm_status_fwd_desc'     => "Это сообщение переслано",
+'pm_mailbox_empty'       => "Ваш почтовый ящик пуст",
+'pm_no_subject'          => "[без темы]",
+'pm_na'                  => "Н/Д",
+'err_no_pms_selected'    => "Вы не выбрали ни одного сообщения.",
+'err_pms_not_found'      => "Выбранные сообщения не найдены.",
+'err_pms_delete_failed'  => "Не удалось удалить выбранные сообщения. Ошибка базы данных:",
+
 );

@@ -383,9 +383,17 @@ $language['upload'] = [
     'js_ut_th_size'           => 'Size',
 
 
-'error_details'     => 'Error details',
-'error_check_input' => 'Check your input and try again',
-'error_copy'        => 'Copy error',
+    'error_details'     => 'Error details',
+    'error_check_input' => 'Check your input and try again',
+    'error_copy'        => 'Copy error',
+	
+	
+	// ── New torrent in a subscribed category (functions_notify.php) ──
+	'notify_upload_pm_subject'    => 'New torrent in {1}: {2}',
+	'notify_upload_pm_message'    => "A new torrent has been uploaded in your subscribed category [b]{1}[/b]:\n\n[url={2}][b]{3}[/b][/url]\n\nManage subscriptions: [url={4}/usercp.php?action=options]User CP[/url]",
+	'notify_upload_email_subject' => 'New torrent in {1}: {3}',
+	'notify_upload_email_message' => "A new torrent has been uploaded in your subscribed category {1}:\n\n{3}\n{2}\n\nManage subscriptions: {4}/usercp.php?action=options\n\n— {5}",
+
 
 
 

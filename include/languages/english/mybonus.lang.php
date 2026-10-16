@@ -229,6 +229,31 @@ $language['mybonus'] = array (
 	'js_unit_min' => '{1} min',
 	'js_unit_pts_day' => '{1} pts/day',
 	'js_copied' => 'Bonus stats copied to clipboard!',
+	
+	
+	
+	// ── english/mybonus.lang.php ──
+'sec_per_torrent'    => 'Bonus per torrent',
+'ph_filter_torrents' => 'Filter by name…',
+'hint_per_torrent'   => 'Torrents you are seeding right now. Each one gets its share of your hourly bonus by its total multiplier; the hour cap and the torrent-count factor are spread over all of them.',
+'col_torrent'        => 'Torrent',
+'col_factors'        => 'Multipliers',
+'col_total_mul'      => 'Total',
+'col_pts_hour'       => 'pts/h',
+'col_pts_day'        => 'pts/day',
+'lbl_total'          => 'Total',
+'f_leech'            => 'Leechers',
+'f_size'             => 'Size',
+'f_seed'             => 'Seeders / rarity',
+'f_age'              => 'Torrent age',
+'f_loyal'            => 'Loyalty (your seed time)',
+'f_promo'            => 'Promo (Free / Silver / x2)',
+'hint_scaled_mul'    => 'Already includes the torrent-count factor ×{1}.',
+'hint_scaled_cap'    => 'Your total is over the hour cap of {1} pts/h, so every torrent is scaled down by the same share.',
+	
+	
+	
+	
 
 );
 ?>

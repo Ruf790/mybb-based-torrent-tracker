@@ -150,4 +150,28 @@ $language['viewsnatches'] = array(
     'msg_reseed_subject'        => 'Reseed request (TID: {1})',
     'msg_reseed_body'           => "Hello {username},\n\nWe noticed that you have downloaded {torrenturl} but are no longer seeding it.\nCould you please help the community by reseeding it? Thank you!\n\nBest regards, Staff",
 
+    // ── Added: texts moved out of viewsnatches.php / viewsnatches.js ──
+    'err_security'          => 'Invalid security token. Please go back and try again.',
+    'js_vs_ratio_1'         => 'Ratio < 0.5',
+    'js_vs_ratio_2'         => 'Ratio 0.5–1.0',
+    'js_vs_ratio_3'         => 'Ratio 1.0–2.0',
+    'js_vs_ratio_4'         => 'Ratio > 2.0',
+    'js_vs_users'           => 'Users',
+    'js_vs_users_word'      => 'users',
+    'js_vs_select_user'     => 'Please select at least one user',
+    'js_vs_send_to'         => 'Send to {1} users',
+    'js_vs_subject'         => 'Subject',
+    'js_vs_message'         => 'Message',
+    'js_vs_default_subject' => 'Regarding torrent download',
+    'js_vs_default_body'    => "Hello {username},\n\nRegarding the torrent {torrenturl}...\n\nBest regards, Staff",
+    'js_vs_placeholders'    => 'Placeholders:',
+    'js_vs_cancel'          => 'Cancel',
+    'js_vs_send'            => 'Send',
+    'js_vs_fill_fields'     => 'Please fill in the subject and the message',
+    'js_vs_act_reseed'      => 'Send reseed requests',
+    'js_vs_act_delete'      => 'Delete snatch records',
+    'js_vs_act_mark'        => 'Mark as seeding',
+    'js_vs_confirm_for'     => 'Confirm the action for {1} selected users?',
+    'js_vs_confirm'         => 'Confirm',
+
 );

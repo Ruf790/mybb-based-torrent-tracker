@@ -212,4 +212,20 @@ $language['private'] = array
 'quickreply_save_copy' => "Save a Copy",
 'quickreply_read_receipt' => "Request Read Receipt",
 
+// ── Added: texts moved out of private.php ──
+'pm_search_users'        => "Search for users",
+'pm_recipients_hint'     => "Click to search and select users (minimum 2 characters)",
+'pm_subject_placeholder' => "Enter message subject...",
+'pm_message_placeholder' => "Write your message here...",
+'pm_status_new_desc'     => "This message has not been read yet",
+'pm_status_read_desc'    => "This message has been read",
+'pm_status_reply_desc'   => "This is a reply to a previous message",
+'pm_status_fwd_desc'     => "This message has been forwarded",
+'pm_mailbox_empty'       => "Your mailbox is empty",
+'pm_no_subject'          => "[no subject]",
+'pm_na'                  => "N/A",
+'err_no_pms_selected'    => "You did not select any messages.",
+'err_pms_not_found'      => "The selected messages were not found.",
+'err_pms_delete_failed'  => "Could not delete the selected messages. Database error:",
+
 );

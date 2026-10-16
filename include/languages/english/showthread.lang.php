@@ -19,7 +19,7 @@ $language['showthread'] = array
 
 'standard_mod_tools' => "Standard Tools",
 
-'error_invalidthread22' => "The specified thread does not exist.",
+'error_invalidthread' => "The specified thread does not exist.",
 
 'author' => "Author",
 'message' => "Message",
@@ -331,6 +331,11 @@ $language['showthread'] = array
 'js_err_mq' => "Multi-quote error: {1}",
 'js_info_mq_exists' => "Multi-quote already exists in message",
 'js_ok_mq_added_reply' => "Multi-quote added to quick reply",
+
+
+// ── JS: rating.js ─────────────────────────────────────────────────────────
+'js_rate_saved' => 'Rating saved!',
+'js_rate_error' => 'Could not save your rating. Reload the page and try again.',
 
 
 

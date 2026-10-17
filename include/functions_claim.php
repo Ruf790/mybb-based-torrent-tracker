@@ -39,6 +39,7 @@ const CLAIM_BONUS_MULTIPLIER  = 1.0;    // torrent.claim_bonus_multiplier
 const CLAIM_REMOVE_DEDUCT     = 600;    // per torrent removed for not reaching the norm
 const CLAIM_GIVE_UP_DEDUCT    = 400;    // giving up a claim by hand
 const CLAIM_MSG_LIST_LIMIT    = 20;     // torrents listed per group in the monthly PM
+const CLAIM_POSTER_COLUMN     = 't_image'; // torrents column with the poster (URL or path); '' = no posters
 
 final class ClaimException extends RuntimeException {}
 
@@ -78,6 +79,24 @@ function claim_get(int $uid, int $tid): ?array
     global $db;
     $r = $db->fetch_array($db->sql_query_prepared('SELECT * FROM claims WHERE uid = ? AND torrent_id = ?', [$uid, $tid]));
     return $r ?: null;
+}
+
+/** SELECT part for the poster; NULL if the column does not exist (so a wrong name never breaks the page). */
+function claim_poster_select(): string
+{
+    global $db;
+    static $sel = null;
+    if ($sel !== null) return $sel;
+    $sel = 'NULL AS poster';
+    $col = CLAIM_POSTER_COLUMN;
+    if ($col !== '' && preg_match('/^[A-Za-z0-9_]+$/', $col)) {
+        $r = $db->fetch_array($db->sql_query_prepared(
+            'SELECT 1 AS ok FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            ['torrents', $col]
+        ));
+        if ($r) $sel = 't.`' . $col . '` AS poster';
+    }
+    return $sel;
 }
 
 /** Torrent can be claimed at all (age); for the button on the torrent page. */
@@ -147,21 +166,24 @@ function claim_give_up(int $uid, int $tid): int
 function claim_list(array $by, int $limit, int $offset = 0): array
 {
     global $db;
-    [$col, $val] = isset($by['torrent_id']) ? ['c.torrent_id', (int)$by['torrent_id']] : ['c.uid', (int)$by['uid']];
+    [$col, $val, $subCol] = isset($by['torrent_id'])
+        ? ['c.torrent_id', (int)$by['torrent_id'], 'torrentid']
+        : ['c.uid',        (int)$by['uid'],        'userid'];
+    $posterSel = claim_poster_select();
     $q = $db->sql_query_prepared(
-        "SELECT c.*, t.name AS torrent_name, t.size, t.added AS torrent_added, t.seeders, t.leechers,
+        "SELECT c.*, t.name AS torrent_name, t.size, t.added AS torrent_added, t.seeders, t.leechers, {$posterSel},
                 u.username, u.usergroup, u.displaygroup,
                 s.seedtime, s.uploaded
          FROM claims c
          LEFT JOIN torrents t ON t.id = c.torrent_id
          LEFT JOIN users u ON u.id = c.uid
          LEFT JOIN (SELECT userid, torrentid, MAX(seedtime) AS seedtime, MAX(uploaded) AS uploaded
-                    FROM snatched GROUP BY userid, torrentid) s
+                    FROM snatched WHERE {$subCol} = ? GROUP BY userid, torrentid) s
                 ON s.userid = c.uid AND s.torrentid = c.torrent_id
          WHERE {$col} = ?
          ORDER BY c.added DESC, c.id DESC
          LIMIT " . max(1, $limit) . ' OFFSET ' . max(0, $offset),
-        [$val]
+        [$val, $val]
     );
     $rows = [];
     while ($r = $db->fetch_array($q)) $rows[] = claim_progress($r);

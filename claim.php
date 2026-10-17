@@ -86,7 +86,6 @@ $perPage = 50;
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $total   = $torrentId > 0 ? claim_count_torrent($torrentId) : claim_count_user($uid);
 $rows    = claim_list($torrentId > 0 ? ['torrent_id' => $torrentId] : ['uid' => $uid], $perPage, ($page - 1) * $perPage);
-$prevStart = claim_month_start(claim_month_start() - 1);
 
 $flash = null;
 if (!empty($_COOKIE['claim_flash'])) {
@@ -102,6 +101,15 @@ $userLink = static function (array $r) use ($e, $BASEURL): string {
     $url = function_exists('get_profile_link') ? (string)get_profile_link((int)$r['uid']) : $BASEURL . '/member.php?action=profile&uid=' . (int)$r['uid'];
     return '<a href="' . $e($url) . '">' . $name . '</a>';
 };
+// Poster: http(s) URL as is, relative path from the site root, anything else (javascript:, data: ...) is dropped
+$posterUrl = static function (?string $p) use ($BASEURL): string {
+    // t_image may hold several images (comma / space / newline separated): take the first one
+    $p = (string)(preg_split('/[\s,]+/', trim((string)$p), -1, PREG_SPLIT_NO_EMPTY)[0] ?? '');
+    if ($p === '') return '';
+    if (preg_match('#^https?://#i', $p)) return $p;
+    if (preg_match('#^[a-z][a-z0-9+.\-]*:|^//#i', $p)) return '';
+    return $BASEURL . '/' . ltrim($p, '/');
+};
 $hours = static fn(int $s): string => number_format($s / 3600, $s < 36000 ? 1 : 0);
 
 $reachedN = count(array_filter($rows, static fn($r) => $r['reached']));
@@ -113,6 +121,13 @@ stdhead($title);
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/claim.css?ver=1111">
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<style>
+  .cl-item { display: flex; align-items: center; gap: 12px; }
+  .cl-item__text { min-width: 0; }
+  .cl-poster { flex: 0 0 auto; width: 48px; height: 68px; border-radius: 6px; overflow: hidden; background: rgba(127,127,127,.15);
+               display: flex; align-items: center; justify-content: center; color: rgba(127,127,127,.7); }
+  .cl-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+</style>
 
 <div class="cl">
   <div class="cl-card cl-head">
@@ -121,10 +136,8 @@ stdhead($title);
       <h1><?= $e($title) ?></h1>
       <p><?php if ($torrentId > 0): ?>
           <a href="<?= $BASEURL ?>/<?= get_torrent_link($torrentId) ?>"><?= $e((string)$torrent['name']) ?></a> &middot; <?= mksize((float)$torrent['size']) ?>
-		  
-		  
         <?php elseif (!$isMine): ?>
-          <?= $userLink(['uid' => $uid] + $owner) ?>
+          <?= $userLink(array_merge(['usergroup' => 0, 'displaygroup' => 0, 'username' => ''], $owner, ['uid' => $uid])) ?>
         <?php else: ?>
           <?= $e($lang->claim['head_desc']) ?>
         <?php endif; ?></p>
@@ -132,7 +145,7 @@ stdhead($title);
   </div>
 
   <?php if (is_array($flash) && isset($flash['t'], $flash['m'])): ?>
-    <?php // Плашка — запасной вариант без SweetAlert2; при загруженном Swal скрипт ниже её убирает ?>
+    <?php // Fallback alert without SweetAlert2; the script below removes it when Swal is loaded ?>
     <div class="cl-alert cl-alert--<?= $flash['t'] === 'success' ? 'success' : 'danger' ?>" role="alert" id="clFlash"
          data-type="<?= $flash['t'] === 'success' ? 'success' : 'error' ?>" data-msg="<?= $e((string)$flash['m']) ?>">
       <i class="fa-solid <?= $flash['t'] === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation' ?>"></i><span><?= $e((string)$flash['m']) ?></span>
@@ -187,10 +200,18 @@ stdhead($title);
                 <?php elseif ($gone): ?>
                   <span class="cl-sub"><?= $e($tr($lang->claim['torrent_deleted'], (int)$r['torrent_id'])) ?></span>
                 <?php else: ?>
-                  
-				  <a class="cl-name" href="<?= $BASEURL ?>/<?= get_torrent_link((int)$r['torrent_id']) ?>"><?= $e((string)$r['torrent_name']) ?></a>
-				  
-                  <div class="cl-sub"><?= mksize((float)$r['size']) ?> &middot; <?= $e($tr($lang->claim['seeders_count'], (int)$r['seeders'])) ?> &middot; <a href="<?= $BASEURL ?>/claim.php?torrent_id=<?= (int)$r['torrent_id'] ?>"><?= $e($lang->claim['claimers_link']) ?></a></div>
+                  <?php $poster = $posterUrl($r['poster'] ?? null); $tLink = $BASEURL . '/' . get_torrent_link((int)$r['torrent_id']); ?>
+                  <div class="cl-item">
+                    <?php if ($poster !== ''): ?>
+                      <a class="cl-poster" href="<?= $e($tLink) ?>"><img src="<?= $e($poster) ?>" alt="" loading="lazy" referrerpolicy="no-referrer"></a>
+                    <?php else: ?>
+                      <span class="cl-poster"><i class="fa-solid fa-film"></i></span>
+                    <?php endif; ?>
+                    <div class="cl-item__text">
+                      <a class="cl-name" href="<?= $e($tLink) ?>"><?= $e((string)$r['torrent_name']) ?></a>
+                      <div class="cl-sub"><?= mksize((float)$r['size']) ?> &middot; <?= $e($tr($lang->claim['seeders_count'], (int)$r['seeders'])) ?> &middot; <a href="<?= $BASEURL ?>/claim.php?torrent_id=<?= (int)$r['torrent_id'] ?>"><?= $e($lang->claim['claimers_link']) ?></a></div>
+                    </div>
+                  </div>
                 <?php endif; ?></td>
             <td class="cl-nowrap"><?= date('d.m.Y', (int)$r['added']) ?></td>
             <td class="cl-prog">
@@ -253,8 +274,8 @@ document.addEventListener('submit', function (e) {
   e.preventDefault();
   var go = function () { f.dataset.ok = '1'; f.querySelector('button').disabled = true; f.submit(); };
   if (window.Swal) {
-    window.Swal.fire({ icon: 'warning', text: f.dataset.clConfirm, showCancelButton: true, confirmButtonText: <?= json_encode($lang->claim['yes'], JSON_UNESCAPED_UNICODE) ?>,
-      cancelButtonText: <?= json_encode($lang->claim['cancel'], JSON_UNESCAPED_UNICODE) ?>, confirmButtonColor: '#dc3545', reverseButtons: true, focusCancel: true })
+    window.Swal.fire({ icon: 'warning', text: f.dataset.clConfirm, showCancelButton: true, confirmButtonText: <?= json_encode($lang->claim['yes'] ?? 'Yes', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+      cancelButtonText: <?= json_encode($lang->claim['cancel'] ?? 'Cancel', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>, confirmButtonColor: '#dc3545', reverseButtons: true, focusCancel: true })
       .then(function (r) { if (r.isConfirmed) go(); });
   } else if (window.confirm(f.dataset.clConfirm)) { go(); }
 });

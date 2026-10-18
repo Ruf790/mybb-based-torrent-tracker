@@ -385,7 +385,7 @@ class datacache
 
         // Individual moderators
         $query = $db->sql_query_prepared("
-            SELECT m.*, u.username, u.usergroup, u.displaygroup
+            SELECT m.*, u.username, u.usergroup
             FROM moderators m
             LEFT JOIN users u ON m.id = u.id
             WHERE m.isgroup = '0'
@@ -538,7 +538,7 @@ class datacache
         $yesterday = my_datee('j-n', $now - 86400, '', 0);
 
         $query = $db->sql_query_prepared(
-            "SELECT id,username,usergroup,displaygroup,birthday,birthdayprivacy FROM users
+            "SELECT id,username,usergroup,birthday,birthdayprivacy FROM users
              WHERE birthday LIKE ? OR birthday LIKE ? OR birthday LIKE ?",
             ["{$today}-%", "{$yesterday}-%", "{$tomorrow}-%"]
         );

@@ -473,33 +473,33 @@ class Moderation
                 "SELECT gid FROM forumpermissions WHERE fid IN ({$forum_parentlist}) AND (canview=0 OR canviewthreads=0)"
             );
 
-            $groups = [];
-            $additional_groups = '';
-            while ($query && ($group = $db->fetch_array($query))) {
-                $groups[] = $group['gid'];
-                $additional_groups .= match ($db->type) {
-                    'pgsql', 'sqlite' => " OR ','||u.additionalgroups||',' LIKE ',{$group['gid']},'",
-                    default           => " OR CONCAT(',',u.additionalgroups,',') LIKE ',{$group['gid']},'",
-                };
-            }
+            
+			
+			$groups = [];
+while ($query && ($group = $db->fetch_array($query))) {
+    $groups[] = (int)$group['gid'];
+}
 
-            if (count($groups) > 0) {
-                [$tid_ph, $tid_params] = $this->inClause($tids);
-                [$grp_ph, $grp_params] = $this->inClause($groups);
-                $query = $db->sql_query_prepared("
-                    SELECT s.tid, u.id
-                    FROM threadsubscriptions s
-                    LEFT JOIN users u ON (u.id=s.uid)
-                    WHERE s.tid IN ({$tid_ph})
-                    AND (u.usergroup IN ({$grp_ph}){$additional_groups})
-                ", [...$tid_params, ...$grp_params]);
-                while ($query && ($subscription = $db->fetch_array($query))) {
-                    $db->sql_query_prepared(
-                        "DELETE FROM threadsubscriptions WHERE uid = ? AND tid = ?",
-                        [$subscription['uid'], $subscription['tid']]
-                    );
-                }
-            }
+if (count($groups) > 0) {
+    [$tid_ph, $tid_params] = $this->inClause($tids);
+    [$grp_ph, $grp_params] = $this->inClause($groups);
+    $query = $db->sql_query_prepared("
+        SELECT s.tid, s.uid
+        FROM threadsubscriptions s
+        INNER JOIN users u ON (u.id = s.uid)
+        WHERE s.tid IN ({$tid_ph})
+          AND u.usergroup IN ({$grp_ph})
+    ", [...$tid_params, ...$grp_params]);
+    while ($query && ($subscription = $db->fetch_array($query))) {
+        $db->sql_query_prepared(
+            "DELETE FROM threadsubscriptions WHERE uid = ? AND tid = ?",
+            [(int)$subscription['uid'], (int)$subscription['tid']]
+        );
+    }
+}
+			
+			
+			
         } else {
             // Delete all subscriptions of these threads
             [$ph, $params] = $this->inClause($tids);

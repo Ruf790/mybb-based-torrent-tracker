@@ -101,8 +101,7 @@ class Session
             WHERE u.id = ?
             LIMIT 1", [$uid]);
 
-        //$mybb->user = $db->fetch_array($query->result);
-		$mybb->user = $db->fetch_array($query->result) ?: [];
+        $mybb->user = $db->fetch_array($query->result) ?: [];
 
         // Check the password if we're not using a session
         if (!$mybb->user || empty($loginkey) || $loginkey !== ($mybb->user['loginkey'] ?? '')) {
@@ -212,7 +211,7 @@ class Session
 
         // Check user ban status
         $usergroups = $cache->read('usergroups');
-        $userGroupId = (int)($mybb->user['usergroup'] ?? 0); // ✅ ИСПРАВЛЕНО: приводим к int
+        $userGroupId = (int)($mybb->user['usergroup'] ?? 0);
 
         if (!empty($usergroups[$userGroupId]) && $usergroups[$userGroupId]['isbannedgroup'] == 1) {
             $ban_query = $db->sql_query_prepared("SELECT * FROM banned WHERE uid = ? LIMIT 1", [$mybb->user['id']]);
@@ -223,55 +222,33 @@ class Session
                 $mybb->user['bandate'] = $ban['dateline'];
                 $mybb->user['banlifted'] = $ban['lifted'];
                 $mybb->user['banoldgroup'] = $ban['oldgroup'];
-                $mybb->user['banolddisplaygroup'] = $ban['olddisplaygroup'];
-                $mybb->user['banoldadditionalgroups'] = $ban['oldadditionalgroups'];
                 $mybb->user['banreason'] = $ban['reason'];
             } else {
                 $mybb->user['banned'] = 0;
             }
         }
 
-        // Handle ban expiration
-        if (!empty($mybb->user['bandate']) && 
-            isset($mybb->user['banlifted']) && 
-            !empty($mybb->user['banlifted']) && 
+        // Handle ban expiration: срок бана истёк - возвращаем прежнюю группу
+        if (!empty($mybb->user['bandate']) &&
+            !empty($mybb->user['banlifted']) &&
             $mybb->user['banlifted'] < $time) {
-            
+
             $db->sql_query_prepared(
-                "UPDATE users SET usergroup = ?, additionalgroups = ?, displaygroup = ? WHERE id = ?",
+                "UPDATE users SET usergroup = ? WHERE id = ?",
                 [
                     (int)($mybb->user['banoldgroup'] ?? 0),
-                    $mybb->user['banoldadditionalgroups'] ?? '',
-                    (int)($mybb->user['banolddisplaygroup'] ?? 0),
                     $mybb->user['id'],
                 ]
             );
             $db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$mybb->user['id']]);
-            
+
             $mybb->user['usergroup'] = $mybb->user['banoldgroup'];
-            $mybb->user['displaygroup'] = $mybb->user['banolddisplaygroup'];
-            $mybb->user['additionalgroups'] = $mybb->user['banoldadditionalgroups'];
-            $mybbgroups = $mybb->user['usergroup'];
-        } elseif (!empty($mybb->user['bandate']) && 
-                 (empty($mybb->user['banlifted']) || 
-                  (!empty($mybb->user['banlifted']) && $mybb->user['banlifted'] > $time))) {
-            $mybbgroups = $mybb->user['usergroup'];
-        } else {
-            $mybbgroups = $mybb->user['usergroup'];
-            if (!empty($mybb->user['additionalgroups'])) {
-                $mybbgroups .= ','.$mybb->user['additionalgroups'];
-            }
         }
+
+        // Права и оформление (стиль ника, звание, иконка) - по основной группе
+        $mybbgroups = (string)max(1, (int)($mybb->user['usergroup'] ?? 1));
 
         $mybb->usergroup = usergroup_permissions($mybbgroups);
-        if (empty($mybb->user['displaygroup'])) {
-            $mybb->user['displaygroup'] = $mybb->user['usergroup'];
-        }
-
-        $mydisplaygroup = usergroup_displaygroup((int)$mybb->user['displaygroup']); // ✅ ИСПРАВЛЕНО: приводим к int
-        if (is_array($mydisplaygroup)) {
-            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-        }
 
         if (empty($mybb->user['usertitle'])) {
             $mybb->user['usertitle'] = $mybb->usergroup['usertitle'] ?? '';
@@ -281,9 +258,7 @@ class Session
 
         // Validate user access
         $script_name = basename($_SERVER['PHP_SELF']);
-        // Используем уже готовый $mybb->usergroup (учитывает additionalgroups
-        // через usergroup_permissions() выше), а не прямой лукап по основной
-        // группе - тот не учитывал дополнительные группы юзера.
+        // Права основной группы юзера (уже собраны usergroup_permissions() выше)
         $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
 
         if (($mybb->usergroup['isbannedgroup'] ?? 0) == '1' ||
@@ -317,10 +292,8 @@ class Session
         $time = TIMENOW;
         $mybb->user = [
             'usergroup' => 1,
-            'additionalgroups' => '',
             'username' => '',
             'id' => 0,
-            'displaygroup' => 1,
             'invisible' => 0,
             'moderateposts' => 0,
             'showquickreply' => 1,
@@ -337,27 +310,20 @@ class Session
             $mybb->user['lastactive'] = (int)($mybb->cookies['mybb']['lastactive'] ?? $time);
             
             if ($time - $mybb->user['lastactive'] > 900) {
-                // Исправлено: преобразуем int в string для my_setcookie
                 my_setcookie("mybb[lastvisit]", (string)$mybb->user['lastactive']);
                 $mybb->user['lastvisit'] = $mybb->user['lastactive'];
             } else {
                 $mybb->user['lastvisit'] = $mybb->user['lastactive'];
             }
         } else {
-            // Исправлено: преобразуем int в string для my_setcookie
             my_setcookie("mybb[lastvisit]", (string)$time);
             $mybb->user['lastvisit'] = $time;
         }
 
-        // Исправлено: преобразуем int в string для my_setcookie
         my_setcookie("mybb[lastactive]", (string)$time);
 
         // Gather permissions for guest
         $mybb->usergroup = usergroup_permissions($mybbgroups);
-        $mydisplaygroup = usergroup_displaygroup(1); // ✅ ИСПРАВЛЕНО: передаем число
-        if (is_array($mydisplaygroup)) {
-            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-        }
 
         // Update online data
         if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
@@ -385,25 +351,17 @@ class Session
         $spider = $query ? $db->fetch_array($query) : null;
 
         $this->is_spider = true;
-        //$userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
-		
 		$userGroup = !empty($spider['usergroup']) ? (int)$spider['usergroup'] : 1;
         
         $mybb->user = [
             'usergroup' => $userGroup,
             'username' => '',
             'id' => 0,
-            'displaygroup' => $userGroup,
-            'additionalgroups' => '',
             'invisible' => 0
         ];
 
         // Gather permissions for spider
         $mybb->usergroup = usergroup_permissions($userGroup);
-        $mydisplaygroup = usergroup_displaygroup($userGroup); // ✅ Теперь передаем число
-        if (is_array($mydisplaygroup)) {
-            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-        }
 
         // Update spider last visit
         if (($spider['lastvisit'] ?? 0) < TIMENOW - 120) {

@@ -366,7 +366,7 @@ function build_wol_row(array $user): string
     $uid = (int)($user['uid'] ?? 0);  // ← ЯВНОЕ ПРИВЕДЕНИЕ К int
 
     $username = $uid > 0
-        ? format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup'])
+        ? format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1))
         : ($user['bot'] ?? 'Guest');
 
     $profile_link = $uid > 0 

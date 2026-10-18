@@ -195,6 +195,13 @@ class trackerlanguage
 	public $torrents_promo;
 	
 	
+	public $serverinfo;
+	
+	public $videoformats;
+	
+	public $category;
+	
+	
 	
 	
 

@@ -172,7 +172,7 @@ function claim_list(array $by, int $limit, int $offset = 0): array
     $posterSel = claim_poster_select();
     $q = $db->sql_query_prepared(
         "SELECT c.*, t.name AS torrent_name, t.size, t.added AS torrent_added, t.seeders, t.leechers, {$posterSel},
-                u.username, u.usergroup, u.displaygroup,
+                u.username, u.usergroup,
                 s.seedtime, s.uploaded
          FROM claims c
          LEFT JOIN torrents t ON t.id = c.torrent_id

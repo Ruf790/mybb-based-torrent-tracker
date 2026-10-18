@@ -195,6 +195,9 @@ function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, i
 
     $fid = (int)($fid ?? 0);
     $uid = (int)($uid ?? 0);
+    // gid - строка с ID группы ('8'); fetch_forum_permissions() ждёт string,
+    // и под strict_types переданный int дал бы TypeError
+    $gid = (string)($gid ?? '');
 
     if (!is_array($cached_forum_permissions_permissions)) {
         $cached_forum_permissions_permissions = [];
@@ -226,32 +229,16 @@ function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, i
 
             $user = get_user($uid);
 
-           
-
-            $gid = trim(
-                ($user['usergroup'] ?? '1') .
-                ',' .
-                ($user['additionalgroups'] ?? '')
-            );
+            $gid = (string)max(1, (int)($user['usergroup'] ?? 1));
 
             $groupperms = usergroup_permissions($gid);
 
         } else {
 
             // CASE 2: current user
-            $usergroup = $CURUSER['usergroup'] ?? '1';
+            $gid = (string)max(1, (int)($CURUSER['usergroup'] ?? 1));
 
-            if ($usergroup === '' || $usergroup === null) {
-                $usergroup = '1';
-            }
-
-            $gid = (string)$usergroup;
-
-            if (!empty($CURUSER['additionalgroups'])) {
-                $gid .= ',' . $CURUSER['additionalgroups'];
-            }
-
-            $groupperms = (is_array($mybb->usergroup))
+            $groupperms = is_array($mybb->usergroup)
                 ? $mybb->usergroup
                 : usergroup_permissions($gid);
         }

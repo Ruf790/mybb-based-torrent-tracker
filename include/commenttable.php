@@ -171,7 +171,7 @@ if (!empty($att_bulk[$pid])) {
         // User data
         $post['username'] = $row['username'];
         $post['profilelink_plain'] = get_profile_link($row['user']);
-        $post['username_formatted'] = format_name($post['username'], $row['usergroup'], $row['displaygroup']);
+        $post['username_formatted'] = format_name((string)$post['username'], (int)($row['usergroup'] ?? 1));
         $post['profilelink'] = build_profile_link($post['username_formatted'], $row['user']);
         $post['postdate'] = my_datee('relative', $row['dateline']);
 

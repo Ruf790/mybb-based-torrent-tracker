@@ -341,13 +341,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
     $post['subject_title'] = $post['subject'];
 
     /* ── Usergroup ────────────────────────────────────────────────── */
-    $usergroup = usergroup_permissions($post['usergroup'] ?: 1);
-
-    if (empty($post['displaygroup'])) $post['displaygroup'] = $post['usergroup'] ?: 1;
-    if (empty($post['usergroup']))    $post['usergroup']    = 1;
-
-    $displaygroup = usergroup_displaygroup($post['displaygroup']);
-    if (is_array($displaygroup)) $usergroup = array_merge($usergroup, $displaygroup);
+    // Права и оформление автора (звание, стиль ника) - по его основной группе
+    $post['usergroup'] = (int)($post['usergroup'] ?? 0) ?: 1;
+    $usergroup         = usergroup_permissions($post['usergroup']);
 
 
 
@@ -355,11 +351,11 @@ if (empty($post['pid'])) $post['pid'] = 0;
     if ($post['userusername']) {
         $post['username']          = $post['userusername'];
         $post['profilelink_plain'] = get_profile_link((int)$post['id']);
-        $post['username_formatted'] = format_name($post['username'], $post['usergroup'], $post['displaygroup']);
+        $post['username_formatted'] = format_name($post['username'], $post['usergroup']);
         $post['profilelink']       = build_profile_link($post['username_formatted'], (int)$post['id']);
 
         if (trim($post['usertitle']) != "") $hascustomtitle = 1;
-        if ($usergroups['usertitle'] != "" && !$hascustomtitle) $post['usertitle'] = $usergroup['usertitle'];
+        if (($usergroup['usertitle'] ?? '') != "" && !$hascustomtitle) $post['usertitle'] = $usergroup['usertitle'];
         $post['usertitle'] = htmlspecialchars_uni($post['usertitle']);
 
         $postnum           = $post['postnum'];

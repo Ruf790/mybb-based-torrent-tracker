@@ -664,7 +664,7 @@ function exam_simulate_coverage(array $filters, int $examId = 0, int $sample = 2
     $out['sample'] = [];
     if ($out['will_get'] > 0 && $sample > 0) {
         $q = $db->sql_query_prepared(
-            "SELECT u.id, u.username, u.usergroup, u.displaygroup FROM users u
+            "SELECT u.id, u.username, u.usergroup FROM users u
              WHERE {$w} AND {$notStaff} AND {$active} AND NOT {$took} AND NOT {$busy}
              ORDER BY u.id LIMIT " . (int)$sample,
             $params
@@ -1034,7 +1034,7 @@ function exam_task_leaderboard(int $from, int $to): array
     global $db;
 
     $q = $db->sql_query_prepared(
-        "SELECT eu.uid, u.username, u.usergroup, u.displaygroup,
+        "SELECT eu.uid, u.username, u.usergroup,
                 COUNT(*)                    AS n,
                 SUM(e.success_reward_bonus) AS bp,
                 MAX(eu.updated_at)          AS last_at
@@ -1043,7 +1043,7 @@ function exam_task_leaderboard(int $from, int $to): array
          JOIN users u ON u.id = eu.uid
          WHERE e.type = ? AND eu.status = ? AND eu.result = ?
            AND eu.updated_at >= ? AND eu.updated_at < ?
-         GROUP BY eu.uid, u.username, u.usergroup, u.displaygroup
+         GROUP BY eu.uid, u.username, u.usergroup
          ORDER BY n DESC, bp DESC, last_at ASC",
         [EXAM_TYPE_TASK, EXAM_USER_STATUS_FINISHED, EXAM_RESULT_PASSED, exam_dt($from), exam_dt($to)]
     );
@@ -1056,7 +1056,6 @@ function exam_task_leaderboard(int $from, int $to): array
             'uid'          => (int)$r['uid'],
             'username'     => (string)$r['username'],
             'usergroup'    => (int)$r['usergroup'],
-            'displaygroup' => (int)$r['displaygroup'],
             'n'            => (int)$r['n'],
             'bp'           => (int)$r['bp'],
         ];

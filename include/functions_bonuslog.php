@@ -148,7 +148,7 @@ function bonus_log_fetch(?int $uid, ?string $type, int $limit, int $offset = 0, 
     global $db;
     [$w, $p] = bonus_log_where_sql($uid, $type, $since);
     $q = $db->sql_query_prepared(
-        "SELECT l.*, u.username, u.usergroup, u.displaygroup, a.username AS actor_name
+        "SELECT l.*, u.username, u.usergroup, a.username AS actor_name
          FROM bonus_logs l
          LEFT JOIN users u ON u.id = l.uid
          LEFT JOIN users a ON a.id = l.actor_id

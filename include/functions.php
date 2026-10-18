@@ -1250,7 +1250,7 @@ function user_permissions(?int $uid = null): array
         }
 
         // Collect group permissions.
-        $gid = $user_cache[$uid]['usergroup'].",".$user_cache[$uid]['additionalgroups'];
+        $gid = (string)max(1, (int)($user_cache[$uid]['usergroup'] ?? 1));
         $groupperms = usergroup_permissions($gid);
 
         // Store group permissions in user cache.
@@ -2718,47 +2718,40 @@ function usergroup_displaygroup(int $gid): array
 
 
 
-function format_name(string $username, int|string $usergroup, int|string|null $displaygroup = 0): string
+function format_name(string $username, int|string $usergroup): string
 {
     global $groupscache, $cache, $plugins;
 
     static $formattednames = [];
 
-    if(!isset($formattednames[$username])) {
-        if(!is_array($groupscache)) {
+    $usergroup = (int)$usergroup;
+    $key       = $usergroup . '|' . $username;
+
+    if (!isset($formattednames[$key])) {
+        if (!is_array($groupscache)) {
             $groupscache = $cache->read("usergroups") ?? [];
-        }
-
-        // Convert to integers, handle null
-        $usergroup = (int)$usergroup;
-        $displaygroup = $displaygroup === null ? 0 : (int)$displaygroup;
-
-        if($displaygroup != 0) {
-            $usergroup = $displaygroup;
         }
 
         $format = "{username}";
 
-        if(isset($groupscache[$usergroup])) {
-            $ugroup = $groupscache[$usergroup];
+        if (isset($groupscache[$usergroup])) {
+            $namestyle = (string)($groupscache[$usergroup]['namestyle'] ?? '');
 
-            if(str_contains($ugroup['namestyle'], "{username}")) {
-                $format = $ugroup['namestyle'];
+            if (str_contains($namestyle, "{username}")) {
+                $format = $namestyle;
             }
         }
 
         $format = stripslashes($format);
 
-        $parameters = compact('username', 'usergroup', 'displaygroup', 'format');
-
+        $parameters = compact('username', 'usergroup', 'format');
         $parameters = $plugins->run_hooks('format_name', $parameters);
+        $format     = $parameters['format'];
 
-        $format = $parameters['format'];
-
-        $formattednames[$username] = str_replace("{username}", $username, $format);
+        $formattednames[$key] = str_replace("{username}", $username, $format);
     }
 
-    return $formattednames[$username];
+    return $formattednames[$key];
 }
 
 
@@ -2781,29 +2774,35 @@ function maxsysop(): void
                 $uid = (int)$CURUSER['id'];
                 $is_protected = is_super_admin($uid);
 
-                if (!$is_protected) {
-                   
-                    $db->sql_query_prepared(
-                        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                        [
-                            $uid,
-                            9,
-                            (int)$mybb->user['usergroup'],
-                            (string)($mybb->user['additionalgroups'] ?? ''),
-                            (int)($mybb->user['displaygroup'] ?? 0),
-                            1,
-                            TIMENOW,
-                            '---',
-                            0,
-                            'Auto-ban: fake staff detected (not in STAFFTEAM file)',
-                        ]
-                    );
+               
+			   
+			   
+			   
+			   if (!$is_protected) {
+    $db->sql_query_prepared(
+        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)",
+        [
+            $uid,
+            9,
+            (int)$mybb->user['usergroup'],
+            1,
+            TIMENOW,
+            '---',
+            0,
+            'Auto-ban: fake staff detected (not in STAFFTEAM file)',
+        ]
+    );
 
-                    $db->sql_query_prepared(
-                        "UPDATE users SET usergroup = 9, displaygroup = 0, additionalgroups = '' WHERE id = ?",
-                        [$uid]
-                    );
-                }
+    $db->sql_query_prepared(
+        "UPDATE users SET usergroup = 9 WHERE id = ?",
+        [$uid]
+    );
+}
+			   
+			   
+			   
+			   
+			   
 
                 $action_text = $is_protected
                     ? 'Action=SUPER ADMIN - ban skipped, manual review required!'
@@ -2842,7 +2841,18 @@ function maxsysop(): void
                     }
                 }
 
-                write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $uid . ' - UserIP : ' . $ip, $is_protected ? 'CRITICAL: Super Admin Not In STAFFTEAM!' : 'Warning: Fake Account Detected - Banned!');
+                
+				write_log(
+    'Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $uid . ' - UserIP : ' . $ip
+    . ($is_protected ? ' - CRITICAL: Super Admin Not In STAFFTEAM!' : ' - Banned'),
+    'security',
+    2
+);
+				
+				
+				
+				
+				
 
                 stderr($lang->global['fakeaccount'], $SITENAME . ' - Access Denied', 403, '403');
             }

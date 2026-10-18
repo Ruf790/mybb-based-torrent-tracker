@@ -121,9 +121,14 @@ if ($leechwarn_ids) {
     );
 }
 
+
+
+
+
 // ======= Ban LeechWarn expired =======
 $query = $db->sql_query_prepared(
-    "SELECT DISTINCT id FROM users WHERE usergroup=? AND enabled='yes' AND leechwarn='yes' AND leechwarnuntil < ?",
+    "SELECT id, usergroup FROM users
+     WHERE usergroup=? AND enabled='yes' AND leechwarn='yes' AND leechwarnuntil < ?",
     [(int)UC_USER, TIMENOW]
 );
 $CQueryCount++;
@@ -132,6 +137,30 @@ $leech_ban_ids = [];
 $reason = 'Reason: Banned by System because of Leech-Warning expired!';
 while ($row = $db->fetch_array($query)) {
     $leech_ban_ids[] = (int)$row['id'];
+
+    // Запись в таблицу banned (чтобы при разбане вернулась прежняя группа)
+    $db->sql_query_prepared(
+        "INSERT INTO banned (uid, gid, oldgroup, admin, dateline, bantime, lifted, reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            gid      = VALUES(gid),
+            oldgroup = VALUES(oldgroup),
+            dateline = VALUES(dateline),
+            bantime  = VALUES(bantime),
+            lifted   = VALUES(lifted),
+            reason   = VALUES(reason)",
+        [
+            (int)$row['id'],
+            (int)UC_BANNED,
+            (int)$row['usergroup'],
+            0,
+            TIMENOW,
+            '---',
+            0,
+            $reason,
+        ]
+    );
+    $CQueryCount++;
 }
 
 if ($leech_ban_ids) {
@@ -153,10 +182,9 @@ if ($leech_ban_ids) {
 
 
 
-
 // ======= Ban by max warn =======
 $query = $db->sql_query_prepared(
-    "SELECT DISTINCT id, usergroup, additionalgroups, displaygroup FROM users WHERE enabled='yes' AND timeswarned >= ?",
+    "SELECT id, usergroup FROM users WHERE enabled='yes' AND timeswarned >= ?",
     [(int)$ban_user_limit]
 );
 $CQueryCount++;
@@ -168,8 +196,8 @@ while ($row = $db->fetch_array($query)) {
 
     // Запись в таблицу banned
     $db->sql_query_prepared(
-        "INSERT INTO banned (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO banned (uid, gid, oldgroup, admin, dateline, bantime, lifted, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             dateline = ?,
             reason   = ?",
@@ -177,11 +205,9 @@ while ($row = $db->fetch_array($query)) {
             (int)$row['id'],
             (int)UC_BANNED,
             (int)$row['usergroup'],
-            $row['additionalgroups'] ?? '',
-            (int)$row['displaygroup'],
             0,
             TIMENOW,
-            'permanent',
+            '---',
             0,
             $reason,
             TIMENOW,
@@ -192,7 +218,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($ban_limit_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - $reason";
+    $modcomment   = gmdate('Y-m-d') . " - $reason\n";
     $placeholders = build_in_placeholders($ban_limit_ids);
     $db->sql_query_prepared(
         "UPDATE users

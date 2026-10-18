@@ -20,12 +20,25 @@ $CQueryCount++;
 
 
 // ======= Peer cleanup =======
-$deadtime = deadtime();
+$deadtime = TIMENOW - (int)floor(max(60, (int)$announce_interval) * 1.3);
+
 $db->sql_query_prepared("DELETE FROM peers WHERE last_action < ?", [$deadtime]);
+$CQueryCount++;
+
+// Peers disabled users
+$db->sql_query_prepared(
+    "DELETE p FROM peers p
+     INNER JOIN users u ON u.id = p.userid
+     WHERE u.enabled = 'no'"
+);
 $CQueryCount++;
 
 $db->sql_query_prepared("UPDATE snatched SET seeder='no' WHERE seeder='yes' AND last_action < ?", [$deadtime]);
 $CQueryCount++;
+
+
+
+
 
 // ======= Hide stale torrents =======
 $cut = TIMENOW - 2 * DAY_IN_SECONDS; // 2 days

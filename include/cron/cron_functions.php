@@ -79,11 +79,11 @@ function logcronaction(string $filename, int $queryCount, float $executeTime): v
 /**
  * Calculate deadtime for peers (based on announce interval)
  */
-function deadtime(): int
-{
-    $announceInterval = 900; // 15 minutes default
-    return TIMENOW - (int)floor($announceInterval * 1.3);
-}
+//function deadtime(): int
+//{
+    //$announceInterval = 900; // 15 minutes default
+    //return TIMENOW - (int)floor($announceInterval * 1.3);
+//}
 
 /**
  * Send emails from mail queue. Returns how many were actually sent.

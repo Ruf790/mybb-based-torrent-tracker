@@ -11,7 +11,7 @@ if (!defined('IN_CRON')) {
 $startTime = microtime(true);
 
 $wrapped = $db->sql_query_prepared(
-    'SELECT uid, oldgroup, oldadditionalgroups, olddisplaygroup FROM banned WHERE lifted != 0 AND lifted < ?',
+    'SELECT uid, oldgroup FROM banned WHERE lifted != 0 AND lifted < ?',
     [(int)TIMENOW]
 );
 ++$CQueryCount;
@@ -38,15 +38,15 @@ if ($bannedUsers) {
 
         $userIds[] = $uid;
 
+        // Прежняя группа; 0 (битая запись) - в Registered, иначе юзер остался бы без группы
+        $oldgroup = (int)$ban['oldgroup'];
+        if ($oldgroup <= 0) {
+            $oldgroup = 2;
+        }
+
         $db->sql_query_prepared(
-            "UPDATE users SET usergroup=?, additionalgroups=?, displaygroup=?, notifs=? WHERE id=?",
-            [
-                (int)$ban['oldgroup'],
-                (string)$ban['oldadditionalgroups'],
-                (int)$ban['olddisplaygroup'],
-                '',
-                $uid,
-            ]
+            "UPDATE users SET usergroup=?, notifs=? WHERE id=?",
+            [$oldgroup, '', $uid]
         );
         ++$CQueryCount;
     }

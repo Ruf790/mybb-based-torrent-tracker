@@ -219,14 +219,14 @@ class PostDataHandler extends DataHandler
 
         // Раньше здесь был is_member($postmergeuignore, (int)$post['uid']) -
         // инлайним ту же логику напрямую, без вызова отдельной функции.
-        $merge_ignore_groups = array_map('intval', explode(',', $postmergeuignore));
-        $post_author         = get_user((int)$post['uid']);
-        $author_memberships  = array_map('intval', explode(',', (string)($post_author['additionalgroups'] ?? '')));
-        $author_memberships[] = (int)($post_author['usergroup'] ?? 0);
+        // Группы, чьи посты не склеиваются; автор - только по основной группе
+$merge_ignore_groups = array_filter(array_map('intval', explode(',', (string)$postmergeuignore)));
+$post_author         = get_user((int)$post['uid']);
+$author_group        = (int)($post_author['usergroup'] ?? 1);
 
-        if (array_intersect($merge_ignore_groups, $author_memberships)) {
-            return true;
-        }
+if (in_array($author_group, $merge_ignore_groups, true)) {
+    return true;
+}
 
         $query  = $db->sql_query_prepared(
             "SELECT lastpost, fid FROM threads WHERE lastposteruid = ? AND tid = ? LIMIT 1",
@@ -238,9 +238,9 @@ class PostDataHandler extends DataHandler
             return true;
         }
 
-        if ($postmergefignore === -1) {
-            return true;
-        }
+        if ((string)$postmergefignore === '-1') {
+    return true;
+}
 
         if ($postmergefignore !== '') {
             $fids = array_map('intval', explode(',', (string)$postmergefignore));

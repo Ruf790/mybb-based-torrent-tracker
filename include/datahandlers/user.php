@@ -553,7 +553,7 @@ public function validate_user(): bool
 
         $user = &$this->data;
 
-        foreach (['postnum', 'threadnum', 'avatar', 'avatartype', 'additionalgroups', 'displaygroup', 'bday', 'signature', 'dateformat', 'timeformat', 'regip', 'lastip'] as $k) {
+        foreach (['postnum', 'threadnum', 'avatar', 'avatartype', 'bday', 'signature', 'dateformat', 'timeformat', 'regip', 'lastip'] as $k) {
             $user[$k] ??= '';
         }
         foreach (['subscriptionmethod', 'dstcorrection'] as $k) {
@@ -597,8 +597,7 @@ public function validate_user(): bool
             'avatar'             => $user['avatar'],
             'avatartype'         => $user['avatartype'],
             'usergroup'          => (string)$usergroup,
-            'additionalgroups'   => $user['additionalgroups'],
-            'displaygroup'       => (int)$user['displaygroup'],
+           
             'usertitle'          => htmlspecialchars_uni($user['usertitle']),
             'added'              => (int)$user['regdate'],
             'lastactive'         => (int)$user['lastactive'],
@@ -685,9 +684,9 @@ public function validate_user(): bool
         $user['uid'] = (int)$user['uid'];
         $this->uid   = $user['uid'];
 
-        $string_fields = ['username', 'email', 'additionalgroups', 'usertitle', 'signature', 'bday' => 'birthday',
+        $string_fields = ['username', 'email', 'usertitle', 'signature', 'bday' => 'birthday',
                           'birthdayprivacy', 'timezone', 'dateformat', 'timeformat'];
-        $int_fields    = ['postnum', 'threadnum', 'displaygroup', 'regdate', 'lastactive', 'lastvisit'];
+        $int_fields    = ['postnum', 'threadnum', 'regdate', 'lastactive', 'lastvisit'];
 
         $map = [
             'username'          => fn($v) => ['username',         $v],
@@ -697,8 +696,7 @@ public function validate_user(): bool
             'postnum'           => fn($v) => ['postnum',          (int)$v],
             'threadnum'         => fn($v) => ['threadnum',        (int)$v],
             'usergroup'         => fn($v) => ['usergroup',        (int)$v],
-            'additionalgroups'  => fn($v) => ['additionalgroups', $v],
-            'displaygroup'      => fn($v) => ['displaygroup',     (int)$v],
+         
             'usertitle'         => fn($v) => ['usertitle',        $v],
             'regdate'           => fn($v) => ['regdate',          (int)$v],
             'lastactive'        => fn($v) => ['lastactive',       (int)$v],
@@ -961,8 +959,8 @@ public function validate_user(): bool
         }
 
         $update = [
-            'birthday' => '', 'usertitle' => '', 'additionalgroups' => '',
-            'displaygroup' => 0, 'signature' => '', 'avatar' => '',
+            'birthday' => '', 'usertitle' => '',
+            'signature' => '', 'avatar' => '',
             'avatardimensions' => '', 'avatartype' => '',
         ];
 

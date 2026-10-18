@@ -1728,14 +1728,12 @@ CREATE TABLE IF NOT EXISTS `banned` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   `gid` int unsigned NOT NULL DEFAULT '0',
   `oldgroup` int unsigned NOT NULL DEFAULT '0',
-  `oldadditionalgroups` text NOT NULL,
-  `olddisplaygroup` int unsigned NOT NULL DEFAULT '0',
   `admin` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
   `bantime` varchar(50) NOT NULL DEFAULT '',
   `lifted` int unsigned NOT NULL DEFAULT '0',
   `reason` varchar(255) NOT NULL DEFAULT '',
-  KEY `uid` (`uid`),
+  UNIQUE KEY `uid` (`uid`),
   KEY `dateline` (`dateline`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -2751,9 +2749,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   `lastinvite` int unsigned NOT NULL DEFAULT '0',
   `announce_read` enum('yes','no') NOT NULL DEFAULT 'yes',
   `usergroup` smallint unsigned NOT NULL DEFAULT '0',
-  `additionalgroups` varchar(200) NOT NULL DEFAULT '',
-  `displaygroup` smallint unsigned NOT NULL DEFAULT '0',
-  `oldusergroup` int unsigned NOT NULL DEFAULT '2',
   `avatar` varchar(200) NOT NULL DEFAULT '',
   `avatardimensions` varchar(10) NOT NULL DEFAULT '',
   `avatartype` varchar(10) NOT NULL DEFAULT '0',

@@ -9,7 +9,7 @@ if (!defined('IN_CRON')) {
 require_once INC_PATH . '/functions_pm.php';
 
 $wrapped = $db->sql_query_prepared(
-    "SELECT v.userid as id, v.old_gid, u.modcomment
+    "SELECT v.userid AS id, v.old_gid, u.modcomment, u.language
      FROM auto_vip v
      LEFT JOIN users u ON (v.userid = u.id)
      LEFT JOIN usergroups g ON (u.usergroup = g.gid)
@@ -25,39 +25,38 @@ $CQueryCount++;
 
 $vip_expired_ids = [];
 
-if ($wrapped && $wrapped->result) {
-    while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
-        $vip_expired_ids[] = $row['id'];
+while ($wrapped && ($row = $db->fetch_array($wrapped))) {
+    $uid = (int)$row['id'];
+    $vip_expired_ids[] = $uid;
 
-        $newGid = $row['old_gid'] ? (int)$row['old_gid'] : UC_POWER_USER;
+    $newGid = $row['old_gid'] ? (int)$row['old_gid'] : UC_POWER_USER;
 
-        $db->sql_query_prepared(
-            "UPDATE users SET usergroup = ?, modcomment = CONCAT(?, ?) WHERE id = ?",
-            [
-                $newGid,
-                gmdate('Y-m-d') . " - VIP status removed by -AutoSystem.
-",
-                $row['modcomment'] ?? '',
-                (int)$row['id'],
-            ]
-        );
+    $db->sql_query_prepared(
+        "UPDATE users SET usergroup = ?, modcomment = CONCAT(?, ?) WHERE id = ?",
+        [
+            $newGid,
+            date('Y-m-d H:i') . " - VIP status removed by AutoSystem.\n",
+            (string)($row['modcomment'] ?? ''),
+            $uid,
+        ]
+    );
+    $CQueryCount++;
+
+    $db->sql_query_prepared("DELETE FROM auto_vip WHERE userid = ?", [$uid]);
+    $CQueryCount++;
+
+    // ЛС на языке получателя (тексты из cron.lang.php)
+    $result = send_pm([
+        'subject'       => ['vip_subject'],
+        'message'       => ['vip_message'],
+        'touid'         => $uid,
+        'language'      => $row['language'] ?? null,
+        'language_file' => 'cron',
+        'sender'        => ['uid' => -1],
+    ], -1, true);
+    if ($result) {
         $CQueryCount++;
-
-        $db->sql_query_prepared("DELETE FROM auto_vip WHERE userid = ?", [(int)$row['id']]);
-        $CQueryCount++;
-
-        $result = send_pm([
-            'subject' => $lang->cron['vip_subject'] ?? 'VIP status expired',
-            'message' => $lang->cron['vip_message'] ?? 'Your VIP status has expired.',
-            'touid'   => (int)$row['id'],
-            'sender'  => ['uid' => -1],
-        ], -1, true);
-        if ($result) $CQueryCount++;
     }
-    mysqli_free_result($wrapped->result);
-}
-if ($wrapped && $wrapped->stmt) {
-    mysqli_stmt_close($wrapped->stmt);
 }
 
 if ($vip_expired_ids) {

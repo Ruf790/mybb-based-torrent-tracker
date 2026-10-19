@@ -70,7 +70,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($leechwarn_remove_ids) {
-    $modcomment  = gmdate('Y-m-d') . " - Leech-Warning removed by System.\n";
+    $modcomment  = date('Y-m-d H:i') . " - Leech-Warning removed by System.\n";
     $placeholders = build_in_placeholders($leechwarn_remove_ids);
     $db->sql_query_prepared(
         "UPDATE users
@@ -98,7 +98,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($leechwarn_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - Leech-Warned by System - Low Ratio.\n";
+    $modcomment   = date('Y-m-d H:i') . " - Leech-Warned by System - Low Ratio.\n";
     $placeholders = build_in_placeholders($leechwarn_ids);
     $db->sql_query_prepared(
         "UPDATE users
@@ -164,7 +164,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($leech_ban_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - $reason\n";
+    $modcomment   = date('Y-m-d H:i') . " - $reason\n";
     $placeholders = build_in_placeholders($leech_ban_ids);
     $db->sql_query_prepared(
         "UPDATE users
@@ -218,7 +218,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($ban_limit_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - $reason\n";
+    $modcomment   = date('Y-m-d H:i') . " - $reason\n";
     $placeholders = build_in_placeholders($ban_limit_ids);
     $db->sql_query_prepared(
         "UPDATE users
@@ -251,7 +251,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($warn_remove_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - Warning removed by System.\n";
+    $modcomment   = date('Y-m-d H:i') . " - Warning removed by System.\n";
     $placeholders = build_in_placeholders($warn_remove_ids);
     $db->sql_query_prepared(
         "UPDATE users
@@ -287,7 +287,7 @@ if ($promote_gig_limit > 0) {
     }
 
     if ($promote_ids) {
-        $modcomment   = gmdate('Y-m-d') . " - Promoted to POWER USER by AutoSystem.\n";
+        $modcomment   = date('Y-m-d H:i') . " - Promoted to POWER USER by AutoSystem.\n";
         $placeholders = build_in_placeholders($promote_ids);
         $db->sql_query_prepared(
             "UPDATE users
@@ -324,7 +324,7 @@ while ($row = $db->fetch_array($query)) {
 }
 
 if ($demote_ids) {
-    $modcomment   = gmdate('Y-m-d') . " - Demoted to USER by AutoSystem.\n";
+    $modcomment   = date('Y-m-d H:i') . " - Demoted to USER by AutoSystem.\n";
     $placeholders = build_in_placeholders($demote_ids);
     $db->sql_query_prepared(
         "UPDATE users

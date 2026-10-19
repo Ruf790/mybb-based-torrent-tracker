@@ -379,13 +379,7 @@ class UserRegistrationHandler
         $password_fields = create_password($password, $user);
         $user = array_merge($user, $password_fields);
 
-        // Дополнительные группы
-        $additionalgroups = '';
-        if (!empty($post_data['additionalgroups']) && is_array($post_data['additionalgroups'])) {
-            $additional_groups = array_map('intval', $post_data['additionalgroups']);
-            $additional_groups = array_diff($additional_groups, [$usergroup]);
-            $additionalgroups = implode(",", $additional_groups);
-        }
+       
 
         // Вставка пользователя с подготовленным запросом
         $user_insert_data = [
@@ -396,8 +390,7 @@ class UserRegistrationHandler
             'confirmed',
             $email,
             $usergroup,
-            $additionalgroups,
-            gmdate('Y-m-d') . ' - ' . $modcomment,
+            date('Y-m-d H:i') . ' - ' . $modcomment,
             $seedbonus,
             $invites,
             $uploaded,
@@ -415,7 +408,7 @@ class UserRegistrationHandler
         $placeholders = str_repeat('?,', count($user_insert_data) - 1) . '?';
 
         $sql = "INSERT INTO users (username, password, loginkey, added, ustatus, email, usergroup, 
-                additionalgroups, modcomment, seedbonus, invites, uploaded, downloaded, timezone, avatar, 
+                modcomment, seedbonus, invites, uploaded, downloaded, timezone, avatar, 
                 avatardimensions, avatartype, invisible, ignorelist, 
                 buddylist, pmfolders) VALUES ({$placeholders})";
 

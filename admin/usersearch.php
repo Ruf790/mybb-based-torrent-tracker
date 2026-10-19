@@ -231,34 +231,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
     }
 
     foreach ($user_ids as $uid) {
-        $uq = $db->sql_query_prepared("SELECT username, usergroup, additionalgroups, displaygroup FROM users WHERE id = ?", [$uid]);
+        $uq = $db->sql_query_prepared("SELECT username, usergroup FROM users WHERE id = ?", [$uid]);
         $user_row = $uq ? $db->fetch_array($uq) : null;
         if (!$user_row) continue;
 
-        $old_group       = (int)$user_row['usergroup'];
-        $old_addgroups   = $user_row['additionalgroups'];
-        $old_displaygroup = (int)$user_row['displaygroup'];
+        // Юзер уже в бан-группе (без записи в banned) - прежней группой ставим
+        // Registered, иначе после разбана он остался бы забаненным
+        $old_group = (int)$user_row['usergroup'];
+        if ($old_group <= 0 || !empty($groupscache[$old_group]['isbannedgroup'])) {
+            $old_group = 2;
+        }
 
-        // Пишем в banned
+        // Пишем в banned. При повторном бане oldgroup НЕ перезаписываем:
+        // в users к этому моменту уже бан-группа, и прежняя группа потерялась бы
         $db->sql_query_prepared("
             INSERT INTO banned 
-                (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
+                (uid, gid, oldgroup, admin, dateline, bantime, lifted, reason)
             VALUES 
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                gid              = ?,
-                oldgroup         = ?,
-                oldadditionalgroups = ?,
-                olddisplaygroup  = ?,
-                admin            = ?,
-                dateline         = ?,
-                bantime          = ?,
-                lifted           = ?,
-                reason           = ?
+                gid      = ?,
+                admin    = ?,
+                dateline = ?,
+                bantime  = ?,
+                lifted   = ?,
+                reason   = ?
         ", [
-            $uid, $banned_gid, $old_group, $old_addgroups, $old_displaygroup,
+            $uid, $banned_gid, $old_group,
             (int)$CURUSER['id'], TIMENOW, $ban_time, $lifted, $ban_reason,
-            $banned_gid, $old_group, $old_addgroups, $old_displaygroup,
+            $banned_gid,
             (int)$CURUSER['id'], TIMENOW, $ban_time, $lifted, $ban_reason,
         ]);
 
@@ -300,12 +301,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
         }
 
         // Восстанавливаем группу как в liftban
+        $restore_group = (int)$ban_row['oldgroup'];
+        if ($restore_group <= 0) {
+            $restore_group = 2; // битая запись - в Registered
+        }
+
         $updated_group = [
-            'usergroup'          => (int)$ban_row['oldgroup'],
-            'additionalgroups'   => $ban_row['oldadditionalgroups'],
-            'displaygroup'       => (int)$ban_row['olddisplaygroup'],
-            'enabled'            => 'yes',
-            'notifs'             => ''
+            'usergroup' => $restore_group,
+            'enabled'   => 'yes',
+            'notifs'    => ''
         ];
 
         $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_group)));
@@ -1154,36 +1158,9 @@ echo '      </select>
                 ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="'.htmlspecialchars_uni($lang->usersearch['tip_online']).'"></i>'
                 : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="'.htmlspecialchars_uni(ags_fmt($lang->usersearch['tip_last_seen'], my_datee($dateformat, (int)($u['lastactive'] ?? 0)))).'"></i>';
 
-            // display group/title
-		   if($u['usergroup'])
-		   {  
-			   $usergroup = usergroup_permissions($u['usergroup']);
-		   }
-		   else
-		   {
-			  $usergroup = usergroup_permissions(1);
-		   }
-
-		
-		   $displaygroupfields = array("title", "description", "namestyle", "usertitle", "image");
-
-		   if(!$u['displaygroup'])
-		   {
-			  $u['displaygroup'] = $u['usergroup'];
-		   }
-
-		   $display_group = usergroup_displaygroup($u['displaygroup']);
-		   if(is_array($display_group))
-		   {
-			  $usergroup = array_merge($usergroup, $display_group);
-		   }
-
-		   // User has group title
-           $u['usertitle'] = '';
-		   $usertitle = '';
-		
-		   $usertitle = $usergroup['image'];
-		   $usertitle = $usertitle;
+            // Иконка группы - по основной группе
+            $usergroup = usergroup_permissions((int)($u['usergroup'] ?? 0) ?: 1);
+            $usertitle = (string)($usergroup['image'] ?? '');
 		
 	
 			

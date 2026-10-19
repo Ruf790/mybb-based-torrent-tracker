@@ -168,7 +168,7 @@ function vp_render_row(array $row, int $now): string
     // --- User ---
     $username  = (string)($row['username'] ?? '');
     $user_html = $username !== ''
-        ? format_name(htmlspecialchars_uni($username), $row['usergroup'] ?? 0, $row['displaygroup'] ?? 0)
+        ? format_name(htmlspecialchars_uni($username), (int)($row['usergroup'] ?? 1))
         : '<span class="vp-muted fst-italic">' . $L['lbl_deleted_user'] . '</span>';
     $initial = $username !== '' ? htmlspecialchars_uni(mb_strtoupper(mb_substr($username, 0, 1))) : '?';
     $profile_link = $BASEURL . '/' . get_profile_link($row['userid'] ?? 0);
@@ -381,7 +381,7 @@ if (!empty($multipage)) {
 
 // ---- Table ----
 $result = $db->sql_query_prepared("
-    SELECT p.*, t.name, t.added, t.size, u.username, u.usergroup, u.displaygroup
+    SELECT p.*, t.name, t.added, t.size, u.username, u.usergroup
     FROM peers p
     LEFT JOIN torrents t ON (p.torrent = t.id)
     LEFT JOIN users u ON (p.userid = u.id)

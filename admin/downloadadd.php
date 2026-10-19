@@ -52,7 +52,7 @@ function dm_modcomment(string $op, int $gb, string $note = ''): string
 {
     global $CURUSER;
     $c = sprintf('%s - %s %s download by %s (Download Manager)',
-        gmdate('Y-m-d'), $op === 'add' ? 'Added' : 'Removed', mksize($gb * DM_GB), $CURUSER['username'] ?? 'System');
+        date('Y-m-d H:i'), $op === 'add' ? 'Added' : 'Removed', mksize($gb * DM_GB), $CURUSER['username'] ?? 'System');
     if ($note !== '') $c .= ' [Note: ' . e($note, ENT_QUOTES, 'UTF-8') . ']';
     return $c . "\n";
 }

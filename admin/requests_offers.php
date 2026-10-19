@@ -300,7 +300,7 @@ $total = (int)$db->fetch_field(
 );
 
 $list_q = $db->sql_query_prepared("
-    SELECT t.*, u.username, u.avatar, u.usergroup, u.displaygroup
+    SELECT t.*, u.username, u.avatar, u.usergroup
     FROM {$cfg['table']} t
     LEFT JOIN users u ON u.id = t.user_id
     {$where_sql}
@@ -594,7 +594,7 @@ enqueue_staff_assets();
                                     <?php endif; ?>
                                     <span class="ro-username">
                                         <?php if ($uname !== ''): ?>
-                                        <?= format_name(htmlspecialchars_uni($uname), (int)($row['usergroup'] ?? 0), (int)($row['displaygroup'] ?? 0)) ?>
+                                        <?= format_name(htmlspecialchars_uni($uname), (int)($row['usergroup'] ?? 1)) ?>
                                         <?php else: ?>
                                         <em class="ro-muted"><?= ro_e($lang->requests_offers['lbl_user_deleted']) ?></em>
                                         <?php endif; ?>

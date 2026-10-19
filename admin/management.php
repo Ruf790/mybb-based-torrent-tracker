@@ -199,30 +199,7 @@ function save_quick_perms(int $fid): void
 }
 
 
-// ── join_usergroup ────────────────────────────────────────────────────────────
-function join_usergroup(int $uid, int $joingroup): bool
-{
-    global $db, $mybb, $CURUSER;
 
-    $user = $uid === (int)$CURUSER['id']
-        ? $mybb->user
-        : (function() use ($db, $uid) {
-            $q = $db->sql_query_prepared("SELECT additionalgroups, usergroup FROM users WHERE id = ?", [$uid]);
-            return $q ? $db->fetch_array($q) : null;
-        })();
-
-    $groups = array_filter(array_map('intval', explode(',', $user['additionalgroups'] ?? '')));
-
-    if (in_array($joingroup, $groups, true)) {
-        return false;
-    }
-
-    $groups[] = $joingroup;
-    $groups   = array_values(array_unique(array_diff($groups, [(int)$user['usergroup']])));
-
-    $db->sql_query_prepared("UPDATE users SET additionalgroups = ? WHERE id = ?", [implode(',', $groups), $uid]);
-    return true;
-}
 
 
 // ── generate_check_box ────────────────────────────────────────────────────────
@@ -288,21 +265,16 @@ function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, i
     if (empty($gid)) {
 
         // CASE 1: different user
-        if ($uid !== 0 && $uid !== (int)($CURUSER['id'] ?? 0)) {
+        // CASE 1: different user
+if ($uid !== 0 && $uid !== (int)($CURUSER['id'] ?? 0)) {
 
-            $user = get_user($uid);
+    $user = get_user($uid);
 
-           
+    $gid = (string)max(1, (int)($user['usergroup'] ?? 1));
 
-            $gid = trim(
-                ($user['usergroup'] ?? '1') .
-                ',' .
-                ($user['additionalgroups'] ?? '')
-            );
+    $groupperms = usergroup_permissions($gid);
 
-            $groupperms = usergroup_permissions($gid);
-
-        } else {
+} else {
 
             // CASE 2: current user
             $usergroup = $CURUSER['usergroup'] ?? '1';
@@ -313,9 +285,7 @@ function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, i
 
             $gid = (string)$usergroup;
 
-            if (!empty($CURUSER['additionalgroups'])) {
-                $gid .= ',' . $CURUSER['additionalgroups'];
-            }
+            
 
             $groupperms = (is_array($mybb->usergroup))
                 ? $mybb->usergroup
@@ -3000,7 +2970,7 @@ if (!$action) {
                 }
                 $newmod = ['id' => $gid, 'name' => $groupscache[$gid]['title']];
             } else {
-                $options    = ['fields' => ['id AS id', 'username AS name', 'usergroup', 'additionalgroups']];
+                $options    = ['fields' => ['id AS id', 'username AS name', 'usergroup']];
                 $newmod     = $newmoduser = get_user_by_username($mybb->input['username'] ?? '', $options);
                 $isgroup    = 0;
                 if (empty($newmod['id'])) {
@@ -3035,21 +3005,12 @@ if (!$action) {
                     );
                     $mid = $db->insert_id();
 
-                    if (!$isgroup) {
-                        $newmodgroups = $newmoduser['usergroup'] ?? '';
-                        if (!empty($newmoduser['additionalgroups'])) {
-                            $newmodgroups .= ',' . $newmoduser['additionalgroups'];
-                        }
-                        $groupperms = usergroup_permissions($newmodgroups);
-                        if (($groupperms['canmodcp'] ?? 0) != 1) {
-                            $uid = $newmoduser['id'];
-                            if (in_array((int)($newmoduser['usergroup'] ?? 0), [2, 5], true)) {
-                                $db->sql_query_prepared("UPDATE users SET usergroup = 6 WHERE id = ?", [$uid]);
-                            } else {
-                                join_usergroup($uid, 6);
-                            }
-                        }
-                    }
+                   if (!$isgroup) {
+    $groupperms = usergroup_permissions((string)max(1, (int)($newmoduser['usergroup'] ?? 1)));
+    if (($groupperms['canmodcp'] ?? 0) != 1) {
+        $db->sql_query_prepared("UPDATE users SET usergroup = 6 WHERE id = ?", [(int)$newmoduser['id']]);
+    }
+}
 
                     $plugins->run_hooks('admin_forum_management_start_moderators_commit');
                     $cache->update_moderators();

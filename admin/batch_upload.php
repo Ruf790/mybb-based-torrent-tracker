@@ -471,9 +471,22 @@ function processTorrent(
 
     $tags = !empty($manualTags) ? $manualTags : trim((string)$Genre);
 
+    // Оригинальное имя .torrent-файла для колонки filename - его видит
+    // пользователь при скачивании. На диске файл всё равно хранится
+    // как {id}.torrent (по нему его ищет download.php).
+    $origFilename = basename(str_replace('\\', '/', $originalName));
+    $origFilename = trim(preg_replace('/[\x00-\x1F\x7F]/u', '', $origFilename) ?? '');
+    if ($origFilename === '') {
+        $origFilename = 'torrent';
+    }
+    if (!preg_match('/\.torrent$/i', $origFilename)) {
+        $origFilename .= '.torrent';
+    }
+    $origFilename = mb_substr($origFilename, 0, 255, 'UTF-8');
+
     $dbData = [
         'name'            => $customName,
-        'filename'        => '',
+        'filename'        => $origFilename,
         'info_hash'       => $infoHash,
         'size'            => (int)$size,
         'numfiles'        => $numFiles,
@@ -514,9 +527,6 @@ function processTorrent(
         throw new Exception(bu_t('err_copy_torrent'));
     }
 
-    if (!$db->sql_query_prepared("UPDATE torrents SET filename = ? WHERE id = ?", [$newId . '.torrent', $newId], 1)) {
-        write_log("[BATCH_UPLOAD] Failed to set filename for torrent #{$newId}: " . $db->error_string());
-    }
     @unlink($torrentPath);
 
     // Постер

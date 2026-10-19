@@ -305,8 +305,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== 'answermessage') {
 /* ------------------------------------------------------------------ */
 
 if ($action === 'answermessage') {
-    $answeringto = (int)($_POST['answeringto'] ?? $_GET['answeringto'] ?? 0);
-    int_check($answeringto, true);
+    $rawAnsweringto = $_POST['answeringto'] ?? $_GET['answeringto'] ?? null;
+    int_check($rawAnsweringto);
+    $answeringto = (int)$rawAnsweringto;
 
     $res = $db->sql_query_prepared(
         'SELECT s.*, u.username, u.usergroup
@@ -455,8 +456,8 @@ if ($action === 'answermessage') {
 /* ------------------------------------------------------------------ */
 
 if ($action === 'viewpm') {
-    $pmid = (int)($_GET['pmid'] ?? 0);
-    int_check($pmid, true);
+    int_check($_GET['pmid'] ?? null);
+    $pmid = (int)$_GET['pmid'];
 
     $res = $db->sql_query_prepared(
         'SELECT s.*,

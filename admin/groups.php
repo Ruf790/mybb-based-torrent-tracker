@@ -629,33 +629,33 @@ if (($mybb->input['action'] ?? '') === 'delete') {
     $plugins->run_hooks('admin_user_groups_delete');
 
     if ($mybb->request_method === 'post') {
-        verify_post_check($mybb->get_input('my_post_key'));
+    verify_post_check($mybb->get_input('my_post_key'));
 
-        $newGroup = $usergroup['isbannedgroup'] == 1 ? 9 : 1;
-        $db->sql_query_prepared("UPDATE users SET usergroup = ? WHERE usergroup = ?", [$newGroup, $usergroup['gid']]);
-        // displaygroup = usergroup — копируем значение из колонки usergroup (не строковый литерал!)
-        $db->sql_query_prepared("UPDATE users SET displaygroup = usergroup WHERE displaygroup = ?", [$usergroup['gid']]);
+    // Участников удаляемой группы переводим в Registered (2), забаненных — в бан-группу (9)
+    $newGroup = $usergroup['isbannedgroup'] == 1 ? 9 : 2;
+    $db->sql_query_prepared("UPDATE users SET usergroup = ? WHERE usergroup = ?", [$newGroup, $usergroup['gid']]);
 
-        $db->sql_query_prepared("UPDATE banned SET gid = 9 WHERE gid = ?", [$usergroup['gid']]);
-        $db->sql_query_prepared("UPDATE banned SET oldgroup = 1 WHERE oldgroup = ?", [$usergroup['gid']]);
-        // olddisplaygroup = oldgroup — та же логика, копирование значения колонки
-        $db->sql_query_prepared("UPDATE banned SET olddisplaygroup = oldgroup WHERE olddisplaygroup = ?", [$usergroup['gid']]);
+    $db->sql_query_prepared("UPDATE banned SET gid = 9 WHERE gid = ?", [$usergroup['gid']]);
+    $db->sql_query_prepared("UPDATE banned SET oldgroup = 2 WHERE oldgroup = ?", [$usergroup['gid']]);
 
-        $db->sql_query_prepared("DELETE FROM forumpermissions WHERE gid = ?", [$usergroup['gid']]);
-        $db->sql_query_prepared("DELETE FROM moderators WHERE id = ? AND isgroup = '1'", [$usergroup['gid']]);
-        $db->sql_query_prepared("DELETE FROM usergroups WHERE gid = ?", [$usergroup['gid']]);
+    $db->sql_query_prepared("DELETE FROM forumpermissions WHERE gid = ?", [$usergroup['gid']]);
+    $db->sql_query_prepared("DELETE FROM moderators WHERE id = ? AND isgroup = '1'", [$usergroup['gid']]);
+    $db->sql_query_prepared("DELETE FROM usergroups WHERE gid = ?", [$usergroup['gid']]);
 
-        $plugins->run_hooks('admin_user_groups_delete_commit');
-        $plugins->run_hooks('admin_user_groups_delete_commit_end');
+    $plugins->run_hooks('admin_user_groups_delete_commit');
+    $plugins->run_hooks('admin_user_groups_delete_commit_end');
 
-        $cache->update_moderators();
-        $cache->update_usergroups();
-        $cache->update_forumpermissions();
-        log_admin_action($usergroup['gid'], $usergroup['title']);
+    $cache->update_moderators();
+    $cache->update_usergroups();
+    $cache->update_forumpermissions();
+    log_admin_action($usergroup['gid'], $usergroup['title']);
 
-        echo $lang->groups['msg_deleted'];
-        exit;
+    echo $lang->groups['msg_deleted'];
+    exit;
     }
+	
+	
+	
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -676,6 +676,9 @@ if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 
     flash_message($lang->groups['flash_order_updated'], 'success');
     admin_redirect('index.php?act=groups');
 }
+
+
+
 
 // ═══════════════════════════════════════════════════════════
 // DEFAULT ACTION: MAIN VIEW
@@ -699,16 +702,10 @@ if (!($mybb->input['action'] ?? '')) {
     echo '<script src="scripts/deleteGroup.js?ver=22"></script>';
     echo '<script>window.my_post_key = "' . $mybb->post_code . '";</script>';
 
-    // Кол-во пользователей: основная группа + дополнительные
-    $primaryusers = $secondaryusers = [];
+    // Кол-во пользователей в группе (только основная группа)
+    $primaryusers = [];
     $q = $db->sql_query_prepared('SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON (g.gid=u.usergroup) GROUP BY g.gid');
     while ($q && ($row = $db->fetch_array($q))) $primaryusers[$row['gid']] = (int)$row['users'];
-
-    $col = $db->type === 'pgsql' || $db->type === 'sqlite'
-        ? "','||u.additionalgroups||',' LIKE '%,'||g.gid||',%'"
-        : "CONCAT(',',u.additionalgroups,',') LIKE CONCAT('%,',g.gid,',%')";
-    $q = $db->sql_query_prepared("SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON ({$col}) WHERE g.gid != '0' AND g.gid IS NOT NULL GROUP BY g.gid");
-    while ($q && ($row = $db->fetch_array($q))) $secondaryusers[$row['gid']] = (int)$row['users'];
 
     $groups = [];
     $q = $db->sql_query_prepared("SELECT * FROM usergroups ORDER BY disporder, title");
@@ -749,7 +746,6 @@ if (!($mybb->input['action'] ?? '')) {
         $gid     = (int)$ug['gid'];
         $type    = (int)$ug['type'];
         $primary = $primaryusers[$gid] ?? 0;
-        $second  = $secondaryusers[$gid] ?? 0;
 
         $flags = $type === 1 ? '<span class="ug-tag t-default"><i class="fa-solid fa-lock"></i>' . htmlspecialchars_uni($lang->groups['tag_default']) . '</span>' : '<span class="ug-tag t-custom"><i class="fa-solid fa-wand-magic-sparkles"></i>' . htmlspecialchars_uni($lang->groups['tag_custom']) . '</span>';
         if ((int)$ug['issupermod'] === 1 || (int)$ug['canstaffpanel'] === 1) $flags .= ' <span class="ug-tag t-staff"><i class="fa-solid fa-user-shield"></i>' . htmlspecialchars_uni($lang->groups['tag_staff']) . '</span>';
@@ -768,8 +764,7 @@ if (!($mybb->input['action'] ?? '')) {
 
         echo '<td>' . $flags . '</td>';
 
-        echo '<td class="text-center"><span class="ug-users"><i class="fa-solid fa-user"></i>' . ts_nf($primary + $second) . '</span>'
-           . ($second > 0 ? '<div class="ug-muted">' . ags_fmt(htmlspecialchars_uni($lang->groups['lbl_additional']), ts_nf($second)) . '</div>' : '') . '</td>';
+        echo '<td class="text-center"><span class="ug-users"><i class="fa-solid fa-user"></i>' . ts_nf($primary) . '</span></td>';
 
         echo '<td class="text-center">';
         echo (int)$ug['showforumteam'] === 1

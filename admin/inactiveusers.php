@@ -239,6 +239,16 @@ foreach ($lang->inactiveusers as $k => $v) {
 }
 ?>
 
+
+<style>
+
+.user-avatar    { width:50px;height:50px;border-radius:50%;object-fit:cover;margin-right:.75rem;border:2px solid #e9ecef;transition:border-color .3s; }
+.user-avatar:hover { border-color:#007bff; }
+
+
+</style>
+
+
 <link rel="stylesheet" href="<?php echo $BASEURL; ?>/admin/templates/inactiveusers.css?v=<?php echo (int)@filemtime(TSDIR . '/include/templates/default/style/inactiveusers.css'); ?>">
 
 <div class="container mt-3 mb-4 iu">
@@ -335,13 +345,30 @@ foreach ($lang->inactiveusers as $k => $v) {
                         $initial   = htmlspecialchars_uni(mb_strtoupper(mb_substr($raw_name, 0, 1)));
 
                         // Аватар; если своего нет (заглушка) — кружок с первой буквой ника
-                        $av = format_avatar($user['avatar'] ?? '', $user['avatardimensions'] ?? '');
+                        $av222 = format_avatar($user['avatar'] ?? '', $user['avatardimensions'] ?? '');
                         // format_avatar() уже отдаёт экранированный URL (как в member.php / commenttable.php)
-                        $avatar_html = (!empty($av['image']) && empty($av['is_placeholder']))
+                        $avatar_html22 = (!empty($av['image']) && empty($av['is_placeholder']))
                             ? '<img class="iu-avatar" src="' . $av['image'] . '" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false;">'
                               . '<span class="iu-initial" hidden>' . $initial . '</span>'
                             : '<span class="iu-initial">' . $initial . '</span>';
-                        $last_seen = max((int)$user['lastactive'], (int)$user['lastvisit']);
+                       
+					   
+					   
+					   	$useravatar  = format_avatar($user['avatar'], $user['avatardimensions']);
+                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+
+                        $avatar_html = '<div class="author_avatar">'
+                           . '<img class="' . $avatarClass . '" style="width:50px;height:50px;object-fit:cover;"'
+                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($user['username']) . '" loading="lazy">'
+                           . '</div>';
+					   
+					   
+					   
+
+
+
+
+					   $last_seen = max((int)$user['lastactive'], (int)$user['lastvisit']);
                         $last_active = $last_seen ? my_datee('relative', $last_seen) : $lang->inactiveusers['lbl_never'];
                         $tag       = (int)($user['inactivitytag'] ?? 0);
 

@@ -40,6 +40,11 @@ function cheat_full_ban(int $uid, string $reason, int $banned_by): void
 {
     global $db, $cache;
 
+    // Супер-админов не баним (ни вручную, ни авто-баном)
+    if ($uid <= 0 || is_super_admin($uid)) {
+        return;
+    }
+
     // Already banned? Skip.
     $bq = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
     if ($bq && $db->num_rows($bq)) {
@@ -65,21 +70,26 @@ function cheat_full_ban(int $uid, string $reason, int $banned_by): void
         }
     }
 
-    $uq = $db->sql_query_prepared("SELECT usergroup, additionalgroups, displaygroup FROM users WHERE id = ?", [$uid]);
+    $uq = $db->sql_query_prepared("SELECT usergroup FROM users WHERE id = ?", [$uid]);
     $user = $uq ? $db->fetch_array($uq) : null;
     if (!$user) {
         return;
     }
 
+    // Юзер уже в бан-группе (без записи в banned) - прежней группой ставим
+    // Registered, иначе после разбана он остался бы забаненным
+    $oldgroup = (int)$user['usergroup'];
+    if ($oldgroup <= 0 || (is_array($groupscache) && !empty($groupscache[$oldgroup]['isbannedgroup']))) {
+        $oldgroup = 2;
+    }
+
     // Insert into banned table
     $db->sql_query_prepared(
-        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)",
         [
             $uid,
             $banned_gid,
-            (int)$user['usergroup'],
-            $user['additionalgroups'],
-            (int)$user['displaygroup'],
+            $oldgroup,
             $banned_by,
             TIMENOW,
             '---',
@@ -90,7 +100,7 @@ function cheat_full_ban(int $uid, string $reason, int $banned_by): void
 
     // Move to banned group and disable account — mirrors banning.php processBanAction()
     $db->sql_query_prepared(
-        "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '', enabled = 'no', passkey = '' WHERE id = ?",
+        "UPDATE users SET usergroup = ?, enabled = 'no', passkey = '' WHERE id = ?",
         [$banned_gid, $uid]
     );
 
@@ -110,7 +120,7 @@ if (($_POST['do'] ?? '') === 'apply') {
     if (!empty($_POST['ban']) && is_array($_POST['ban'])) {
         $ids    = array_map('intval', $_POST['ban']);
         $reason = 'Banned by ' . $CURUSER['username'] . ' via Cheat Attempts panel';
-        $modcomment = gmdate('Y-m-d') . ' - Banned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
+        $modcomment = date('Y-m-d H:i') . ' - Banned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
 
         foreach ($ids as $uid) {
             cheat_full_ban($uid, $reason, (int)$CURUSER['id']);
@@ -127,7 +137,7 @@ if (($_POST['do'] ?? '') === 'apply') {
         $ids        = array_map('intval', $_POST['warn']);
         $ids_ph     = implode(',', array_fill(0, count($ids), '?'));
         $warneduntil = TIMENOW + 604800; // 1 неделя
-        $modcomment  = gmdate('Y-m-d') . ' - Warned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
+        $modcomment  = date('Y-m-d H:i') . ' - Warned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
 
         $db->sql_query_prepared(
             "UPDATE users SET warned='yes', timeswarned=timeswarned+1,
@@ -170,7 +180,7 @@ if (($_POST['do'] ?? '') === 'apply') {
             [TIMENOW - 3600]
         );
         $banned  = 0;
-        $modcomment = gmdate('Y-m-d') . ' - Auto-banned by system (5+ cheat violations/hour)' . $eol;
+        $modcomment = date('Y-m-d H:i') . ' - Auto-banned by system (5+ cheat violations/hour)' . $eol;
         while ($res && ($row = $db->fetch_array($res))) {
             $uid = (int)$row['uid'];
             cheat_full_ban($uid, 'Auto-banned: 5+ high severity cheat violations in one hour', (int)$CURUSER['id']);

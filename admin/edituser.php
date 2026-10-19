@@ -136,7 +136,7 @@ function modcomment(string $what = 'Unknown Action taken'): string
 
     $action     = str_replace("'", '`', $what);
     $username   = $CURUSER['username'] ?? 'System';
-    $modcomment = gmdate('Y-m-d H:i') . " - {$action} by {$username}\n" . ($modcomment ?? '');
+    $modcomment = date('Y-m-d H:i') . " - {$action} by {$username}\n" . ($modcomment ?? '');
     return $modcomment;
 }
   
@@ -750,7 +750,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     })()
     ?? '';
 
-$updated_avatar['modcomment'] = gmdate('Y-m-d H:i') . " - Avatar updated by {$CURUSER['username']}\n" . rtrim($current_modcomment);
+$updated_avatar['modcomment'] = date('Y-m-d H:i') . " - Avatar updated by {$CURUSER['username']}\n" . rtrim($current_modcomment);
 $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_avatar)));
 $params = array_values($updated_avatar);
 $params[] = $uid;
@@ -999,7 +999,7 @@ if (empty($action) || empty($userid) || !is_valid_id($userid))
 }
 
 int_check($userid, true);
-$lang->load('modtask');
+
 require_once INC_PATH . '/functions_mkprettytime.php';
 
 
@@ -4354,7 +4354,9 @@ function processUserUpdateData(): array
     if (!empty($_POST['addcomment'])) {
         $addComment = str_replace(["\r", "\n"], ' ', trim((string)$_POST['addcomment']));
         $addComment = mb_substr($addComment, 0, 500);
-        $modcomment = gmdate('Y-m-d') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
+        //$modcomment = date('Y-m-d') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
+		
+		$modcomment = date('Y-m-d H:i') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
     }
 
     // Process reset times warned
@@ -4369,6 +4371,12 @@ function processUserUpdateData(): array
     }
 	
 	
+
+
+
+
+
+
 // ── Quick Ban ─────────────────────────────────────────────────────────────
 if (!empty($_POST['quick_ban'])) {
     $ban_reason   = str_replace(["\r", "\n"], ' ', trim($_POST['ban_reason'] ?? 'No reason given.'));
@@ -4376,6 +4384,12 @@ if (!empty($_POST['quick_ban'])) {
     $ban_duration = trim($_POST['ban_duration'] ?? '');
     $banned_gid   = (int)($_POST['banned_gid']  ?? 0);
     $send_pm_ban  = !empty($_POST['ban_send_pm']);
+
+    // Группа бана должна быть именно бан-группой, а не любой gid из формы
+    $ug_cache = $cache->read('usergroups') ?: [];
+    if (empty($ug_cache[$banned_gid]['isbannedgroup'])) {
+        $banned_gid = 0;
+    }
 
     if ($banned_gid > 0) {
         $lifted = ($ban_duration !== '---' && $ban_duration !== '')
@@ -4405,15 +4419,19 @@ if (!empty($_POST['quick_ban'])) {
             );
             modcomment("Ban updated ({$dur_label}). Reason: {$ban_reason}");
         } else {
+            // Юзер уже в бан-группе без записи в banned — прежней группой ставим Registered
+            $oldgroup = (int)$userdata['usergroup'];
+            if ($oldgroup <= 0 || !empty($ug_cache[$oldgroup]['isbannedgroup'])) {
+                $oldgroup = 2;
+            }
+
             // INSERT — новый бан
             $db->sql_query_prepared(
-                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)",
                 [
                     (int)$userdata['id'],
                     $banned_gid,
-                    (int)$userdata['usergroup'],
-                    $userdata['additionalgroups'] ?? '',
-                    (int)$userdata['displaygroup'],
+                    $oldgroup,
                     (int)$CURUSER['id'],
                     TIMENOW,
                     $ban_duration === '---' ? '---' : $ban_duration,
@@ -4428,6 +4446,8 @@ if (!empty($_POST['quick_ban'])) {
         $updateData['modcomment'] = $modcomment;
     }
 }
+
+
 	
 	
 	
@@ -4448,15 +4468,18 @@ if (!empty($_POST['quick_ban'])) {
         $updateData['modcomment'] = $modcomment;
     }
 
-    // FIX: Send PM from edit form
-    if (!empty($_POST['send_pm']) && !empty($_POST['pm_subject']) && !empty($_POST['pm_message'])) {
+    // Send PM from edit form
+    $pmSubject = is_string($_POST['pm_subject'] ?? null) ? trim($_POST['pm_subject']) : '';
+    $pmMessage = is_string($_POST['pm_message'] ?? null) ? trim($_POST['pm_message']) : '';
+
+    if (!empty($_POST['send_pm']) && $pmSubject !== '' && $pmMessage !== '') {
         require_once INC_PATH . '/functions_pm.php';
         send_pm(
-            ['touid' => (int)$userdata['id'], 'message' => trim($_POST['pm_message']), 'subject' => trim($_POST['pm_subject'])],
+            ['touid' => (int)$userdata['id'], 'message' => $pmMessage, 'subject' => $pmSubject],
             (int)$CURUSER['id'],
             true
         );
-        $modcomment = modcomment('PM sent: ' . substr(trim($_POST['pm_subject']), 0, 60));
+        $modcomment = modcomment('PM sent: ' . mb_substr($pmSubject, 0, 60));
         $updateData['modcomment'] = $modcomment;
     }
 
@@ -4598,16 +4621,33 @@ function handleResetPasskey(): void
         $old_passkey = $userdata['passkey'];
         $passkey = generate_passkey($userdata['username'], $userdata['loginkey']);
 
-        $modcomment = gmdate('Y-m-d') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $modcomment;
+        //$modcomment = date('Y-m-d') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $modcomment;
+		
+	    $modcomment = date('Y-m-d H:i') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $userdata['modcomment'];
 
-        $msg = sprintf($lang->modtask['passkeymsg'], $CURUSER['username']);
-        $subject = $lang->modtask['passkeysubject'];
+        $msg = sprintf($lang->edituser['passkeymsg'], $CURUSER['username']);
+        $subject = $lang->edituser['passkeysubject'];
 
         $db->sql_query_prepared(
             "UPDATE users SET passkey = ?, modcomment = ? WHERE id = ?",
             [$passkey, $modcomment, (int)$userdata['id']]
         );
-        insert_message($userid, $msg, $subject);
+        
+		require_once INC_PATH . '/functions_pm.php';
+	    send_pm([
+          'subject'       => ['passkeysubject'],
+          'message'       => ['passkeymsg', (string)$CURUSER['username']],
+          'touid'         => (int)$userdata['id'],
+          'language'      => $userdata['language'] ?? null,
+          'language_file' => 'edituser',
+          'sender'        => ['uid' => -1],
+             ], -1, true);
+		
+		
+		
+		
+		
+		
 
         write_log('Passkey for user: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been reset by ' . $CURUSER['username']);
 

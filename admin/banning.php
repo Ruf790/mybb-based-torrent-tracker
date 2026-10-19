@@ -844,7 +844,7 @@ class BannedAccountsManager
 
     private function handleLift(): void
     {
-        global $lang;
+        global $lang, $leechwarn_min_ratio, $leechwarn_gig_limit;
         $l = $lang->banning;
         if ($this->mybb->get_input('no')) {
             admin_redirect('index.php?act=banning&type=users');
@@ -868,14 +868,29 @@ class BannedAccountsManager
         if ($this->mybb->request_method === 'post') {
             ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
+            // Bad ratio -> fresh start (otherwise daily_cleanups issues a leech-warn again right away)
+            $statsRes = $this->db->sql_query_prepared(
+                "SELECT uploaded, downloaded FROM users WHERE id = ?",
+                [$ban['uid']]
+            );
+            $stats     = $statsRes ? $this->db->fetch_array($statsRes) : null;
+            $upBytes   = (float)($stats['uploaded'] ?? 0);
+            $downBytes = (float)($stats['downloaded'] ?? 0);
+            $minRatio  = (float)($leechwarn_min_ratio ?? 0.4);
+            $gigLimit  = (float)($leechwarn_gig_limit ?? 35) * 1073741824;
+            $badRatio  = $downBytes >= $gigLimit && ($upBytes / $downBytes) < $minRatio;
+            $resetStats = $badRatio ? ', uploaded = 0, downloaded = 0' : '';
+			
+			
+
             $this->db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$ban['uid']]);
             $this->db->sql_query_prepared(
-                "UPDATE users SET usergroup = ?, additionalgroups = ?, displaygroup = ? WHERE id = ?",
-                [$ban['oldgroup'], $ban['oldadditionalgroups'], $ban['olddisplaygroup'], $ban['uid']]
+                "UPDATE users SET usergroup = ?, enabled = 'yes', leechwarn = 'no', leechwarnuntil = 0, timeswarned = 0{$resetStats} WHERE id = ?",
+                [$ban['oldgroup'], $ban['uid']]
             );
             $this->plugins->run_hooks('admin_user_banning_lift_commit');
             log_admin_action($ban['uid'], $user['username']);
-            write_log("Lifted ban of {$user['username']} (UID {$ban['uid']}) by " . $GLOBALS['CURUSER']['username']);
+            write_log("Lifted ban of {$user['username']} (UID {$ban['uid']}) by " . $GLOBALS['CURUSER']['username'] . ($badRatio ? ' [stats reset: bad ratio]' : ''));
             flash_message($l['flash_lifted'], 'success');
             admin_redirect('index.php?act=banning&type=users');
         } else {
@@ -932,7 +947,7 @@ class BannedAccountsManager
                 );
 
                 $this->db->sql_query_prepared(
-                    "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
+                    "UPDATE users SET usergroup = ? WHERE id = ?",
                     [$gid, $ban['uid']]
                 );
 
@@ -970,7 +985,7 @@ class BannedAccountsManager
         $q   = $this->db->sql_query_prepared("SELECT * FROM banned WHERE uid = ?", [$uid]);
         $row = $q ? $this->db->fetch_array($q) : null;
         if (!$row) return null;
-        foreach (['uid','gid','oldgroup','olddisplaygroup','admin','dateline','lifted'] as $k) {
+        foreach (['uid','gid','oldgroup','admin','dateline','lifted'] as $k) {
             $row[$k] = (int)$row[$k];
         }
         return $row;
@@ -1020,7 +1035,7 @@ class BannedAccountsManager
         if (isset($this->mybb->input['search'])) return [];
 
         $user = get_user_by_username($this->mybb->get_input('username'), [
-            'fields' => ['username','usergroup','additionalgroups','displaygroup'],
+            'fields' => ['username','usergroup'],
         ]);
 
         if (!$user) return [$l['err_user_not_found']];
@@ -1041,14 +1056,20 @@ class BannedAccountsManager
             $lifted  = $bantime === '---' ? 0 : ban_date2timestamp($bantime);
             $reason  = my_substr($this->mybb->input['reason'] ?? '', 0, 255);
 
+            // Если юзер уже сидит в бан-группе (без записи в banned), сохранять её
+            // как прежнюю нельзя - после снятия бана он остался бы забаненным
+            $oldgroup = (int)$user['usergroup'];
+            $ugcache  = $this->cache->read('usergroups');
+            if (!empty($ugcache[$oldgroup]['isbannedgroup'])) {
+                $oldgroup = 2; // Registered
+            }
+
             $this->db->sql_query_prepared(
-                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)",
                 [
                     $uid,
                     $gid,
-                    (int)$user['usergroup'],
-                    $user['additionalgroups'],
-                    (int)$user['displaygroup'],
+                    $oldgroup,
                     $this->getCurrentUserId(),
                     TIMENOW,
                     $bantime,
@@ -1058,7 +1079,7 @@ class BannedAccountsManager
             );
 
             $this->db->sql_query_prepared(
-                "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
+                "UPDATE users SET usergroup = ? WHERE id = ?",
                 [$gid, $uid]
             );
             $this->db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [$uid]);
@@ -1076,11 +1097,11 @@ class BannedAccountsManager
 
     private function isUserAlreadyBanned(int $uid): bool
     {
+        // Забаненным считаем только того, у кого есть запись в banned.
+        // Юзер в бан-группе без записи (группу сменили вручную) банится заново -
+        // так у него появляется запись, и бан можно снять из списка.
         $q = $this->db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
-        if ($q && $this->db->fetch_field($q, 'uid')) return true;
-        $usergroups = $this->cache->read('usergroups');
-        $user       = get_user($uid);
-        return !empty($usergroups[(int)($user['usergroup'] ?? 0)]['isbannedgroup']);
+        return $q && $this->db->fetch_field($q, 'uid');
     }
 
     /** @return array{total:int,perm:int,soon:int,recent:int} */

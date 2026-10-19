@@ -159,7 +159,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
         if (!empty($userids)) {
             $userids   = array_values(array_unique($userids));
             $ids_ph    = implode(',', array_fill(0, count($userids), '?'));
-            $modcomment = gmdate('Y-m-d') . ' - Banned by ' . ($CURUSER['username'] ?? 'System') . '. (TS Hit & Run Staff Tool)' . $eol;
+            $modcomment = date('Y-m-d H:i') . ' - Banned by ' . ($CURUSER['username'] ?? 'System') . '. (TS Hit & Run Staff Tool)' . $eol;
             $db->sql_query_prepared(
                 "UPDATE users SET enabled='no', usergroup=?, modcomment=CONCAT(?, modcomment) WHERE id IN (0,{$ids_ph})",
                 [UC_BANNED, $modcomment, ...$userids]
@@ -209,7 +209,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
             ];
             $pm['sender']['uid'] = -1;
             send_pm($pm, -1, true);
-            $modcomment = gmdate('Y-m-d') . ' - Warned by ' . ($CURUSER['username'] ?? 'System') . '. Torrent ID: ' . $warn_torrentid . ' (TS Hit & Run Staff Tool)' . $eol;
+            $modcomment = date('Y-m-d H:i') . ' - Warned by ' . ($CURUSER['username'] ?? 'System') . '. Torrent ID: ' . $warn_torrentid . ' (TS Hit & Run Staff Tool)' . $eol;
             $db->sql_query_prepared(
                 "UPDATE users SET timeswarned = timeswarned + 1, modcomment=CONCAT(?, modcomment) WHERE id = ?",
                 [$modcomment, $userid]

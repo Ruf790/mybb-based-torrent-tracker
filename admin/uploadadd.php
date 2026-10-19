@@ -42,7 +42,7 @@ function um_modcomment(string $op, int $gb): string
 {
     global $CURUSER;
     return sprintf("%s - %s %s upload by %s (Upload Manager)\n",
-        gmdate('Y-m-d'), $op === 'add' ? 'Received' : 'Removed', mksize($gb * GB_IN_BYTES), $CURUSER['username'] ?? 'System');
+        date('Y-m-d H:i'), $op === 'add' ? 'Received' : 'Removed', mksize($gb * GB_IN_BYTES), $CURUSER['username'] ?? 'System');
 }
 
 /**

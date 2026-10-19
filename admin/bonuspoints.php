@@ -639,7 +639,7 @@ final class BonusPointsManager
                 [$label, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other'];
                 $name = $r['username'] !== null
                     ? '<a href="' . $this->baseUrl . '/' . get_profile_link((int)$r['uid']) . '" class="fw-semibold text-decoration-none">'
-                      . (function_exists('format_name') ? format_name($this->e($r['username']), (int)$r['usergroup'], (int)$r['displaygroup']) : $this->e($r['username'])) . '</a>'
+                     . (function_exists('format_name') ? format_name($this->e($r['username']), (int)($r['usergroup'] ?? 1)) : $this->e($r['username'])) . '</a>'
                       . ($uid === null ? ' <a href="' . $this->url('log', ['user' => '#' . (int)$r['uid'], 'type' => $type, 'period' => $period]) . '" class="bp-muted" title="' . $this->e($this->t('title_only_user')) . '" aria-label="' . $this->e($this->t('title_only_user')) . '"><i class="fa-solid fa-filter"></i></a>' : '')
                     : '<span class="bp-muted">' . $this->e($this->t('lbl_deleted_user', (int)$r['uid'])) . '</span>';
                 $tr .= '<tr>'

@@ -124,7 +124,7 @@ function ex_user_link(array $r): string
     $uid  = (int)$r['uid'];
     $name = ex_e((string)$r['username']);
     if (function_exists('format_name')) {
-        $name = format_name($name, (int)$r['usergroup'], (int)($r['displaygroup'] ?? 0));
+        $name = format_name($name, (int)($r['usergroup'] ?? 1));
     }
     $url = function_exists('get_profile_link') ? get_profile_link($uid) : $BASEURL . '/member.php?action=profile&uid=' . $uid;
     return '<a href="' . ex_e((string)$url) . '">' . $name . '</a>';
@@ -1126,7 +1126,7 @@ function ex_render_users(): string
     $h .= '</div>';
 
     $q = $db->sql_query_prepared(
-        "SELECT eu.*, u.username, u.usergroup, u.displaygroup FROM exam_users eu JOIN users u ON u.id = eu.uid
+        "SELECT eu.*, u.username, u.usergroup FROM exam_users eu JOIN users u ON u.id = eu.uid
          WHERE {$w} ORDER BY eu.id DESC LIMIT ? OFFSET ?",
         [...$p, EX_PAGE_SIZE, ($page - 1) * EX_PAGE_SIZE]
     );

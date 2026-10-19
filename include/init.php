@@ -207,7 +207,3 @@ $time_formats = [
 
 // --- User IP and shutdown function ---
 define("USERIPADDRESS", get_ip());
-
-if ($mybb->use_shutdown === true) {
-    register_shutdown_function('run_shutdown');
-}

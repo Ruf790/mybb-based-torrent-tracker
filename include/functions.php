@@ -275,7 +275,7 @@ function redirect(string $url, string $message = '', string $title = '', bool $f
     // Обычный редирект
     $url = htmlspecialchars_decode($url);
     $url = str_replace(["\n", "\r", ";"], '', $url);
-    run_shutdown();
+   
 
     if (!my_validate_url($url, true, true)) {
         header("Location: {$BASEURL}/{$url}");
@@ -921,178 +921,100 @@ function is_super_admin(int $uid): bool
 
 
 
-function add_shutdown(callable $name, array $arguments = []): bool
-{
-    global $shutdown_functions;
-
-    if(!is_array($shutdown_functions)) {
-        $shutdown_functions = [];
-    }
-
-    if(!is_array($arguments)) {
-        $arguments = [$arguments];
-    }
-
-    if(is_array($name) && method_exists($name[0], $name[1])) {
-        $shutdown_functions[] = ['function' => $name, 'arguments' => $arguments];
-        return true;
-    } elseif(!is_array($name) && function_exists($name)) {
-        $shutdown_functions[] = ['function' => $name, 'arguments' => $arguments];
-        return true;
-    }
-
-    return false;
-}
 
 
 
 
 
 
-function update_stats(array $changes = [], bool $force = false): void
+
+function update_stats(array $changes = []): void
 {
     global $cache, $db;
-    static $stats_changes = [];
 
-    // При первом вызове регистрируем отложенное выполнение
-    if (empty($stats_changes)) {
-        if (function_exists('add_shutdown')) {
-            add_shutdown('update_stats', [[], true]);
-        }
+    $stats = $cache->read('stats');
+    if (!is_array($stats)) {
+        $stats = [];
     }
 
-    // Инициализация
-    if (empty($stats_changes) || ($stats_changes['inserted'] ?? false)) {
-        $stats_changes = [
-            'numthreads' => '+0',
-            'numposts' => '+0',
-            'numusers' => '+0',
-            'numunapprovedthreads' => '+0',
-            'numunapprovedposts' => '+0',
-            'numdeletedposts' => '+0',
-            'numdeletedthreads' => '+0',
-            'inserted' => false
-        ];
-        $stats = $stats_changes;
-    } else {
-        $stats = $stats_changes;
-    }
-
-    if ($force) {
-        if (!empty($changes)) {
-            update_stats($changes);
-        }
-        $stats = $cache->read("stats") ?? [];
-        $changes = $stats_changes;
-    }
-
-    $new_stats = [];
+    // --- Форумные счётчики: "+N"/"-N" — изменение, число — абсолютное значение ---
     $counters = [
-        'numthreads',
-        'numunapprovedthreads',
-        'numposts',
-        'numunapprovedposts',
+        'numthreads', 'numunapprovedthreads',
+        'numposts', 'numunapprovedposts',
         'numusers',
-        'numdeletedposts',
-        'numdeletedthreads'
+        'numdeletedposts', 'numdeletedthreads',
     ];
 
     foreach ($counters as $counter) {
-        if (array_key_exists($counter, $changes)) {
-            $val = (string)$changes[$counter];
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
 
-            if (str_starts_with($val, "+-")) {
-                $val = substr($val, 1);
-            }
+        $val = (string)$changes[$counter];
+        if (str_starts_with($val, '+-')) {
+            $val = substr($val, 1);
+        }
 
-            if (str_starts_with($val, "+") || str_starts_with($val, "-")) {
-                $delta = (int)$val;
-                if ($delta !== 0) {
-                    $oldVal = is_numeric($stats[$counter] ?? 0) ? (int)$stats[$counter] : 0;
-                    $newVal = $oldVal + $delta;
-
-                    if (!$force && (isset($stats[$counter][0]) && ($stats[$counter][0] === "+" || $stats[$counter][0] === "-"))) {
-                        $new_stats[$counter] = ($newVal >= 0) ? "+{$newVal}" : 0;
-                    } else {
-                        $new_stats[$counter] = max(0, $newVal);
-                    }
-                }
-            } else {
-                $newVal = (int)$val;
-                $new_stats[$counter] = max(0, $newVal);
-            }
+        if ($val !== '' && ($val[0] === '+' || $val[0] === '-')) {
+            $stats[$counter] = max(0, (int)($stats[$counter] ?? 0) + (int)$val);
+        } else {
+            $stats[$counter] = max(0, (int)$val);
         }
     }
 
-    if (!$force) {
-        $stats_changes = array_merge($stats, $new_stats);
-        return;
-    }
-
-    // Обновляем lastmember, если изменился numusers
+    // --- Последний зарегистрированный ---
     if (array_key_exists('numusers', $changes)) {
-        $query = $db->sql_query_prepared(
-            "SELECT id, username FROM users ORDER BY added DESC LIMIT 1"
-        );
+        $query = $db->sql_query_prepared("SELECT id, username FROM users ORDER BY added DESC LIMIT 1", []);
         $lastmember = $query ? $db->fetch_array($query) : null;
         if ($lastmember) {
-            $new_stats['lastuid'] = (int)$lastmember['id'];
-            $new_stats['lastusername'] = htmlspecialchars_uni($lastmember['username'] ?? '');
+            $stats['lastuid']      = (int)$lastmember['id'];
+            $stats['lastusername'] = htmlspecialchars_uni($lastmember['username'] ?? '');
         }
     }
 
-    if (!empty($new_stats)) {
-        if (is_array($stats)) {
-            $stats = array_merge($stats, $new_stats);
-        } else {
-            $stats = $new_stats;
-        }
-    }
+    // --- Трекерная статистика (целые числа) ---
+    $fetch_int = static function (string $sql, string $field) use ($db): int {
+        $q   = $db->sql_query_prepared($sql, []);
+        $row = $q ? $db->fetch_array($q) : null;
+        return (int)($row[$field] ?? 0);
+    };
 
-    // Подсчёты
-    $res      = $db->sql_query_prepared("SELECT COUNT(id) AS cnt FROM torrents");
-    $row      = $res ? $db->fetch_array($res) : null;
-    $torrents = (int) ($row['cnt'] ?? 0);
+    $torrents = $fetch_int("SELECT COUNT(id) AS cnt FROM torrents", 'cnt');
+    $seeders  = $fetch_int("SELECT COUNT(id) AS cnt FROM peers WHERE seeder = 'yes'", 'cnt');
+    $leechers = $fetch_int("SELECT COUNT(id) AS cnt FROM peers WHERE seeder = 'no'", 'cnt');
+    $peers    = $seeders + $leechers;
 
-    $query = $db->sql_query_prepared("SELECT COUNT(id) as totalseeders FROM peers WHERE seeder = 'yes'");
-    $Result = $query ? $db->fetch_array($query) : null;
-    $stats['seeders'] = ts_nf((int)($Result['totalseeders'] ?? 0));
+    $q   = $db->sql_query_prepared("SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul FROM users", []);
+    $row = $q ? $db->fetch_array($q) : null;
+    $totaldownloaded = (int)($row['totaldl'] ?? 0);
+    $totaluploaded   = (int)($row['totalul'] ?? 0);
 
-    $query = $db->sql_query_prepared("SELECT COUNT(id) as totalleechers FROM peers WHERE seeder = 'no'");
-    $Result = $query ? $db->fetch_array($query) : null;
-    $stats['leechers'] = ts_nf((int)($Result['totalleechers'] ?? 0));
+    // В кэш — отформатированные значения для вывода (как было)
+    $stats['torrents']        = $torrents;
+    $stats['seeders']         = ts_nf($seeders);
+    $stats['leechers']        = ts_nf($leechers);
+    $stats['peers']           = ts_nf($peers);
+    $stats['totaldownloaded'] = $totaldownloaded;
+    $stats['totaluploaded']   = $totaluploaded;
 
-    $stats['peers'] = ts_nf(((int)$stats['seeders']) + ((int)$stats['leechers']));
-    $stats['torrents'] = (int)$torrents;
-
-    $result = $db->sql_query_prepared("SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul FROM users");
-    $row = $result ? $db->fetch_array($result) : null;
-    $stats['totaldownloaded'] = (int)($row['totaldl'] ?? 0);
-    $stats['totaluploaded'] = (int)($row['totalul'] ?? 0);
-
-    // Обновляем строку статистики за сегодня - исправляем mktime()
-    $current_month = (int)date("m");
-    $current_day = (int)date("j");
-    $current_year = (int)date("Y");
-    
+    // --- Строка за сегодня в таблице stats (целые числа) ---
     $todays_stats = [
-        "dateline" => mktime(0, 0, 0, $current_month, $current_day, $current_year),
-        "numusers" => (int)($stats['numusers'] ?? 0),
-        "numthreads" => (int)($stats['numthreads'] ?? 0),
-        "numposts" => (int)($stats['numposts'] ?? 0),
-        "torrents" => (int)($stats['torrents'] ?? 0),
-        "seeders" => (int)($stats['seeders'] ?? 0),
-        "leechers" => (int)($stats['leechers'] ?? 0),
-        "peers" => (int)($stats['peers'] ?? 0),
-        "totaldownloaded" => (int)($stats['totaldownloaded'] ?? 0),
-        "totaluploaded" => (int)($stats['totaluploaded'] ?? 0)
+        'dateline'        => mktime(0, 0, 0, (int)date('n'), (int)date('j'), (int)date('Y')),
+        'numusers'        => (int)($stats['numusers'] ?? 0),
+        'numthreads'      => (int)($stats['numthreads'] ?? 0),
+        'numposts'        => (int)($stats['numposts'] ?? 0),
+        'torrents'        => $torrents,
+        'seeders'         => $seeders,
+        'leechers'        => $leechers,
+        'peers'           => $peers,
+        'totaldownloaded' => $totaldownloaded,
+        'totaluploaded'   => $totaluploaded,
     ];
 
-    $set = implode(',', array_map(fn($column) => "`{$column}`=?", array_keys($todays_stats)));
+    $set = implode(',', array_map(fn($c) => "`{$c}`=?", array_keys($todays_stats)));
     $db->sql_query_prepared("REPLACE INTO stats SET {$set}", array_values($todays_stats));
 
-    $cache->update("stats", $stats, "dateline");
-    $stats_changes['inserted'] = true;
+    $cache->update('stats', $stats, 'dateline');
 }
 
 
@@ -2611,90 +2533,10 @@ function my_strtolower(string $string): string
 }
 
 
-function run_shutdown(): void
-{
-    global $config, $db, $cache, $plugins, $error_handler, $shutdown_functions, $shutdown_queries, $done_shutdown, $mybb;
 
-    if($done_shutdown == true || !$config || (isset($error_handler) && $error_handler->has_errors)) {
-        return;
-    }
 
-    if(empty($shutdown_queries) && empty($shutdown_functions)) {
-        // Nothing to do
-        return;
-    }
 
-    // Missing the core? Build
-    if(!is_object($mybb)) {
-        require_once INC_PATH."/class_core.php";
-        $mybb = new MyBB;
 
-        // Load the settings
-        require INC_PATH."/settings.php";
-    }
-
-    // If our DB has been deconstructed already (bad PHP 5.2.0), reconstruct
-    if(!is_object($db)) 
-	{
-        if(!isset($config) || empty($config['database']['type'])) 
-		{
-           require INC_PATH."/config.php";
-        }
-        
-		if(isset($config)) 
-	    {
-          // Load DB interface
-          require_once INC_PATH."/db_base.php";
-          require_once INC_PATH."/db_mysqli.php";
-
-          switch($config['database']['type']) 
-		  {
-            case "mysqli":
-                $db = new DB_MySQLi;
-                break;
-            default:
-                throw new RuntimeException(
-                    "Unsupported database type '{$config['database']['type']}'. Only 'mysqli' is supported."
-                );
-          }
-
-          $db->connect($config['database']);
-        }
-    }
-
-    // Cache object deconstructed? reconstruct
-    if(!is_object($cache)) {
-        require_once INC_PATH."/class_datacache.php";
-        $cache = new datacache;
-        $cache->cache();
-    }
-    
-    $no_plugins = "0";
-    
-    // And finally.. plugins
-    if(!is_object($plugins) && !defined("NO_PLUGINS") && !($no_plugins == 1)) {
-        require_once INC_PATH."/class_plugins.php";
-        $plugins = new pluginSystem;
-        $plugins->load();
-    }
-
-    // We have some shutdown queries needing to be run
-    if(is_array($shutdown_queries)) {
-        // Loop through and run them all
-        foreach($shutdown_queries as $query) {
-            $db->sql_query_prepared($query, []);
-        }
-    }
-
-    // Run any shutdown functions if we have them
-    if(is_array($shutdown_functions)) {
-        foreach($shutdown_functions as $function) {
-            call_user_func_array($function['function'], $function['arguments']);
-        }
-    }
-
-    $done_shutdown = true;
-}
 
 function usergroup_displaygroup(int $gid): array
 {
@@ -3079,55 +2921,40 @@ function highlight(string $search, string $subject, string $hlstart = '<b><font 
 
 
 
-function int_check(mixed $value, bool $stdhead = false, bool $stdfood = true, bool $die = true, bool $log = true): ?bool
+function int_check(mixed $value): void
 {
-    global $CURUSER, $BASEURL, $lang, $db;
-    
-    
-	$msg = sprintf($lang->global['invalididlogmsg'],
-    htmlspecialchars_uni($_SERVER['REQUEST_URI'] ?? ''),
-    '<a href="' . $BASEURL . '/userdetails.php?id=' . ($CURUSER['id'] ?? 0) . '">' . htmlspecialchars_uni($CURUSER['username'] ?? 'Guest') . '</a>',
-    get_ip(),
-    get_date_time()
-);
-	
-	
     if (is_array($value)) {
         foreach ($value as $val) {
-            int_check($val, $stdhead, $stdfood, $die, $log);
+            int_check($val);
         }
-        return null;
+        return;
     }
 
-    if (!is_valid_id($value)) {
-        if ($stdhead) {
-            if ($log) {
-                write_log($msg);
-            }
-            stderr($lang->global['invalididlogged']);
-        } else {
-            echo $lang->global['invalididlogged2'];
-            if ($log) {
-                write_log($msg);
-            }
-        }
-
-        if ($stdfood) {
-            stdfoot();
-        }
-
-        if ($die) {
-            exit();
-        }
-        return false;
-    } else {
-        return true;
+    if (is_valid_id($value)) {
+        return;
     }
+
+    global $CURUSER, $BASEURL, $lang;
+
+    $who = !empty($CURUSER['id'])
+        ? '<a href="' . $BASEURL . '/' . get_profile_link((int)$CURUSER['id']) . '">'
+            . htmlspecialchars_uni($CURUSER['username']) . '</a>'
+        : 'Guest';
+
+    write_log(sprintf(
+        $lang->global['invalididlogmsg'],
+        htmlspecialchars_uni($_SERVER['REQUEST_URI'] ?? ''),
+        $who,
+        get_ip(),
+        get_date_time()
+    ));
+
+    stderr($lang->global['invalididlogged']);
 }
 
 function is_valid_id(mixed $id): bool
 {
-    return is_numeric($id) && $id > 0 && floor((float)$id) == $id;
+    return filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) !== false;
 }
 
 

@@ -10,6 +10,9 @@ declare(strict_types=1);
  *
  * Прогресс: при выдаче в exam_progress записывается стартовое значение каждого
  * показателя (init_value), дальше прирост = текущее - стартовое.
+ *
+ * Тексты: lang-файл 'exam' (english / russian). Системные ЛС уходят через send_pm()
+ * с lang-ключами на языке получателя; write_log()/savelog()/modcomment - на английском.
  */
 
 if (!defined('IN_TRACKER') && !defined('IN_CRON') && !defined('STAFF_PANEL')) {
@@ -34,13 +37,14 @@ const EXAM_INDEX_SEED_BONUS           = 4;
 const EXAM_INDEX_SEED_POINTS          = 5;
 const EXAM_INDEX_UPLOAD_TORRENT_COUNT = 6;
 
+// 'name' - English, for logs; for display use exam_index_name() / exam_index_unit()
 const EXAM_INDEXES = [
-    EXAM_INDEX_UPLOADED             => ['name' => 'Uploaded',          'unit' => 'GB'],
-    EXAM_INDEX_DOWNLOADED           => ['name' => 'Downloaded',        'unit' => 'GB'],
-    EXAM_INDEX_SEED_TIME_AVERAGE    => ['name' => 'Average seed time', 'unit' => 'h'],
-    EXAM_INDEX_SEED_BONUS           => ['name' => 'Bonus gained',      'unit' => ''],
-    EXAM_INDEX_SEED_POINTS          => ['name' => 'Seed points',       'unit' => ''],
-    EXAM_INDEX_UPLOAD_TORRENT_COUNT => ['name' => 'Torrents uploaded', 'unit' => ''],
+    EXAM_INDEX_UPLOADED             => ['name' => 'Uploaded',          'unit' => 'GB', 'key' => 'idx_uploaded'],
+    EXAM_INDEX_DOWNLOADED           => ['name' => 'Downloaded',        'unit' => 'GB', 'key' => 'idx_downloaded'],
+    EXAM_INDEX_SEED_TIME_AVERAGE    => ['name' => 'Average seed time', 'unit' => 'h',  'key' => 'idx_seed_time_average'],
+    EXAM_INDEX_SEED_BONUS           => ['name' => 'Bonus gained',      'unit' => '',   'key' => 'idx_seed_bonus'],
+    EXAM_INDEX_SEED_POINTS          => ['name' => 'Seed points',       'unit' => '',   'key' => 'idx_seed_points'],
+    EXAM_INDEX_UPLOAD_TORRENT_COUNT => ['name' => 'Torrents uploaded', 'unit' => '',   'key' => 'idx_upload_count'],
 ];
 
 const EXAM_FILTER_USER_CLASS                = 'classes';            // здесь: id групп
@@ -89,6 +93,36 @@ const EXAM_GB = 1073741824;
 
 final class ExamException extends RuntimeException {}
 
+// ── Язык ─────────────────────────────────────────────────
+
+/**
+ * String from the 'exam' lang file with {1}, {2} (or %1$s after $lang->load()) filled in.
+ * Loads the file on first use; an unknown key comes back as is.
+ */
+function exam_t(string $key, string|int|float ...$args): string
+{
+    global $lang;
+    if (is_object($lang) && empty($lang->exam_functions)) {
+        $lang->load('exam_functions');
+    }
+    $text = is_object($lang) && is_array($lang->exam_functions ?? null) ? (string)($lang->exam_functions[$key] ?? $key) : $key;
+    foreach ($args as $i => $v) {
+        $n    = $i + 1;
+        $text = str_replace(['{' . $n . '}', '%' . $n . '$s'], (string)$v, $text);
+    }
+    return $text;
+}
+
+function exam_index_name(int $index): string
+{
+    return isset(EXAM_INDEXES[$index]) ? exam_t(EXAM_INDEXES[$index]['key']) : (string)$index;
+}
+
+function exam_index_unit(int $index): string
+{
+    return $index === EXAM_INDEX_SEED_TIME_AVERAGE ? exam_t('unit_hours') : (EXAM_INDEXES[$index]['unit'] ?? '');
+}
+
 // ── Время ────────────────────────────────────────────────
 
 /**
@@ -131,7 +165,7 @@ function exam_recurring_range(string $recurring, int $now): array
         'Daily'   => [strtotime('today', $now), strtotime('tomorrow', $now) - 1],
         'Weekly'  => [strtotime('monday this week', $now), strtotime('monday next week', $now) - 1],
         'Monthly' => [strtotime('first day of this month 00:00', $now), strtotime('first day of next month 00:00', $now) - 1],
-        default   => throw new ExamException("Unknown recurring period: {$recurring}"),
+        default   => throw new ExamException(exam_t('err_recurring', $recurring)),
     };
 }
 
@@ -155,7 +189,7 @@ function exam_end_for_user(array $exam): int
     if (!empty($exam['end']))           return exam_ts($exam['end']);
     if ((int)$exam['duration'] > 0)     return exam_add_days(exam_begin_for_user($exam), (int)$exam['duration']);
     if (!empty($exam['recurring']))     return exam_recurring_range((string)$exam['recurring'], TIMENOW)[1];
-    throw new ExamException('Invalid time condition: set exactly one of begin + end / duration / recurring.');
+    throw new ExamException(exam_t('err_time_condition'));
 }
 
 /** ExamUser::getBeginAttribute() - своё, иначе экзамена, иначе created_at. */
@@ -223,7 +257,7 @@ function exam_checked_indexes(array $exam): array
 
 function exam_type_text(array $exam): string
 {
-    return (int)$exam['type'] === EXAM_TYPE_TASK ? 'Task' : 'Exam';
+    return exam_t((int)$exam['type'] === EXAM_TYPE_TASK ? 'type_task' : 'type_exam');
 }
 
 /** ExamRepository::listValid() */
@@ -360,31 +394,31 @@ function exam_insert_user(array $exam, array $user, int $begin, int $end): int
 function exam_assign_to_user(int $uid, int $examId, array $actor, ?int $begin = null, ?int $end = null): int
 {
     $exam = exam_get($examId);
-    if (!$exam)                                   throw new ExamException('Exam not found.');
-    if ((int)$exam['status'] !== EXAM_STATUS_ENABLED) throw new ExamException('This exam is disabled.');
+    if (!$exam)                                   throw new ExamException(exam_t('err_not_found'));
+    if ((int)$exam['status'] !== EXAM_STATUS_ENABLED) throw new ExamException(exam_t('err_disabled'));
     $user = exam_fetch_user($uid);
-    if (!$user)                                   throw new ExamException('User not found.');
+    if (!$user)                                   throw new ExamException(exam_t('err_user_not_found'));
 
-    if (!empty($exam['begin']) && exam_ts($exam['begin']) > TIMENOW) throw new ExamException('It has not started yet.');
-    if (!empty($exam['end'])   && exam_ts($exam['end'])   < TIMENOW) throw new ExamException('It has already ended.');
+    if (!empty($exam['begin']) && exam_ts($exam['begin']) > TIMENOW) throw new ExamException(exam_t('err_not_started'));
+    if (!empty($exam['end'])   && exam_ts($exam['end'])   < TIMENOW) throw new ExamException(exam_t('err_ended'));
 
     if ((int)$exam['type'] === EXAM_TYPE_EXAM) {
         // Экзамен выдаёт только стафф, и не стаффу
-        if (empty($actor['staff']) || exam_is_staff($user)) throw new ExamException('No permission: exams can only be assigned by staff, and not to staff.');
+        if (empty($actor['staff']) || exam_is_staff($user)) throw new ExamException(exam_t('err_exam_staff_only'));
     } else {
         // Задание берут только сами
-        if ((int)$actor['id'] !== $uid) throw new ExamException('You can only claim a task for yourself.');
+        if ((int)$actor['id'] !== $uid) throw new ExamException(exam_t('err_task_self_only'));
         if ((int)$exam['max_user_count'] > 0 && exam_ongoing_count($examId) >= (int)$exam['max_user_count']) {
-            throw new ExamException('The maximum number of participants has been reached.');
+            throw new ExamException(exam_t('err_task_full'));
         }
     }
 
-    if (!exam_match_user($exam, $user))  throw new ExamException('This user does not match the target users of this exam.');
-    if (exam_has_ongoing($uid))          throw new ExamException('Another exam or task is already in progress. Finish it first.');
+    if (!exam_match_user($exam, $user))  throw new ExamException(exam_t('err_not_target'));
+    if (exam_has_ongoing($uid))          throw new ExamException(exam_t('err_has_ongoing'));
 
     $begin ??= exam_begin_for_user($exam);
     $end   ??= exam_end_for_user($exam);
-    if ($end <= $begin)                  throw new ExamException('End must be later than begin.');
+    if ($end <= $begin)                  throw new ExamException(exam_t('err_end_before_begin'));
 
     return exam_insert_user($exam, $user, $begin, $end);
 }
@@ -415,7 +449,7 @@ function exam_progress_value(array $user, int $index, array $eu): int
             ));
             return (int)($r['n'] ?? 0);
     }
-    throw new ExamException("Unknown index: {$index}");
+    throw new ExamException(exam_t('err_unknown_index', $index));
 }
 
 /**
@@ -507,7 +541,7 @@ function exam_progress_formatted(array $exam, array $progress): array
 
         $current = (int)$progress[$idx];
         $require = (int)$index['require_value'];
-        $unit    = EXAM_INDEXES[$idx]['unit'];
+        $unit    = exam_index_unit($idx);
 
         switch ($idx) {
             case EXAM_INDEX_UPLOADED:
@@ -526,7 +560,7 @@ function exam_progress_formatted(array $exam, array $progress): array
 
         $out[] = [
             'index'         => $idx,
-            'name'          => EXAM_INDEXES[$idx]['name'],
+            'name'          => exam_index_name($idx),
             'require_value' => $require,
             'require_text'  => trim(exam_num($require, 2) . " {$unit}"),
             'current_value' => $current,
@@ -540,14 +574,41 @@ function exam_progress_formatted(array $exam, array $progress): array
 
 // ── ЛС ───────────────────────────────────────────────────
 
-function exam_notify(int $uid, string $subject, string $message): void
+/**
+ * PM from the system (fromid = -1, not from the current user / staff).
+ * Arrays ['lang_key', arg1, ...] - lang file 'exam' in the recipient's language
+ * (users.language); [ and ] in subject arguments become ( and ) so they don't break BBCode.
+ * Plain strings are sent as is (old calls).
+ */
+function exam_notify(int $uid, string|array $subject, string|array $message): void
 {
-    // send_pm() из include/functions_pm.php. fromid = -1: отправитель - система,
-    // а не текущий пользователь (иначе из админки ЛС ушло бы от имени стаффа).
+    global $db;
     if (!function_exists('send_pm')) {
         require_once INC_PATH . '/functions_pm.php';
     }
-    send_pm(['subject' => $subject, 'message' => $message, 'touid' => $uid], -1, true);
+
+    if (!is_array($subject) && !is_array($message)) {
+        send_pm(['subject' => $subject, 'message' => $message, 'touid' => $uid], -1, true);
+        return;
+    }
+
+    if (is_array($subject)) {
+        foreach ($subject as $i => $v) {
+            if ($i > 0 && is_string($v)) {
+                $subject[$i] = strtr($v, ['[' => '(', ']' => ')']);
+            }
+        }
+    }
+
+    $r = $db->fetch_array($db->sql_query_prepared('SELECT language FROM users WHERE id = ?', [$uid]));
+    send_pm([
+        'subject'       => $subject,
+        'message'       => $message,
+        'touid'         => $uid,
+        'language'      => (string)($r['language'] ?? '') !== '' ? (string)$r['language'] : 'english',
+        'language_file' => 'exam_functions',
+        'sender'        => ['uid' => -1],
+    ], -1, true);
 }
 
 // ── Кроны ────────────────────────────────────────────────
@@ -734,6 +795,7 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
             $res    = exam_update_progress($eu, $exam, $user);
             $isDone = $res !== null && $res['is_done'];
             $isTask = (int)$exam['type'] === EXAM_TYPE_TASK;
+            $name   = (string)$exam['name'];
             $range  = sprintf('%s ~ %s',
                 date('d.m.Y H:i', exam_user_begin($eu, $exam)), date('d.m.Y H:i', exam_user_end($eu, $exam)));
 
@@ -757,22 +819,23 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
                     $reward = (int)$exam['success_reward_bonus'];
                     if ($reward > 0) {
                         $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$reward, $uid]);
-                        bonus_log($uid, $reward, 'exam', "Task completed: {$exam['name']}", (int)$exam['id']);
+                        bonus_log($uid, $reward, 'exam', "Task completed: {$name}", (int)$exam['id']);
                     }
                     $note($exam, 'passed', $user);
-                    exam_notify($uid, 'Task completed!',
-                        "Congratulations! You completed the task [b]{$exam['name']}[/b] in time ({$range}) and received [b]" . exam_num($reward) . "[/b] bonus points.");
+                    exam_notify($uid, ['pm_task_done_subj', $name], $reward > 0
+                        ? ['pm_task_done_msg', $name, $range, exam_num($reward)]
+                        : ['pm_task_done_msg_noreward', $name, $range]);
                 } else {
                     // Our addition (not in NexusPHP): optional bonus reward for passing an exam
                     $reward = (int)$exam['success_reward_bonus'];
                     if ($reward > 0) {
                         $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$reward, $uid]);
-                        bonus_log($uid, $reward, 'exam', "Exam passed: {$exam['name']}", (int)$exam['id']);
+                        bonus_log($uid, $reward, 'exam', "Exam passed: {$name}", (int)$exam['id']);
                     }
                     $note($exam, 'passed', $user);
-                    exam_notify($uid, 'Exam passed!',
-                        "Congratulations! You passed the exam [b]{$exam['name']}[/b] in time ({$range})."
-                        . ($reward > 0 ? ' You received [b]' . exam_num($reward) . '[/b] bonus points.' : ''));
+                    exam_notify($uid, ['pm_exam_passed_subj', $name], $reward > 0
+                        ? ['pm_exam_passed_msg_bonus', $name, $range, exam_num($reward)]
+                        : ['pm_exam_passed_msg', $name, $range]);
                     // Повторяющийся экзамен - сразу следующий цикл, если пользователь всё ещё подходит
                     if (!empty($exam['recurring']) && exam_match_user($exam, $user)) {
                         exam_insert_user($exam, $user, exam_begin_for_user($exam), exam_end_for_user($exam));
@@ -785,17 +848,19 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
                 $deduct = (int)$exam['fail_deduct_bonus'];
                 if ($deduct > 0) {
                     $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [$deduct, $uid]);
-                    bonus_log($uid, -$deduct, 'exam', "Task failed: {$exam['name']}", (int)$exam['id']);
+                    bonus_log($uid, -$deduct, 'exam', "Task failed: {$name}", (int)$exam['id']);
                 }
                 $note($exam, 'failed', $user);
-                exam_notify($uid, 'Task not completed!',
-                    "You did not complete the task [b]{$exam['name']}[/b] in time ({$range}). [b]" . exam_num($deduct) . "[/b] bonus points have been deducted.");
+                exam_notify($uid, ['pm_task_failed_subj', $name], $deduct > 0
+                    ? ['pm_task_failed_msg', $name, $range, exam_num($deduct)]
+                    : ['pm_task_failed_msg_free', $name, $range]);
                 continue;
             }
 
             // Экзамен не сдан - бан. Стафф не трогаем.
-            if (!isset($staff[(int)$user['usergroup']])) {
-                $modNote = gmdate('Y-m-d') . " - Exam '{$exam['name']}' not passed ({$range}), disabled by System.\n";
+            $isStaff = isset($staff[(int)$user['usergroup']]);
+            if (!$isStaff) {
+                $modNote = date('Y-m-d H:i') . " - Exam '{$name}' not passed ({$range}), disabled by System.\n";
                 $db->sql_query_prepared(
                     "UPDATE users SET enabled = 'no', modcomment = CONCAT(?, modcomment) WHERE id = ?",
                     [$modNote, $uid]
@@ -804,8 +869,8 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
             } else {
                 $note($exam, 'failed', $user);
             }
-            exam_notify($uid, 'Exam not passed, account disabled!',
-                "You did not pass the exam [b]{$exam['name']}[/b] in time ({$range}), and your account has been disabled.");
+            exam_notify($uid, ['pm_exam_failed_subj', $name],
+                [$isStaff ? 'pm_exam_failed_msg_staff' : 'pm_exam_failed_msg', $name, $range]);
         }
     }
 
@@ -830,13 +895,12 @@ function exam_anomaly(?array $stats): ?string
     return null;
 }
 
-/** Hint for staff, shown in the admin list and in the PM. */
+/** Hint for staff, shown in the admin list. */
 function exam_anomaly_hint(string $anomaly, bool $isTask): string
 {
     return $anomaly === 'low'
-        ? 'Very few pass. Check the requirements (too hard for the time?), the target filters, and that stats are counted (announces).'
-          . ($isTask ? '' : ' Every fail here disables an account.')
-        : 'Almost everyone passes. The requirements may be too easy to check anything.';
+        ? exam_t('hint_anomaly_low') . ($isTask ? '' : exam_t('hint_anomaly_low_exam'))
+        : exam_t('hint_anomaly_high');
 }
 
 /**
@@ -858,18 +922,17 @@ function exam_check_anomaly(array $exam): void
 
     $isTask = (int)$exam['type'] === EXAM_TYPE_TASK;
     $kind   = $isTask ? 'task' : 'exam';
+    $name   = (string)$exam['name'];
+    $rate   = exam_num((float)$stats['pass_rate'], 1) . '%'; // % in the argument, not in the lang string
     $link   = rtrim((string)$BASEURL, '/') . EXAM_ADMIN_URL . '&do=users&exam_id=' . $id;
-    $msg    = "The {$kind} [b]{$exam['name']}[/b] (#{$id}) has a " . ($new === 'low' ? 'very low' : 'very high')
-            . ' pass rate: [b]' . exam_num((float)$stats['pass_rate'], 1) . '%[/b] ('
-            . exam_num($stats['passed']) . ' of ' . exam_num($stats['finished']) . ' finished'
-            . ($stats['disabled'] > 0 ? ', ' . exam_num($stats['disabled']) . ' accounts disabled' : '') . ").\n\n"
-            . exam_anomaly_hint($new, $isTask) . "\n\n[url={$link}]Open participants[/url]";
+    $msg    = ["pm_anomaly_{$new}_{$kind}", $name, $id, $rate,
+               exam_num($stats['passed']), exam_num($stats['finished']), exam_num($stats['disabled']), $link];
 
     foreach (exam_admin_uids() as $uid) {
-        exam_notify($uid, ($new === 'low' ? 'Low' : 'High') . " pass rate: {$exam['name']}", $msg);
+        exam_notify($uid, ["pm_anomaly_{$new}_subj", $name], $msg);
     }
     if (function_exists('savelog')) {
-        savelog("[exams] {$kind} #{$id} pass rate " . exam_num((float)$stats['pass_rate'], 1) . "% ({$new}), admins notified");
+        savelog("[exams] {$kind} #{$id} pass rate {$rate} ({$new}), admins notified");
     }
 }
 
@@ -889,7 +952,7 @@ function exam_admin_uids(): array
 
 /**
  * Summary line for one exam: who passed (and the reward), who failed, who was disabled.
- * Long name lists are cut so the log row stays readable.
+ * Long name lists are cut so the log row stays readable. English (site log).
  */
 function exam_checkout_log_line(array $s): string
 {
@@ -984,16 +1047,16 @@ function exam_task_abandon(int $uid, int $examUserId): int
 
     $eu = exam_user_get($examUserId);
     if (!$eu || (int)$eu['uid'] !== $uid || (int)$eu['status'] !== EXAM_USER_STATUS_NORMAL) {
-        throw new ExamException('You have no such task in progress.');
+        throw new ExamException(exam_t('err_no_such_task'));
     }
     $exam = exam_get((int)$eu['exam_id']);
     if (!$exam || (int)$exam['type'] !== EXAM_TYPE_TASK) {
-        throw new ExamException('Only tasks can be abandoned. An exam has to be finished.');
+        throw new ExamException(exam_t('err_abandon_exam'));
     }
     // After the end it's for the checkout cron to decide, otherwise a failed task
     // could be swapped for the smaller abandon penalty in the last minutes
     if (exam_user_end($eu, $exam) <= TIMENOW) {
-        throw new ExamException('Time is up for this task, results are being counted.');
+        throw new ExamException(exam_t('err_abandon_timeup'));
     }
 
     // Fresh progress so "already met" is decided on current numbers
@@ -1006,19 +1069,19 @@ function exam_task_abandon(int $uid, int $examUserId): int
         [EXAM_USER_STATUS_FINISHED, EXAM_RESULT_ABANDONED, exam_now(), (int)$eu['id'], EXAM_USER_STATUS_NORMAL]
     );
     if ((int)$db->affected_rows() !== 1) {
-        throw new ExamException('This task is already finished.');
+        throw new ExamException(exam_t('err_task_finished'));
     }
     $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_user_id = ?', [(int)$eu['id']]);
 
+    $name = (string)$exam['name'];
     if ($deduct > 0) {
         $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [$deduct, $uid]);
-        bonus_log($uid, -$deduct, 'exam', "Task abandoned: {$exam['name']}", (int)$exam['id']);
+        bonus_log($uid, -$deduct, 'exam', "Task abandoned: {$name}", (int)$exam['id']);
     }
 
-    exam_notify($uid, 'Task abandoned',
-        "You abandoned the task [b]{$exam['name']}[/b]."
-        . ($deduct > 0 ? ' [b]' . exam_num($deduct) . '[/b] bonus points have been deducted.' : ' No bonus points were deducted.')
-        . ' You can claim another task now.');
+    exam_notify($uid, ['pm_abandon_subj', $name], $deduct > 0
+        ? ['pm_abandon_msg', $name, exam_num($deduct)]
+        : ['pm_abandon_msg_free', $name]);
 
     return $deduct;
 }
@@ -1122,14 +1185,17 @@ function exam_render_current(int $uid): string
     $tone   = EXAM_BG[(string)$exam['background_color']] ?? 'primary';
     $end    = exam_user_end($eu, $exam);
     $left   = max(0, $end - TIMENOW);
-    $leftTx = $left >= 86400 ? intdiv($left, 86400) . 'd ' . intdiv($left % 86400, 3600) . 'h' : intdiv($left, 3600) . 'h ' . intdiv($left % 3600, 60) . 'm';
+    [$ud, $uh, $um] = [exam_t('unit_d'), exam_t('unit_h'), exam_t('unit_m')];
+    $leftTx = $left >= 86400
+        ? intdiv($left, 86400) . $ud . ' ' . intdiv($left % 86400, 3600) . $uh
+        : intdiv($left, 3600) . $uh . ' ' . intdiv($left % 3600, 60) . $um;
 
     $h = '<link rel="stylesheet" href="' . $e((string)$BASEURL) . '/include/templates/default/style/exam.css?ver=1">'
        . '<div class="exb exb-' . $tone . '">'
        . '<div class="exb-head"><i class="fa-solid ' . ($isTask ? 'fa-list-check' : 'fa-graduation-cap') . '"></i><div>'
-       . '<strong>' . exam_type_text($exam) . ': ' . $e((string)$exam['name']) . '</strong>'
-       . '<span>' . date('d.m.Y H:i', exam_user_begin($eu, $exam)) . ' ~ ' . date('d.m.Y H:i', $end) . ', ' . $leftTx . ' left' . '</span>'
-       . '</div>' . ($isTask ? '<a class="exb-link" href="' . $e((string)$BASEURL) . '/task.php">All tasks</a>' : '') . '</div>';
+       . '<strong>' . $e(exam_type_text($exam)) . ': ' . $e((string)$exam['name']) . '</strong>'
+       . '<span>' . date('d.m.Y H:i', exam_user_begin($eu, $exam)) . ' ~ ' . date('d.m.Y H:i', $end) . ', ' . $e(exam_t('lbl_left', $leftTx)) . '</span>'
+       . '</div>' . ($isTask ? '<a class="exb-link" href="' . $e((string)$BASEURL) . '/task.php">' . $e(exam_t('lnk_all_tasks')) . '</a>' : '') . '</div>';
 
     foreach ($formatted as $f) {
         $h .= '<div class="exb-item' . ($f['passed'] ? ' is-done' : '') . '">'

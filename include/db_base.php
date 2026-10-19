@@ -47,9 +47,6 @@ interface DB_Base
     public function field_exists(string $field, string $table): bool;
 
     
-    public function shutdown_query(string|mysqli_result $query, string $name = ''): void;
-
-   
 
     
     public function escape_string(mixed $string): string;

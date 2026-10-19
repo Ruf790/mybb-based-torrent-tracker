@@ -1,47 +1,99 @@
 <?php
 declare(strict_types=1);
 
+
 /**
  * Mark a particular thread as read for the current user.
- *
- * @param int $tid The thread ID
- * @param int $fid The forum ID of the thread
  */
 function mark_thread_read(int $tid, int $fid): void
 {
-    global $mybb, $CURUSER, $threadreadcut;
+    global $db, $CURUSER, $threadreadcut;
 
-    // Can only do "true" tracking for registered users
     if($threadreadcut > 0 && $CURUSER['id'] > 0)
     {
-        switch($GLOBALS['db']->type)
-        {
-            case "pgsql":
-            case "sqlite":
-                $GLOBALS['db']->replace_query("threadsread", [
-                    'tid' => $tid,
-                    'uid' => $CURUSER['id'],
-                    'dateline' => TIMENOW
-                ], ["tid", "uid"]);
-                break;
-            default:
-                $GLOBALS['db']->sql_query_prepared(
-                    "REPLACE INTO threadsread (tid, uid, dateline) VALUES(?, ?, ?)",
-                    [$tid, (int)$CURUSER['id'], TIMENOW]
-                );
-        }
+        $db->sql_query_prepared(
+            "REPLACE INTO threadsread (tid, uid, dateline) VALUES(?, ?, ?)",
+            [$tid, (int)$CURUSER['id'], TIMENOW]
+        );
     }
     else
     {
-        my_set_array_cookie("threadread", (string)$tid, TIMENOW, -1);	
+        my_set_array_cookie("threadread", (string)$tid, TIMENOW, -1);
     }
 
-    $unread_count = fetch_unread_count($fid);
-    if($unread_count === 0)
+    if(fetch_unread_count($fid) === 0)
     {
         mark_forum_read($fid);
     }
 }
+
+/**
+ * Mark a particular forum as read.
+ */
+function mark_forum_read(int $fid): void
+{
+    global $db, $CURUSER, $threadreadcut;
+
+    if($threadreadcut > 0 && $CURUSER['id'] > 0)
+    {
+        $db->sql_query_prepared(
+            "REPLACE INTO forumsread (fid, uid, dateline) VALUES(?, ?, ?)",
+            [$fid, (int)$CURUSER['id'], TIMENOW]
+        );
+    }
+    else
+    {
+        my_set_array_cookie("forumread", (string)$fid, TIMENOW, -1);
+    }
+}
+
+/**
+ * Marks all forums as read.
+ */
+function mark_all_forums_read(): void
+{
+    global $db, $cache, $CURUSER, $threadreadcut;
+
+    if(isset($CURUSER['id']) && $CURUSER['id'] > 0)
+    {
+        $uid = (int)$CURUSER['id'];
+        $db->sql_query_prepared("UPDATE users SET lastvisit = ? WHERE id = ?", [TIMENOW, $uid]);
+
+        require_once INC_PATH . "/functions_user.php";
+        update_pm_count('', 2);
+
+        if($threadreadcut > 0)
+        {
+            $forums = $cache->read('forums') ?: [];
+            $fids   = array_map('intval', array_keys($forums));
+
+            // Пакетами по 100 форумов на запрос
+            foreach(array_chunk($fids, 100) as $chunk)
+            {
+                $placeholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?)'));
+                $params = [];
+                foreach($chunk as $fid)
+                {
+                    array_push($params, $fid, $uid, TIMENOW);
+                }
+
+                $db->sql_query_prepared(
+                    "REPLACE INTO forumsread (fid, uid, dateline) VALUES {$placeholders}",
+                    $params
+                );
+            }
+        }
+    }
+    else
+    {
+        my_setcookie("mybb[readallforums]", '1');
+        my_setcookie("mybb[lastvisit]", (string)TIMENOW);
+
+        my_unsetcookie("mybb[threadread]");
+        my_unsetcookie("mybb[forumread]");
+    }
+}
+
 
 /**
  * Fetches the number of unread threads for the current user in a particular forum.
@@ -54,7 +106,7 @@ function fetch_unread_count($fid)
     global $mybb, $CURUSER, $threadreadcut;
 
     $forums_all = $forums_own = [];
-    $forums = is_string($fid) ? explode(',', $fid) : (array)$fid;
+    $forums = array_map('intval', is_string($fid) ? explode(',', $fid) : (array)$fid);
 
     foreach($forums as $forum)
     {
@@ -155,113 +207,4 @@ function fetch_unread_count($fid)
     }
 }
 
-/**
- * Mark a particular forum as read.
- */
-function mark_forum_read(int $fid): void
-{
-    global $CURUSER, $threadreadcut;
-
-    if($threadreadcut > 0 && $CURUSER['id'] > 0)
-    {
-        $db = $GLOBALS['db'];
-        $db->shutdown_query("
-            REPLACE INTO forumsread (fid, uid, dateline)
-            VALUES('{$fid}', '{$CURUSER['id']}', '".TIMENOW."')
-        ");
-    }
-    else
-    {
-        my_set_array_cookie("forumread", (string)$fid, TIMENOW, -1);
-    }
-}
-
-/**
- * Marks all forums as read.
- */
-function mark_all_forums_read(): void
-{
-    global $mybb, $db, $cache, $CURUSER, $threadreadcut;
-
-    // Только для зарегистрированных пользователей
-    if(isset($CURUSER['id']) && $CURUSER['id'] > 0)
-    {
-        $uid = (int)$CURUSER['id'];
-        $db->sql_query_prepared("UPDATE users SET lastvisit = ? WHERE id = ?", [TIMENOW, $uid]);
-
-        require_once INC_PATH . "/functions_user.php";
-        update_pm_count('', 2);
-
-        if($threadreadcut > 0)
-        {
-            $forums = $cache->read('forums') ?: [];
-
-            $update_count = ceil(count($forums) / 20);
-            $update_count = max($update_count, 15);
-
-            $mark_query = ($db->type === 'pgsql' || $db->type === 'sqlite') ? [] : '';
-
-            $done = 0;
-            foreach(array_keys($forums) as $fid)
-            {
-                $fid = (int)$fid; // безопасно привести к int
-
-                if($db->type === 'pgsql' || $db->type === 'sqlite')
-                {
-                    $mark_query[] = ['fid' => $fid, 'uid' => $uid, 'dateline' => TIMENOW];
-                }
-                else
-                {
-                    if($mark_query !== '') $mark_query .= ',';
-                    $mark_query .= "('{$fid}', '{$uid}', '".TIMENOW."')";
-                }
-
-                $done++;
-
-                // Выполняем батч через каждые $update_count
-                if($done % $update_count === 0)
-                {
-                    if($db->type === 'pgsql' || $db->type === 'sqlite')
-                    {
-                        foreach($mark_query as $replace_query)
-                        {
-                            add_shutdown([$db, 'replace_query'], ['forumsread', $replace_query, ['fid', 'uid']]);
-                        }
-                        $mark_query = [];
-                    }
-                    else
-                    {
-                        $db->shutdown_query("REPLACE INTO forumsread (fid, uid, dateline) VALUES {$mark_query}");
-                        $mark_query = '';
-                    }
-                }
-            }
-
-            // Выполнить остаток
-            if(!empty($mark_query))
-            {
-                if($db->type === 'pgsql' || $db->type === 'sqlite')
-                {
-                    foreach($mark_query as $replace_query)
-                    {
-                        add_shutdown([$db, 'replace_query'], ['forumsread', $replace_query, ['fid', 'uid']]);
-                    }
-                }
-                else
-                {
-                    $db->shutdown_query("REPLACE INTO forumsread (fid, uid, dateline) VALUES {$mark_query}");
-                }
-            }
-        }
-    }
-    else
-    {
-        // Гость: сохраняем куки
-        my_setcookie("mybb[readallforums]", '1');
-        my_setcookie("mybb[lastvisit]", (string)TIMENOW);
-
-        my_unsetcookie("mybb[threadread]");
-        my_unsetcookie("mybb[forumread]");
-    }
-}
 

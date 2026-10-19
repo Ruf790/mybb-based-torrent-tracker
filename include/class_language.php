@@ -202,6 +202,9 @@ class trackerlanguage
 	public $category;
 	
 	
+	public $nuketorrent;
+	
+	
 	
 	
 

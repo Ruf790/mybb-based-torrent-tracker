@@ -960,15 +960,6 @@ HTML;
     // ----------------------------
     // ПРОЧЕЕ
     // ----------------------------
-    function shutdown_query(string|mysqli_result $query, string $name = ''): void
-    {
-        global $shutdown_queries;
-        if ($name) {
-            $shutdown_queries[$name] = $query;
-        } else {
-            $shutdown_queries[] = $query;
-        }
-    }
 
     function fetch_size(string $table = ''): int
     {

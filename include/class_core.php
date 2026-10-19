@@ -16,7 +16,6 @@ class MyBB
     public bool   $seo_support  = false;
     public array  $config       = [];
     public string $request_method = "";
-    public bool   $use_shutdown = true;
     public mixed $session = null;
     public string $post_code    = '';
     public mixed  $admin        = null;
@@ -204,12 +203,7 @@ class MyBB
         stderr($message, 'Configuration Error', 500, 'general');
     }
 
-    function __destruct()
-    {
-        if (function_exists("run_shutdown")) {
-            run_shutdown();
-        }
-    }
+   
 }
 
 // ----------------------------

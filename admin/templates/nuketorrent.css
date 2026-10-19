@@ -1,0 +1,33 @@
+/* Nuke Torrent — admin/nuketorrent.php */
+.nt-wrap{max-width:1100px;margin:1.5rem auto;padding:0 1rem;font-size:1.055rem}
+.nt-wrap .nt-card{background:var(--bs-body-bg);border:1px solid var(--bs-border-color);border-radius:1rem;
+    box-shadow:0 8px 20px rgba(16,24,40,.06),0 2px 8px rgba(16,24,40,.04);overflow:hidden}
+.nt-wrap .nt-head{display:flex;align-items:center;gap:1rem;padding:1.25rem 1.5rem;
+    background:linear-gradient(135deg,rgba(var(--bs-danger-rgb),.10),rgba(var(--bs-danger-rgb),.02));
+    border-bottom:1px solid var(--bs-border-color)}
+.nt-wrap .nt-ico{flex:0 0 auto;width:52px;height:52px;border-radius:.85rem;display:grid;place-items:center;font-size:1.35rem;
+    background:rgba(var(--bs-danger-rgb),.15);color:var(--bs-danger)}
+.nt-wrap .nt-title{margin:0;font-size:1.2rem;font-weight:700;color:var(--bs-emphasis-color)}
+.nt-wrap .nt-sub{margin:.15rem 0 0;color:var(--bs-secondary-color);font-size:.9rem;word-break:break-word}
+.nt-wrap .nt-id{font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:999px;background:var(--bs-secondary-bg);
+    color:var(--bs-secondary-color);margin-left:.35rem;white-space:nowrap}
+.nt-wrap .nt-body{padding:1.5rem}
+.nt-wrap .nt-label{font-weight:600;font-size:.9rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+.nt-wrap .nt-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}
+.nt-wrap .nt-chip{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .85rem;border-radius:999px;font-size:.85rem;
+    border:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);color:var(--bs-body-color);
+    cursor:pointer;transition:all .15s ease}
+.nt-wrap .nt-chip:hover{border-color:var(--bs-danger);color:var(--bs-danger)}
+.nt-wrap .nt-chip.active{background:var(--bs-danger);border-color:var(--bs-danger);color:#fff}
+.nt-wrap .nt-chip i{opacity:.8}
+.nt-wrap .nt-textarea{border-radius:.75rem;resize:vertical;min-height:96px}
+.nt-wrap .nt-meta{display:flex;justify-content:space-between;font-size:.8rem;color:var(--bs-secondary-color);margin-top:.35rem}
+.nt-wrap .nt-meta .is-bad{color:var(--bs-danger)}
+.nt-wrap .nt-current{display:flex;gap:.75rem;padding:1rem;border-radius:.75rem;margin-bottom:1.25rem;
+    background:rgba(var(--bs-warning-rgb),.10);border:1px solid rgba(var(--bs-warning-rgb),.35)}
+.nt-wrap .nt-current i{color:var(--bs-warning-text-emphasis);margin-top:.15rem}
+.nt-wrap .nt-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.75rem;
+    padding:1rem 1.5rem;border-top:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);
+    position:sticky;bottom:0}
+.nt-wrap .nt-foot .btn{border-radius:999px;padding-left:1.25rem;padding-right:1.25rem}
+.nt-wrap .nt-foot-right{display:flex;flex-wrap:wrap;gap:.5rem}

@@ -296,5 +296,25 @@ $language['browse'] = array
 	'js_desc_anonymous'          => 'Make selected torrents anonymous or restore authorship',
 	'js_desc_request'            => 'Toggle "Request" status for selected torrents',
 	'js_desc_resetrating'        => '⚠️ Permanently reset all user ratings for selected torrents. This cannot be undone!',
+	
+	
+	
+'bday_title'    => 'Happy birthday, {1}!',
+'bday_until'    => 'Today until 23:59',
+'bday_left'     => 'Ends in {1} h {2} min',
+'bday_hnr'      => "Please no hit'n'run — keep seeding after you finish!",
+'bday_fl_badge' => 'Freeleech',
+'bday_fl_text'  => 'Downloads today do not count toward your ratio — grab what you have been saving for.',
+'bday_sl_badge' => 'Silverleech',
+'bday_sl_text'  => 'Only half of what you download today counts toward your ratio.',
+'bday_du_badge' => 'Double upload',
+'bday_du_text'  => 'Everything you upload today counts twice.',
+	
+	
+	
+	
+	
+	
+	
 );
 ?>

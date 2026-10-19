@@ -9,6 +9,8 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+
+
 		
 
 'jdate'			=>'Joined: ',

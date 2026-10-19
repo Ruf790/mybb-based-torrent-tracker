@@ -492,6 +492,12 @@ $language['edituser'] = array (
 	'js_hnr_warn_issued'      => 'Leech warning issued',
 	'js_hnr_dl_restricted'    => 'Download rights restricted',
 	'js_audit_clear_confirm'  => 'Clear entire audit history? This cannot be undone.',
+	
+	
+	
+	
+	'passkeymsg' => "Your passkey has been reset by {1}.\n\nPlease Note: Any active torrents must be downloaded again to continue leeching/seeding.",
+	'passkeysubject' => 'Passkey has been reset.',
 
 );
 ?>

@@ -521,5 +521,19 @@ $language['details'] = array
 
 	// ── JS: dltable (inline filterPeers) ──────────────────────────────────────
 	'js_pl_no_match'                  => 'No peers match your filter.',
+	
+	
+	'comment_not_found'       => 'Comment not found',
+    'comment_not_found_desc'  => 'It may have been deleted or merged with another comment, or the link is incorrect.',
+    'comment_not_found_last'  => 'Go to latest comment',
+    'comment_not_found_close' => 'Close',
+	
+	
+	'tip_nuke'  => 'Nuke torrent',
+    'tip_nuked' => 'Nuked: change reason / unnuke',
+	
+	
+	
+	
 );
 ?>

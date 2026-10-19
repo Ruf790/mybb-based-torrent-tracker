@@ -17,7 +17,8 @@ ErrorDocument 500 /error.php?errorid=500
 # Uncomment the following and add your tracker path if rewrites arent working properly
 #RewriteBase /
 RewriteRule ^index.html$ index.php [L,NE]
-RewriteRule ^(.*)-a-(.*)$ announce.php?passkey=$2 [QSA,L]
+
+RewriteRule ^[a-z0-9_]*-a-([a-f0-9]{32})$ announce.php?passkey=$1 [QSA,L]
 
 
 RewriteRule ^user-([0-9]+)\.html$ member.php?action=profile&id=$1 [L,QSA]

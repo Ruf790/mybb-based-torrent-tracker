@@ -144,7 +144,8 @@ $postKey = function_exists('generate_post_check') ? (string)generate_post_check(
 $agsLang = [];
 foreach ($lang->task as $k => $v) {
     if (str_starts_with((string)$k, 'js_')) {
-        $agsLang[substr((string)$k, 3)] = $v;
+        // $lang->load() turned {1} into %1$s; task.js t() expects {1}
+        $agsLang[substr((string)$k, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$v);
     }
 }
 

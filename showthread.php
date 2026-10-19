@@ -478,9 +478,9 @@ $shouldCount = match (true) {
 };
 if ($shouldCount) {
     if ($delayedthreadviews == 1) {
-        $db->shutdown_query("INSERT INTO threadviews (tid) VALUES('{$tid}')");
+        $db->sql_query_prepared("INSERT INTO threadviews (tid) VALUES(?)", [$tid]);
     } else {
-        $db->shutdown_query("UPDATE threads SET views=views+1 WHERE tid='{$tid}'");
+        $db->sql_query_prepared("UPDATE threads SET views = views + 1 WHERE tid = ?", [$tid]);
     }
     ++$thread['views'];
 }
@@ -681,7 +681,10 @@ if ($canQuickReply) {
 $threadnotesbox = '';
 $customthreadtools = $customposttools = '';
 
-$gids      = array_filter(array_unique([...array_filter(explode(',', (string)($CURUSER['additionalgroups'] ?? ''))), $CURUSER['usergroup']]));
+
+$gids = [(int)($CURUSER['usergroup'] ?? 1)];
+
+
 $gidswhere = '';
 foreach ($gids as $gid) {
     $gid = (int)$gid;
@@ -781,7 +784,7 @@ if ($browsingthisthread != 0) {
 
     // Один запрос вместо двух — гости и члены вместе
     $query = $db->sql_query_prepared("
-        SELECT s.ip, s.uid, s.time, u.username, u.invisible, u.usergroup, u.displaygroup
+        SELECT s.ip, s.uid, s.time, u.username, u.invisible, u.usergroup
         FROM sessions s
         LEFT JOIN users u ON (s.uid = u.id)
         WHERE s.time > ? AND s.location2 = ? AND s.nopermission != 1
@@ -803,7 +806,7 @@ if ($browsingthisthread != 0) {
             }
             if ($user['invisible'] != 1 || $usergroups['canviewwolinvis'] == 1 || $user['uid'] == $CURUSER['id']) {
                 $user['profilelink'] = get_profile_link($user['uid']);
-                $user['username']    = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
+                $user['username'] = format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1));
                 $user['reading']     = my_datee($timeformat, $user['time']);
                 $onlinemembers      .= $comma . '<a href="' . $user['profilelink'] . '" title="' . $lang->showthread['users_browsing_thread_reading'] . ' (' . $user['reading'] . ')">' . $user['username'] . '</a>' . $invisiblemark;
                 $comma               = ', ';

@@ -262,7 +262,7 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $rid) {
     $req = $db->fetch_array($db->sql_query_prepared(
-        "SELECT r.*, u.username, u.avatar, u.usergroup, u.displaygroup
+        "SELECT r.*, u.username, u.avatar, u.usergroup
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
          WHERE r.id = ?",
@@ -276,7 +276,7 @@ if ($action === 'view' && $rid) {
     )) > 0;
 
     $comments_q = $db->sql_query_prepared(
-        "SELECT rc.*, u.username, u.avatar, u.usergroup, u.displaygroup
+        "SELECT rc.*, u.username, u.avatar, u.usergroup
          FROM request_comments rc
          LEFT JOIN users u ON u.id = rc.user_id
          WHERE rc.request_id = ?

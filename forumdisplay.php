@@ -221,8 +221,7 @@ foreach (explode(',', $parentlist) as $mfid) {
                 $moderator['profilelink'] = get_profile_link($moderator['id']);
                 $moderator['username']    = format_name(
                     htmlspecialchars_uni($moderator['username']),
-                    $moderator['usergroup'],
-                    $moderator['displaygroup']
+                    (int)($moderator['usergroup'] ?? 1)
                 );
                 $moderators .= $comma . '<a href="' . $moderator['profilelink'] . '">' . $moderator['username'] . '</a>';
                 $done_moderators['users'][] = $moderator['id'];
@@ -252,7 +251,7 @@ if ($browsingthisforum != 0) {
 
     // Один запрос вместо двух
     $query = $db->sql_query_prepared("
-        SELECT s.ip, s.uid, u.username, s.time, u.invisible, u.usergroup, u.displaygroup
+        SELECT s.ip, s.uid, u.username, s.time, u.invisible, u.usergroup
         FROM sessions s
         LEFT JOIN users u ON (s.uid = u.id)
         WHERE s.time > ? AND s.location1 = ? AND s.nopermission != 1
@@ -272,7 +271,7 @@ if ($browsingthisforum != 0) {
                 ++$inviscount;
             }
             if ($user['invisible'] != 1 || ($usergroups['canviewwolinvis'] ?? 0) == 1 || $user['uid'] == $CURUSER['id']) {
-                $user['username']    = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
+                $user['username']    = format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1));
                 $user['profilelink'] = build_profile_link($user['username'], $user['uid']);
                 $onlinemembers      .= $comma . $user['profilelink'] . $invisiblemark;
                 $comma               = ', ';
@@ -1000,10 +999,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
     $customthreadtools = $standardthreadtools = '';
 
     if ($ismod ?? false) {
-        $gids = array_filter(array_unique(array_merge(
-            explode(',', $CURUSER['additionalgroups']),
-            [$CURUSER['usergroup']]
-        )));
+        $gids = [(int)($CURUSER['usergroup'] ?? 1)];
 
         $gidswhere = '';
         foreach ($gids as $gid) {

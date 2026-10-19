@@ -118,11 +118,11 @@ if ($action === 'dstswitch' && $mybb->request_method === 'post' && $CURUSER['id'
 
     $query = $db->sql_query_prepared("
         SELECT COUNT(p.pid) AS posts, p.username AS postusername,
-               u.id, u.username, u.usergroup, u.displaygroup
+               u.id, u.username, u.usergroup
         FROM posts p
         LEFT JOIN users u ON (u.id = p.uid)
         WHERE p.tid = ? AND p.visible IN (0,1)
-        GROUP BY u.id, p.username, u.username, u.usergroup, u.displaygroup
+        GROUP BY u.id, p.username, u.username, u.usergroup
         {$sortsql}
     ", [$tid]);
 
@@ -134,7 +134,7 @@ if ($action === 'dstswitch' && $mybb->request_method === 'post' && $CURUSER['id'
             $poster['username'] = $poster['postusername'];
         }
         $poster['username'] = htmlspecialchars_uni($poster['username']);
-        $poster_name        = format_name($poster['username'], $poster['usergroup'], $poster['displaygroup']);
+        $poster_name = format_name((string)($poster['username'] ?? ''), (int)($poster['usergroup'] ?? 1));
         $profile_link       = build_profile_link($poster_name, (int)$poster['id']);
         $numposts          += (int)$poster['posts'];
 

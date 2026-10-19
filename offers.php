@@ -220,7 +220,7 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $oid) {
     $offer = $db->fetch_array($db->sql_query_prepared(
-        "SELECT o.*, u.username, u.avatar, u.usergroup, u.displaygroup
+        "SELECT o.*, u.username, u.avatar, u.usergroup
          FROM offers o
          LEFT JOIN users u ON u.id = o.user_id
          WHERE o.id = ?",

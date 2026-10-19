@@ -25,7 +25,7 @@ define ('INC_PATH', TSDIR . '/include');
 require_once INC_PATH . '/error_handler.php';
 require_once INC_PATH.'/init.php';
 
-$shutdown_queries = $shutdown_functions = array();
+
 
 // Load some of the stock caches we'll be using.
 $groupscache = $cache->read("usergroups");
@@ -1332,7 +1332,7 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
         c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, 
         uu.username AS editedbyuname, gg.namestyle AS editbynamestyle, 
         u.added AS registered, u.enabled, u.lastactive, u.lastvisit, u.invisible, u.warned, u.leechwarn, u.username, u.usertitle, 
-        u.usergroup, u.displaygroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded, 
+        u.usergroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded, 
         u.avatar AS useravatar, u.avatardimensions, u.signature, 
         g.title AS grouptitle, g.namestyle 
     FROM comments c

@@ -23,7 +23,7 @@ if (!defined('DEBUGMODE')) {
 
 // --- Misc constants ---
 const VERSION = '';
-const TS_MESSAGE = 'Powered by';
+const TS_MESSAGE = 'Powered by ArtCore Gangsta';
 
 // --- Default Usergroups ---
 const UC_GUEST         = 1;
@@ -45,8 +45,6 @@ if (!defined('SCRIPTNAME')) {
 require_once INC_PATH . '/error_handler.php';
 
 // --- Global init structures ---
-$shutdown_queries   = [];
-$shutdown_functions = [];
 
 // --- Load core init ---
 require_once INC_PATH . '/init.php';

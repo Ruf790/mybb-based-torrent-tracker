@@ -88,9 +88,7 @@ if($mybb->get_input('action') == "today")
            (isset($usergroups['canviewwolinvis']) && $usergroups['canviewwolinvis'] == 1) || 
            (isset($online['id']) && isset($CURUSER['id']) && $online['id'] == $CURUSER['id']))
         {
-            $username = format_name(htmlspecialchars_uni($online['username'] ?? ''), 
-                                  $online['usergroup'] ?? '', 
-                                  $online['displaygroup'] ?? '');
+            $username = format_name(htmlspecialchars_uni($online['username'] ?? ''), (int)($online['usergroup'] ?? 1));
             $online['profilelink'] = build_profile_link($username, $online['id'] ?? 0);
             $onlinetime = my_datee('normal', $online['lastactive'] ?? TIMENOW);
 
@@ -247,7 +245,7 @@ else
     // Simplified query for better compatibility
     $query = $db->sql_query_prepared(
         "SELECT s.sid, s.ip, s.uid, s.time, s.location, u.username, s.nopermission, 
-                u.invisible, u.usergroup, u.displaygroup
+                u.invisible, u.usergroup
          FROM sessions s
          LEFT JOIN users u ON (s.uid = u.id)
          WHERE s.time > ?

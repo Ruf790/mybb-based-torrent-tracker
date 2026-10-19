@@ -51,7 +51,7 @@ $query = $db->sql_query_prepared("
            a.views, a.startdate, a.enddate, a.fid, a.type,
            u.id AS user_id,
            u.username, u.avatar, u.avatardimensions,
-           u.usergroup, u.displaygroup, u.usertitle,
+           u.usergroup, u.usertitle,
            u.signature, u.postnum, u.threadnum,
            u.lastactive, u.lastvisit, u.invisible
     FROM announcements a

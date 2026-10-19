@@ -113,8 +113,9 @@ function handleCloseAction(): void
         stderr($lang->global['error'] ?? 'Error', 'Invalid security token. Please refresh the page and try again.', 403, '403');
     }
 
-    $torrentid = (int)($_GET['tid'] ?? 0);
-    int_check($torrentid, true);
+    int_check($_GET['tid'] ?? 0);
+    $torrentid = (int)$_GET['tid'];
+
     $db->sql_query_prepared('UPDATE torrents SET allowcomments = \'no\' WHERE id = ?', [$torrentid]);
     redirect('details.php?id=' . $torrentid . '&tab=comments');
     exit;
@@ -133,8 +134,9 @@ function handleOpenAction(): void
         stderr($lang->global['error'] ?? 'Error', 'Invalid security token. Please refresh the page and try again.', 403, '403');
     }
 
-    $torrentid = (int)($_GET['tid'] ?? 0);
-    int_check($torrentid, true);
+    int_check($_GET['tid'] ?? 0);
+    $torrentid = (int)$_GET['tid'];
+
     $db->sql_query_prepared('UPDATE torrents SET allowcomments = \'yes\' WHERE id = ?', [$torrentid]);
     redirect('details.php?id=' . $torrentid . '&tab=comments');
     exit;
@@ -144,8 +146,8 @@ function handleAddAction(): void
 {
     global $db, $CURUSER, $is_mod, $BASEURL, $lang, $kpscomment, $smilies;
 
-    $torrentid = (int)($_GET['tid'] ?? 0);
-    int_check($torrentid, true);
+    int_check($_GET['tid'] ?? 0);
+    $torrentid = (int)$_GET['tid'];
 
     if (!allowcomments($torrentid)) {
         stderr($lang->comment['closed']);
@@ -253,38 +255,36 @@ function processAddComment(int $torrentid): void
         $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
         $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
 
-// Send PM notification
-if ($CURUSER['id'] != $arr['owner']) {
-    $ras = $db->sql_query_prepared('SELECT commentpm, language FROM users WHERE id = ?', [$arr['owner']]);
-    $arg = $ras ? $db->fetch_array($ras) : null;
+        // Send PM notification
+        if ($CURUSER['id'] != $arr['owner']) {
+            $ras = $db->sql_query_prepared('SELECT commentpm, language FROM users WHERE id = ?', [$arr['owner']]);
+            $arg = $ras ? $db->fetch_array($ras) : null;
 
-    if (!empty($arg) && (int)$arg['commentpm'] === 1) {
-        require_once INC_PATH . '/functions_pm.php';
-        $url2 = get_comment_link($newid, $torrentid) . "#pid{$newid}";
+            if (!empty($arg) && (int)$arg['commentpm'] === 1) {
+                require_once INC_PATH . '/functions_pm.php';
+                $url2 = get_comment_link($newid, $torrentid) . "#pid{$newid}";
 
-        // Скобки в названии ломают [url=...]...[/url]
-        $torrent_name = str_replace(['[', ']'], ['(', ')'], (string)$arr['name']);
+                // Скобки в названии ломают [url=...]...[/url]
+                $torrent_name = str_replace(['[', ']'], ['(', ')'], (string)$arr['name']);
 
-        send_pm([
-            'subject'       => ['newcommentsub'],
-            'message'       => [
-                'newcommenttxt',
-                '[url=' . $BASEURL . '/' . $url2 . ']' . $torrent_name . '[/url]',
-            ],
-            'touid'         => (int)$arr['owner'],
-            'language'      => $arg['language'],
-            'language_file' => 'comment',
-            'sender'        => ['uid' => -1],
-        ], -1, true);
-    }
-}
+                send_pm([
+                    'subject'       => ['newcommentsub'],
+                    'message'       => [
+                        'newcommenttxt',
+                        '[url=' . $BASEURL . '/' . $url2 . ']' . $torrent_name . '[/url]',
+                    ],
+                    'touid'         => (int)$arr['owner'],
+                    'language'      => $arg['language'],
+                    'language_file' => 'comment',
+                    'sender'        => ['uid' => -1],
+                ], -1, true);
+            }
+        }
 
-        //kps('+', $kpscomment, $CURUSER['id']);
-		kps('+', $kpscomment, (int)$CURUSER['id'],
+        kps('+', $kpscomment, (int)$CURUSER['id'],
             'Comment on ' . mb_strimwidth((string)$arr['name'], 0, 100, '…')
             . ' (#' . $torrentid . ', comment #' . (int)$newid . ')',
             $torrentid);
-		
     }
 
     $url = get_comment_link($newid, $torrentid) . "#pid{$newid}";
@@ -333,7 +333,8 @@ function displayAddCommentForm(int $torrentid): void
         $prefill = htmlspecialchars(urldecode($_GET['quote']));
     }
 
-    $myPostKey = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
+    $myPostKey  = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
+    $scriptName = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES);
 
     echo <<<HTML
     <div class="container mt-3">
@@ -347,7 +348,7 @@ function displayAddCommentForm(int $torrentid): void
             {$editor['toolbar']}
 
             <form id="commentForm" method="post" name="compose"
-                  action="{$_SERVER['SCRIPT_NAME']}?action=add&tid={$torrentid}" novalidate>
+                  action="{$scriptName}?action=add&tid={$torrentid}" novalidate>
 
                 <div class="mb-3">
                     <label for="commentText" class="comment-form-label">
@@ -413,7 +414,7 @@ function displayRecentComments(int $torrentid): void
     global $db, $lang;
 
     $sql = "SELECT c.id, c.torrent AS torrentid, c.text, c.dateline, c.editreason, c.editedby, c.editedat,
-                   u.id AS user, u.username, u.usergroup, u.displaygroup, u.usertitle, u.signature,
+                   u.id AS user, u.username, u.usergroup, u.usertitle, u.signature,
                    u.lastactive, u.lastvisit, u.invisible, u.postnum, u.threadnum, u.added, u.comms,
                    u.avatar AS useravatar, u.avatardimensions,
                    g.title AS grouptitle, g.namestyle,
@@ -454,8 +455,8 @@ function handleEditAction(): void
 {
     global $db, $CURUSER, $is_mod, $BASEURL, $lang;
 
-    $commentid = (int)($_GET['pid'] ?? 0);
-    int_check($commentid, true);
+    int_check($_GET['pid'] ?? 0);
+    $commentid = (int)$_GET['pid'];
 
     $res = $db->sql_query_prepared('SELECT c.*, t.name, t.id as torrentid FROM comments AS c JOIN torrents AS t ON c.torrent = t.id WHERE c.id = ?', [$commentid]);
     $arr = $res ? $db->fetch_array($res) : null;
@@ -503,8 +504,7 @@ function processEditComment(int $commentid, array $commentData): void
         attach_to_comment($posthash, $commentid, (int)$CURUSER['id']);
     }
 
-    $page = (int)($_GET['page'] ?? 0);
-    $returnto = get_comment_link($commentid, $commentData['torrentid']) . "#pid{$commentid}";
+    $returnto = htmlspecialchars_decode(get_comment_link($commentid, $commentData['torrentid'])) . "#pid{$commentid}";
     
     header('Location: ' . $returnto);
     exit;
@@ -514,13 +514,17 @@ function displayEditCommentForm(int $commentid, array $commentData): void
 {
     global $BASEURL, $CURUSER, $lang, $smilies, $mybb;
 
-    $page = (int)($_GET['page'] ?? 0);
-    $actionUrl = htmlspecialchars($_SERVER['SCRIPT_NAME']) . '?action=edit&pid=' . $commentid . ($page ? '&page='.$page : '');
-    $returnto = get_comment_link($commentid, $commentData['torrentid']) . "#pid{$commentid}";
+    $page      = (int)($_GET['page'] ?? 0);
+    $actionUrl = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES) . '?action=edit&amp;pid=' . $commentid . ($page ? '&amp;page=' . $page : '');
+    $returnto  = get_comment_link($commentid, $commentData['torrentid']) . "#pid{$commentid}";
     $myPostKey = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
 
+    // Название и текст из БД — экранируем: иначе </textarea><script> в комментарии выполнится у редактора
+    $safeName = htmlspecialchars_uni((string)$commentData['name']);
+    $safeText = htmlspecialchars_uni((string)$commentData['text']);
+
     stdhead(sprintf($lang->comment['adit'], $commentData['name']));
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
     require_once INC_PATH . '/editor.php';
     
     $editor = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
@@ -532,7 +536,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
 
     echo <<<HTML
 <div class="container my-4">
-    <h2>Edit Comment for: <strong>{$commentData['name']}</strong></h2>
+    <h2>Edit Comment for: <strong>{$safeName}</strong></h2>
     {$editor['toolbar']}
     
     <form method="post" name="compose" action="{$actionUrl}">
@@ -540,7 +544,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
         <input type="hidden" name="my_post_key" value="{$myPostKey}">
         <div class="mb-3">
             <label for="commentText" class="form-label">Comment Text</label>
-            <textarea class="form-control" id="commentText" name="msgtext" rows="8">{$commentData['text']}</textarea>
+            <textarea class="form-control" id="commentText" name="msgtext" rows="8">{$safeText}</textarea>
         </div>
         {$uploader}
         <button type="submit" name="submit" class="btn btn-primary">Save Changes</button>
@@ -573,17 +577,17 @@ function handleEdit2Action(): void
         exit;
     }
 
-    $commentid = (int)($input['pid'] ?? 0);
-    $torrentid = (int)($input['tid'] ?? 0);
-    $msgtext = trim($input['text'] ?? '');
+    $msgtext = trim((string)($input['text'] ?? ''));
 
-    if ($commentid <= 0 || $torrentid <= 0 || empty($msgtext)) {
+    // JSON-обработчик: int_check() отдал бы HTML-страницу, поэтому проверяем сами и отвечаем JSON
+    if (!is_valid_id($input['pid'] ?? null) || !is_valid_id($input['tid'] ?? null) || $msgtext === '') {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'error' => 'Missing or invalid data.']);
         exit;
     }
 
-    int_check($commentid, true);
+    $commentid = (int)$input['pid'];
+    $torrentid = (int)$input['tid'];
 
     $res = $db->sql_query_prepared('SELECT c.*, t.name, t.id AS torrentid FROM comments AS c JOIN torrents AS t ON c.torrent = t.id WHERE c.id = ? LIMIT 1', [$commentid]);
     $arr = $res ? $db->fetch_array($res) : null;
@@ -613,7 +617,7 @@ function handleEdit2Action(): void
 
     // Return updated comment HTML
     $sql = "SELECT c.id, c.torrent AS torrentid, c.text, c.dateline, c.editreason, c.editedby, c.editedat,
-                   u.id AS user, u.username, u.usergroup, u.displaygroup, u.usertitle, u.signature,
+                   u.id AS user, u.username, u.usergroup, u.usertitle, u.signature,
                    u.lastactive, u.lastvisit, u.invisible, u.avatar AS useravatar, u.avatardimensions,
                    g.title AS grouptitle, g.namestyle,
                    uu.username AS editedbyuname, gg.namestyle AS editbynamestyle,
@@ -668,16 +672,15 @@ function handleDeleteAction(): void
         exit;
     }
 
-    $commentid = (int)($input['pid'] ?? 0);
-    $torrentid = (int)($input['tid'] ?? 0);
-
-    int_check([$commentid, $torrentid], true);
-
-    if ($commentid <= 0 || $torrentid <= 0) {
+    // JSON-обработчик: int_check() отдал бы HTML-страницу, поэтому проверяем сами и отвечаем JSON
+    if (!is_valid_id($input['pid'] ?? null) || !is_valid_id($input['tid'] ?? null)) {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
         exit;
     }
+
+    $commentid = (int)$input['pid'];
+    $torrentid = (int)$input['tid'];
 
     $res = $db->sql_query_prepared('SELECT torrent, user FROM comments WHERE id = ?', [$commentid]);
     $arr = $res ? $db->fetch_array($res) : null;
@@ -688,10 +691,7 @@ function handleDeleteAction(): void
         exit;
     }
 
-    // Владелец комментария или модератор — было: только модератор, поэтому
-    // обычные пользователи не могли удалить даже свой собственный комментарий
-    // (та же проверка владения, что уже используется для edit-действий ниже
-    // по этому же файлу).
+    // Владелец комментария или модератор
     if ($arr['user'] != $CURUSER['id'] && !$is_mod) {
         header('Content-Type: application/json');
         http_response_code(403);
@@ -699,13 +699,13 @@ function handleDeleteAction(): void
         exit;
     }
 
-    $torrentid = $arr['torrent'];
-    $userpostid = $arr['user'];
+    $torrentid  = (int)$arr['torrent'];
+    $userpostid = (int)$arr['user'];
 
     // Delete attached files from attachments table
     delete_comment_attachments($commentid);
-	
-	// Delete attached files
+
+    // Delete attached files
     $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE comment_id = ?", [$commentid]);
     while ($files && ($file = $db->fetch_array($files))) {
         if (is_file($file['file_path'])) {
@@ -713,7 +713,6 @@ function handleDeleteAction(): void
         }
     }
     $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id = ?", [$commentid]);
-	
 
     // Delete comment
     $db->sql_query_prepared("DELETE FROM comments WHERE id = ?", [$commentid]);
@@ -723,12 +722,10 @@ function handleDeleteAction(): void
         $db->sql_query_prepared('UPDATE users SET comms = IF(comms>0, comms - 1, 0) WHERE id = ?', [$userpostid]);
     }
 
-    //kps('-', $kpscomment, $userpostid);
-	$who = (int)$userpostid === (int)$CURUSER['id'] ? '' : ' by moderator ' . $CURUSER['username'];
-        kps('-', $kpscomment, (int)$userpostid,
-            'Comment deleted' . $who . ' on torrent #' . (int)$torrentid . ' (comment #' . $commentid . ')',
-            (int)$torrentid);
-	
+    $who = $userpostid === (int)$CURUSER['id'] ? '' : ' by moderator ' . $CURUSER['username'];
+    kps('-', $kpscomment, $userpostid,
+        'Comment deleted' . $who . ' on torrent #' . $torrentid . ' (comment #' . $commentid . ')',
+        $torrentid);
 
     $torrent_link = $BASEURL . '/' . get_torrent_link($torrentid);
     $log_message = sprintf(
@@ -750,8 +747,8 @@ function handleDeleteAction(): void
 function handleMassDeleteAction(): void
 {
     global $db, $CURUSER, $BASEURL, $kpscomment, $usergroups;
-	
-	$is_mod = is_mod($usergroups);
+
+    $is_mod = is_mod($usergroups);
 
     if (!$is_mod) {
         header('Content-Type: application/json');
@@ -800,9 +797,8 @@ function handleMassDeleteAction(): void
 
         // Delete attached files from attachments table
         delete_comment_attachments($comment_id);
-		
-		
-		// Delete files
+
+        // Delete files
         $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE comment_id = ?", [$comment_id]);
         while ($files && ($file = $db->fetch_array($files))) {
             if (is_file($file['file_path'])) {
@@ -810,7 +806,6 @@ function handleMassDeleteAction(): void
             }
         }
         $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id = ?", [$comment_id]);
-		
 
         // Delete comment
         $db->sql_query_prepared("DELETE FROM comments WHERE id = ?", [$comment_id]);
@@ -819,14 +814,11 @@ function handleMassDeleteAction(): void
             $deleted_count++;
             $db->sql_query_prepared('UPDATE torrents SET comments = IF(comments>0, comments - 1, 0) WHERE id = ?', [$torrent_id]);
             $db->sql_query_prepared('UPDATE users SET comms = IF(comms>0, comms - 1, 0) WHERE id = ?', [$user_id]);
-            //kps('-', $kpscomment, $user_id);
-			
-			kps('-', $kpscomment, (int)$user_id,
+
+            kps('-', $kpscomment, (int)$user_id,
                 'Comment deleted by moderator ' . $CURUSER['username']
                 . ' on torrent #' . $torrent_id . ' (comment #' . $comment_id . ')',
                 $torrent_id);
-			
-			
         }
     }
 
@@ -907,8 +899,7 @@ function handleMergeAction(): void
         exit;
     }
 
-    // Все комментарии должны быть из одного торрента (у комментария ровно один "дом" — торрент, в отличие
-    // от форумных постов, которые можно физически перенести между тредами)
+    // Все комментарии должны быть из одного торрента
     $torrentid = (int)$comments[0]['torrent'];
     foreach ($comments as $c) {
         if ((int)$c['torrent'] !== $torrentid) {
@@ -919,7 +910,6 @@ function handleMergeAction(): void
     }
 
     // Мастер-комментарий — самый старый; остальные склеиваются в него через [hr] и удаляются.
-    // Автор мастер-комментария не меняется, даже если остальные — от других юзеров (как в merge_posts на форуме).
     $master   = array_shift($comments);
     $masterid = (int)$master['id'];
 
@@ -933,9 +923,7 @@ function handleMergeAction(): void
         $userCounts[$cuid] = ($userCounts[$cuid] ?? 0) + 1;
     }
 
-    // Переносим вложения на мастер-комментарий вместо удаления —
-    // в проекте два параллельных хранилища вложений комментариев:
-    // attachments (изображения/файлы через render_attachment_uploader) и comment_files (.attach-файлы)
+    // Переносим вложения на мастер-комментарий (attachments и comment_files)
     [$ph, $mergedParams] = [implode(',', array_fill(0, count($mergedIds), '?')), $mergedIds];
     $db->sql_query_prepared("UPDATE attachments SET comment_id = ? WHERE comment_id IN ({$ph})", [$masterid, ...$mergedParams]);
     $db->sql_query_prepared("UPDATE comment_files SET comment_id = ? WHERE comment_id IN ({$ph})", [$masterid, ...$mergedParams]);
@@ -970,7 +958,7 @@ function handleMergeAction(): void
 
     // Возвращаем обновлённый HTML мастер-комментария (та же схема, что и в handleEdit2Action)
     $sql = "SELECT c.id, c.torrent AS torrentid, c.text, c.dateline, c.editreason, c.editedby, c.editedat,
-                   u.id AS user, u.username, u.usergroup, u.displaygroup, u.usertitle, u.signature,
+                   u.id AS user, u.username, u.usergroup, u.usertitle, u.signature,
                    u.lastactive, u.lastvisit, u.invisible, u.avatar AS useravatar, u.avatardimensions,
                    g.title AS grouptitle, g.namestyle,
                    uu.username AS editedbyuname, gg.namestyle AS editbynamestyle,
@@ -1009,4 +997,3 @@ function handleMergeAction(): void
     ]);
     exit;
 }
-?>

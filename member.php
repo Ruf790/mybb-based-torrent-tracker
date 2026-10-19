@@ -1808,9 +1808,7 @@ if ($mybb->input['action'] === 'profile') {
 
     $memperms = user_permissions((int)$memprofile['id']);
 
-    $memprofile['displaygroup'] = $memprofile['displaygroup'] ?: $memprofile['usergroup'];
-    $displaygroup = usergroup_displaygroup((int)$memprofile['displaygroup']);
-    if (is_array($displaygroup)) { $memperms = array_merge($memperms, $displaygroup); }
+   
 
     add_breadcrumb(sprintf($lang->member['nav_profile'], $memprofile['username']));
     build_breadcrumb();
@@ -2395,7 +2393,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
         . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
         . ');</script>';
 
-    $formattedname = format_name($memprofile['username'], $memprofile['usergroup'], $memprofile['displaygroup']);
+  $formattedname = format_name($memprofile['username'], (int)($memprofile['usergroup'] ?? 1));
 
     $profile = '
 	

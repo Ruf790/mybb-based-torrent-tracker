@@ -427,7 +427,6 @@ if ($mybb->input['action'] === 'do_options' && $mybb->request_method === 'post')
         'timeformat'        => $mybb->get_input('timeformat', MyBB::INPUT_INT),
         'timezone'          => $mybb->get_input('timezoneoffset'),
         'usergroup'         => $CURUSER['usergroup'],
-        'additionalgroups'  => $CURUSER['additionalgroups'],
         'options'           => [
             
 			'allownotices' => $mybb->get_input('allownotices', MyBB::INPUT_INT),
@@ -2386,7 +2385,6 @@ if ($mybb->input['action'] === 'do_profile' && $mybb->request_method === 'post')
         'uid'               => $CURUSER['id'],
         'postnum'           => $CURUSER['postnum'],
         'usergroup'         => $CURUSER['usergroup'],
-        'additionalgroups'  => $CURUSER['additionalgroups'],
         'birthday'          => $bday,
         'birthdayprivacy'   => $mybb->get_input('birthdayprivacy'),
     ]);
@@ -4271,7 +4269,7 @@ if ($mybb->input['action'] === 'editlists') {
         }
         while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
-            $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);
+            $profile_link     = build_profile_link(format_name($user['username'], (int)($user['usergroup'] ?? 1)), $user['id']);
             $status           = ($user['lastactive'] > $timecut && ($user['invisible'] == 0 || $mybb->usergroup['canviewwolinvis'] == 1) && $user['lastvisit'] != $user['lastactive'])
                 ? 'online' : 'offline';
             
@@ -4318,7 +4316,7 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
         }
         while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
-            $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);
+            $profile_link     = build_profile_link(format_name($user['username'], (int)($user['usergroup'] ?? 1)), $user['id']);
             $status           = ($user['lastactive'] > $timecut && ($user['invisible'] == 0 || $usergroups['issupermod'] === 'yes') && $user['lastvisit'] != $user['lastactive'])
                 ? 'online' : 'offline';
             
@@ -6013,7 +6011,7 @@ if (!$mybb->input['action']) {
     $mybb->user['email'] = htmlspecialchars_uni($CURUSER['email']);
     $usergroup           = htmlspecialchars_uni($groupscache[$CURUSER['usergroup']]['title']);
     $username            = build_profile_link(
-        format_name(htmlspecialchars_uni($CURUSER['username']), $CURUSER['usergroup'], $CURUSER['displaygroup']),
+        format_name(htmlspecialchars_uni($CURUSER['username']), (int)$CURUSER['usergroup']),
         $CURUSER['id']
     );
     $mybb->user['posts'] = ts_nf($CURUSER['postnum']);

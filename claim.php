@@ -97,7 +97,7 @@ $selfUrl = 'claim.php' . ($torrentId > 0 ? '?torrent_id=' . $torrentId : ($isMin
 
 $userLink = static function (array $r) use ($e, $BASEURL): string {
     $name = $e((string)($r['username'] ?? ''));
-    if (function_exists('format_name')) $name = format_name($name, (int)$r['usergroup'], (int)($r['displaygroup'] ?? 0));
+    if (function_exists('format_name')) $name = format_name($name, (int)($r['usergroup'] ?? 1));
     $url = function_exists('get_profile_link') ? (string)get_profile_link((int)$r['uid']) : $BASEURL . '/member.php?action=profile&uid=' . (int)$r['uid'];
     return '<a href="' . $e($url) . '">' . $name . '</a>';
 };
@@ -137,7 +137,7 @@ stdhead($title);
       <p><?php if ($torrentId > 0): ?>
           <a href="<?= $BASEURL ?>/<?= get_torrent_link($torrentId) ?>"><?= $e((string)$torrent['name']) ?></a> &middot; <?= mksize((float)$torrent['size']) ?>
         <?php elseif (!$isMine): ?>
-          <?= $userLink(array_merge(['usergroup' => 0, 'displaygroup' => 0, 'username' => ''], $owner, ['uid' => $uid])) ?>
+         <?= $userLink(array_merge(['usergroup' => 0, 'username' => ''], $owner, ['uid' => $uid])) ?>
         <?php else: ?>
           <?= $e($lang->claim['head_desc']) ?>
         <?php endif; ?></p>

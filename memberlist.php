@@ -303,15 +303,13 @@ while ($query && ($user = $db->fetch_array($query))) {
     $user = $plugins->run_hooks('memberlist_user', $user);
     
     // Format user data
-    $username_plain = htmlspecialchars_uni($user['username']);
-    $username_formatted = format_name($username_plain, $user['usergroup'], $user['displaygroup']);
-    $profile_link = build_profile_link($username_formatted, $user['id']);
-    
-    // Usergroup and usertitle
-    $usergroup = usergroup_permissions($user['usergroup'] ?: 1);
-    if (!$user['displaygroup']) $user['displaygroup'] = $user['usergroup'];
-    $display_group = usergroup_displaygroup((int)$user['displaygroup']);
-    if (is_array($display_group)) $usergroup = array_merge($usergroup, $display_group);
+$user_gid           = (int)($user['usergroup'] ?? 1) ?: 1;
+$username_plain     = htmlspecialchars_uni($user['username']);
+$username_formatted = format_name($username_plain, $user_gid);
+$profile_link       = build_profile_link($username_formatted, $user['id']);
+
+// Usergroup and usertitle
+$usergroup = usergroup_permissions($user_gid);
     
     $usertitle = htmlspecialchars_uni($usergroup['title'] ?? $lang->memberlist['member']);
     

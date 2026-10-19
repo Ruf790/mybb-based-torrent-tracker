@@ -24,8 +24,8 @@ if ($snatchmod == 'no' && !$is_mod) {
 
 $lang->load('viewsnatches');
 
-$id = (int)($_GET['id'] ?? 0);
-int_check($id, true);
+int_check($_GET['id'] ?? 0);
+$id = (int)$_GET['id'];
 
 // ── Функции ───────────────────────────────────────────────
 
@@ -321,7 +321,9 @@ $res         = $db->sql_query_prepared(
 );
 $torrentInfo = $db->fetch_array($res);
 
-if (!$torrentInfo) stderr($lang->global['notavailable'], $lang->viewsnatches['not_found'] ?? 'Torrent not found');
+if (!$torrentInfo) {
+    stderr($lang->viewsnatches['not_found'] ?? 'Torrent not found', '', 404, 'torrent');
+}
 
 
 // ── Статистика ────────────────────────────────────────────

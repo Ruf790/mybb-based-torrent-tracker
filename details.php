@@ -463,7 +463,7 @@ stdhead($HEAD);
 
 require_once INC_PATH . '/functions_bookmark.php';
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=22">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
@@ -485,7 +485,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver
 
 require_once INC_PATH . '/modals.php';
 
-if ($CURUSER['id'] === $torrent2['owner'] || $is_mod) {
+if ((int)$CURUSER['id'] === (int)$torrent2['owner'] || $is_mod) {
     require_once 'details_edit.php';
 }
 
@@ -604,6 +604,66 @@ $rating_html = '
 $query       = $db->sql_query_prepared("SELECT COUNT(id) AS commentss FROM comments c WHERE torrent = ?", [$id]);
 $threadcount = $query ? $db->fetch_field($query, "commentss") : 0;
 
+// Ссылка на конкретный комментарий (…-comment-{pid}.html): проверяем, что он есть и относится к этому торренту
+$target_comment = null;
+if (!empty($mybb->input['pid'])) {
+    $target_comment = get_comment($mybb->input['pid']);
+
+    if (!$target_comment || (int)$target_comment['torrent'] !== (int)$id) {
+        $target_comment = null;
+
+        $cnf_pid   = (int)$mybb->input['pid'];
+        $cnf_title = htmlspecialchars($lang->details['comment_not_found'] ?? 'Comment not found');
+        $cnf_desc  = htmlspecialchars($lang->details['comment_not_found_desc'] ?? 'It may have been deleted or merged with another comment, or the link is incorrect.');
+        $cnf_btn   = htmlspecialchars($lang->details['comment_not_found_last'] ?? 'Latest comments');
+        $cnf_close = htmlspecialchars($lang->details['comment_not_found_close'] ?? 'Close');
+		
+		// Последний комментарий этого торрента — кнопка ведёт прямо к нему
+        $cnf_last  = '';
+        $cnf_q     = $db->sql_query_prepared("SELECT MAX(id) AS last_id FROM comments WHERE torrent = ?", [(int)$id]);
+        $cnf_lid   = $cnf_q ? (int)$db->fetch_field($cnf_q, 'last_id') : 0;
+        if ($cnf_lid > 0) {
+            $cnf_last = $BASEURL . '/' . get_comment_link($cnf_lid, (int)$id) . '#pid' . $cnf_lid;
+        }
+        
+
+        $showcommenttable .= '
+    <style>
+    .cnf-card{position:relative;display:flex;align-items:center;gap:1rem;padding:1rem 1.25rem;
+        border:1px solid rgba(var(--bs-warning-rgb),.35);border-left:4px solid var(--bs-warning);
+        border-radius:.75rem;background:linear-gradient(135deg,rgba(var(--bs-warning-rgb),.10),rgba(var(--bs-warning-rgb),.03));
+        box-shadow:0 8px 20px rgba(16,24,40,.06),0 2px 8px rgba(16,24,40,.04);animation:cnf-in .35s ease-out}
+    .cnf-icon{flex:0 0 auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+        background:rgba(var(--bs-warning-rgb),.18);color:var(--bs-warning-text-emphasis);font-size:1.15rem}
+    .cnf-title{font-weight:700;margin:0;color:var(--bs-emphasis-color)}
+    .cnf-desc{margin:.15rem 0 0;font-size:.9rem;color:var(--bs-secondary-color)}
+    .cnf-pid{font-size:.75rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;margin-left:.4rem;
+        background:var(--bs-secondary-bg);color:var(--bs-secondary-color);vertical-align:.1em}
+    .cnf-close{position:absolute;top:.5rem;right:.6rem}
+    @keyframes cnf-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+    @media (max-width:575.98px){.cnf-card{flex-direction:column;align-items:flex-start;padding-right:2.5rem}}
+    </style>
+    <div class="container-md mt-4" id="comment-not-found">
+        <div class="cnf-card" role="alert">
+            <span class="cnf-icon"><i class="fa-solid fa-comment-slash"></i></span>
+            <div class="flex-grow-1 me-sm-3">
+                <p class="cnf-title">' . $cnf_title . '<span class="cnf-pid">#' . $cnf_pid . '</span></p>
+                <p class="cnf-desc">' . $cnf_desc . '</p>
+            </div>
+            
+			' . ($cnf_last !== '' ? '<a href="' . htmlspecialchars($cnf_last) . '" class="btn btn-sm btn-warning px-3 text-nowrap">
+                <i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $cnf_btn . '
+            </a>' : '') . '
+			
+			
+            <button type="button" class="btn-close cnf-close" aria-label="' . $cnf_close . '"
+                    onclick="this.closest(\'#comment-not-found\').remove()"></button>
+        </div>
+    </div>
+    <script>document.addEventListener("DOMContentLoaded", () => document.getElementById("comment-not-found")?.scrollIntoView({block: "center", behavior: "smooth"}));</script>';
+    }
+}
+
 if (!$threadcount) {
     $showcommenttable .= '
     <div class="container mt-3">
@@ -625,21 +685,14 @@ if (!$threadcount) {
         $page = (int)$mybb->input['page'];
     }
 
-    if (!empty($mybb->input['pid'])) {
-        $post = get_comment($mybb->input['pid']);
-        if ($post) {
-            $query  = "SELECT COUNT(c.dateline) AS count FROM comments c WHERE c.torrent = ? AND c.dateline <= ?";
-            $params = [$id, $post['dateline']];
-            $res    = $db->sql_query_prepared($query, $params);
-
-            if ($res) {
-                $result = $db->fetch_field($res, "count");
-                if (($result % $perpage) == 0) {
-                    $page = $result / $perpage;
-                } else {
-                    $page = intval($result / $perpage) + 1;
-                }
-            }
+    // Страница, на которой находится комментарий. Считаем по id — в том же порядке, что и вывод (ORDER BY c.id)
+    if ($target_comment && (int)$perpage > 0) {
+        $res = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS count FROM comments WHERE torrent = ? AND id <= ?",
+            [(int)$id, (int)$target_comment['id']]
+        );
+        if ($res) {
+            $page = (int)ceil((int)$db->fetch_field($res, 'count') / (int)$perpage);
         }
     }
 
@@ -688,7 +741,7 @@ if (!$threadcount) {
             c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat,
             uu.username AS editedbyuname, gg.namestyle AS editbynamestyle,
             u.added AS registered, u.enabled, u.lastactive, u.lastvisit, u.invisible, u.warned, u.leechwarn, u.username, u.usertitle,
-            u.usergroup, u.displaygroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded,
+            u.usergroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded,
             u.avatar AS useravatar, u.avatardimensions, u.signature,
             g.title AS grouptitle, g.namestyle
         FROM comments c
@@ -758,7 +811,7 @@ $downloaders = [];
 $query = "
     SELECT p.seeder, p.finishedat, p.downloadoffset, p.uploadoffset, p.ip, p.port, p.uploaded, p.downloaded, p.to_go,
            p.started AS st, p.connectable, p.agent, p.peer_id, p.last_action AS la, p.userid,
-           u.id, u.avatar, u.avatardimensions, u.invisible, u.enabled, u.username, u.usergroup, u.displaygroup, u.warned, u.donor
+           u.id, u.avatar, u.avatardimensions, u.invisible, u.enabled, u.username, u.usergroup, u.warned, u.donor
     FROM peers p
     LEFT JOIN users u ON (p.userid=u.id)
     WHERE p.torrent = ?
@@ -884,7 +937,7 @@ if (!empty($Torrent['t_link'])) {
 // ── Manage dropdown ─────────────────────────────────────────────────────────
 $show_manage = '';
 
-if ($CURUSER['id'] === $torrent2['owner'] OR $is_mod) {
+if ((int)$CURUSER['id'] === (int)$torrent2['owner'] || $is_mod) {
     $show_manage .= '
     <div class="dropdown d-inline-block">
         <a href="#" class="btn btn-light btn-icon rounded-circle p-2 shadow-sm manage-btn"
@@ -927,7 +980,16 @@ if ($is_mod) {
     $ags_t_close      = htmlspecialchars($lang->details['close'], ENT_QUOTES);
     $ags_t_status     = htmlspecialchars(addslashes($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']), ENT_QUOTES);
     $ags_t_info       = htmlspecialchars($lang->details['torrentinfo'], ENT_QUOTES);
-    $ags_t_delete     = htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES);
+	
+	
+	    $ags_t_nuke = htmlspecialchars(
+        ($Torrent['isnuked'] ?? 'no') === 'yes'
+            ? ($lang->details['tip_nuked'] ?? 'Nuked: change reason / unnuke')
+            : ($lang->details['tip_nuke'] ?? 'Nuke torrent'),
+        ENT_QUOTES
+    );
+	
+	
 
     $show_manage .= '
     <a href="' . $BASEURL . '/admin/index.php?act=hit_and_run&torrentid=' . $id . '" class="manage-icon-btn">
@@ -944,11 +1006,12 @@ if ($is_mod) {
         . '</button>
     </form>
 
-    <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
+       <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
         <i class="fa-sharp fa-solid fa-info" style="color: #94b4eb;" alt="' . $ags_t_info . '" title="' . $ags_t_info . '"></i></a>
 
-    <a href="' . $BASEURL . '/admin/index.php?act=fastdelete&amp;id=' . $id . '" class="manage-icon-btn">
-        <i class="fa-solid fa-trash-can" style="color: #eb0f0f;" alt="' . $ags_t_delete . '" title="' . $ags_t_delete . '"></i></a>';
+    <a href="' . $BASEURL . '/admin/nuketorrent.php?id=' . $id . '" class="manage-icon-btn">
+        <i class="fa-solid fa-radiation" style="color: ' . (($Torrent['isnuked'] ?? 'no') === 'yes' ? '#eb0f0f' : '#f0a020') . ';"
+           title="' . $ags_t_nuke . '"></i></a>';
 }
 
 // ── Torrent file tree ───────────────────────────────────────────────────────

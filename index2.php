@@ -50,7 +50,7 @@ $guestcount = $q ? (int)$db->fetch_field($q, 'guestcount') : 0;
 // Members & bots
 $q = $db->sql_query_prepared("
     SELECT s.sid, s.ip, s.uid, s.time, s.location, s.location1,
-           u.username, u.invisible, u.usergroup, u.displaygroup
+           u.username, u.invisible, u.usergroup
     FROM sessions s
     LEFT JOIN users u ON s.uid = u.id
     WHERE (s.uid != 0 OR SUBSTR(s.sid,4,1) = '=') AND s.time > ?
@@ -74,7 +74,7 @@ while ($q && ($user = $db->fetch_array($q))) {
 
             if ($can_see) {
                 $invisiblemark = $user['invisible'] == 1 ? '*' : '';
-                $user['username']    = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
+                $user['username']    = format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1));
                 $user['profilelink'] = build_profile_link($user['username'], $user['uid']);
                 
 				$onlinemembers[] = ''.$user['profilelink'].' '.$invisiblemark.'';
@@ -218,17 +218,19 @@ if (!empty($today_bdays)) {
         }
     }
 
-    $comma = '';
+    $comma     = '';
+    $bday_ugs  = $cache->read('usergroups') ?: [];
     foreach ($today_bdays as $bdayuser) {
-        $bdayuser['displaygroup'] = $bdayuser['displaygroup'] ?: $bdayuser['usergroup'];
-        if (isset($groupscache[$bdayuser['displaygroup']])) continue;
+        $bday_gid = (int)($bdayuser['usergroup'] ?? 1);
+        // Группы с выключенным «показывать в списке дней рождения» пропускаем
+        if (isset($bday_ugs[$bday_gid]) && (int)($bday_ugs[$bday_gid]['showinbirthdaylist'] ?? 1) !== 1) continue;
 
         $bday = explode('-', $bdayuser['birthday']);
         $age  = ($year > (int)($bday[2] ?? 0) && !empty($bday[2]))
             ? ' (' . ($year - (int)$bday[2]) . ')'
             : '';
 
-        $bdayuser['username']    = format_name(htmlspecialchars_uni($bdayuser['username']), $bdayuser['usergroup'], $bdayuser['displaygroup']);
+        $bdayuser['username']    = format_name(htmlspecialchars_uni($bdayuser['username']), $bday_gid);
         $bdayuser['profilelink'] = build_profile_link($bdayuser['username'], $bdayuser['id']);
         $bdays .= $comma . $bdayuser['profilelink'] . $age;
         ++$bdaycount;

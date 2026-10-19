@@ -133,26 +133,74 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             break;
     }
 } elseif ($bdayreward === 'yes' && $bdayrewardtype) {
-    $curuserbday = !empty($CURUSER['birthday']) ? explode('-', $CURUSER['birthday']) : [];
-    if (isset($curuserbday[0], $curuserbday[1]) && date('j-n') === $curuserbday[0] . '-' . $curuserbday[1]) {
-        switch ($bdayrewardtype) {
-            case 'freeleech':
-                $___notice = '
-<div class="container mt-3">
-   <div class="alert alert-primary">
-    <span id="new_ann" style="display: block;">
-    ' . sprintf($lang->browse['f_leech'], $curuserbday[0] . '-' . $curuserbday[1] . '-' . date('Y'), ($curuserbday[0] + 1) . '-' . $curuserbday[1] . '-' . date('Y')) . '
-  </div>
-</div>';
-                break;
-            case 'silverleech':
-                $___notice = show_notice(sprintf($lang->browse['s_leech'], $curuserbday[0] . '-' . $curuserbday[1] . '-' . date('Y'), ($curuserbday[0] + 1) . '-' . $curuserbday[1] . '-' . date('Y')), false, $lang->browse['s_leech_h']);
-                break;
-            case 'doubleupload':
-                $___notice = show_notice(sprintf($lang->browse['d_leech'], $curuserbday[0] . '-' . $curuserbday[1] . '-' . date('Y'), ($curuserbday[0] + 1) . '-' . $curuserbday[1] . '-' . date('Y')), false, $lang->browse['d_leech_h']);
-                break;
-        }
+    // birthday хранится как «день-месяц-год» (j-n-Y)
+    $curuserbday = !empty($CURUSER['birthday']) ? explode('-', (string)$CURUSER['birthday']) : [];
+    if (isset($curuserbday[0], $curuserbday[1]) && date('j-n') === (int)$curuserbday[0] . '-' . (int)$curuserbday[1]) {
+        $___notice = browse_bday_notice((string)$bdayrewardtype, (string)($CURUSER['username'] ?? ''));
     }
+}
+
+/**
+ * Плашка бонуса ко дню рождения (фрилич / сильверлич / x2 аплоад).
+ * Бонус действует до конца сегодняшнего дня по времени сервера.
+ */
+function browse_bday_notice(string $type, string $username): string
+{
+    global $lang;
+
+    $L = static fn(string $key, string $fallback): string =>
+        htmlspecialchars_uni((string)($lang->browse[$key] ?? $fallback));
+
+    $types = [
+        'freeleech'    => ['fa-gift',          $L('bday_fl_badge', 'Freeleech'),     $L('bday_fl_text', 'Downloads today do not count toward your ratio — grab what you have been saving for.')],
+        'silverleech'  => ['fa-coins',         $L('bday_sl_badge', 'Silverleech'),   $L('bday_sl_text', 'Only half of what you download today counts toward your ratio.')],
+        'doubleupload' => ['fa-arrow-up-wide-short', $L('bday_du_badge', 'Double upload'), $L('bday_du_text', 'Everything you upload today counts twice.')],
+    ];
+    if (!isset($types[$type])) {
+        return '';
+    }
+    [$icon, $badge, $text] = $types[$type];
+
+    $end      = strtotime('tomorrow') - 1;
+    $left     = max(0, $end - TIMENOW);
+    $lefttext = ags_fmt_safe($L('bday_left', 'Ends in {1} h {2} min'), intdiv($left, 3600), intdiv($left % 3600, 60));
+
+    $title = ags_fmt_safe($L('bday_title', 'Happy birthday, {1}!'), htmlspecialchars_uni($username));
+    $until = ags_fmt_safe($L('bday_until', 'Today until 23:59'));
+    $hnr   = $L('bday_hnr', 'Please no hit\'n\'run — keep seeding after you finish!');
+
+    global $BASEURL;
+
+    // Та же карточка, что у глобальных акций (error-card4 из messagess.css)
+    return '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">'
+        . <<<HTML
+<br><br>
+<div class="container md">
+<div class="card error-card4 fade show">
+  <div class="card-header4">
+    <i class="fa-solid fa-cake-candles error-icon4" aria-hidden="true"></i>
+    <div><h2 class="mb-0">{$title} 🎉</h2></div>
+  </div>
+  <div class="card-body">
+    <div class="alert4 alert-info" role="alert">
+      <i class="fa-solid {$icon} me-1" aria-hidden="true"></i><b>{$badge}</b> · {$until} · {$lefttext}<br>
+      {$text} {$hnr}
+    </div>
+  </div>
+</div>
+</div>
+HTML;
+}
+
+/** {1}, {2}… и %1$s… в уже экранированной строке ланга */
+function ags_fmt_safe(string $str, string|int ...$args): string
+{
+    $map = [];
+    foreach ($args as $i => $arg) {
+        $map['{' . ($i + 1) . '}']   = (string)$arg;
+        $map['%' . ($i + 1) . '$s'] = (string)$arg;
+    }
+    return strtr($str, $map);
 }
 
 

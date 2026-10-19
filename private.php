@@ -994,7 +994,7 @@ if (!$mybb->input['action']) {
         }
         if ($get_users_list = array_values(array_unique($get_users))) {
             $ph = implode(',', array_fill(0, count($get_users_list), '?'));
-            $users_query = $db->sql_query_prepared("SELECT id, username, usergroup, displaygroup FROM users WHERE id IN ({$ph})", $get_users_list);
+            $users_query = $db->sql_query_prepared("SELECT id, username, usergroup FROM users WHERE id IN ({$ph})", $get_users_list);
             while ($users_query && ($user = $db->fetch_array($users_query))) $cached_users[$user['id']] = $user;
         }
     }
@@ -1069,7 +1069,7 @@ if (!$mybb->input['action']) {
                         if (!isset($cached_users[$uid])) continue;
                         $user = $cached_users[$uid];
                         $user['username'] = htmlspecialchars_uni($user['username']);
-                        $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: ($lang->private['pm_na'] ?? 'N/A');
+                        $uname = format_name((string)($user['username'] ?? ''), (int)($user['usergroup'] ?? 1)) ?: ($lang->private['pm_na'] ?? 'N/A');
                         $to_users .= '<div class="popup_item_container"><a href="' . get_profile_link($uid) . '" class="popup_item">' . $uname . '</a></div>';
                     }
                     if (isset($recipients['bcc']) && is_array($recipients['bcc']) && count($recipients['bcc'])) {
@@ -1078,7 +1078,7 @@ if (!$mybb->input['action']) {
                             if (!isset($cached_users[$uid])) continue;
                             $user = $cached_users[$uid];
                             $user['username'] = htmlspecialchars_uni($user['username']);
-                            $uname = format_name($user['username'], $user['usergroup'], $user['displaygroup']) ?: ($lang->private['pm_na'] ?? 'N/A');
+                            $uname = format_name((string)($user['username'] ?? ''), (int)($user['usergroup'] ?? 1)) ?: ($lang->private['pm_na'] ?? 'N/A');
                             $bcc_users .= '<div class="popup_item_container"><a href="' . get_profile_link($uid) . '" class="popup_item">' . $uname . '</a></div>';
                         }
                     }

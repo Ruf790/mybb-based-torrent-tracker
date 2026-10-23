@@ -549,7 +549,9 @@ match(true) {
                  'leechwarn_gig_limit','leechwarn_length','leechwarn_remove_ratio','ban_user_limit',
                  'hr_enabled','hr_min_seed_hours','hr_start_date','hr_skip_groups',
                  'hr_min_ratio',
-                 'iu_maxdays','iu_deleteafter','iu_protect_groups'];
+                 'iu_maxdays','iu_deleteafter','iu_protect_groups',
+                 'chat_keep_deleted_days','chat_keep_days',
+                 'notify_keep_read_days','notify_keep_all_days','notify_max_per_user'];
         $raw = $_POST['configoption'] ?? [];
 
         // Hit & Run: normalise before saving (weekly_cleanups.php and admin/hit_and_run.php read these)
@@ -580,6 +582,24 @@ match(true) {
             if (array_key_exists($days, $raw)) {
                 $raw[$days] = (string)max(1, (int)$raw[$days]);
             }
+        }
+
+        // Chat & notifications cleanup (cron chatnotifycleanup.php): whole days within bounds
+        foreach ([
+            'chat_keep_deleted_days' => [1, 3650],
+            'chat_keep_days'         => [0, 3650],   // 0 = keep forever
+            'notify_keep_read_days'  => [1, 3650],
+            'notify_keep_all_days'   => [1, 3650],
+            'notify_max_per_user'    => [10, 10000],
+        ] as $k => [$min, $max]) {
+            if (array_key_exists($k, $raw)) {
+                $raw[$k] = (string)max($min, min($max, (int)$raw[$k]));
+            }
+        }
+        // "All" may not be shorter than "read" — otherwise read ones would outlive unread ones
+        if (isset($raw['notify_keep_read_days'], $raw['notify_keep_all_days'])
+            && (int)$raw['notify_keep_all_days'] < (int)$raw['notify_keep_read_days']) {
+            $raw['notify_keep_all_days'] = $raw['notify_keep_read_days'];
         }
 
         save_and_log(array_intersect_key($raw, array_flip($keys)), get_settings_values($keys));
@@ -844,6 +864,12 @@ $hr_min_ratio           = $settings['hr_min_ratio']           ?? '1.00';
 $iu_maxdays             = $settings['iu_maxdays']             ?? '60';
 $iu_deleteafter         = $settings['iu_deleteafter']         ?? '15';
 $iu_protect_groups      = $settings['iu_protect_groups']      ?? '4,5,6,7,8';
+// CHAT & NOTIFICATIONS cleanup (cron chatnotifycleanup.php; defaults = old hard-coded values)
+$chat_keep_deleted_days = $settings['chat_keep_deleted_days'] ?? '30';
+$chat_keep_days         = $settings['chat_keep_days']         ?? '0';
+$notify_keep_read_days  = $settings['notify_keep_read_days']  ?? '60';
+$notify_keep_all_days   = $settings['notify_keep_all_days']   ?? '180';
+$notify_max_per_user    = $settings['notify_max_per_user']    ?? '300';
 
 
 $siteOnline          = ($settings['SITEONLINE'] ?? 'yes') === 'yes';
@@ -1467,6 +1493,19 @@ stdhead();
                                     </select>
                                     <?= ags_hint(ags_tip('iu_protect_groups', '')) ?>
                                 </div>
+                            </div>
+
+                            <?php fsec('fa-comment-dots', $lang->managesettings['sec_chat_cleanup'] ?? 'Chat', $lang->managesettings['sec_chat_cleanup_hint'] ?? ''); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('chat_keep_deleted_days', (string)$chat_keep_deleted_days, $lang->managesettings['lbl_chat_keep_deleted_days'] ?? 'Remove deleted messages after (days)', '', 'number', 'fa-trash-can'); ?>
+                                <?php ftxt('chat_keep_days', (string)$chat_keep_days, $lang->managesettings['lbl_chat_keep_days'] ?? 'Keep chat history (days, 0 = forever)', '', 'number', 'fa-box-archive'); ?>
+                            </div>
+
+                            <?php fsec('fa-bell', $lang->managesettings['sec_notify_cleanup'] ?? 'Notifications', $lang->managesettings['sec_notify_cleanup_hint'] ?? ''); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('notify_keep_read_days', (string)$notify_keep_read_days, $lang->managesettings['lbl_notify_keep_read_days'] ?? 'Keep read (days)', '', 'number', 'fa-envelope-open'); ?>
+                                <?php ftxt('notify_keep_all_days', (string)$notify_keep_all_days, $lang->managesettings['lbl_notify_keep_all_days'] ?? 'Keep all (days)', '', 'number', 'fa-calendar-xmark'); ?>
+                                <?php ftxt('notify_max_per_user', (string)$notify_max_per_user, $lang->managesettings['lbl_notify_max_per_user'] ?? 'Max per user', '', 'number', 'fa-layer-group'); ?>
                             </div>
                         </div>
                         <?php savebar(); ?>

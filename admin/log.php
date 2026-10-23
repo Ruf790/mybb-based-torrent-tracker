@@ -24,7 +24,7 @@ if (empty($CURUSER['id']) || !is_mod($usergroups))
 
 $parser = new postParser;
 $parser_options = [
-    "allow_html" => 0,
+    "allow_html" => 1,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,

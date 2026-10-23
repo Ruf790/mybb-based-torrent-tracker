@@ -305,7 +305,17 @@ if (!empty($CURUSER['id'])): ?>
                 <span><i class="fa-solid fa-coins me-1"></i><?= $hl('hdr_bonus', "Bonus:") ?> <strong><?= number_format((float)($CURUSER['seedbonus'] ?? 0), 1) ?></strong></span>
                 <span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i><?= (int)$seedtorrentscount ?></span>
                 <span class="badge bg-danger"><i class="fas fa-arrow-down me-1"></i><?= (int)$leechingtorrentscount ?></span>
-            </small>
+            
+			<!-- Notification center -->
+            <div class="text-dark">
+                <?php require_once INC_PATH . '/functions_notify.php'; echo notify_bell_html(); ?>
+            </div>
+			
+			</small>
+			
+			
+			
+			
         </div>
     </div>
 	
@@ -348,6 +358,8 @@ if (!empty($CURUSER['id'])): ?>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getnew"><i class="fas fa-star me-2"></i> <?= $hl('hdr_new_posts', "New Posts") ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getdaily"><i class="fas fa-calendar-day me-2"></i> <?= $hl('hdr_todays_posts', "Today's Posts") ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php"><i class="fas fa-search me-2"></i> <?= htmlspecialchars($lang->header['nav_search'] ?? 'Search', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/chat.php"><i class="fas fa-comment-dots me-2"></i> <?= $hl('hdr_chat', "Chat") ?></a></li>
                         </ul>
                     </li>
                     

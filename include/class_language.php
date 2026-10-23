@@ -77,7 +77,6 @@ class trackerlanguage
     public $top_stats;
     public $topten;
     public $transfer;
-
     public $unbaniprequest;
     public $upload;
     public $uploaderform;
@@ -149,60 +148,32 @@ class trackerlanguage
 	public $requests_offers;
 	public $announcements_forum;
 	public $spam;
-	
 	public $bonuslog;
-	
 	public $backupdb;
-	
-	public $execute_sql_query;
-	
+	public $execute_sql_query;	
 	public $faqmanage;
-	
 	public $latest_comments;
-
     public $takereport;
-	
 	public $exam_header;
-	
 	public $task;
-	
 	public $functions_upload;
-	
-	
 	public $post3;
-	
-	
-	
 	public $check_update;
-	
 	public $docleanup;
-	
 	public $allagents;
-	
 	public $delundeletedtorrents;
-	
 	public $banning;
-	
 	public $csseditor;
-	
 	public $phpeditor;
-	
-	
 	public $bbeditor;
-	
 	public $uploads;
-	
 	public $torrents_promo;
-	
-	
 	public $serverinfo;
-	
 	public $videoformats;
-	
 	public $category;
-	
-	
 	public $nuketorrent;
+	public $notifications;
+	public $chat;
 	
 	
 	

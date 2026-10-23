@@ -325,17 +325,25 @@ function claim_settle_user(int $uid): array
     claim_notify($uid, claim_fmt($L['pm_settle_subject'], $month),
         claim_settle_message($L, $month, $reached, $remain, $removed, $bonus, $deduct));
 
-    // Bell: short summary, the details stay in the PM
-    require_once INC_PATH . '/functions_notify.php';
-    $net = round($bonus - $deduct, 1);
-    notify($uid, 'claim_settled', 0, 0, [
-        $month,
-        (string)count($reached),
-        (string)count($removed),
-        ($net > 0 ? '+' : ($net < 0 ? '−' : '')) . number_format(abs($net), 1),
-    ], 'claim.php');
+    // Bell: short summary, the details stay in the PM.
+    // Bonus is already paid: a notify error must not mark this user as "settle failed" in the cron log
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        $net = round($bonus - $deduct, 1);
+        notify($uid, 'claim_settled', 0, 0, [
+            $month,
+            (string)count($reached),
+            (string)count($removed),
+            ($net > 0 ? '+' : ($net < 0 ? '−' : '')) . number_format(abs($net), 1),
+        ], 'claim.php');
+    } catch (\Throwable $e) {
+        if (function_exists('write_log')) write_log("[claims] notify user #{$uid} failed: " . $e->getMessage());
+    }
+
     return ['reached' => count($reached), 'removed' => count($removed), 'bonus' => $bonus];
 }
+
+
 
 /**
  * PM texts of the monthly settlement, in the recipient's language (claim.lang.php,

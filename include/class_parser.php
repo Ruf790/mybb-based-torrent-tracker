@@ -770,18 +770,42 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
         $torrent = $this->torrent_embed_cache[$tid] ?? null;
 
+        // Раздача удалена или ID не существует — карточка-заглушка вместо сырого [torrent=ID]
         if (!$torrent) {
-            return $matches[0];
+            return '<span class="mycode_torrent_card mycode_torrent_missing card d-inline-flex flex-row align-items-center gap-3 my-2 px-3 py-3 bg-body-tertiary text-body-secondary" style="max-width:420px;width:100%;border-style:dashed;">'
+                 . '<i class="fa-solid fa-ban fa-2x opacity-50"></i>'
+                 . '<span class="d-flex flex-column">'
+                 . '<span class="fw-semibold">Torrent unavailable</span>'
+                 . '<span class="small opacity-75">Torrent #' . $tid . ' was deleted or does not exist</span>'
+                 . '</span>'
+                 . '</span>';
         }
 
         $link = htmlspecialchars(get_torrent_link((int)$torrent['id']), ENT_QUOTES, 'UTF-8');
         $size = function_exists('mksize') ? mksize((int)$torrent['size']) : (int)$torrent['size'] . ' B';
 
-        $poster = !empty($torrent['t_image'])
-            ? '<img src="' . htmlspecialchars($torrent['t_image'], ENT_QUOTES, 'UTF-8') . '" class="card-img-top" style="height:420px;object-fit:cover;" alt="" />'
+        // Постер: заглушка всегда лежит снизу, картинка сверху её закрывает.
+        // Нет t_image — видна заглушка; файл удалён/битый — onerror убирает <img>.
+        $posterUrl = trim((string)($torrent['t_image'] ?? ''));
+
+        $placeholder = '<span class="mycode_torrent_noposter position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center text-white-50">'
+                     . '<i class="fa-solid fa-film fa-3x mb-2 opacity-75"></i>'
+                     . '<span class="small text-uppercase fw-semibold" style="letter-spacing:.08em;">No poster</span>'
+                     . '</span>';
+
+        $img = $posterUrl !== ''
+            ? '<img src="' . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . '"'
+              . ' class="position-absolute top-0 start-0 w-100 h-100" style="object-fit:cover;"'
+              . ' loading="lazy" alt="" onerror="this.remove()" />'
             : '';
 
-        return '<a href="' . $link . '" class="mycode_torrent_card card d-inline-block text-decoration-none my-2" style="max-width:420px;">'
+        $poster = '<span class="mycode_torrent_poster d-block position-relative overflow-hidden rounded-top"'
+                . ' style="height:420px;background:linear-gradient(135deg,#2b3240 0%,#151a23 100%);">'
+                . $placeholder
+                . $img
+                . '</span>';
+
+        return '<a href="' . $link . '" class="mycode_torrent_card card d-inline-block text-decoration-none my-2" style="max-width:420px;width:100%;">'
              . $poster
              . '<div class="card-body py-2 px-3">'
              . '<div class="fw-bold text-truncate"><i class="fa-solid fa-magnet me-1"></i>' . htmlspecialchars($torrent['name'], ENT_QUOTES, 'UTF-8') . '</div>'
@@ -831,17 +855,38 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
         $url = $this->encode_url($url);
 
-      
         $imgWidth  = $dimensions[0] ?? null;
         $imgHeight = $dimensions[1] ?? null;
 
         if ($imgWidth && $imgHeight) {
             $size_attr = ' width="' . (int)$imgWidth . '" height="' . (int)$imgHeight . '"';
+            $fb_size   = 'width:' . (int)$imgWidth . 'px;height:' . (int)$imgHeight . 'px;';
         } else {
             $size_attr = ' style="max-width:400px;"';
+            $fb_size   = 'width:300px;height:180px;';
         }
 
-        return '<img src="'.$url.'" loading="lazy"'.$size_attr.' alt="'.$alt.'"'.$css_align.' class="rounded" />';
+        // Имя файла для карточки-заглушки
+        $fname = htmlspecialchars_decode(basename(parse_url($url, PHP_URL_PATH) ?: $url));
+        if (mb_strlen($fname) > 40) {
+            $fname = mb_substr($fname, 0, 28) . '…' . mb_substr($fname, -8);
+        }
+        $fname = htmlspecialchars($fname, ENT_QUOTES, 'UTF-8');
+
+        $fallback = '<span class="mycode_img_fallback d-none flex-column align-items-center justify-content-center text-center rounded border bg-body-tertiary text-body-secondary p-3"'
+                  . ' style="' . $fb_size . 'max-width:100%;">'
+                  . '<i class="fa-regular fa-image fa-2x mb-2 opacity-50"></i>'
+                  . '<span class="fw-semibold small">Image unavailable</span>'
+                  . '<span class="small text-truncate w-100 opacity-75" title="' . $fname . '">' . $fname . '</span>'
+                  . '<a href="' . $url . '" target="_blank" rel="noopener nofollow" class="small mt-1">Open original</a>'
+                  . '</span>';
+
+        $onerror = "this.nextElementSibling.classList.replace('d-none','d-flex');this.remove();";
+
+        return '<span class="mycode_img d-inline-block align-top"' . $css_align . '>'
+             . '<img src="' . $url . '" loading="lazy"' . $size_attr . ' alt="' . $alt . '" class="rounded" onerror="' . $onerror . '" />'
+             . $fallback
+             . '</span>';
     }
 
     public function mycode_parse_img_callback1(array $matches): string { return $this->mycode_parse_img($matches[2]); }

@@ -29,6 +29,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         case 'message': $suffix = '3'; break;
         case 'newsMessage': $suffix = '4'; break;
         case 'staffMessage': $suffix = '5'; break;
+        case 'chatText': $suffix = '6'; break;
         default: $suffix = ''; // for commentText
     }
 
@@ -45,7 +46,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     <link rel="stylesheet" href="<?php echo $BASEURL; ?>/include/templates/default/style/sweetalert2.min.css">
     <script src="<?php echo $BASEURL; ?>/scripts/sweetalert2.min.js"></script>
 <?php endif; ?>
-    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js?ver=2"></script>
+    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js?ver=3233"></script>
 
     <!-- BBCode Toolbar -->
     <div class="mb-2 d-flex flex-wrap gap-1">
@@ -57,7 +58,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[email]', '[/email]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_email'] ?>"><i class="fa-solid fa-at me-1"></i><?= $E['btn_email'] ?></button>
 
         <!-- Image upload button -->
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="imageUploadBtn" data-bs-toggle="modal" data-bs-target="#imageUploadModal">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="imageUploadBtn" data-textarea="<?php echo $textarea_id; ?>" data-bs-toggle="modal" data-bs-target="#imageUploadModal">
             <i class="fa-solid fa-image"></i> <?= $E['btn_upload_image'] ?>
         </button>
 
@@ -99,11 +100,11 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]', '[/spoiler]', '<?php echo $textarea_id; ?>')"><i class="fa-solid fa-eye-slash me-1"></i><?= $E['btn_spoiler'] ?></button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[video=youtube]', '[/video]', '<?php echo $textarea_id; ?>')" title="<?= $E['tip_youtube'] ?>"><i class="fa-solid fa-circle-play me-1"></i>YouTube</button>
 		
-		<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#videoModal">
+		<button type="button" class="btn btn-sm btn-outline-secondary" data-textarea="<?php echo $textarea_id; ?>" data-bs-toggle="modal" data-bs-target="#videoModal">
     🎬 <?= $E['btn_video'] ?>
 </button>
 		
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn<?php echo $suffix; ?>"><?= $E['btn_preview'] ?></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn<?php echo $suffix; ?>" data-textarea="<?php echo $textarea_id; ?>"><?= $E['btn_preview'] ?></button>
     </div>
 	
 	

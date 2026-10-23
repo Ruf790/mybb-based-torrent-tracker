@@ -36,5 +36,15 @@ $language['takewhatever'] = array
 
 Thank you in advance!
 🤖 Please note: this is an automatically generated request.',// added in v4.0
+
+
+'reseed_too_soon'    => "A reseed request for this torrent was already sent recently. Try again in {1} h.",
+'reseed_bad_request' => "Invalid request. Open the torrent page and press the button again.",
+'reseed_has_seeders' => "This torrent already has seeders.",
+
+
+
+
+
 );
 ?>

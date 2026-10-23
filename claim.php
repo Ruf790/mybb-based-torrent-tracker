@@ -58,6 +58,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             claim_redirect($back, 'success', $deduct > 0 ? $tr($lang->claim['gave_up_deducted'], number_format($deduct)) : $lang->claim['gave_up']);
         }
         claim_add($me, $tid);
+		
+		// Bell for the torrent's owner: "X claimed your torrent" (grouped per torrent; skipped for your own torrent)
+        try {
+            $tq   = $db->sql_query_prepared('SELECT owner, name FROM torrents WHERE id = ?', [$tid]);
+            $tRow = $tq ? $db->fetch_array($tq) : null;
+            if ($tRow) {
+                require_once INC_PATH . '/functions_notify.php';
+                notify((int)$tRow['owner'], 'claim', (int)$me, $tid, [(string)$tRow['name']], 'details.php?id=' . $tid);
+            }
+        } catch (\Throwable $e) {
+            error_log('notify (claim): ' . $e->getMessage());
+        }
+		
         claim_redirect($back, 'success', $lang->claim['claimed']);
     } catch (ClaimException $ex) {
         claim_redirect($back, 'danger', $ex->getMessage());

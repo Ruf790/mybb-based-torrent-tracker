@@ -121,10 +121,14 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
     }
     $message = trim($mybb->get_input('message'));
     if (empty($message)) { echo json_encode(['success' => false, 'error' => $lang->requests['err_empty_message']]); exit(); }
-    if (!$db->fetch_array($db->sql_query_prepared("SELECT id FROM requests WHERE id = ?", [$rid]))) {
+
+    // The request must exist; title and author are needed for the bell below
+    $reqRow = $db->fetch_array($db->sql_query_prepared("SELECT id, title, user_id FROM requests WHERE id = ?", [$rid]));
+    if (!$reqRow) {
         echo json_encode(['success' => false, 'error' => $lang->requests['err_not_found']]);
         exit();
     }
+
     $comment_data = [
         'request_id' => $rid,
         'user_id'    => (int)$CURUSER['id'],
@@ -137,9 +141,25 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
         "INSERT INTO request_comments (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
         array_values($comment_data)
     );
+
+    // Bell: @mentions, then the request's author (each person once).
+    // The comment is already saved: a notify error must not turn into a JSON error (the user would post it again)
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        $nLink = 'requests.php?action=view&rid=' . $rid;
+        $nDone = notify_mentions($message, (int)$CURUSER['id'], $rid, (string)$reqRow['title'], $nLink);
+        if (!in_array((int)$reqRow['user_id'], $nDone, true)) {
+            notify((int)$reqRow['user_id'], 'request_comment', (int)$CURUSER['id'], $rid, [(string)$reqRow['title']], $nLink);
+        }
+    } catch (\Throwable $e) {
+        error_log('notify (request comment): ' . $e->getMessage());
+    }
+
     echo json_encode(['success' => true]);
     exit();
 }
+
+
 
 // ── POST: Create Request ──────────────────────────────────────────────────────
 if ($action === 'do_create' && $mybb->request_method === 'post') {
@@ -220,6 +240,26 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
             ], -1, true);
         }
     }
+
+    // Bell: the request's author + everyone who voted (the PM to the author stays).
+    // The filler gets nothing: notify() skips actor == recipient
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        $nLink  = 'details.php?id=' . $torrent_id;
+        $nTitle = [(string)$req['title']];
+        notify((int)$req['user_id'], 'request_filled', (int)$CURUSER['id'], $rid, $nTitle, $nLink);
+
+        $vq = $db->sql_query_prepared(
+            'SELECT DISTINCT user_id FROM request_votes WHERE request_id = ? AND user_id <> ?',
+            [$rid, (int)$req['user_id']]
+        );
+        while ($vq && ($v = $db->fetch_array($vq))) {
+            notify((int)$v['user_id'], 'request_vote_filled', (int)$CURUSER['id'], $rid, $nTitle, $nLink);
+        }
+    } catch (\Throwable $e) {
+        error_log('notify (request filled): ' . $e->getMessage());
+    }
+
     $_SESSION['flash'] = ['msg' => $lang->requests['flash_filled'], 'type' => 'success'];
     header('Location: requests.php?action=view&rid=' . $rid);
     exit();

@@ -104,9 +104,13 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
     }
     $message = trim($mybb->get_input('message'));
     if (empty($message)) { echo json_encode(['success' => false, 'error' => $lang->offers['err_empty_message']]); exit(); }
-    if (!$db->num_rows($db->sql_query_prepared("SELECT id FROM offers WHERE id = ?", [$oid]))) {
+
+    // The offer must exist; title and author are needed for the bell below
+    $offRow = $db->fetch_array($db->sql_query_prepared("SELECT id, title, user_id FROM offers WHERE id = ?", [$oid]));
+    if (!$offRow) {
         echo json_encode(['success' => false, 'error' => $lang->offers['err_not_found']]); exit();
     }
+
     $comment_data = [
         'offer_id'   => $oid,
         'user_id'    => (int)$CURUSER['id'],
@@ -119,9 +123,26 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
         "INSERT INTO offer_comments (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
         array_values($comment_data)
     );
+
+    // Bell: @mentions, then the offer's author (each person once).
+    // The comment is already saved: a notify error must not turn into a JSON error (the user would post it again)
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        $nLink = 'offers.php?action=view&oid=' . $oid;
+        $nDone = notify_mentions($message, (int)$CURUSER['id'], $oid, (string)$offRow['title'], $nLink);
+        if (!in_array((int)$offRow['user_id'], $nDone, true)) {
+            notify((int)$offRow['user_id'], 'offer_comment', (int)$CURUSER['id'], $oid, [(string)$offRow['title']], $nLink);
+        }
+    } catch (\Throwable $e) {
+        error_log('notify (offer comment): ' . $e->getMessage());
+    }
+
     echo json_encode(['success' => true]);
     exit();
 }
+
+
+
 
 // ── POST: Create Offer ────────────────────────────────────────────────────────
 if ($action === 'do_create' && $mybb->request_method === 'post') {
@@ -186,6 +207,14 @@ if ($action === 'upload' && $mybb->request_method === 'post') {
             'language_file' => 'offers',
             'sender'        => ['uid' => -1],
         ], -1, true);
+
+        // Bell next to the PM
+        try {
+            require_once INC_PATH . '/functions_notify.php';
+            notify((int)$v['user_id'], 'offer_uploaded', (int)$CURUSER['id'], $oid, [(string)$offer['title']], 'details.php?id=' . $torrent_id);
+        } catch (\Throwable $e) {
+            error_log('notify (offer uploaded): ' . $e->getMessage());
+        }
     }
     $_SESSION['flash'] = ['msg' => $lang->offers['flash_uploaded'], 'type' => 'success'];
     header('Location: offers.php?action=view&oid=' . $oid);

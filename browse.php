@@ -1891,7 +1891,7 @@ if ($showimages === 'yes' && $total > 0): ?>
 
 
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=11"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=7"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';
 echo '<script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>';
@@ -2284,11 +2284,23 @@ echo '<script>
 $agsJsLang = [];
 foreach ($lang->browse as $agsKey => $agsVal) {
     if (str_starts_with((string)$agsKey, 'js_')) {
-        // $lang->load() превратил {1} в %1$s - возвращаем {N} для t() в JS
         $agsJsLang[substr((string)$agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
     }
 }
+
+
+
+// Ключи js_bm_* для bookmark.js (лежат в ланге details) -> AGS_LANG без префикса js_
+ags_bookmark_lang();
+foreach ($lang->details ?? [] as $agsKey => $agsVal) {
+    if (str_starts_with((string)$agsKey, 'js_bm_')) {
+        $agsJsLang[substr((string)$agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
+    }
+}
+
 echo '<script>const AGS_LANG = ' . json_encode($agsJsLang, $agsJsonFlags) . ';</script>';
+
+
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse.js?ver=2"></script>';
 
 if ($is_mod) {

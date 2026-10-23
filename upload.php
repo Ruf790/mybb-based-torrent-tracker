@@ -2209,7 +2209,7 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
   
   <script>var existingScreenshotsCount = <?= count($screenshots ?? []) ?>;</script>
   <script src="<?= $BASEURL; ?>/scripts/Sortable.min.js"></script>
-<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js?ver=7"></script>
+<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js?ver=71"></script>
   
  
 <!-- Torrent File -->

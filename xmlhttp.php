@@ -25,7 +25,7 @@ define ('INC_PATH', TSDIR . '/include');
 require_once INC_PATH . '/error_handler.php';
 require_once INC_PATH.'/init.php';
 
-
+$shutdown_queries = $shutdown_functions = array();
 
 // Load some of the stock caches we'll be using.
 $groupscache = $cache->read("usergroups");
@@ -106,7 +106,7 @@ handleXmlHttpAction();
 function handleXmlHttpAction(): void
 {
     global $mybb, $CURUSER, $usergroups, $plugins;
-    
+
     match ($mybb->input['action']) {
         'get_users' => handleGetUsers(),
         'get_multiquoted' => handleGetMultiquoted(),
@@ -119,10 +119,16 @@ function handleXmlHttpAction(): void
         'get_torrents_by_ids' => handleGetTorrentsByIds(),
         'select_all_filtered' => handleSelectAllFiltered(),
         'quick_comment' => handleQuickComment(),
-		'edit_torrent' => handleEditTorrent(),
-		'rate_torrent' => handleRateTorrent(),
-		'rate_thread' => handleRateThread(),
+        'edit_torrent' => handleEditTorrent(),
+        'rate_torrent' => handleRateTorrent(),
+        'rate_thread' => handleRateThread(),
         'get_thread_info' => handleGetThreadInfo(),
+
+        // AJAX chat: handlers live in include/functions_chat.php, loaded only for these actions
+        'chat_fetch', 'chat_send', 'chat_edit', 'chat_delete', 'chat_ban', 'chat_unban', 'chat_bans',
+        'chat_history', 'chat_online', 'chat_pin',
+        'chat_dm_list', 'chat_dm_user', 'chat_dm_prefs', 'chat_dm_block', 'chat_report' => handleChat($mybb->input['action']),
+
         default => handleUnknownAction()
     };
 }
@@ -241,10 +247,19 @@ function handleRateTorrent(): void
         [$torrent_id, $CURUSER['id'], $rating, TIMENOW, $rating, TIMENOW]
     );
 
-    // Bonus + bell only for a new rating, not for changing it (notify() skips your own torrent)
+    // Bonus and the bell only for a new rating, not for changing it
     if ($isNew) {
         kps('+', $kpsrate, (int)$CURUSER['id'], "Rated torrent #{$torrent_id} ({$rating}/10)", $torrent_id);
 
+        // Bell for the torrent's owner (grouped per torrent: "X and 3 more rated…"; skips rating your own).
+        // The rating is already saved: a notify error must not break the JSON answer
+        try {
+            require_once INC_PATH . '/functions_notify.php';
+            notify((int)$torrent['owner'], 'rating', (int)$CURUSER['id'], $torrent_id,
+                [(string)$torrent['name'], $rating . '/10'], get_torrent_link($torrent_id));
+        } catch (\Throwable $e) {
+            error_log('notify (rating): ' . $e->getMessage());
+        }
     }
 
     $q = $db->sql_query_prepared("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = ?", [$torrent_id]);
@@ -1209,6 +1224,12 @@ function handleQuickComment(): void
                     $commentposted = true;
 					
 					$cid = (int)$newid; // нужен ниже для вывода коммента
+					
+					// Bell (appended to own last comment): only the new text is scanned
+                    require_once INC_PATH . '/functions_notify.php';
+                    notify_comment_event((int)$CURUSER['id'], $torrentid, (int)$arr['owner'], (string)$arr['name'],
+                        $text, get_comment_link((int)$newid, $torrentid) . "#pid{$newid}");
+					
 
                     // Files uploaded with the merged text belong to this comment too
                     if (!empty($_POST['file_ids'])) {
@@ -1288,6 +1309,12 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
 
         $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
         $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
+		
+		
+		// Bell: torrent owner, quoted authors, @mentions (each person once)
+        require_once INC_PATH . '/functions_notify.php';
+        notify_comment_event((int)$CURUSER['id'], $torrentid, (int)$arr['owner'], (string)$arr['name'],
+            $text, get_comment_link((int)$cid, $torrentid) . "#pid{$cid}");
 		
 		
 		
@@ -1751,6 +1778,17 @@ write_log($log_message);
 
 
 
+
+/**
+ * AJAX chat (chat.php / chat_render_box())
+ */
+function handleChat(string $action): void
+{
+    global $lang;
+    $lang->load('chat');
+    require_once INC_PATH . '/functions_chat.php';
+    chat_ajax($action);
+}
 
 /**
  * Handle unknown action

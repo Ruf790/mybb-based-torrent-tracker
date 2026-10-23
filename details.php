@@ -477,7 +477,7 @@ foreach ($lang->details as $ags_key => $ags_val) {
 echo '<script>const AGS_LANG = ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
 
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=2"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=2"></script>';
@@ -1455,11 +1455,14 @@ $details = '
                 </li>
                 ' . ((int)$Torrent['seeders'] === 0 && $CURUSER ? '
                 <li class="nav-item align-self-center ms-2">
-                    <a href="' . $BASEURL . '/takereseed.php?reseedid=' . (int)$Torrent['id'] . '"
-                       class="btn btn-sm btn-outline-warning"
-                       onclick="return confirm(' . htmlspecialchars(json_encode($lang->details['confirm_reseed'], $ags_json_flags), ENT_QUOTES) . ')">
-                        <i class="bi bi-megaphone-fill me-1"></i> ' . htmlspecialchars($lang->details['btn_request_reseed'], ENT_QUOTES) . '
-                    </a>
+                    <form method="post" action="' . $BASEURL . '/takereseed.php" class="d-inline"
+                          onsubmit="return confirm(' . htmlspecialchars(json_encode($lang->details['confirm_reseed'], $ags_json_flags), ENT_QUOTES) . ')">
+                        <input type="hidden" name="my_post_key" value="' . htmlspecialchars((string)($mybb->post_code ?? ''), ENT_QUOTES) . '">
+                        <input type="hidden" name="reseedid" value="' . (int)$Torrent['id'] . '">
+                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                            <i class="bi bi-megaphone-fill me-1"></i> ' . htmlspecialchars($lang->details['btn_request_reseed'], ENT_QUOTES) . '
+                        </button>
+                    </form>
                 </li>' : '') . '
             </ul>
         </div>

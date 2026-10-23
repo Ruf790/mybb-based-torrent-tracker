@@ -288,6 +288,26 @@ function processAddComment(int $torrentid): void
     }
 
     $url = get_comment_link($newid, $torrentid) . "#pid{$newid}";
+	
+	
+	// Bell: owner of the torrent, quoted authors, @mentions (each person once).
+    // Only the new text is scanned — when appended to the previous comment too.
+    // The comment is already saved: a notify error must not break the JSON answer (the user would post again)
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        notify_comment_event(
+            (int)$CURUSER['id'],
+            $torrentid,
+            (int)$arr['owner'],
+            (string)$arr['name'],
+            $msgtext,
+            $url
+        );
+    } catch (\Throwable $e) {
+        error_log('notify (comment): ' . $e->getMessage());
+    }
+	
+	
 
     // Return JSON success with redirect URL
     header('Content-Type: application/json');

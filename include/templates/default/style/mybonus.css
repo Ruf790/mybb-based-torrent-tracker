@@ -24,3 +24,56 @@
             border: 1px solid #e9ecef;
         }
         .very-small { font-size: 0.75rem; }
+		
+		
+/* ── Bonus per torrent (append to mybonus.css) ─────────────────────────── */
+.mb-tor-filter { max-width: 220px; }
+.mb-tor-scroll { max-height: 540px; overflow-y: auto; }
+.mb-tor-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bs-tertiary-bg);
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.mb-tor tfoot td { background: var(--bs-tertiary-bg); }
+
+.mb-tor-name { min-width: 0; max-width: 360px; }
+.mb-tor-name > a {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    text-decoration: none;
+}
+.mb-tor-name > a:hover { text-decoration: underline; }
+
+.mb-tor-bar { height: 3px; margin-top: .35rem; border-radius: 2px; background: var(--bs-secondary-bg); overflow: hidden; }
+.mb-tor-bar span { display: block; height: 100%; background: var(--bs-success); opacity: .7; }
+
+.mb-tor-factors { display: flex; flex-wrap: wrap; gap: .25rem; }
+.mb-tor-f {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .1rem .45rem;
+    border-radius: 50rem;
+    font-size: .72rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: help;
+}
+.mb-tor-f i { font-size: .65rem; opacity: .8; }
+.mb-tor-f.is-up   { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.mb-tor-f.is-down { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+.mb-tor-f.is-flat { background: var(--bs-secondary-bg);        color: var(--bs-secondary-color); }
+.mb-tor table > :not(caption) > * > *:first-child { padding-left: 1rem; }
+.mb-tor table > :not(caption) > * > *:last-child  { padding-right: 1rem; }		
+		
+		
+		
+		
+		

@@ -586,7 +586,9 @@ if (in_array($author_group, $merge_ignore_groups, true)) {
                         [$member['email'], '', $emailsubject, $emailmessage, '']
                     );
                     $queued_email = true;
-                } elseif ($member['notification'] == 2) {
+                } 
+				
+				elseif ($member['notification'] == 2) {
                     
 					require_once INC_PATH . '/functions_pm.php';
                     
@@ -605,7 +607,23 @@ if (in_array($author_group, $merge_ignore_groups, true)) {
                        'sender'        => ['uid' => -1],
                     ], -1, true);
 
+                    try {
+                        require_once INC_PATH . '/functions_notify.php';
+                        notify(
+                            (int)$member['id'],
+                            'thread_subscription',
+                            (int)($post['uid'] ?? 0),
+                            (int)$thread['tid'],
+                            [$subject],
+                            str_replace('&amp;', '&', get_thread_link((int)$thread['tid'], 0, 'newpost'))
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('notify (subscription): ' . $e->getMessage());
+                    }
+
                 }
+				
+				
             }
 
             if (!empty($queued_email)) {

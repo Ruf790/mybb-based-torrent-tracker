@@ -1,6 +1,6 @@
 <?php
 /**
- * Installer v2.1.6
+ * Installer v2.1.7
  * 
  */
 
@@ -127,13 +127,35 @@ define('INSTALL_MODE', true);
 require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_user.php';
 
-define('INSTALLER_VERSION', '2.1.6');
+define('INSTALLER_VERSION', '2.1.7');
 define('LOCK_FILE', __DIR__ . '/install.lock');
+// Файл «установка идёт прямо сейчас» (защита от параллельных установок). Живёт, пока
+// шаги приходят чаще, чем раз в INSTALL_RUN_TTL секунд; после finalize удаляется.
+define('INSTALL_RUN_FILE', __DIR__ . '/install.running');
+const INSTALL_RUN_TTL = 300;
 // Версия схемы БД, записываемая в settings.schema_version (используется upgrade.php).
 const INSTALLER_SCHEMA_VERSION = '1';
 // Закрывать ли torrents/ от прямых HTTP-запросов (.torrent отдаются через PHP с passkey).
 // Если ваш трекер отдаёт файлы из torrents/ напрямую — поставьте false.
 const PROTECT_TORRENTS_DIR = true;
+
+// Доверенные обратные прокси (IP или CIDR). Только от них принимаются заголовки
+// X-Forwarded-Proto / X-Forwarded-For: так HTTPS за прокси определяется верно
+// (флаг Secure у cookie), но подделать заголовок с чужого адреса нельзя.
+// Пример: ['127.0.0.1', '10.0.0.0/8']. Можно задать и переменной окружения
+// INSTALLER_TRUSTED_PROXIES (через запятую).
+const INSTALLER_TRUSTED_PROXIES = [];
+
+// Необязательная защита самого установщика (по умолчанию выключена):
+//  • INSTALLER_REQUIRE_KEY = true (по умолчанию) — перед установкой нужно создать
+//    на сервере пустой файл со случайным именем, показанным на экране
+//    (подтверждение доступа к файловой системе). Переменная окружения
+//    INSTALLER_REQUIRE_KEY имеет приоритет: 1/true — включить, 0/false — выключить
+//    (удобно для Docker и CI). Консольный режим (--config) проверку не требует.
+//  • INSTALLER_ALLOWED_IPS — список IP/CIDR, которым разрешено открывать
+//    установщик (остальным 403). Переменная окружения: INSTALLER_ALLOWED_IPS.
+const INSTALLER_REQUIRE_KEY = true;
+const INSTALLER_ALLOWED_IPS = [];
 
 if ($IS_CLI) {
     // В консольном режиме сессии не нужны: $_SESSION — обычный массив в памяти.
@@ -142,7 +164,7 @@ if ($IS_CLI) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure'   => installer_is_https(),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
@@ -393,6 +415,36 @@ function i18n_ru(): array
         'Could not verify automatically that sql/ and install_error.log are closed. Open {url} in your browser — it should give 403 or 404.' => 'Не удалось автоматически проверить, закрыты ли sql/ и install_error.log. Откройте {url} в браузере — должна быть ошибка 403 или 404.',
         'Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).' => 'Не удалось записать .htaccess автоматически ({files}). Создайте его вручную или закройте доступ в настройках веб-сервера (примеры ниже).',
         'Server config examples' => 'Примеры настроек веб-сервера',
+        'Confirm server access' => 'Подтвердите доступ к серверу',
+        'To make sure that only the server owner can run the installer, create an empty file with this exact name in the site root (next to install.php) via FTP/SSH/file manager:' => 'Чтобы убедиться, что установщик запускает владелец сервера, создайте через FTP/SSH/файловый менеджер пустой файл с точно таким именем в корне сайта (рядом с install.php):',
+        'The file is deleted automatically as soon as it is detected. Then click the button below.' => 'Файл удаляется автоматически, как только будет обнаружен. Затем нажмите кнопку ниже.',
+        'I created the file — continue' => 'Я создал файл — продолжить',
+        'Server access is not confirmed. Reload the page.' => 'Доступ к серверу не подтверждён. Перезагрузите страницу.',
+        'Access denied' => 'Доступ запрещён',
+        'The installer is restricted to specific IP addresses (INSTALLER_ALLOWED_IPS), and yours is not on the list.' => 'Установщик доступен только с определённых IP-адресов (INSTALLER_ALLOWED_IPS), вашего адреса нет в списке.',
+        'The clocks of PHP and the database server differ by {sec} s. Expiry of torrents, bans and announce intervals depend on time — synchronize both servers (NTP) or check that they use the same clock.' => 'Часы PHP и сервера БД расходятся на {sec} с. От времени зависят сроки раздач, банов и интервалы анонса — синхронизируйте серверы (NTP) или проверьте, что используются одни и те же часы.',
+        'PHP uses {php}, but the database session uses {db} ({tz}). Dates written by SQL NOW() and by PHP date() will differ by {h} h — set the same timezone (date.timezone in php.ini and default-time-zone in my.cnf).' => 'PHP работает в поясе {php}, а сессия БД — в {db} ({tz}). Даты, записанные SQL-функцией NOW() и PHP-функцией date(), будут расходиться на {h} ч — задайте одинаковый часовой пояс (date.timezone в php.ini и default-time-zone в my.cnf).',
+        'max_allowed_packet is {value} (recommended: at least 16 MB). Large .torrent files, avatars and bulk imports may fail with “MySQL server has gone away”.' => 'max_allowed_packet равен {value} (рекомендуется не менее 16 МБ). Крупные .torrent-файлы, аватары и массовый импорт могут завершаться ошибкой «MySQL server has gone away».',
+        'sql_mode contains {modes}. Older tracker and forum queries often fail under these modes (GROUP BY errors, zero dates, missing default values). The installer itself works with them; if you see SQL errors on the site, set sql_mode to NO_ENGINE_SUBSTITUTION in my.cnf.' => 'В sql_mode есть {modes}. Старые запросы трекеров и форумов часто падают в этих режимах (ошибки GROUP BY, нулевые даты, отсутствие значений по умолчанию). Сам установщик с ними работает; если на сайте появятся SQL-ошибки, задайте в my.cnf sql_mode = NO_ENGINE_SUBSTITUTION.',
+        'Table names with uppercase letters are not portable between case-sensitive and case-insensitive servers: {tables}.' => 'Имена таблиц с заглавными буквами нельзя без проблем переносить между серверами с разным учётом регистра: {tables}.',
+        'Table names are case-insensitive on this server (lower_case_table_names={v}, typical for Windows/macOS). If you later move the database to Linux (value 0), make sure every table name in dumps and queries is lowercase.' => 'На этом сервере имена таблиц нечувствительны к регистру (lower_case_table_names={v}, типично для Windows/macOS). Если позже переносите базу на Linux (значение 0), убедитесь, что все имена таблиц в дампах и запросах написаны строчными буквами.',
+        'The Site URL host “{url}” differs from the address you are using right now (“{req}”). Cookies are tied to the site address: with a mismatch (www. vs no www., an IP address, another domain) login after the installation may not work.' => 'Хост адреса сайта «{url}» отличается от адреса, по которому вы открыли установщик («{req}»). Cookie привязаны к адресу сайта: при расхождении (www. и без www., IP-адрес, другой домен) вход после установки может не работать.',
+        'The Site URL port ({a}) differs from the port of this connection ({b}).' => 'Порт в адресе сайта ({a}) отличается от порта текущего соединения ({b}).',
+        'The Site URL uses {a}, but this page was opened over {b}. If HTTPS is terminated by a reverse proxy, add the proxy IP to INSTALLER_TRUSTED_PROXIES; otherwise login cookies may be rejected by the browser.' => 'Адрес сайта использует {a}, а эта страница открыта по {b}. Если HTTPS завершается на обратном прокси, добавьте его IP в INSTALLER_TRUSTED_PROXIES; иначе браузер может отклонять cookie входа.',
+        'The Site URL is correct — continue anyway' => 'Адрес сайта верный — продолжить',
+        'Web server: {name}' => 'Веб-сервер: {name}',
+        'nginx ignores .htaccess files: closing sql/, torrents/, cache/, uploads/ and the log from the web must be configured in nginx itself (examples are shown on the last step).' => 'nginx игнорирует файлы .htaccess: закрыть sql/, torrents/, cache/, uploads/ и лог от веба нужно в самом nginx (примеры — на последнем шаге).',
+        'IIS ignores .htaccess files: restrict access to sql/, torrents/, cache/ and uploads/ with request filtering (web.config).' => 'IIS игнорирует файлы .htaccess: ограничьте доступ к sql/, torrents/, cache/ и uploads/ через фильтрацию запросов (web.config).',
+        'The built-in PHP server is for development only and ignores .htaccess files.' => 'Встроенный сервер PHP предназначен только для разработки и игнорирует файлы .htaccess.',
+        '.htaccess protection works if AllowOverride is enabled; the installer verifies it at the end.' => 'Защита через .htaccess работает при включённом AllowOverride; в конце установщик это проверит.',
+        'Could not detect how .htaccess is handled; the installer verifies the protection at the end.' => 'Не удалось определить, как обрабатывается .htaccess; в конце установщик проверит защиту.',
+        'Reverse proxy' => 'Обратный прокси',
+        'X-Forwarded-* headers detected, but the proxy ({ip}) is not trusted: HTTPS behind it will not be detected and the session cookie will lack the Secure flag. Add the proxy IP to INSTALLER_TRUSTED_PROXIES (or the environment variable of the same name).' => 'Обнаружены заголовки X-Forwarded-*, но прокси ({ip}) не является доверенным: HTTPS за ним не определится, а у cookie сессии не будет флага Secure. Добавьте IP прокси в INSTALLER_TRUSTED_PROXIES (или в одноимённую переменную окружения).',
+        'Trusted proxy {ip}; HTTPS detected: {v}' => 'Доверенный прокси {ip}; HTTPS определён: {v}',
+        'yes' => 'да',
+        'no' => 'нет',
+        'Free disk space' => 'Свободное место на диске',
+        '{value} free (recommended: at least {rec})' => 'свободно {value} (рекомендуется не менее {rec})',
         'Local interface files in sql/' => 'Локальные файлы интерфейса в sql/',
         'Missing — the CDN will be used (needs internet access in the browser)' => 'Отсутствуют — будет использован CDN (в браузере нужен доступ к интернету)',
         'A previous installation attempt stopped after step {n}. You can resume from there or wipe the created tables and start over.' => 'Предыдущая попытка установки остановилась после шага {n}. Можно продолжить с этого места или удалить созданные таблицы и начать заново.',
@@ -403,10 +455,10 @@ function i18n_ru(): array
         'Create the database if it does not exist (requires the CREATE privilege)' => 'Создать базу данных, если её нет (нужно право CREATE)',
         'Database server {server} is older than the supported minimum (MySQL 5.7 / MariaDB 10.3). Tick the box below to continue at your own risk.' => 'Версия сервера БД {server} ниже минимально поддерживаемой (MySQL 5.7 / MariaDB 10.3). Отметьте галочку ниже, чтобы продолжить на свой риск.',
         'Download installation report' => 'Скачать отчёт об установке',
-        'Drop all tracker tables created so far and start the installation from scratch?' => 'Удалить все созданные на данный момент таблицы трекера и начать установку заново?',
-        'Drop the existing tracker tables listed above and continue' => 'Удалить перечисленные выше таблицы трекера и продолжить',
+        'Rename all tracker tables created so far to bak_* and start the installation from scratch?' => 'Переименовать все созданные на данный момент таблицы трекера в bak_* и начать установку заново?',
+        'Move the existing tracker tables listed above aside (rename to bak_*) and continue' => 'Отодвинуть перечисленные выше таблицы трекера (переименовать в bak_*) и продолжить',
         'Enter a valid Site Email first — the test message is sent to it.' => 'Сначала укажите корректный Email сайта — тестовое письмо отправляется на него.',
-        'Existing tracker tables in this database will be dropped before the installation starts.' => 'Существующие таблицы трекера в этой базе будут удалены перед началом установки.',
+        'Existing tracker tables in this database will be renamed to bak_* before the installation starts.' => 'Существующие таблицы трекера в этой базе будут переименованы в bak_* перед началом установки.',
         'Fair' => 'Средний',
         'Files in torrents/ can be downloaded directly, bypassing passkey checks. Block /torrents/ in the web server config (see below).' => 'Файлы из torrents/ скачиваются напрямую, в обход проверки passkey. Закройте /torrents/ в настройках веб-сервера (примеры ниже).',
         'Functions in disable_functions' => 'Функции в disable_functions',
@@ -438,7 +490,7 @@ function i18n_ru(): array
         'TLS handshake failed (check the certificate and port).' => 'Не удалось установить TLS-соединение (проверьте сертификат и порт).',
         'Test message accepted by the SMTP server. Check the inbox.' => 'Тестовое письмо принято SMTP-сервером. Проверьте почтовый ящик.',
         'The cron script name could not be detected automatically — replace it with the one from your tracker documentation.' => 'Имя cron-скрипта определить не удалось — замените его на указанное в документации трекера.',
-        'The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to drop these tables (all their data will be lost).' => 'В базе уже есть таблицы трекера ({tables}). Выберите пустую базу или отметьте галочку ниже, чтобы удалить эти таблицы (все данные в них будут потеряны).',
+        'The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to move these tables aside (they are renamed to bak_*, nothing is deleted).' => 'В базе уже есть таблицы трекера ({tables}). Выберите пустую базу или отметьте галочку ниже, чтобы отодвинуть эти таблицы (они переименуются в bak_*, ничего не удаляется).',
         'The database user lacks required privileges: {ops}. Grant CREATE, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT and DROP on this database.' => 'У пользователя БД не хватает прав: {ops}. Выдайте ему CREATE, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT и DROP на эту базу.',
         'The server does not offer encryption (STARTTLS); refusing to send the password in clear text.' => 'Сервер не предлагает шифрование (STARTTLS); пароль в открытом виде отправлять отказываюсь.',
         'The server returned an invalid response — see install_error.log.' => 'Сервер вернул некорректный ответ — смотрите install_error.log.',
@@ -447,7 +499,7 @@ function i18n_ru(): array
         'Warnings are recommendations: they do not block the installation, but fixing them avoids problems later.' => 'Предупреждения — это рекомендации: они не блокируют установку, но их исправление убережёт от проблем позже.',
         'Weak' => 'Слабый',
         'Wipe and start over' => 'Очистить и начать заново',
-        'all data in them will be lost' => 'все данные в них будут потеряны',
+        'the data stays in the bak_* copies until you delete them' => 'данные останутся в копиях bak_*, пока вы их не удалите',
         'announce.php answered like a tracker (checked from the server itself).' => 'announce.php ответил как трекер (проверено с самого сервера).',
         'announce.php responded, but not with a tracker reply. Check the web server and rewrite rules.' => 'announce.php ответил, но не как трекер. Проверьте веб-сервер и правила rewrite.',
         'announce.php returned an HTTP error. Check that the file exists and PHP works.' => 'announce.php вернул HTTP-ошибку. Проверьте, что файл существует и PHP работает.',
@@ -461,7 +513,15 @@ function i18n_ru(): array
         'Password is too common — choose a less predictable one.' => 'Слишком распространённый пароль — выберите менее предсказуемый.',
         'Password must not consist of a single repeated character.' => 'Пароль не должен состоять из одного повторяющегося символа.',
         'Password must not contain the username or the e-mail name.' => 'Пароль не должен содержать логин или имя из email.',
-        'Could not drop the existing tables' => 'Не удалось удалить существующие таблицы',
+        'Could not move the existing tables aside' => 'Не удалось переименовать существующие таблицы',
+        'Could not delete the backup tables' => 'Не удалось удалить резервные таблицы',
+        'Another installation is already in progress (started from {ip}). Wait a few minutes or finish it there.' => 'Установка уже идёт из другого окна или сессии (адрес: {ip}). Подождите несколько минут или завершите её там.',
+        'No config files were changed.' => 'Файлы конфигурации не изменены.',
+        'Rollback incomplete, check these files manually: {files}' => 'Откат выполнен не полностью, проверьте файлы вручную: {files}',
+        'Backup tables from earlier resets: {n}. They hold the data that was in the tracker tables before the reset.' => 'Резервные таблицы после прошлых сбросов: {n}. В них лежат данные, которые были в таблицах трекера до сброса.',
+        'Delete backup tables' => 'Удалить резервные таблицы',
+        'Permanently delete all bak_* backup tables? This cannot be undone.' => 'Безвозвратно удалить все резервные таблицы bak_*? Это нельзя отменить.',
+        'Tables were renamed to {prefix}*. Delete them with the "Delete backup tables" button when you no longer need them.' => 'Таблицы переименованы в {prefix}*. Когда они станут не нужны, удалите их кнопкой «Удалить резервные таблицы».',
     ];
 }
 
@@ -488,7 +548,9 @@ function js_i18n(): array
         '(host only)',
         'Retry from this step',
         'Wipe and start over',
-        'Drop all tracker tables created so far and start the installation from scratch?',
+        'Rename all tracker tables created so far to bak_* and start the installation from scratch?',
+        'Permanently delete all bak_* backup tables? This cannot be undone.',
+        'Tables were renamed to {prefix}*. Delete them with the "Delete backup tables" button when you no longer need them.',
         'Request failed — check your connection and install_error.log.',
         'The server returned an invalid response — see install_error.log.',
         'Sending…',
@@ -587,6 +649,12 @@ function db_notes_html(): string
         $h .= '<div class="alert alert-info alert-custom mb-3" style="border-left-color:#0dcaf0"><i class="fas fa-circle-info me-2"></i>'
             . htmlspecialchars(t('Collation utf8mb4_0900_ai_ci (MySQL 8.0+) is not supported by {server}; tables will use the server default collation instead.', ['server' => $i['server']]))
             . '</div>';
+    }
+    // Диагностика сервера БД (время, пакеты, sql_mode, регистр имён таблиц).
+    foreach ((array)($_SESSION['db_diag'] ?? []) as $n) {
+        $warn = (($n['level'] ?? '') === 'warn');
+        $h .= '<div class="alert alert-' . ($warn ? 'warning' : 'info') . ' alert-custom mb-3" style="border-left-color:' . ($warn ? '#ff9800' : '#0dcaf0') . '"><i class="fas fa-' . ($warn ? 'triangle-exclamation' : 'circle-info') . ' me-2"></i>'
+            . htmlspecialchars((string)($n['text'] ?? '')) . '</div>';
     }
     return $h;
 }
@@ -773,13 +841,312 @@ function cdn_js_tag(): string
         : '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// v2.1.7: прокси, адрес сайта, веб-сервер, диагностика БД, защита доступа
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Список IP/CIDR из константы и переменной окружения (через запятую). */
+function installer_ip_list(array $const, string $env): array
+{
+    $list = $const;
+    $e = getenv($env);
+    if ($e !== false && trim($e) !== '') {
+        foreach (explode(',', $e) as $x) {
+            $x = trim($x);
+            if ($x !== '') $list[] = $x;
+        }
+    }
+    return $list;
+}
+
+/** IPv4-mapped IPv6 («::ffff:1.2.3.4») приводит к обычному IPv4. */
+function installer_norm_ip(string $ip): string
+{
+    return preg_match('/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i', $ip, $m) ? $m[1] : $ip;
+}
+
+/** Входит ли $ip в список адресов/подсетей (IPv4 и IPv6, формат «1.2.3.0/24»). */
+function installer_ip_in_list(string $ip, array $list): bool
+{
+    $bin = @inet_pton(installer_norm_ip($ip));
+    if ($bin === false) return false;
+    foreach ($list as $entry) {
+        $entry = trim((string)$entry);
+        if ($entry === '') continue;
+        $bits = strlen($bin) * 8;
+        $mask = $bits;
+        if (strpos($entry, '/') !== false) {
+            [$entry, $m] = explode('/', $entry, 2);
+            if (!ctype_digit($m) || (int)$m > $bits) continue;
+            $mask = (int)$m;
+        }
+        $eb = @inet_pton(installer_norm_ip($entry));
+        if ($eb === false || strlen($eb) !== strlen($bin)) continue;
+        $full = intdiv($mask, 8);
+        $rem  = $mask % 8;
+        if ($full > 0 && substr($bin, 0, $full) !== substr($eb, 0, $full)) continue;
+        if ($rem > 0) {
+            $m8 = (0xFF << (8 - $rem)) & 0xFF;
+            if ((ord($bin[$full]) & $m8) !== (ord($eb[$full]) & $m8)) continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+function installer_remote_ip(): string
+{
+    return installer_norm_ip((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+}
+
+/** Пришёл ли запрос от доверенного обратного прокси (из INSTALLER_TRUSTED_PROXIES). */
+function installer_from_trusted_proxy(): bool
+{
+    $list = installer_ip_list(INSTALLER_TRUSTED_PROXIES, 'INSTALLER_TRUSTED_PROXIES');
+    return $list && installer_ip_in_list(installer_remote_ip(), $list);
+}
+
+/**
+ * HTTPS ли у посетителя. X-Forwarded-Proto учитывается только если запрос
+ * пришёл от доверенного прокси: иначе заголовок мог бы прислать кто угодно.
+ */
+function installer_is_https(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') return true;
+    if ((string)($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
+    if (installer_from_trusted_proxy()) {
+        $p = strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+        return $p === 'https';
+    }
+    return false;
+}
+
+/** Есть ли признаки обратного прокси, которому мы не доверяем (заголовки X-Forwarded-*). */
+function installer_untrusted_proxy_headers(): bool
+{
+    $has = !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) || !empty($_SERVER['HTTP_X_FORWARDED_FOR'])
+        || !empty($_SERVER['HTTP_X_FORWARDED_HOST']) || !empty($_SERVER['HTTP_FORWARDED']);
+    return $has && !installer_from_trusted_proxy();
+}
+
+/** IP посетителя: за доверенным прокси берётся первый «чужой» адрес справа в X-Forwarded-For. */
+function installer_client_ip(): string
+{
+    $ip = installer_remote_ip();
+    if (!installer_from_trusted_proxy()) return $ip;
+    $xff = (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+    if ($xff === '') return $ip;
+    $list = installer_ip_list(INSTALLER_TRUSTED_PROXIES, 'INSTALLER_TRUSTED_PROXIES');
+    foreach (array_reverse(array_map('trim', explode(',', $xff))) as $p) {
+        if (!filter_var($p, FILTER_VALIDATE_IP)) return $ip;
+        if (!installer_ip_in_list($p, $list)) return installer_norm_ip($p);
+    }
+    return $ip;
+}
+
+/** Совпадает ли адрес сайта с тем, по которому открыт установщик. Возвращает список замечаний. */
+function installer_url_mismatches(string $url): array
+{
+    if (PHP_SAPI === 'cli') return [];
+    $u = parse_url($url);
+    if (!$u || empty($u['host'])) return [];
+    $hostHeader = (string)($_SERVER['HTTP_HOST'] ?? '');
+    if (!preg_match('/^(\[[0-9a-fA-F:]+\]|[A-Za-z0-9.\-]+)(?::(\d{1,5}))?$/', $hostHeader, $m)) return [];
+
+    $isHttps   = installer_is_https();
+    $reqHost   = strtolower(trim($m[1], '[]'));
+    $reqPort   = isset($m[2]) && $m[2] !== '' ? (int)$m[2] : ($isHttps ? 443 : 80);
+    $urlScheme = strtolower((string)($u['scheme'] ?? 'http'));
+    $urlHost   = strtolower(trim((string)$u['host'], '[]'));
+    $urlPort   = isset($u['port']) ? (int)$u['port'] : ($urlScheme === 'https' ? 443 : 80);
+
+    $out = [];
+    if ($urlHost !== $reqHost) {
+        $out[] = t('The Site URL host “{url}” differs from the address you are using right now (“{req}”). Cookies are tied to the site address: with a mismatch (www. vs no www., an IP address, another domain) login after the installation may not work.', ['url' => $urlHost, 'req' => $reqHost]);
+    } elseif (($urlScheme === 'https') === $isHttps && $urlPort !== $reqPort) {
+        $out[] = t('The Site URL port ({a}) differs from the port of this connection ({b}).', ['a' => $urlPort, 'b' => $reqPort]);
+    }
+    if (($urlScheme === 'https') !== $isHttps) {
+        $out[] = t('The Site URL uses {a}, but this page was opened over {b}. If HTTPS is terminated by a reverse proxy, add the proxy IP to INSTALLER_TRUSTED_PROXIES; otherwise login cookies may be rejected by the browser.', ['a' => strtoupper($urlScheme), 'b' => $isHttps ? 'HTTPS' : 'HTTP']);
+    }
+    return $out;
+}
+
+/** Какой веб-сервер отдаёт страницу: nginx | apache | litespeed | iis | devserver | other | unknown. */
+function installer_webserver(): string
+{
+    $s = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
+    if ($s === '') return 'unknown';
+    if (strpos($s, 'nginx') !== false || strpos($s, 'openresty') !== false) return 'nginx';
+    if (strpos($s, 'litespeed') !== false) return 'litespeed';
+    if (strpos($s, 'apache') !== false) return 'apache';
+    if (strpos($s, 'iis') !== false) return 'iis';
+    if (strpos($s, 'development server') !== false) return 'devserver';
+    return 'other';
+}
+
+function installer_fmt_bytes(float $b): string
+{
+    foreach (['B', 'KB', 'MB', 'GB', 'TB'] as $i => $u) {
+        if ($b < 1024 || $u === 'TB') return ($i === 0 ? (string)(int)$b : number_format($b, $b < 10 ? 1 : 0, '.', '')) . ' ' . $u;
+        $b /= 1024;
+    }
+    return (string)$b;
+}
+
+function installer_fmt_offset(int $sec): string
+{
+    $a = abs($sec);
+    return sprintf('UTC%s%02d:%02d', $sec < 0 ? '-' : '+', intdiv($a, 3600), intdiv($a % 3600, 60));
+}
+
+/**
+ * Диагностика сервера БД: расхождение часов и часовых поясов с PHP,
+ * max_allowed_packet, sql_mode, регистр имён таблиц. Ничего не блокирует —
+ * возвращает список замечаний [['level' => 'warn'|'info', 'text' => '…'], …].
+ */
+function installer_db_diagnostics($db): array
+{
+    $notes = [];
+    $one = static function ($db, string $sql): ?array {
+        try {
+            $q = $db->sql_query_prepared($sql, [], 1);
+            $r = $q ? $db->fetch_array($q) : null;
+            return is_array($r) ? $r : null;
+        } catch (Throwable $e) {
+            error_log('[installer] diagnostics query failed: ' . $e->getMessage());
+            return null;
+        }
+    };
+
+    // 1. Часы и часовой пояс
+    $r = $one($db, 'SELECT UNIX_TIMESTAMP() AS ts, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) AS off_sec, @@session.time_zone AS stz');
+    if ($r && isset($r['ts'])) {
+        $drift = abs((int)$r['ts'] - time());
+        if ($drift > 60) {
+            $notes[] = ['level' => 'warn', 'text' => t('The clocks of PHP and the database server differ by {sec} s. Expiry of torrents, bans and announce intervals depend on time — synchronize both servers (NTP) or check that they use the same clock.', ['sec' => $drift])];
+        }
+        $dbOff  = (int)($r['off_sec'] ?? 0);
+        $phpOff = (int)date('Z');
+        if ($dbOff !== $phpOff) {
+            $notes[] = ['level' => 'warn', 'text' => t('PHP uses {php}, but the database session uses {db} ({tz}). Dates written by SQL NOW() and by PHP date() will differ by {h} h — set the same timezone (date.timezone in php.ini and default-time-zone in my.cnf).', [
+                'php' => installer_fmt_offset($phpOff), 'db' => installer_fmt_offset($dbOff),
+                'tz' => (string)($r['stz'] ?? '?'), 'h' => rtrim(rtrim(number_format(abs($dbOff - $phpOff) / 3600, 2, '.', ''), '0'), '.'),
+            ])];
+        }
+    }
+
+    // 2. max_allowed_packet
+    $r = $one($db, 'SELECT @@max_allowed_packet AS v');
+    if ($r && isset($r['v']) && (int)$r['v'] < 16 * 1024 * 1024) {
+        $notes[] = ['level' => 'warn', 'text' => t('max_allowed_packet is {value} (recommended: at least 16 MB). Large .torrent files, avatars and bulk imports may fail with “MySQL server has gone away”.', ['value' => installer_fmt_bytes((float)$r['v'])])];
+    }
+
+    // 3. sql_mode
+    $r = $one($db, 'SELECT @@sql_mode AS m');
+    if ($r && isset($r['m'])) {
+        $tokens = array_filter(array_map('trim', explode(',', strtoupper((string)$r['m']))));
+        $risky  = array_values(array_intersect(['ONLY_FULL_GROUP_BY', 'STRICT_TRANS_TABLES', 'STRICT_ALL_TABLES', 'NO_ZERO_DATE', 'NO_ZERO_IN_DATE', 'ERROR_FOR_DIVISION_BY_ZERO'], $tokens));
+        if ($risky) {
+            $notes[] = ['level' => 'warn', 'text' => t('sql_mode contains {modes}. Older tracker and forum queries often fail under these modes (GROUP BY errors, zero dates, missing default values). The installer itself works with them; if you see SQL errors on the site, set sql_mode to NO_ENGINE_SUBSTITUTION in my.cnf.', ['modes' => implode(', ', $risky)])];
+        }
+    }
+
+    // 4. Регистр имён таблиц
+    $r = $one($db, 'SELECT @@lower_case_table_names AS v');
+    $lctn = $r ? (int)($r['v'] ?? 0) : 0;
+    $mixed = [];
+    foreach (array_column(getTableStatements(), 'table') as $tn) {
+        if ((string)$tn !== strtolower((string)$tn)) $mixed[] = (string)$tn;
+    }
+    if ($mixed) {
+        $notes[] = ['level' => 'warn', 'text' => t('Table names with uppercase letters are not portable between case-sensitive and case-insensitive servers: {tables}.', ['tables' => implode(', ', array_slice($mixed, 0, 6))])];
+    }
+    if ($lctn === 1 || $lctn === 2) {
+        $notes[] = ['level' => 'info', 'text' => t('Table names are case-insensitive on this server (lower_case_table_names={v}, typical for Windows/macOS). If you later move the database to Linux (value 0), make sure every table name in dumps and queries is lowercase.', ['v' => $lctn])];
+    }
+    return $notes;
+}
+
+// ── Необязательная защита установщика ────────────────────────────────────────
+
+function installer_key_required(): bool
+{
+    $e = getenv('INSTALLER_REQUIRE_KEY');
+    if ($e !== false && trim($e) !== '') {
+        return in_array(strtolower(trim($e)), ['1', 'true', 'yes', 'on'], true);
+    }
+    return INSTALLER_REQUIRE_KEY;
+}
+
+function installer_ip_allowed(): bool
+{
+    $list = installer_ip_list(INSTALLER_ALLOWED_IPS, 'INSTALLER_ALLOWED_IPS');
+    return !$list || installer_ip_in_list(installer_client_ip(), $list);
+}
+
+function installer_key_name(): string
+{
+    if (empty($_SESSION['key_file']) || !preg_match('/^install-[a-f0-9]{32}\.key$/', (string)$_SESSION['key_file'])) {
+        $_SESSION['key_file'] = 'install-' . bin2hex(random_bytes(16)) . '.key';
+    }
+    return $_SESSION['key_file'];
+}
+
+/** Подтверждён ли доступ к серверу (всегда true, если защита ключ-файлом выключена). */
+function installer_is_authed(): bool
+{
+    if (PHP_SAPI === 'cli' || !installer_key_required() || !empty($_SESSION['auth_ok'])) return true;
+    $f = __DIR__ . '/' . installer_key_name();
+    if (is_file($f)) {
+        @unlink($f);
+        session_regenerate_id(true);
+        $_SESSION['auth_ok'] = true;
+        return true;
+    }
+    return false;
+}
+
+/** Минимальная страница (без основного интерфейса) для экранов доступа. */
+function installer_simple_page(string $title, string $inner): string
+{
+    global $LANG;
+    return '<!DOCTYPE html><html lang="' . htmlspecialchars((string)$LANG) . '"><head><meta charset="UTF-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        . '<title>' . htmlspecialchars($title) . ' | Mybb Based Torrent Tracker</title>'
+        . cdn_head_tags()
+        . '<style>body{background:radial-gradient(circle at top left,#eef0fd 0%,#f7f7fb 55%,#fff 100%);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'
+        . '.box{max-width:640px;margin:8vh auto;padding:2rem;background:#fff;border-radius:1.25rem;box-shadow:0 25px 60px -12px rgba(0,0,0,.2)}'
+        . 'code{background:#f8f9fa;padding:2px 8px;border-radius:6px;color:#b02a37;word-break:break-all}.btn{border-radius:.7rem;font-weight:600}</style>'
+        . '</head><body><div class="box">' . $inner . '</div></body></html>';
+}
+
+function installer_render_gate(): void
+{
+    $self = htmlspecialchars(basename(__FILE__));
+    $inner = '<div class="d-flex justify-content-between align-items-start mb-3">'
+        . '<h3 class="fw-bold mb-0"><i class="fas fa-key me-2 text-primary"></i>' . t('Confirm server access') . '</h3>'
+        . '<div class="small"><a href="' . $self . '?lang=ru">RU</a> · <a href="' . $self . '?lang=en">EN</a></div></div>'
+        . '<p class="text-muted">' . t('To make sure that only the server owner can run the installer, create an empty file with this exact name in the site root (next to install.php) via FTP/SSH/file manager:') . '</p>'
+        . '<p class="text-center my-4"><code class="fs-6">' . htmlspecialchars(installer_key_name()) . '</code></p>'
+        . '<p class="text-muted small">' . t('The file is deleted automatically as soon as it is detected. Then click the button below.') . '</p>'
+        . '<a href="' . $self . '" class="btn btn-primary w-100"><i class="fas fa-rotate me-2"></i>' . t('I created the file — continue') . '</a>';
+    echo installer_simple_page(t('Confirm server access'), $inner);
+}
+
+function installer_render_denied(): void
+{
+    $inner = '<h3 class="fw-bold"><i class="fas fa-ban me-2 text-danger"></i>' . t('Access denied') . '</h3>'
+        . '<p class="text-muted mb-0">' . t('The installer is restricted to specific IP addresses (INSTALLER_ALLOWED_IPS), and yours is not on the list.') . '</p>';
+    echo installer_simple_page(t('Access denied'), $inner);
+}
+
 /** Предполагаемый URL сайта (для предзаполнения формы; значение экранируется при выводе). */
 function installer_guess_url(): string
 {
     $host = (string)($_SERVER['HTTP_HOST'] ?? '');
     if (!preg_match('/^(?:[A-Za-z0-9.\-]+|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/', $host)) return '';
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-          || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    $https = installer_is_https();
     $dir = str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/install.php')));
     $dir = ($dir === '/' || $dir === '.') ? '' : rtrim($dir, '/');
     if (!preg_match('#^[A-Za-z0-9._~/\-]*$#', $dir)) $dir = '';
@@ -941,18 +1308,241 @@ function installer_find_conflicts($db): array
     return $found;
 }
 
-/** Удаляет только таблицы, которые создаёт этот установщик. Возвращает их число. */
-function installer_drop_known_tables($db): int
+/** Имена таблиц, которые создаёт этот установщик (только безопасные идентификаторы). */
+function installer_known_tables(): array
+{
+    $out = [];
+    foreach (array_column(getTableStatements(), 'table') as $t) {
+        if (preg_match('/^\w+$/', (string)$t)) $out[] = (string)$t;
+    }
+    return $out;
+}
+
+/**
+ * «Сброс» таблиц трекера: по умолчанию таблицы НЕ удаляются, а переименовываются в
+ * bak_<ГГГГММДД_ЧЧММСС>_<имя> одним атомарным RENAME TABLE (всё или ничего), поэтому
+ * ошибочное нажатие «Очистить и начать заново» обратимо. $drop = true — старое поведение
+ * (DROP), нужно только для неинтерактивного режима.
+ *
+ * @return array{count: int, prefix: string, dropped: bool}
+ */
+function installer_reset_known_tables($db, bool $drop = false): array
+{
+    $existing = installer_find_conflicts($db);   // реальные имена существующих таблиц трекера
+    if (!$existing) return ['count' => 0, 'prefix' => '', 'dropped' => $drop];
+
+    if ($drop) {
+        $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 0', [], 1);
+        try {
+            foreach ($existing as $t) {
+                if (preg_match('/^\w+$/', $t)) $db->sql_query_prepared("DROP TABLE IF EXISTS `{$t}`", [], 1);
+            }
+        } finally {
+            $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 1', [], 1);
+        }
+        return ['count' => count($existing), 'prefix' => '', 'dropped' => true];
+    }
+
+    // Все имена в базе — чтобы не наткнуться на уже существующую bak_-таблицу.
+    $all = [];
+    $q = $db->sql_query_prepared('SHOW TABLES', [], 1);
+    if ($q) { while ($row = $db->fetch_array($q)) $all[strtolower((string)reset($row))] = true; }
+
+    $prefix = 'bak_' . date('Ymd_His') . '_';
+    for ($n = 2; $n < 100; $n++) {
+        $clash = false;
+        foreach ($existing as $t) { if (isset($all[strtolower($prefix . $t)])) { $clash = true; break; } }
+        if (!$clash) break;
+        $prefix = 'bak_' . date('Ymd_His') . '_' . $n . '_';
+    }
+
+    $pairs = [];
+    foreach ($existing as $t) {
+        if (!preg_match('/^\w+$/', $t)) continue;
+        if (strlen($prefix . $t) > 64) {   // лимит MySQL на длину имени таблицы
+            throw new RuntimeException('Backup table name is too long: ' . $prefix . $t);
+        }
+        $pairs[] = "`{$t}` TO `{$prefix}{$t}`";
+    }
+    if ($pairs) {
+        // Один оператор — MySQL переименовывает атомарно: либо все таблицы, либо ни одной.
+        $r = $db->sql_query_prepared('RENAME TABLE ' . implode(', ', $pairs), [], 1);
+        if ($r === false) throw new RuntimeException('RENAME TABLE failed');
+    }
+    return ['count' => count($pairs), 'prefix' => $prefix, 'dropped' => false];
+}
+
+/** Резервные таблицы от прошлых сбросов: [имя_в_базе => исходное_имя]. */
+function installer_find_backups($db): array
+{
+    $known = array_map('strtolower', installer_known_tables());
+    $found = [];
+    $q = $db->sql_query_prepared('SHOW TABLES', [], 1);
+    if ($q) {
+        while ($row = $db->fetch_array($q)) {
+            $n = (string)reset($row);
+            if (preg_match('/^bak_\d{8}_\d{6}_(?:\d+_)?(\w+)$/', $n, $m) && in_array(strtolower($m[1]), $known, true)) {
+                $found[$n] = $m[1];
+            }
+        }
+    }
+    ksort($found);
+    return $found;
+}
+
+/** Окончательно удаляет резервные таблицы (отдельная кнопка). Возвращает их число. */
+function installer_drop_backups($db): int
 {
     $n = 0;
-    $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 0', [], 1);
-    foreach (array_column(getTableStatements(), 'table') as $t) {
-        if (!preg_match('/^\w+$/', (string)$t)) continue;
+    foreach (array_keys(installer_find_backups($db)) as $t) {
         $db->sql_query_prepared("DROP TABLE IF EXISTS `{$t}`", [], 1);
         $n++;
     }
-    $db->sql_query_prepared('SET FOREIGN_KEY_CHECKS = 1', [], 1);
     return $n;
+}
+
+// ── Блокировка параллельных установок ────────────────────────────────────────
+
+/** Идентификатор «владельца» установки: у каждой веб-сессии свой, у CLI — по PID. */
+function installer_lock_owner(): string
+{
+    if (PHP_SAPI === 'cli') return hash('sha256', 'cli:' . getmypid());
+    if (empty($_SESSION['inst_owner'])) $_SESSION['inst_owner'] = bin2hex(random_bytes(16));
+    return hash('sha256', (string)$_SESSION['inst_owner']);
+}
+
+/**
+ * Захватывает (или продлевает) блокировку установки. Возвращает null, если всё в порядке,
+ * иначе — текст ошибки: установку уже ведёт кто-то другой и его последний шаг был
+ * меньше INSTALL_RUN_TTL секунд назад. Брошенная блокировка устаревает сама.
+ *
+ * GET_LOCK() здесь не годится: он живёт, пока открыто соединение с БД, а каждый шаг
+ * установки — отдельный HTTP-запрос с новым соединением. Поэтому файл + flock().
+ */
+function installer_lock_acquire(): ?string
+{
+    $fp = @fopen(INSTALL_RUN_FILE, 'c+');
+    if (!$fp) {
+        error_log('[installer] cannot open ' . INSTALL_RUN_FILE . ' — concurrent-install protection is off');
+        return null; // нет прав на запись в корень — не блокируем (ниже всё равно упадёт запись конфигов)
+    }
+    try {
+        if (!flock($fp, LOCK_EX)) return null;
+        $cur  = json_decode((string)stream_get_contents($fp), true);
+        $mine = installer_lock_owner();
+        $now  = time();
+        if (is_array($cur) && isset($cur['o'], $cur['t'])
+            && !hash_equals((string)$cur['o'], $mine) && ($now - (int)$cur['t']) < INSTALL_RUN_TTL) {
+            return t('Another installation is already in progress (started from {ip}). Wait a few minutes or finish it there.', ['ip' => (string)($cur['ip'] ?? '?')]);
+        }
+        $ip = (PHP_SAPI === 'cli') ? 'cli' : installer_remote_ip();
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode(['o' => $mine, 't' => $now, 'ip' => $ip]));
+        fflush($fp);
+        return null;
+    } finally {
+        @flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+}
+
+/** Снимает блокировку, если она наша. */
+function installer_lock_release(): void
+{
+    $raw = @file_get_contents(INSTALL_RUN_FILE);
+    if ($raw === false) return;
+    $cur = json_decode($raw, true);
+    if (!is_array($cur) || hash_equals((string)($cur['o'] ?? ''), installer_lock_owner())) {
+        @unlink(INSTALL_RUN_FILE);
+    }
+}
+
+// ── Запись конфигов: всё или ничего ──────────────────────────────────────────
+
+/** Сбрасывает opcache и кеш stat для файла: иначе при validate_timestamps=0 старый код живёт часами. */
+function installer_invalidate_file(string $file): void
+{
+    clearstatcache(true, $file);
+    if (function_exists('opcache_invalidate')) {
+        @opcache_invalidate($file, true);
+    }
+}
+
+/**
+ * Записывает набор файлов атомарно:
+ *  1) всё сначала пишется во временные файлы рядом с целевыми (права 0640 с первой секунды);
+ *  2) существующие целевые файлы копируются в резерв;
+ *  3) временные файлы переименовываются поверх целевых; на первой же ошибке уже
+ *     переименованные возвращаются к прежнему состоянию (старое содержимое или отсутствие файла);
+ *  4) после успеха сбрасывается opcache.
+ *
+ * @param array<string,string> $files путь => содержимое
+ * @return array{ok: bool, failed: string[], rollback_failed: string[], perm_failed: string[]}
+ */
+function installer_write_files_atomic(array $files): array
+{
+    $res = ['ok' => false, 'failed' => [], 'rollback_failed' => [], 'perm_failed' => []];
+    $tag = bin2hex(random_bytes(4));
+    $tmp = [];   // путь => временный файл
+    $bak = [];   // путь => резервная копия (если целевой файл уже был)
+
+    $cleanup = static function () use (&$tmp, &$bak): void {
+        foreach ($tmp as $f) { if (is_file($f)) @unlink($f); }
+        foreach ($bak as $f) { if (is_file($f)) @unlink($f); }
+    };
+
+    // 1) временные файлы
+    $oldUmask = umask(0137);   // создаются сразу 0640: пароль БД не читается «остальными»
+    foreach ($files as $path => $content) {
+        $t = $path . '.tmp' . $tag;
+        $tmp[$path] = $t;
+        if (@file_put_contents($t, $content, LOCK_EX) === false || @filesize($t) !== strlen($content)) {
+            $res['failed'][] = basename($path);
+        } elseif (!@chmod($t, 0640)) {
+            $res['perm_failed'][] = basename($path);
+        }
+    }
+    umask($oldUmask);
+    if ($res['failed']) { $cleanup(); return $res; }   // ничего не тронуто
+
+    // 2) резервные копии существующих файлов
+    foreach ($files as $path => $_) {
+        if (!is_file($path)) continue;
+        $b = $path . '.bak' . $tag;
+        if (!@copy($path, $b)) {
+            $res['failed'][] = basename($path);
+            $bak[$path] = $b;
+            $cleanup();
+            return $res;
+        }
+        $bak[$path] = $b;
+    }
+
+    // 3) подмена
+    $done = [];
+    foreach ($files as $path => $_) {
+        if (@rename($tmp[$path], $path)) {
+            unset($tmp[$path]);
+            $done[] = $path;
+            continue;
+        }
+        $res['failed'][] = basename($path);
+        // откат уже подменённых
+        foreach (array_reverse($done) as $d) {
+            $restored = isset($bak[$d]) ? @rename($bak[$d], $d) : @unlink($d);
+            if ($restored) { unset($bak[$d]); } else { $res['rollback_failed'][] = basename($d); }
+            installer_invalidate_file($d);
+        }
+        $cleanup();
+        return $res;
+    }
+
+    // 4) успех
+    foreach ($done as $d) installer_invalidate_file($d);
+    $cleanup();   // удаляет только резервные копии: временных уже нет
+    $res['ok'] = true;
+    return $res;
 }
 
 // ── Тест исходящей почты ─────────────────────────────────────────────────────
@@ -1083,6 +1673,9 @@ function installer_build_report(): string
     $L[] = 'Installer: v' . INSTALLER_VERSION . ' | ' . date('Y-m-d H:i:s T');
     $L[] = 'PHP: ' . PHP_VERSION . ' (' . PHP_SAPI . ') | OS: ' . PHP_OS_FAMILY;
     $L[] = 'Database server: ' . ($_SESSION['db_info']['server'] ?? 'n/a');
+    foreach ((array)($_SESSION['db_diag'] ?? []) as $n) {
+        $L[] = '  [' . strtoupper((string)($n['level'] ?? '')) . '] ' . (string)($n['text'] ?? '');
+    }
     $L[] = 'Site: ' . ($_SESSION['site']['name'] ?? '') . ' — ' . ($_SESSION['site']['url'] ?? '');
     $L[] = 'Admin user: ' . ($_SESSION['admin']['username'] ?? '');
     $L[] = '';
@@ -1117,6 +1710,8 @@ function installer_cli_main(array $opts): void
         exit(isset($opts['help']) ? 0 : 2);
     }
     if (file_exists(LOCK_FILE)) $die('Installer is locked: install.lock exists. Delete it to reinstall.', 3);
+    if (($busy = installer_lock_acquire()) !== null) $die(strip_tags($busy), 3);
+    register_shutdown_function('installer_lock_release');
 
     $path = (string)$opts['config'];
     $raw  = is_file($path) ? @file_get_contents($path) : false;
@@ -1181,6 +1776,8 @@ function installer_cli_main(array $opts): void
         $db = getDb();
         $db->sql_query_prepared('SELECT 1');
         $_SESSION['db_info'] = detect_db_info($db);
+        $_SESSION['db_diag'] = installer_db_diagnostics($db);
+        foreach ($_SESSION['db_diag'] as $dn) { $say(sprintf('[%s] %s', strtoupper($dn['level']), $dn['text'])); }
         $priv = installer_check_privileges($db);
         if ($priv !== null) $die('Database user lacks privileges: ' . $priv, 4);
         if (!empty($_SESSION['db_info']['too_old']) && empty($d['allow_old'])) {
@@ -1188,9 +1785,11 @@ function installer_cli_main(array $opts): void
         }
         $conflicts = installer_find_conflicts($db);
         if ($conflicts) {
-            if (empty($d['wipe'])) $die('Database already contains tracker tables: ' . implode(', ', $conflicts) . '. Set "wipe": true to drop them.', 4);
-            installer_drop_known_tables($db);
-            $say('Dropped ' . count($conflicts) . ' existing tracker table(s).');
+            if (empty($d['wipe'])) $die('Database already contains tracker tables: ' . implode(', ', $conflicts) . '. Set "wipe": true to move them aside (renamed to bak_*) or "wipe_drop": true to drop them for good.', 4);
+            $wr = installer_reset_known_tables($db, !empty($d['wipe_drop']));
+            $say($wr['dropped']
+                ? 'Dropped ' . $wr['count'] . ' existing tracker table(s).'
+                : 'Renamed ' . $wr['count'] . ' existing tracker table(s) to ' . $wr['prefix'] . '*');
         }
     } catch (Throwable $e) {
         error_log('[installer] CLI database error: ' . $e->getMessage());
@@ -1200,6 +1799,7 @@ function installer_cli_main(array $opts): void
     $steps = getInstallSteps();
     $total = count($steps);
     foreach ($steps as $i => $st) {
+        installer_lock_acquire();   // продлеваем блокировку
         $res = executeInstallStep($i);
         $say(sprintf('[%d/%d] %s %s — %s (%d ms)', $i + 1, $total, $res['status'] === 'ok' ? 'OK  ' : 'FAIL', strip_tags((string)$res['label']), strip_tags((string)$res['message']), (int)($res['elapsed_ms'] ?? 0)));
         if ($res['status'] !== 'ok') $die('Installation stopped. See install_error.log for details.', 1);
@@ -1211,6 +1811,30 @@ function installer_cli_main(array $opts): void
 if ($IS_CLI) {
     installer_cli_main($CLI_OPTS);
     exit(0);
+}
+
+// ── Необязательная защита: список IP и/или подтверждение доступа ключ-файлом ──
+if (!file_exists(LOCK_FILE)) {
+    $deny = null;
+    if (!installer_ip_allowed()) {
+        $deny = 'ip';
+    } elseif (!installer_is_authed()) {
+        $deny = 'key';
+    }
+    if ($deny !== null) {
+        if (isset($_POST['ajax_action'])) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['status' => 'fail', 'label' => t('Security'), 'message' => $deny === 'ip' ? t('Access denied') : t('Server access is not confirmed. Reload the page.'), 'elapsed_ms' => 0, 'status_code' => 403], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        if ($deny === 'ip') {
+            http_response_code(403);
+            installer_render_denied();
+        } else {
+            installer_render_gate();
+        }
+        exit;
+    }
 }
 
 // ── AJAX: тестовое письмо (шаг 3) ────────────────────────────────────────────
@@ -1279,6 +1903,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
         echo json_encode(['status' => 'error', 'message' => t('Complete the previous steps first.')]);
         exit;
     }
+    if (($busy = installer_lock_acquire()) !== null) {
+        echo json_encode(['status' => 'error', 'message' => $busy], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     $steps = getInstallSteps();
     // Номер следующего шага: после сбоя установку можно продолжить с места ошибки.
     $resume = (int)($_SESSION['inst_next'] ?? 0);
@@ -1308,17 +1936,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
         echo json_encode(['status' => 'error', 'message' => t('Installer is locked.')]);
         exit;
     }
+    if (($busy = installer_lock_acquire()) !== null) {
+        echo json_encode(['status' => 'error', 'message' => $busy], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     try {
-        installer_drop_known_tables(getDb());
+        $wr = installer_reset_known_tables(getDb());
     } catch (Throwable $e) {
-        echo json_encode(['status' => 'error', 'message' => safe_error('Could not drop the existing tables', $e)], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['status' => 'error', 'message' => safe_error('Could not move the existing tables aside', $e)], JSON_UNESCAPED_UNICODE);
         exit;
     }
     $_SESSION['inst_next'] = 0;
     $_SESSION['install_log'] = [];
     unset($_SESSION['install_ctx']);
     $_SESSION['db']['wipe'] = false;
-    echo json_encode(['status' => 'ok']);
+    echo json_encode(['status' => 'ok', 'moved' => $wr['count'], 'prefix' => $wr['prefix']]);
+    exit;
+}
+
+// ── AJAX: окончательно удалить резервные таблицы bak_* (отдельная кнопка) ────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === 'drop_backups') {
+    header('Content-Type: application/json; charset=utf-8');
+    if (!csrf_check()) {
+        echo json_encode(['status' => 'error', 'message' => t('Invalid security token')]);
+        exit;
+    }
+    if (file_exists(LOCK_FILE) || !installer_ready()) {
+        echo json_encode(['status' => 'error', 'message' => t('Installer is locked.')]);
+        exit;
+    }
+    if (($busy = installer_lock_acquire()) !== null) {
+        echo json_encode(['status' => 'error', 'message' => $busy], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    try {
+        $n = installer_drop_backups(getDb());
+    } catch (Throwable $e) {
+        echo json_encode(['status' => 'error', 'message' => safe_error('Could not delete the backup tables', $e)], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    echo json_encode(['status' => 'ok', 'dropped' => $n]);
     exit;
 }
 
@@ -1339,6 +1996,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
     }
     // Шаги выполняются строго по порядку и по одному разу: нельзя пропустить
     // шаг или выполнить 'admin' дважды (иначе — дубли пользователей).
+    // Параллельная установка из другой вкладки/сессии/CLI: пускаем только владельца блокировки.
+    if (($busy = installer_lock_acquire()) !== null) {
+        echo json_encode(['status' => 'fail', 'label' => t('Security'), 'message' => $busy, 'elapsed_ms' => 0], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     $index    = (int)($_POST['step_index'] ?? -1);
     $expected = (int)($_SESSION['inst_next'] ?? 0);
     if ($index !== $expected) {
@@ -1349,10 +2011,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax_action'] ?? '') === '
     // подтвердил это на шаге 2 («удалить существующие таблицы трекера»).
     if ($index === 0 && !empty($_SESSION['db']['wipe'])) {
         try {
-            installer_drop_known_tables(getDb());
+            installer_reset_known_tables(getDb());
             $_SESSION['db']['wipe'] = false;
         } catch (Throwable $e) {
-            echo json_encode(['status' => 'fail', 'label' => t('Database'), 'message' => safe_error('Could not drop the existing tables', $e), 'elapsed_ms' => 0], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['status' => 'fail', 'label' => t('Database'), 'message' => safe_error('Could not move the existing tables aside', $e), 'elapsed_ms' => 0], JSON_UNESCAPED_UNICODE);
             exit;
         }
     }
@@ -1449,6 +2111,7 @@ $steps = [
 $step   = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 $step   = max(1, min(6, $step));
 $errors = [];
+$urlWarnings   = [];      // замечания о несовпадении Site URL с адресом текущего запроса
 $showForceOld  = false;   // показать чекбокс «продолжить с устаревшей БД»
 $conflictTables = [];     // таблицы трекера, уже существующие в выбранной БД
 
@@ -1538,6 +2201,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Simple test: version query
             $db->sql_query_prepared("SELECT 1");
             $_SESSION['db_info'] = detect_db_info($db);
+            $_SESSION['db_diag'] = installer_db_diagnostics($db);
 
             $privMissing = installer_check_privileges($db);
             if ($privMissing !== null) {
@@ -1548,7 +2212,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $conflicts = installer_find_conflicts($db);
                 if ($conflicts && !$wipeOk) {
-                    $errors[] = t('The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to drop these tables (all their data will be lost).', ['tables' => implode(', ', array_slice($conflicts, 0, 8)) . (count($conflicts) > 8 ? ', …' : '')]);
+                    $errors[] = t('The database already contains tracker tables ({tables}). Choose an empty database, or tick the box below to move these tables aside (they are renamed to bak_*, nothing is deleted).', ['tables' => implode(', ', array_slice($conflicts, 0, 8)) . (count($conflicts) > 8 ? ', …' : '')]);
                     $conflictTables = $conflicts;
                 } else {
                     // Само удаление — непосредственно перед первым шагом установки.
@@ -1582,7 +2246,17 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
         unset($_SESSION['progress']['site']);
         $errors = array_merge($errors, installer_validate_site($_SESSION['site']));
-        if (!$errors) { $_SESSION['progress']['site'] = true; header('Location: install.php?step=4'); exit; }
+        if (!$errors) {
+            // Адрес сайта не совпадает с тем, по которому открыт установщик: частая причина
+            // «не логинится после установки» (cookie привязана к адресу). Не блокируем жёстко:
+            // при установке по IP или до переноса DNS расхождение бывает намеренным.
+            $urlWarnings = installer_url_mismatches((string)$_SESSION['site']['url']);
+            if ($urlWarnings && empty($_POST['url_mismatch_ok'])) {
+                // остаёмся на шаге 3 и просим подтвердить
+            } else {
+                $_SESSION['progress']['site'] = true; header('Location: install.php?step=4'); exit;
+            }
+        }
     }
 
     // ── Step 4: admin account ────────────────────────────────────────────────
@@ -1773,6 +2447,76 @@ CREATE TABLE IF NOT EXISTS `categories` (
   KEY `type` (`type`,`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `chat_bans` (
+  `uid` int unsigned NOT NULL,
+  `until` int unsigned NOT NULL DEFAULT '0',
+  `reason` varchar(255) NOT NULL DEFAULT '',
+  `banned_by` int unsigned NOT NULL DEFAULT '0',
+  `added` int unsigned NOT NULL,
+  PRIMARY KEY (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_dm_blocks` (
+  `uid` int unsigned NOT NULL,
+  `target` int unsigned NOT NULL,
+  `added` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`uid`,`target`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_dm_read` (
+  `uid` int unsigned NOT NULL,
+  `peer` int unsigned NOT NULL,
+  `last_id` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`uid`,`peer`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int unsigned NOT NULL,
+  `to_uid` int unsigned NOT NULL DEFAULT '0',
+  `message` text NOT NULL,
+  `reply_to` int unsigned NOT NULL DEFAULT '0',
+  `added` int unsigned NOT NULL,
+  `edited_at` int unsigned NOT NULL DEFAULT '0',
+  `edited_by` int unsigned NOT NULL DEFAULT '0',
+  `deleted` tinyint unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `uid_added` (`uid`,`added`),
+  KEY `edited_at` (`edited_at`),
+  KEY `added` (`added`),
+  KEY `to_id` (`to_uid`,`id`),
+  KEY `dm_in` (`to_uid`,`uid`,`id`),
+  KEY `dm_out` (`uid`,`to_uid`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_pin` (
+  `id` tinyint unsigned NOT NULL,
+  `message` text NOT NULL,
+  `uid` int unsigned NOT NULL DEFAULT '0',
+  `added` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_presence` (
+  `uid` int unsigned NOT NULL,
+  `last_seen` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`uid`),
+  KEY `last_seen` (`last_seen`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `chat_reports` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `msg_id` int unsigned NOT NULL,
+  `reporter` int unsigned NOT NULL,
+  `reason` varchar(255) NOT NULL DEFAULT '',
+  `added` int unsigned NOT NULL,
+  `handled_by` int unsigned NOT NULL DEFAULT '0',
+  `handled_at` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `msg_reporter` (`msg_id`,`reporter`),
+  KEY `open` (`handled_at`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `added` int unsigned NOT NULL DEFAULT '0',
@@ -1812,6 +2556,7 @@ CREATE TABLE IF NOT EXISTS `comment_files` (
   `torrent_id` int unsigned DEFAULT NULL,
   `post_id` int unsigned DEFAULT NULL,
   `messages_id` int unsigned DEFAULT NULL,
+  `chat_id` int unsigned DEFAULT NULL,
   `user_id` int unsigned DEFAULT NULL,
   `file_name` varchar(255) NOT NULL,
   `file_path` varchar(500) NOT NULL,
@@ -1823,6 +2568,7 @@ CREATE TABLE IF NOT EXISTS `comment_files` (
   KEY `idx_comment_id` (`comment_id`),
   KEY `idx_news_id` (`news_id`),
   KEY `idx_torrent_id` (`torrent_id`),
+  KEY `idx_chat_id` (`chat_id`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -2139,6 +2885,23 @@ CREATE TABLE IF NOT EXISTS `news` (
   PRIMARY KEY (`id`),
   KEY `added` (`added`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `notifications` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int unsigned NOT NULL,
+  `type` varchar(32) CHARACTER SET ascii NOT NULL,
+  `actor_uid` int unsigned NOT NULL DEFAULT '0',
+  `ref_id` int unsigned NOT NULL DEFAULT '0',
+  `args` text,
+  `link` varchar(255) NOT NULL DEFAULT '',
+  `cnt` int unsigned NOT NULL DEFAULT '1',
+  `is_read` tinyint unsigned NOT NULL DEFAULT '0',
+  `added` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid_read` (`uid`,`is_read`),
+  KEY `idx_group` (`uid`,`type`,`ref_id`,`is_read`),
+  KEY `idx_added` (`added`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -2784,6 +3547,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `candownload` tinyint UNSIGNED NOT NULL DEFAULT '1',
   `cancomment` tinyint UNSIGNED NOT NULL DEFAULT '1',
   `language` varchar(32) NOT NULL DEFAULT 'english',
+  `notif_unread` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   KEY `passkey` (`passkey`),
@@ -3086,7 +3850,7 @@ function executeInstallStep(int $index): array
                     'expires'  => time() + 60 * 60 * 24 * 365,
                     'path'     => '/',
                     'domain'   => $cookieDomain,
-                    'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+                    'secure'   => installer_is_https(),
                     'httponly' => true,
                     'samesite' => 'Lax',
                 ]);
@@ -3255,20 +4019,24 @@ function executeInstallStep(int $index): array
                 $announce_php .= "\$snatchmod = 'yes';\n\$bonus = 'enable';\n\$kpsseed = '5.0';\n";
                 $announce_php .= "\$bdayreward = 'yes';\n\$bdayrewardtype = 'freeleech';\n?>\n";
 
-                $writeErrors = [];
-                if (@file_put_contents(__DIR__ . '/include/config.php', $config_php) === false) { $writeErrors[] = 'config.php'; }
-                if (@file_put_contents(__DIR__ . '/include/settings.php', $s) === false) { $writeErrors[] = 'settings.php'; }
-                if (@file_put_contents(__DIR__ . '/include/config_announce.php', $announce_php) === false) { $writeErrors[] = 'config_announce.php'; }
                 if (!is_dir(__DIR__ . '/cache')) { @mkdir(__DIR__ . '/cache', 0755, true); }
 
-                if ($writeErrors) {
-                    return ['status' => 'fail', 'label' => t('Config files'), 'message' => t('Cannot write: {files} — check permissions', ['files' => implode(', ', $writeErrors)]), 'elapsed_ms' => $elapsed()];
+                // Все три файла пишутся как единый набор: сначала во временные, затем подменой;
+                // при сбое на любом файле уже подменённые возвращаются в прежнее состояние.
+                $w = installer_write_files_atomic([
+                    __DIR__ . '/include/config.php'          => $config_php,
+                    __DIR__ . '/include/settings.php'        => $s,
+                    __DIR__ . '/include/config_announce.php' => $announce_php,
+                ]);
+                if (!$w['ok']) {
+                    $msg = t('Cannot write: {files} — check permissions', ['files' => implode(', ', $w['failed'])]);
+                    $msg .= ' ' . ($w['rollback_failed']
+                        ? t('Rollback incomplete, check these files manually: {files}', ['files' => implode(', ', $w['rollback_failed'])])
+                        : t('No config files were changed.'));
+                    return ['status' => 'fail', 'label' => t('Config files'), 'message' => $msg, 'elapsed_ms' => $elapsed()];
                 }
-                // В этих файлах пароль БД и ключ шифрования — закрываем от чтения «остальным».
-                $permFailed = [];
-                foreach (['config.php', 'settings.php', 'config_announce.php'] as $cf) {
-                    if (!@chmod(__DIR__ . '/include/' . $cf, 0640)) { $permFailed[] = $cf; }
-                }
+                // Права 0640 выставлены ещё на временных файлах; здесь только отчёт о неудачах.
+                $permFailed = $w['perm_failed'];
                 $_SESSION['perm_warn'] = $permFailed;
                 $okMsg = t('config.php, settings.php, config_announce.php written') . '; '
                        . ($permFailed
@@ -3351,8 +4119,11 @@ function executeInstallStep(int $index): array
                 if (@file_put_contents(LOCK_FILE, date('Y-m-d H:i:s'), LOCK_EX) === false) {
                     return ['status' => 'fail', 'label' => t('Finalizing'), 'message' => t('Could not create install.lock — create an empty install.lock file in the site root manually and delete install.php, otherwise the installer stays open!'), 'elapsed_ms' => $elapsed()];
                 }
+                installer_lock_release();   // установка завершена — блокировка больше не нужна
                 $_SESSION['just_installed'] = true;
                 $_SESSION['install_done']   = true; // право на кнопку «Удалить install.php»
+                // Одноразовые ключи доступа больше не нужны.
+                foreach (glob(__DIR__ . '/install-*.key') ?: [] as $kf) { @unlink($kf); }
                 unset($_SESSION['install_ctx']);
                 // пароли после установки в сессии больше не нужны
                 unset($_SESSION['db']['password'], $_SESSION['admin']['password'], $_SESSION['admin']['confirm'], $_SESSION['site']['smtp_pass']);
@@ -3471,6 +4242,38 @@ function checkRequirements(): array
         $ok = extension_loaded($ext);
         $rows[] = $warn($label . ' (' . t('recommended') . ')', $ok, $ok ? $okT : $missT);
     }
+    // Веб-сервер: .htaccess работает только в Apache/LiteSpeed.
+    $ws = installer_webserver();
+    $wsNames = ['nginx' => 'nginx', 'apache' => 'Apache', 'litespeed' => 'LiteSpeed', 'iis' => 'IIS', 'devserver' => 'PHP built-in server', 'other' => (string)($_SERVER['SERVER_SOFTWARE'] ?? '?'), 'unknown' => '—'];
+    $wsLabel = t('Web server: {name}', ['name' => $wsNames[$ws]]);
+    if ($ws === 'nginx') {
+        $rows[] = $warn($wsLabel, false, t('nginx ignores .htaccess files: closing sql/, torrents/, cache/, uploads/ and the log from the web must be configured in nginx itself (examples are shown on the last step).'));
+    } elseif ($ws === 'iis') {
+        $rows[] = $warn($wsLabel, false, t('IIS ignores .htaccess files: restrict access to sql/, torrents/, cache/ and uploads/ with request filtering (web.config).'));
+    } elseif ($ws === 'devserver') {
+        $rows[] = $warn($wsLabel, false, t('The built-in PHP server is for development only and ignores .htaccess files.'));
+    } elseif ($ws === 'apache' || $ws === 'litespeed') {
+        $rows[] = $warn($wsLabel, true, t('.htaccess protection works if AllowOverride is enabled; the installer verifies it at the end.'));
+    } else {
+        $rows[] = $warn($wsLabel, true, t('Could not detect how .htaccess is handled; the installer verifies the protection at the end.'));
+    }
+
+    // Обратный прокси: заголовки X-Forwarded-* учитываются только от доверенных адресов.
+    if (PHP_SAPI !== 'cli') {
+        if (installer_untrusted_proxy_headers()) {
+            $rows[] = $warn(t('Reverse proxy'), false, t('X-Forwarded-* headers detected, but the proxy ({ip}) is not trusted: HTTPS behind it will not be detected and the session cookie will lack the Secure flag. Add the proxy IP to INSTALLER_TRUSTED_PROXIES (or the environment variable of the same name).', ['ip' => installer_remote_ip()]));
+        } elseif (installer_from_trusted_proxy()) {
+            $rows[] = $warn(t('Reverse proxy'), true, t('Trusted proxy {ip}; HTTPS detected: {v}', ['ip' => installer_remote_ip(), 'v' => installer_is_https() ? t('yes') : t('no')]));
+        }
+    }
+
+    // Свободное место на диске (загрузки, торренты, кеш).
+    $free = @disk_free_space(__DIR__);
+    if ($free !== false) {
+        $rows[] = $warn(t('Free disk space'), $free >= 200 * 1024 * 1024,
+            t('{value} free (recommended: at least {rec})', ['value' => installer_fmt_bytes((float)$free), 'rec' => '200 MB']));
+    }
+
     $assetsOk = installer_assets_complete();
     $rows[] = $warn(t('Local interface files in sql/'), $assetsOk,
         $assetsOk ? $okT : t('Missing — the CDN will be used (needs internet access in the browser)'));
@@ -3744,7 +4547,7 @@ function __(key, vars) {
                 <div class="alert alert-danger mt-3 mb-0">
                     <div class="form-check mb-0">
                         <input class="form-check-input" type="checkbox" name="wipe_existing" id="wipe_existing" value="1">
-                        <label class="form-check-label" for="wipe_existing"><strong><?= t('Drop the existing tracker tables listed above and continue') ?></strong> — <?= t('all data in them will be lost') ?></label>
+                        <label class="form-check-label" for="wipe_existing"><strong><?= t('Move the existing tracker tables listed above aside (rename to bak_*) and continue') ?></strong> — <?= t('the data stays in the bak_* copies until you delete them') ?></label>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -3818,6 +4621,15 @@ function __(key, vars) {
                     <button type="button" id="smtpTestBtn" class="btn btn-outline-secondary btn-sm mt-2"><i class="fas fa-paper-plane me-1"></i><?= t('Send test email') ?></button>
                     <div id="smtpTestResult" class="small mt-2"></div>
                 </details>
+                <?php if ($urlWarnings): ?>
+                <div class="alert alert-warning mt-3 mb-0">
+                    <?php foreach ($urlWarnings as $w): ?><div class="mb-2"><i class="fas fa-triangle-exclamation me-2"></i><?= htmlspecialchars($w) ?></div><?php endforeach; ?>
+                    <div class="form-check mb-0 mt-2">
+                        <input class="form-check-input" type="checkbox" name="url_mismatch_ok" id="url_mismatch_ok" value="1">
+                        <label class="form-check-label" for="url_mismatch_ok"><?= t('The Site URL is correct — continue anyway') ?></label>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-arrow-right me-2"></i><?= t('Continue to Admin Setup') ?></button>
             </form>
 
@@ -4000,6 +4812,16 @@ function __(key, vars) {
                     <i class="fas fa-lock-open me-2"></i><?= t('HTTPS is not enabled for this address. Passkeys and login cookies would travel unencrypted — use https:// if you can.') ?>
                 </div>
                 <?php endif; ?>
+                <?php
+                    $bakCount = 0;
+                    try { $bakCount = count(installer_find_backups(getDb())); } catch (Throwable $e) { $bakCount = 0; }
+                    if ($bakCount > 0):
+                ?>
+                <div class="alert alert-secondary alert-custom mb-4" id="backupsBox">
+                    <i class="fas fa-box-archive me-2"></i><?= t('Backup tables from earlier resets: {n}. They hold the data that was in the tracker tables before the reset.', ['n' => $bakCount]) ?>
+                    <div class="mt-2"><button type="button" id="dropBackupsBtn" class="btn btn-outline-danger btn-sm"><i class="fas fa-trash me-1"></i><?= t('Delete backup tables') ?></button></div>
+                </div>
+                <?php endif; ?>
                 <?php $resumeAt = (int)($_SESSION['inst_next'] ?? 0); if ($resumeAt > 0): ?>
                 <div class="alert alert-info alert-custom mb-4" style="border-left-color:#0dcaf0">
                     <i class="fas fa-rotate-right me-2"></i><?= t('A previous installation attempt stopped after step {n}. You can resume from there or wipe the created tables and start over.', ['n' => $resumeAt]) ?>
@@ -4007,7 +4829,7 @@ function __(key, vars) {
                 </div>
                 <?php endif; ?>
                 <?php if (!empty($_SESSION['db']['wipe'])): ?>
-                <div class="alert alert-danger alert-custom mb-4"><i class="fas fa-triangle-exclamation me-2"></i><?= t('Existing tracker tables in this database will be dropped before the installation starts.') ?></div>
+                <div class="alert alert-danger alert-custom mb-4"><i class="fas fa-triangle-exclamation me-2"></i><?= t('Existing tracker tables in this database will be renamed to bak_* before the installation starts.') ?></div>
                 <?php endif; ?>
                 <div class="alert alert-warning alert-custom mb-4" style="border-left-color:#ffc107">
                     <i class="fas fa-exclamation-triangle me-2"></i>
@@ -4080,10 +4902,13 @@ function __(key, vars) {
                 }
 
                 async function wipeAndReload() {
-                    if (!confirm(__('Drop all tracker tables created so far and start the installation from scratch?'))) return;
+                    if (!confirm(__('Rename all tracker tables created so far to bak_* and start the installation from scratch?'))) return;
                     try {
                         const r = await postAjax('reset_install');
                         if (r.status !== 'ok') { alert(r.message || ''); return; }
+                        if (r.moved > 0 && r.prefix) {
+                            alert(__('Tables were renamed to {prefix}*. Delete them with the "Delete backup tables" button when you no longer need them.', { prefix: r.prefix }));
+                        }
                     } catch (e) {
                         alert(__('Request failed — check your connection and install_error.log.'));
                         return;
@@ -4182,6 +5007,17 @@ function __(key, vars) {
                 });
 
                 document.getElementById('wipeBtn')?.addEventListener('click', wipeAndReload);
+                document.getElementById('dropBackupsBtn')?.addEventListener('click', async function () {
+                    if (!confirm(__('Permanently delete all bak_* backup tables? This cannot be undone.'))) return;
+                    try {
+                        const r = await postAjax('drop_backups');
+                        if (r.status !== 'ok') { alert(r.message || ''); return; }
+                    } catch (e) {
+                        alert(__('Request failed — check your connection and install_error.log.'));
+                        return;
+                    }
+                    document.getElementById('backupsBox')?.remove();
+                });
             })();
             </script>
 
@@ -4332,27 +5168,32 @@ function __(key, vars) {
                             <?php if ($prFailed): ?>
                             <div class="text-danger mt-1"><?= t('Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).', ['files' => '<code>' . htmlspecialchars(implode(', ', $prFailed)) . '</code>']) ?></div>
                             <?php endif; ?>
-                            <?php if (!$prAllClosed || $prUploads === 'open' || $prTorrents === 'open'): ?>
+                            <?php if (!$prAllClosed || $prUploads === 'open' || $prTorrents === 'open' || installer_webserver() === 'nginx'): ?>
                             <details class="mt-1">
                                 <summary class="text-muted"><?= t('Server config examples') ?></summary>
-<pre class="small bg-light border rounded p-2 mt-1 mb-0"><?= htmlspecialchars('# Apache — .htaccess in the site root
+<?php
+                                $snipApache = '# Apache — .htaccess in the site root
 <FilesMatch "^(install_error\.log|install\.lock)$">
     Require all denied
 </FilesMatch>
 
-# Apache — sql/.htaccess
+# Apache — sql/.htaccess (same for cache/ and torrents/)
 Require all denied
 
 # Apache — uploads/.htaccess (no script execution)
 <FilesMatch "(?i)\.(php[0-9]?|phtml|phar)$">
     Require all denied
-</FilesMatch>
-
-# nginx — inside server { }
+</FilesMatch>';
+                                $snipNginx = '# nginx — inside server { }
 location ^~ /sql/ { deny all; return 404; }
+location ^~ /cache/ { deny all; return 404; }
 location ~ ^/(install_error\.log|install\.lock)$ { deny all; return 404; }
 location ^~ /torrents/ { deny all; return 404; }
-location ^~ /uploads/ { location ~* \.(php[0-9]?|phtml|phar)$ { deny all; } }') ?></pre>
+location ^~ /uploads/ { location ~* \.(php[0-9]?|phtml|phar)$ { deny all; } }';
+                                $wsNow = installer_webserver();
+                                $snip = ($wsNow === 'nginx') ? $snipNginx : (($wsNow === 'apache' || $wsNow === 'litespeed') ? $snipApache : $snipApache . "\n\n" . $snipNginx);
+                                ?>
+<pre class="small bg-light border rounded p-2 mt-1 mb-0"><?= htmlspecialchars($snip) ?></pre>
                             </details>
                             <?php endif; ?>
                         </li>

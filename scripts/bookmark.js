@@ -66,16 +66,27 @@ function getBookmarkPopover(bookmarked) {
 /* ── Popover updater ─────────────────────────────────────────────── */
 
 function updatePopoverContent(element, bookmarked) {
-    const popover = bootstrap.Popover.getInstance(element);
-    if (!popover) return;
-
     const { title, content } = getBookmarkPopover(bookmarked);
+
+    // Атрибуты — чтобы при пересоздании поповер взял актуальный текст
     element.setAttribute('data-bs-title',   title);
     element.setAttribute('data-bs-content', content);
 
-    // Пересоздаём экземпляр чтобы Bootstrap подхватил новые атрибуты
-    popover.dispose();
-    new bootstrap.Popover(element, { html: true, trigger: 'hover focus' });
+    const popover = bootstrap.Popover.getInstance(element);
+    if (!popover) return;
+
+    // Bootstrap 5.2+: обновляем содержимое на месте, без dispose()
+    if (typeof popover.setContent === 'function') {
+        popover.setContent({ '.popover-header': title, '.popover-body': content });
+        return;
+    }
+
+    // Старый Bootstrap: дождаться закрытия, потом пересоздать с теми же опциями, что в popover.js
+    element.addEventListener('hidden.bs.popover', function () {
+        popover.dispose();
+        new bootstrap.Popover(element, { container: 'body', html: true, trigger: 'hover focus' });
+    }, { once: true });
+    popover.hide();
 }
 
 /* ── Toggle bookmark ─────────────────────────────────────────────── */
@@ -143,11 +154,3 @@ document.addEventListener('click', function (e) {
 
     toggleBookmark(torrentId, el);
 });
-
-/* ── Init popovers ───────────────────────────────────────────────── */
-
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.bookmark-toggle[data-bs-toggle="popover"]').forEach(el => {
-        new bootstrap.Popover(el, { html: true, trigger: 'hover focus' });
-    });
-});

@@ -44,6 +44,47 @@ function charCountInit(textareaId, counterId) {
   }
 }
 
+/* Which textarea the modals (image, video) insert into.
+   Each editor field is tracked when it gets focus or when a toolbar button with
+   data-textarea is used; before that the old list is used, so existing pages
+   behave as before. Any id works, not only the five built-in ones. */
+const AGS_ED_SUFFIX_FIELD = { '': 'commentText', '2': 'description', '3': 'message', '4': 'newsMessage', '5': 'staffMessage', '6': 'chatText' };
+const AGS_ED_LEGACY_FIELDS = ['description', 'message', 'commentText', 'newsMessage'];
+window.agsEdTarget = window.agsEdTarget || null;
+
+document.addEventListener('focusin', function (e) {
+  const t = e.target;
+  if (t && t.tagName === 'TEXTAREA' && t.id && Object.values(AGS_ED_SUFFIX_FIELD).includes(t.id)) {
+    window.agsEdTarget = t.id;
+  }
+});
+document.addEventListener('click', function (e) {
+  const b = e.target.closest && e.target.closest('[data-textarea]');
+  if (b && document.getElementById(b.getAttribute('data-textarea'))) {
+    window.agsEdTarget = b.getAttribute('data-textarea');
+  }
+}, true);
+
+/** Insert into the tracked editor field, or into the old list when none is tracked yet. */
+function agsEdInsert(bbcode) {
+  const id = window.agsEdTarget;
+  if (id && document.getElementById(id)) {
+    insertBBCode(bbcode, '', id);
+    return;
+  }
+  AGS_ED_LEGACY_FIELDS.forEach(function (f) { insertBBCode(bbcode, '', f); });
+}
+
+/** The field to focus after a modal closes. */
+function agsEdFocusField() {
+  const id = window.agsEdTarget;
+  return (id && document.getElementById(id))
+      || document.getElementById('commentText')
+      || document.getElementById('description')
+      || document.getElementById('message')
+      || document.getElementById('newsMessage');
+}
+
 function insertBBCode(openTag, closeTag, textareaId) {
   const textarea = document.getElementById(textareaId);
   if (!textarea) return;
@@ -517,21 +558,18 @@ document.addEventListener("DOMContentLoaded", function () {
   // Цветовые палитры
   initColorPalette();
 
-  // Смайлики
-  initSmileyPanel("smileyBtn", "smileyPanel", "commentText");
-  initSmileyPanel("smileyBtn2", "smileyPanel2", "description");
-  initSmileyPanel("smileyBtn3", "smileyPanel3", "message");
-  initSmileyPanel("smileyBtn4", "smileyPanel4", "newsMessage");
-  initSmileyPanel("smileyBtn5", "smileyPanel5", "staffMessage");
-  
- 
-
-  // BBCode превью
-  initViewSource("commentText", "togglePreviewBtn");
-  initViewSource("description", "togglePreviewBtn2");
-  initViewSource("message", "togglePreviewBtn3");
-  initViewSource("newsMessage", "togglePreviewBtn4");
-  initViewSource("staffMessage", "togglePreviewBtn5");
+  // Смайлики и превью: каждый редактор на странице, по суффиксу id кнопки
+  // (или data-textarea), а не по фиксированному списку полей
+  document.querySelectorAll('[id^="smileyBtn"]').forEach(function (btn) {
+    const suffix = btn.id.slice('smileyBtn'.length);
+    const field = btn.getAttribute('data-textarea') || AGS_ED_SUFFIX_FIELD[suffix];
+    if (field) initSmileyPanel(btn.id, 'smileyPanel' + suffix, field);
+  });
+  document.querySelectorAll('[id^="togglePreviewBtn"]').forEach(function (btn) {
+    const suffix = btn.id.slice('togglePreviewBtn'.length);
+    const field = btn.getAttribute('data-textarea') || AGS_ED_SUFFIX_FIELD[suffix];
+    if (field) initViewSource(field, btn.id);
+  });
   
   // --- Привязка file_ids к форме комментария ---
   const fileIdsContainer = document.getElementById('fileIdsContainer');
@@ -583,11 +621,8 @@ document.addEventListener("DOMContentLoaded", function () {
       bbCode = `[img]${url}[/img]`;
     }
 
-    // Вставка в редактор
-    insertBBCode(bbCode, '', 'description');
-	insertBBCode(bbCode, '', 'message');
-	insertBBCode(bbCode, '', 'commentText');
-	insertBBCode(bbCode, '', 'newsMessage');
+    // Вставка в редактор, из которого открыли модалку
+    agsEdInsert(bbCode);
 	
 	
 	
@@ -599,10 +634,7 @@ const modal = bootstrap.Modal.getInstance(document.getElementById('imageUploadMo
 if (modal) {
     modal.hide();
     document.getElementById('imageUploadModal').addEventListener('hidden.bs.modal', function () {
-        const textarea = document.getElementById('commentText')
-                      || document.getElementById('description')
-                      || document.getElementById('message')
-                      || document.getElementById('newsMessage');
+        const textarea = agsEdFocusField();
         if (textarea) textarea.focus();
     }, { once: true }); // once: true — сработает только один раз
 }
@@ -645,7 +677,9 @@ heightInput.value = '';
       // CSRF-токен - лежит в hidden-инпуте активной формы (комментарий/
       // новость/сообщение). На странице одновременно активна только одна
       // такая форма, поэтому простой поиск по имени поля безопасен.
-      const postKeyInput = document.querySelector('input[name="my_post_key"]');
+      const tf = agsEdFocusField();
+      const postKeyInput = (tf && tf.form && tf.form.querySelector('input[name="my_post_key"]'))
+                        || document.querySelector('input[name="my_post_key"]');
       if (postKeyInput) {
         formData.append('my_post_key', postKeyInput.value);
       } else {
@@ -665,10 +699,7 @@ heightInput.value = '';
       }
 
       // Вставляем BB-код
-      insertBBCode(`[img]${result.url}[/img]`, '', 'description');
-	  insertBBCode(`[img]${result.url}[/img]`, '', 'message');
-	  insertBBCode(`[img]${result.url}[/img]`, '', 'commentText');
-	  insertBBCode(`[img]${result.url}[/img]`, '', 'newsMessage');
+      agsEdInsert(`[img]${result.url}[/img]`);
 	  
 
 	
@@ -677,7 +708,8 @@ heightInput.value = '';
       hidden.type = 'hidden';
       hidden.name = 'file_ids[]';
       hidden.value = result.file_id;
-      fileIdsContainer.appendChild(hidden);
+      // Only the comment form has it (chat, news, PM don't)
+      if (fileIdsContainer) fileIdsContainer.appendChild(hidden);
 	  
 	  
 	
@@ -846,10 +878,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Вставка во все поля
       if (typeof insertBBCode === 'function') {
-        insertBBCode(bbcode, '', 'commentText');
-        insertBBCode(bbcode, '', 'description');
-        insertBBCode(bbcode, '', 'message');
-        insertBBCode(bbcode, '', 'newsMessage');
+        agsEdInsert(bbcode);
       }
 
       // Закрываем модалку

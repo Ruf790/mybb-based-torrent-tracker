@@ -538,7 +538,7 @@ function handleImageUpload(input, previewContainerId) {
             return;
         }
         
-        if (file.size > 10 * 1024 * 1024) { // 10MB
+        if (file.size > 200 * 1024 * 1024) { // 10MB
             alert(ut('image_size', 'The image must be smaller than 10 MB'));
             input.value = '';
             return;

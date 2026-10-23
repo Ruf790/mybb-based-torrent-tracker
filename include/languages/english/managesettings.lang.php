@@ -693,6 +693,23 @@ $language['managesettings'] = array
 	'hist_js_confirm_cleanup'  => "⚠️ Are you sure you want to delete settings logs older than {1} days?\n\nThis action cannot be undone!",
 	
 	
+// ── Cleanup: chat & notifications ──
+'sec_chat_cleanup'             => "Chat",
+'sec_chat_cleanup_hint'        => "What the daily cleanup removes from the chat",
+'sec_notify_cleanup'           => "Notifications",
+'sec_notify_cleanup_hint'      => "How long the bell keeps notifications",
+'lbl_chat_keep_deleted_days'   => "Remove deleted messages after (days)",
+'lbl_chat_keep_days'           => "Keep chat history (days)",
+'lbl_notify_keep_read_days'    => "Keep read (days)",
+'lbl_notify_keep_all_days'     => "Keep all (days)",
+'lbl_notify_max_per_user'      => "Max per user",
+'hint_chat_keep_deleted_days'  => "Messages deleted by users or staff are erased from the database after this many days.",
+'hint_chat_keep_days'          => "All messages older than this are erased. 0 = keep forever (the archive shows everything).",
+'hint_notify_keep_read_days'   => "Read notifications older than this are removed.",
+'hint_notify_keep_all_days'    => "Any notification older than this is removed, unread too. Not less than 'Keep read'.",
+'hint_notify_max_per_user'     => "Only the newest N notifications are kept for each user.",
+	
+	
 	
 	
 	

@@ -35,11 +35,27 @@ function return_torrent_bookmark_array(int $userid): array
 
     $res  = $db->sql_query_prepared("SELECT torrentid FROM bookmarks WHERE userid = ?", [$userid]);
     $list = [];
-    while ($row = $db->fetch_array($res)) {
+    while ($res && ($row = $db->fetch_array($res))) {
         $list[] = (int)$row['torrentid'];
     }
 
     return $cache[$userid] = $list;
+}
+
+/**
+ * The same ids as return_torrent_bookmark_array(), but as a set (id => true):
+ * checking a torrent is isset() instead of scanning the whole list for every row.
+ * return_torrent_bookmark_array() stays unchanged for the other callers.
+ */
+function return_torrent_bookmark_set(int $userid): array
+{
+    static $sets = [];
+
+    if (!isset($sets[$userid])) {
+        $sets[$userid] = array_fill_keys(return_torrent_bookmark_array($userid), true);
+    }
+
+    return $sets[$userid];
 }
 
 function get_torrent_bookmark_state(int $userid, int $torrentid, bool $text = false): string
@@ -48,10 +64,8 @@ function get_torrent_bookmark_state(int $userid, int $torrentid, bool $text = fa
 
     ags_bookmark_lang();
 
-    $bookmarked  = in_array($torrentid, return_torrent_bookmark_array($userid), true);
-    $torrent_name = $Torrent['name']
-        ? htmlspecialchars(cutename($Torrent['name'], 25))
-        : htmlspecialchars($lang->details['unknown']);
+    $bookmarkSet = return_torrent_bookmark_set($userid);
+    $bookmarked  = isset($bookmarkSet[$torrentid]);
 
     // Text-only mode
     if ($text) {
@@ -59,6 +73,10 @@ function get_torrent_bookmark_state(int $userid, int $torrentid, bool $text = fa
             ? $lang->browse['title_delbookmark_torrent']
             : $lang->browse['title_bookmark_torrent'];
     }
+
+    $torrent_name = !empty($Torrent['name'])
+        ? htmlspecialchars(cutename($Torrent['name'], 25))
+        : htmlspecialchars($lang->details['unknown']);
 
     // Icon + popover
     if (!$bookmarked) {
@@ -103,7 +121,7 @@ function get_torrent_bookmark_state(int $userid, int $torrentid, bool $text = fa
 
 function GetTorrentTags(array $t): string
 {
-    global $lang, $is_mod, $CURUSER;
+    global $lang, $CURUSER;
 
     ags_bookmark_lang();
 
@@ -123,83 +141,83 @@ function GetTorrentTags(array $t): string
         '<div class="torrent-feature-popover"><div class="feature-benefits">' . $body . '</div></div>';
 
     // ── Badge definitions ─────────────────────────────────────────────────────
-    // [condition, popover_attrs, badge_html]
+    // [condition, popover_attrs(), badge_html()] - both are closures, built only when the condition is true
     $defs = [
         [
             $t['added'] > $CURUSER['last_login'],
-            $pop($lang->details['tag_new_title'], $wrap(
+            static fn() => $pop($lang->details['tag_new_title'], $wrap(
                 $benefit('bi-clock', 'success', ags_fmt(htmlspecialchars($lang->details['tag_new_added']), my_datee('relative', $t['added']))) .
                 $benefit('bi-eye',   'success', htmlspecialchars($lang->details['tag_new_first']))
             )),
-            '<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">' . htmlspecialchars($lang->details['tag_new_badge']) . '</span>',
+            static fn() => '<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">' . htmlspecialchars($lang->details['tag_new_badge']) . '</span>',
         ],
         [
             $t['free'] === 'yes',
-            $pop($lang->details['tag_free_title'], $wrap(
+            static fn() => $pop($lang->details['tag_free_title'], $wrap(
                 $benefit('bi-arrow-down-circle', 'success', htmlspecialchars($lang->details['tag_free_b1'])) .
                 $benefit('bi-shield-check',      'success', htmlspecialchars($lang->details['tag_free_b2'])) .
                 $benefit('bi-download',          'success', htmlspecialchars($lang->details['tag_free_b3']))
             )),
-            '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">'
+            static fn() => '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">'
             . '<i class="bi bi-gift me-1"></i>' . htmlspecialchars($lang->details['tag_free_badge']) . '</span>',
         ],
         [
             $t['silver'] === 'yes',
-            $pop($lang->details['tag_silver_title'], $wrap(
+            static fn() => $pop($lang->details['tag_silver_title'], $wrap(
                 $benefit('bi-percent', 'secondary', htmlspecialchars($lang->details['tag_silver_b1'])) .
                 $benefit('bi-shield',  'secondary', htmlspecialchars($lang->details['tag_silver_b2']))
             )),
-            '<span class="badge-silver" title="' . htmlspecialchars($lang->details['tag_silver_title'], ENT_QUOTES) . '"><i class="fas fa-star"></i></span>',
+            static fn() => '<span class="badge-silver" title="' . htmlspecialchars($lang->details['tag_silver_title'], ENT_QUOTES) . '"><i class="fas fa-star"></i></span>',
         ],		
 		[
             $t['thirtypercent'] === 'yes',
-            $pop($lang->details['tag_thirty_title'], $wrap(
+            static fn() => $pop($lang->details['tag_thirty_title'], $wrap(
                 $benefit('bi-pie-chart-fill', 'secondary', htmlspecialchars($lang->details['tag_thirty_b1'])) .
                 $benefit('bi-shield',         'secondary', htmlspecialchars($lang->details['tag_thirty_b2']))
             )),
-            '<span class="badge bg-secondary bg-opacity-10 border border-secondary border-opacity-25 pulse-badge" style="color:#411749;border-color:#41174966 !important;--pulse-color:65,23,73;">'
+            static fn() => '<span class="badge bg-secondary bg-opacity-10 border border-secondary border-opacity-25 pulse-badge" style="color:#411749;border-color:#41174966 !important;--pulse-color:65,23,73;">'
             . '<i class="bi bi-pie-chart-fill me-1"></i>30%</span>',
         ],		
         [
             $t['isnuked'] === 'yes',
-            $pop($lang->details['tag_nuked_title'], $wrap(
+            static fn() => $pop($lang->details['tag_nuked_title'], $wrap(
                 $benefit('bi-exclamation-triangle', 'danger',  ags_fmt(htmlspecialchars($lang->details['tag_nuked_reason']), htmlspecialchars($t['WhyNuked'] ?? ''))) .
                 $benefit('bi-info-circle',          'warning', htmlspecialchars($lang->details['tag_nuked_risk']))
             )),
-            '<i class="fa-solid fa-circle-radiation fa-lg" style="color:#e70808"></i>',
+            static fn() => '<i class="fa-solid fa-circle-radiation fa-lg" style="color:#e70808"></i>',
         ],
         [
             $t['isrequest'] === 'yes',
-            $pop($lang->details['tag_request_title'], $wrap(
+            static fn() => $pop($lang->details['tag_request_title'], $wrap(
                 $benefit('bi-people',       'primary', htmlspecialchars($lang->details['tag_request_b1'])) .
                 $benefit('bi-check-circle', 'primary', htmlspecialchars($lang->details['tag_request_b2']))
             )),
-            '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">'
+            static fn() => '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">'
             . '<i class="bi bi-check-lg me-1"></i>' . htmlspecialchars($lang->details['tag_request_badge']) . '</span>',
         ],
         [
             $t['doubleupload'] === 'yes',
-            $pop($lang->details['tag_double_title'], $wrap(
+            static fn() => $pop($lang->details['tag_double_title'], $wrap(
                 $benefit('bi-lightning-charge', 'primary', htmlspecialchars($lang->details['tag_double_b1'])) .
                 $benefit('bi-lightning-charge', 'primary', htmlspecialchars($lang->details['tag_double_b2'])) .
                 $benefit('bi-graph-up-arrow',   'primary', htmlspecialchars($lang->details['tag_double_b3']))
             )),
-            '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">'
+            static fn() => '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">'
             . '<i class="bi bi-lightning-charge me-1"></i>' . htmlspecialchars($lang->details['tag_double_badge']) . '</span>',
         ],
         [
             $t['sticky'] === 'yes',
-            $pop($lang->details['tag_sticky_title'], $wrap(
+            static fn() => $pop($lang->details['tag_sticky_title'], $wrap(
                 $benefit('bi-pin-angle', 'info', htmlspecialchars($lang->details['tag_sticky_b1'])) .
                 $benefit('bi-star',      'info', htmlspecialchars($lang->details['tag_sticky_b2']))
             )),
-            '<i class="fa-solid fa-bolt fa-lg" style="color:#0e5ce1"></i>',
+            static fn() => '<i class="fa-solid fa-bolt fa-lg" style="color:#0e5ce1"></i>',
         ],
     ];
 
     $I = [];
     foreach ($defs as [$cond, $attrs, $badge]) {
-        if ($cond) $I[] = '<a href="#" class="badge-popover" ' . $attrs . '>' . $badge . '</a>';
+        if ($cond) $I[] = '<a href="#" class="badge-popover" ' . $attrs() . '>' . $badge() . '</a>';
     }
 
 

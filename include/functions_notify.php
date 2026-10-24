@@ -586,8 +586,8 @@ HTML;
 
 // ── New torrent in a subscribed category (PM / email / bell) ────────────────
 
-/** PM and email texts: notify_upload_* keys in global.lang.php */
-const NOTIFY_UPLOAD_LANG = 'global';
+/** PM and email texts: notify_upload_* keys in upload.lang.php */
+const NOTIFY_UPLOAD_LANG = 'upload';
 
 /** Also put a "new torrent" item in the subscribers' bell (one INSERT … SELECT for all of them) */
 const NOTIFY_UPLOAD_BELL = true;

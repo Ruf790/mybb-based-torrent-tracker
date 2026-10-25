@@ -112,16 +112,13 @@
 
     // QuickPermEditor сам инициализирует все tr[data-group-id] (scripts/quick_perm_editor.js)
 
-    // ── Модалки «Clear permissions» и «Remove moderator» ─────
+    // ── Модалка «Clear permissions» ───────────────────────────
     // Делегирование на document: строки прав заменяются после сохранения в AJAX-модалке,
     // и у новых кнопок .clear-permission-btn не было бы своих обработчиков.
     function initConfirmModals() {
         const clearModal = document.getElementById('clearPermissionModal');
         const clearBtn   = document.getElementById('confirmClearBtn');
-        const modModal   = document.getElementById('deleteModeratorModal');
-        const modBtn     = document.getElementById('confirmDeleteModeratorBtn');
         let cur = {};
-        let d = {};
 
         document.addEventListener('click', e => {
             const cb = clearModal && e.target.closest('.clear-permission-btn');
@@ -132,23 +129,12 @@
                 const name = document.getElementById('modalGroupName');
                 if (name) name.textContent = cur.groupName;
                 bootstrap.Modal.getOrCreateInstance(clearModal).show();
-                return;
-            }
-            const mb = modModal && e.target.closest('.delete-moderator-btn');
-            if (mb) {
-                e.preventDefault();
-                d = { mid: mb.dataset.mid, fid: mb.dataset.fid, isgroup: mb.dataset.isgroup, postKey: mb.dataset.postKey };
-                bootstrap.Modal.getOrCreateInstance(modModal).show();
             }
         });
 
         clearBtn?.addEventListener('click', () => postForm(
             'index.php?act=management&action=clear_permission',
             { pid: cur.pid, fid: cur.fid, gid: cur.gid, my_post_key: cur.postKey }
-        ));
-        modBtn?.addEventListener('click', () => postForm(
-            'index.php?act=management&action=deletemod',
-            { id: d.mid, fid: d.fid, isgroup: d.isgroup, my_post_key: d.postKey }
         ));
     }
 
@@ -200,25 +186,6 @@
         });
     }
 
-    // ── Edit Moderator: счётчик включённых прав, «всё вкл/выкл» ─
-    function initEditModerator() {
-        const form = document.getElementById('editModForm');
-        if (!form) return;
-        const count = () => {
-            const n = form.querySelectorAll('.fm2-sw input:checked').length;
-            const el = document.getElementById('fm2SwCount');
-            if (el) el.replaceChildren(...iconText('fa-solid fa-toggle-on', t('sw_count', '{1} enabled', n)));
-        };
-        form.addEventListener('change', count);
-        form.addEventListener('reset', () => setTimeout(count, 0));
-        form.querySelectorAll('[data-sw-all]').forEach(b => b.addEventListener('click', () => {
-            const on = b.dataset.swAll === '1';
-            b.closest('.fm2-msec').querySelectorAll('.fm2-sw input').forEach(cb => { cb.checked = on; });
-            count();
-        }));
-        count();
-    }
-
     // ── Главная страница: поповеры, вкладка по #hash, фильтр ──
     function initMainPage() {
         if (window.bootstrap && bootstrap.Popover) {
@@ -250,7 +217,6 @@
         initTypeCards();
         initConfirmModals();
         initCopyForum();
-        initEditModerator();
         initMainPage();
     });
 })();

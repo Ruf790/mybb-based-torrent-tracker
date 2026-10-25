@@ -42,7 +42,7 @@ const LC_VERSION  = '3.9';
 const LC_REF_LANG = 'english';
 /** Сканируется весь проект рекурсивно; пропускаются только папки без кода (по имени, на любом уровне) */
 /** Hard-coded tab: folders with third-party code / installers (by name, at any level) */
-const LC_HC_SKIP_DIRS = ['wolraf', 'phpmyadmin', 'pma', 'sql', 'install', 'upgrade', 'test', 'tests', 'tmp', 'twig', 'libraries'];
+const LC_HC_SKIP_DIRS = ['phpmyadmin', 'pma', 'sql', 'install', 'upgrade', 'test', 'tests', 'tmp', 'twig', 'libraries'];
 const LC_SKIP_DIRS = ['.git', '.svn', '.idea', 'node_modules', 'vendor', 'cache', 'uploads', 'torrents',
                       'attachments', 'avatars', 'screenshots', 'backups', 'logs'];
 

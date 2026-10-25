@@ -55,7 +55,7 @@ class TableTruncationManager
     // реальную схему БД перед использованием этого инструмента.
     private const PROTECTED_TABLES = [
         'users', 'usergroups', 'staffpanel', 'torrents', 'categories',
-        'forumpermissions', 'settings', 'moderators', 'banned',
+        'forumpermissions', 'settings', 'banned',
         'forums', 'faq', 'sitelog',
     ];
     

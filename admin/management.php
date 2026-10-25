@@ -1153,38 +1153,6 @@ function fm_json_response(array $data, int $status = 200): never
     exit;
 }
 
-/** Модалка подтверждения удаления модератора */
-function fm_delete_mod_modal(): void
-{
-    global $lang;
-    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
-
-    echo <<<HTML
-    <div class="modal fade" id="deleteModeratorModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
-                <div class="modal-body text-center p-4">
-                    <i class="fas fa-user-slash fa-2x text-danger mb-3"></i>
-                    <h5 class="mb-3">{$t['modal_delmod_title']}</h5>
-                    <div class="d-flex justify-content-center gap-2">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">{$t['btn_cancel']}</button>
-                        <button class="btn btn-danger" id="confirmDeleteModeratorBtn">{$t['btn_remove']}</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    HTML;
-}
-
-
-
-
-
-
-
-
-
 mgmt_add_breadcrumb($L['title_forum_management'], "index.php?act=management");
 
 $action = $mybb->get_input('action');
@@ -1488,253 +1456,6 @@ if ($action === 'copy') {
 	exit;
 }
 
-
-if($action == "editmod")
-{
-	$query = $db->sql_query_prepared("SELECT * FROM moderators WHERE mid = ?", [$mybb->get_input('mid', MyBB::INPUT_INT)]);
-	$mod_data = $query ? $db->fetch_array($query) : null;
-
-	if(!$mod_data['id'])
-	{
-		flash_message($L['err_incorrect_moderator'], 'error');
-		admin_redirect("index.php?act=management");
-	}
-
-	$plugins->run_hooks("admin_forum_management_editmod");
-
-	if($mod_data['isgroup'])
-	{
-		$fieldname = "title";
-	}
-	else
-	{
-		$fieldname = "username";
-	}
-
-	if($mybb->request_method == "post")
-	{
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		$mid = $mybb->get_input('mid', MyBB::INPUT_INT);
-		if(!$mid)
-		{
-			flash_message($L['err_incorrect_moderator'], 'error');
-			admin_redirect("index.php?act=management");
-		}
-
-		$errors = [];
-		if(!$errors)
-		{
-			$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
-			$forum = get_forum($fid, true);
-			if($mod_data['isgroup'])
-			{
-				$mod = $groupscache[$mod_data['id']];
-			}
-			else
-			{
-				$mod = get_user($mod_data['id']);
-			}
-			$update_array = array(
-				'fid' => (int)$fid,
-				'caneditposts' => $mybb->get_input('caneditposts', MyBB::INPUT_INT),
-				'cansoftdeleteposts' => $mybb->get_input('cansoftdeleteposts', MyBB::INPUT_INT),
-				'canrestoreposts' => $mybb->get_input('canrestoreposts', MyBB::INPUT_INT),
-				'candeleteposts' => $mybb->get_input('candeleteposts', MyBB::INPUT_INT),
-				'cansoftdeletethreads' => $mybb->get_input('cansoftdeletethreads', MyBB::INPUT_INT),
-				'canrestorethreads' => $mybb->get_input('canrestorethreads', MyBB::INPUT_INT),
-				'candeletethreads' => $mybb->get_input('candeletethreads', MyBB::INPUT_INT),
-				'canviewips' => $mybb->get_input('canviewips', MyBB::INPUT_INT),
-				'canviewunapprove' => $mybb->get_input('canviewunapprove', MyBB::INPUT_INT),
-				'canviewdeleted' => $mybb->get_input('canviewdeleted', MyBB::INPUT_INT),
-				'canopenclosethreads' => $mybb->get_input('canopenclosethreads', MyBB::INPUT_INT),
-				'canstickunstickthreads' => $mybb->get_input('canstickunstickthreads', MyBB::INPUT_INT),
-				'canapproveunapprovethreads' => $mybb->get_input('canapproveunapprovethreads', MyBB::INPUT_INT),
-				'canapproveunapproveposts' => $mybb->get_input('canapproveunapproveposts', MyBB::INPUT_INT),
-				'canapproveunapproveattachs' => $mybb->get_input('canapproveunapproveattachs', MyBB::INPUT_INT),
-				'canmanagethreads' => $mybb->get_input('canmanagethreads', MyBB::INPUT_INT),
-				'canmanagepolls' => $mybb->get_input('canmanagepolls', MyBB::INPUT_INT),
-				'canpostclosedthreads' => $mybb->get_input('canpostclosedthreads', MyBB::INPUT_INT),
-				'canmovetononmodforum' => $mybb->get_input('canmovetononmodforum', MyBB::INPUT_INT),
-				'canusecustomtools' => $mybb->get_input('canusecustomtools', MyBB::INPUT_INT),
-				'canmanageannouncements' => $mybb->get_input('canmanageannouncements', MyBB::INPUT_INT),
-				'canmanagereportedposts' => $mybb->get_input('canmanagereportedposts', MyBB::INPUT_INT),
-				'canviewmodlog' => $mybb->get_input('canviewmodlog', MyBB::INPUT_INT)
-			);
-
-			$plugins->run_hooks("admin_forum_management_editmod_commit");
-
-			$mid_input = $mybb->get_input('mid', MyBB::INPUT_INT);
-			$set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update_array)));
-			$params = array_values($update_array);
-			$params[] = $mid_input;
-			$db->sql_query_prepared("UPDATE moderators SET {$set} WHERE mid = ?", $params);
-
-			$cache->update_moderators();
-
-			// Log admin action
-			log_admin_action($fid, $forum['name'], $mid, $mod[$fieldname]);
-
-			flash_message($L['flash_mod_updated'], 'success');
-			admin_redirect("index.php?act=management&fid=".$mybb->get_input('fid', MyBB::INPUT_INT)."#tab_moderators");
-		}
-	}
-
-	if($mod_data['isgroup'])
-	{
-		$query = $db->sql_query_prepared("SELECT title FROM usergroups WHERE gid = ?", [$mod_data['id']]);
-		$mod_data[$fieldname] = $query ? $db->fetch_field($query, 'title') : null;
-	}
-	else
-	{
-		$query = $db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$mod_data['id']]);
-		$mod_data[$fieldname] = $query ? $db->fetch_field($query, 'username') : null;
-	}
-
-	$sub_tabs = array();
-
-	$sub_tabs['edit_mod'] = array(
-		'title' => $L['title_edit_mod'],
-		'link' => "index.php?act=management&action=editmod&mid=".$mybb->get_input('mid', MyBB::INPUT_INT),
-		'description' => $L['tab_edit_mod_desc']
-	);
-
-	mgmt_add_breadcrumb($L['crumb_forum_moderators'], "index.php?act=management&amp;fid={$mod_data['fid']}#tab_moderators");
-	mgmt_add_breadcrumb($L['title_edit_mod']);
-	
-	
-
-	
-	stdhead($L['title_edit_mod']);
-	
-	fm_head_assets();
-	
-	
-	
-
-	
-echo '<div class="container mt-3 admin-container fm2">';
-	
-output_nav_tabs($sub_tabs, 'edit_mod');
-fm_errors($errors ?? []);
-
-mgmt_form_open("index.php?act=management&action=editmod", "post", "editModForm");
-echo generate_hidden_field("mid", (string)$mod_data['mid']);
-
-if($errors)
-{
-    // output_inline_error() убран — ошибки показывает fm_errors() выше, после вкладок
-    $mod_data = $mybb->input;
-}
-
-// ── Оформление как в groups.php: строки-переключатели с иконкой ──────────
-$fm_sw = static function (string $name, string $label, string $icon, bool $danger = false) use ($mod_data): string {
-    $checked = !empty($mod_data[$name]) ? ' checked' : '';
-    return '<label class="fm2-sw' . ($danger ? ' is-danger' : '') . '" for="' . $name . '">'
-         . '<span class="fm2-sw-icon"><i class="fas ' . $icon . '"></i></span>'
-         . '<span class="fm2-sw-text">' . htmlspecialchars_uni($label) . '</span>'
-         . '<input type="checkbox" class="form-check-input" role="switch" name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
-         . '</label>';
-};
-$fm_section = static function (string $icon, string $cls, string $title, array $items, string $desc = '') use ($fm_sw): string {
-    global $lang;
-    $t = array_map('htmlspecialchars_uni', $lang->forum_management);
-
-    $html = '<div class="fm2-msec"><div class="fm2-msec-head">'
-          . '<span class="fm2-msec-icon ' . $cls . '"><i class="fas ' . $icon . '"></i></span><span class="fw-bold">' . htmlspecialchars_uni($title) . '</span>'
-          . '<span class="ms-auto d-flex gap-1">'
-          . '<button type="button" class="fm2-mini" data-sw-all="1" title="' . $t['tip_enable_all'] . '"><i class="fa-solid fa-check-double"></i></button>'
-          . '<button type="button" class="fm2-mini" data-sw-all="0" title="' . $t['tip_disable_all'] . '"><i class="fa-solid fa-xmark"></i></button>'
-          . '</span></div>'
-          . ($desc !== '' ? '<div class="fm2-muted mb-2">' . htmlspecialchars_uni($desc) . '</div>' : '')
-          . '<div class="fm2-sw-grid">';
-    foreach ($items as $it) {
-        $html .= $fm_sw($it[0], $it[1], $it[2], $it[3] ?? false);
-    }
-    return $html . '</div></div>';
-};
-
-$mod_title = htmlspecialchars_uni($mod_data[$fieldname] ?? '');
-
-echo '<div class="card fm2-perm">';
-echo '<div class="fm2-hdr">'
-   . '<span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-pen"></i></span>'
-   . '<div style="min-width:0"><h1>' . fm_fmt_html($L['hdr_edit_mod_for'], $mod_title) . '</h1>'
-   . '<p>' . htmlspecialchars_uni($L['hdr_edit_mod_sub']) . '</p></div>'
-   . '<div class="ms-auto fm2-legend"><span class="fm2-tag t-on" id="fm2SwCount"><i class="fa-solid fa-toggle-on"></i>' . fm_fmt_html($L['tag_sw_count'], 0) . '</span></div>'
-   . '</div>';
-
-echo '<div class="p-3 p-md-4">';
-
-// Форум
-echo '<div class="fm2-msec"><div class="fm2-msec-head"><span class="fm2-msec-icon ic-amber"><i class="fas fa-comments"></i></span><span class="fw-bold">' . htmlspecialchars_uni($L['sec_mod_forum']) . '</span></div>';
-if ($L['hint_mod_forum'] !== '') echo '<div class="fm2-muted mb-2">' . htmlspecialchars_uni($L['hint_mod_forum']) . '</div>';
-echo '<div style="max-width:420px">' . generate_forum_select('fid', $mod_data['fid'], ['id' => 'fid', 'class' => 'form-select']) . '</div></div>';
-
-echo '<div class="row g-3">';
-echo '<div class="col-lg-6">';
-echo $fm_section('fa-file-lines', 'ic-blue', $L['sec_mod_posts'], [
-    ['caneditposts',       $L['mod_caneditposts'],        'fa-pen'],
-    ['cansoftdeleteposts', $L['mod_cansoftdeleteposts'], 'fa-trash-can'],
-    ['canrestoreposts',    $L['mod_canrestoreposts'],     'fa-rotate-left'],
-    ['candeleteposts',     $L['mod_candeleteposts'],      'fa-trash', true],
-    ['canpostclosedthreads', $L['mod_canpostclosedthreads'], 'fa-comment'],
-]);
-echo $fm_section('fa-list', 'ic-green', $L['sec_mod_threads'], [
-    ['cansoftdeletethreads',   $L['mod_cansoftdeletethreads'],   'fa-trash-can'],
-    ['canrestorethreads',      $L['mod_canrestorethreads'],       'fa-rotate-left'],
-    ['candeletethreads',       $L['mod_candeletethreads'],        'fa-trash', true],
-    ['canopenclosethreads',    $L['mod_canopenclosethreads'],    'fa-lock-open'],
-    ['canstickunstickthreads', $L['mod_canstickunstickthreads'], 'fa-thumbtack'],
-]);
-echo '</div><div class="col-lg-6">';
-echo $fm_section('fa-eye', 'ic-teal', $L['sec_mod_visibility'], [
-    ['canviewunapprove',           $L['mod_canviewunapprove'],                'fa-eye-slash'],
-    ['canviewdeleted',             $L['mod_canviewdeleted'],                  'fa-eye'],
-    ['canapproveunapprovethreads', $L['mod_canapproveunapprovethreads'],     'fa-circle-check'],
-    ['canapproveunapproveposts',   $L['mod_canapproveunapproveposts'],       'fa-circle-check'],
-    ['canapproveunapproveattachs', $L['mod_canapproveunapproveattachs'], 'fa-paperclip'],
-    ['canviewips',                 $L['mod_canviewips'],                      'fa-network-wired', true],
-]);
-echo $fm_section('fa-screwdriver-wrench', 'ic-purple', $L['sec_mod_management'], [
-    ['canmanagethreads',     $L['mod_canmanagethreads'],       'fa-code-merge'],
-    ['canmanagepolls',       $L['mod_canmanagepolls'],         'fa-chart-simple'],
-    ['canmovetononmodforum', $L['mod_canmovetononmodforum'], 'fa-right-left', true],
-    ['canusecustomtools',    $L['mod_canusecustomtools'],     'fa-toolbox'],
-]);
-echo '</div></div>';
-
-echo $fm_section('fa-gauge-high', 'ic-red', $L['sec_mod_cp'], [
-    ['canmanageannouncements', $L['mod_canmanageannouncements'],  'fa-bullhorn'],
-    ['canmanagereportedposts', $L['mod_canmanagereportedposts'], 'fa-flag'],
-    ['canviewmodlog',          $L['mod_canviewmodlog'],          'fa-clock-rotate-left'],
-], $L['hint_mod_cp']);
-
-echo '</div>'; // p-3
-
-echo '<div class="fm2-savebar">'
-   . '<span class="fm2-muted"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>' . htmlspecialchars_uni($L['hint_red_switches']) . '</span>'
-   . '<div class="d-flex gap-2">'
-   . '<a href="index.php?act=management&amp;fid=' . (int)$mod_data['fid'] . '#tab_moderators" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-arrow-left me-1"></i>' . htmlspecialchars_uni($L['btn_back']) . '</a>'
-   . '<button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . htmlspecialchars_uni($L['btn_reset']) . '</button>'
-   . '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . htmlspecialchars_uni($L['btn_save_mod']) . '</button>'
-   . '</div></div>';
-
-echo '</div>'; // .card
-
-// Стили переключателей — templates/forum_management2.css, счётчик — scripts/forum_management.js
-
-mgmt_form_close();
-
-
-
-echo '</div>'; // .container mt-3
-	
-	
-
-	stdfoot();
-	exit;
-}
 
 if($action == "clear_permission")
 {
@@ -2690,84 +2411,6 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
 
 
 
-if($action == "deletemod")
-{
-	$modid = $mybb->get_input('id', MyBB::INPUT_INT);
-	$isgroup = $mybb->get_input('isgroup', MyBB::INPUT_INT);
-	$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
-
-	$query = $db->sql_query_prepared("SELECT * FROM moderators WHERE id = ? AND isgroup = ? AND fid = ?", [$modid, $isgroup, $fid]);
-	$mod = $query ? $db->fetch_array($query) : null;
-
-	// Does the forum not exist?
-	if(!$mod)
-	{
-		flash_message($L['err_invalid_moderator'], 'error');
-		admin_redirect("index.php?act=management&fid={$fid}");
-	}
-
-	// User clicked no
-	if(!empty($mybb->input['no']))
-	{
-		admin_redirect("index.php?act=management&fid={$fid}");
-	}
-
-	$plugins->run_hooks("admin_forum_management_deletemod");
-
-	if($mybb->request_method == "post")
-	{
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		$mid = $mod['mid'];
-		if($mybb->input['isgroup'])
-		{
-			$query = $db->sql_query_prepared("
-				SELECT m.*, g.title
-				FROM moderators m
-				LEFT JOIN usergroups g ON (g.gid=m.id)
-				WHERE m.mid = ?
-			", [$mid]);
-		}
-		else
-		{
-			$query = $db->sql_query_prepared("
-				SELECT m.*, u.username, u.usergroup
-				FROM moderators m
-				LEFT JOIN users u ON (u.id=m.id)
-				WHERE m.mid = ?
-			", [$mid]);
-		}
-		$mod = $query ? $db->fetch_array($query) : null;
-
-		$db->sql_query_prepared("DELETE FROM moderators WHERE mid = ?", [$mid]);
-
-		$plugins->run_hooks("admin_forum_management_deletemod_commit");
-
-		$cache->update_moderators();
-
-		$forum = get_forum($fid, true);
-
-		// Log admin action
-		if($isgroup)
-		{
-			log_admin_action($mid, $mod['title'], $forum['fid'], $forum['name']);
-		}
-		else
-		{
-			log_admin_action($mid, $mod['username'], $forum['fid'], $forum['name']);
-		}
-
-		flash_message($L['flash_mod_deleted'], 'success');
-		admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-	}
-}
-
-
-
-
-
-
-
 if ($action === 'delete')
 {
     // Разрешаем ТОЛЬКО POST
@@ -2861,7 +2504,6 @@ if ($action === 'delete')
     // -------------------------------------------------
     // Чистим связанные таблицы
     // -------------------------------------------------
-    $db->sql_query_prepared("DELETE FROM moderators WHERE fid IN ({$fids_ph})", $fids);
     $db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE fid IN ({$fids_ph})", $fids);
     $db->sql_query_prepared("DELETE FROM forumpermissions WHERE fid IN ({$fids_ph})", $fids);
     $db->sql_query_prepared("DELETE FROM announcements WHERE type IN ('forum', 'global') AND fid IN ({$fids_ph})", $fids);
@@ -2873,7 +2515,6 @@ if ($action === 'delete')
     $plugins->run_hooks('admin_forum_management_delete_commit');
 
     $cache->update_forums();
-    $cache->update_moderators();
     $cache->update_forumpermissions();
     $cache->update_forumsdisplay();
 
@@ -2953,79 +2594,6 @@ if (!$action) {
 
             flash_message($L['flash_perms_updated'], 'success');
             admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
-
-        } elseif ($mybb->get_input('add') === 'moderators') {
-            $forum = get_forum($fid, true);
-            if (!$forum) {
-                flash_message($L['err_invalid_forum'], 'error');
-                admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-            }
-
-            if (!empty($mybb->input['usergroup'])) {
-                $isgroup = 1;
-                $gid     = $mybb->get_input('usergroup', MyBB::INPUT_INT);
-                if (empty($groupscache[$gid])) {
-                    flash_message($L['err_moderator_not_found'], 'error');
-                    admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-                }
-                $newmod = ['id' => $gid, 'name' => $groupscache[$gid]['title']];
-            } else {
-                $options    = ['fields' => ['id AS id', 'username AS name', 'usergroup']];
-                $newmod     = $newmoduser = get_user_by_username($mybb->input['username'] ?? '', $options);
-                $isgroup    = 0;
-                if (empty($newmod['id'])) {
-                    flash_message($L['err_moderator_not_found'], 'error');
-                    admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-                }
-            }
-
-            if (!empty($newmod['id'])) {
-                $query = $db->sql_query_prepared(
-                    "SELECT id FROM moderators WHERE id = ? AND fid = ? AND isgroup = ? LIMIT 1",
-                    [$newmod['id'], $fid, $isgroup]
-                );
-
-                if (!$query || !$db->num_rows($query)) {
-                    $new_mod = [
-                        'fid' => $fid, 'id' => $newmod['id'], 'isgroup' => $isgroup,
-                        'caneditposts' => 1, 'cansoftdeleteposts' => 1, 'canrestoreposts' => 1,
-                        'candeleteposts' => 1, 'cansoftdeletethreads' => 1, 'canrestorethreads' => 1,
-                        'candeletethreads' => 1, 'canviewips' => 1, 'canviewunapprove' => 1,
-                        'canviewdeleted' => 1, 'canopenclosethreads' => 1, 'canstickunstickthreads' => 1,
-                        'canapproveunapprovethreads' => 1, 'canapproveunapproveposts' => 1,
-                        'canapproveunapproveattachs' => 1, 'canmanagethreads' => 1, 'canmanagepolls' => 1,
-                        'canpostclosedthreads' => 1, 'canmovetononmodforum' => 1, 'canusecustomtools' => 1,
-                        'canmanageannouncements' => 1, 'canmanagereportedposts' => 1, 'canviewmodlog' => 1,
-                    ];
-                    $columns      = array_keys($new_mod);
-                    $placeholders = implode(',', array_fill(0, count($columns), '?'));
-                    $db->sql_query_prepared(
-                        "INSERT INTO moderators (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
-                        array_values($new_mod)
-                    );
-                    $mid = $db->insert_id();
-
-                   if (!$isgroup) {
-    $groupperms = usergroup_permissions((string)max(1, (int)($newmoduser['usergroup'] ?? 1)));
-    if (($groupperms['canmodcp'] ?? 0) != 1) {
-        $db->sql_query_prepared("UPDATE users SET usergroup = 6 WHERE id = ?", [(int)$newmoduser['id']]);
-    }
-}
-
-                    $plugins->run_hooks('admin_forum_management_start_moderators_commit');
-                    $cache->update_moderators();
-                    log_admin_action('addmod', $mid, $newmod['name'], $fid, $forum['name'] ?? '');
-
-                    flash_message($L['flash_mod_added'], 'success');
-                    admin_redirect("index.php?act=management&action=editmod&mid={$mid}");
-                } else {
-                    flash_message($L['err_moderator_already_added'], 'error');
-                    admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-                }
-            } else {
-                flash_message($L['err_moderator_not_found'], 'error');
-                admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");
-            }
 
         } else {
             // Save display order
@@ -3143,14 +2711,13 @@ if (!$action) {
         echo '</div>';
     }
 
-    // Вкладки. id панелей оставлены прежними (subforums / permissions / moderators) —
+    // Вкладки. id панелей оставлены прежними (subforums / permissions) —
     // на них ссылается существующий код и JS.
     echo '
     <ul class="nav fm2-tabs" id="forumTabs" role="tablist">
         <li class="nav-item" role="presentation"><button class="nav-link active" id="subforums-tab" data-bs-toggle="tab" data-bs-target="#subforums" type="button" role="tab"><i class="fa-solid fa-folder-tree"></i>' . ($fid ? $t['tab_subforums'] : $t['tab_all_forums']) . '</button></li>'
       . ($fid ? '
-        <li class="nav-item" role="presentation"><button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab"><i class="fa-solid fa-shield-halved"></i>' . $t['tab_permissions'] . '</button></li>
-        <li class="nav-item" role="presentation"><button class="nav-link" id="moderators-tab" data-bs-toggle="tab" data-bs-target="#moderators" type="button" role="tab"><i class="fa-solid fa-user-shield"></i>' . $t['tab_moderators'] . '</button></li>' : '') . '
+        <li class="nav-item" role="presentation"><button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab"><i class="fa-solid fa-shield-halved"></i>' . $t['tab_permissions'] . '</button></li>' : '') . '
     </ul>
 
     <div class="card border-0 bg-transparent"><div class="card-body p-0">
@@ -3270,117 +2837,7 @@ if (!$action) {
                 </form>
             </div>';
 
-        // ── Moderators tab ────────────────────────────────────
-        $query = $db->sql_query_prepared("
-            SELECT m.mid, m.id, m.isgroup, u.username, u.usergroup, g.title
-            FROM moderators m
-            LEFT JOIN users u ON (m.isgroup='0' AND m.id=u.id)
-            LEFT JOIN usergroups g ON (m.isgroup='1' AND m.id=g.gid)
-            WHERE m.fid = ?
-            ORDER BY m.isgroup DESC, u.username ASC, g.title ASC
-        ", [$fid]);
-        $current_moderators = [];
-        while ($query && ($mod = $db->fetch_array($query))) { $current_moderators[] = $mod; }
-
-        $query = $db->sql_query_prepared("SELECT * FROM usergroups ORDER BY title");
-        $user_groups = [];
-        while ($query && ($group = $db->fetch_array($query))) { $user_groups[$group['gid']] = $group; }
-
-        echo '
-            <div class="tab-pane fade" id="moderators" role="tabpanel">
-                <div class="row g-3">
-                    <div class="col-lg-8">
-                        <div class="card fm2-perm">
-                            <div class="fm2-hdr">
-                                <span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-shield"></i></span>
-                                <div style="min-width:0"><h1>' . $t['tab_moderators'] . '</h1><p>' . ags_fmt($t['hdr_moderators_sub'], '<strong>' . $forum_name_esc . '</strong>') . '</p></div>
-                                <div class="ms-auto fm2-legend"><span class="fm2-tag t-on"><i class="fa-solid fa-user-shield"></i>' . count($current_moderators) . '</span></div>
-                            </div>
-                            <div class="table-responsive">
-                            <table class="table fm2-table align-middle mb-0">
-                                <thead><tr>
-                                    <th><i class="fa-solid fa-user"></i>' . $t['col_moderator'] . '</th>
-                                    <th class="text-center"><i class="fa-solid fa-tag"></i>' . $t['col_type'] . '</th>
-                                    <th class="text-end"><i class="fa-solid fa-bolt"></i>' . $t['col_actions'] . '</th>
-                                </tr></thead>
-                                <tbody>';
-
-        if (empty($current_moderators)) {
-            echo '<tr><td colspan="3"><div class="fm2-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">' . $t['empty_no_moderators'] . '</div><div class="small">' . $t['empty_no_moderators_hint'] . '</div></div></td></tr>';
-        } else {
-            foreach ($current_moderators as $moderator) {
-                $is_group = (int)$moderator['isgroup'] === 1;
-                $mod_name = htmlspecialchars_uni(($is_group ? $moderator['title'] : $moderator['username']) ?? '');
-                $display  = ($is_group || !function_exists('format_name')) ? $mod_name : format_name($mod_name, (int)($moderator['usergroup'] ?? 0));
-                $type     = $is_group
-                    ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-users"></i>' . $t['tag_group'] . '</span>'
-                    : '<span class="fm2-tag t-forum"><i class="fa-solid fa-user"></i>' . $t['tag_user'] . '</span>';
-
-                echo '
-                                <tr>
-                                    <td><div class="d-flex align-items-center gap-3">
-                                        <span class="fm2-gicon ' . ($is_group ? 'ic-teal' : 'ic-blue') . '"><i class="fas ' . ($is_group ? 'fa-users' : 'fa-user') . '"></i></span>
-                                        <div><div class="fw-bold">' . ($mod_name !== '' ? $display : '<em class="text-body-secondary">' . $t['lbl_deleted'] . '</em>') . '</div><div class="fm2-gid">' . ags_fmt($is_group ? $t['lbl_gid'] : $t['lbl_uid'], (int)$moderator['id']) . '</div></div>
-                                    </div></td>
-                                    <td class="text-center">' . $type . '</td>
-                                    <td class="text-end text-nowrap">
-                                        <a href="index.php?act=management&amp;action=editmod&amp;mid=' . (int)$moderator['mid'] . '" class="fm2-act" title="' . $t['tip_edit_mod_perms'] . '"><i class="fas fa-pen"></i></a>
-                                        <a href="#" class="fm2-act text-danger delete-moderator-btn" title="' . $t['tip_remove_mod'] . '"
-                                           data-mid="' . (int)$moderator['id'] . '" data-fid="' . $fid . '" data-isgroup="' . (int)$moderator['isgroup'] . '"
-                                           data-post-key="' . $mybb->post_code . '"><i class="fas fa-trash"></i></a>
-                                    </td>
-                                </tr>';
-            }
-        }
-
-        $group_options = '';
-        foreach ($user_groups as $group) {
-            $group_options .= '<option value="' . (int)$group['gid'] . '">' . htmlspecialchars_uni($group['title']) . ' (' . ags_fmt($t['lbl_gid'], (int)$group['gid']) . ')</option>';
-        }
-
-        echo '
-                                </tbody>
-                            </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-4">
-                        <div class="fm2-sticky">
-                            <div class="card fm2-perm mb-3">
-                                <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-blue" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-user-plus"></i></span>
-                                    <div><h1 style="font-size:1.05rem">' . $t['hdr_add_user'] . '</h1><p style="font-size:.85rem">' . $t['hdr_add_user_sub'] . '</p></div></div>
-                                <form method="post" action="index.php?act=management" class="p-3">
-                                    <input type="hidden" name="fid" value="' . $fid . '">
-                                    <input type="hidden" name="add" value="moderators">
-                                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                    <label class="form-label" for="fm2ModUser"><i class="fa-solid fa-user me-1 text-body-secondary"></i>' . $t['lbl_username'] . '</label>
-                                    <input type="text" id="fm2ModUser" name="username" class="form-control mb-3" placeholder="' . $t['ph_start_typing'] . '" required autocomplete="off"
-                                           data-autocomplete-url="../xmlhttp.php?action=get_users">
-                                    <button type="submit" class="btn btn-primary rounded-pill w-100"><i class="fas fa-user-plus me-1"></i>' . $t['btn_add_user'] . '</button>
-                                </form>
-                            </div>
-                            <div class="card fm2-perm">
-                                <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-teal" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-users"></i></span>
-                                    <div><h1 style="font-size:1.05rem">' . $t['hdr_add_group'] . '</h1><p style="font-size:.85rem">' . $t['hdr_add_group_sub'] . '</p></div></div>
-                                <form method="post" action="index.php?act=management" class="p-3">
-                                    <input type="hidden" name="fid" value="' . $fid . '">
-                                    <input type="hidden" name="add" value="moderators">
-                                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                    <label class="form-label" for="fm2ModGroup"><i class="fa-solid fa-users me-1 text-body-secondary"></i>' . $t['lbl_user_group'] . '</label>
-                                    <select id="fm2ModGroup" name="usergroup" class="form-select mb-3" required>
-                                        <option value="">' . $t['opt_select_group'] . '</option>' . $group_options . '
-                                    </select>
-                                    <button type="submit" class="btn btn-outline-primary rounded-pill w-100"><i class="fas fa-plus me-1"></i>' . $t['btn_add_group'] . '</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>';
-
         fm_clear_permission_modal();
-        fm_delete_mod_modal();
     }
 
     echo '
@@ -3577,7 +3034,6 @@ function generate_forum_actions($forum)
     <div class="fm2-actions">
         <a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['btn_edit'] . '"><i class="fa-solid fa-pen"></i></a>
         <a href="index.php?act=management&amp;fid=' . $fid . '#tab_permissions" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['tab_permissions'] . '"><i class="fa-solid fa-shield-halved"></i></a>
-        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_moderators" class="fm2-act" data-bs-toggle="popover" data-bs-content="' . $t['tab_moderators'] . '"><i class="fa-solid fa-user-shield"></i></a>
         <div class="dropdown d-inline-block">
             <button class="fm2-act" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="' . $t['aria_more'] . '"><i class="fa-solid fa-ellipsis-vertical"></i></button>
             <ul class="dropdown-menu dropdown-menu-end shadow-sm border">

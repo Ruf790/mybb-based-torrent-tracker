@@ -32,7 +32,164 @@ $lang->load("modcp");
  * ═══════════════════════════════════════════════════════════════════ */
  
  
+// ── update_forum_lastpost ─────────────────────────────────────────────────────
+function update_forum_lastpost(int $fid): void
+{
+    global $db;
+
+    $query = $db->sql_query_prepared("
+        SELECT tid, lastpost, lastposter, lastposteruid, subject
+        FROM threads
+        WHERE fid = ? AND visible = '1' AND closed NOT LIKE 'moved|%'
+        ORDER BY lastpost DESC LIMIT 1
+    ", [$fid]);
+
+    if ($query && $db->num_rows($query) > 0) {
+        $last = $db->fetch_array($query);
+        $updated = [
+            'lastpost'        => (int)$last['lastpost'],
+            'lastposter'      => $last['lastposter'],
+            'lastposteruid'   => (int)$last['lastposteruid'],
+            'lastposttid'     => (int)$last['tid'],
+            'lastpostsubject' => $last['subject'],
+        ];
+    } else {
+        $updated = [
+            'lastpost' => 0, 'lastposter' => '', 'lastposteruid' => 0,
+            'lastposttid' => 0, 'lastpostsubject' => '',
+        ];
+    }
+
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated)));
+    $params = array_values($updated);
+    $params[] = $fid;
+
+    $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+}
+
+
+// ── update_user_counters ──────────────────────────────────────────────────────
+function update_user_counters(int|string $uid, array $changes = []): void
+{
+    global $db;
+
+    $uid = (int)$uid;
+    
+	$counters = ['postnum', 'threadnum'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM users WHERE id = ?",
+        [$uid]
+    );
+    $user = $query ? $db->fetch_array($query) : null;
+
+    if (!$user) {
+        return;
+    }
+
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $user[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        // Имена колонок берутся только из фиксированного списка $counters выше — не из ввода
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $uid;
+
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
+    }
+}
+
+ 
+ 
+ 
+function update_forum_counters(int|string $fid, array $changes = []): void
+{
+    global $db;
+
+    $fid = (int)$fid;
+	
+	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM forums WHERE fid = ?",
+        [$fid]
+    );
+    $forum  = $query ? $db->fetch_array($query) : null;
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $forum[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $fid;
+
+        $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+    }
+
+    // Обновляем глобальную статистику
+    $stat_map = [
+        'threads'           => 'numthreads',
+        'unapprovedthreads' => 'numunapprovedthreads',
+        'posts'             => 'numposts',
+        'unapprovedposts'   => 'numunapprovedposts',
+    ];
+
+    $new_stats = [];
+    foreach ($stat_map as $counter => $stat) {
+        if (!isset($update[$counter])) {
+            continue;
+        }
+        $diff = $update[$counter] - $forum[$counter];
+        $new_stats[$stat] = ($diff >= 0 ? '+' : '') . $diff;
+    }
+
+    if (!empty($new_stats)) {
+        update_stats($new_stats);
+    }
+}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 // ── update_thread_counters ────────────────────────────────────────────────────
+// Объявляем, только если общая версия ещё не подключена (иначе — fatal "Cannot redeclare")
+if (!function_exists('update_thread_counters')) {
 function update_thread_counters(int $tid, array $changes = []): void
 {
     global $db;
@@ -66,7 +223,8 @@ function update_thread_counters(int $tid, array $changes = []): void
         $params[] = $tid;
         $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
     }
-} 
+}
+}
  
  
  
@@ -284,7 +442,7 @@ function mc_empty(string $icon, string $text): string
  * ═══════════════════════════════════════════════════════════════════ */
 
 function handle_do_modqueue(): void {
-    global $db, $mybb, $lang, $plugins, $_this_script;
+    global $db, $mybb, $lang, $plugins;
     global $flist_queue_threads, $flist_queue_posts, $tflist_queue_attach;
 
     require_once INC_PATH . '/class_moderation.php';
@@ -318,14 +476,10 @@ function handle_do_modqueue(): void {
             log_moderator_action(['tids' => $threads_to_approve], $lang->modcp['multi_approve_threads']);
         }
         
+        // Мягкого удаления нет — темы удаляются сразу
         if(!empty($threads_to_delete)) {
-            if($mybb->settings['soft_delete'] == 1) {
-                $moderation->soft_delete_threads($threads_to_delete);
-                log_moderator_action(['tids' => $threads_to_delete], $lang->multi_soft_delete_threads);
-            } else {
-                foreach($threads_to_delete as $tid) $moderation->delete_thread($tid);
-                log_moderator_action(['tids' => $threads_to_delete], $lang->multi_delete_threads);
-            }
+            foreach($threads_to_delete as $tid) $moderation->delete_thread((int)$tid);
+            log_moderator_action(['tids' => $threads_to_delete], $lang->modcp['multi_delete_threads'] ?? 'Deleted threads');
         }
         $plugins->run_hooks("modcp_do_modqueue_end");
 		redirect('admin/index.php?act=modcp', $lang->modcp['redirect_threadsmoderated']);
@@ -344,7 +498,6 @@ function handle_do_modqueue(): void {
             if(!isset($posts[$post['pid']])) continue;
             $action = $posts[$post['pid']];
             if($action == "approve") $posts_to_approve[] = $post['pid'];
-            elseif($action == "delete" && $mybb->settings['soft_delete'] != 1) $moderation->delete_post($post['pid']);
             elseif($action == "delete") $posts_to_delete[] = $post['pid'];
         }
         
@@ -352,9 +505,10 @@ function handle_do_modqueue(): void {
             $moderation->approve_posts($posts_to_approve);
             log_moderator_action(['pids' => $posts_to_approve], $lang->modcp['multi_approve_posts']);
         }
-        if(!empty($posts_to_delete) && $mybb->settings['soft_delete'] == 1) {
-            $moderation->soft_delete_posts($posts_to_delete);
-            log_moderator_action(['pids' => $posts_to_delete], $lang->multi_soft_delete_posts);
+        // Мягкого удаления нет — посты удаляются сразу
+        if(!empty($posts_to_delete)) {
+            foreach($posts_to_delete as $pid) $moderation->delete_post((int)$pid);
+            log_moderator_action(['pids' => $posts_to_delete], $lang->modcp['multi_delete_posts'] ?? 'Deleted posts');
         }
         $plugins->run_hooks("modcp_do_modqueue_end");
         redirect('admin/index.php?act=modcp&type=posts', $lang->modcp['redirect_postsmoderated']);

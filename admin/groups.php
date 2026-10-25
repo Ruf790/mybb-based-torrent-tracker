@@ -639,13 +639,11 @@ if (($mybb->input['action'] ?? '') === 'delete') {
     $db->sql_query_prepared("UPDATE banned SET oldgroup = 2 WHERE oldgroup = ?", [$usergroup['gid']]);
 
     $db->sql_query_prepared("DELETE FROM forumpermissions WHERE gid = ?", [$usergroup['gid']]);
-    $db->sql_query_prepared("DELETE FROM moderators WHERE id = ? AND isgroup = '1'", [$usergroup['gid']]);
     $db->sql_query_prepared("DELETE FROM usergroups WHERE gid = ?", [$usergroup['gid']]);
 
     $plugins->run_hooks('admin_user_groups_delete_commit');
     $plugins->run_hooks('admin_user_groups_delete_commit_end');
 
-    $cache->update_moderators();
     $cache->update_usergroups();
     $cache->update_forumpermissions();
     log_admin_action($usergroup['gid'], $usergroup['title']);

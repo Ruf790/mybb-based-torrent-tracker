@@ -396,6 +396,8 @@ function ex_handle_post(): void
                 $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_id = ?', [$id]);
                 $db->sql_query_prepared('DELETE FROM exam_users WHERE exam_id = ?', [$id]);
                 $db->sql_query_prepared('DELETE FROM exams WHERE id = ?', [$id]);
+                // Participants lost their attempt - drop users.exam_active where it no longer holds
+                exam_sync_all_flags();
                 ex_log("#{$id} '{$exam['name']}' deleted");
                 ex_redirect([], 'success', ex_t('msg_deleted', $exam['name']));
 
@@ -461,12 +463,14 @@ function ex_attempt_opts(string $do): array
  * (bulk counts that as "skipped" and goes on).
  * finish: end is moved to the past; the caller runs exam_cron_checkout() once
  * afterwards, so the result is counted by the usual rules (passed / failed / disabled).
+ * avoid / recover / remove change the status set, so users.exam_active is re-synced.
  */
 function ex_attempt_action(string $do, array $eu, array $opts): void
 {
     global $db, $CURUSER;
 
     $euId = (int)$eu['id'];
+    $uid  = (int)$eu['uid'];
     $st   = (int)$eu['status'];
 
     switch ($do) {
@@ -474,20 +478,23 @@ function ex_attempt_action(string $do, array $eu, array $opts): void
             if ($st !== EXAM_USER_STATUS_NORMAL) throw new ExamException(ex_t('err_only_avoid'));
             $db->sql_query_prepared('UPDATE exam_users SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
                 [EXAM_USER_STATUS_AVOIDED, exam_now(), $euId, EXAM_USER_STATUS_NORMAL]);
+            exam_sync_user_flag($uid);
             ex_log("exam_user #{$euId} avoided");
             return;
 
         case 'recover':
             if ($st !== EXAM_USER_STATUS_AVOIDED) throw new ExamException(ex_t('err_only_recover'));
-            if (exam_has_ongoing((int)$eu['uid'])) throw new ExamException(ex_t('err_has_ongoing'));
+            if (exam_has_ongoing($uid)) throw new ExamException(ex_t('err_has_ongoing'));
             $db->sql_query_prepared('UPDATE exam_users SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
                 [EXAM_USER_STATUS_NORMAL, exam_now(), $euId, EXAM_USER_STATUS_AVOIDED]);
+            exam_sync_user_flag($uid);
             ex_log("exam_user #{$euId} recovered");
             return;
 
         case 'remove':
             $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_user_id = ?', [$euId]);
             $db->sql_query_prepared('DELETE FROM exam_users WHERE id = ?', [$euId]);
+            exam_sync_user_flag($uid);
             ex_log("exam_user #{$euId} removed");
             return;
 
@@ -498,7 +505,7 @@ function ex_attempt_action(string $do, array $eu, array $opts): void
             if (exam_ts($newEnd) < exam_user_begin($eu, $exam)) throw new ExamException(ex_t('err_end_earlier'));
             $oldEnd = exam_user_end($eu, $exam);
             $db->sql_query_prepared('UPDATE exam_users SET `end` = ?, updated_at = ? WHERE id = ?', [$newEnd, exam_now(), $euId]);
-            exam_notify((int)$eu['uid'], "End time changed: {$exam['name']}",
+            exam_notify($uid, "End time changed: {$exam['name']}",
                 "The end time of [b]{$exam['name']}[/b] was changed from " . date('d.m.Y H:i', $oldEnd)
                 . ' to ' . date('d.m.Y H:i', exam_ts($newEnd)) . '.'
                 . "\nChanged by: " . (string)$CURUSER['username'] . ($opts['reason'] !== '' ? "\nReason: {$opts['reason']}" : ''));
@@ -507,7 +514,7 @@ function ex_attempt_action(string $do, array $eu, array $opts): void
 
         case 'finish':
             if ($st !== EXAM_USER_STATUS_NORMAL) throw new ExamException(ex_t('err_only_finish'));
-            // A second in the past: exam_cron_checkout() picks it up right away
+            // A second in the past: exam_cron_checkout() picks it up right away (and clears the flag)
             $db->sql_query_prepared('UPDATE exam_users SET `end` = ?, updated_at = ? WHERE id = ? AND status = ?',
                 [exam_dt(TIMENOW - 1), exam_now(), $euId, EXAM_USER_STATUS_NORMAL]);
             ex_log("exam_user #{$euId} finished now by staff");

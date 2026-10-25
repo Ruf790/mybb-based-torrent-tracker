@@ -331,7 +331,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
         $unbanned++;
     }
 
-    $cache->update_moderators();
     echo json_encode(['success' => true, 'message' => ags_fmt($lang->usersearch['flash_unbanned'], $unbanned)]);
     break;  
         
@@ -352,8 +351,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
             $pm_sent = 0;
             foreach ($user_ids as $uid) {
                 $pm = [
-                    'subject' => $db->escape_string($pm_subject),
-                    'message' => $db->escape_string($pm_message),
+                    // send_pm() пишет через prepared statements — escape_string() здесь
+                    // давал двойное экранирование (апострофы приходили как \')
+                    'subject' => $pm_subject,
+                    'message' => $pm_message,
                     'touid'   => $uid,
                 ];
                 send_pm($pm, (int)$CURUSER['id'], true);

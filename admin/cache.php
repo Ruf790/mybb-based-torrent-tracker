@@ -55,7 +55,6 @@ function cacheDescription(string $title): string
         'usergroups'         => 'desc_usergroups',
         'forums'             => 'desc_forums',
         'forumpermissions'   => 'desc_forumpermissions',
-        'moderators'         => 'desc_moderators',
         'attachtypes'        => 'desc_attachtypes',
         'smilies'            => 'desc_smilies',
         'badwords'           => 'desc_badwords',
@@ -89,7 +88,7 @@ function cacheIcon(string $title): string
 {
     static $map = [
         'settings' => 'fa-sliders', 'usergroups' => 'fa-users', 'forums' => 'fa-comments', 'forumpermissions' => 'fa-shield-halved',
-        'moderators' => 'fa-user-shield', 'attachtypes' => 'fa-paperclip', 'smilies' => 'fa-face-smile', 'badwords' => 'fa-filter',
+        'attachtypes' => 'fa-paperclip', 'smilies' => 'fa-face-smile', 'badwords' => 'fa-filter',
         'bannedips' => 'fa-ban', 'bannedemails' => 'fa-envelope-circle-check', 'birthdays' => 'fa-cake-candles', 'stats' => 'fa-chart-simple',
         'statistics' => 'fa-chart-line', 'plugins' => 'fa-plug', 'mycode' => 'fa-code', 'posticons' => 'fa-icons', 'profilefields' => 'fa-id-card',
         'reportedcontent' => 'fa-flag', 'awaitingactivation' => 'fa-user-clock', 'mostonline' => 'fa-trophy', 'spiders' => 'fa-spider',

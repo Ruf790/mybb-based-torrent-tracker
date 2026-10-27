@@ -44,18 +44,7 @@ $errors  = '';
 
 $mybb->input['action'] ??= '';
 
-// Страницы, уже переведённые на новый стиль: для них старое левое меню
-// ($usercpnav, usercp_menu()) не строится. do_* — их POST-обработчики.
-const UC_NEW_STYLE = [
-    '', 'profile', 'do_profile', 'options', 'do_options', 'email', 'do_email',
-    'password', 'do_password', 'changename', 'do_changename', 'avatar', 'do_avatar',
-    'editsig', 'do_editsig',
-];
-// Старое левое меню нужно только страницам, ещё не переведённым на новый стиль
-$lang->load('usercpnav');
-if (!in_array($mybb->input['action'], UC_NEW_STYLE, true)) {
-    usercp_menu();
-}
+usercp_menu();
 
 // SweetAlert2 + ags-dialog.js (agsAlert / agsConfirm / data-ags-confirm) — выводится
 // на тех страницах UCP, где есть диалоги; кнопки ОК/Да/Отмена — из global.lang.php
@@ -170,251 +159,6 @@ function ucp_js_lang(array $map): string
          . ');</script>';
 }
 
-// ── Helper: User CP page wrapper ───────────────────────────────────────────
-// Все стили страниц UCP лежат в usercp_pages.css и заскоуплены под
-// .ucp-pg-<page>; ucp_page_open() вызывается сразу после stdhead(),
-// ucp_page_close() — перед stdfoot(). Скрипты страниц — scripts/usercp.js.
-function ucp_page_open(string $page): void
-{
-    global $BASEURL, $ucp_page_opened;
-    if (!empty($ucp_page_opened)) { return; }
-    $ucp_page_opened = true;
-    $page = preg_replace('/[^a-z0-9_]/', '', strtolower($page));
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=61">'
-       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_pages.css?ver=3">'
-       . '<div class="ucp-pg ucp-pg-' . $page . '" data-ucp-page="' . $page . '">';
-}
-
-function ucp_page_close(): void
-{
-    global $BASEURL, $ucp_page_opened;
-    if (empty($ucp_page_opened)) { return; }
-    $ucp_page_opened = false;
-    echo '</div><script src="' . $BASEURL . '/scripts/usercp.js?ver=1904"></script>';
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// NEW STYLE (st-ui.css): page frame, two-level tabs, cards
-// Страница: uc_frame_open() … uc_card() … uc_submitbar() … uc_frame_close().
-// Всё под .uc-page (стили — секция «uc-page» в usercp_pages.css).
-// ══════════════════════════════════════════════════════════════════════════
-
-
-// Группы вкладок: ключ => [иконка, подпись, [action => [иконка, подпись, url]]]
-function uc_nav_groups(): array
-{
-    global $lang, $enablepms, $usergroups;
-    $n = $lang->usercpnav;
-    $u = $lang->usercp;
-
-    $groups = [
-        'overview' => ['fa-gauge-high', $n['tab_overview'], [
-            '' => ['fa-gauge-high', $n['ucp_nav_home'], 'usercp.php'],
-        ]],
-        'profile' => ['fa-user-pen', $n['tab_profile'], [
-            'profile' => ['fa-cake-candles', $n['ucp_nav_edit_profile'],   'usercp.php?action=profile'],
-            'avatar'  => ['fa-image',        $n['ucp_nav_change_avatar'],  'usercp.php?action=avatar'],
-            'editsig' => ['fa-signature',    $n['ucp_nav_edit_sig'],       'usercp.php?action=editsig'],
-            'options' => ['fa-sliders',      $n['ucp_nav_edit_options'],   'usercp.php?action=options'],
-        ]],
-        'security' => ['fa-shield-halved', $n['tab_security'], [
-            'password'   => ['fa-key',            $n['ucp_nav_change_pass'],     'usercp.php?action=password'],
-            'email'      => ['fa-at',             $n['ucp_nav_change_email'],    'usercp.php?action=email'],
-            'changename' => ['fa-user-tag',       $n['ucp_nav_change_username'], 'usercp.php?action=changename'],
-            '2fa'        => ['fa-mobile-screen',  $u['nav_2fa'],                 'usercp.php?action=2fa'],
-            'sessions'   => ['fa-display',        $u['lbl_active_session'],      'usercp.php?action=sessions'],
-        ]],
-        'friends' => ['fa-user-group', $n['tab_friends'], [
-            'editlists' => ['fa-user-group', $n['ucp_nav_editlists'], 'usercp.php?action=editlists'],
-        ]],
-        'subs' => ['fa-bell', $n['tab_subscriptions'], [
-            'subscriptions'      => ['fa-comments', $n['ucp_nav_subscribed_threads'],  'usercp.php?action=subscriptions'],
-            'forumsubscriptions' => ['fa-eye',      $n['ucp_nav_forum_subscriptions'], 'usercp.php?action=forumsubscriptions'],
-        ]],
-        'content' => ['fa-folder-open', $n['tab_content'], [
-            'drafts'       => ['fa-pen-ruler',   $n['ucp_nav_drafts'],      'usercp.php?action=drafts'],
-            'bookmarks'    => ['fa-bookmark',    $n['ucp_nav_book'],        'usercp.php?action=bookmarks'],
-            'manage_files' => ['fa-folder-open', $u['lbl_my_files'],        'usercp.php?action=manage_files'],
-            'attachments'  => ['fa-paperclip',   $n['ucp_nav_attachments'], 'usercp.php?action=attachments'],
-        ]],
-    ];
-
-    if ((int) ($enablepms ?? 0) !== 0 && (int) ($usergroups['canusepms'] ?? 0) === 1) {
-        $groups['pm'] = ['fa-envelope', $n['tab_messages'], [
-            '__pm' => ['fa-envelope', $n['tab_messages'], 'private.php'],
-        ]];
-    }
-    return $groups;
-}
-
-// Шапка страницы + вкладки. $action — текущая подстраница (ключ из uc_nav_groups()).
-function uc_frame_open(string $action, string $icon, string $soft, string $title, string $sub = ''): string
-{
-    global $CURUSER, $groupscache, $lang, $db;
-
-    $groups = uc_nav_groups();
-    $active = 'overview';
-    foreach ($groups as $gk => $g) {
-        if (array_key_exists($action, $g[2])) { $active = $gk; break; }
-    }
-
-    // ── мини-карточка пользователя справа в шапке
-    $uid  = (int) $CURUSER['id'];
-    $name = htmlspecialchars_uni((string) $CURUSER['username']);
-    $ava  = format_avatar($CURUSER['avatar'] ?? '', $CURUSER['avatardimensions'] ?? '', '40|40');
-    $avahtml = !empty($ava['is_placeholder'])
-        ? '<span class="uc-me__ava uc-me__ava--letter">' . htmlspecialchars_uni(mb_strtoupper(mb_substr((string) $CURUSER['username'], 0, 1)) ?: '?') . '</span>'
-        : '<img class="uc-me__ava" src="' . htmlspecialchars_uni((string) $ava['image']) . '" alt="" loading="lazy">';
-    $gtitle = htmlspecialchars_uni((string) ($groupscache[$CURUSER['usergroup']]['title'] ?? ''));
-
-    $html = '<div class="container-md st-page uc-page">'
-          . '<div class="st-card st-head uc-head">'
-          .   '<div class="st-head__icon st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></div>'
-          .   '<div class="uc-head__text min-w-0">'
-          .     '<h1 class="st-title">' . $title . '</h1>'
-          .     ($sub !== '' ? '<div class="st-head__meta">' . $sub . '</div>' : '')
-          .   '</div>'
-          .   '<a class="uc-me" href="' . get_profile_link($uid) . '" title="' . htmlspecialchars_uni((string) $lang->usercpnav['ucp_nav_view_profile']) . '">'
-          .     $avahtml
-          .     '<span class="uc-me__text"><span class="uc-me__name">' . format_name($name, (int) $CURUSER['usergroup']) . '</span>'
-          .     ($gtitle !== '' ? '<span class="uc-me__group">' . $gtitle . '</span>' : '')
-          .     '</span>'
-          .   '</a>'
-          . '</div>';
-
-    // ── вкладки
-    $html .= '<nav class="st-card uc-nav" aria-label="' . htmlspecialchars_uni((string) $lang->usercp['user_cp']) . '">'
-           . '<div class="st-tabs-wrap"><ul class="nav st-tabs">';
-    foreach ($groups as $gk => [$gicon, $glabel, $items]) {
-        $first = reset($items);
-        $html .= '<li class="nav-item"><a class="nav-link' . ($gk === $active ? ' active" aria-current="page' : '') . '" href="' . $first[2] . '">'
-               . '<i class="fa-solid ' . $gicon . '"></i><span>' . $glabel . '</span></a></li>';
-    }
-    $html .= '</ul></div>';
-
-    // ── подстраницы активной группы (если их больше одной)
-    $items = $groups[$active][2];
-    if (count($items) > 1) {
-        $drafts = 0;
-        if ($active === 'content') {
-            $q = $db->sql_query_prepared("SELECT COUNT(pid) AS c FROM posts WHERE visible = '-2' AND uid = ?", [$uid]);
-            $drafts = $q ? (int) $db->fetch_field($q, 'c') : 0;
-        }
-        $html .= '<div class="uc-subnav">';
-        foreach ($items as $ak => [$iicon, $ilabel, $iurl]) {
-            $badge = ($ak === 'drafts' && $drafts > 0) ? '<span class="uc-subnav__count">' . ts_nf($drafts) . '</span>' : '';
-            $html .= '<a class="uc-subnav__link' . ($ak === $action ? ' active" aria-current="page' : '') . '" href="' . $iurl . '">'
-                   . '<i class="fa-solid ' . $iicon . '"></i><span>' . $ilabel . '</span>' . $badge . '</a>';
-        }
-        $html .= '</div>';
-    }
-    $html .= '</nav>';
-
-    return $html;
-}
-
-function uc_frame_close(): string
-{
-    return '</div><!-- /.uc-page -->';
-}
-
-// Карточка-секция: заголовок с иконкой + тело.
-function uc_card(string $icon, string $soft, string $title, string $body, string $desc = '', string $extra_class = ''): string
-{
-    return '<section class="st-card uc-card' . ($extra_class !== '' ? ' ' . $extra_class : '') . '">'
-         .   '<div class="st-card__head">'
-         .     '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
-         .     '<div class="min-w-0"><div class="uc-card__title">' . $title . '</div>'
-         .     ($desc !== '' ? '<div class="uc-card__desc">' . $desc . '</div>' : '')
-         .     '</div>'
-         .   '</div>'
-         .   '<div class="st-card__body">' . $body . '</div>'
-         . '</section>';
-}
-
-// Липкая панель действий внизу формы.
-function uc_submitbar(string $buttons, string $note = ''): string
-{
-    return '<div class="st-submitbar uc-submitbar">'
-         .   '<span class="uc-submitbar__note">' . $note . '</span>'
-         .   '<div class="uc-submitbar__btns">' . $buttons . '</div>'
-         . '</div>';
-}
-
-// Подсказка-плашка (info / warning).
-function uc_note(string $icon, string $html, string $tone = 'info'): string
-{
-    return '<div class="uc-note uc-note--' . $tone . '"><i class="fa-solid ' . $icon . '"></i><div>' . $html . '</div></div>';
-}
-
-// Переключатель-плитка (.st-check) для чекбокса.
-function uc_check(string $name, string $id, string $label, bool $checked, string $icon = '', string $value = '1'): string
-{
-    return '<label class="st-check" for="' . $id . '">'
-         .   '<input type="checkbox" class="form-check-input" name="' . $name . '" id="' . $id . '" value="' . $value . '"' . ($checked ? ' checked="checked"' : '') . '>'
-         .   '<span>' . ($icon !== '' ? '<i class="fa-solid ' . $icon . ' me-1"></i>' : '') . $label . '</span>'
-         . '</label>';
-}
-
-// ── Helper: clean list of positive unique int ids (for IN (...)) ──────────
-function ucp_int_ids(array $raw): array
-{
-    return array_values(array_unique(array_filter(array_map('intval', $raw), static fn(int $v): bool => $v > 0)));
-}
-
-// ── Helper: delete one comment_files entry (file + [img] in linked texts) ──
-// Читает тексты свежими на каждый файл — безопасно, когда несколько файлов
-// одного пользователя лежат в одном и том же посте/комментарии/торренте.
-function ucp_delete_comment_file(int $file_id, int $uid): bool
-{
-    global $db;
-
-    $query = $db->sql_query_prepared("
-        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
-               c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
-               p.message AS post_message, pm.message AS pm_message
-        FROM comment_files cf
-        LEFT JOIN comments c ON c.id=cf.comment_id
-        LEFT JOIN news n ON n.id=cf.news_id
-        LEFT JOIN torrents t ON t.id=cf.torrent_id
-        LEFT JOIN posts p ON p.pid=cf.post_id
-        LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-        WHERE cf.id=? AND cf.user_id=? LIMIT 1", [$file_id, $uid]);
-
-    $file = $query ? $db->fetch_array($query) : null;
-    if (empty($file)) {
-        return false;
-    }
-
-    $path = (string) ($file['file_path'] ?? '');
-    if ($path !== '' && is_file($path)) {
-        @unlink($path);
-    }
-
-    $filename = basename($path);
-    if ($filename !== '') {
-        $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
-
-        foreach ([
-            ['text',    'comments',        'id',   $file['comment_id'],  $file['comment_text']],
-            ['body',    'news',            'id',   $file['news_id'],     $file['news_text']],
-            ['descr',   'torrents',        'id',   $file['torrent_id'],  $file['torrent_description']],
-            ['message', 'posts',           'pid',  $file['post_id'],     $file['post_message']],
-            ['message', 'privatemessages', 'pmid', $file['messages_id'], $file['pm_message']],
-        ] as [$field, $table, $id_field, $id, $content]) {
-            if ($id && $content !== null) {
-                $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
-                if ($new_text !== null && $new_text !== $content) {
-                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
-                }
-            }
-        }
-    }
-
-    $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, $uid]);
-    return true;
-}
-
 // ── Helper: file type icon ─────────────────────────────────────────────────
 function get_file_type_icon(string $file_type): string
 {
@@ -494,59 +238,167 @@ if ($mybb->input['action'] === 'changename') {
     $plugins->run_hooks('usercp_changename_end');
 
     stdhead($lang->usercp['change_username']);
-    ucp_page_open('changename');
     build_breadcrumb();
+    
+	
+	
+$postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+$minLen   = (int)($minnamelength ?? 3);
+$maxLen   = (int)($maxnamelength ?? 25);
 
-    $postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
-    $minLen   = (int)($minnamelength ?? 3);
-    $maxLen   = (int)($maxnamelength ?? 25);
+ 
+$lang_change_username  = htmlspecialchars($lang->usercp['change_username']      ?? '', ENT_QUOTES, 'UTF-8');
+$lang_password_confirm = htmlspecialchars($lang->usercp['password_confirmation'] ?? '', ENT_QUOTES, 'UTF-8');
+$lang_new_username     = htmlspecialchars($lang->usercp['new_username']          ?? '', ENT_QUOTES, 'UTF-8');
+$lang_update_username  = htmlspecialchars($lang->usercp['update_username']       ?? '', ENT_QUOTES, 'UTF-8');
+ 
 
-    $body = uc_note('fa-shield-halved', '<strong>' . $lang->usercp['lbl_important_notice'] . '</strong> ' . $lang->usercp['hint_changename_notice'])
-          . '<div class="uc-field">'
-          .   '<label for="password" class="form-label"><i class="fa-solid fa-lock"></i>' . $lang->usercp['password_confirmation'] . '</label>'
-          .   '<div class="uc-pass position-relative">'
-          .     '<input type="password" class="form-control" name="password" id="password" placeholder="' . $lang->usercp['ph_current_password'] . '" autocomplete="current-password">'
-          .     '<button type="button" class="btn btn-link toggle-password" data-target="password" aria-label="' . $lang->usercp['tip_toggle_password'] . '"><i class="fas fa-eye"></i></button>'
-          .   '</div>'
-          .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_password_confirm_identity'] . '</div>'
-          . '</div>'
-          . '<div class="uc-field">'
-          .   '<label for="username" class="form-label"><i class="fa-solid fa-user-tag"></i>' . $lang->usercp['new_username'] . '</label>'
-          .   '<input type="text" class="form-control" name="username" id="username" maxlength="' . $maxLen . '" value="' . $username . '" placeholder="' . $lang->usercp['ph_new_username'] . '" autocomplete="username">'
-          .   '<div id="usernameFeedback" class="username-feedback"></div>'
-          .   '<div class="char-counter" id="charCounter">'
-          .     '<i class="fa-solid fa-text-height me-1"></i><span id="usernameLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters']
-          .     '<span id="minLengthHint" class="ms-2"><i class="fa-solid fa-circle-info me-1"></i>' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '</span>'
-          .   '</div>'
-          .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_username_unique'] . '</div>'
-          . '</div>';
-
-    echo uc_frame_open('changename', 'fa-user-tag', 'st-soft-primary', $lang->usercp['change_username'], $lang->usercp['hint_changename_sub'])
-       . ($errors ? '<div class="uc-errors">' . $errors . '</div>' : '')
-       . '<form action="usercp.php" method="post">'
-       .   '<input type="hidden" name="my_post_key" value="' . $postCode . '">'
-       .   '<input type="hidden" name="action" value="do_changename">'
-       .   uc_card('fa-user-pen', 'st-soft-primary', $lang->usercp['change_username'], $body)
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="submit" value="' . htmlspecialchars_uni($lang->usercp['update_username']) . '" id="submitBtn"><i class="fa-solid fa-user-pen me-2"></i>' . $lang->usercp['update_username'] . '</button>')
-       . '</form>'
-       . uc_frame_close();
-
-    echo '<script>window.MIN_USERNAME_LENGTH = ' . $minLen . '; window.MAX_USERNAME_LENGTH = ' . $maxLen . ';</script>'
-       . $swal_assets
-       . ucp_js_lang([
-           'username_too_short'     => 'js_username_too_short',
-           'username_too_long'      => 'js_username_too_long',
-           'username_bad_chars'     => 'js_username_bad_chars',
-           'username_empty'         => 'js_username_empty',
-           'username_trim'          => 'js_username_trim',
-           'username_double_space'  => 'js_username_double_space',
-           'username_ok'            => 'js_username_ok',
-           'username_rules'         => 'js_username_rules',
-           'enter_username'         => 'js_enter_username',
-           'enter_password_confirm' => 'js_enter_password_confirm',
-           'updating'               => 'js_updating',
-       ])
-       . '<script src="' . $BASEURL . '/scripts/username-validation.js?ver=4"></script>';
+ 
+$_tpl_out =
+'<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/change_username.css">
+ 
+<form action="usercp.php" method="post">
+<input type="hidden" name="my_post_key" value="' . $postCode . '" />
+ 
+<div class="container-md py-4">
+<div class="row g-4">
+ 
+    <div class="col-lg-3">
+        ' . $usercpnav . '
+    </div>
+ 
+    <div class="col-lg-9">
+ 
+        ' . $errors . '
+ 
+        <div class="card">
+            <div class="card-body">
+ 
+                <!-- Заголовок (мобильный) -->
+                <div class="bg-nav p-2 rounded text-16 d-lg-none mb-3">
+                    <i class="fas fa-user-pen me-2 text-primary"></i> ' . $lang_change_username . '
+                </div>
+ 
+                <div class="row g-4">
+ 
+                    <!-- Иконка-заголовок (десктоп) -->
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="section-title-left text-center w-100">
+                            <i class="fas fa-user-edit section-icon-large"></i>
+                            <div class="fw-bold mt-2">' . $lang_change_username . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_changename_sub'] . '</small>
+                        </div>
+                    </div>
+ 
+                    <div class="col-lg-9">
+ 
+                        <!-- Уведомление -->
+                        <div class="info-hint mb-4">
+                            <i class="fas fa-shield-alt me-2 text-info"></i>
+                            <strong>' . $lang->usercp['lbl_important_notice'] . '</strong>
+                            ' . $lang->usercp['hint_changename_notice'] . '
+                        </div>
+ 
+                        <!-- Подтверждение паролем -->
+                        <div class="form-group mb-4 pb-3 border-bottom">
+                            <label for="password" class="form-label">
+                                <i class="fas fa-lock text-warning me-1"></i>
+                                ' . $lang_password_confirm . '
+                            </label>
+                            <div class="position-relative">
+                                <input type="password" class="form-control pe-5"
+                                       name="password" id="password"
+                                       placeholder="' . $lang->usercp['ph_current_password'] . '"
+                                       autocomplete="current-password" />
+                                <button type="button"
+                                        class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
+                                        data-target="password"
+                                        aria-label="' . $lang->usercp['tip_toggle_password'] . '">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_confirm_identity'] . '
+                            </small>
+                        </div>
+ 
+                        <!-- Новый никнейм -->
+                        <div class="form-group mb-4">
+                            <label for="username" class="form-label">
+                                <i class="fas fa-user-circle text-primary me-1"></i>
+                                ' . $lang_new_username . '
+                            </label>
+                            <input type="text" class="form-control"
+                                   name="username" id="username"
+                                   maxlength="' . $maxLen . '"
+                                   value="' . $username . '"
+                                   placeholder="' . $lang->usercp['ph_new_username'] . '"
+                                   autocomplete="username" />
+                            <div id="usernameFeedback" class="username-feedback"></div>
+                            <div class="char-counter mt-1" id="charCounter">
+                                <i class="fas fa-text-height me-1"></i>
+                                <span id="usernameLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters'] . '
+                                <span id="minLengthHint" class="ms-2">
+                                    <i class="fas fa-info-circle me-1"></i> ' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '
+                                </span>
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_username_unique'] . '
+                            </small>
+                        </div>
+ 
+                    </div>
+                </div>
+ 
+            </div><!-- card-body -->
+ 
+            <div class="card-footer text-center">
+                <input type="hidden" name="action" value="do_changename" />
+                <!-- FIX: было две иконки (fa-save + fa-user-pen) — оставлена одна -->
+                <button type="submit" class="btn btn-primary"
+                        name="submit"
+                        value="' . $lang_update_username . '"
+                        id="submitBtn">
+                    <i class="fas fa-user-pen me-2"></i> ' . $lang_update_username . '
+                </button>
+            </div>
+ 
+        </div><!-- card -->
+    </div><!-- col-lg-9 -->
+</div><!-- row -->
+</div><!-- container -->
+</form>
+ 
+<script>
+window.MIN_USERNAME_LENGTH = ' . $minLen . ';
+window.MAX_USERNAME_LENGTH = ' . $maxLen . ';
+</script>
+' . $swal_assets . '
+' . ucp_js_lang([
+    'username_too_short' => 'js_username_too_short',
+    'username_too_long' => 'js_username_too_long',
+    'username_bad_chars' => 'js_username_bad_chars',
+    'username_empty' => 'js_username_empty',
+    'username_trim' => 'js_username_trim',
+    'username_double_space' => 'js_username_double_space',
+    'username_ok' => 'js_username_ok',
+    'username_rules' => 'js_username_rules',
+    'enter_username' => 'js_enter_username',
+    'enter_password_confirm' => 'js_enter_password_confirm',
+    'updating' => 'js_updating',
+]) . '
+<script src="' . $BASEURL . '/scripts/username-validation.js?ver=3"></script>';
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	echo $_tpl_out;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -682,146 +534,464 @@ if ($mybb->input['action'] === 'options') {
 
     $tzselect = build_timezone_select('timezoneoffset', $CURUSER['timezone'], true);
 
+    $pms_from_buddys = '';
+    if ((int) ($allowbuddyonly ?? 0) === 1) {
+        
+		$pms_from_buddys = '<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="receivefrombuddy" id="receivefrombuddy" value="1" '.$receivefrombuddycheck.' />
+  <label class="form-check-label" for="flexSwitchCheckDefault">'.$lang->usercp['receive_from_buddy'].'</label>
+</div>';
+
+    }
+
+    if ((int) ($enablepms ?? 1) !== 0) 
+	{ 
+	
+	$pms = '<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="receivepms" id="receivepms" value="1" '.$receivepmscheck.' />
+  <label class="form-check-label" for="flexSwitchCheckDefault">'.$lang->usercp['receive_pms'].'</label>
+</div>
+'.$pms_from_buddys.'
+<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="pmnotice" id="pmnotice" value="1"'.$pmnoticecheck.' />
+  <label class="form-check-label" for="flexSwitchCheckDefault">'.$lang->usercp['pm_notice'].'</label>
+</div>
+<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="pmnotify" id="pmnotify" value="1" '.$pmnotifycheck.' />
+  <label class="form-check-label" for="flexSwitchCheckDefault">'.$lang->usercp['pm_notify'].'</label>
+</div>
+<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="buddyrequestspm" id="buddyrequestspm" value="1" '.$buddyrequestspmcheck.' />
+  <label class="form-check-label" for="flexSwitchCheckDefault">'.$lang->usercp['buddyrequests_pm'].'</label>
+</div>'; 
+	
+	} 
+	else 
+	{ 
+     $pms = ''; 
+	 
+	}
+
+    $threadview = ['linear' => '', 'threaded' => ''];
+    if (is_scalar($user['threadmode'] ?? null)) {
+        $threadview[$user['threadmode']] = 'selected="selected"';
+    }
+
     $daysprunesel = array_fill_keys([1, 5, 10, 20, 50, 75, 100, 365, 9999], '');
-    if (isset($user['daysprune']) && is_numeric($user['daysprune']) && isset($daysprunesel[(int) $user['daysprune']])) {
-        $daysprunesel[(int) $user['daysprune']] = 'selected="selected"';
+    if (isset($user['daysprune']) && is_numeric($user['daysprune'])) {
+        $daysprunesel[$user['daysprune']] = 'selected="selected"';
     }
 
-    // ── Messaging & notifications (чекбоксы — плитки .st-check с правильными for/id)
-    $checks = uc_check('commentpm', 'commentpm', $lang->usercp['pm10'], $allowcommentpm !== '', 'fa-paper-plane')
-            . uc_check('allownotices', 'allownotices', $lang->usercp['allow_notices'], $allownoticescheck !== '', 'fa-bell')
-            . uc_check('hideemail', 'hideemail', $lang->usercp['allow_emails'], $hideemailcheck !== '', 'fa-at');
-    if ((int) ($enablepms ?? 1) !== 0) {
-        $checks .= uc_check('receivepms', 'receivepms', $lang->usercp['receive_pms'], $receivepmscheck !== '', 'fa-envelope');
-        if ((int) ($allowbuddyonly ?? 0) === 1) {
-            $checks .= uc_check('receivefrombuddy', 'receivefrombuddy', $lang->usercp['receive_from_buddy'], $receivefrombuddycheck !== '', 'fa-user-group');
-        }
-        $checks .= uc_check('pmnotice', 'pmnotice', $lang->usercp['pm_notice'], $pmnoticecheck !== '', 'fa-bell')
-                 . uc_check('pmnotify', 'pmnotify', $lang->usercp['pm_notify'], $pmnotifycheck !== '', 'fa-envelope-open-text')
-                 . uc_check('buddyrequestspm', 'buddyrequestspm', $lang->usercp['buddyrequests_pm'], $buddyrequestspmcheck !== '', 'fa-user-plus');
-    }
-    $checks .= uc_check('buddyrequestsauto', 'buddyrequestsauto', $lang->usercp['buddyrequests_auto'], $buddyrequestsautocheck !== '', 'fa-user-check');
+    $user['style'] ??= '';
 
-    $sec_privacy = '<div class="uc-checks">' . uc_check('invisible', 'invisible', $lang->usercp['invisible_mode'], $invisiblecheck !== '', 'fa-user-secret') . '</div>';
-
-    $sec_messaging = '<div class="uc-checks">' . $checks . '</div>'
-        . '<div class="uc-field">'
-        .   '<label for="subscriptionmethod" class="form-label"><i class="fa-solid fa-bell"></i>' . $lang->usercp['subscription_method'] . '</label>'
-        .   '<select name="subscriptionmethod" id="subscriptionmethod" class="form-select w-auto">'
-        .     '<option value="0" ' . $no_auto_subscribe_selected . '>' . $lang->usercp['no_auto_subscribe'] . '</option>'
-        .     '<option value="1" ' . $no_subscribe_selected . '>' . $lang->usercp['no_subscribe'] . '</option>'
-        .     '<option value="2" ' . $instant_email_subscribe_selected . '>' . $lang->usercp['instant_email_subscribe'] . '</option>'
-        .     '<option value="3" ' . $instant_pm_subscribe_selected . '>' . $lang->usercp['instant_pm_subscribe'] . '</option>'
-        .   '</select>'
-        . '</div>';
-
-    // ── Torrent category notifications
-    $pmnotif    = str_contains((string) $CURUSER['notifs'], '[pm]');
-    $emailnotif = str_contains((string) $CURUSER['notifs'], '[email]');
-
-    if (!isset($_categoriesC) || !is_array($_categoriesC)) {
-        require_once TSDIR . '/cache/categories.php';
-    }
-    $notifs = (string) ($CURUSER['notifs'] ?? '');
-    $category_subscriptions = '';
-    foreach ($_categoriesC as $cat) {
-        $cat_id = (int) $cat['id'];
-        $active = str_contains($notifs, '[cat' . $cat_id . ']');
-        $icon   = htmlspecialchars_uni($cat['icon'] ?? 'fas fa-folder');
-        $name   = htmlspecialchars_uni($cat['name']);
-        $category_subscriptions .= '<button type="button" class="cat-pick-btn' . ($active ? ' active' : '') . '" '
-            . 'data-id="' . $cat_id . '" title="' . $name . '" aria-pressed="' . ($active ? 'true' : 'false') . '" onclick="toggleCatSub(this)">'
-            . '<i class="' . $icon . '"></i><span>' . $name . '</span></button>';
-    }
-    preg_match_all('/\[cat\d+\]/', $notifs, $cat_matches);
-    $current_cats = implode('', $cat_matches[0]);
-
-    $sec_cats = '<div class="uc-checks">'
-        .   uc_check('pmnotif', 'pmnotif', $lang->usercp['lbl_pm_notification_cat'], $pmnotif, 'fa-envelope', 'yes')
-        .   uc_check('emailnotif', 'emailnotif', $lang->usercp['lbl_email_notification_cat'], $emailnotif, 'fa-at', 'yes')
-        . '</div>'
-        . '<div class="uc-field">'
-        .   '<input type="hidden" name="cat_subscriptions" id="catSubsSelected" value="' . htmlspecialchars_uni($current_cats) . '">'
-        .   '<div class="category-icon-picker" id="catSubsPicker">' . $category_subscriptions . '</div>'
-        .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_cat_toggle'] . '</div>'
-        . '</div>';
-
-    // ── Date & time
-    $sec_datetime = '<div class="uc-grid">'
-        . '<div><label for="dateformat" class="form-label fw-semibold">' . $lang->usercp['date_format'] . '</label>'
-        .   '<select name="dateformat" id="dateformat" class="form-select"><option value="0">' . $lang->usercp['use_default'] . '</option>' . $date_format_options . '</select></div>'
-        . '<div><label for="timeformat" class="form-label fw-semibold">' . $lang->usercp['time_format'] . '</label>'
-        .   '<select name="timeformat" id="timeformat" class="form-select"><option value="0">' . $lang->usercp['use_default'] . '</option>' . $time_format_options . '</select></div>'
-        . '<div><label class="form-label fw-semibold">' . $lang->usercp['time_offset'] . '</label>' . $tzselect . '</div>'
-        . '<div><label for="dstcorrection" class="form-label fw-semibold">' . $lang->usercp['dst_correction'] . '</label>'
-        .   '<select name="dstcorrection" id="dstcorrection" class="form-select">'
-        .     '<option value="2" ' . $dst_auto_selected . '>' . $lang->usercp['dst_correction_auto'] . '</option>'
-        .     '<option value="1" ' . $dst_enabled_selected . '>' . $lang->usercp['dst_correction_enabled'] . '</option>'
-        .     '<option value="0" ' . $dst_disabled_selected . '>' . $lang->usercp['dst_correction_disabled'] . '</option>'
-        .   '</select></div>'
-        . '</div>';
-
-    // ── Forum / torrent display
-    $daysprune_opts = [
-        1 => 'thread_view_lastday', 5 => 'thread_view_5days', 10 => 'thread_view_10days', 20 => 'thread_view_20days',
-        50 => 'thread_view_50days', 75 => 'thread_view_75days', 100 => 'thread_view_100days',
-        365 => 'thread_view_year', 9999 => 'thread_view_all',
-    ];
-    $daysprune_html = '<option value="">' . $lang->usercp['use_default'] . '</option>';
-    foreach ($daysprune_opts as $val => $key) {
-        $daysprune_html .= '<option value="' . $val . '" ' . $daysprunesel[$val] . '>' . $lang->usercp[$key] . '</option>';
-    }
-
-    $sel = static function (string $name, string $label, string $options) use ($lang): string {
-        return '<div><label for="' . $name . '" class="form-label fw-semibold">' . $label . '</label>'
-             . '<select name="' . $name . '" id="' . $name . '" class="form-select"><option value="">' . $lang->usercp['use_default'] . '</option>' . $options . '</select></div>';
-    };
-
-    $tpp_html = $ppp_html = '';
+    // TPP / PPP selects
+    $tppselect = $pppselect = '';
     if ($usertppoptions) {
-        $opts = '';
+        $tppoptions = '';
         foreach (array_map('trim', explode(',', $usertppoptions)) as $val) {
-            $opts .= '<option value="' . (int) $val . '"' . ((isset($user['threadsperpages']) && $user['threadsperpages'] == $val) ? ' selected="selected"' : '') . '>' . sprintf($lang->usercp['tpp_option'], $val) . '</option>';
+            $selected = (isset($user['threadsperpages']) && $user['threadsperpages'] == $val) ? ' selected="selected"' : '';
+            $tpp_option = sprintf($lang->usercp['tpp_option'], $val);
+            $tppoptions .= '<option value="' . $val . '"' . $selected . '>' . $tpp_option . '</option>';
         }
-        $tpp_html = $sel('tpp', $lang->usercp['tpp'], $opts);
+        
+		$tppselect = '<div class="mb-2 pb-3">
+	<label for="tpp">'.$lang->usercp['tpp'].'</label>
+<select name="tpp" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->usercp['use_default'].'</option>
+'.$tppoptions.'
+</select>
+</div>';
+		
     }
-    if ($userpppoptions) {
-        $opts = '';
-        foreach (array_map('trim', explode(',', $userpppoptions)) as $val) {
-            $opts .= '<option value="' . (int) $val . '"' . ((isset($user['postsperpage']) && $user['postsperpage'] == $val) ? ' selected="selected"' : '') . '>' . sprintf($lang->usercp['ppp_option'], $val) . '</option>';
-        }
-        $ppp_html = $sel('ppp', $lang->usercp['post_per_page'], $opts);
-    }
-    $opts = '';
-    foreach ([5, 10, 15, 20, 25, 30, 40, 50] as $val) {
-        $opts .= '<option value="' . $val . '"' . ((isset($CURUSER['torrentsperpage']) && $CURUSER['torrentsperpage'] == $val) ? ' selected="selected"' : '') . '>' . sprintf($lang->usercp['tp_option'], $val) . '</option>';
-    }
-    $tp_html = $sel('tp', $lang->usercp['tppp'], $opts);
 
-    $sec_display = '<div class="uc-grid">'
-        . '<div><label for="daysprune" class="form-label fw-semibold">' . $lang->usercp['thread_view'] . '</label>'
-        .   '<select name="daysprune" id="daysprune" class="form-select">' . $daysprune_html . '</select></div>'
-        . $tpp_html . $ppp_html . $tp_html
-        . '</div>';
+    if ($userpppoptions) {
+        $pppoptions = '';
+        foreach (array_map('trim', explode(',', $userpppoptions)) as $val) {
+            $selected = (isset($user['postsperpage']) && $user['postsperpage'] == $val) ? ' selected="selected"' : '';
+            $ppp_option = sprintf($lang->usercp['ppp_option'], $val);
+            $pppoptions .= '<option value="' . $val . '"' . $selected . '>' . $ppp_option . '</option>';
+        }
+        
+		$pppselect = '<div class="mb-2 pb-3">
+	<label for="ppp">'.$lang->usercp['post_per_page'].'</label>
+<select name="ppp" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->usercp['use_default'].'</option>
+'.$pppoptions.'
+</select>
+</div>';
+		
+		
+    }
+
+    // Torrents-per-page select
+    $pppselect2 = '';
+    $pppoptions2 = '';
+    foreach (array_map('trim', explode(',', '5,10,15,20,25,30,40,50')) as $val) {
+        $selected = (isset($CURUSER['torrentsperpage']) && $CURUSER['torrentsperpage'] == $val) ? ' selected="selected"' : '';
+        $ppp_option2 = sprintf($lang->usercp['tp_option'], $val);
+        $pppoptions2 .= '<option value="' . $val . '"' . $selected . '>' . $ppp_option2 . '</option>';
+    }
+    
+	
+	$pppselect2 = '<div class="mb-2 pb-3">
+	<label for="tp">'.$lang->usercp['tppp'].'</label>
+<select name="tp" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->usercp['use_default'].'</option>
+'.$pppoptions2.'
+</select>
+</div>';
+	
+	
+
+$pmnotif    = str_contains($CURUSER['notifs'], '[pm]')    ? 'checked' : '';
+$emailnotif = str_contains($CURUSER['notifs'], '[email]') ? 'checked' : '';
+
+if (!isset($_categoriesC) || !is_array($_categoriesC)) {
+    require_once TSDIR . '/cache/categories.php';
+}
+
+$notifs = $CURUSER['notifs'] ?? '';
+
+$category_subscriptions = '';
+foreach ($_categoriesC as $cat) {
+    $cat_id = (int)$cat['id'];
+    $active = str_contains($notifs, '[cat' . $cat_id . ']') ? 'active' : '';
+    $icon   = htmlspecialchars_uni($cat['icon'] ?? 'fas fa-folder');
+    $name   = htmlspecialchars_uni($cat['name']);
+    $category_subscriptions .= '<button type="button" class="cat-pick-btn ' . $active . '" '
+        . 'data-id="' . $cat_id . '" title="' . $name . '" onclick="toggleCatSub(this)">'
+        . '<i class="' . $icon . '"></i><span>' . $name . '</span></button>';
+}
+
+preg_match_all('/\[cat\d+\]/', $notifs, $cat_matches);
+$current_cats = implode('', $cat_matches[0]);
+
+
+    // Invisible option
+    
+	$canbeinvisible = '<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->usercp['login_cookies_privacy'].'</div>
+	<div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+		<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+			'.$lang->usercp['login_cookies_privacy'].'
+			
+		</div>
+		<div class="col">
+			
+<div class="form-check">
+  <input type="checkbox" class="form-check-input" name="invisible" id="invisible" value="1" '.$invisiblecheck.' />
+  <label class="form-check-label fw-normal" for="flexSwitchCheckDefault">'.$lang->usercp['invisible_mode'].'</label>
+	</div>	
+		</div>
+		</div>';
+		
+
+
+
 
     $plugins->run_hooks('usercp_options_end');
     stdhead($lang->usercp['edit_options']);
-    ucp_page_open('options');
     build_breadcrumb();
+    
+	$_tpl_out = '
+	
+	<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['edit_options'].'</title>
+    
+	<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_options.css">
 
-    echo uc_frame_open('options', 'fa-sliders', 'st-soft-primary', $lang->usercp['edit_options'], $lang->usercp['hint_options_sub'])
-       . ($errors !== '' ? '<div class="uc-errors">' . $errors . '</div>' : '')
-       . '<form action="usercp.php" method="post">'
-       .   '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
-       .   '<input type="hidden" name="action" value="do_options">'
-       .   uc_card('fa-user-secret', 'st-soft-muted', $lang->usercp['login_cookies_privacy'], $sec_privacy)
-       .   uc_card('fa-envelope-open-text', 'st-soft-info', $lang->usercp['messaging_notification'], $sec_messaging)
-       .   uc_card('fa-bell', 'st-soft-warning', $lang->usercp['sec_cat_notifications'], $sec_cats, $lang->usercp['hint_cat_notifications'])
-       .   uc_card('fa-calendar-days', 'st-soft-success', $lang->usercp['date_time_options'], $sec_datetime)
-       .   uc_card('fa-display', 'st-soft-primary', $lang->usercp['forum_display_options'], $sec_display)
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="regsubmit" value="' . htmlspecialchars_uni($lang->usercp['update_options']) . '"><i class="fa-solid fa-floppy-disk me-2"></i>' . $lang->usercp['update_options'] . '</button>')
-       . '</form>'
-       . uc_frame_close();
+<style>	
+	.category-icon-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cat-pick-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 18px;
+    min-width: 90px;
+    border: 1.5px solid #dee2e6;
+    border-radius: 14px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #6c757d;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.cat-pick-btn i {
+    font-size: 1.8rem;
+    transition: transform 0.2s ease;
+}
+
+.cat-pick-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f0f5ff;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(13,110,253,0.15);
+}
+
+.cat-pick-btn:hover i {
+    transform: scale(1.2);
+}
+
+.cat-pick-btn.active {
+    border-color: #0d6efd;
+    border-width: 2px;
+    background: #e7f1ff;
+    color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.12);
+    transform: translateY(-2px);
+}
+
+.cat-pick-btn.active span {
+    font-weight: 700;
+}
+
+
+</style>
+
+
+
+    
+</head>
+<body>
+
+<form action="usercp.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md py-4">
+<div class="row g-4">
+<div class="col-lg-3">
+    '.$usercpnav.'
+</div>
+<div class="col-lg-9">
+
+    '.$errors.'				
+    <div class="card">
+        <div class="card-body">
+            
+            '.$canbeinvisible.'
+            
+            <!-- ========= MESSAGING & NOTIFICATION SECTION ========= -->
+            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">
+                <i class="fas fa-comment-dots me-2 text-primary"></i> '.$lang->usercp['messaging_notification'].'
+            </div>
+            <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+                    <i class="fas fa-envelope-open-text me-2 text-info"></i> '.$lang->usercp['messaging_notification'].'
+                </div>
+                <div class="col">
+                    <!-- Comment PM -->
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" name="commentpm" id="commentpm" value="1" '.$allowcommentpm.' />
+                        <label class="form-check-label" for="commentpm">
+                            <i class="fas fa-paper-plane text-primary"></i> '.$lang->usercp['pm10'].'
+                        </label>
+                    </div>
+                    <!-- Allow Notices -->
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" name="allownotices" id="allownotices" value="1" '.$allownoticescheck.' />
+                        <label class="form-check-label" for="allownotices">
+                            <i class="fas fa-bell text-warning"></i> '.$lang->usercp['allow_notices'].'
+                        </label>
+                    </div>
+                    <!-- Hide email / allow emails -->
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" name="hideemail" id="hideemail" value="1" '.$hideemailcheck.' />
+                        <label class="form-check-label" for="hideemail">
+                            <i class="fas fa-at text-success"></i> '.$lang->usercp['allow_emails'].'
+                        </label>
+                    </div>
+                    '.$pms.'
+                    <!-- Buddy requests auto -->
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" name="buddyrequestsauto" id="buddyrequestsauto" value="1" '.$buddyrequestsautocheck.' />
+                        <label class="form-check-label" for="buddyrequestsauto">
+                            <i class="fas fa-user-plus text-secondary"></i> '.$lang->usercp['buddyrequests_auto'].'
+                        </label>
+                    </div>
+                    
+                    <!-- Subscription method with icon -->
+                    <div class="form-group mt-4">
+                        <label class="fw-semibold mb-2"><i class="fas fa-bell-ring me-2 text-info"></i> '.$lang->usercp['subscription_method'].'</label>
+                        <select name="subscriptionmethod" id="subscriptionmethod" class="form-select form-select-sm border w-auto pe-5">
+                            <option value="0" '.$no_auto_subscribe_selected.'><i class="fas fa-ban"></i> '.$lang->usercp['no_auto_subscribe'].'</option>
+                            <option value="1" '.$no_subscribe_selected.'><i class="fas fa-eye-slash"></i> '.$lang->usercp['no_subscribe'].'</option>
+                            <option value="2" '.$instant_email_subscribe_selected.'><i class="fas fa-envelope"></i> '.$lang->usercp['instant_email_subscribe'].'</option>
+                            <option value="3" '.$instant_pm_subscribe_selected.'><i class="fas fa-comment-dots"></i> '.$lang->usercp['instant_pm_subscribe'].'</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ========= TORRENT CATEGORY NOTIFICATIONS ========= -->
+            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
+                <i class="fas fa-bell me-1"></i> ' . $lang->usercp['sec_cat_notifications'] . '
+            </div>
+            <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+                    <i class="fas fa-bell me-1 fa-fw text-warning"></i> ' . $lang->usercp['sec_cat_notifications_short'] . '
+                </div>
+                <div class="col">
+                    <p class="text-muted small mb-3">
+                        <i class="fas fa-info-circle me-1 text-info"></i>
+                        ' . $lang->usercp['hint_cat_notifications'] . '
+                    </p>
+                    <!-- PM / Email toggles with beautiful icons -->
+                    <div class="d-flex gap-4 mb-3 flex-wrap">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="pmnotif" id="pmnotif" value="yes" '.$pmnotif.' />
+                            <label class="form-check-label" for="pmnotif">
+                                <i class="fas fa-envelope me-1 text-primary"></i> <strong>' . $lang->usercp['lbl_pm_notification_cat'] . '</strong>
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="emailnotif" id="emailnotif" value="yes" '.$emailnotif.' />
+                            <label class="form-check-label" for="emailnotif">
+                                <i class="fas fa-at me-1 text-success"></i> <strong>' . $lang->usercp['lbl_email_notification_cat'] . '</strong>
+                            </label>
+                        </div>
+                    </div>
+                  
+<!-- Category Subscriptions -->
+<input type="hidden" name="cat_subscriptions" id="catSubsSelected" value="'.htmlspecialchars_uni($current_cats).'">
+<div class="category-icon-picker" id="catSubsPicker">
+    '.$category_subscriptions.'
+</div>
+<div class="mt-2 small text-muted">
+    <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_cat_toggle'] . '
+</div>
+
+                </div>
+            </div>	
+            
+            <!-- ========= DATE & TIME OPTIONS ========= -->
+            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
+                <i class="fas fa-calendar-alt me-2"></i> '.$lang->usercp['date_time_options'].'
+            </div>
+            <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+                    <i class="fas fa-calendar-week me-2 text-secondary"></i> '.$lang->usercp['date_time_options'].'
+                </div>
+                <div class="col">
+                    <!-- Date format -->
+                    <div class="mb-3 pb-2">
+                        <label class="fw-semibold mb-2"><i class="fas fa-calendar-day me-2 text-primary"></i> '.$lang->usercp['date_format'].'</label>
+                        <select name="dateformat" class="form-select form-select-sm border pe-5 w-auto">
+                            <option value="0"><i class="fas fa-globe"></i> '.$lang->usercp['use_default'].'</option>
+                            '.$date_format_options.'
+                        </select>
+                    </div>
+                    <!-- Time format -->
+                    <div class="mb-3 pb-2">
+                        <label class="fw-semibold mb-2"><i class="fas fa-clock me-2 text-success"></i> '.$lang->usercp['time_format'].'</label>
+                        <select name="timeformat" class="form-select form-select-sm border pe-5 w-auto">
+                            <option value="0"><i class="fas fa-globe"></i> '.$lang->usercp['use_default'].'</option>
+                            '.$time_format_options.'
+                        </select>
+                    </div>
+                    <!-- Time offset -->
+                    <div class="mb-2">
+                        <label class="fw-semibold"><i class="fas fa-globe-americas me-2 text-info"></i> '.$lang->usercp['time_offset'].'</label>
+                        '.$tzselect.'
+                    </div>
+                    <!-- DST correction -->
+                    <div class="mt-3">
+                        <label class="fw-semibold mb-2"><i class="fas fa-sun me-2 text-warning"></i> '.$lang->usercp['dst_correction'].'</label>
+                        <select name="dstcorrection" class="form-select form-select-sm border w-auto pe-5">
+                            <option value="2" '.$dst_auto_selected.'><i class="fas fa-robot"></i> '.$lang->usercp['dst_correction_auto'].'</option>
+                            <option value="1" '.$dst_enabled_selected.'><i class="fas fa-check-circle text-success"></i> '.$lang->usercp['dst_correction_enabled'].'</option>
+                            <option value="0" '.$dst_disabled_selected.'><i class="fas fa-ban text-danger"></i> '.$lang->usercp['dst_correction_disabled'].'</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ========= FORUM DISPLAY OPTIONS ========= -->
+            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
+                <i class="fas fa-chalkboard-user me-2"></i> '.$lang->usercp['forum_display_options'].'
+            </div>
+            <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+                    <i class="fas fa-desktop me-2 text-info"></i> '.$lang->usercp['forum_display_options'].'
+                </div>
+                <div class="col">
+                    <!-- Thread view cutoff (daysprune) -->
+                    <div class="mb-3 pb-2">
+                        <label class="fw-semibold mb-2"><i class="fas fa-hourglass-half me-2 text-secondary"></i> '.$lang->usercp['thread_view'].'</label>
+                        <select name="daysprune" class="form-select form-select-sm border pe-5 w-auto">
+                            <option value=""><i class="fas fa-star-of-life"></i> '.$lang->usercp['use_default'].'</option>
+                            <option value="1" '.$daysprunesel['1'].'><i class="fas fa-calendar-day"></i> '.$lang->usercp['thread_view_lastday'].'</option>
+                            <option value="5" '.$daysprunesel['5'].'><i class="fas fa-calendar-week"></i> '.$lang->usercp['thread_view_5days'].'</option>
+                            <option value="10" '.$daysprunesel['10'].'><i class="fas fa-calendar-week"></i> '.$lang->usercp['thread_view_10days'].'</option>
+                            <option value="20" '.$daysprunesel['20'].'><i class="fas fa-calendar-alt"></i> '.$lang->usercp['thread_view_20days'].'</option>
+                            <option value="50" '.$daysprunesel['50'].'><i class="fas fa-calendar-alt"></i> '.$lang->usercp['thread_view_50days'].'</option>
+                            <option value="75" '.$daysprunesel['75'].'><i class="fas fa-calendar-alt"></i> '.$lang->usercp['thread_view_75days'].'</option>
+                            <option value="100" '.$daysprunesel['100'].'><i class="fas fa-calendar-alt"></i> '.$lang->usercp['thread_view_100days'].'</option>
+                            <option value="365" '.$daysprunesel['365'].'><i class="fas fa-calendar-check"></i> '.$lang->usercp['thread_view_year'].'</option>
+                            <option value="9999" '.$daysprunesel['9999'].'><i class="fas fa-infinity"></i> '.$lang->usercp['thread_view_all'].'</option>
+                        </select>
+                    </div>
+                    <!-- Topics per page (tpp) dynamic -->
+                    '.$tppselect.'
+                </div>
+            </div>
+            
+            <!-- ========= THREAD VIEW OPTIONS ========= -->
+            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
+                <i class="fas fa-comment-dots me-2"></i> '.$lang->usercp['thread_view_options'].'
+            </div>
+            <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+                    <i class="fas fa-eye me-2 text-primary"></i> '.$lang->usercp['thread_view_options'].'
+                </div>
+                <div class="col">
+                    
+                    <!-- Posts per page (ppp) -->
+                    '.$pppselect.'
+                    '.$pppselect2.'
+                </div>
+            </div>
+            
+            
+        
+        </div> <!-- card-body -->
+        
+        <div class="card-footer text-center">
+            <input type="hidden" name="action" value="do_options" />
+            <button type="submit" class="btn btn-primary" name="regsubmit" value="'.$lang->usercp['update_options'].'">
+                <i class="fas fa-sliders-h me-2"></i> '.$lang->usercp['update_options'].'
+            </button>
+        </div>
+    </div> <!-- card -->
+</div> <!-- col -->
+</div> <!-- row -->
+</div> <!-- container -->
+</form>
+
+
+<script src="'.$BASEURL.'/scripts/usercp.js?ver=1903"></script>
+
+<script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
+
+</body>
+</html>';
+	
+
+	echo $_tpl_out;
+	
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -927,40 +1097,166 @@ if ($mybb->input['action'] === 'email') {
 
     $plugins->run_hooks('usercp_email');
     stdhead($lang->usercp['change_email']);
-    ucp_page_open('email');
     build_breadcrumb();
+   
+    $_tpl_out = '
+	
+	
+	<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['change_email'].'</title>
+   
+    <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
+    
 
-    $body = uc_note('fa-shield-halved', '<strong>' . $lang->usercp['lbl_security_notice'] . '</strong> ' . $lang->usercp['hint_email_notice'])
-          . '<div class="uc-field">'
-          .   '<label for="password" class="form-label"><i class="fa-solid fa-lock"></i>' . $lang->usercp['current_password'] . '</label>'
-          .   '<div class="uc-pass position-relative">'
-          .     '<input type="password" class="form-control" name="password" id="password" placeholder="' . $lang->usercp['ph_current_password'] . '" autocomplete="current-password">'
-          .     '<button type="button" class="btn btn-link toggle-password" aria-label="' . $lang->usercp['tip_toggle_password'] . '"><i class="fas fa-eye"></i></button>'
-          .   '</div>'
-          .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_password_verify_identity'] . '</div>'
-          . '</div>'
-          . '<div class="uc-field uc-grid uc-grid--2">'
-          .   '<div>'
-          .     '<label for="email" class="form-label"><i class="fa-solid fa-envelope"></i>' . $lang->usercp['new_email'] . '</label>'
-          .     '<input type="email" class="form-control" name="email" id="email" maxlength="150" value="' . $email . '" placeholder="newemail@example.com" autocomplete="email">'
-          .     '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_new_email'] . '</div>'
-          .   '</div>'
-          .   '<div>'
-          .     '<label for="email2" class="form-label"><i class="fa-solid fa-circle-check"></i>' . $lang->usercp['confirm_email'] . '</label>'
-          .     '<input type="email" class="form-control" name="email2" id="email2" maxlength="150" value="' . $email2 . '" placeholder="' . $lang->usercp['ph_confirm_email'] . '" autocomplete="email">'
-          .   '</div>'
-          . '</div>';
+      <style>
 
-    echo uc_frame_open('email', 'fa-at', 'st-soft-info', $lang->usercp['change_email'], $lang->usercp['hint_email_sub'])
-       . ($errors ? '<div class="uc-errors">' . $errors . '</div>' : '')
-       . '<form action="usercp.php" method="post">'
-       .   '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
-       .   '<input type="hidden" name="action" value="do_email">'
-       .   uc_card('fa-envelope', 'st-soft-info', $lang->usercp['change_email'], $body)
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="submit" value="' . htmlspecialchars_uni($lang->usercp['update_email']) . '" id="submitBtn"><i class="fa-solid fa-floppy-disk me-2"></i>' . $lang->usercp['update_email'] . '</button>')
-       . '</form>'
-       . uc_frame_close()
-       . '<script src="' . $BASEURL . '/scripts/password-toggle.js" defer></script>';
+        * {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+        }
+        
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1.2rem;
+            }
+            
+            .btn-primary {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+        
+        /* Email validation feedback */
+        .email-feedback {
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        
+        .email-feedback.valid {
+            color: var(--icon-success);
+        }
+        
+        .email-feedback.invalid {
+            color: var(--icon-danger);
+        }
+    </style>
+   
+</head>
+<body>
+
+
+<form action="usercp.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md py-4">
+<div class="row g-4">
+    <div class="col-lg-3">
+        '.$usercpnav.'
+    </div>
+    <div class="col-lg-9">
+        
+        '.$errors.'
+        
+        <div class="card">
+            <div class="card-body">
+                
+                <!-- ========= CHANGE EMAIL SECTION ========= -->
+                <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">
+                    <i class="fas fa-envelope me-2 text-primary"></i> '.$lang->usercp['change_email'].'
+                </div>
+                
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block">
+                        <div class="section-title-left text-center">
+                            <i class="fas fa-at section-icon-large"></i>
+                            <div class="fw-bold mt-2">'.$lang->usercp['change_email'].'</div>
+                            <small class="text-muted">' . $lang->usercp['hint_email_sub'] . '</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-9">
+                        
+                        <!-- Security Notice -->
+                        <div class="info-hint mb-4">
+                            <i class="fas fa-shield-alt me-2 text-info"></i>
+                            <strong>' . $lang->usercp['lbl_security_notice'] . '</strong> ' . $lang->usercp['hint_email_notice'] . '
+                        </div>
+                        
+                        <!-- Current Password -->
+                        <div class="form-group mb-4 pb-3 border-bottom">
+                            <label for="password">
+                                <i class="fas fa-lock text-warning"></i>
+                                '.$lang->usercp['current_password'].'
+                            </label>
+                            <div class="position-relative">
+                                <input type="password" class="form-control" name="password" id="password" placeholder="' . $lang->usercp['ph_current_password'] . '" />
+                                <button type="button" class="btn btn-link position-absolute end-0 top-0 mt-2 me-2 text-muted toggle-password" style="text-decoration: none;">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_verify_identity'] . '
+                            </small>
+                        </div>
+                        
+                        <!-- New Email -->
+                        <div class="form-group mb-4 pb-3 border-bottom">
+                            <label for="email">
+                                <i class="fas fa-envelope text-primary"></i>
+                                '.$lang->usercp['new_email'].'
+                            </label>
+                            <input type="email" class="form-control" name="email" id="email" maxlength="150" value="'.$email.'" placeholder="newemail@example.com" />
+                            <div id="emailFeedback" class="email-feedback"></div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_new_email'] . '
+                            </small>
+                        </div>
+                        
+                        <!-- Confirm Email -->
+                        <div class="form-group mb-4">
+                            <label for="email2">
+                                <i class="fas fa-check-circle text-success"></i>
+                                '.$lang->usercp['confirm_email'].'
+                            </label>
+                            <input type="email" class="form-control" name="email2" id="email2" maxlength="150" value="'.$email2.'" placeholder="' . $lang->usercp['ph_confirm_email'] . '" />
+                            <div id="emailMatchFeedback" class="email-feedback"></div>
+                        </div>
+                        
+                    </div>
+                </div>
+                
+            </div> <!-- card-body -->
+            
+            <div class="card-footer text-center">
+                <input type="hidden" name="action" value="do_email" />
+                <button type="submit" class="btn btn-primary" name="submit" value="'.$lang->usercp['update_email'].'" id="submitBtn">
+                    <i class="fas fa-save me-2"></i>
+                    <i class="fas fa-envelope me-1"></i>
+                    '.$lang->usercp['update_email'].'
+                </button>
+            </div>
+        </div> <!-- card -->
+        
+    </div> <!-- col -->
+</div> <!-- row -->
+</div> <!-- container -->
+</form>
+
+
+<script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
+
+<script src="'.$BASEURL.'/scripts/password-toggle.js" defer></script>
+
+
+</body>
+</html>';
+	
+	
+	
+	
+	echo $_tpl_out;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1020,74 +1316,194 @@ if ($mybb->input['action'] === 'password') {
     $lang_update_password  = htmlspecialchars($lang->usercp['update_password']  ?? '', ENT_QUOTES, 'UTF-8');
 
     // ── Вывод страницы ────────────────────────────────────────────────────
+    // stdhead/build_breadcrumb вызываются ПОСЛЕ подготовки данных,
+    // чтобы заголовок страницы уже имел правильную lang-строку
     stdhead($lang->usercp['change_password'] ?? '');
-    ucp_page_open('password');
     build_breadcrumb();
 
-    $pass_input = static function (string $name, string $label, string $icon, string $placeholder, string $autocomplete, string $extra = '') use ($lang): string {
-        return '<label for="' . $name . '" class="form-label"><i class="fa-solid ' . $icon . '"></i>' . $label . '</label>'
-             . '<div class="uc-pass position-relative">'
-             .   '<input type="password" class="form-control" name="' . $name . '" id="' . $name . '" placeholder="' . $placeholder . '" autocomplete="' . $autocomplete . '"' . $extra . '>'
-             .   '<button type="button" class="btn btn-link toggle-password" data-target="' . $name . '" aria-label="' . $lang->usercp['tip_toggle_password'] . '"><i class="fas fa-eye"></i></button>'
-             . '</div>';
-    };
+    echo
+'<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">
+<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/password.css">
 
-    // Требования к сложности — статичный список; блок показывает/скрывает password-validation.js
-    $reqs = $requireComplex === 1
-        ? '<div id="complexitySection" class="mt-2">'
-        .   '<div class="uc-hint"><i class="fa-solid fa-list-check"></i>' . $lang->usercp['lbl_password_requirements'] . '</div>'
-        .   '<ul class="uc-reqs">'
-        .     '<li>' . $lang->usercp['lbl_req_upper'] . '</li><li>' . $lang->usercp['lbl_req_lower'] . '</li>'
-        .     '<li>' . $lang->usercp['lbl_req_number'] . '</li><li>' . $lang->usercp['lbl_req_special'] . '</li>'
-        .   '</ul>'
-        . '</div>'
-        : '';
+<form action="usercp.php" method="post">
+<input type="hidden" name="my_post_key" value="' . $postCode . '" />
 
-    $body = uc_note('fa-shield-halved', '<strong>' . $lang->usercp['lbl_security_tip'] . '</strong> '
-              . sprintf($lang->usercp['hint_password_tip'], $minLen)
-              . '<br><small>' . sprintf($lang->usercp['hint_password_length'], $minLen, $maxLen) . '</small>')
-          . '<div class="uc-field">'
-          .   $pass_input('oldpassword', $lang_current_password, 'fa-lock-open', '••••••••', 'current-password')
-          .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_password_verification'] . '</div>'
-          . '</div>'
-          . '<div class="uc-field uc-grid uc-grid--2">'
-          .   '<div>'
-          .     $pass_input('password', $lang_new_password, 'fa-key', $lang->usercp['ph_new_password'], 'new-password', ' maxlength="' . $maxLen . '"')
-          .     '<div class="char-counter" id="passwordCharCounter">'
-          .       '<i class="fa-solid fa-text-height me-1"></i><span id="passwordLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters']
-          .       '<span id="minLengthHint" class="ms-2"><i class="fa-solid fa-circle-info me-1"></i>' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '</span>'
-          .     '</div>'
-          .     $reqs
-          .   '</div>'
-          .   '<div>'
-          .     $pass_input('password2', $lang_confirm_password, 'fa-circle-check', $lang->usercp['ph_confirm_password'], 'new-password')
-          .     '<div id="passwordMatch" class="small mt-1"></div>'
-          .   '</div>'
-          . '</div>';
+<div class="container-md py-4">
+<div class="row g-4">
 
-    echo uc_frame_open('password', 'fa-key', 'st-soft-warning', $lang_change_password, $lang->usercp['hint_password_sub'])
-       . ($errors ? '<div class="uc-errors">' . $errors . '</div>' : '')
-       . '<form action="usercp.php" method="post">'
-       .   '<input type="hidden" name="my_post_key" value="' . $postCode . '">'
-       .   '<input type="hidden" name="action" value="do_password">'
-       .   uc_card('fa-lock', 'st-soft-warning', $lang_change_password, $body)
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="submit" value="' . $lang_update_password . '" id="submitBtn"><i class="fa-solid fa-key me-2"></i>' . $lang_update_password . '</button>')
-       . '</form>'
-       . uc_frame_close();
+    <div class="col-lg-3">
+        ' . $usercpnav . '
+    </div>
 
-    echo '<script>window.passwordConfig = { minLength: ' . $minLen . ', maxLength: ' . $maxLen . ', requireComplex: ' . $requireComplex . ' };</script>'
-       . $swal_assets
-       . ucp_js_lang([
-           'pwd_min'                => 'js_pwd_min',
-           'pwd_max'                => 'js_pwd_max',
-           'pwd_match'              => 'js_pwd_match',
-           'pwd_mismatch'           => 'js_pwd_mismatch',
-           'pwd_weak'               => 'js_pwd_weak',
-           'enter_current_password' => 'js_enter_current_password',
-           'enter_new_password'     => 'js_enter_new_password',
-           'updating'               => 'js_updating',
-       ])
-       . '<script src="' . $BASEURL . '/scripts/password-validation.js?ver=4"></script>';
+    <div class="col-lg-9">
+
+        ' . $errors . '
+
+        <div class="card">
+            <div class="card-body">
+
+                <div class="bg-nav p-2 rounded text-16 d-lg-none mb-3">
+                    <i class="fas fa-key me-2 text-primary"></i> ' . $lang_change_password . '
+                </div>
+
+                <div class="row g-4">
+
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="text-center p-3 border-end w-100">
+                            <i class="fas fa-lock fa-3x mb-3 text-primary"></i>
+                            <div class="fw-bold mt-2">' . $lang_change_password . '</div>
+                            <small class="text-muted">' . $lang->usercp['hint_password_sub'] . '</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-9">
+
+                        <div class="info-hint mb-4">
+                            <i class="fas fa-shield-alt me-2 text-info"></i>
+                            <strong>' . $lang->usercp['lbl_security_tip'] . '</strong>
+                            ' . sprintf($lang->usercp['hint_password_tip'], $minLen) . '
+                            <br>
+                            <small class="mt-1 d-block">
+                                <i class="fas fa-info-circle me-1"></i>
+                                ' . sprintf($lang->usercp['hint_password_length'], $minLen, $maxLen) . '
+                                ' . $requirecomplexpasswords . '
+                            </small>
+                        </div>
+
+                        <div class="form-group mb-4 pb-3 border-bottom">
+                            <label for="oldpassword" class="form-label">
+                                <i class="fas fa-lock-open text-warning me-1"></i>
+                                ' . $lang_current_password . '
+                            </label>
+                            <div class="position-relative">
+                                <input type="password" class="form-control pe-5"
+                                       name="oldpassword" id="oldpassword"
+                                       placeholder="••••••••" autocomplete="current-password" />
+                                <button type="button"
+                                        class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
+                                        data-target="oldpassword" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted mt-1 d-block">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_password_verification'] . '
+                            </small>
+                        </div>
+
+                        <div class="form-group mb-4 pb-3 border-bottom">
+                            <label for="password" class="form-label">
+                                <i class="fas fa-key text-primary me-1"></i>
+                                ' . $lang_new_password . '
+                            </label>
+                            <div class="position-relative">
+                                <input type="password" class="form-control pe-5"
+                                       name="password" id="password"
+                                       placeholder="' . $lang->usercp['ph_new_password'] . '"
+                                       autocomplete="new-password"
+                                       maxlength="' . $maxLen . '" />
+                                <button type="button"
+                                        class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
+                                        data-target="password" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+
+                            <div class="char-counter mt-1" id="passwordCharCounter">
+                                <i class="fas fa-text-height me-1"></i>
+                                <span id="passwordLength">0</span> / ' . $maxLen . ' ' . $lang->usercp['lbl_characters'] . '
+                                <span id="minLengthHint" class="ms-2">
+                                    <i class="fas fa-info-circle me-1"></i> ' . sprintf($lang->usercp['lbl_min_chars'], $minLen) . '
+                                </span>
+                            </div>
+
+                            <div class="mt-2" id="complexitySection">
+                                <div class="small fw-semibold mb-1">
+                                    <i class="fas fa-list-check me-1"></i> ' . $lang->usercp['lbl_password_requirements'] . '
+                                </div>
+                                <ul class="complexity-list" id="complexityList">
+                                    <li id="complexityUppercase">
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_upper'] . '
+                                    </li>
+                                    <li id="complexityLowercase">
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_lower'] . '
+                                    </li>
+                                    <li id="complexityNumber">
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_number'] . '
+                                    </li>
+                                    <li id="complexitySpecial">
+                                        <i class="fas fa-times-circle"></i> ' . $lang->usercp['lbl_req_special'] . '
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="password-strength mt-2">
+                                <div class="strength-bar">
+                                    <div class="strength-bar-fill" id="strengthFill"></div>
+                                </div>
+                                <span id="strengthText" class="text-muted small"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group mb-4">
+                            <label for="password2" class="form-label">
+                                <i class="fas fa-check-circle text-success me-1"></i>
+                                ' . $lang_confirm_password . '
+                            </label>
+                            <div class="position-relative">
+                                <input type="password" class="form-control pe-5"
+                                       name="password2" id="password2"
+                                       placeholder="' . $lang->usercp['ph_confirm_password'] . '"
+                                       autocomplete="new-password" />
+                                <button type="button"
+                                        class="btn btn-link position-absolute end-0 top-50 translate-middle-y me-1 text-muted toggle-password"
+                                        data-target="password2" aria-label="' . $lang->usercp['tip_toggle_password'] . '">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div id="passwordMatch" class="small mt-1"></div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="card-footer text-center">
+                <input type="hidden" name="action" value="do_password" />
+                <button type="submit" class="btn btn-primary"
+                        name="submit"
+                        value="' . $lang_update_password . '"
+                        id="submitBtn">
+                    <i class="fas fa-key me-2"></i> ' . $lang_update_password . '
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+</div>
+</form>
+
+<script>
+window.passwordConfig = {
+    minLength:      ' . $minLen . ',
+    maxLength:      ' . $maxLen . ',
+    requireComplex: ' . $requireComplex . '
+};
+</script>
+' . $swal_assets . '
+' . ucp_js_lang([
+    'pwd_min' => 'js_pwd_min',
+    'pwd_max' => 'js_pwd_max',
+    'pwd_match' => 'js_pwd_match',
+    'pwd_mismatch' => 'js_pwd_mismatch',
+    'pwd_weak' => 'js_pwd_weak',
+    'enter_current_password' => 'js_enter_current_password',
+    'enter_new_password' => 'js_enter_new_password',
+    'updating' => 'js_updating',
+]) . '
+<script src="' . $BASEURL . '/scripts/password-validation.js?ver=3"></script>';
+
 }
 
 
@@ -1189,7 +1605,7 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
             exit;
         }
         $mybb->input['action'] = 'avatar';
-        $avatar_error = inline_error([$avatar_error]);
+        $avatar_error = '<div class="container mt-3"><div class="red_alert mb-3" role="alert">' . $avatar_error . '</div></div>';
     }
 }
 
@@ -1231,48 +1647,226 @@ if ($mybb->input['action'] === 'avatar') {
         default => '',
     };
 
+    $avatar_remote = '<hr />
+
+<div class="bg-nav p-2 rounded text-19 d-nlock d-sm-block d-md-block d-lg-none mb-3">'.$lang->usercp['avatar_url'].'</div>
+	<div class="row g-3 gx-5 mb-2">
+		<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+			'.$lang->usercp['avatar_url'].'
+			
+		</div>
+		<div class="col">
+	'.$lang->usercp['avatar_url_note'].'
+	<input type="text" class="form-control form-control-sm border" name="avatarurl" value="'.$avatarurl.'" />
+			'.$lang->usercp['avatar_url_gravatar'].'
+		</div>
+		</div>
+		';
+
+    $removeavatar = !empty($CURUSER['avatar'])
+        ? '<button type="submit" class="btn btn-secondary" name="remove" value="Remove Avatar"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->usercp['remove_avatar'] . '</button>'
+        : '';
+
     $plugins->run_hooks('usercp_avatar_end');
     $avatar_error ??= '';
 
     stdhead($lang->usercp['change_avatar']);
-    ucp_page_open('avatar');
     build_breadcrumb();
-
-    // Загрузка: клик по аватару или по кнопке-label открывает скрытый #avatarInput
-    // (из build_avatar_html()); сам аплоад делает avatar_upload.js через AJAX.
-    $buttons = '<label for="avatarInput" class="btn btn-primary btn-sm mb-0"><i class="fa-solid fa-cloud-arrow-up me-1"></i>' . $lang->usercp['lbl_upload_new_avatar'] . '</label>';
-    if (!empty($CURUSER['avatar'])) {
-        $buttons .= '<button type="submit" class="btn btn-outline-secondary btn-sm" name="remove" value="Remove Avatar"><i class="fa-solid fa-xmark me-1"></i>' . $lang->usercp['remove_avatar'] . '</button>';
+    
+	$_tpl_out = '<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['change_avatar'].'</title>
+  
+    <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
+    <style>
+	
+	
+	:root {
+    /* Gradients */
+	/* Avatar ring */
+	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
     }
 
-    $sec_current = '<div class="uc-avatar">'
-        .   '<div>' . $currentavatar . '</div>'
-        .   '<div class="uc-avatar__side">'
-        .     uc_note('fa-circle-info', '<strong>' . $lang->usercp['lbl_current_avatar'] . '</strong> ' . $lang->usercp['hint_current_avatar'])
-        .     '<div class="uc-hint"><i class="fa-solid fa-image"></i>' . $lang->usercp['hint_avatar_formats'] . $avatar_note . '</div>'
-        .     '<div class="uc-hint"><i class="fa-solid fa-wand-magic-sparkles"></i>' . $lang->usercp['avatar_auto_resize_note'] . '</div>'
-        .     '<div class="uc-avatar__btns">' . $buttons . '</div>'
-        .   '</div>'
-        . '</div>';
 
-    $sec_remote = '<label for="avatarurl" class="visually-hidden">' . $lang->usercp['avatar_url'] . '</label>'
-        . '<div class="input-group">'
-        .   '<span class="input-group-text"><i class="fa-solid fa-globe"></i></span>'
-        .   '<input type="url" class="form-control" name="avatarurl" id="avatarurl" value="' . $avatarurl . '" placeholder="https://">'
-        . '</div>'
-        . '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['avatar_url_note'] . ' ' . $lang->usercp['avatar_url_gravatar'] . '</div>';
+	
 
-    echo uc_frame_open('avatar', 'fa-image', 'st-soft-success', $lang->usercp['change_avatar'], $lang->usercp['hint_avatar_sub'])
-       . ($avatar_error ? '<div class="uc-errors">' . $avatar_error . '</div>' : '')
-       . '<form enctype="multipart/form-data" action="usercp.php" method="post" id="avatarForm">'
-       .   '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
-       .   '<input type="hidden" name="action" value="do_avatar">'
-       .   uc_card('fa-user-circle', 'st-soft-success', $lang->usercp['lbl_current_avatar_caption'], $sec_current)
-       .   uc_card('fa-link', 'st-soft-info', $lang->usercp['avatar_url'], $sec_remote, $lang->usercp['hint_avatar_url'])
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="submit" value="' . htmlspecialchars_uni($lang->usercp['change_avatar']) . '"><i class="fa-solid fa-floppy-disk me-2"></i>' . $lang->usercp['change_avatar'] . '</button>')
-       . '</form>'
-       . uc_frame_close();
+    /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}	
+	
+	
+	
+        * {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+        }
+        
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1.2rem;
+            }
+            
+            .btn-primary, .btn-danger {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+        
+        /* File input styling */
+        .file-input-wrapper {
+            margin-top: 0.5rem;
+        }
+        
+        .file-input-wrapper input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+        
+        .file-input-wrapper input[type="file"]::-webkit-file-upload-button {
+            background: var(--btn-primary);
+            border: none;
+            color: white;
+            padding: 0.4rem 1rem;
+            border-radius: 0.5rem;
+            margin-right: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .file-input-wrapper input[type="file"]::-webkit-file-upload-button:hover {
+            background: var(--btn-primary-hover);
+        }
+    </style>
+    
+</head>
+<body>
 
+
+<form enctype="multipart/form-data" action="usercp.php" method="post" id="avatarForm">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md py-4">
+<div class="row g-4">
+    <div class="col-lg-3">
+        '.$usercpnav.'
+    </div>
+    <div class="col-lg-9">
+        
+        '.$avatar_error.'
+        
+        <div class="card">
+            <div class="card-body">
+                
+                <!-- ========= CHANGE AVATAR SECTION ========= -->
+                <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">
+                    <i class="fas fa-image me-2 text-primary"></i> '.$lang->usercp['change_avatar'].'
+                </div>
+                
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block">
+                        <div class="section-title-left text-center">
+                            <i class="fas fa-user-circle section-icon-large"></i>
+                            <div class="fw-bold mt-2">'.$lang->usercp['change_avatar'].'</div>
+                            <small class="text-muted">' . $lang->usercp['hint_avatar_sub'] . '</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-9">
+                        
+                        <!-- Avatar Note / Info -->
+                        '.$avatar_note.'
+                        
+                        <!-- Current Avatar Display -->
+                        <div class="info-hint mb-3">
+                            <i class="fas fa-info-circle me-2 text-info"></i>
+                            <strong>' . $lang->usercp['lbl_current_avatar'] . '</strong> ' . $lang->usercp['hint_current_avatar'] . '
+                        </div>
+                        
+                        <div class="row align-items-center g-4">
+                            <div class="col-md-6">
+                                <div class="avatar-container">
+                                    '.$currentavatar.'
+                                    <div class="mt-2">
+                                        <small class="text-muted">
+                                            <i class="fas fa-camera me-1"></i> ' . $lang->usercp['lbl_current_avatar_caption'] . '
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="avatarupload">
+                                        <i class="fas fa-cloud-upload-alt text-primary me-2"></i>
+                                        ' . $lang->usercp['lbl_upload_new_avatar'] . '
+                                    </label>
+                                    <div class="file-input-wrapper">
+                                        '.$avatarupload.'
+                                    </div>
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_avatar_formats'] . '
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr />
+                        
+                        <!-- Remote Avatar URL -->
+                        <div class="form-group mt-3">
+                            <label for="avatarurl">
+                                <i class="fas fa-link text-info me-2"></i>
+                                '.$lang->usercp['avatar_url'].'
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-nav border-0">
+                                    <i class="fas fa-globe"></i>
+                                </span>
+                                '.$avatar_remote.'
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_avatar_url'] . '
+                            </small>
+                        </div>
+                        
+                    </div>
+                </div>
+                
+            </div> <!-- card-body -->
+            
+            <div class="card-footer text-center">
+                <input type="hidden" name="action" value="do_avatar" />
+                <button type="submit" class="btn btn-primary" name="submit" value="'.$lang->usercp['change_avatar'].'">
+                    <i class="fas fa-save me-2"></i>
+                    <i class="fas fa-image me-1"></i>
+                    '.$lang->usercp['change_avatar'].'
+                </button>
+                '.$removeavatar.'
+            </div>
+        </div> <!-- card -->
+        
+    </div> <!-- col -->
+</div> <!-- row -->
+</div> <!-- container -->
+</form>
+
+<script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
+
+
+</body>
+</html>';
+
+
+	echo $_tpl_out;
+
+    // Скрипты — после разметки страницы (раньше выводились до stdhead())
     echo $swal_assets;
     echo avatar_js_lang();
     echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
@@ -1367,12 +1961,16 @@ if ($mybb->input['action'] === 'addsubscription') {
 
         $plugins->run_hooks('usercp2_addsubscription_thread');
         stdhead($lang->usercp['subscribe_to_thread']);
-        ucp_page_open('addsubscription');
         build_breadcrumb();
         
 		$_tpl_out = '
 		
-		
+		<html>
+<head>
+<title>'.$lang->usercp['subscribe_to_thread'].'</title>
+
+</head>
+<body>
 
 <form action="usercp.php" method="post" name="input">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
@@ -1460,12 +2058,12 @@ if ($mybb->input['action'] === 'addsubscription') {
 	</div>
 </form>
 
-';
+</body>
+</html>';
 		
 		
 		
 		echo $_tpl_out;
-        ucp_page_close();
         exit;
     }
 }
@@ -1509,25 +2107,70 @@ if ($sig && $heading) {
         'allow_smilies'  => 1, 'allow_imgcode'   => 1,
         'me_username'    => 1, 'filter_badwords' => 1,
     ];
-    $signature = uc_card(
-        !empty($mybb->input['preview']) ? 'fa-eye' : 'fa-signature',
-        'st-soft-muted',
-        $heading,
-        '<div class="uc-sig-preview">' . $parser->parse_message($sig, $sig_parser) . '</div>'
-    );
-}
+    $sigpreview = $parser->parse_message($sig, $sig_parser); // сначала парсим
 
-    $frame = uc_frame_open('editsig', 'fa-signature', 'st-soft-primary', $lang->usercp['edit_sig'], $lang->usercp['hint_sig_sub']);
+    $signature = '<div class="card border-0 mb-4">
+    <div class="card-header rounded-bottom text-19 fw-bold">
+        ' . $heading . '               
+    </div>
+    <div class="card-body">
+        ' . $sigpreview . '            
+    </div>
+</div>';
+}
 
     if ($mybb->user['suspendsignature'] && $mybb->user['suspendsigtime'] > TIMENOW) {
         $plugins->run_hooks('usercp_editsig_end');
+        
+	   $editsig = '
+	   
+	   
+	   <html>
+<head>
+<title>'.$SITENAME.' - '.$lang->usercp['edit_sig'].'</title>
 
-        $editsig = $frame
-            . $signature
-            . uc_card('fa-ban', 'st-soft-danger', $lang->usercp['edit_sig_error_title'],
-                uc_note('fa-triangle-exclamation', $lang->usercp['edit_sig_no_permission'], 'danger'))
-            . uc_frame_close();
+</head>
+<body>
+
+<div class="container">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+'.$signature.'				
+<div class="card">
+<div class="card-body">
+	<div class="card-header bg-white text-dark border-bottom-0 text-19 fw-bold mt-2 pb-0">
+	'.$lang->usercp['edit_sig_error_title'].'</div>
+	<ul>
+		<li>'.$lang->usercp['edit_sig_no_permission'].'</li>
+	</ul>
+	</div>
+	</div></div>
+	</div></div>
+
+</body>
+</html>';
+	   	
+		
+		
     } else {
+        $smilieinserter = '';
+        $sigsmilies  = '1';
+        $sigmycode   = '1';
+        $sightml     = '0';
+        $sigimgcode  = '1';
+        $siglength   = '255';
+
+        $sigsmilies  = ($sigsmilies  == 1) ? $lang->usercp['on']  : $lang->usercp['off'];
+        $sigmycode   = ($sigmycode   == 1) ? $lang->usercp['on']  : $lang->usercp['off'];
+        $sightml     = ($sightml     == 1) ? $lang->usercp['on']  : $lang->usercp['off'];
+        $sigimgcode  = ($sigimgcode  == 1) ? $lang->usercp['on']  : $lang->usercp['off'];
+        $siglength   = ($siglength   == 0) ? $lang->usercp['unlimited'] : $siglength;
+
         $sig = htmlspecialchars_uni($sig);
 
         require_once INC_PATH . '/editor.php';
@@ -1535,39 +2178,179 @@ if ($sig && $heading) {
         $editor = insert_bbcode_editor($smilies, $BASEURL, 'signature');
 
         $plugins->run_hooks('usercp_editsig_end');
+        
+		$editsig = '
+		
+		<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['edit_sig'].'</title>
+     
+	<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
+    
+ <style>
+       
+        
+        /* Character counter */
+        .char-counter {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            text-align: right;
+        }
+        
+        .char-counter.warning {
+            color: var(--icon-warning);
+        }
+        
+        .char-counter.danger {
+            color: var(--icon-danger);
+        }
+        
+        /* Editor toolbar styling */
+        .editor-toolbar {
+            background: var(--bg-nav);
+            padding: 0.5rem;
+            border-radius: 0.75rem 0.75rem 0 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+    </style>
+    
+   
+</head>
+<body>
 
-        // Радиокнопки «включить/выключить подпись во всех сообщениях» убраны:
-        // do_editsig их не обрабатывал, а у posts нет поля includesig — подпись показывается всегда.
-        $editor_card = '<section class="st-card uc-card uc-editor">'
-            .   '<div class="st-card__head">'
-            .     '<span class="st-ico st-soft-primary"><i class="fa-solid fa-pen-fancy"></i></span>'
-            .     '<div class="min-w-0"><div class="uc-card__title">' . $lang->usercp['edit_sig'] . '</div>'
-            .     '<div class="uc-card__desc">' . $lang->usercp['hint_sig_guidelines'] . '</div></div>'
-            .   '</div>'
-            .   '<div class="editor-toolbar">' . $editor['toolbar'] . '</div>'
-            .   '<textarea class="form-control" id="signature" name="signature" rows="10" placeholder="' . $lang->usercp['ph_signature'] . '">' . $sig . '</textarea>'
-            .   '<div class="char-counter" id="charCounter"><i class="fa-solid fa-text-height me-1"></i><span id="charCount">0</span> ' . $lang->usercp['lbl_characters'] . '</div>'
-            . '</section>';
 
-        $editsig = $frame
-            . ($error ? '<div class="uc-errors">' . $error . '</div>' : '')
-            . $signature
-            . '<form action="usercp.php" method="post">'
-            .   '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
-            .   '<input type="hidden" name="action" value="do_editsig">'
-            .   $editor_card
-            .   uc_submitbar(
-                    '<button type="submit" class="btn btn-outline-secondary" name="preview" value="' . htmlspecialchars_uni($lang->usercp['preview']) . '"><i class="fa-solid fa-eye me-2"></i>' . $lang->usercp['preview'] . '</button>'
-                  . '<button type="submit" class="btn btn-primary" name="submit" value="' . htmlspecialchars_uni($lang->usercp['update_sig']) . '"><i class="fa-solid fa-floppy-disk me-2"></i>' . $lang->usercp['update_sig'] . '</button>'
-                )
-            . '</form>'
-            . uc_frame_close()
-            . $editor['modal']
-            . '<script src="' . $BASEURL . '/scripts/char-counter.js"></script>';
+<form action="usercp.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md py-4">
+<div class="row g-4">
+    <div class="col-lg-3">
+        '.$usercpnav.'
+    </div>
+    <div class="col-lg-9">
+        
+        '.$error.'
+		
+		'.$signature.'
+        
+        <div class="card">
+            
+            <!-- Editor Toolbar -->
+            <div class="editor-toolbar">
+                '.$editor['toolbar'].'
+            </div>
+            
+            <div class="card-body">
+                
+                <!-- Signature Textarea -->
+                <div class="form-group">
+                    <textarea style="height: 300px; width: 100%" class="form-control" id="signature" name="signature" placeholder="' . $lang->usercp['ph_signature'] . '">'.$sig.'</textarea>
+                    <div class="char-counter" id="charCounter">
+                        <i class="fas fa-text-height me-1"></i> <span id="charCount">0</span> ' . $lang->usercp['lbl_characters'] . '
+                    </div>
+                </div>
+                
+                <div class="mt-3"></div>
+                
+                <!-- ========= EDIT SIGNATURE SECTION ========= -->
+                <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">
+                    <i class="fas fa-signature me-2 text-primary"></i> '.$lang->usercp['edit_sig'].'
+                </div>
+                
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block">
+                        <div class="section-title-left text-center">
+                            <i class="fas fa-pen-fancy section-icon-large"></i>
+                            <div class="fw-bold mt-2">'.$lang->usercp['edit_sig'].'</div>
+                            <small class="text-muted">' . $lang->usercp['hint_sig_sub'] . '</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-9">
+                        
+                        <!-- Info Notice -->
+                        <div class="info-hint mb-3">
+                            <i class="fas fa-info-circle me-2 text-info"></i>
+                            <strong>' . $lang->usercp['lbl_sig_guidelines'] . '</strong> ' . $lang->usercp['hint_sig_guidelines'] . '
+                        </div>
+                        
+                        <!-- Radio Options -->
+                        <div class="form-check">
+                            <input type="radio" class="form-check-input" name="updateposts" value="enable" id="enableSig" />
+                            <label class="form-check-label" for="enableSig">
+                                <i class="fas fa-check-circle text-success"></i>
+                                '.$lang->usercp['enable_sig_posts'].'
+                            </label>
+                            <div class="text-muted small ms-4 mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_enable_all'] . '
+                            </div>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input type="radio" class="form-check-input" name="updateposts" value="disable" id="disableSig" />
+                            <label class="form-check-label" for="disableSig">
+                                <i class="fas fa-times-circle text-danger"></i>
+                                '.$lang->usercp['disable_sig_posts'].'
+                            </label>
+                            <div class="text-muted small ms-4 mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_disable_all'] . '
+                            </div>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input type="radio" class="form-check-input" name="updateposts" value="0" checked="checked" id="leaveSig" />
+                            <label class="form-check-label" for="leaveSig">
+                                <i class="fas fa-clock text-secondary"></i>
+                                '.$lang->usercp['leave_sig_settings'].'
+                            </label>
+                            <div class="text-muted small ms-4 mt-1">
+                                <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_sig_future'] . '
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+                
+            </div> <!-- card-body -->
+            
+            <div class="card-footer">
+                <input type="hidden" name="action" value="do_editsig" />
+                <button type="submit" class="btn btn-secondary" name="preview" value="'.$lang->usercp['preview'].'">
+                    <i class="fas fa-eye me-2"></i>
+                    '.$lang->usercp['preview'].'
+                </button>
+                <button type="submit" class="btn btn-primary" name="submit" value="'.$lang->usercp['update_sig'].'">
+                    <i class="fas fa-save me-2"></i>
+                    <i class="fas fa-signature me-1"></i>
+                    '.$lang->usercp['update_sig'].'
+                </button>
+            </div>
+        </div> <!-- card -->
+        
+    </div> <!-- col -->
+</div> <!-- row -->
+</div> <!-- container -->
+</form>
+
+'.$editor['modal'].'
+
+
+<script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
+
+<script src="'.$BASEURL.'/scripts/char-counter.js"></script>
+
+</body>
+</html>';
+		
+		
+		
+		
     }
 
     stdhead($lang->usercp['edit_sig']);
-    ucp_page_open('editsig');
     build_breadcrumb();
     echo $editsig;
 }
@@ -1684,11 +2467,8 @@ if ($mybb->input['action'] === 'do_subscriptions') {
     }
 
     $plugins->run_hooks('usercp_do_subscriptions_start');
-    $check = ucp_int_ids($mybb->get_input('check', MyBB::INPUT_ARRAY));
-    if (!$check) {
-        error($lang->usercp['no_subscriptions_selected']);
-    }
-    $tids = implode(',', $check);
+    $mybb->input['check'] = array_map('intval', $mybb->get_input('check', MyBB::INPUT_ARRAY));
+    $tids = implode(',', $mybb->input['check']);
 
     if ($mybb->get_input('do') === 'delete') {
         $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid IN ($tids) AND uid = ?", [(int)$CURUSER['id']]);
@@ -1766,22 +2546,20 @@ if ($mybb->input['action'] === 'subscriptions') {
         $tids = implode(',', array_keys($subscriptions));
 
         // Forum read times
-        // Только форумы тем этой страницы, а не вся таблица forums
         $readforums = [];
-        $page_fids  = ucp_int_ids(array_column($subscriptions, 'fid'));
-        if ($page_fids) {
-            $q = $db->sql_query_prepared(
-                "SELECT fid, dateline AS lastread FROM forumsread WHERE uid=? AND fid IN (" . implode(',', $page_fids) . ")",
-                [(int)$CURUSER['id']]
-            );
-            while ($q && ($forum = $db->fetch_array($q))) {
-                $readforums[$forum['fid']] = $forum['lastread'];
-            }
+        $q = $db->sql_query_prepared("
+            SELECT f.fid, fr.dateline AS lastread
+            FROM forums f
+            LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
+            WHERE f.active != 0 ORDER BY pid, disporder
+        ", [(int)$CURUSER['id']]);
+        while ($q && ($forum = $db->fetch_array($q))) {
+            $readforums[$forum['fid']] = $forum['lastread'];
         }
 
         // Dot icons
         if ((int) ($dotfolders ?? 1) !== 0) {
-            $q = $db->sql_query_prepared("SELECT DISTINCT tid FROM posts WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            $q = $db->sql_query_prepared("SELECT tid,uid FROM posts WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
             while ($q && ($post = $db->fetch_array($q))) {
                 $subscriptions[$post['tid']]['doticon'] = 1;
             }
@@ -1790,7 +2568,7 @@ if ($mybb->input['action'] === 'subscriptions') {
         // Thread read times
         $threadreadcut = (int) ($threadreadcut ?? 7);
         if ($threadreadcut > 0) {
-            $q = $db->sql_query_prepared("SELECT tid, dateline FROM threadsread WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            $q = $db->sql_query_prepared("SELECT * FROM threadsread WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
             while ($q && ($rt = $db->fetch_array($q))) {
                 $subscriptions[$rt['tid']]['lastread'] = $rt['dateline'];
             }
@@ -1996,7 +2774,120 @@ if ($mybb->input['action'] === 'subscriptions') {
 </div>
 
 
-
+<style>
+    /* Стили для карточки подписки */
+    .subscription-card {
+        background: white;
+        border: 1px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .subscription-card:hover {
+        border-color: #28a745;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+    }
+    
+    .subscription-card.selected {
+        border-color: #28a745;
+        background-color: rgba(40, 167, 69, 0.05);
+    }
+    
+    .hover-lift:hover {
+        transform: translateY(-2px);
+    }
+    
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+    
+    /* Стили для переключателя */
+    .form-switch .form-check-input {
+        width: 3em;
+        height: 1.5em;
+        cursor: pointer;
+        border-color: #adb5bd;
+    }
+    
+    .form-switch .form-check-input:checked {
+        background-color: #28a745;
+        border-color: #28a745;
+    }
+    
+    .form-switch .form-check-input:focus {
+        box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.25);
+    }
+    
+    /* Стили для статистики */
+    .stat-item {
+        padding: 6px 10px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+    
+    .stat-icon {
+        font-size: 1.2rem;
+    }
+    
+    /* Стили для заголовка темы */
+    .thread-title {
+        color: #212529;
+        line-height: 1.4;
+    }
+    
+    .thread-title:hover {
+        color: #28a745;
+    }
+    
+    .last-post-info {
+        border-left: 3px solid #e9ecef !important;
+        transition: border-color 0.3s ease;
+    }
+    
+    .subscription-card.selected .last-post-info {
+        border-left: 3px solid #28a745 !important;
+    }
+    
+    /* Анимации */
+    .additional-info {
+        animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Адаптивность */
+    @media (max-width: 992px) {
+        .subscription-card .row > div {
+            margin-bottom: 15px;
+        }
+        
+        .last-post-info {
+            border-left: none !important;
+            border-top: 3px solid #e9ecef !important;
+            padding-left: 0 !important;
+            padding-top: 15px;
+        }
+        
+        .subscription-card.selected .last-post-info {
+            border-top: 3px solid #28a745 !important;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .subscription-card {
+            padding: 15px !important;
+        }
+    }
+</style>
 ';
 			
 			
@@ -2043,12 +2934,135 @@ if ($mybb->input['action'] === 'subscriptions') {
 
     $plugins->run_hooks('usercp_subscriptions_end');
     stdhead($lang->usercp['subscriptions']);
-    ucp_page_open('subscriptions');
     build_breadcrumb();
     
 	
 	
-	$_tpl_out = '
+	$_tpl_out = '<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['subscriptions'].'</title>
+    <style>
+        /* Стили для переключателей подписок */
+        .subscription-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+            flex-shrink: 0;
+        }
+        
+        .subscription-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 34px;
+        }
+        
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        
+        .subscription-switch input:checked + .switch-slider {
+            background-color: #28a745;
+        }
+        
+        .subscription-switch input:checked + .switch-slider:before {
+            transform: translateX(24px);
+        }
+        
+        /* Стили для карточек подписок */
+        .subscription-card {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .subscription-card:hover {
+            border-color: #28a745;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.1);
+            transform: translateY(-1px);
+        }
+        
+        .subscription-card.selected {
+            border-color: #28a745;
+            background-color: rgba(40, 167, 69, 0.05);
+        }
+        
+        .thread-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .thread-title {
+            color: #212529;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .thread-title:hover {
+            color: #28a745;
+        }
+        
+        .subscription-date {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        
+        .last-post-info {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+        
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .subscription-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .subscription-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .last-post-info {
+                margin-top: 10px;
+            }
+        }
+    </style>
+   
+</head>
+<body>
   
     
     <div class="container-md py-4">
@@ -2133,7 +3147,8 @@ if ($mybb->input['action'] === 'subscriptions') {
     <script type="text/javascript" src="' . $BASEURL . '/scripts/subscriptions.js?ver=31"></script>
 	
 	
-';
+</body>
+</html>';
 
 echo $_tpl_out;
 	
@@ -2179,6 +3194,17 @@ if ($mybb->input['action'] === 'removesubscription'
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'forumsubscriptions') {
     $plugins->run_hooks('usercp_forumsubscriptions_start');
+
+    $readforums = [];
+    $q = $db->sql_query_prepared("
+        SELECT f.fid, fr.dateline AS lastread
+        FROM forums f
+        LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
+        WHERE f.active != 0 ORDER BY pid, disporder
+    ", [(int)$CURUSER['id']]);
+    while ($q && ($forum = $db->fetch_array($q))) {
+        $readforums[$forum['fid']] = $forum['lastread'];
+    }
 
     $fpermissions = forum_permissions();
     require_once INC_PATH . '/functions_forumlist.php';
@@ -2379,14 +3405,17 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 
     $plugins->run_hooks('usercp_forumsubscriptions_end');
     stdhead($lang->usercp['forum_subscriptions']);
-    ucp_page_open('forumsubscriptions');
     build_breadcrumb();
     
 	
 	
 $_tpl_out = '
     
-	
+	<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->usercp['forum_subscriptions'].'</title>
+</head>
+<body>
 	<div class="container-md">
 <div class="row">
 <div class="col-lg-3">
@@ -2406,7 +3435,8 @@ $_tpl_out = '
 	</div>
 		</div>
 	</div>
-';
+</body>
+</html>';
  
     
  
@@ -2427,12 +3457,8 @@ if ($mybb->input['action'] === 'do_removebookmarks') {
         exit;
     }
 
-    $check = ucp_int_ids($mybb->get_input('check', MyBB::INPUT_ARRAY));
-    if (!$check) {
-        echo json_encode(['status' => 'error', 'message' => $lang->usercp['no_books_selected']]);
-        exit;
-    }
-    $tids = implode(',', $check);
+    $mybb->input['check'] = array_map('intval', $mybb->get_input('check', MyBB::INPUT_ARRAY));
+    $tids = implode(',', $mybb->input['check']);
 
     if ($mybb->get_input('do') === 'delete') {
         $db->sql_query_prepared("DELETE FROM bookmarks WHERE torrentid IN ($tids) AND userid = ?", [(int)$CURUSER['id']]);
@@ -2472,6 +3498,17 @@ if ($mybb->input['action'] === 'bookmarks') {
     );
 
 
+    echo '<style>
+    .bookmark-card{transition:transform .3s ease,box-shadow .3s ease,opacity .3s ease;border-radius:12px;opacity:0;transform:translateY(20px);animation:fadeInUp .5s forwards}
+    .bookmark-card:hover{transform:translateY(-5px);box-shadow:0 12px 30px rgba(0,0,0,.2)}
+    .bookmark-img{width:100%;height:180px;object-fit:cover;transition:transform .3s ease}
+    .bookmark-card:hover .bookmark-img{transform:scale(1.05)}
+    .bookmark-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);padding:.3rem}
+    .bookmark-overlay h6{color:#fff;margin:0;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    @keyframes fadeInUp{to{opacity:1;transform:translateY(0)}}
+    @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+    .animate-bounce{animation:bounce 1.5s infinite}
+    </style>';
 
     $bookmark_cards = '';
     $counter = 0;
@@ -2585,16 +3622,90 @@ if ($mybb->input['action'] === 'bookmarks') {
 </div>
 HTML;
 
+    ?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form           = document.getElementById('bookmarksForm');
+    const cardsContainer = form.querySelector('.row.g-4');
+    const postCode       = <?= json_encode($mybb->post_code) ?>;
 
+    function showToast(message, ok = true) {
+        const el  = document.getElementById('toastNotification');
+        const msg = document.getElementById('toastMessage');
+        if (!el || !msg) return;
+        el.className = `toast align-items-center text-bg-${ok ? 'success' : 'danger'} border-0`;
+        msg.textContent = message;
+        new bootstrap.Toast(el, { delay: 3000 }).show();
+    }
+
+    function showEmptyState() {
+        cardsContainer.innerHTML = `
+        <div class="col-12 text-center py-5 text-muted">
+            <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
+                <i class="fa-regular fa-bookmark"></i>
+            </div>
+            <h5 class="mb-2 fw-semibold"><?= htmlspecialchars_uni($lang->usercp['lbl_bookmarks_empty']) ?></h5>
+            <p class="mb-4"><?= htmlspecialchars_uni($lang->usercp['hint_bookmarks_empty']) ?></p>
+            <a href="browse.php" class="btn btn-primary btn-sm shadow-sm">
+                <i class="fa-solid fa-magnifying-glass me-1"></i> <?= htmlspecialchars_uni($lang->usercp['btn_browse_torrents']) ?>
+            </a>
+        </div>`;
+        document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.remove();
+        document.querySelector('[data-bs-target="#confirmDeleteAllModal"]')?.remove();
+    }
+
+    document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.addEventListener('click', function () {
+        const count = form.querySelectorAll('input[type="checkbox"]:checked').length;
+        if (!count) { showToast(<?= json_encode($lang->usercp['js_select_bookmark'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>, false); return; }
+        document.getElementById('selectedCount').textContent = count;
+        new bootstrap.Modal(document.getElementById('confirmDeleteSelectedModal')).show();
+    });
+
+    document.getElementById('confirmDeleteSelectedBtn')?.addEventListener('click', function () {
+        const fd = new FormData(form);
+        fd.set('do', 'delete');
+        fetch('usercp.php', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'success') {
+                    form.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+                        const card = cb.closest('.col-xl-3, .col-lg-4, .col-md-6');
+                        card.style.transition = 'all .5s ease';
+                        card.style.opacity    = '0';
+                        card.style.transform  = 'scale(.95)';
+                        setTimeout(() => card.remove(), 500);
+                    });
+                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteSelectedModal'))?.hide();
+                    showToast(d.message, true);
+                    setTimeout(() => { if (!cardsContainer.children.length) showEmptyState(); }, 600);
+                } else { showToast(d.message, false); }
+            });
+    });
+
+    document.getElementById('confirmDeleteAllBtn')?.addEventListener('click', function () {
+        const fd = new FormData();
+        fd.append('action', 'removebookmarks');
+        fd.append('my_post_key', postCode);
+        fetch('usercp.php', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'success') {
+                    document.querySelectorAll('.col-xl-3, .col-lg-4, .col-md-6').forEach(c => {
+                        c.style.transition = 'all .5s ease';
+                        c.style.opacity    = '0';
+                        setTimeout(() => c.remove(), 500);
+                    });
+                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteAllModal'))?.hide();
+                    showToast(d.message, true);
+                    setTimeout(showEmptyState, 600);
+                } else { showToast(d.message, false); }
+            });
+    });
+});
+</script>
+    <?php
 
     stdhead($lang->usercp['lbl_my_bookmarks'] . ' - ' . $SITENAME);
-    ucp_page_open('bookmarks');
-    echo ucp_js_lang([
-        'bm_empty_title' => 'lbl_bookmarks_empty',
-        'bm_empty_hint'  => 'hint_bookmarks_empty',
-        'bm_browse'      => 'btn_browse_torrents',
-        'bm_select_one'  => 'js_select_bookmark',
-    ]);
     build_breadcrumb();
     echo $bookmarks_html;
 }
@@ -2761,9 +3872,29 @@ if ($mybb->input['action'] === 'manage_files') {
 HTML;
 
     stdhead($lang->usercp['lbl_my_files'] . ' - ' . $SITENAME);
-    ucp_page_open('manage_files');
 
+    echo '<style>
+    .file-card{transition:all .3s ease;border-radius:12px;overflow:hidden}
+    .file-card:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.15)!important}
+    .file-preview-wrapper{position:relative;height:180px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f8f9fa,#e9ecef);border-radius:10px;overflow:hidden;margin-bottom:1rem}
+    .file-checkbox{position:absolute;top:12px;right:12px;z-index:2}
+    .file-checkbox-input{opacity:0;position:absolute}
+    .file-checkbox-label{width:22px;height:22px;border:2px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;transition:all .2s ease;display:block}
+    .file-checkbox-input:checked+.file-checkbox-label{background:#0d6efd;border-color:#0d6efd}
+    .file-checkbox-input:checked+.file-checkbox-label::after{content:"✓";color:#fff;font-size:.9rem;font-weight:700;display:block;text-align:center;line-height:18px}
+    </style>';
 
+    echo '<script>
+    document.addEventListener("DOMContentLoaded",function(){
+        const selectAll=document.getElementById("select-all");
+        const cbs=document.querySelectorAll(".file-checkbox-input");
+        const cnt=document.getElementById("selected-count");
+        selectAll?.addEventListener("change",function(){cbs.forEach(c=>c.checked=this.checked);update()});
+        cbs.forEach(c=>c.addEventListener("change",update));
+        function update(){const n=document.querySelectorAll(".file-checkbox-input:checked").length;if(cnt)cnt.textContent=n;if(selectAll)selectAll.checked=n===cbs.length&&cbs.length>0}
+        document.querySelectorAll(".file-card").forEach((c,i)=>{c.style.opacity="0";c.style.transform="translateY(20px)";setTimeout(()=>{c.style.transition="opacity .6s ease,transform .6s ease";c.style.opacity="1";c.style.transform="translateY(0)"},100+i*100)});
+    });
+    </script>';
 
     build_breadcrumb();
     echo $files_html;
@@ -2776,11 +3907,47 @@ if ($mybb->input['action'] === 'do_remove_files') {
     verify_post_check($mybb->get_input('my_post_key'));
 
     $deleted = 0;
-    $ids     = ucp_int_ids($mybb->get_input('file_ids', MyBB::INPUT_ARRAY));
 
-    if ($ids) {
-        foreach ($ids as $file_id) {
-            if (ucp_delete_comment_file($file_id, (int) $CURUSER['id'])) {
+    if (isset($mybb->input['file_ids']) && is_array($mybb->input['file_ids'])) {
+        foreach ($mybb->input['file_ids'] as $raw_id) {
+            $file_id = (int) $raw_id;
+            $query   = $db->sql_query_prepared("
+                SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
+                       c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
+                       p.message AS post_message, pm.message AS pm_message
+                FROM comment_files cf
+                LEFT JOIN comments c ON c.id=cf.comment_id
+                LEFT JOIN news n ON n.id=cf.news_id
+                LEFT JOIN torrents t ON t.id=cf.torrent_id
+                LEFT JOIN posts p ON p.pid=cf.post_id
+                LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
+                WHERE cf.id=? AND cf.user_id=?", [$file_id, (int) $CURUSER['id']]);
+
+            if ($query && $db->num_rows($query) > 0) {
+                $file = $db->fetch_array($query);
+                if (!empty($file['file_path']) && file_exists($file['file_path'])) {
+                    @unlink($file['file_path']);
+                }
+
+                $filename      = basename($file['file_path']);
+                $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
+
+                foreach ([
+                    ['text',    'comments',        'id',  $file['comment_id'],  $file['comment_text']],
+                    ['body',    'news',             'id',  $file['news_id'],     $file['news_text']],
+                    ['descr',   'torrents',         'id',  $file['torrent_id'],  $file['torrent_description']],
+                    ['message', 'posts',        'pid', $file['post_id'],     $file['post_message']],
+                    ['message', 'privatemessages',  'pmid',$file['messages_id'],$file['pm_message']],
+                ] as [$field, $table, $id_field, $id, $content]) {
+                    if ($id) {
+                        $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
+                        if ($new_text !== $content) {
+                            $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
+                        }
+                    }
+                }
+
+                $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, (int)$CURUSER['id']]);
                 $deleted++;
             }
         }
@@ -2799,19 +3966,43 @@ if ($mybb->input['action'] === 'remove_all_files') {
     verify_post_check($mybb->get_input('my_post_key'));
 
     $uid   = (int) $CURUSER['id'];
-    // Только id: тексты читаются заново для каждого файла внутри хелпера, иначе
-    // при двух файлах в одном посте второй UPDATE затирал первую замену.
-    $ids   = [];
-    $query = $db->sql_query_prepared("SELECT id FROM comment_files WHERE user_id=?", [$uid]);
-    while ($query && ($row = $db->fetch_array($query))) {
-        $ids[] = (int) $row['id'];
-    }
+    $query = $db->sql_query_prepared("
+        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
+               c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
+               p.message AS post_message, pm.message AS pm_message
+        FROM comment_files cf
+        LEFT JOIN comments c ON c.id=cf.comment_id
+        LEFT JOIN news n ON n.id=cf.news_id
+        LEFT JOIN torrents t ON t.id=cf.torrent_id
+        LEFT JOIN posts p ON p.pid=cf.post_id
+        LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
+        WHERE cf.user_id=?", [$uid]);
 
     $deleted = 0;
-    foreach ($ids as $file_id) {
-        if (ucp_delete_comment_file($file_id, $uid)) {
-            $deleted++;
+    while ($query && ($file = $db->fetch_array($query))) {
+        if (!empty($file['file_path']) && file_exists($file['file_path'])) {
+            @unlink($file['file_path']);
         }
+        $filename      = basename($file['file_path']);
+        $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
+
+        foreach ([
+            ['text',    'comments',       'id',   $file['comment_id'],  $file['comment_text']],
+            ['body',    'news',           'id',   $file['news_id'],     $file['news_text']],
+            ['descr',   'torrents',       'id',   $file['torrent_id'],  $file['torrent_description']],
+            ['message', 'posts',      'pid',  $file['post_id'],     $file['post_message']],
+            ['message', 'privatemessages','pmid',  $file['messages_id'],$file['pm_message']],
+        ] as [$field, $table, $id_field, $id, $content]) {
+            if ($id) {
+                $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
+                if ($new_text !== $content) {
+                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
+                }
+            }
+        }
+
+        $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file['id'], $uid]);
+        $deleted++;
     }
 
     header('Location: usercp.php?action=manage_files&msg=' . urlencode(sprintf($lang->usercp['flash_all_files_deleted'], $deleted)));
@@ -2826,12 +4017,12 @@ if ($mybb->input['action'] === 'acceptrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error($lang->usercp['invalid_request']); }
+    if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_acceptrequest_start');
 
     $user = get_user((int)$request['uid']);
-    if (empty($user)) { error($lang->usercp['user_doesnt_exist']); }
+    if (empty($user)) { error('user_doesnt_exist'); }
 
     // Add current user to the requestor's buddy list
     $requester_buddylist   = array_filter(explode(',', $user['buddylist']));
@@ -2849,12 +4040,10 @@ if ($mybb->input['action'] === 'acceptrequest') {
 
     require_once INC_PATH . '/functions_pm.php';
     send_pm([
-        'subject'       => ['buddyrequest_accepted_request'],
-        'message'       => ['buddyrequest_accepted_request_message'],
-        'touid'         => (int) $user['id'],
-        'language'      => (string) ($user['language'] ?? ''),
-        'language_file' => 'usercp',
-    ], (int) $CURUSER['id'], true);
+        'subject' => $lang->usercp['buddyrequest_accepted_request_message'],
+        'message' => $lang->usercp['buddyrequest_accepted_request'],
+        'touid'   => $user['id'],
+    ], $CURUSER['id'], true);
 
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_acceptrequest_end');
@@ -2866,11 +4055,11 @@ if ($mybb->input['action'] === 'declinerequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error($lang->usercp['invalid_request']); }
+    if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_declinerequest_start');
-    $user = get_user((int) $request['uid']);
-    if (empty($user)) { error($lang->usercp['user_doesnt_exist']); }
+    $user = get_user($request['uid']);
+    if (empty($user)) { error('user_doesnt_exist'); }
 
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_declinerequest_end');
@@ -2882,7 +4071,7 @@ if ($mybb->input['action'] === 'cancelrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND uid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error($lang->usercp['invalid_request']); }
+    if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_cancelrequest_start');
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
@@ -2934,27 +4123,27 @@ if ($mybb->input['action'] === 'do_editlists') {
             $field = in_array($db->type, ['mysql', 'mysqli'], true) ? 'username' : 'LOWER(username)';
             $lowered_users = array_map('strtolower', $users);
             $placeholders  = implode(',', array_fill(0, count($lowered_users), '?'));
-            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm,language FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
+            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
 
             while ($q && ($user = $db->fetch_array($q))) {
                 $found_users++;
 
                 if (in_array($user['id'], $existing_users) || in_array($user['id'], $selected_list)) {
-                    $string        = 'users_already_on_' . ($isIgnored ? 'ignore' : 'buddy') . '_list';
+                    $string        = 'users_already_on_' . ($isIgnored ? 'ignored' : 'buddy') . '_list';
                     if (in_array($user['id'], $selected_list)) { $string .= '_alt'; }
-                    $error_message = $lang->usercp[$string] ?? '';
+                    $error_message = $lang->$string;
                     array_pop($users);
                     continue;
                 }
 
                 if (isset($requests[$user['id']])) {
-                    $error_message = $lang->usercp[$isIgnored ? 'users_already_sent_request_alt' : 'users_already_sent_request'] ?? '';
+                    $error_message = $isIgnored ? 'users_already_sent_request_alt' : 'users_already_sent_request';
                     array_pop($users);
                     continue;
                 }
 
                 if (isset($requests_rec[$user['id']])) {
-                    $error_message = $lang->usercp[$isIgnored ? 'users_already_rec_request_alt' : 'users_already_rec_request'] ?? '';
+                    $error_message = $isIgnored ? 'users_already_rec_request_alt' : 'users_already_rec_request';
                     array_pop($users);
                     continue;
                 }
@@ -2962,13 +4151,7 @@ if ($mybb->input['action'] === 'do_editlists') {
                 if ($user['buddyrequestsauto'] == 1 && !$isIgnored) {
                     $existing_users[] = $user['id'];
                     require_once INC_PATH . '/functions_pm.php';
-                    send_pm([
-                        'subject'       => ['buddyrequest_new_buddy'],
-                        'message'       => ['buddyrequest_new_buddy_message'],
-                        'touid'         => (int) $user['id'],
-                        'language'      => (string) ($user['language'] ?? ''),
-                        'language_file' => 'usercp',
-                    ], (int) $CURUSER['id'], true);
+                    send_pm($user['id'], $lang->usercp['buddyrequest_new_buddy_message'], $lang->usercp['buddyrequest_new_buddy'], $CURUSER['id']);
                 } elseif ($user['buddyrequestsauto'] != 1 && !$isIgnored) {
                     $db->sql_query_prepared(
                         "INSERT INTO buddyrequests (`uid`,`touid`,`date`) VALUES (?,?,?)",
@@ -2976,13 +4159,14 @@ if ($mybb->input['action'] === 'do_editlists') {
                     );
                     require_once INC_PATH . '/functions_pm.php';
                     send_pm([
-                        'subject'       => ['buddyrequest_received'],
-                        'message'       => ['buddyrequest_received_message'],
+                        'subject'       => $lang->usercp['buddyrequest_received'],
+                        'message'       => sprintf($lang->usercp['buddyrequest_received_message'], $CURUSER['username']),
                         'touid'         => (int) $user['id'],
+                        'fromid'        => (int) $CURUSER['id'],
                         'receivepms'    => (int) $user['buddyrequestspm'],
-                        'language'      => (string) ($user['language'] ?? ''),
+                        'language'      => $user['language'],
                         'language_file' => 'usercp',
-                    ], (int) $CURUSER['id']);
+                    ]);
                     $sent = true;
                 } elseif ($isIgnored) {
                     $existing_users[] = $user['id'];
@@ -3015,11 +4199,12 @@ if ($mybb->input['action'] === 'do_editlists') {
             unset($existing_users[$key]);
             $del_user = get_user($del_id);
             if (!empty($del_user) && !$isIgnored) {
-                // Убираем СЕБЯ из списка друга (раньше искался $del_id и UPDATE шёл по несуществующему uid → id=0)
-                $bl  = $del_user['buddylist'] ? explode(',', (string) $del_user['buddylist']) : [];
-                $bl  = array_filter($bl, static fn($v) => (int) $v !== (int) $CURUSER['id'] && (int) $v > 0);
-                $nl  = implode(',', array_map('intval', $bl));
-                $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$nl, (int) $del_user['id']]);
+                $bl  = $del_user['buddylist'] ? explode(',', $del_user['buddylist']) : [];
+                $k2  = array_search($del_id, $bl);
+                if ($k2 !== false) { unset($bl[$k2]); }
+                $nl  = preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $bl));
+                $nl  = trim($nl, ',');
+                $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$nl, (int) $del_user['uid']]);
             }
             $tmpl = $isIgnored ? $lang->usercp['removed_from_ignore_list'] : $lang->usercp['removed_from_buddy_list'];
             $message = sprintf($tmpl, htmlspecialchars_uni($del_user['username'] ?? ''));
@@ -3291,7 +4476,6 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
     $plugins->run_hooks('usercp_editlists_end');
 
     stdhead($lang->usercp['edit_lists']);
-    ucp_page_open('editlists');
     build_breadcrumb();
     
 	
@@ -3304,7 +4488,171 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
 	], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
 
 	$_tpl_out = '
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/buddy.css">
+<style>
+/* ── Buddy / Ignore lists ───────────────────────────────────── */
+.ucp-lists .ucp-card {
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+    height: 100%;
+}
+.ucp-lists .ucp-card .card-header {
+    display: flex; align-items: center; gap: .75rem;
+    background: transparent;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    padding: .9rem 1.1rem;
+    font-weight: 600;
+}
+.ucp-lists .ucp-icon {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: .75rem;
+    font-size: 1rem;
+}
+.ucp-lists .ucp-icon-buddy   { color: var(--bs-success); background: rgba(var(--bs-success-rgb), .12); }
+.ucp-lists .ucp-icon-ignored { color: var(--bs-danger);  background: rgba(var(--bs-danger-rgb), .12); }
+.ucp-lists .ucp-icon-received { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); }
+.ucp-lists .ucp-icon-sent     { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .14); }
+.ucp-lists .ucp-count {
+    margin-left: auto;
+    font-size: .75rem; font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.ucp-lists .ucp-count-active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.ucp-lists .ucp-help { font-size: .8rem; color: var(--bs-secondary-color); margin-bottom: .5rem; }
 
+/* Поле выбора пользователей (разметку создаёт usercp.js) */
+.ucp-lists .user-select {
+    position: relative;
+    display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    background: var(--bs-body-bg);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ucp-lists .user-select:focus-within {
+    border-color: rgba(var(--bs-primary-rgb), .6);
+    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
+}
+.ucp-lists .user-select > input {
+    flex: 1 1 140px; min-width: 120px;
+    border: 0; outline: 0;
+    background: transparent;
+    color: var(--bs-body-color);
+    padding: .25rem;
+}
+.ucp-lists .user-tag {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .15rem .35rem .15rem .25rem;
+    border-radius: 50rem;
+    background: rgba(var(--bs-primary-rgb), .1);
+    border: 1px solid rgba(var(--bs-primary-rgb), .3);
+    color: var(--bs-primary);
+    font-size: .85rem; font-weight: 600;
+}
+.ucp-lists .user-tag img,
+.ucp-lists .user-option img {
+    width: 22px; height: 22px; border-radius: 50%; object-fit: cover;
+}
+.ucp-lists .user-tag-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color .15s ease;
+}
+.ucp-lists .user-tag-remove:hover { background: rgba(var(--bs-primary-rgb), .2); }
+.ucp-lists .user-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050;
+    max-height: 260px; overflow-y: auto;
+    padding: .25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
+}
+.ucp-lists .user-dropdown[hidden] { display: none; }
+.ucp-lists .user-option {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .45rem .6rem;
+    border-radius: .5rem;
+    cursor: pointer;
+}
+.ucp-lists .user-option img { width: 28px; height: 28px; }
+.ucp-lists .user-option:hover { background: var(--bs-tertiary-bg); }
+
+/* Список */
+.ucp-lists .ucp-list-title {
+    font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--bs-secondary-color);
+    margin: 1.25rem 0 .5rem;
+}
+.ucp-lists .ucp-list { max-height: 420px; overflow-y: auto; margin: 0 -.35rem; }
+.ucp-lists .ucp-list-row {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .6rem;
+    border-radius: .6rem;
+    transition: background-color .15s ease;
+}
+.ucp-lists .ucp-list-row:hover { background: var(--bs-tertiary-bg); }
+.ucp-lists .ucp-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ucp-lists .ucp-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #adb5bd; }
+.ucp-lists .ucp-status-online { background: #68c000; box-shadow: 0 0 0 3px rgba(104, 192, 0, .18); }
+.ucp-lists .ucp-ignored-mark { color: var(--bs-secondary-color); font-size: .8rem; width: 14px; text-align: center; }
+.ucp-lists .ucp-list-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; flex-shrink: 0;
+    border-radius: 50%;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    opacity: .6;
+    transition: opacity .15s ease, color .15s ease, background-color .15s ease;
+}
+.ucp-lists .ucp-list-row:hover .ucp-list-remove { opacity: 1; }
+.ucp-lists .ucp-list-remove:hover { color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .1); }
+.ucp-lists .ucp-list-date {
+    display: block;
+    font-size: .75rem; font-weight: 400;
+    color: var(--bs-secondary-color);
+}
+.ucp-lists .ucp-req-mark {
+    width: 26px; height: 26px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: .7rem;
+}
+.ucp-lists .ucp-req-in  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .1); }
+.ucp-lists .ucp-req-out { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .12); }
+.ucp-lists .ucp-req-actions { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; }
+.ucp-lists .ucp-req-pending {
+    font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem;
+    border-radius: 50rem;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+}
+.ucp-lists .ucp-list-empty {
+    display: flex; flex-direction: column; align-items: center; gap: .4rem;
+    padding: 1.75rem 1rem;
+    text-align: center;
+    color: var(--bs-secondary-color);
+    font-size: .9rem;
+}
+.ucp-lists .ucp-list-empty i { font-size: 1.6rem; opacity: .5; }
+</style>
 
 ' . $swal_assets . '
 ' . ucp_js_lang([
@@ -3314,6 +4662,7 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
     'remove_from_list_confirm' => 'js_confirm_remove_user',
     'list_update_failed' => 'js_list_update_failed',
 ]) . '
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript">
     window.lang = Object.assign(window.lang || {}, ' . $ucp_lang_js . ');
 </script>
@@ -3572,7 +4921,79 @@ if ($mybb->input['action'] === 'drafts') {
     </div>
 </div>
 
-';
+<style>
+    /* Draft Element Styles */
+    .draft-card {
+        border: 1px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .draft-card:hover {
+        border-color: #dc3545;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.1);
+    }
+    
+    .draft-card.selected {
+        border-color: #dc3545;
+        background-color: rgba(220, 53, 69, 0.05);
+    }
+    
+    .hover-lift:hover {
+        transform: translateY(-2px);
+    }
+    
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+    
+    .hover-primary:hover {
+        color: #0d6efd !important;
+    }
+    
+    /* Toggle Switch Styles */
+    .form-switch .form-check-input {
+        width: 3em;
+        height: 1.5em;
+        cursor: pointer;
+        border-color: #adb5bd;
+    }
+    
+    .form-switch .form-check-input:checked {
+        background-color: #dc3545;
+        border-color: #dc3545;
+    }
+    
+    .form-switch .form-check-input:focus {
+        box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+    }
+    
+    /* Text Preview Styles */
+    .draft-preview {
+        max-height: 48px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-height: 1.4;
+    }
+    
+    /* Animations */
+    .additional-info {
+        animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>';
 			
 			
 			
@@ -3607,11 +5028,66 @@ if ($mybb->input['action'] === 'drafts') {
 
     $plugins->run_hooks('usercp_drafts_end');
     stdhead($lang->usercp['drafts']);
-    ucp_page_open('drafts');
     build_breadcrumb();
     
 	
-	$_tpl_out = '
+	$_tpl_out = '<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>'.$SITENAME.' - '.$lang->usercp['drafts'].'</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+.draft-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 30px;
+}
+.draft-switch input { display:none; }
+.draft-slider {
+    position:absolute;
+    inset:0;
+    background:#ccc;
+    border-radius:30px;
+    cursor:pointer;
+    transition:.3s;
+}
+.draft-slider:before {
+    content:"";
+    position:absolute;
+    width:22px;
+    height:22px;
+    left:4px;
+    bottom:4px;
+    background:#fff;
+    border-radius:50%;
+    transition:.3s;
+}
+.draft-switch input:checked + .draft-slider {
+    background:#dc3545;
+}
+.draft-switch input:checked + .draft-slider:before {
+    transform:translateX(28px);
+}
+
+.draft-card {
+    border:1px solid #e9ecef;
+    border-radius:10px;
+    padding:16px;
+    margin-bottom:12px;
+    transition:.3s;
+}
+.draft-card.selected {
+    border-color:#dc3545;
+    background:rgba(220,53,69,.05);
+}
+</style>
+
+
+</head>
+<body>
 
 <form action="usercp.php" method="post" id="draftsForm">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'">
@@ -3669,7 +5145,8 @@ if ($mybb->input['action'] === 'drafts') {
 ]) . '
 <script type="text/javascript" src="' . $BASEURL . '/scripts/drafts.js?ver=3"></script>
 
-'; 
+</body>
+</html>'; 
 	
 	
 	echo $_tpl_out;
@@ -3724,43 +5201,123 @@ if ($mybb->input['action'] === 'profile') {
 
     $plugins->run_hooks('usercp_profile_end');
     stdhead($lang->usercp['edit_profile']);
-    ucp_page_open('profile');
-    build_breadcrumb();
+    
+	
+	$_tpl_out = '<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['edit_profile'].'</title>
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
 
-    $months = '';
-    for ($m = 1; $m <= 12; $m++) {
-        $months .= '<option value="' . $m . '" ' . $bdaymonthsel[$m] . '>' . $lang->usercp['month_' . $m] . '</option>';
-    }
+    
+</head>
+<body>
+'.$header.'
 
-    $sec_bday = '<div class="uc-grid">'
-        . '<div><label for="bday1" class="form-label fw-semibold">' . $lang->usercp['day'] . '</label>'
-        .   '<select name="bday1" id="bday1" class="form-select"><option value="">&nbsp;</option>' . $bdaydaysel . '</select></div>'
-        . '<div><label for="bday2" class="form-label fw-semibold">' . $lang->usercp['month'] . '</label>'
-        .   '<select name="bday2" id="bday2" class="form-select"><option value="">&nbsp;</option>' . $months . '</select></div>'
-        . '<div><label for="bday3" class="form-label fw-semibold">' . $lang->usercp['year'] . '</label>'
-        .   '<input type="text" inputmode="numeric" class="form-control" maxlength="4" name="bday3" id="bday3" value="' . htmlspecialchars_uni((string) $bday[2]) . '" placeholder="YYYY"></div>'
-        . '</div>'
-        . '<div class="uc-field">'
-        .   '<label for="birthdayprivacy" class="form-label"><i class="fa-solid fa-shield-halved"></i>' . $lang->usercp['birthdayprivacy'] . '</label>'
-        .   '<select name="birthdayprivacy" id="birthdayprivacy" class="form-select w-auto">'
-        .     '<option value="all"' . $allselected . '>' . $lang->usercp['birthdayprivacyall'] . '</option>'
-        .     '<option value="none"' . $noneselected . '>' . $lang->usercp['birthdayprivacynone'] . '</option>'
-        .     '<option value="age"' . $ageselected . '>' . $lang->usercp['birthdayprivacyage'] . '</option>'
-        .   '</select>'
-        .   '<div class="uc-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_birthday_privacy'] . '</div>'
-        . '</div>';
+<form action="usercp.php" method="post" name="input">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md py-4">
+    <div class="row g-4">
+        <div class="col-lg-3">
+            '.$usercpnav.'
+        </div>
+        <div class="col-lg-9">
+            '.$errors.'
+            
+            <div class="card">
+                <div class="card-body">
+                    
+                    <!-- ========= BIRTHDAY SECTION ========= -->
+                    <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">
+                        <i class="fas fa-cake-candles me-2 text-primary"></i> '.$lang->usercp['birthday'].'
+                    </div>
+                    <div class="row g-3 m-auto border-bottom pb-4 pt-0 mb-2">
+                        <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block">
+                            <div class="section-title-left text-center">
+                                <i class="fas fa-cake-candles section-icon-large"></i>
+                                <div class="fw-bold mt-2">'.$lang->usercp['birthday'].'</div>
+                                <small class="text-muted">' . $lang->usercp['hint_birthday_sub'] . '</small>
+                            </div>
+                        </div>
+                        <div class="col-lg-9">
+                            <div class="alert bg-nav mb-3">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-auto">
+                                        <span class="text-desc"><i class="fas fa-calendar-day me-1"></i> '.$lang->usercp['day'].'</span>
+                                        <select name="bday1" class="form-select form-select-sm border">
+                                            <option value="">&nbsp;</option>
+                                            '.$bdaydaysel.'
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <span class="text-desc"><i class="fas fa-calendar-alt me-1"></i> '.$lang->usercp['month'].'</span>
+                                        <select name="bday2" class="form-select form-select-sm border">
+                                            <option value="">&nbsp;</option>
+                                            <option value="1" '.$bdaymonthsel['1'].'>'.$lang->usercp['month_1'].'</option>
+                                            <option value="2" '.$bdaymonthsel['2'].'>'.$lang->usercp['month_2'].'</option>
+                                            <option value="3" '.$bdaymonthsel['3'].'>'.$lang->usercp['month_3'].'</option>
+                                            <option value="4" '.$bdaymonthsel['4'].'>'.$lang->usercp['month_4'].'</option>
+                                            <option value="5" '.$bdaymonthsel['5'].'>'.$lang->usercp['month_5'].'</option>
+                                            <option value="6" '.$bdaymonthsel['6'].'>'.$lang->usercp['month_6'].'</option>
+                                            <option value="7" '.$bdaymonthsel['7'].'>'.$lang->usercp['month_7'].'</option>
+                                            <option value="8" '.$bdaymonthsel['8'].'>'.$lang->usercp['month_8'].'</option>
+                                            <option value="9" '.$bdaymonthsel['9'].'>'.$lang->usercp['month_9'].'</option>
+                                            <option value="10" '.$bdaymonthsel['10'].'>'.$lang->usercp['month_10'].'</option>
+                                            <option value="11" '.$bdaymonthsel['11'].'>'.$lang->usercp['month_11'].'</option>
+                                            <option value="12" '.$bdaymonthsel['12'].'>'.$lang->usercp['month_12'].'</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <span class="text-desc"><i class="fas fa-calendar-week me-1"></i> '.$lang->usercp['year'].'</span>
+                                        <input type="text" class="form-control form-control-sm border" size="5" maxlength="4" name="bday3" value="'.$bday['2'].'" placeholder="YYYY" />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr />
+                            
+                            <div class="form-group">
+                                <label for="birthdayprivacy">
+                                    <i class="fas fa-shield-alt text-info"></i>
+                                    '.$lang->usercp['birthdayprivacy'].'
+                                </label>
+                                <select name="birthdayprivacy" class="form-select form-select-sm w-auto">
+                                    <option value="all"'.$allselected.'><i class="fas fa-globe me-1"></i> '.$lang->usercp['birthdayprivacyall'].'</option>
+                                    <option value="none"'.$noneselected.'><i class="fas fa-lock me-1"></i> '.$lang->usercp['birthdayprivacynone'].'</option>
+                                    <option value="age"'.$ageselected.'><i class="fas fa-chart-simple me-1"></i> '.$lang->usercp['birthdayprivacyage'].'</option>
+                                </select>
+                                <small class="text-muted d-block mt-1">
+                                    <i class="fas fa-info-circle me-1"></i> ' . $lang->usercp['hint_birthday_privacy'] . '
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+  
+                </div> <!-- card-body -->
+                
+                <div class="card-footer text-center">
+                    <input type="hidden" name="action" value="do_profile" />
+                    <button type="submit" class="btn btn-primary" name="regsubmit" value="'.$lang->usercp['update_profile'].'">
+                        <i class="fas fa-save me-2"></i>
+                        <i class="fas fa-user me-1"></i>
+                        '.$lang->usercp['update_profile'].'
+                    </button>
+                </div>
+            </div> <!-- card -->
+        </div> <!-- col -->
+    </div> <!-- row -->
+</div> <!-- container -->
+</form>
 
-    echo uc_frame_open('profile', 'fa-user-pen', 'st-soft-primary', $lang->usercp['edit_profile'], $lang->usercp['hint_birthday_sub'])
-       . ($errors ? '<div class="uc-errors">' . $errors . '</div>' : '')
-       . '<form action="usercp.php" method="post" name="input">'
-       .   '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
-       .   '<input type="hidden" name="action" value="do_profile">'
-       .   uc_card('fa-cake-candles', 'st-soft-warning', $lang->usercp['birthday'], $sec_bday)
-       .   uc_submitbar('<button type="submit" class="btn btn-primary" name="regsubmit" value="' . htmlspecialchars_uni($lang->usercp['update_profile']) . '"><i class="fa-solid fa-floppy-disk me-2"></i>' . $lang->usercp['update_profile'] . '</button>')
-       . '</form>'
-       . uc_frame_close()
-       // форматирование поля «год» (bday3) — единственное, что здесь нужно из theme-switcher.js
-       . '<script src="' . $BASEURL . '/scripts/theme-switcher.js"></script>';
+<script src="' . $BASEURL . '/scripts/theme-switcher.js"></script>
+
+</body>
+</html>'; 
+	
+	
+	echo $_tpl_out;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -3987,7 +5544,7 @@ if ($mybb->input['action'] === 'attachments') {
                     <div class="row small text-muted">
                         <div class="col-md-3">
                             <i class="fas fa-file me-1"></i>
-                            ' . $lang->usercp['lbl_type'] . ': <span class="text-dark">'.htmlspecialchars_uni((string)$attachment['filetype']).'</span>
+                            ' . $lang->usercp['lbl_type'] . ': <span class="text-dark">'.$attachment['filetype'].'</span>
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-expand-alt me-1"></i>
@@ -3999,7 +5556,7 @@ if ($mybb->input['action'] === 'attachments') {
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-user me-1"></i>
-                            ' . $lang->usercp['lbl_uploaded_by'] . ': <span class="text-dark">'.htmlspecialchars_uni((string)($attachment['username'] ?? '')).'</span>
+                            ' . $lang->usercp['lbl_uploaded_by'] . ': <span class="text-dark">'.$attachment['username'].'</span>
                         </div>
                     </div>
                 </div>
@@ -4008,7 +5565,92 @@ if ($mybb->input['action'] === 'attachments') {
     </div>
 </div>
 
-';
+<style>
+    .attachment-item {
+        transition: all 0.3s ease;
+        border: 1px solid #e9ecef;
+    }
+    
+    .attachment-item:hover {
+        border-color: #0d6efd;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+    
+    .hover-shadow:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .hover-primary:hover {
+        color: #0d6efd !important;
+    }
+    
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+    
+    /* Кастомный стиль для переключателя */
+    .form-switch .form-check-input {
+        width: 3em;
+        height: 1.5em;
+        cursor: pointer;
+    }
+    
+    .form-switch .form-check-input:checked {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    
+    .attachment-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .attachment-thumb-link {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .attachment-thumb {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        transition: transform .2s ease;
+    }
+
+    .attachment-thumb-link:hover .attachment-thumb {
+        transform: scale(1.08);
+    }
+    
+    .additional-info {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @media (max-width: 768px) {
+        .attachment-item .row > div {
+            margin-bottom: 10px;
+        }
+        
+        .d-flex.justify-content-end {
+            justify-content: flex-start !important;
+        }
+    }
+</style>';
 
 
 
@@ -4068,11 +5710,180 @@ if ($mybb->input['action'] === 'attachments') {
 
     $plugins->run_hooks('usercp_attachments_end');
     stdhead($lang->usercp['attachments_manager']);
-    ucp_page_open('attachments');
     
 	$_tpl_out = '
 	
-	
+	<!DOCTYPE html>
+<html lang="eng">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['attachments_manager'].'</title>
+
+    <style>
+        .att-page-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a4fc4 100%);
+            border-radius: 16px;
+            padding: 1.75rem 2rem;
+            color: #fff;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 24px rgba(13,110,253,.25);
+        }
+        .att-page-header h2 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .att-page-header h2 i {
+            margin-right: .5rem;
+            opacity: .9;
+        }
+        .att-page-header p {
+            margin: .35rem 0 0;
+            opacity: .85;
+            font-size: .9rem;
+        }
+
+        .att-stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+            margin-bottom: 1.5rem;
+        }
+        .att-stat-card {
+            background: #fff;
+            border: 1px solid #eef0f2;
+            border-radius: 14px;
+            padding: 1.1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .att-stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 24px rgba(0,0,0,.07);
+        }
+        .att-stat-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+        }
+        .att-stat-icon.is-primary { background: rgba(13,110,253,.1); color: #0d6efd; }
+        .att-stat-icon.is-success { background: rgba(25,135,84,.1);  color: #198754; }
+        .att-stat-icon.is-info    { background: rgba(13,202,240,.12); color: #0aa2c0; }
+        .att-stat-icon.is-warning { background: rgba(255,193,7,.12);  color: #cc9a06; }
+        .att-stat-icon.is-danger  { background: rgba(220,53,69,.1);   color: #dc3545; }
+        .att-stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #212529;
+        }
+        .att-stat-label {
+            font-size: .78rem;
+            color: #8a8f98;
+            margin-top: 2px;
+        }
+
+        .att-card {
+            background: #fff;
+            border: 1px solid #eef0f2;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .att-card-header {
+            padding: 1.1rem 1.5rem;
+            border-bottom: 1px solid #f1f2f4;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .att-card-header h5 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #212529;
+        }
+        .att-card-header h5 i {
+            color: #0d6efd;
+            margin-right: .5rem;
+        }
+        .att-card-body { padding: 1.25rem 1.5rem; }
+
+        .att-usage-note {
+            background: #f0f6ff;
+            border: 1px solid #d6e7ff;
+            border-radius: 10px;
+            padding: .75rem 1.1rem;
+            font-size: .88rem;
+            color: #0a4fc4;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        /* Toggle switch */
+        .form-switch-custom {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+        .form-switch-custom input { opacity: 0; width: 0; height: 0; }
+        .switch-slider {
+            position: absolute; cursor: pointer; inset: 0;
+            background-color: #dadfe4;
+            transition: .25s;
+            border-radius: 28px;
+        }
+        .switch-slider:before {
+            position: absolute; content: "";
+            height: 21px; width: 21px; left: 3.5px; bottom: 3.5px;
+            background-color: #fff;
+            transition: .25s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        }
+        .form-switch-custom input:checked + .switch-slider { background-color: #0d6efd; }
+        .form-switch-custom input:checked + .switch-slider:before { transform: translateX(22px); }
+
+        .att-footer {
+            padding: 1.1rem 1.5rem;
+            border-top: 1px solid #f1f2f4;
+            text-align: center;
+            background: #fafbfc;
+        }
+        .att-delete-btn {
+            border: none;
+            border-radius: 10px;
+            padding: .65rem 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%);
+            color: #fff;
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .att-delete-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(220,53,69,.35);
+        }
+
+        @media (max-width: 768px) {
+            .att-page-header { padding: 1.25rem 1.5rem; }
+            .att-card-body, .att-card-header { padding: 1rem; }
+        }
+    </style>
+
+</head>
+<body>
     <div class="container-md py-4">
         <div class="row">
             <!-- Навигация -->
@@ -4165,8 +5976,10 @@ if ($mybb->input['action'] === 'attachments') {
         </div>
     </div>
 ' . $swal_assets . '
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript" src="' . $BASEURL . '/scripts/attachments.js"></script>
-';
+</body>
+</html>';
 	
 	
 	
@@ -4205,50 +6018,133 @@ if (!$mybb->input['action']) {
 
     $plugins->run_hooks('usercp_end');
     stdhead($lang->usercp['user_cp']);
-    ucp_page_open('home');
-    build_breadcrumb();
+    
+	$_tpl_out = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->usercp['user_cp'].'</title>
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp.css">
+	
 
-    $uid   = (int) $CURUSER['id'];
-    $email = htmlspecialchars_uni((string) $CURUSER['email']);
+</head>
 
-    $kpi = static function (string $href, string $icon, string $soft, string $val, string $lbl): string {
-        $tag = $href !== '' ? 'a href="' . $href . '"' : 'div';
-        return '<' . $tag . ' class="st-kpi">'
-             .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
-             .   '<span class="min-w-0"><span class="st-kpi__val d-block">' . $val . '</span><span class="st-kpi__lbl d-block">' . $lbl . '</span></span>'
-             . '</' . ($href !== '' ? 'a' : 'div') . '>';
-    };
+<div class="container-md py-4">
+    <div class="row g-4">
+        <!-- Навигационная панель -->
+        <div class="col-12 col-lg-3">
+            <div class="sticky-top" style="top: 20px;">
+                '.$usercpnav.'
+            </div>
+        </div>
+        
+        <!-- Основной контент -->
+        <div class="col">
+            <div class="card user-stats-card mb-4">
+                <div class="card-body p-4">
+                    <div class="row align-items-center">
+                        <!-- Аватар -->
+                        <div class="col-auto text-center">
+                            
+                                '.$currentavatar.'
+                                <div class="position-absolute bottom-0 end-0 bg-success rounded-circle border border-2 border-white" 
+                                     style="width: 20px; height: 20px;"></div>
+                           
+                            <div class="mt-2">
+                                <span class="badge-status">' . $lang->usercp['online'] . '</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Статистика пользователя -->
+                        <div class="col">
+                            <!-- Имя пользователя -->
+                            <div class="stat-item border-bottom border-custom mb-3">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-user icon-user me-3"></i>
+                                    <div class="username-display">'.$username.'</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Статистика в две колонки -->
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <!-- Количество сообщений -->
+                                    <div class="stat-item border-bottom border-custom d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-comment icon-post"></i>
+                                            '.$lang->usercp['postnum'].'
+                                        </span>
+                                        <a href="search.php?action=finduser&amp;uid='.$CURUSER['id'].'" class="stat-value text-decoration-none">
+                                            '.$mybb->user['posts'].' '.$ss.'
+                                        </a>
+                                    </div>
+                                    
+                                    <!-- Комментарии -->
+                                    <div class="stat-item border-bottom border-custom d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-comments icon-comment"></i>
+                                            '.$lang->usercp['comentsss'].'
+                                        </span>
+                                        <a href="userhistory.php?action=viewcomments&id='.$CURUSER['id'].'" class="stat-value text-decoration-none">
+                                            '.$com.'
+                                        </a>
+                                    </div>
+                                    
+                                    <!-- Бонусные баллы -->
+                                    <div class="stat-item border-bottom border-custom d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-star icon-bonus"></i>
+                                            '.$lang->usercp['bpoints'].'
+                                        </span>
+                                        <a href="mybonus.php" class="stat-value text-decoration-none">
+                                            '.$bonus.'
+                                        </a>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <!-- Email -->
+                                    <div class="stat-item border-bottom border-custom d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-envelope icon-email"></i>
+                                            '.$lang->usercp['email'].'
+                                        </span>
+                                        <span class="stat-value">'.$CURUSER['email'].'</span>
+                                    </div>
+                                    
+                                    <!-- Дата регистрации -->
+                                    <div class="stat-item border-bottom border-custom d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-calendar-alt icon-date"></i>
+                                            '.$lang->usercp['registration_date'].'
+                                        </span>
+                                        <span class="stat-value">'.$regdate.'</span>
+                                    </div>
+                                    
+                                    <!-- Основная группа -->
+                                    <div class="stat-item d-flex justify-content-between align-items-center">
+                                        <span class="stat-label">
+                                            <i class="fas fa-users icon-group"></i>
+                                            '.$lang->usercp['primary_usergroup'].'
+                                        </span>
+                                        <span class="stat-value">'.$usergroup.'</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    $profile_card = '<section class="st-card uc-card"><div class="st-card__body">'
-        . '<div class="uc-profile">'
-        .   '<div class="uc-profile__ava">' . $currentavatar . '<span class="uc-profile__dot" title="' . htmlspecialchars_uni($lang->usercp['online']) . '"></span></div>'
-        .   '<div class="min-w-0">'
-        .     '<div class="uc-profile__name">' . $username . '</div>'
-        .     '<div class="uc-profile__meta">'
-        .       '<span class="st-badge st-soft-success"><i class="fa-solid fa-circle"></i>' . $lang->usercp['online'] . '</span>'
-        .       '<span class="st-badge st-soft-primary"><i class="fa-solid fa-users"></i>' . $usergroup . '</span>'
-        .     '</div>'
-        .   '</div>'
-        . '</div>'
-        . '<div class="uc-kpis">'
-        .   $kpi('search.php?action=finduser&amp;uid=' . $uid, 'fa-comment', 'st-soft-primary', $mybb->user['posts'], $lang->usercp['postnum'] . '<small>' . $ss . '</small>')
-        .   $kpi('userhistory.php?action=viewcomments&amp;id=' . $uid, 'fa-comments', 'st-soft-info', ts_nf((int) $com), $lang->usercp['comentsss'])
-        .   $kpi('mybonus.php', 'fa-star', 'st-soft-warning', htmlspecialchars_uni((string) $bonus), $lang->usercp['bpoints'])
-        .   $kpi('', 'fa-calendar-days', 'st-soft-success', $regdate, $lang->usercp['registration_date'])
-        . '</div>'
-        . '</div></section>';
+</html>'; 
+	
+	echo $_tpl_out;
 
-    $details = '<div class="st-rows">'
-        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-envelope"></i>' . $lang->usercp['email'] . '</span><span class="st-row__val">' . $email . '</span></div>'
-        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-users"></i>' . $lang->usercp['primary_usergroup'] . '</span><span class="st-row__val">' . $usergroup . '</span></div>'
-        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-calendar-days"></i>' . $lang->usercp['registration_date'] . '</span><span class="st-row__val">' . $regdate . '</span></div>'
-        . '</div>';
-
-    echo uc_frame_open('', 'fa-gauge-high', 'st-soft-primary', $lang->usercp['user_cp'], $lang->usercp['hint_home_sub'])
-       . $profile_card
-       . uc_card('fa-id-card', 'st-soft-muted', $lang->usercpnav['ucp_nav_profile'], $details)
-       . uc_frame_close();
-
+    // Скрипты — после разметки страницы (раньше выводились до stdhead())
     echo $swal_assets;
     echo avatar_js_lang();
     echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=2"></script>';
@@ -4360,10 +6256,9 @@ if ($mybb->input['action'] === '2fa') {
     }
 
     stdhead($lang->usercp['nav_2fa']);
-    ucp_page_open('2fa');
     build_breadcrumb();
 
-    echo '';
+    echo '<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">';
 
     echo '
 <div class="container-md py-4">
@@ -4535,7 +6430,6 @@ if ($mybb->input['action'] === '2fa') {
 </div><!-- container -->';
 
     echo $swal_assets;
-    ucp_page_close();
     stdfoot();
     exit;
 }
@@ -4644,7 +6538,6 @@ if ($mybb->input['action'] === 'sessions') {
     $is_current   = !empty($session_row['sid']) && $session_row['sid'] === $current_sid;
 
     stdhead($lang->usercp['lbl_active_session']);
-    ucp_page_open('sessions');
     build_breadcrumb();
 
     echo '
@@ -4791,7 +6684,6 @@ if ($mybb->input['action'] === 'sessions') {
 </div><!-- container -->';
 
     echo $swal_assets;
-    ucp_page_close();
     stdfoot();
     exit;
 }
@@ -4804,5 +6696,4 @@ if ($mybb->input['action'] === 'sessions') {
 
 
 
-ucp_page_close();
 stdfoot();

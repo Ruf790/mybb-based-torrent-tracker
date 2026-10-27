@@ -62,7 +62,7 @@ function renderPreview(pid) {
                  + '<a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#' + sid + '" role="button" aria-expanded="false" aria-controls="' + sid + '">'
                  + '<i class="fa-solid fa-eye"></i> Spoiler (click to show)'
                  + '</a>'
-                 + '<div class="collapse mt-2 p-2 border rounded bg-light" id="' + sid + '">'
+                 + '<div class="collapse mt-2 p-2 border rounded bg-body-tertiary" id="' + sid + '">'
                  + inner
                  + '</div>'
                  + '</div>';
@@ -331,7 +331,10 @@ function deletePost(postId) {
             'ajax': '1'
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+    })
     .then(data => {
         if(data.data == '1') {
             // Успешное удаление
@@ -367,6 +370,12 @@ function deletePost(postId) {
             setTimeout(() => {
                 window.location.href = data.url;
             }, 1500);
+        } else {
+            // Неожиданный ответ (нет прав, ошибка сервера) - раньше кнопка
+            // навсегда оставалась «Deleting...»
+            showToast(data.error || (data.errors && data.errors.join ? data.errors.join(', ') : '') || 'Error deleting post', 'error');
+            deleteBtn.innerHTML = originalText;
+            deleteBtn.disabled = false;
         }
     })
     .catch(error => {
@@ -381,6 +390,9 @@ function deletePost(postId) {
 // Инициализация обработчиков для кнопок удаления
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('button[id^="confirmDeleteBtn"]').forEach(function(button) {
+        // Только confirmDeleteBtn<число>: кнопка #confirmDeleteBtn из модалки
+        // массового удаления постов иначе слала ещё и deletePost('')
+        if (!/^confirmDeleteBtn\d+$/.test(button.id)) return;
         button.addEventListener('click', function() {
             const postId = this.id.replace('confirmDeleteBtn', '');
             deletePost(postId);

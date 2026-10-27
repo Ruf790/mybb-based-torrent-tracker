@@ -25,13 +25,7 @@ document.getElementById('srClear')?.addEventListener('click', () => {
     document.getElementById('srKeywords').focus();
     if (window.hideSuggestions) window.hideSuggestions();
 });
-// Chevron rotate on collapse
-document.getElementById('srAdv')?.addEventListener('show.bs.collapse', () => {
-    document.querySelector('.sr-adv-toggle .fa-chevron-down').style.transform = 'rotate(180deg)';
-});
-document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
-    document.querySelector('.sr-adv-toggle .fa-chevron-down').style.transform = 'rotate(0deg)';
-});
+// Chevron on the advanced toggle is rotated by CSS via aria-expanded (search.css)
 
 // ── Live autocomplete suggestions ───────────────────────────────────────
 (function () {
@@ -45,10 +39,14 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
     let abortCtrl     = null;
 
     function hideSuggestions() {
+        clearTimeout(debounceTimer);
+        if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
         box.style.display = 'none';
         box.innerHTML = '';
         activeIndex  = -1;
         currentItems = [];
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
     }
     window.hideSuggestions = hideSuggestions;
 
@@ -57,7 +55,9 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
         activeIndex  = -1;
 
         if (!items.length) {
-            hideSuggestions();
+            box.style.display = 'none';
+            box.innerHTML = '';
+            input.setAttribute('aria-expanded', 'false');
             return;
         }
 
@@ -67,9 +67,11 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
             a.href = item.url;
             a.className = 'sr-suggest-item';
             a.dataset.index = String(i);
+            a.id = 'srSug' + i;
+            a.setAttribute('role', 'option');
 
             const icon = document.createElement('i');
-            icon.className = 'fas ' + item.icon + ' sr-suggest-icon';
+            icon.className = 'fa-solid ' + item.icon + ' sr-suggest-icon';
 
             const text = document.createElement('span');
             text.className = 'sr-suggest-text';
@@ -86,7 +88,7 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
             text.append(subj, meta);
 
             const badge = document.createElement('span');
-            badge.className = 'badge bg-secondary ms-auto';
+            badge.className = 'st-badge st-soft-muted sr-suggest-type';
             badge.textContent = t('type_' + item.type, TYPE_FALLBACK[item.type] || String(item.type));
 
             a.append(icon, text, badge);
@@ -94,6 +96,7 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
         });
 
         box.style.display = 'block';
+        input.setAttribute('aria-expanded', 'true');
     }
 
     function fetchSuggestions(q) {
@@ -101,7 +104,7 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
         abortCtrl = new AbortController();
 
         fetch('search.php?action=suggest&q=' + encodeURIComponent(q), { signal: abortCtrl.signal })
-            .then(r => r.json())
+            .then(r => r.ok ? r.json() : { results: [] })
             .then(data => renderSuggestions(data.results || []))
             .catch(() => {});
     }
@@ -140,7 +143,11 @@ document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
     });
 
     function updateActive(links) {
-        links.forEach((l, i) => l.classList.toggle('sr-suggest-active', i === activeIndex));
+        links.forEach((l, i) => {
+            l.classList.toggle('sr-suggest-active', i === activeIndex);
+            l.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
+        });
+        if (activeIndex >= 0) input.setAttribute('aria-activedescendant', links[activeIndex].id);
         if (activeIndex >= 0) links[activeIndex].scrollIntoView({ block: 'nearest' });
     }
 

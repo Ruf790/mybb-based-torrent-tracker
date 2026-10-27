@@ -40,7 +40,7 @@
         
         const moveRadio = document.getElementById('type_movecopythread');
         if (!errorMsg && moveRadio && moveRadio.checked) {
-            const forumSelect = form.querySelector('select[name="fid"]');
+            const forumSelect = form.querySelector('select[name="delayedmoderation[new_forum]"]');
             if (forumSelect && (!forumSelect.value || forumSelect.value === '0')) {
                 errorMsg = t('dm_select_forum', 'Please select a destination forum for move/copy operation.');
                 forumSelect.focus();

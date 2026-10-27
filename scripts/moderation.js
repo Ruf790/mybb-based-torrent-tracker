@@ -332,7 +332,8 @@
     
     function initializeGeneralModeration() {
         // Add confirmation to merge threads form
-        const mergeThreadForm = document.querySelector('form');
+        // #moveForm (перенос постов) тоже содержит threadurl — раньше на нём всплывало «объединить темы?»
+        const mergeThreadForm = document.querySelector('form:not(#moveForm)');
         if (mergeThreadForm && mergeThreadForm.querySelector('input[name="threadurl"]')) {
             const submitBtn = mergeThreadForm.querySelector('button[type="submit"]');
             if (submitBtn) {

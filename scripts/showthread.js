@@ -71,6 +71,10 @@
     var spinner = el('quickreply_spinner');
     if (!form || !spinner) return;
 
+    // В AJAX-режиме спиннером управляет Thread.quickReply() (thread.js):
+    // иначе при пустом сообщении спиннер оставался висеть.
+    if (typeof use_xmlhttprequest !== 'undefined' && use_xmlhttprequest == 1) return;
+
     form.addEventListener('submit', function () {
       spinner.style.display = 'block';
     });
@@ -131,16 +135,18 @@
         var previewHTML = plain.length > 400
           ? '<div style="max-height:120px;overflow:hidden;position:relative;">' +
               tempDiv.innerHTML +
-              '<div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,white);"></div>' +
+              '<div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,var(--bs-body-bg));"></div>' +
             '</div>'
           : tempDiv.innerHTML;
 
         card.innerHTML =
           '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">' +
-            '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>' + authorText + '</span>' +
+            '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i><span class="js-author"></span></span>' +
             '<span class="badge bg-secondary small">PID: ' + pid + '</span>' +
           '</div>' +
           '<div class="card-body py-2 px-3 small">' + previewHTML + '</div>';
+        // ник - текстом, а не через innerHTML
+        qs('.js-author', card).textContent = authorText;
       } else {
         card.innerHTML =
           '<div class="card-body py-2 px-3">' +
@@ -311,19 +317,6 @@
     });
   }
 
-  // ─── Thread deleted state ───────────────────────────────────────────────────
-
-  function applyDeletedState() {
-    if (typeof thread_deleted === 'undefined' || thread_deleted !== '1') return;
-
-    var qrf = el('quick_reply_form');
-    if (qrf) qrf.style.display = 'none';
-
-    qsa('#moderator_options_selector option.option_mirage').forEach(function (o) {
-      o.disabled = true;
-    });
-  }
-
   // ─── Boot ────────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -332,7 +325,6 @@
     initPopovers();
     initInlineMod();
     initThreadMod();
-    applyDeletedState();
   });
 
 })();

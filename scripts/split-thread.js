@@ -43,19 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (el) el.textContent = postCount;
     });
 
-    // Стилизация select
-    const forumSelect = document.querySelector('select');
-    if (forumSelect) {
-        forumSelect.classList.add('form-select-custom', 'form-select');
-    }
-
-    // Стилизация input
-    const subjectInput = document.querySelector('input[name="newsubject"]');
-    if (subjectInput) {
-        subjectInput.classList.add('form-control-custom');
-    }
-
-    // Форма
+    // Форма (раньше select/input искались по всей странице — брался первый <select> из шапки сайта)
     const form = document.getElementById('splitThreadForm');
     if (!form) return;
 
@@ -63,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
 
         const subjectInput = this.querySelector('input[name="newsubject"]');
-        const forumSelect = this.querySelector('select');
+        const forumSelect = this.querySelector('select[name="moveto"]');
         const postCount = document.getElementById('postsCount')?.textContent || '0';
 
         // Проверка заголовка

@@ -29,12 +29,6 @@ var Thread = {
         Thread.initMultiQuote();
         Thread.showQuoteButtons();
 
-        if(thread_deleted == "1") {
-            Thread.hideElements("#quick_reply_form, .new_reply_button, .thread_tools, .inline_rating");
-            var option = document.querySelector("#moderator_options_selector option.option_mirage");
-            if(option) option.disabled = true;
-        }
-
         visible_replies = parseInt(visible_replies, 10);
         Thread.splitToolHandler();
         
@@ -323,20 +317,8 @@ var Thread = {
         let new_post_ids = [];
         const quoted = this.getCookie("multiquote");
         let is_new = true;
-        let deleted = false;
-        
-        const postElement = document.getElementById(`pid${pid}`);
-        if(postElement) {
-            const nextPost = postElement.nextElementSibling;
-            if(nextPost && nextPost.classList.contains('deleted_post')) {
-                if(typeof showToast !== 'undefined') {
-                    showToast(t('err_post_deleted', 'This post has been deleted'), 'error');
-                }
-                deleted = true;
-            }
-        }
 
-        if(quoted && !deleted) {
+        if(quoted) {
             const post_ids = quoted.split("|");
 
             post_ids.forEach(post_id => {
@@ -350,7 +332,7 @@ var Thread = {
         }
 
         const mquoteLink = document.querySelector(`#multiquote_${pid}`)?.closest('a');
-        if(is_new && !deleted) {
+        if(is_new) {
             new_post_ids.push(pid.toString());
             if(mquoteLink) {
                 mquoteLink.classList.remove('postbit_multiquote');
@@ -563,15 +545,6 @@ var Thread = {
     },
 
     // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-    hideElements: function(selector) {
-        try {
-            document.querySelectorAll(selector).forEach(function(el) {
-                el.style.display = 'none';
-            });
-        } catch(e) {
-        }
-    },
-
     clearMultiQuoted: function() {
         var quickquote = document.getElementById('quickreply_multiquote');
         if(quickquote) quickquote.style.display = 'none';
@@ -591,17 +564,11 @@ var Thread = {
     },
 
     splitToolHandler: function() {
-        if(thread_deleted !== "1") {
-            var moderatorSelector = document.getElementById("moderator_options_selector");
-            if(moderatorSelector) {
-                var splitTool = moderatorSelector.querySelector("option[value=split]");
-                if(splitTool) {
-                    if(visible_replies > 0) {
-                        splitTool.disabled = false;
-                    } else {
-                        splitTool.disabled = true;
-                    }
-                }
+        var moderatorSelector = document.getElementById("moderator_options_selector");
+        if(moderatorSelector) {
+            var splitTool = moderatorSelector.querySelector("option[value=split]");
+            if(splitTool) {
+                splitTool.disabled = !(visible_replies > 0);
             }
         }
     },

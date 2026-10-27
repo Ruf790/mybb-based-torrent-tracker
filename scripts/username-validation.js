@@ -133,7 +133,8 @@
     }
 
     // ========= FORM SUBMIT VALIDATION =========
-    const form = document.querySelector('form');
+    // Форма с кнопкой #submitBtn, а не первая на странице (первая — поиск в шапке)
+    const form = document.getElementById('submitBtn')?.closest('form') || document.querySelector('form');
     const submitBtn = document.getElementById('submitBtn');
     const passwordInput = document.getElementById('password');
 

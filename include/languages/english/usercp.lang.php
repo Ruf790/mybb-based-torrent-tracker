@@ -806,4 +806,8 @@ Thank you,
     'js_confirm_delete_draft'   => 'Delete this draft? This cannot be undone.',
     'js_confirm_delete_drafts'  => 'Delete {1} selected draft(s)? This cannot be undone.',
 
+    // ── New style (usercp.php) ──
+    'hint_home_sub'                  => 'Your account at a glance',
+    'hint_options_sub'               => 'Notifications, date and time, page display',
+
 );

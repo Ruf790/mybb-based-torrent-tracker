@@ -43,4 +43,13 @@ $language['usercpnav'] = array
 'ucp_nav_attachments' => "Manage Attachments",
 'ucp_nav_uploads' => "My Uploads",
 
+// ── User CP tabs (usercp.php new style) ──
+'tab_overview' => "Overview",
+'tab_profile' => "Profile",
+'tab_security' => "Account & security",
+'tab_friends' => "Friends",
+'tab_subscriptions' => "Subscriptions",
+'tab_content' => "Content & files",
+'tab_messages' => "Messages",
+
 );

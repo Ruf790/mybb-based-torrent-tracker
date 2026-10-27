@@ -128,7 +128,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ===== SUBMIT =====
-    const form = document.querySelector('form');
+    // Форма с кнопкой #submitBtn, а не первая на странице (первая — поиск в шапке)
+    const form = document.getElementById('submitBtn')?.closest('form') || document.querySelector('form');
 
     if (form) {
         form.addEventListener('submit', function (e) {

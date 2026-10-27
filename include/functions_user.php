@@ -295,8 +295,6 @@ function usercp_menu_profile(): void
 
     $lang->load("usercpnav");
 
-    $changenameop = '<a href="usercp.php?action=changename" class="btn btn-menu-coll"><i class="fa-solid fa-user ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_username'].'</a>';
-
     $changesigop = '<a href="usercp.php?action=editsig" class="btn btn-menu-coll"><i class="fa-solid fa-signature ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_sig'].'</a>';
 
     if (!isset($collapsedimg['usercpprofile'])) {
@@ -316,7 +314,7 @@ function usercp_menu_profile(): void
 <div id="collapse-modu" class="collapse bg-transparent">
 <ul class="list-group list-group-flush">
 <a href="usercp.php?action=profile" class="btn btn-menu-coll"><i class="fa-solid fa-user-pen ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_profile'].'</a>
-'.$changenameop.'
+
 <a href="usercp.php?action=password" class="btn btn-menu-coll"><i class="fa-solid fa-key ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_pass'].'</a>
 <a href="usercp.php?action=2fa" class="btn btn-menu-coll"><i class="fa-solid fa-shield-halved ms-2"></i> &nbsp;&nbsp; Two-Factor Authentication</a>
 <a href="usercp.php?action=sessions" class="btn btn-menu-coll"><i class="fa-solid fa-display ms-2"></i> &nbsp;&nbsp; Active Session</a>

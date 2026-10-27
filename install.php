@@ -2844,38 +2844,6 @@ CREATE TABLE IF NOT EXISTS `moderatorlog` (
   KEY `tid` (`tid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `moderators` (
-  `mid` smallint unsigned NOT NULL AUTO_INCREMENT,
-  `fid` smallint unsigned NOT NULL DEFAULT '0',
-  `id` int unsigned NOT NULL DEFAULT '0',
-  `isgroup` tinyint unsigned NOT NULL DEFAULT '0',
-  `caneditposts` tinyint(1) NOT NULL DEFAULT '0',
-  `cansoftdeleteposts` tinyint(1) NOT NULL DEFAULT '0',
-  `canrestoreposts` tinyint(1) NOT NULL DEFAULT '0',
-  `candeleteposts` tinyint(1) NOT NULL DEFAULT '0',
-  `cansoftdeletethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canrestorethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `candeletethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canviewips` tinyint(1) NOT NULL DEFAULT '0',
-  `canviewunapprove` tinyint(1) NOT NULL DEFAULT '0',
-  `canviewdeleted` tinyint(1) NOT NULL DEFAULT '0',
-  `canopenclosethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canstickunstickthreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canapproveunapprovethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canapproveunapproveposts` tinyint(1) NOT NULL DEFAULT '0',
-  `canapproveunapproveattachs` tinyint(1) NOT NULL DEFAULT '0',
-  `canmanagethreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canmanagepolls` tinyint(1) NOT NULL DEFAULT '0',
-  `canpostclosedthreads` tinyint(1) NOT NULL DEFAULT '0',
-  `canmovetononmodforum` tinyint(1) NOT NULL DEFAULT '0',
-  `canusecustomtools` tinyint(1) NOT NULL DEFAULT '0',
-  `canmanageannouncements` tinyint(1) NOT NULL DEFAULT '0',
-  `canmanagereportedposts` tinyint(1) NOT NULL DEFAULT '0',
-  `canviewmodlog` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`mid`),
-  KEY `uid` (`id`,`fid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS `news` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int NOT NULL DEFAULT '0',
@@ -3548,6 +3516,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `cancomment` tinyint UNSIGNED NOT NULL DEFAULT '1',
   `language` varchar(32) NOT NULL DEFAULT 'english',
   `notif_unread` int unsigned NOT NULL DEFAULT '0',
+  `exam_active` tinyint UNSIGNED NOT NULL DEFAULT '0'
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   KEY `passkey` (`passkey`),

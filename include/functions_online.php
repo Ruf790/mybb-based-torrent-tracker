@@ -238,10 +238,15 @@ WolActivity::MODCP_BANNING          => $lang->online['managing_bans'] ?? 'Managi
 		
 		
 
-        default => $activity->nopermission
-            ? ($lang->online['viewing_noperms'] ?? 'No permission')
-            : ($lang->online['unknown_location'] ?? 'Unknown location')
-    };
+         default => $activity->nopermission
+          ? ($lang->online['viewing_noperms'] ?? 'No permission')
+          : ags_fmt(
+              $lang->online['unknown_location'] ?? '<a href="{1}">Unknown Location</a>',
+              htmlspecialchars_uni($activity->location !== '' ? $activity->location : 'index.php')
+         )
+    
+	
+	};
 }
 
 
@@ -351,55 +356,99 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
 
 
 
-function build_wol_row(array $user): string
-{
-    global $mybb, $db, $lang, $CURUSER, $usergroups;
-
-    $is_visible = $user['invisible'] != 1 
-        || $usergroups['canstaffpanel'] == '1' 
-        || ($user['uid'] ?? 0) == $CURUSER['id'];
-    
-    if (!$is_visible) return '';
-
-    $invisible = $user['invisible'] == 1 ? '*' : '';
-    
-    $uid = (int)($user['uid'] ?? 0);  // ← ЯВНОЕ ПРИВЕДЕНИЕ К int
-
-    $username = $uid > 0
-        ? format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1))
-        : ($user['bot'] ?? 'Guest');
-
-    $profile_link = $uid > 0 
-        ? build_profile_link($username, $uid) . $invisible 
-        : $username;
-
-    $time = my_datee('relative', $user['time']);
-    $location = build_friendly_wol_location($user['activity']);
-
-    $ip = '';
-    if ($usergroups['canstaffpanel'] == '1' && !empty($user['ip']) && $db !== null) {
-        $ip_binary = $db->unescape_binary($user['ip']);
-        $ip = '<small class="text-muted">IP: ' . htmlspecialchars(my_inet_ntop($ip_binary)) . '</small>';
+/**
+ * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
+ * so both forms are replaced (strtr, not sprintf: a literal % is safe).
+ */
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
     }
-
-    return <<<HTML
-    <div class="col-lg-6 mb-3">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body py-2">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>$profile_link</strong><br>
-                        $ip
-                    </div>
-                    <small class="text-muted">$time</small>
-                </div>
-                <small class="text-primary mt-1 d-block">$location</small>
-            </div>
-        </div>
-    </div>
-    HTML;
 }
 
+/**
+ * One table row for online.php
+ */
+function build_wol_row(array $user): string
+{
+    global $db, $lang, $CURUSER, $usergroups;
+
+    $uid       = (int)($user['uid'] ?? 0);
+    $my_uid    = (int)($CURUSER['id'] ?? 0);
+    $is_staff  = (int)($usergroups['canstaffpanel'] ?? 0) === 1;
+    $invisible = $uid > 0 && (int)($user['invisible'] ?? 0) === 1;
+    $is_bot    = isset($user['bot']);
+
+    // Invisible members: only staff and the member themself
+    if ($invisible && !$is_staff && $uid !== $my_uid) {
+        return '';
+    }
+
+    // ── User cell ─────────────────────────────────────────────────────────
+    if ($uid > 0) {
+        $avatar   = format_avatar((string)($user['avatar'] ?? ''), (string)($user['avatardimensions'] ?? ''));
+        $name     = format_name(htmlspecialchars_uni((string)($user['username'] ?? '')), (int)($user['usergroup'] ?? 1));
+        $pic      = '<img class="wol-avatar" src="' . $avatar['image'] . '" alt="" loading="lazy">';
+        $title    = build_profile_link($name, $uid);
+        $sort_key = mb_strtolower((string)($user['username'] ?? ''));
+
+        if ($invisible) {
+            $title .= ' <span class="wol-badge wol-soft-muted" title="' . htmlspecialchars($lang->online['tip_invisible'], ENT_QUOTES) . '"><i class="fa-solid fa-eye-slash"></i></span>';
+        }
+        if ($uid === $my_uid) {
+            $title .= ' <span class="wol-badge wol-soft-primary">' . $lang->online['txt_you'] . '</span>';
+        }
+        $meta = '<i class="fa-solid fa-id-badge me-1"></i>' . $uid;
+    } elseif ($is_bot) {
+        $pic      = '<span class="wol-avatar wol-avatar--icon wol-soft-warning"><i class="fa-solid fa-robot"></i></span>';
+        $title    = '<span class="fw-semibold">' . htmlspecialchars_uni((string)$user['bot']) . '</span>';
+        $sort_key = 'zz' . mb_strtolower((string)$user['bot']);
+        $meta     = '<span class="wol-badge wol-soft-warning">' . $lang->online['type_bot'] . '</span>';
+    } else {
+        $pic      = '<span class="wol-avatar wol-avatar--icon wol-soft-muted"><i class="fa-solid fa-user-secret"></i></span>';
+        $title    = '<span class="fw-semibold text-body-secondary">' . $lang->online['txt_guest'] . '</span>';
+        $sort_key = 'zzz';
+        $meta     = '<span class="wol-badge wol-soft-muted">' . $lang->online['type_guest'] . '</span>';
+    }
+
+    // ── Location, time, IP ────────────────────────────────────────────────
+    $location = build_friendly_wol_location($user['activity']);
+    $time     = (int)($user['time'] ?? 0);
+
+    $ip_cell = '';
+    if ($is_staff) {
+        $ip = '';
+        if (!empty($user['ip'])) {
+            $ip = (string)my_inet_ntop($db->unescape_binary($user['ip']));
+        }
+        $ip_cell = '<td class="wol-ip">' . ($ip !== '' ? '<code>' . htmlspecialchars($ip) . '</code>' : '<span class="wol-meta">—</span>') . '</td>';
+    }
+
+    return '
+    <tr>
+        <td data-sort="' . htmlspecialchars($sort_key, ENT_QUOTES) . '">
+            <div class="d-flex align-items-center gap-2 wol-user">
+                ' . $pic . '
+                <div class="lh-sm">
+                    ' . $title . '
+                    <div class="wol-meta">' . $meta . '</div>
+                </div>
+            </div>
+        </td>
+        <td class="wol-location">' . $location . '</td>
+        ' . $ip_cell . '
+        <td class="wol-date text-end" data-sort="' . $time . '">
+            <span class="wol-badge wol-soft-muted"><i class="fa-regular fa-clock"></i>' . my_datee('relative', $time) . '</span>
+        </td>
+    </tr>';
+}
 
 
 

@@ -64,7 +64,6 @@ $language['search'] = array
 'display_all'              => "Display all",
 'display_only_approved'    => "Display only approved",
 'display_only_unapproved'  => "Display only unapproved",
-'display_only_softdeleted' => "Display only soft deleted",
 'results'                  => "results",
 
 // ── Results: header (HTML, output as is) ──

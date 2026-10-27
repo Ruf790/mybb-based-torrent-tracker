@@ -147,7 +147,6 @@ $language['moderation'] = array
 'error_invalidforum' => 'The specified forum is invalid.',
 'error_invalidpoll' => 'The specified poll is invalid or has been deleted.',
 'error_invalidpm' => 'Invalid PM',
-'error_thread_deleted' => 'The target thread is soft deleted. In order to perform this action you need to restore the thread first.',
 'error_badmergeurl' => 'The URL for the thread to be merged seems to be invalid or empty. Please copy the exact URL into the textbox.<br />Please go back and try again.',
 'error_badmovepostsurl' => 'The URL for the thread to move to seems to be invalid or empty. Please copy the exact URL into the textbox.<br />Please go back and try again.',
 'error_mergewithself' => 'Threads cannot be merged with themselves.<br />Please go back and enter a valid URL.',

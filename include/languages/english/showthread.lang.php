@@ -38,8 +38,6 @@ $language['showthread'] = array
 'open_close_thread' => "Open / Close Thread",
 'approve_thread' => "Approve Thread",
 'unapprove_thread' => "Unapprove Thread",
-'soft_delete_thread' => "Soft Delete Thread",
-'restore_thread' => "Restore Thread",
 'delete_thread' => "Delete Thread Permanently",
 'delete_posts' => "Delete Selective Posts",
 'move_thread' => "Move / Copy Thread",
@@ -85,8 +83,6 @@ $language['showthread'] = array
 'users_browsing_thread_guests' => "{1} Guest(s)",
 'users_browsing_thread_invis' => "{1} Invisible User(s)",
 'users_browsing_thread_reading' => "Reading&hellip,",
-'inline_soft_delete_posts' => "Soft Delete Posts",
-'inline_restore_posts' => "Restore Posts",
 'inline_delete_posts' => "Delete Posts Permanently",
 'inline_merge_posts' => "Merge Posts",
 'inline_split_posts' => "Split Posts",
@@ -117,9 +113,6 @@ $language['showthread'] = array
 'quick_delete_error' => 'There was an error deleting your reply:',
 'quick_delete_success' => 'The post was deleted successfully.',
 'quick_delete_thread_success' => 'The thread was deleted successfully.',
-'quick_restore_error' => 'There was an error restoring your reply:',
-'quick_restore_success' => 'The post was restored successfully.',
-'post_deleted_error' => 'You can not perform this action to a deleted post.',
 
 
 
@@ -297,7 +290,6 @@ $language['showthread'] = array
 'pb_edit_note' => 'This post was last modified: %s by',
 'pb_unapproved_own' => 'The post made by you is under moderation and currently not visible publicly. It will be visible once a moderator approves it.',
 'pb_ignored' => 'The contents of this message are hidden because %s is on your <a href="usercp.php?action=editlists">ignore list</a>.',
-'pb_post_deleted' => 'This post has been deleted',
 
 
 
@@ -324,7 +316,6 @@ $language['showthread'] = array
 'js_err_no_post_data' => "No post data received",
 
 // ── JS: Multi-quote ──
-'js_err_post_deleted' => "This post has been deleted",
 'js_ok_mq_added' => "Post added to multi-quote",
 'js_info_mq_removed' => "Post removed from multi-quote",
 'js_err_mq_load' => "Error loading multi-quote",

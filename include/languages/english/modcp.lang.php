@@ -252,10 +252,8 @@ $language['modcp'] = array
 'redirect_attachmentsmoderated' => "The selected attachments have been moderated.",
 'multi_approve_posts' => "Selected Posts Approved",
 'multi_delete_posts' => "Selected Posts Deleted Permanently",
-'multi_soft_delete_posts' => "Selected Posts Soft Deleted",
 'multi_approve_threads' => "Selected Threads Approved",
 'multi_delete_threads' => "Selected Threads Deleted Permanently",
-'multi_soft_delete_threads' => "Selected Threads Soft Deleted",
 'edited_user' => "Edited User's Profile",
 
 'edited_user_info' => "<strong>User:</strong> <a href=\"{2}\">{1}</a>",

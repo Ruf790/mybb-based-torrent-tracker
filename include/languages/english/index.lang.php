@@ -96,5 +96,36 @@ $language['index'] = array
 	'logout'=>'Log Out',// Added in v5.0
 	'show'=>'Show List',// Added in v5.6
 	'legend'=>'User Legend',// Added in v5.6
+
+	// ── index2.php / functions_forumlist.php (new style) ──
+	'sec_forums'         => 'Forums',
+	'lnk_new_posts'      => 'New posts',
+	'lnk_search'         => 'Search',
+	'lbl_total_posts'    => 'Posts',
+	'lbl_total_threads'  => 'Threads',
+	'lbl_total_members'  => 'Members',
+	'lbl_online'         => 'Online',
+	'sec_whos_online'    => 'Who\'s online',
+	'lbl_active_minutes' => 'active in the last {1} minutes',
+	'lbl_members'        => 'Members',
+	'lbl_guests'         => 'Guests',
+	'lbl_invisible'      => 'Invisible',
+	'lbl_bots'           => 'Bots',
+	'lbl_nobody_online'  => 'No members online right now',
+	'todays_birthdays'   => 'Today\'s birthdays',
+	'birthdayhidden'     => 'hidden',
+	'sec_board_stats'    => 'Board statistics',
+	'btn_full_stats'     => 'Full statistics',
+	'lbl_new_today'      => 'New today',
+	'lbl_peak_online'    => 'Peak online',
+	'lbl_newest_member'  => 'Newest member',
+	'lbl_no_forums'      => 'No forums found',
+	'expcol_collapse'    => 'Collapse / expand',
+	'lbl_cat_empty'      => 'No forums in this category',
+	'lbl_never'          => 'No posts yet',
+	'lbl_threads'        => 'Threads',
+	'lbl_posts'          => 'Posts',
+	'viewing_one'        => '1 viewing',
+	'viewing_multiple'   => '{1} viewing',
 );
 ?>

@@ -59,7 +59,6 @@ $language['cache2'] = array (
 	'desc_usergroups'          => 'User groups and their permissions',
 	'desc_forums'              => 'Forum list and structure',
 	'desc_forumpermissions'    => 'Per-forum group permissions',
-	'desc_moderators'          => 'Forum moderators',
 	'desc_attachtypes'         => 'Allowed attachment types',
 	'desc_smilies'             => 'Smilies list',
 	'desc_badwords'            => 'Word filters',

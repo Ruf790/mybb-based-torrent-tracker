@@ -1,11 +1,819 @@
 /* User CP pages — extracted from usercp.php inline <style> blocks.
  * Every rule is scoped to its page wrapper .ucp-pg-<action> (see ucp_page_open()).
+ * Former per-page files (usercp_profile, change_username, password,
+ * usercp_options, buddy, usercp .css) come first, then the former inline
+ * <style> blocks, so the cascade order matches the old pages.
  * Only append; keep sections per page. */
 
-@keyframes slideDown{from{opacity: 0; transform: translateY(-10px);}to{opacity: 1; transform: translateY(0);}}
-@keyframes fadeInUp{to{opacity:1;transform:translateY(0)}}
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-@keyframes fadeIn{from{opacity: 0;}to{opacity: 1;}}
+@keyframes fadeInUp{to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+
+/* ── usercp_profile.css (changename, email, password, avatar, addsubscription, profile, 2fa) ──── */
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa), [data-bs-theme="light"] :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-nav: linear-gradient(135deg, #f0f5fa 0%, #e9eef3 100%);
+    --text-primary: #1e293b;
+    --text-secondary: #2c3e4e;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --border-light: #e0edf5;
+    --input-bg: #fefefe;
+    --input-border: #cfdfed;
+    --shadow: 0 8px 20px rgba(0,0,0,0.05);
+    --shadow-hover: 0 12px 28px rgba(0,0,0,0.1);
+    --card-footer-bg: #ffffff;
+    --btn-primary: #2c7da0;
+    --btn-primary-hover: #1f5e7a;
+    --icon-primary: #2c7da0;
+    --icon-secondary: #64748b;
+    --icon-success: #10b981;
+    --icon-warning: #f59e0b;
+    --icon-danger: #ef4444;
+    --icon-info: #3b82f6;
+    --info-bg: #f0f9ff;
+}
+[data-bs-theme="dark"] :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --bg-nav: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+    --border-light: #2d3a4e;
+    --input-bg: #0f172a;
+    --input-border: #334155;
+    --shadow: 0 8px 20px rgba(0,0,0,0.3);
+    --shadow-hover: 0 12px 28px rgba(0,0,0,0.4);
+    --card-footer-bg: #1e293b;
+    --btn-primary: #3b82f6;
+    --btn-primary-hover: #2563eb;
+    --icon-primary: #3b82f6;
+    --icon-secondary: #94a3b8;
+    --icon-success: #34d399;
+    --icon-warning: #fbbf24;
+    --icon-danger: #f87171;
+    --icon-info: #60a5fa;
+    --info-bg: #1e2a3a;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .card {
+    background: var(--bg-card);
+    border: none;
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .card:hover {
+    box-shadow: var(--shadow-hover);
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .card-body {
+    padding: 1.8rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .card-footer {
+    background: var(--card-footer-bg);
+    border-top: 1px solid var(--border-color);
+    padding: 1.2rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .bg-nav {
+    background: var(--bg-nav);
+    font-weight: 600;
+    color: var(--text-primary);
+    border-left: 4px solid var(--btn-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .border-bottom {
+    border-bottom: 1px solid var(--border-color) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .border-end {
+    border-right: 2px solid var(--border-light) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) label, :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: color 0.3s ease;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) label i, :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-label i {
+    width: 1.6rem;
+    font-size: 1.1rem;
+    color: var(--icon-primary);
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-control, :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-select {
+    border-radius: 0.75rem;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    padding: 0.6rem 1rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-control:focus, :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-select:focus {
+    border-color: var(--btn-primary);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    outline: none;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-control:hover, :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-select:hover {
+    border-color: var(--btn-primary);
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-group {
+    transition: transform 0.2s ease;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .form-group:hover {
+    transform: translateX(4px);
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-primary {
+    color: var(--icon-primary) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-secondary {
+    color: var(--icon-secondary) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-success {
+    color: var(--icon-success) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-warning {
+    color: var(--icon-warning) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-danger {
+    color: var(--icon-danger) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-info {
+    color: var(--icon-info) !important;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .info-hint {
+    background: var(--info-bg);
+    border-left: 3px solid var(--btn-primary);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .alert.bg-nav {
+    background: var(--bg-nav) !important;
+    border: none;
+    border-radius: 0.75rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .text-desc {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.25rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) hr {
+    border-color: var(--border-color);
+    margin: 1rem 0;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) * {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+}
+@media (max-width: 768px) {
+    :is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .card-body {
+        padding: 1.2rem;
+    }
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .section-title-left {
+    background: linear-gradient(135deg, var(--bg-nav));
+    border-radius: 1rem;
+    padding: 1rem;
+}
+:is(.ucp-pg-changename, .ucp-pg-email, .ucp-pg-password, .ucp-pg-avatar, .ucp-pg-addsubscription, .ucp-pg-profile, .ucp-pg-2fa) .section-icon-large {
+    font-size: 2.5rem;
+    color: var(--icon-primary);
+    margin-bottom: 0.5rem;
+}
+
+/* ── change_username.css (changename) ─────────────────────────────────── */
+.ucp-pg-changename .username-feedback {
+    font-size: .8rem;
+    margin-top: .5rem;
+}
+.ucp-pg-changename .username-feedback.valid {
+    color: #10b981;
+}
+.ucp-pg-changename .username-feedback.invalid {
+    color: #ef4444;
+}
+.ucp-pg-changename .username-feedback.warning {
+    color: #f59e0b;
+}
+.ucp-pg-changename .char-counter {
+    font-size: .75rem;
+    color: var(--bs-secondary-color);
+    margin-top: .25rem;
+}
+.ucp-pg-changename .char-counter.warning {
+    color: var(--bs-warning);
+}
+.ucp-pg-changename .char-counter.danger {
+    color: var(--bs-danger);
+}
+@media (max-width: 768px) {
+    .ucp-pg-changename .card-body {
+        padding: 1.2rem;
+    }
+    .ucp-pg-changename .btn-primary {
+        padding: .5rem 1rem; font-size: .9rem;
+    }
+}
+
+/* ── password.css (password) ──────────────────────────────────────────── */
+.ucp-pg-password .form-group {
+    transition: transform .2s ease;
+}
+.ucp-pg-password .form-group:hover {
+    transform: translateX(4px);
+}
+.ucp-pg-password .password-strength {
+    margin-top: .5rem;
+    font-size: .8rem;
+}
+.ucp-pg-password .strength-bar {
+    height: 4px;
+    background: var(--bs-border-color);
+    border-radius: 2px;
+    margin-top: .5rem;
+    overflow: hidden;
+}
+.ucp-pg-password .strength-bar-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 2px;
+    transition: width .3s ease, background-color .3s ease;
+}
+.ucp-pg-password .strength-weak {
+    background: #ef4444; width: 25%;
+}
+.ucp-pg-password .strength-medium {
+    background: #f59e0b; width: 50%;
+}
+.ucp-pg-password .strength-good {
+    background: #10b981; width: 75%;
+}
+.ucp-pg-password .strength-strong {
+    background: #3b82f6; width: 100%;
+}
+.ucp-pg-password .char-counter {
+    font-size: .75rem;
+    color: var(--bs-secondary-color);
+    margin-top: .25rem;
+}
+.ucp-pg-password .char-counter.warning {
+    color: var(--bs-warning);
+}
+.ucp-pg-password .char-counter.danger {
+    color: var(--bs-danger);
+}
+.ucp-pg-password .complexity-list {
+    margin-top: .5rem;
+    padding-left: 0;
+    list-style: none;
+}
+.ucp-pg-password .complexity-list li {
+    font-size: .75rem;
+    margin-bottom: .25rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    color: var(--bs-secondary-color);
+    transition: color .2s ease;
+}
+.ucp-pg-password .complexity-list li i {
+    width: 1.2rem; font-size: .8rem;
+}
+.ucp-pg-password .complexity-list li.valid {
+    color: #10b981;
+}
+.ucp-pg-password .complexity-list li.invalid {
+    color: #ef4444;
+}
+.ucp-pg-password .complexity-list li.warning {
+    color: #f59e0b;
+}
+@media (max-width: 768px) {
+    .ucp-pg-password .card-body {
+        padding: 1.2rem;
+    }
+    .ucp-pg-password .btn-primary {
+        padding: .5rem 1rem; font-size: .9rem;
+    }
+}
+
+/* ── usercp_options.css (options) ─────────────────────────────────────── */
+.ucp-pg-options, [data-bs-theme="light"] .ucp-pg-options {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-nav: linear-gradient(135deg, #f0f5fa 0%, #e9eef3 100%);
+    --text-primary: #1e293b;
+    --text-secondary: #2c3e4e;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --border-light: #e0edf5;
+    --input-bg: #fefefe;
+    --input-border: #cfdfed;
+    --shadow: 0 8px 20px rgba(0,0,0,0.05);
+    --shadow-hover: 0 12px 28px rgba(0,0,0,0.1);
+    --category-bg: #fafdff;
+    --category-border: #e9f0f5;
+    --info-bg: #f0f9ff;
+    --card-footer-bg: #ffffff;
+    --btn-primary: #2c7da0;
+    --btn-primary-hover: #1f5e7a;
+    --icon-primary: #2c7da0;
+    --icon-secondary: #64748b;
+    --icon-success: #10b981;
+    --icon-warning: #f59e0b;
+    --icon-danger: #ef4444;
+    --icon-info: #3b82f6;
+}
+[data-bs-theme="dark"] .ucp-pg-options {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --bg-nav: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+    --border-light: #2d3a4e;
+    --input-bg: #0f172a;
+    --input-border: #334155;
+    --shadow: 0 8px 20px rgba(0,0,0,0.3);
+    --shadow-hover: 0 12px 28px rgba(0,0,0,0.4);
+    --category-bg: #0f172a;
+    --category-border: #334155;
+    --info-bg: #1e2a3a;
+    --card-footer-bg: #1e293b;
+    --btn-primary: #3b82f6;
+    --btn-primary-hover: #2563eb;
+    --icon-primary: #3b82f6;
+    --icon-secondary: #94a3b8;
+    --icon-success: #34d399;
+    --icon-warning: #fbbf24;
+    --icon-danger: #f87171;
+    --icon-info: #60a5fa;
+}
+.ucp-pg-options .card {
+    background: var(--bg-card);
+    border: none;
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+.ucp-pg-options .card:hover {
+    box-shadow: var(--shadow-hover);
+}
+.ucp-pg-options .card-body {
+    padding: 1.8rem;
+}
+.ucp-pg-options .card-footer {
+    background: var(--card-footer-bg);
+    border-top: 1px solid var(--border-color);
+    padding: 1.2rem;
+}
+.ucp-pg-options .bg-nav {
+    background: var(--bg-nav);
+    font-weight: 600;
+    color: var(--text-primary);
+    border-left: 4px solid var(--btn-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+.ucp-pg-options .border-bottom {
+    border-bottom: 1px solid var(--border-color) !important;
+}
+.ucp-pg-options .form-check-label, .ucp-pg-options label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: color 0.3s ease;
+}
+.ucp-pg-options .form-check-input {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    transition: all 0.2s ease;
+}
+.ucp-pg-options .form-select, .ucp-pg-options .form-select-sm {
+    border-radius: 0.75rem;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+.ucp-pg-options .form-select:hover, .ucp-pg-options .form-select:focus {
+    border-color: var(--btn-primary);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+.ucp-pg-options .text-muted {
+    color: var(--text-muted) !important;
+}
+.ucp-pg-options .col-lg-3.border-end {
+    border-right: 2px solid var(--border-light) !important;
+}
+.ucp-pg-options .category-grid {
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--category-bg);
+    padding: 0.75rem;
+    border-radius: 1rem;
+    border: 1px solid var(--category-border);
+    transition: all 0.3s ease;
+}
+.ucp-pg-options .category-grid::-webkit-scrollbar {
+    width: 8px;
+}
+.ucp-pg-options .category-grid::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 10px;
+}
+.ucp-pg-options .category-grid::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 10px;
+}
+.ucp-pg-options .category-grid::-webkit-scrollbar-thumb:hover {
+    background: var(--btn-primary);
+}
+.ucp-pg-options .info-hint {
+    background: var(--info-bg);
+    border-left: 3px solid var(--btn-primary);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+}
+.ucp-pg-options .form-check {
+    transition: transform 0.2s ease;
+}
+.ucp-pg-options .form-check:hover {
+    transform: translateX(4px);
+}
+.ucp-pg-options .text-primary {
+    color: var(--icon-primary) !important;
+}
+.ucp-pg-options .text-secondary {
+    color: var(--icon-secondary) !important;
+}
+.ucp-pg-options .text-success {
+    color: var(--icon-success) !important;
+}
+.ucp-pg-options .text-warning {
+    color: var(--icon-warning) !important;
+}
+.ucp-pg-options .text-danger {
+    color: var(--icon-danger) !important;
+}
+.ucp-pg-options .text-info {
+    color: var(--icon-info) !important;
+}
+.ucp-pg-options select option {
+    background: var(--input-bg);
+    color: var(--text-primary);
+}
+.ucp-pg-options a {
+    color: var(--btn-primary);
+}
+.ucp-pg-options .icon-md {
+    width: 1.8rem;
+    display: inline-block;
+    text-align: center;
+}
+.ucp-pg-options .section-icon {
+    font-size: 1.25rem;
+    width: 2rem;
+    display: inline-block;
+}
+.ucp-pg-options hr {
+    border-color: var(--border-color);
+}
+.ucp-pg-options * {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+}
+@media (max-width: 768px) {
+    .ucp-pg-options .card-body {
+        padding: 1.2rem;
+    }
+}
+
+/* ── buddy.css (editlists) ────────────────────────────────────────────── */
+.ucp-pg-editlists {
+    --primary-color: #3498db;
+    --secondary-color: #2c3e50;
+    --success-color: #2ecc71;
+    --danger-color: #e74c3c;
+    --light-bg: #f8f9fa;
+    --border-color: #dee2e6;
+}
+.ucp-pg-editlists .section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+.ucp-pg-editlists .form-label {
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #444;
+}
+.ucp-pg-editlists .help-text {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 5px;
+}
+.ucp-pg-editlists .btn-primary {
+    background-color: var(--primary-color);
+    border: none;
+    padding: 8px 18px;
+    font-weight: 500;
+}
+.ucp-pg-editlists .btn-primary:hover {
+    background-color: #2980b9;
+}
+.ucp-pg-editlists .btn-success {
+    background-color: var(--success-color);
+    border: none;
+    padding: 8px 18px;
+    font-weight: 500;
+}
+.ucp-pg-editlists .btn-danger {
+    background-color: var(--danger-color);
+    border: none;
+    padding: 8px 18px;
+    font-weight: 500;
+}
+.ucp-pg-editlists .empty-state {
+    text-align: center;
+    padding: 30px;
+    color: #6c757d;
+}
+.ucp-pg-editlists .empty-state i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    color: #ced4da;
+}
+.ucp-pg-editlists .select2-user-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+}
+.ucp-pg-editlists .select2-user-selection {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ucp-pg-editlists .select2-user-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.ucp-pg-editlists .select2-user-avatar-sm {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.ucp-pg-editlists .select2-user-name {
+    font-weight: 500;
+}
+.ucp-pg-editlists .select2-container--default .select2-selection--multiple {
+    min-height: 42px;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+.ucp-pg-editlists .select2-container--default.select2-container--focus .select2-selection--multiple {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+.ucp-pg-editlists .select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #409eff;
+    border-color: #409eff;
+    color: white;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 13px;
+}
+.ucp-pg-editlists .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+    color: white;
+    margin-right: 4px;
+}
+.ucp-pg-editlists .user-list-container {
+    margin-top: 20px;
+}
+.ucp-pg-editlists .user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s;
+}
+.ucp-pg-editlists .user-item:hover {
+    background-color: #f8f9fa;
+}
+.ucp-pg-editlists .user-item:last-child {
+    border-bottom: none;
+}
+.ucp-pg-editlists .bg-nav {
+    background-color: var(--secondary-color);
+    color: white;
+}
+.ucp-pg-editlists .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+@media (min-width: 992px) {
+    .ucp-pg-editlists .input-group {
+        flex-direction: row;
+        align-items: end;
+    }
+    .ucp-pg-editlists .input-group .form-control {
+        flex: 1;
+    }
+}
+.ucp-pg-editlists .select2-selection__placeholder {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+.ucp-pg-editlists .select2-container--default .select2-selection--multiple .select2-selection__placeholder {
+    margin-left: 8px;
+    margin-top: 5px;
+}
+.ucp-pg-editlists .select2-search__field::placeholder {
+    font-size: 0.875rem;
+    color: #6c757d;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ucp-pg-editlists .user-select {
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    padding: 6px;
+    min-height: 42px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    cursor: text;
+    position: relative;
+}
+.ucp-pg-editlists .user-select input {
+    border: none;
+    outline: none;
+    flex: 1;
+    min-width: 120px;
+}
+.ucp-pg-editlists .user-tag {
+    background: #409eff;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+.ucp-pg-editlists .user-tag img {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+}
+.ucp-pg-editlists .user-tag span {
+    cursor: pointer;
+    font-weight: bold;
+}
+.ucp-pg-editlists .user-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #dcdfe6;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 10;
+}
+.ucp-pg-editlists .user-option {
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+.ucp-pg-editlists .user-option:hover {
+    background: #f5f7fa;
+}
+.ucp-pg-editlists .user-option img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+
+/* ── usercp.css (home) ────────────────────────────────────────────────── */
+.ucp-pg-home {
+    --ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+}
+.ucp-pg-home .avatar-ring {
+    position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+    conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)
+}
+.ucp-pg-home .avatar-ring>* {
+    display:block; border-radius:50%
+}
+.ucp-pg-home .user-stats-card {
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    color: #2c3e50;
+}
+.ucp-pg-home .user-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ffffff;
+}
+.ucp-pg-home .stat-item {
+    transition: all 0.3s ease;
+    padding: 12px 0;
+    display: flex;
+    align-items: center;
+}
+.ucp-pg-home .stat-item:hover {
+    background-color: rgba(0,0,0,0.03);
+    padding-left: 15px;
+    border-radius: 8px;
+}
+.ucp-pg-home .username-display {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+.ucp-pg-home .stat-label {
+    color: #6c757d;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+.ucp-pg-home .stat-value {
+    color: #2c3e50;
+    font-weight: 600;
+}
+.ucp-pg-home .border-custom {
+    border-color: #e9ecef !important;
+}
+.ucp-pg-home .badge-status {
+    background: #28a745;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 0.8rem;
+}
+.ucp-pg-home .icon-wrapper {
+    width: 20px;
+    text-align: center;
+    color: #667eea;
+}
+.ucp-pg-home .icon-user {
+    color: #667eea;
+}
+.ucp-pg-home .icon-post {
+    color: #4CAF50;
+}
+.ucp-pg-home .icon-comment {
+    color: #2196F3;
+}
+.ucp-pg-home .icon-bonus {
+    color: #FF9800;
+}
+.ucp-pg-home .icon-email {
+    color: #9C27B0;
+}
+.ucp-pg-home .icon-date {
+    color: #607D8B;
+}
+.ucp-pg-home .icon-group {
+    color: #E91E63;
+}
 
 /* ── options ─────────────────────────────────────────────────────────── */
 .ucp-pg-options .category-icon-picker {

@@ -19,13 +19,10 @@ require_once 'cache/smilies.php';
 $lang->load("showthread");
 
 // ─── Resolve pid → tid ────────────────────────────────────────────────────────
+// get_post() кеширует результат — ниже при переходе к посту он не уйдёт в БД повторно
 
 if (!empty($mybb->input['pid']) && empty($mybb->input['tid'])) {
-    $query = $db->sql_query_prepared(
-        "SELECT fid,tid,visible FROM posts WHERE pid = ? LIMIT 1",
-        [$mybb->get_input('pid', MyBB::INPUT_INT)]
-    );
-    $post = $db->fetch_array($query);
+    $post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
     if (empty($post)) {
         stderr($lang->showthread['invalid_post']);
     }
@@ -36,11 +33,8 @@ if (!empty($mybb->input['pid']) && empty($mybb->input['tid'])) {
 
 $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
 if (!$thread || str_starts_with((string)$thread['closed'], "moved|")) {
-    
 	stderr($lang->showthread['error_invalidthread'], '', 404, 'thread');
 }
-
-
 
 $reply_subject = $parser->parse_badwords($thread['subject']);
 $thread['subject'] = htmlspecialchars_uni($reply_subject);
@@ -56,34 +50,33 @@ $forumpermissions = forum_permissions($thread['fid']);
 
 // ─── Visible states ───────────────────────────────────────────────────────────
 
-$visible_states = ["1", "-1"];
 $usergroups = $mybb->usergroup ?? [];
-$is_mod = is_mod($usergroups);
+$is_mod     = is_mod($usergroups);
+$cur_uid    = (int)($CURUSER['id'] ?? 0);
+
+// Мягкого удаления нет — посты удаляются из БД, visible = -1 не бывает
+$visible_states = ["1"];
 if ($is_mod) {
     $visible_states[] = "0";
 }
-$visible_states = array_unique($visible_states);
 $visible_condition = "visible IN (" . implode(',', $visible_states) . ")";
 
-if ($CURUSER['id'] && $showownunapproved) {
-    $own_unapproved  = ' AND (%1$s' . $visible_condition . ' OR (%1$svisible=0 AND %1$suid=' . (int)$CURUSER['id'] . '))';
+if ($cur_uid && $showownunapproved) {
+    $own_unapproved  = ' AND (%1$s' . $visible_condition . ' OR (%1$svisible=0 AND %1$suid=' . $cur_uid . '))';
     $visibleonly     = sprintf($own_unapproved, null);
     $visibleonly_p   = sprintf($own_unapproved, 'p.');
-    $visibleonly_p_t = sprintf($own_unapproved, 'p.') . sprintf($own_unapproved, 't.');
 } else {
     $visibleonly     = " AND " . $visible_condition;
     $visibleonly_p   = " AND p." . $visible_condition;
-    $visibleonly_p_t = "AND p." . $visible_condition . " AND t." . $visible_condition;
 }
 
 // ─── Visibility check ─────────────────────────────────────────────────────────
 
-$ismod = is_mod($usergroups);
-if (!$ismod) {
+if (!$is_mod) {
     $ownUnapprovedAllowed = $thread['visible'] === 0
-        && !empty($CURUSER['id'])
+        && $cur_uid
         && !empty($showownunapproved)
-        && $thread['uid'] === $CURUSER['id'];
+        && $thread['uid'] === $cur_uid;
     if ($thread['visible'] != 1 && !$ownUnapprovedAllowed) {
         stderr($lang->showthread['error_invalidthread']);
     }
@@ -120,14 +113,14 @@ if ($mybb->input['action'] === "newpost") {
     $lastread = $cutoff = 0;
     $query = $db->sql_query_prepared(
         "SELECT dateline FROM threadsread WHERE uid = ? AND tid = ?",
-        [(int)$CURUSER['id'], (int)$thread['tid']]
+        [$cur_uid, $tid]
     );
     $thread_read = $db->fetch_field($query, "dateline");
 
-    if ($threadreadcut > 0 && $CURUSER['id']) {
+    if ($threadreadcut > 0 && $cur_uid) {
         $query = $db->sql_query_prepared(
             "SELECT dateline FROM forumsread WHERE fid = ? AND uid = ?",
-            [(int)$fid, (int)$CURUSER['id']]
+            [(int)$fid, $cur_uid]
         );
         $forum_read = $db->fetch_field($query, "dateline");
         $read_cutoff = TIMENOW - $threadreadcut * 86400;
@@ -136,13 +129,13 @@ if ($mybb->input['action'] === "newpost") {
         $forum_read = (int)my_get_array_cookie("forumread", (string)$fid);
     }
 
-    if ($threadreadcut > 0 && $CURUSER['id'] && $thread['lastpost'] > $forum_read) {
+    if ($threadreadcut > 0 && $cur_uid && $thread['lastpost'] > $forum_read) {
         $cutoff   = TIMENOW - $threadreadcut * 86400;
         $lastread = ($thread['lastpost'] > $cutoff) ? ($thread_read ?: 0) : 0;
     }
 
     if (!$lastread) {
-        $readcookie = $threadread = (int)my_get_array_cookie("threadread", (string)$thread['tid']);
+        $readcookie = (int)my_get_array_cookie("threadread", (string)$tid);
         $lastread   = ($readcookie > $forum_read) ? $readcookie : $forum_read;
     }
     if ($cutoff && $lastread < $cutoff) {
@@ -151,8 +144,8 @@ if ($mybb->input['action'] === "newpost") {
 
     $lastread = (int)$lastread;
     $query = $db->sql_query_prepared(
-        "SELECT pid FROM posts WHERE tid = ? AND dateline > ? {$visibleonly} ORDER BY dateline, pid LIMIT 0, 1",
-        [(int)$tid, (int)$lastread]
+        "SELECT pid FROM posts WHERE tid = ? AND dateline > ? {$visibleonly} ORDER BY dateline, pid LIMIT 1",
+        [$tid, $lastread]
     );
     $newpost = $db->fetch_array($query);
 
@@ -170,55 +163,40 @@ if ($mybb->input['action'] === "newpost") {
 }
 
 // ─── Action: lastpost ─────────────────────────────────────────────────────────
+// Перенесённые темы (moved|) отсекаются при загрузке, отдельная ветка для них не нужна
 
 if ($mybb->input['action'] === "lastpost") {
-    if (str_contains((string)$thread['closed'], "moved|")) {
-        $sql    = "SELECT p.pid FROM posts p LEFT JOIN threads t ON (p.tid = t.tid) WHERE t.fid = ? AND t.closed NOT LIKE 'moved|%' {$visibleonly_p_t} ORDER BY p.dateline DESC, p.pid DESC LIMIT 1";
-        $params = [(int)$thread['fid']];
-    } else {
-        $sql    = "SELECT pid FROM posts WHERE tid = ? {$visibleonly} ORDER BY dateline DESC, pid DESC LIMIT 1";
-        $params = [(int)$tid];
-    }
-    $query = $db->sql_query_prepared($sql, $params);
-    $pid   = $db->fetch_field($query, "pid");
+    $query = $db->sql_query_prepared(
+        "SELECT pid FROM posts WHERE tid = ? {$visibleonly} ORDER BY dateline DESC, pid DESC LIMIT 1",
+        [$tid]
+    );
+    $pid = $db->fetch_field($query, "pid");
     header("Location: " . htmlspecialchars_decode(get_post_link($pid, $tid)) . "#pid{$pid}");
     exit;
 }
 
-// ─── Action: nextnewest ───────────────────────────────────────────────────────
+// ─── Action: nextnewest / nextoldest ──────────────────────────────────────────
+// Тема и её последний пост — одним запросом
 
-if ($mybb->input['action'] === "nextnewest") {
+if ($mybb->input['action'] === "nextnewest" || $mybb->input['action'] === "nextoldest") {
+    $newest = $mybb->input['action'] === "nextnewest";
+    $cmp    = $newest ? '>' : '<';
+    $dir    = $newest ? 'ASC' : 'DESC';
+
     $query = $db->sql_query_prepared(
-        "SELECT * FROM threads WHERE fid = ? AND lastpost > ? {$visibleonly} AND closed NOT LIKE 'moved|%' ORDER BY lastpost ASC LIMIT 1",
+        "SELECT tid,
+                (SELECT p.pid FROM posts p WHERE p.tid = threads.tid
+                 ORDER BY p.dateline DESC, p.pid DESC LIMIT 1) AS lastpid
+         FROM threads
+         WHERE fid = ? AND lastpost {$cmp} ? {$visibleonly} AND closed NOT LIKE 'moved|%'
+         ORDER BY lastpost {$dir} LIMIT 1",
         [(int)$thread['fid'], (int)$thread['lastpost']]
     );
     $nextthread = $db->fetch_array($query);
     if (!$nextthread) {
-        stderr($lang->showthread['error_nonextnewest']);
+        stderr($lang->showthread[$newest ? 'error_nonextnewest' : 'error_nonextoldest']);
     }
-    $pid = $db->fetch_field(
-        $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY dateline DESC, pid DESC LIMIT 1", [(int)$nextthread['tid']]),
-        "pid"
-    );
-    header("Location: " . htmlspecialchars_decode(get_post_link($pid, $nextthread['tid'])) . "#pid{$pid}");
-    exit;
-}
-
-// ─── Action: nextoldest ───────────────────────────────────────────────────────
-
-if ($mybb->input['action'] === "nextoldest") {
-    $query = $db->sql_query_prepared(
-        "SELECT * FROM threads WHERE fid = ? AND lastpost < ? {$visibleonly} AND closed NOT LIKE 'moved|%' ORDER BY lastpost DESC LIMIT 1",
-        [(int)$thread['fid'], (int)$thread['lastpost']]
-    );
-    $nextthread = $db->fetch_array($query);
-    if (!$nextthread) {
-        stderr($lang->showthread['error_nonextoldest']);
-    }
-    $pid = $db->fetch_field(
-        $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY dateline DESC, pid DESC LIMIT 1", [(int)$nextthread['tid']]),
-        "pid"
-    );
+    $pid = $nextthread['lastpid'];
     header("Location: " . htmlspecialchars_decode(get_post_link($pid, $nextthread['tid'])) . "#pid{$pid}");
     exit;
 }
@@ -230,45 +208,35 @@ $breadcrumb_multipage = [];
 
 if ($showforumpagesbreadcrumb) {
     $f_threadsperpage = (int)$f_threadsperpage > 0 ? (int)$f_threadsperpage : 20;
-    $query = $db->sql_query_prepared(
-        "SELECT threads, unapprovedthreads, pid FROM forums WHERE fid = ? LIMIT 1",
-        [(int)$fid]
-    );
-    $forum_threads = $db->fetch_array($query);
-    $threadcount   = $forum_threads['threads'];
+
+    // Кеш форумов счётчиков не хранит — если 'threads' нет, ниже сработает COUNT
+    $threadcount = (int)($forum['threads'] ?? 0);
 
     $uid_only = '';
     if (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] == 1) {
         $uid_only    = " AND uid = ?";
         $query       = $db->sql_query_prepared(
-            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly $uid_only LIMIT 1",
-            [(int)$fid, (int)$CURUSER['id']]
+            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly $uid_only",
+            [(int)$fid, $cur_uid]
         );
-        $threadcount = $db->fetch_field($query, "threads");
-    }
-    if ($threadcount === 0) {
-        $params      = $uid_only ? [(int)$fid, (int)$CURUSER['id']] : [(int)$fid];
+        $threadcount = (int)$db->fetch_field($query, "threads");
+    } elseif ($threadcount === 0) {
         $query       = $db->sql_query_prepared(
-            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly $uid_only LIMIT 1",
-            $params
+            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly",
+            [(int)$fid]
         );
-        $threadcount = $db->fetch_field($query, "threads");
+        $threadcount = (int)$db->fetch_field($query, "threads");
     }
 
-    $stickybit = $thread['sticky'] == 1 ? " AND sticky=1" : " OR sticky=1";
-    $position_params = $uid_only ? [(int)$fid, (int)$thread['lastpost'], (int)$CURUSER['id']] : [(int)$fid, (int)$thread['lastpost']];
-    $query = match ($db->type) {
-        "pgsql" => $db->sql_query_prepared(
-            "SELECT COUNT(tid) as threads FROM threads WHERE fid = ? AND (lastpost >= ? {$stickybit}) {$visibleonly} {$uid_only} GROUP BY lastpost ORDER BY lastpost DESC",
-            $position_params
-        ),
-        default => $db->sql_query_prepared(
-            "SELECT COUNT(tid) as threads FROM threads WHERE fid = ? AND (lastpost >= ? {$stickybit}) {$visibleonly} {$uid_only} ORDER BY lastpost DESC",
-            $position_params
-        ),
-    };
+    $stickybit       = $thread['sticky'] == 1 ? " AND sticky=1" : " OR sticky=1";
+    $position_params = $uid_only ? [(int)$fid, (int)$thread['lastpost'], $cur_uid] : [(int)$fid, (int)$thread['lastpost']];
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(tid) AS threads FROM threads
+         WHERE fid = ? AND (lastpost >= ? {$stickybit}) {$visibleonly} {$uid_only}",
+        $position_params
+    );
 
-    $thread_position = $db->fetch_field($query, "threads");
+    $thread_position = (int)$db->fetch_field($query, "threads");
     $thread_page     = (int)ceil($thread_position / $f_threadsperpage);
     $breadcrumb_multipage = ["num_threads" => $threadcount, "current_page" => $thread_page];
 }
@@ -308,19 +276,18 @@ if ($thread['poll']) {
         ($expiretime < $now && $poll['timeout'] > 0)
     ) ? 1 : 0;
 
-    $cur_uid    = (int)($CURUSER['id'] ?? 0);
     if ($cur_uid) {
-        $user_check   = "uid = ?";
+        $user_check        = "uid = ?";
         $user_check_params = [$cur_uid];
     } else {
-        $user_check   = "uid = 0 AND ipaddress = ?";
+        $user_check        = "uid = 0 AND ipaddress = ?";
         $user_check_params = [$session->packedip];
     }
 
     $alreadyvoted = 0;
     $votedfor     = [];
     $query = $db->sql_query_prepared(
-        "SELECT * FROM pollvotes WHERE {$user_check} AND pid = ?",
+        "SELECT voteoption FROM pollvotes WHERE {$user_check} AND pid = ?",
         array_merge($user_check_params, [(int)$poll['pid']])
     );
     while ($votecheck = $db->fetch_array($query)) {
@@ -391,7 +358,7 @@ if ($thread['poll']) {
 
     $totpct  = $poll['totvotes'] ? "100%" : "0%";
     $edit_poll = '';
-    if (is_mod($usergroups)) {
+    if ($is_mod) {
         $edit_poll = '<a href="polls.php?action=editpoll&amp;pid=' . $poll['pid'] . '" class="poll-edit-link"><i class="fa-solid fa-pencil"></i> Edit poll</a>';
     }
 
@@ -421,43 +388,42 @@ if ($thread['poll']) {
     }
 }
 
-// ─── Forum jump / navigation ──────────────────────────────────────────────────
+// ─── Navigation ───────────────────────────────────────────────────────────────
 
-$forumjump        = build_forum_jump("", '', 1, '', 0, true, '', "moveto");
 $next_oldest_link = get_thread_link($tid, 0, "nextoldest");
 $next_newest_link = get_thread_link($tid, 0, "nextnewest");
 
-mark_thread_read((int)$tid, (int)$fid);
+mark_thread_read($tid, (int)$fid);
 
 // ─── New thread / reply buttons ───────────────────────────────────────────────
 
 $newthread = $newreply = '';
 if ($forum['open'] != 0 && $forum['type'] === "f") {
     if ($forumpermissions['canpostthreads'] != 0) {
-        $newthread = '<a href="newthread.php?fid=' . $fid . '" class="button new_thread_button"><span>{$lang->post_thread}</span></a>&nbsp;';
+        $newthread = '<a href="newthread.php?fid=' . $fid . '" class="btn btn-outline-primary st-pill"><i class="fa-solid fa-plus me-1"></i>' . $lang->showthread['post_thread'] . '</a>';
     }
     $canReply = $forumpermissions['canpostreplys'] != 0
         && ($thread['closed'] != 1 || $is_mod)
         && ($thread['uid'] == $CURUSER['id'] || empty($forumpermissions['canonlyreplyownthreads']));
 
     if ($canReply) {
-        $newreply = '<a href="newreply.php?tid=' . $tid . '" class="btn btn-primary"><i class="fa-solid fa-comment"></i> &nbsp;' . $lang->showthread['post_reply'] . '</a>';
+        $newreply = '<a href="newreply.php?tid=' . $tid . '" class="btn btn-primary st-pill"><i class="fa-solid fa-reply me-1"></i>' . $lang->showthread['post_reply'] . '</a>';
     } elseif ($thread['closed'] == 1) {
-        $newreply = '<span class="d-inline-block" tabindex="0" data-bs-toggle="popover" title="' . $thread['subject'] . '" data-bs-content="Thread Closed"><button class="btn btn-primary" type="button" disabled>Thread Closed</button></span>';
+        $closed_txt = $lang->showthread['thread_closed'];
+        $newreply = '<span class="d-inline-block" tabindex="0" data-bs-toggle="popover" title="' . $thread['subject'] . '" data-bs-content="' . $closed_txt . '"><button class="btn btn-secondary st-pill" type="button" disabled><i class="fa-solid fa-lock me-1"></i>' . $closed_txt . '</button></span>';
     }
 }
 
 // ─── Moderation tools ─────────────────────────────────────────────────────────
 
-$is_mod = is_mod($usergroups);
 $closeoption = $inlinemod = $moderationoptions = '';
 $inlinecount = "0";
 
 if ($is_mod) {
     $closelinkch = $thread['closed'] == 1 ? ' checked="checked"' : '';
     $stickch     = $thread['sticky']  ? ' checked="checked"' : '';
-    $closeoption  = '<input type="checkbox" class="form-check-input" name="modoptions[closethread]" value="1"' . $closelinkch . ' /> ' . $lang->showthread['close_thread'] . '<br />';
-    $closeoption .= '<input type="checkbox" class="form-check-input" name="modoptions[stickthread]" value="1"' . $stickch . ' /> ' . $lang->showthread['stick_thread'];
+    $closeoption  = '<label class="st-check"><input type="checkbox" class="form-check-input" name="modoptions[closethread]" value="1"' . $closelinkch . ' /> <span><i class="fa-solid fa-lock me-1"></i>' . $lang->showthread['close_thread'] . '</span></label>';
+    $closeoption .= '<label class="st-check"><input type="checkbox" class="form-check-input" name="modoptions[stickthread]" value="1"' . $stickch . ' /> <span><i class="fa-solid fa-thumbtack me-1"></i>' . $lang->showthread['stick_thread'] . '</span></label>';
     $inlinecookie = "inlinemod_thread" . $tid;
     $plugins->run_hooks("showthread_ismod");
 } else {
@@ -471,9 +437,9 @@ $threadviews_countspiders      = "0";
 $threadviews_countguests       = "1";
 
 $shouldCount = match (true) {
-    $CURUSER['id'] == 0 && $session->is_spider && $threadviews_countspiders == 1 => true,
-    $CURUSER['id'] == 0 && !$session->is_spider && $threadviews_countguests == 1 => true,
-    $CURUSER['id'] != 0 && ($threadviews_countthreadauthor == 1 || $CURUSER['id'] !== $thread['uid']) => true,
+    $cur_uid == 0 && $session->is_spider && $threadviews_countspiders == 1 => true,
+    $cur_uid == 0 && !$session->is_spider && $threadviews_countguests == 1 => true,
+    $cur_uid != 0 && ($threadviews_countthreadauthor == 1 || $CURUSER['id'] !== $thread['uid']) => true,
     default => false,
 };
 if ($shouldCount) {
@@ -490,27 +456,22 @@ if ($shouldCount) {
 $search_thread = '';
 if ($forumpermissions['cansearch'] != 0) {
     $search_thread = <<<HTML
-    <div class="row g-1">
-        <div class="col align-self-center">
-            <form action="search.php" method="post">
-                <input type="hidden" name="action" value="thread" />
-                <input type="hidden" name="tid" value="{$thread['tid']}" />
-                <div class="input-group input-group-sm">
-                    <input type="text" name="keywords" class="form-control border" size="25" />
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        <i class="fa-solid fa-magnifying-glass"></i> {$lang->showthread['search_thread']}
-                    </button>
-                </div>
-            </form>
+    <form action="search.php" method="post" class="th-search" role="search">
+        <input type="hidden" name="action" value="thread" />
+        <input type="hidden" name="tid" value="{$thread['tid']}" />
+        <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="text" name="keywords" class="form-control" size="25" placeholder="{$lang->showthread['search_thread']}" aria-label="{$lang->showthread['search_thread']}" />
+            <button type="submit" class="btn btn-primary">{$lang->showthread['search_thread']}</button>
         </div>
-    </div>
+    </form>
     HTML;
 }
 
 // ─── Ignored users ────────────────────────────────────────────────────────────
 
 $ignored_users = [];
-if ($CURUSER['id'] > 0 && !empty($CURUSER['ignorelist'])) {
+if ($cur_uid > 0 && !empty($CURUSER['ignorelist'])) {
     foreach (explode(',', $CURUSER['ignorelist']) as $uid) {
         $ignored_users[(int)$uid] = 1;
     }
@@ -528,35 +489,45 @@ if ($mybb->get_input('page', MyBB::INPUT_INT) && $mybb->get_input('page') !== "l
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
 }
 
+$invalid_post_notice = '';
 if (!empty($mybb->input['pid'])) {
     $post = get_post($mybb->input['pid']);
-    $postVisible = !empty($post) && !(
-        ($post['visible'] == 0 && !($is_mod || ($CURUSER['id'] && $post['uid'] == $CURUSER['id'] && $showownunapproved))) ||
-        ($post['visible'] == -1 && !is_moderator($post['fid'], 'canviewdeleted') && $forumpermissions['canviewdeletionnotice'] == 0)
+    $postVisible = !empty($post) && (int)$post['tid'] === $tid && !(
+        $post['visible'] == 0 && !($is_mod || ($cur_uid && $post['uid'] == $cur_uid && $showownunapproved))
     );
     if (!$postVisible) {
-        $footer .= '<script>$(function(){$.jGrowl(\'' . $lang->global['error_invalidpost'] . '\',{theme:\'jgrowl_error\'});})</script>';
+        $invalid_post_notice = (string)$lang->global['error_invalidpost'];
     } else {
-        $query  = $db->sql_query_prepared("SELECT COUNT(p.dateline) AS count FROM posts p WHERE p.tid = ? AND p.dateline <= ? {$visibleonly_p}", [(int)$tid, (int)$post['dateline']]);
+        // Позиция поста с учётом сортировки dateline, pid (индекс tid_dateline_pid)
+        $query  = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS count FROM posts p
+             WHERE p.tid = ? AND (p.dateline < ? OR (p.dateline = ? AND p.pid <= ?)) {$visibleonly_p}",
+            [$tid, (int)$post['dateline'], (int)$post['dateline'], (int)$post['pid']]
+        );
         $result = (int)$db->fetch_field($query, "count");
-        $page   = ($result % $perpage === 0) ? $result / $perpage : (int)($result / $perpage) + 1;
+        $page   = max(1, (int)ceil($result / $perpage));
     }
 }
 
-if ($visible_states !== ["1"]) {
-    $query = $db->sql_query_prepared("SELECT COUNT(*) AS replies FROM posts p WHERE p.tid = ? {$visibleonly_p}", [(int)$tid]);
-    $thread['replies'] = (int)$db->fetch_field($query, 'replies') - 1;
-    $cached_replies    = $thread['replies'] + $thread['unapprovedposts'];
-    if (in_array('-1', $visible_states) && in_array('0', $visible_states)) {
-        if ($thread['replies'] != $cached_replies) {
-            require_once INC_PATH . "/functions_rebuild.php";
-            rebuild_thread_counters((int)$thread['tid']);
-        }
-    }
-}
+// ─── Счётчик постов из кешированных колонок threads ───────────────────────────
+// Раньше здесь был COUNT(*) на каждый просмотр, а у модераторов — ещё и
+// rebuild_thread_counters() при любом неодобренном посте.
 
-$postcount = (int)$thread['replies'] + 1;
-$pages     = (int)ceil($postcount / $perpage);
+$replies = (int)$thread['replies'];
+if ($is_mod) {
+    $replies += (int)$thread['unapprovedposts'];
+} elseif ($cur_uid && $showownunapproved && (int)$thread['unapprovedposts'] > 0) {
+    // Единственный случай, который счётчики не покрывают: свои неодобренные посты
+    $query   = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS c FROM posts p WHERE p.tid = ? {$visibleonly_p}",
+        [$tid]
+    );
+    $replies = (int)$db->fetch_field($query, 'c') - 1;
+}
+$thread['replies'] = max(0, $replies);
+
+$postcount = $thread['replies'] + 1;
+$pages     = max(1, (int)ceil($postcount / $perpage));
 if ($mybb->get_input('page') === "last") {
     $page = $pages;
 }
@@ -583,25 +554,35 @@ if ($mybb->seo_support) {
 $multipage = multipage($postcount, $perpage, $page, str_replace("{tid}", (string)$tid, THREAD_URL_PAGED . $highlight));
 
 // ─── Fetch & build posts ──────────────────────────────────────────────────────
+// Один запрос вместо двух (pid-список + IN): индекс tid_dateline_pid отдаёт
+// строки сразу в нужном порядке и обрывается на LIMIT.
 
-$pid_list = [];
+$post_rows = [];
+$pid_list  = [];
 $query = $db->sql_query_prepared(
-    "SELECT p.pid FROM posts p WHERE p.tid = ? {$visibleonly_p} ORDER BY p.dateline, p.pid LIMIT {$start}, {$perpage}",
-    [(int)$tid]
+    "SELECT u.*, u.username AS userusername, p.*, eu.username AS editusername
+     FROM posts p
+     LEFT JOIN users u  ON (u.id = p.uid)
+     LEFT JOIN users eu ON (eu.id = p.edituid)
+     WHERE p.tid = ? {$visibleonly_p}
+     ORDER BY p.dateline, p.pid
+     LIMIT {$start}, {$perpage}",
+    [$tid]
 );
-while ($getid = $db->fetch_array($query)) {
-    if (empty($pid)) {
-        $pid = $getid['pid'];
-    }
-    $pid_list[] = (int)$getid['pid'];
+while ($row = $db->fetch_array($query)) {
+    $post_rows[] = $row;
+    $pid_list[]  = (int)$row['pid'];
 }
 if (!$pid_list) {
     stderr($lang->showthread['error_invalidthread']);
 }
+if (empty($pid)) {
+    $pid = $pid_list[0];
+}
 
-$pid_placeholders = implode(',', array_fill(0, count($pid_list), '?'));
 $attachcache = [];
 if ($thread['attachmentcount'] > 0) {
+    $pid_placeholders = implode(',', array_fill(0, count($pid_list), '?'));
     $query = $db->sql_query_prepared(
         "SELECT * FROM attachments WHERE pid IN ({$pid_placeholders})",
         $pid_list
@@ -611,38 +592,26 @@ if ($thread['attachmentcount'] > 0) {
     }
 }
 
-$posts = '';
-$query = $db->sql_query_prepared(
-    "SELECT u.*, u.username AS userusername, p.*, eu.username AS editusername
-    FROM posts p
-    LEFT JOIN users u ON (u.id=p.uid)
-    LEFT JOIN users eu ON (eu.id=p.edituid)
-    WHERE p.pid IN ({$pid_placeholders}) ORDER BY p.dateline, p.pid",
-    $pid_list
-);
-
-$post_rows = [];
-while ($row = $db->fetch_array($query)) {
-    $post_rows[] = $row;
-}
-
 // Пакетная предзагрузка [torrent=ID] по всем постам страницы разом — тот же
 // паттерн, что уже применён в commenttable.php для комментариев. Без этого
 // каждый пост со своим уникальным торрентом бьёт в БД отдельным запросом.
 if (isset($parser) && method_exists($parser, 'primeTorrentEmbedCache')) {
     $torrentEmbedIds = [];
     foreach ($post_rows as $row) {
-        if (preg_match_all('#\[torrent=(\d+)\]#i', $row['message'] ?? '', $m)) {
+        // И сообщение, и подпись проходят через parse_message()
+        $embedText = ($row['message'] ?? '') . "\n" . ($row['signature'] ?? '');
+        if (preg_match_all('#\[torrent=(\d+)\]#i', $embedText, $m)) {
             foreach ($m[1] as $foundTorrentId) {
                 $torrentEmbedIds[] = (int)$foundTorrentId;
             }
         }
     }
     if (!empty($torrentEmbedIds)) {
-        $parser->primeTorrentEmbedCache($torrentEmbedIds);
+        $parser->primeTorrentEmbedCache(array_values(array_unique($torrentEmbedIds)));
     }
 }
 
+$posts = '';
 foreach ($post_rows as $post) {
     if ($thread['firstpost'] == $post['pid'] && $thread['visible'] == 0) {
         $post['visible'] = 0;
@@ -650,6 +619,7 @@ foreach ($post_rows as $post) {
     $posts .= build_postbit($post);
     $post   = '';
 }
+unset($post_rows);
 
 $plugins->run_hooks("showthread_linear");
 
@@ -662,16 +632,19 @@ $canQuickReply = $forumpermissions['canpostreplys'] != 0
     && ($thread['uid'] == $CURUSER['id'] || empty($forumpermissions['canonlyreplyownthreads']));
 
 if ($canQuickReply) {
-    $query    = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY pid DESC LIMIT 1", [(int)$tid]);
-    $last_pid = $db->fetch_field($query, "pid");
+    // На последней странице последний pid уже есть в $pid_list
+    if ($page === $pages) {
+        $last_pid = max($pid_list);
+    } else {
+        $query    = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY pid DESC LIMIT 1", [$tid]);
+        $last_pid = (int)$db->fetch_field($query, "pid");
+    }
     $posthash = md5($CURUSER['id'] . random_str());
 
     $moderation_notice = '';
     if ($CURUSER['moderateposts'] == 1) {
         $moderation_notice = '<div class="red_alert">' . $lang->showthread['moderation_user_posts'] . '</div>';
     }
-
-  
 
     $quickreply = render_quick_reply($tid, $reply_subject, (int)$last_pid, $posthash, $page, $CURUSER, $mybb->post_code, $closeoption, $moderation_notice, $lang, $BASEURL, $smilies ?? []);
 }
@@ -681,62 +654,47 @@ if ($canQuickReply) {
 $threadnotesbox = '';
 $customthreadtools = $customposttools = '';
 
+if ((int)($usergroups['canstaffpanel'] ?? 0) === 1) {
+    $inlinemoddelete  = '<option value="multideleteposts">'.$lang->showthread['inline_delete_posts'].'</option>';
+    $inlinemodmanage  = '<option value="multimergeposts">' . $lang->showthread["mergeposts"] . '</option>'
+        . '<option value="multisplitposts">' . $lang->showthread['inline_split_posts'] . '</option>'
+        . '<option value="multimoveposts">' . $lang->showthread['inline_move_posts'] . '</option>';
+    $inlinemodapprove = '<option value="multiapproveposts">' . $lang->showthread['inline_approve_posts'] . '</option>'
+        . '<option value="multiunapproveposts">' . $lang->showthread['inline_unapprove_posts'] . '</option>';
 
-$gids = [(int)($CURUSER['usergroup'] ?? 1)];
+    $standardposttools = '<optgroup label="Standard Tools">' . $inlinemoddelete . $inlinemodmanage . $inlinemodapprove . '</optgroup>';
 
+    $openclosethread        = '<option class="option_mirage" value="openclosethread">'.$lang->showthread['open_close_thread'].'</option>';
+    $stickunstickthread     = '<option class="option_mirage" value="stick">'.$lang->showthread['stick_unstick_thread'].'</option>';
+    $deletethread           = '<option value="deletethread">'.$lang->showthread['delete_thread'].'</option>';
+    $managethread           = '<option class="option_mirage" value="move">'.$lang->showthread['move_thread'].'</option><option class="option_mirage" value="merge">'.$lang->showthread['merge_threads'].'</option><option class="option_mirage" value="split">'.$lang->showthread['split_thread'].'</option>';
+    $adminpolloptions       = '';
+    $softdeletethread       = '';
 
-$gidswhere = '';
-foreach ($gids as $gid) {
-    $gid = (int)$gid;
-    $gidswhere .= match ($db->type) {
-        "pgsql", "sqlite" => " OR ','||groups||',' LIKE '%,{$gid},%'",
-        default           => " OR CONCAT(',',`groups`,',') LIKE '%,{$gid},%'",
-    };
-}
+    if ($pollbox && $is_mod) {
+        $adminpolloptions = '<option class="option_mirage" value="deletepoll">' . $lang->showthread['delete_poll'] . '</option>';
+    }
+    $approveunapprovethread = $thread['visible'] == 0
+        ? '<option class="option_mirage" value="approvethread">' . $lang->showthread['approve_thread'] . '</option>'
+        : '<option class="option_mirage" value="unapprovethread">' . $lang->showthread['unapprove_thread'] . '</option>';
 
+    $standardthreadtools = '<optgroup label="' . $lang->showthread['standard_mod_tools'] . '">'
+        . $openclosethread . $softdeletethread . $deletethread
+        . $adminpolloptions . $stickunstickthread . $managethread . $approveunapprovethread
+        . '</optgroup>';
 
+    // Список форумов нужен только в модалке переноса — строим только для стаффа
+    $forumjump = build_forum_jump("", '', 1, '', 0, true, '', "moveto");
 
-$inlinemoddelete  = '<option value="multideleteposts">'.$lang->showthread['inline_delete_posts'].'</option>';
-$inlinemodmanage  = '<option value="multimergeposts">' . $lang->showthread["mergeposts"] . '</option>'
-    . '<option value="multisplitposts">' . $lang->showthread['inline_split_posts'] . '</option>'
-    . '<option value="multimoveposts">' . $lang->showthread['inline_move_posts'] . '</option>';
-$inlinemodapprove = '<option value="multiapproveposts">' . $lang->showthread['inline_approve_posts'] . '</option>'
-    . '<option value="multiunapproveposts">' . $lang->showthread['inline_unapprove_posts'] . '</option>';
-
-$standardposttools = '<optgroup label="Standard Tools">' . $inlinemoddelete . $inlinemodmanage . $inlinemodapprove . '</optgroup>';
-
-$openclosethread        = '<option class="option_mirage" value="openclosethread">'.$lang->showthread['open_close_thread'].'</option>';
-$stickunstickthread     = '<option class="option_mirage" value="stick">'.$lang->showthread['stick_unstick_thread'].'</option>';
-$deletethread           = '<option value="deletethread">'.$lang->showthread['delete_thread'].'</option>';
-$managethread           = '<option class="option_mirage" value="move">'.$lang->showthread['move_thread'].'</option><option class="option_mirage" value="merge">'.$lang->showthread['merge_threads'].'</option><option class="option_mirage" value="split">'.$lang->showthread['split_thread'].'</option>';
-$adminpolloptions       = '';
-$approveunapprovethread = '';
-$softdeletethread       = '';
-
-if ($pollbox && $is_mod) {
-    $adminpolloptions = '<option class="option_mirage" value="deletepoll">{$lang->delete_poll}</option>';
-}
-$approveunapprovethread = $thread['visible'] == 0
-    ? '<option class="option_mirage" value="approvethread">' . $lang->showthread['approve_thread'] . '</option>'
-    : '<option class="option_mirage" value="unapprovethread">' . $lang->showthread['unapprove_thread'] . '</option>';
-
-$standardthreadtools = '<optgroup label="' . $lang->showthread['standard_mod_tools'] . '">'
-    . $openclosethread . $softdeletethread . $deletethread
-    . $adminpolloptions . $stickunstickthread . $managethread . $approveunapprovethread
-    . '</optgroup>';
-
-$forumselect = build_forum_jump("", $fid, 1, '', 0, true, '', "moveto");
-
-if ($usergroups['canstaffpanel'] === '1') {
-    $inlinemod        = render_inline_mod($tid, $standardposttools, $customposttools, (string)$inlinecount, $mybb->post_code, $lang, $BASEURL, (int)$thread['replies'] + 1);
+    $inlinemod         = render_inline_mod($tid, $standardposttools, $customposttools, (string)$inlinecount, $mybb->post_code, $lang, $BASEURL, $thread['replies'] + 1);
     $moderationoptions = render_moderation_options($tid, $standardthreadtools, $customthreadtools, $inlinemod, $mybb->post_code, $lang, $thread, $forumjump, $SITENAME);
 }
 
 // ─── Extra links ──────────────────────────────────────────────────────────────
 
-$printthread = '<a href="printthread.php?tid=' . $tid . '" class="links"><i class="fa-solid fa-print"></i></a>';
+$printthread = '<a href="printthread.php?tid=' . $tid . '" class="st-icon-btn" title="' . $lang->showthread['view_printable'] . '"><i class="fa-solid fa-print"></i></a>';
 $sendthread  = ($usergroups['cansendemail'] == 1)
-    ? '<a href="sendthread.php?tid=' . $tid . '" class="links"><i class="fa-solid fa-reply"></i></a>'
+    ? '<a href="sendthread.php?tid=' . $tid . '" class="st-icon-btn" title="' . $lang->showthread['send_thread'] . '"><i class="fa-solid fa-paper-plane"></i></a>'
     : '';
 
 $addpoll       = '';
@@ -748,25 +706,35 @@ if (
     $thread['closed'] != 1 &&
     ($thread['dateline'] > (TIMENOW - ((int)$polltimelimit * 3600)) || $polltimelimit == 0)
 ) {
-    $addpoll = '<a href="polls.php?action=newpoll&amp;tid=' . $tid . '" class="links" title="' . $lang->showthread['add_poll_to_thread'] . '"><i class="fa-solid fa-square-poll-vertical"></i></a>';
+    $addpoll = '<a href="polls.php?action=newpoll&amp;tid=' . $tid . '" class="st-icon-btn" title="' . $lang->showthread['add_poll_to_thread'] . '"><i class="fa-solid fa-square-poll-vertical"></i></a>';
+}
+
+// ─── Состояние пользователя: подписка + его оценка — одним запросом ───────────
+
+$user_state = ['subscribed' => 0, 'rating' => 0];
+if ($cur_uid) {
+    $query = $db->sql_query_prepared(
+        "SELECT
+            EXISTS(SELECT 1 FROM threadsubscriptions WHERE tid = ? AND uid = ?) AS subscribed,
+            COALESCE((SELECT rating FROM threadratings WHERE tid = ? AND user_id = ? LIMIT 1), 0) AS rating",
+        [$tid, $cur_uid, $tid, $cur_uid]
+    );
+    $user_state = $db->fetch_array($query) ?: $user_state;
 }
 
 // ─── Subscription ─────────────────────────────────────────────────────────────
 
 $addremovesubscription = '';
-if ($CURUSER['id']) {
-    $query         = $db->sql_query_prepared(
-        "SELECT tid FROM threadsubscriptions WHERE tid = ? AND uid = ? LIMIT 1",
-        [(int)$tid, (int)$CURUSER['id']]
-    );
-    $is_subscribed = $db->num_rows($query) > 0;
+if ($cur_uid) {
+    $is_subscribed = (int)$user_state['subscribed'] === 1;
 
     $add_remove_subscription      = $is_subscribed ? 'remove' : 'add';
     $add_remove_subscription_text = $is_subscribed
         ? $lang->showthread['unsubscribe_thread']
         : $lang->showthread['subscribe_thread'];
 
-    $addremovesubscription = '<a class="btn btn-secondary" href="usercp.php?action=' . $add_remove_subscription . 'subscription&amp;tid=' . $tid . '&amp;my_post_key=' . $mybb->post_code . '">&nbsp;' . $add_remove_subscription_text . '&nbsp;</a>';
+    $addremovesubscription = '<a class="btn ' . ($is_subscribed ? 'btn-outline-secondary' : 'btn-outline-primary') . ' st-pill" href="usercp.php?action=' . $add_remove_subscription . 'subscription&amp;tid=' . $tid . '&amp;my_post_key=' . $mybb->post_code . '">'
+        . '<i class="fa-' . ($is_subscribed ? 'solid fa-bell-slash' : 'regular fa-bell') . ' me-1"></i>' . $add_remove_subscription_text . '</a>';
 }
 
 
@@ -780,7 +748,6 @@ if ($browsingthisthread != 0) {
     $onlinemembers = '';
     $doneusers   = [];
     $guest_ips   = [];
-    $comma       = '';
 
     // Один запрос вместо двух — гости и члены вместе
     $query = $db->sql_query_prepared("
@@ -789,7 +756,7 @@ if ($browsingthisthread != 0) {
         LEFT JOIN users u ON (s.uid = u.id)
         WHERE s.time > ? AND s.location2 = ? AND s.nopermission != 1
         ORDER BY u.username ASC, s.time DESC
-    ", [(int)$timecut, (int)$tid]);
+    ", [(int)$timecut, $tid]);
     while ($user = $db->fetch_array($query)) {
         if ($user['uid'] == 0) {
             // Гость — считаем уникальные IP
@@ -808,8 +775,7 @@ if ($browsingthisthread != 0) {
                 $user['profilelink'] = get_profile_link($user['uid']);
                 $user['username'] = format_name(htmlspecialchars_uni($user['username']), (int)($user['usergroup'] ?? 1));
                 $user['reading']     = my_datee($timeformat, $user['time']);
-                $onlinemembers      .= $comma . '<a href="' . $user['profilelink'] . '" title="' . $lang->showthread['users_browsing_thread_reading'] . ' (' . $user['reading'] . ')">' . $user['username'] . '</a>' . $invisiblemark;
-                $comma               = ', ';
+                $onlinemembers      .= '<a class="th-user" href="' . $user['profilelink'] . '" title="' . $lang->showthread['users_browsing_thread_reading'] . ' (' . $user['reading'] . ')">' . $user['username'] . ($invisiblemark !== '' ? '<span class="th-user__inv">*</span>' : '') . '</a>';
             }
         }
     }
@@ -823,14 +789,15 @@ if ($browsingthisthread != 0) {
     if ($inviscount && $usergroups['canviewwolinvis'] != 1) {
         $invisonline = sprintf($lang->showthread['users_browsing_thread_invis'], $inviscount);
     }
-    $onlinesep  = ($invisonline !== '' && $onlinemembers) ? ', ' : '';
-    $onlinesep2 = (($invisonline !== '' && $guestcount) || ($onlinemembers && $guestcount)) ? ', ' : '';
+    $browsing_extra = implode(', ', array_filter([$invisonline, $guestsonline]));
+    $browsing_extra = $browsing_extra !== '' ? '<span class="th-browse__extra">' . $browsing_extra . '</span>' : '';
     $usersbrowsing = <<<HTML
-    <div class="card border-0 rounded mt-5">
-        <div class="card-body bg-nav rounded">
-            <strong>{$lang->showthread['users_browsing_thread']}</strong>
-            {$onlinemembers}{$onlinesep}{$invisonline}{$onlinesep2}{$guestsonline}
+    <div class="st-card th-browse">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-eye"></i></span>
+            <span>{$lang->showthread['users_browsing_thread']}</span>
         </div>
+        <div class="st-card__body th-browse__list">{$onlinemembers}{$browsing_extra}</div>
     </div>
     HTML;
 }
@@ -839,15 +806,15 @@ if ($browsingthisthread != 0) {
 $plugins->run_hooks("showthread_end");
 
 $test           = get_forum_link($fid);
-$thread_deleted = $thread['visible'] == -1 ? 1 : 0;
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 stdhead($thread['subject']);
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/showthread.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=4">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/showthread.css?ver=41">';
 echo '<script src="' . $BASEURL . '/scripts/ignor.js"></script>';
-echo '<script src="' . $BASEURL . '/scripts/showthread.js"></script>';
+echo '<script src="' . $BASEURL . '/scripts/showthread.js?ver=8"></script>';
 
 
 $ags_js_lang = [];
@@ -861,22 +828,17 @@ foreach ($lang->showthread as $ags_key => $ags_val) {
 const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
 <?php
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=23"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=231"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=233"></script>';
 
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js?ver=7"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report_post.js"></script>';
-
-
-
 
 ?>
 <script>
 var quickdelete_confirm  = "Are you sure you want to delete this post?";
-var quickrestore_confirm = "Are you sure you want to restore this post?";
 var allowEditReason      = "1";
-var thread_deleted       = "<?= $thread_deleted ?>";
 var visible_replies      = "<?= $thread['replies'] ?>";
 var forumBaseUrl         = "<?= $test ?>";
 lang.save_changes              = "Save Changes";
@@ -886,48 +848,28 @@ lang.quick_reply_post_error    = "There was an error posting your reply:";
 lang.quick_delete_error        = "There was an error deleting your reply:";
 lang.quick_delete_success      = "The post was deleted successfully.";
 lang.quick_delete_thread_success = "The thread was deleted successfully.";
-lang.quick_restore_error       = "There was an error restoring your reply:";
-lang.quick_restore_success     = "The post was restored successfully.";
 lang.editreason                = "Edit Reason";
 lang.post_deleted_error        = "You can not perform this action to a deleted post.";
-lang.softdelete_thread         = "Soft Delete Thread";
-lang.restore_thread            = "Restore Thread";
 </script>
 <?php
-
-
-
-
+if ($invalid_post_notice !== '') {
+    // Раньше уходило в $footer + $.jGrowl — ни то, ни другое на сайте не выводится/не подключено
+    echo '<script>document.addEventListener("DOMContentLoaded",function(){if(typeof showToast==="function"){showToast('
+        . json_encode($invalid_post_notice, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . ',"error");}});</script>';
+}
 
 build_breadcrumb();
 
+// ── Rating block ─────────────────────────────────────────────────────────────
 
-
-
-
-// ── Rating block for showthread.php ──────────────────────────────────────────
-// Place this block before render_showthread() call
-// Replace $ratingform with $rating_html in render_showthread() call
-
-// Rating data from threads table
 $rating_data = [
     'avg'         => $thread['numratings'] > 0
                      ? round($thread['totalratings'] / $thread['numratings'], 1)
                      : 0,
     'count'       => (int)($thread['numratings'] ?? 0),
-    'user_rating' => 0,
+    'user_rating' => (int)$user_state['rating'],   // уже получено в запросе состояния пользователя
 ];
-
-// Current user's rating
-if ($CURUSER['id']) {
-    $q2 = $db->sql_query_prepared(
-        "SELECT rating FROM threadratings WHERE tid = ? AND user_id = ? LIMIT 1",
-        [(int)$tid, (int)$CURUSER['id']]
-    );
-    if ($ur = $db->fetch_array($q2)) {
-        $rating_data['user_rating'] = (int)$ur['rating'];
-    }
-}
 
 // Avg stars
 $avg_stars_html = '';
@@ -939,125 +881,156 @@ for ($i = 1; $i <= 10; $i++) {
     else               $avg_stars_html .= '<i class="bi bi-star rating-star-empty"></i>';
 }
 
-// User stars
-$user_stars_html = '';
-if ($CURUSER['id']) {
+// User stars (rating.js: .user-star, #user-stars, #rating-hint, .rating-score, #rating-display)
+if ($cur_uid) {
+    $user_stars_html = '';
     for ($i = 1; $i <= 10; $i++) {
-        $active           = $rating_data['user_rating'] >= $i ? 'active' : '';
-        $user_stars_html .= '<i class="bi bi-star-fill user-star ' . $active . '" data-value="' . $i . '" onclick="rateThread(' . $i . ')"></i>';
+        $active           = $rating_data['user_rating'] >= $i ? ' active' : '';
+        $user_stars_html .= '<i class="bi bi-star-fill user-star' . $active . '" data-value="' . $i . '" onclick="rateThread(' . $i . ')"></i>';
     }
     $user_section = '
-        <div class="d-flex align-items-center gap-2">
-            <div class="user-stars d-flex gap-1" id="user-stars">' . $user_stars_html . '</div>
-            <span class="small text-muted" id="rating-hint">'
+        <div class="th-rate__mine">
+            <span class="th-rate__lbl">' . rtrim($lang->showthread['rate_thread'], ': ') . '</span>
+            <div class="user-stars" id="user-stars">' . $user_stars_html . '</div>
+            <span class="st-badge st-soft-muted" id="rating-hint">'
                 . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : 'rate')
             . '</span>
         </div>';
 } else {
-    $user_section = '<a href="' . $BASEURL . '/member.php?action=login" class="btn btn-sm btn-outline-primary rounded-pill">Login to rate</a>';
+    $user_section = '<a href="' . $BASEURL . '/member.php?action=login" class="btn btn-sm btn-outline-primary st-pill"><i class="fa-solid fa-right-to-bracket me-1"></i>Login to rate</a>';
 }
 
 $rating_html = '
-<style>
-.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
-.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
-.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
-.rating-stars { display:flex; gap:4px; font-size:1rem; }
-.rating-star-filled { color:#f59e0b; }
-.rating-star-empty { color:#e9ecef; }
-.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
-.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
-.user-star.active { color:#f59e0b; }
-@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
-</style>
-<div class="rating-modern">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
-        <div class="d-flex align-items-center gap-3">
-            <div class="text-center">
-                <div class="rating-score">' . ($rating_data['count'] > 0 ? $rating_data['avg'] : '—') . '</div>
-                <div class="small text-muted">' . number_format($rating_data['count']) . ' votes</div>
-            </div>
-            <div class="rating-stars" id="rating-display">' . $avg_stars_html . '</div>
-        </div>
-        ' . $user_section . '
+<div class="st-card th-rate">
+    <span class="st-ico st-soft-warning th-rate__ico"><i class="fa-solid fa-star"></i></span>
+    <div class="th-rate__avg">
+        <div class="th-rate__score"><span class="rating-score">' . ($rating_data['count'] > 0 ? $rating_data['avg'] : '—') . '</span><small>/10</small></div>
+        <div class="th-rate__votes">' . number_format($rating_data['count']) . ' votes</div>
     </div>
+    <div class="rating-stars th-rate__stars" id="rating-display">' . $avg_stars_html . '</div>
+    ' . $user_section . '
 </div>
 <script src="' . $BASEURL . '/scripts/rating.js?ver=31"></script>
-<script>ratingInit(' . (int)$rating_data['user_rating'] . ', ' . (int)$tid . ', "' . $BASEURL . '", "thread", "' . htmlspecialchars((string)$mybb->post_code, ENT_QUOTES) . '");</script>';
+<script>ratingInit(' . (int)$rating_data['user_rating'] . ', ' . $tid . ', "' . $BASEURL . '", "thread", "' . htmlspecialchars((string)$mybb->post_code, ENT_QUOTES) . '");</script>';
 
 
+// ── Thread header ────────────────────────────────────────────────────────────
 
+$thread_head = render_thread_head($thread, $forum, $test, $lang);
 
-
-echo render_showthread($thread, $multipage, $addremovesubscription, $newreply, $pollbox, $rating_html, $posts, $quickreply, $search_thread, $next_oldest_link, $next_newest_link, $addpoll, $printthread, $sendthread, $moderationoptions, $usersbrowsing, $lang, $BASEURL, $tid, $thread_deleted);
-echo render_report_modal((int)$CURUSER['id']);
+echo render_showthread($thread, $thread_head, $multipage, $addremovesubscription, $newreply, $pollbox, $rating_html, $posts, $quickreply, $search_thread, $next_oldest_link, $next_newest_link, $addpoll, $printthread, $sendthread, $moderationoptions, $usersbrowsing, $lang, $BASEURL, $tid, render_report_modal($cur_uid));
 stdfoot();
 
 // ─── Template functions ───────────────────────────────────────────────────────
 
-function render_poll_results_box(array $poll, string $polloptions, string $pollstatus, string $undovote, string $total_votes, string $edit_poll, string $showresults_link): string
+/** Шапка темы: иконка по состоянию, заголовок, бейджи, мета (автор, форум, дата, ответы, просмотры) */
+function render_thread_head(array $thread, array $forum, string $forum_link, object $lang): string
 {
+    $closed = (int)$thread['closed'] === 1;
+    $sticky = (int)$thread['sticky'] === 1;
+    $unappr = (int)$thread['visible'] === 0;
+
+    [$soft, $icon] = match (true) {
+        $closed => ['st-soft-danger', 'fa-lock'],
+        $sticky => ['st-soft-warning', 'fa-thumbtack'],
+        default => ['st-soft-primary', 'fa-comments'],
+    };
+
+    $badges = '';
+    if ($sticky) {
+        $badges .= '<span class="st-badge st-soft-warning"><i class="fa-solid fa-thumbtack"></i>' . ($lang->showthread['th_sticky'] ?? 'Sticky') . '</span>';
+    }
+    if ($closed) {
+        $badges .= '<span class="st-badge st-soft-danger"><i class="fa-solid fa-lock"></i>' . $lang->showthread['thread_closed'] . '</span>';
+    }
+    if ($unappr) {
+        $badges .= '<span class="st-badge st-soft-warning"><i class="fa-solid fa-hourglass-half"></i>' . $lang->global['postbit_thread_unapproved'] . '</span>';
+    }
+
+    $author = (int)$thread['uid'] > 0
+        ? '<a href="' . get_profile_link((int)$thread['uid']) . '">' . $thread['username'] . '</a>'
+        : $thread['username'];
+
+    $meta = th_meta('fa-user', $author)
+          . th_meta('fa-folder-open', '<a href="' . $forum_link . '">' . htmlspecialchars_uni((string)$forum['name']) . '</a>')
+          . th_meta('fa-clock', my_datee('relative', (int)$thread['dateline']))
+          . th_meta('fa-comment', ts_nf((int)$thread['replies']) . ' ' . $lang->showthread['replies'])
+          . th_meta('fa-eye', ts_nf((int)$thread['views']) . ' ' . $lang->showthread['views']);
+
     return <<<HTML
-    <div class="poll-box card border-0 mb-4">
-        <div class="poll-header card-header">
-            <span class="poll-question">{$poll['question']}</span>
-            <span class="poll-badge">Poll</span>
-        </div>
-        <div class="card-body">
-            <div class="poll-meta mb-3">
-                {$pollstatus}
-                {$undovote}
+    <div class="st-card st-head th-head">
+        <span class="st-head__icon {$soft}"><i class="fa-solid {$icon}"></i></span>
+        <div class="min-w-0 flex-grow-1">
+            <div class="th-head__top">
+                <h1 class="st-title">{$thread['subject']}</h1>
+                {$badges}
             </div>
-            {$polloptions}
-            <div class="poll-total">{$total_votes}</div>
-        </div>
-        <div class="poll-footer card-footer">
-            <div class="poll-footer-left">{$edit_poll}</div>
-            <div class="poll-footer-right">{$showresults_link}</div>
+            <div class="st-head__meta">{$meta}</div>
         </div>
     </div>
     HTML;
 }
 
-function render_poll_vote_box(array $poll, string $polloptions, string $publicnote, string $closeon, string $edit_poll, string $showresults_link, string $post_code): string
+function th_meta(string $icon, string $html): string
 {
-    $pid = $poll['pid'];
+    return '<span><i class="fa-solid ' . $icon . '"></i>' . $html . '</span>';
+}
+
+/** Общая карточка опроса (результаты и голосование) */
+function render_poll_card(array $poll, string $meta, string $body, string $foot_left, string $foot_right): string
+{
+    $meta = trim($meta) !== '' ? '<div class="poll-meta">' . $meta . '</div>' : '';
+
     return <<<HTML
-    <form action="polls.php" method="post">
-        <input type="hidden" name="my_post_key" value="{$post_code}" />
-        <input type="hidden" name="action" value="vote" />
-        <input type="hidden" name="pid" value="{$pid}" />
-        <div class="poll-box card border-0 mb-4">
-            <div class="poll-header card-header">
-                <span class="poll-question">{$poll['question']}</span>
-                <span class="poll-badge">Poll</span>
-            </div>
-            <div class="card-body">
-                <div class="poll-meta mb-3">{$publicnote} {$closeon}</div>
-                {$polloptions}
-            </div>
-            <div class="poll-footer card-footer">
-                <div class="poll-footer-left">
-                    <button type="submit" class="btn btn-primary btn-sm">Vote!</button>
-                    {$edit_poll}
-                </div>
-                <div class="poll-footer-right">{$showresults_link}</div>
-            </div>
+    <div class="poll-box st-card th-poll">
+        <div class="st-card__head poll-header">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-square-poll-horizontal"></i></span>
+            <span class="poll-question min-w-0">{$poll['question']}</span>
+            <span class="st-badge st-soft-info ms-auto poll-badge">Poll</span>
         </div>
-    </form>
+        <div class="st-card__body">
+            {$meta}
+            {$body}
+        </div>
+        <div class="poll-footer th-poll__foot">
+            <div class="poll-footer-left">{$foot_left}</div>
+            <div class="poll-footer-right">{$foot_right}</div>
+        </div>
+    </div>
     HTML;
 }
 
+function render_poll_results_box(array $poll, string $polloptions, string $pollstatus, string $undovote, string $total_votes, string $edit_poll, string $showresults_link): string
+{
+    return render_poll_card(
+        $poll,
+        $pollstatus . ' ' . $undovote,
+        $polloptions . '<div class="poll-total">' . $total_votes . '</div>',
+        $edit_poll,
+        $showresults_link
+    );
+}
 
+function render_poll_vote_box(array $poll, string $polloptions, string $publicnote, string $closeon, string $edit_poll, string $showresults_link, string $post_code): string
+{
+    $pid  = $poll['pid'];
+    $card = render_poll_card(
+        $poll,
+        $publicnote . ' ' . $closeon,
+        $polloptions,
+        '<button type="submit" class="btn btn-primary btn-sm st-pill"><i class="fa-solid fa-check-to-slot me-1"></i>Vote!</button> ' . $edit_poll,
+        $showresults_link
+    );
 
-
-
-
-
-
-
-
-
+    return <<<HTML
+    <form action="polls.php" method="post" class="th-poll-form">
+        <input type="hidden" name="my_post_key" value="{$post_code}" />
+        <input type="hidden" name="action" value="vote" />
+        <input type="hidden" name="pid" value="{$pid}" />
+        {$card}
+    </form>
+    HTML;
+}
 
 function render_quick_reply(
     int $tid,
@@ -1076,13 +1049,30 @@ function render_quick_reply(
     // Тулбар идёт внутри формы (над textarea), модалки — после закрытия формы
     $editor = insert_bbcode_editor($smilies, $baseurl, 'message');
 
+    // Ник и аватар текущего пользователя — экранируем, аватар через format_avatar() (пустой → заглушка)
+    $me_name = htmlspecialchars_uni((string)($curuser['username'] ?? ''));
+    $me_av   = format_avatar($curuser['avatar'] ?? '', $curuser['avatardimensions'] ?? '');
+    $me_img  = empty($me_av['is_html'])
+        ? '<img src="' . $me_av['image'] . '" alt="" class="th-reply__av">'
+        : '<span class="st-ico st-soft-muted th-reply__av"><i class="fa-solid fa-user"></i></span>';
+
+    $title   = $lang->showthread['quick_reply'];
+    $options = $closeoption !== ''
+        ? '<a class="st-toggle" data-bs-toggle="collapse" href="#collapse-reply" role="button" aria-expanded="false" aria-controls="collapse-reply"><i class="fa-solid fa-gear"></i>' . rtrim($lang->showthread['moderation_options'], ': ') . '</a>'
+        : '';
+    $optbody = $closeoption !== ''
+        ? '<div id="collapse-reply" class="collapse"><div class="th-reply__opts">' . $closeoption . '</div></div>'
+        : '';
+    $moderation_notice = $moderation_notice !== ''
+        ? '<div class="th-reply__notice"><span class="st-badge st-soft-warning"><i class="fa-solid fa-hourglass-half"></i>' . strip_tags($moderation_notice) . '</span></div>'
+        : '';
+
     return <<<HTML
     <div id="quickreply_spinner" class="showthread_spinner" style="display:none">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
     </div>
-    {$moderation_notice}
     <form method="post" action="newreply.php?tid={$tid}&amp;processed=1"
-          name="quick_reply_form" id="quick_reply_form">
+          name="quick_reply_form" id="quick_reply_form" class="th-reply-form">
         <input type="hidden" name="my_post_key"  value="{$post_code}" />
         <input type="hidden" name="subject"       value="RE: {$reply_subject}" />
         <input type="hidden" name="action"        value="do_newreply" />
@@ -1093,38 +1083,39 @@ function render_quick_reply(
         <input type="hidden" name="tid"           value="{$tid}" />
         <input type="hidden" name="method"        value="quickreply" />
         <div id="fileIdsContainer"></div>
-        <div class="row d-flex g-2 mb-4 mt-5">
-            <div class="col-auto d-none d-lg-block">
-                <img src="{$curuser['avatar']}" class="rounded img-fluid" style="width:100px">
+
+        <div class="st-card th-reply" id="quickreply">
+            <div class="st-card__head">
+                <span class="st-ico st-soft-primary"><i class="fa-solid fa-reply"></i></span>
+                <span>{$title}</span>
+                <span class="ms-auto th-reply__who">{$me_img}<span>{$me_name}</span></span>
             </div>
-            <div class="col">
-                <div class="editor_control_bar mb-3 border border-top-5 p-2" id="quickreply_multiquote" style="display:none;">
+            {$moderation_notice}
+            <div class="th-reply__mq" id="quickreply_multiquote" style="display:none;">
+                <i class="fa-solid fa-quote-left"></i>
+                <span>
                     {$lang->showthread['quickreply_multiquote_selected']}
                     <a href="./newreply.php?tid={$tid}&amp;load_all_quotes=1" onclick="return Thread.loadMultiQuoted();">{$lang->showthread['quickreply_multiquote_now']}</a>
                     {$lang->showthread['or']}
                     <a href="javascript:void(0)" onclick="Thread.clearMultiQuoted(); return false;">{$lang->showthread['quickreply_multiquote_deselect']}</a>.
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="mb-2">{$curuser['username']}</h6>
-                        {$editor['toolbar']}
-                        <textarea class="form-control border-0 p-0" style="resize:vertical;height:150px"
-                                  name="message" id="message" tabindex="1"
-                                  placeholder="Write a reply to this message..."></textarea>
-                        <div id="collapse-reply" class="collapse bg-nav p-2">{$closeoption}</div>
-                    </div>
-                    <div class="card-footer border-top-0">
-                        <button type="submit" class="btn btn-primary" tabindex="2" accesskey="s" id="quick_reply_submit">
-                            <i class="fa-solid fa-comment"></i> &nbsp;{$lang->showthread['post_reply']}
-                        </button>
-                        <a class="btn btn-thread ms-3 me-3" data-bs-toggle="collapse" href="#collapse-reply" role="button">
-                            <i class="fa-solid fa-gear"></i>
-                        </a>
-                        <button type="submit" class="btn btn-thread" name="previewpost" tabindex="3">
-                            <i class="fa-solid fa-pencil"></i> &nbsp;{$lang->showthread['preview_post']}
-                        </button>
-                    </div>
-                </div>
+                </span>
+            </div>
+            <div class="st-compose-body">
+                {$editor['toolbar']}
+                <textarea class="form-control st-editor-text th-reply__text"
+                          name="message" id="message" tabindex="1"
+                          placeholder="Write a reply to this message..."></textarea>
+                {$optbody}
+            </div>
+            <div class="st-optbar">
+                {$options}
+                <span class="ms-auto"></span>
+                <button type="submit" class="btn btn-outline-secondary st-pill" name="previewpost" tabindex="3">
+                    <i class="fa-solid fa-eye me-1"></i>{$lang->showthread['preview_post']}
+                </button>
+                <button type="submit" class="btn btn-primary st-pill" tabindex="2" accesskey="s" id="quick_reply_submit">
+                    <i class="fa-solid fa-paper-plane me-1"></i>{$lang->showthread['post_reply']}
+                </button>
             </div>
         </div>
     </form>
@@ -1132,96 +1123,73 @@ function render_quick_reply(
     HTML;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 function render_inline_mod(int $tid, string $standardposttools, string $customposttools, string $inlinecount, string $post_code, object $lang, string $baseurl, int $threadcount): string
 {
-    $go_text = addslashes($lang->showthread['inline_go']);
-    $clear_text = addslashes($lang->showthread['clear']);
-    $go_value = $lang->showthread['go'];
-    
+    $go_text    = addslashes($lang->showthread['inline_go']);
+    $clear_text = $lang->showthread['clear'];
+    $go_value   = $lang->showthread['go'];
+    $label      = rtrim($lang->showthread['inline_post_moderation'], ': ');
+
     return <<<HTML
-    <div class="col-lg">
+    <div class="th-mod__part">
         <script type="text/javascript">
-        <!--
             var go_text = "{$go_text}";
             var all_text = "{$threadcount}";
             var inlineType = "thread";
             var inlineId = {$tid};
-        // -->
         </script>
         <script src="{$baseurl}/scripts/inline_moderation.js?ver=1821"></script>
-        
-        <form action="moderation.php" method="post" id="inlinemoderation_options">
+
+        <div class="th-mod__lbl"><i class="fa-solid fa-list-check"></i>{$label}</div>
+        <form action="moderation.php" method="post" id="inlinemoderation_options" class="th-mod__form">
             <input type="hidden" name="my_post_key" value="{$post_code}" />
             <input type="hidden" name="tid" value="{$tid}" />
             <input type="hidden" name="modtype" value="inlinepost" />
-            
-            <div class="row g-1">
-                <div class="col d-none d-lg-block">&nbsp;</div>
-                <div class="col-auto">
-                    <select name="action" id="inlinemoderation_options_selector" class="form-select form-select-sm border w-auto pe-5">
-                        {$standardposttools}
-                        {$customposttools}
-                    </select>
-                </div>
-                <div class="col-auto">
-                    <input type="submit" class="btn btn-sm btn-primary" name="go" 
-                           value="{$go_value} ({$inlinecount})" id="inline_go" />
-                    <input type="button" class="btn btn-sm btn-primary" 
-                           onclick="inlineModeration.clearChecked();" 
-                           value="{$clear_text}" />
-                </div>
-            </div>
+            <select name="action" id="inlinemoderation_options_selector" class="form-select form-select-sm">
+                {$standardposttools}
+                {$customposttools}
+            </select>
+            <input type="submit" class="btn btn-sm btn-primary st-pill" name="go"
+                   value="{$go_value} ({$inlinecount})" id="inline_go" />
+            <input type="button" class="btn btn-sm btn-outline-secondary st-pill"
+                   onclick="inlineModeration.clearChecked();"
+                   value="{$clear_text}" />
         </form>
     </div>
 HTML;
 }
 
-
-
-
-
-
-
-
 function render_moderation_options(int $tid, string $standardthreadtools, string $customthreadtools, string $inlinemod, string $post_code, object $lang, array $thread, string $forumjump, string $sitename): string
 {
-    $subject  = htmlspecialchars_uni($thread['subject']);
-    $username = htmlspecialchars_uni($thread['username']);
+    // subject/username в $thread уже экранированы в начале showthread.php — второй проход давал &amp;amp;
+    $subject  = $thread['subject'];
+    $username = $thread['username'];
+    $mod_lbl  = rtrim($lang->showthread['moderation_options'], ': ');
+    $tt_lbl   = $lang->showthread['standard_mod_tools'];
 
     return <<<HTML
-    <div class="row mt-5 g-1 m-0 py-3 border-top border-bottom">
-        <div class="col-lg-6">
-            <form action="moderation.php" method="post" id="moderator_options">
-                <input type="hidden" name="modtype"     value="thread" />
-                <input type="hidden" name="tid"         value="{$tid}" />
-                <input type="hidden" name="my_post_key" value="{$post_code}" />
-                <div class="row g-1">
-                    <div class="col-auto">
-                        <select name="action" id="moderator_options_selector" class="form-select form-select-sm w-auto pe-5">
-                            <option value="delayedmoderation">{$lang->showthread['delayed_moderation']}</option>
-                            {$standardthreadtools}
-                            {$customthreadtools}
-                        </select>
-                    </div>
-                    <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-primary rounded"><i class="fa-solid fa-shuffle"></i> &nbsp;{$lang->showthread['mod_go']}</button>
-                    </div>
-                </div>
-            </form>
+    <div class="st-card th-mod">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-danger"><i class="fa-solid fa-shield-halved"></i></span>
+            <span>{$mod_lbl}</span>
         </div>
-        {$inlinemod}
+        <div class="th-mod__body">
+            <div class="th-mod__part">
+                <div class="th-mod__lbl"><i class="fa-solid fa-sliders"></i>{$tt_lbl}</div>
+                <form action="moderation.php" method="post" id="moderator_options" class="th-mod__form">
+                    <input type="hidden" name="modtype"     value="thread" />
+                    <input type="hidden" name="tid"         value="{$tid}" />
+                    <input type="hidden" name="my_post_key" value="{$post_code}" />
+                    <select name="action" id="moderator_options_selector" class="form-select form-select-sm">
+                        <option value="delayedmoderation">{$lang->showthread['delayed_moderation']}</option>
+                        {$standardthreadtools}
+                        {$customthreadtools}
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-shuffle me-1"></i>{$lang->showthread['mod_go']}</button>
+                </form>
+            </div>
+            {$inlinemod}
+        </div>
     </div>
 
     <!-- Delete posts modal -->
@@ -1288,7 +1256,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         <h5 class="alert-heading mb-2">{$lang->showthread['mod_dt_warning_title']}</h5>
                         <p class="mb-0 small">{$lang->showthread['mod_dt_warning_text']}</p>
                     </div>
-                    <div class="p-3 bg-light rounded mb-3">
+                    <div class="p-3 bg-body-tertiary rounded mb-3">
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" id="dt_confirm1">
                             <label class="form-check-label fw-bold text-danger" for="dt_confirm1">{$lang->showthread['mod_dt_confirm1']}</label>
@@ -1323,7 +1291,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         <input type="hidden" name="my_post_key" value="{$post_code}" />
                         <input type="hidden" name="action"      value="do_merge" />
                         <input type="hidden" name="tid"         value="{$tid}" />
-                        <div class="p-3 bg-light rounded mb-4 border-start border-primary border-4">
+                        <div class="p-3 bg-body-tertiary rounded mb-4 border-start border-primary border-4">
                             <small class="text-muted d-block mb-1">{$lang->showthread['mod_mg_current']}</small>
                             <strong>{$subject}</strong>
                             <small class="text-muted d-block mt-1">{$lang->showthread['mod_thread_id']} {$tid}</small>
@@ -1335,7 +1303,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
                         <div class="mb-4">
                             <label class="form-label fw-bold">{$lang->showthread['mod_mg_url']}</label>
                             <input type="text" class="form-control" name="threadurl" placeholder="https://example.com/thread-123" required>
-                            <div class="mt-3 p-3 bg-light rounded small">
+                            <div class="mt-3 p-3 bg-body-tertiary rounded small">
                                 {$lang->showthread['mod_mg_note']}
                             </div>
                         </div>
@@ -1406,101 +1374,110 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
     HTML;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function render_showthread(array $thread, string $multipage, string $addremovesubscription, string $newreply, string $pollbox, string $rating_html, string $posts, string $quickreply, string $search_thread, string $next_oldest_link, string $next_newest_link, string $addpoll, string $printthread, string $sendthread, string $moderationoptions, string $usersbrowsing, object $lang, string $baseurl, int $tid, int $thread_deleted): string
+/** Панель «пагинация слева, кнопки справа» — сверху и снизу постов */
+function th_toolbar(string $multipage, string $buttons, string $mod = ''): string
 {
-    return <<<HTML
-    <div class="container-md">
+    $pager   = trim($multipage) !== '' ? '<div class="st-pager">' . $multipage . '</div>' : '<span></span>';
+    $buttons = trim($buttons) !== '' ? '<div class="th-actions">' . $buttons . '</div>' : '';
 
-        <div class="row mb-3 p-0 m-0">
-            <div class="col p-0 align-self-center text-center text-lg-start mt-3 mt-lg-0">
-                {$multipage}
-            </div>
-            <div class="col-auto m-0 p-0 text-center text-lg-end align-self-center order-first order-lg-last">
-                {$addremovesubscription} {$newreply}
-            </div>
-        </div>
+    if ($pager === '<span></span>' && $buttons === '') {
+        return '';
+    }
+
+    return '<div class="st-card st-toolbar th-bar' . ($mod !== '' ? ' th-bar--' . $mod : '') . '">' . $pager . $buttons . '</div>';
+}
+
+function render_showthread(array $thread, string $thread_head, string $multipage, string $addremovesubscription, string $newreply, string $pollbox, string $rating_html, string $posts, string $quickreply, string $search_thread, string $next_oldest_link, string $next_newest_link, string $addpoll, string $printthread, string $sendthread, string $moderationoptions, string $usersbrowsing, object $lang, string $baseurl, int $tid, string $report_modal): string
+{
+    $bar_top    = th_toolbar($multipage, $addremovesubscription . ' ' . $newreply, 'top');
+    $bar_bottom = th_toolbar($multipage, $newreply, 'bottom');
+    $icons      = trim($addpoll . $printthread . $sendthread);
+    $icons      = $icons !== '' ? '<div class="th-icons">' . $icons . '</div>' : '';
+
+    return <<<HTML
+    <div class="container-md st-page th-page">
+
+        {$thread_head}
+        {$bar_top}
         {$rating_html}
         {$pollbox}
 
-        <div id="posts">{$posts}</div>
+        <div id="posts" class="th-posts">{$posts}</div>
 
-        <div class="row mt-3 mb-3 p-0 m-0">
-            <div class="col p-0 align-self-center text-center text-lg-start mb-3 mb-lg-0">
-                {$multipage}
-            </div>
-            <div class="col-auto m-0 p-0 text-center text-lg-end align-self-center">
-                {$newreply}
-            </div>
-        </div>
-
+        {$bar_bottom}
         {$quickreply}
 
-        <div class="container-md">
-            <div class="row mt-5 m-0 p-0 border-top border-bottom">
-                <div class="col-12 col-lg-5 align-self-center py-3">
-                    {$search_thread}
-                </div>
-                <div class="col text-center text-lg-end align-self-center py-3">
-                    <a href="{$next_oldest_link}" class="links"><i class="fa-solid fa-angles-left"></i> {$lang->showthread['next_oldest']}</a>
-                    &nbsp;&nbsp;&nbsp;&nbsp;
-                    <a href="{$next_newest_link}" class="links">{$lang->showthread['next_newest']} <i class="fa-solid fa-angles-right"></i></a>
-                </div>
+        <div class="st-card th-foot">
+            <div class="th-foot__search">{$search_thread}</div>
+            <div class="th-foot__nav">
+                <a href="{$next_oldest_link}" class="btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-angles-left me-1"></i>{$lang->showthread['next_oldest']}</a>
+                <a href="{$next_newest_link}" class="btn btn-sm btn-outline-secondary st-pill">{$lang->showthread['next_newest']}<i class="fa-solid fa-angles-right ms-1"></i></a>
+                {$icons}
             </div>
-
-            <div class="row m-0 p-0 mt-2 text-end">
-                <div class="col-12 text-center text-lg-end align-self-center">
-                    {$addpoll} {$printthread}&nbsp;&nbsp; {$sendthread}
-                </div>
-            </div>
-
-            {$moderationoptions}
-            {$usersbrowsing}
         </div>
+
+        {$moderationoptions}
+        {$usersbrowsing}
+        {$report_modal}
     </div>
 
-    <script>
-    if(thread_deleted == "1") {
-        document.getElementById('quick_reply_form') && (document.getElementById('quick_reply_form').style.display='none');
-        document.querySelectorAll('#moderator_options_selector option.option_mirage').forEach(function(o){o.disabled=true;});
-    }
-    </script>
     HTML;
 }
 
-
-
-
+/** Строка формы в модалке жалобы: подпись с иконкой + поле */
+function th_report_field(string $for, string $icon, string $label, string $control): string
+{
+    return '<div class="mb-3">'
+         . '<label for="' . $for . '" class="form-label fw-semibold"><i class="bi ' . $icon . ' me-1"></i>' . $label . '</label>'
+         . $control
+         . '</div>';
+}
 
 function render_report_modal(int $user_id): string
 {
     global $mybb, $lang;
     $postKey = htmlspecialchars($mybb->post_code);
+    $L = $lang->showthread;
+
+    $reasons = '<option value="" selected disabled>' . $L['report_select_reason'] . '</option>';
+    $groups  = [
+        'report_group_content' => ['spam', 'offensive', 'harassment', 'hate_speech', 'explicit', 'illegal'],
+        'report_group_rules'   => ['off_topic', 'double_post', 'flame', 'personal_attack', 'spoiler'],
+        'report_group_other'   => ['copyright', 'personal_info', 'malware', 'scam', 'other'],
+    ];
+    foreach ($groups as $glabel => $vals) {
+        $reasons .= '<optgroup label="' . $L[$glabel] . '">';
+        foreach ($vals as $v) {
+            $reasons .= '<option value="' . $v . '">' . $L['report_r_' . $v] . '</option>';
+        }
+        $reasons .= '</optgroup>';
+    }
+
+    $rules = '<option value="" selected>' . $L['report_rule_none'] . '</option>';
+    for ($i = 1; $i <= 8; $i++) {
+        $rules .= '<option value="rule_' . $i . '">' . $L['report_rule_' . $i] . '</option>';
+    }
+
+    $f_reason = th_report_field('forumPostReportReason', 'bi-exclamation-triangle', $L['report_reason'],
+        '<select class="form-select" id="forumPostReportReason" name="reason" required>' . $reasons . '</select>');
+    $f_details = th_report_field('forumPostReportDetails', 'bi-chat-text', $L['report_details'],
+        '<textarea class="form-control" id="forumPostReportDetails" name="description" rows="4" placeholder="' . $L['report_details_placeholder'] . '" maxlength="2000"></textarea>'
+        . '<div class="form-text d-flex justify-content-between mt-1"><span>' . $L['report_details_hint'] . '</span><span id="forumPostCharCount">0/2000</span></div>');
+    $f_rule = th_report_field('forumPostRuleViolation', 'bi-journal-text', $L['report_rule_violation'],
+        '<select class="form-select" id="forumPostRuleViolation" name="rule_violation">' . $rules . '</select>');
+    $f_email = th_report_field('forumPostReportEmail', 'bi-envelope', $L['report_email'],
+        '<input type="email" class="form-control" id="forumPostReportEmail" name="email" placeholder="' . $L['report_email_placeholder'] . '">');
 
     return <<<HTML
-    <div class="modal fade" id="reportForumPostModal" tabindex="-1" aria-labelledby="reportForumPostModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content shadow-lg border-0">
-                <div class="modal-header bg-gradient bg-success text-white">
-                    <h5 class="modal-title fw-semibold" id="reportForumPostModalLabel">
-                        <i class="bi bi-flag-fill me-2"></i>{$lang->showthread['report_title']}
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="{$lang->showthread['report_close']}"></button>
+    <div class="modal fade th-modal" id="reportForumPostModal" tabindex="-1" aria-labelledby="reportForumPostModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="st-ico st-soft-warning"><i class="fa-solid fa-flag"></i></span>
+                    <h5 class="modal-title" id="reportForumPostModalLabel">{$L['report_title']}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{$L['report_close']}"></button>
                 </div>
-                <form id="reportForumPostForm" action="takereport.php" method="POST">
+                <form id="reportForumPostForm" action="takereport.php" method="POST" class="th-contents">
                     <div class="modal-body">
                         <input type="hidden" name="my_post_key"      value="{$postKey}">
                         <input type="hidden" name="type"             id="forumPostReportType"     value="forumpost">
@@ -1510,149 +1487,74 @@ function render_report_modal(int $user_id): string
                         <input type="hidden" name="forum_id"         id="forumPostForumId"        value="">
                         <input type="hidden" name="thread_id"        id="forumPostThreadId"       value="">
 
-                        <div class="alert alert-info mb-3">
+                        <div class="th-note th-note--info mb-3">
                             <i class="bi bi-info-circle me-2"></i>
-                            {$lang->showthread['report_reporting']} <strong id="reportingForumPost">{$lang->showthread['report_forum_post']}</strong>
+                            {$L['report_reporting']} <strong id="reportingForumPost">{$L['report_forum_post']}</strong>
                         </div>
 
-                        <div class="card border mb-4">
-                            <div class="card-header bg-light py-2">
-                                <small class="text-muted fw-medium"><i class="bi bi-chat-left-text me-1"></i>{$lang->showthread['report_post_preview']}</small>
-                            </div>
-                            <div class="card-body py-3">
-                                <div class="d-flex align-items-start">
-                                    <div class="flex-shrink-0">
-                                        <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style="width:40px;height:40px;">
-                                            <i class="bi bi-person"></i>
+                        <div class="th-rp-preview mb-4">
+                            <div class="th-modal__lbl mt-0"><i class="bi bi-chat-left-text"></i>{$L['report_post_preview']}</div>
+                            <div class="th-rp-preview__row">
+                                <span class="st-ico st-soft-success"><i class="bi bi-person"></i></span>
+                                <div class="min-w-0 flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                        <div>
+                                            <span class="fw-semibold" id="forumPostAuthorPreview">{$L['report_user']}</span>
+                                            <span class="th-modal__sub ms-2" id="forumPostDatePreview"></span>
                                         </div>
+                                        <span class="st-badge st-soft-success">{$L['report_forum_post']}</span>
                                     </div>
-                                    <div class="flex-grow-1 ms-3">
-                                        <div class="d-flex justify-content-between align-items-start mb-1">
-                                            <div>
-                                                <span class="fw-medium" id="forumPostAuthorPreview">{$lang->showthread['report_user']}</span>
-                                                <span class="text-muted small ms-2" id="forumPostDatePreview"></span>
-                                            </div>
-                                            <span class="badge bg-success">{$lang->showthread['report_forum_post']}</span>
-                                        </div>
-                                        <h6 class="text-primary mb-2" id="forumPostSubjectPreview">{$lang->showthread['report_post_subject']}</h6>
-                                        <div class="mb-2">
-                                            <span class="badge bg-light text-dark me-2"><i class="bi bi-grid me-1"></i>{$lang->showthread['report_forum']} <span id="forumPostForumPreview">{$lang->showthread['report_forum_default']}</span></span>
-                                            <span class="badge bg-light text-dark"><i class="bi bi-chat-dots me-1"></i>{$lang->showthread['report_thread']} <span id="forumPostThreadPreview">{$lang->showthread['report_thread_default']}</span></span>
-                                        </div>
-                                        <p class="mb-0 text-muted" id="forumPostPreviewText">{$lang->showthread['report_content_default']}</p>
+                                    <div class="fw-semibold text-primary-emphasis mb-2" id="forumPostSubjectPreview">{$L['report_post_subject']}</div>
+                                    <div class="d-flex flex-wrap gap-2 mb-2">
+                                        <span class="st-badge st-soft-muted"><i class="bi bi-grid"></i>{$L['report_forum']} <span id="forumPostForumPreview">{$L['report_forum_default']}</span></span>
+                                        <span class="st-badge st-soft-muted"><i class="bi bi-chat-dots"></i>{$L['report_thread']} <span id="forumPostThreadPreview">{$L['report_thread_default']}</span></span>
                                     </div>
+                                    <p class="mb-0 text-body-secondary small" id="forumPostPreviewText">{$L['report_content_default']}</p>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="mb-4">
-                            <label for="forumPostReportReason" class="form-label fw-medium">
-                                <i class="bi bi-exclamation-triangle me-1"></i>{$lang->showthread['report_reason']}
-                            </label>
-                            <select class="form-select form-select-lg" id="forumPostReportReason" name="reason" required>
-                                <option value="" selected disabled>{$lang->showthread['report_select_reason']}</option>
-                                <optgroup label="{$lang->showthread['report_group_content']}">
-                                    <option value="spam">{$lang->showthread['report_r_spam']}</option>
-                                    <option value="offensive">{$lang->showthread['report_r_offensive']}</option>
-                                    <option value="harassment">{$lang->showthread['report_r_harassment']}</option>
-                                    <option value="hate_speech">{$lang->showthread['report_r_hate_speech']}</option>
-                                    <option value="explicit">{$lang->showthread['report_r_explicit']}</option>
-                                    <option value="illegal">{$lang->showthread['report_r_illegal']}</option>
-                                </optgroup>
-                                <optgroup label="{$lang->showthread['report_group_rules']}">
-                                    <option value="off_topic">{$lang->showthread['report_r_off_topic']}</option>
-                                    <option value="double_post">{$lang->showthread['report_r_double_post']}</option>
-                                    <option value="flame">{$lang->showthread['report_r_flame']}</option>
-                                    <option value="personal_attack">{$lang->showthread['report_r_personal_attack']}</option>
-                                    <option value="spoiler">{$lang->showthread['report_r_spoiler']}</option>
-                                </optgroup>
-                                <optgroup label="{$lang->showthread['report_group_other']}">
-                                    <option value="copyright">{$lang->showthread['report_r_copyright']}</option>
-                                    <option value="personal_info">{$lang->showthread['report_r_personal_info']}</option>
-                                    <option value="malware">{$lang->showthread['report_r_malware']}</option>
-                                    <option value="scam">{$lang->showthread['report_r_scam']}</option>
-                                    <option value="other">{$lang->showthread['report_r_other']}</option>
-                                </optgroup>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="forumPostReportDetails" class="form-label fw-medium">
-                                <i class="bi bi-chat-text me-1"></i>{$lang->showthread['report_details']}
-                            </label>
-                            <textarea class="form-control" id="forumPostReportDetails" name="description"
-                                      rows="4" placeholder="{$lang->showthread['report_details_placeholder']}" maxlength="2000"></textarea>
-                            <div class="form-text d-flex justify-content-between mt-1">
-                                <span>{$lang->showthread['report_details_hint']}</span>
-                                <span id="forumPostCharCount">0/2000</span>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="forumPostRuleViolation" class="form-label fw-medium">
-                                <i class="bi bi-journal-text me-1"></i>{$lang->showthread['report_rule_violation']}
-                            </label>
-                            <select class="form-select" id="forumPostRuleViolation" name="rule_violation">
-                                <option value="" selected>{$lang->showthread['report_rule_none']}</option>
-                                <option value="rule_1">{$lang->showthread['report_rule_1']}</option>
-                                <option value="rule_2">{$lang->showthread['report_rule_2']}</option>
-                                <option value="rule_3">{$lang->showthread['report_rule_3']}</option>
-                                <option value="rule_4">{$lang->showthread['report_rule_4']}</option>
-                                <option value="rule_5">{$lang->showthread['report_rule_5']}</option>
-                                <option value="rule_6">{$lang->showthread['report_rule_6']}</option>
-                                <option value="rule_7">{$lang->showthread['report_rule_7']}</option>
-                                <option value="rule_8">{$lang->showthread['report_rule_8']}</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="forumPostReportEmail" class="form-label fw-medium">
-                                <i class="bi bi-envelope me-1"></i>{$lang->showthread['report_email']}
-                            </label>
-                            <input type="email" class="form-control" id="forumPostReportEmail"
-                                   name="email" placeholder="{$lang->showthread['report_email_placeholder']}">
-                        </div>
+                        {$f_reason}
+                        {$f_details}
+                        {$f_rule}
+                        {$f_email}
 
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-2">
-                                <label class="form-label fw-medium mb-0">
-                                    <i class="bi bi-shield-check me-1"></i>{$lang->showthread['report_security']}
+                                <label class="form-label fw-semibold mb-0" for="forumPostCaptchaInput">
+                                    <i class="bi bi-shield-check me-1"></i>{$L['report_security']}
                                 </label>
-                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
-                                        id="forumPostRefreshCaptcha">
+                                <button type="button" class="st-icon-btn border-0 ms-auto" id="forumPostRefreshCaptcha" title="{$L['report_captcha_title']}">
                                     <i class="bi bi-arrow-clockwise"></i>
                                 </button>
                             </div>
                             <div class="row g-2 align-items-center">
                                 <div class="col-6">
-                                    <img src="report_captcha.php" alt="{$lang->showthread['report_captcha_alt']}" class="border rounded"
-                                         id="forumPostCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
-                                         title="{$lang->showthread['report_captcha_title']}">
+                                    <img src="report_captcha.php" alt="{$L['report_captcha_alt']}" class="th-captcha"
+                                         id="forumPostCaptchaDisplay" title="{$L['report_captcha_title']}">
                                 </div>
                                 <div class="col-6">
                                     <input type="text" class="form-control"
-                                           id="forumPostCaptchaInput" name="captcha_response" placeholder="{$lang->showthread['report_captcha_placeholder']}" autocomplete="off">
+                                           id="forumPostCaptchaInput" name="captcha_response" placeholder="{$L['report_captcha_placeholder']}" autocomplete="off">
                                 </div>
                             </div>
                         </div>
 
-                        <div class="alert alert-warning small">
-                            <div class="d-flex">
-                                <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
-                                <div>
-                                    <strong>{$lang->showthread['report_important']}</strong> {$lang->showthread['report_rules_pre']}
-                                    <a href="/forum/rules.php" class="alert-link">{$lang->showthread['report_rules_link']}</a>.
-                                    {$lang->showthread['report_rules_post']}
-                                </div>
+                        <div class="th-note th-note--warn small">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <div>
+                                <strong>{$L['report_important']}</strong> {$L['report_rules_pre']}
+                                <a href="/forum/rules.php">{$L['report_rules_link']}</a>.
+                                {$L['report_rules_post']}
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer bg-light">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                            <i class="bi bi-x-lg me-1"></i>{$lang->showthread['report_cancel']}
+                    <div class="modal-footer justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal">
+                            <i class="bi bi-x-lg me-1"></i>{$L['report_cancel']}
                         </button>
-                        <button type="submit" class="btn btn-success px-4" id="submitForumPostReport">
-                            <i class="bi bi-send me-1"></i>{$lang->showthread['report_submit']}
+                        <button type="submit" class="btn btn-warning st-pill" id="submitForumPostReport">
+                            <i class="bi bi-send me-1"></i>{$L['report_submit']}
                         </button>
                     </div>
                 </form>

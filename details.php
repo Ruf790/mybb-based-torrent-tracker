@@ -84,25 +84,6 @@ maxsysop();
 define('D_VERSION', '3.5.5');
 define("IN_ARCHIVE", true);
 
-// ── pid → id trick ──────────────────────────────────────────────────────────
-if (!empty($mybb->input['pid']) && !$mybb->input['id']) {
-    if (isset($style) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
-        $mybb->input['id'] = $style['id'];
-        unset($style['id']);
-    } else {
-        $query = $db->sql_query_prepared("SELECT torrent FROM comments WHERE id = ? LIMIT 1", [(int)$mybb->input['pid']]);
-        $post  = $query ? $db->fetch_array($query) : null;
-
-        if (empty($post)) {
-            stderr($lang->global['invalid_comm']);
-        }
-
-        $mybb->input['id'] = $post['torrent'];
-    }
-}
-
-$is_mod = is_mod($usergroups);
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function get_comment($pid)
 {
@@ -127,26 +108,24 @@ function get_comment($pid)
     return false;
 }
 
-function get_torrent(int $tid, bool $recache = false): array|false
-{
-    global $db;
-    static $thread_cache = [];
+// ── pid → id trick ──────────────────────────────────────────────────────────
+// get_comment() кэширует результат — ниже тот же комментарий берётся без запроса
+if (!empty($mybb->input['pid']) && !$mybb->input['id']) {
+    if (isset($style) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
+        $mybb->input['id'] = $style['id'];
+        unset($style['id']);
+    } else {
+        $post = get_comment((int)$mybb->input['pid']);
 
-    if (isset($thread_cache[$tid]) && !$recache) {
-        return $thread_cache[$tid];
+        if (!$post) {
+            stderr($lang->global['invalid_comm']);
+        }
+
+        $mybb->input['id'] = $post['torrent'];
     }
-
-    $query  = $db->sql_query_prepared("SELECT * FROM torrents WHERE id = ?", [$tid]);
-    $thread = $query ? $db->fetch_array($query) : null;
-
-    if ($thread) {
-        $thread_cache[$tid] = $thread;
-        return $thread;
-    }
-
-    $thread_cache[$tid] = false;
-    return false;
 }
+
+$is_mod = is_mod($usergroups);
 
 function getHealthColor(mixed $seeders, mixed $leechers): string
 {
@@ -276,124 +255,129 @@ function renderAccordion($tree, $parentId = 'root', $level = 0)
 }
 
 // ── Load torrent ────────────────────────────────────────────────────────────
-$Torrent = get_torrent((int)$mybb->input['id']);
+// Один запрос вместо get_torrent() + отдельного JOIN-а
+$query = $db->sql_query_prepared("
+    SELECT t.*, n.nfo,
+           c.name AS categoryname, c.pid, c.type, c.id AS categoryid, c.icon,
+           u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn,
+           u.canupload, u.candownload, u.cancomment
+    FROM torrents t
+    LEFT JOIN torrents_nfo n ON n.torrent_id = t.id
+    LEFT JOIN categories  c ON c.id = t.category
+    LEFT JOIN users       u ON u.id = t.owner
+    WHERE t.id = ?
+    LIMIT 1
+", [(int)$mybb->input['id']]);
+
+$Torrent = $query ? $db->fetch_array($query) : null;
 
 if (!$Torrent) {
     stderr($lang->global['notorrentid'], $SITENAME . ' - ' . $lang->details['title_notfound'], 404, 'torrent');
 }
-
-$id = $Torrent['id'];
-
-$query = $db->sql_query_prepared("
-    SELECT t.name, t.banned, t.owner, n.nfo, c.name AS categoryname,
-           c.pid, c.type, c.id AS categoryid, c.icon,
-           u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn,
-           u.canupload, u.candownload, u.cancomment,
-           (SELECT ROUND(AVG(r.rating), 1) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_avg,
-           (SELECT COUNT(r.id) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_count
-    FROM torrents t
-    LEFT JOIN torrents_nfo n ON (t.id = n.torrent_id)
-    LEFT JOIN categories c ON (t.category = c.id)
-    LEFT JOIN users u ON (t.owner = u.id)
-    WHERE t.id = ?
-", [$id]);
-
-if (!$query || $db->num_rows($query) == 0 || !($torrent2 = $db->fetch_array($query))) {
-    stderr($lang->global['notorrentid']);
-} elseif ($torrent2["banned"] == "yes" && !$is_mod) {
+if ($Torrent['banned'] === 'yes' && !$is_mod) {
     stderr($lang->global['torrentbanned']);
 }
+
+$id = (int)$Torrent['id'];
+
+// Раньше в $torrent2['id'] был id владельца (u.id) — сохраняем это для get_user_icons()
+$torrent2 = ['id' => (int)$Torrent['owner']] + $Torrent;
 
 $lang->load('browse');
 $lang->load('upload');
 
 require_once(INC_PATH . '/functions_mkprettytime.php');
 
+// ── Similar torrents ────────────────────────────────────────────────────────
 $SimilarTorrents = '';
 $Torrent_name    = $Torrent['name'];
 
-$query = "
-    SELECT MATCH(t.name) AGAINST(? IN BOOLEAN MODE) AS score,
-           t.id, t.name, t.anonymous, t.owner, t.category, t.size, t.added, t.seeders,
-           t.leechers, t.t_image, c.icon AS catimage, c.name AS catname, u.username, u.usergroup
-    FROM torrents t
-    LEFT JOIN categories c ON (c.id = t.category)
-    LEFT JOIN users u ON (t.owner = u.id)
-    WHERE MATCH(t.name) AGAINST(? IN BOOLEAN MODE)
-      AND t.id != ?
-      AND t.visible = 'yes'
-      AND t.banned = 'no'
-    ORDER BY score DESC
-    LIMIT 12
-";
+// Убираем операторы BOOLEAN MODE: "Spider-Man" не должно значить «Spider без Man»
+$ft = trim((string)preg_replace('/[+\-<>()~*"@]+/u', ' ', (string)$Torrent_name));
 
-$params = [$Torrent_name, $Torrent_name, $id];
-$query_result = $db->sql_query_prepared($query, $params);
+$query_result = false;
+if ($ft !== '') {
+    $query = "
+        SELECT MATCH(t.name) AGAINST(? IN BOOLEAN MODE) AS score,
+               t.id, t.name, t.anonymous, t.owner, t.category, t.size, t.added, t.seeders,
+               t.leechers, t.t_image, c.icon AS catimage, c.name AS catname, u.username, u.usergroup
+        FROM torrents t
+        LEFT JOIN categories c ON (c.id = t.category)
+        LEFT JOIN users u ON (t.owner = u.id)
+        WHERE MATCH(t.name) AGAINST(? IN BOOLEAN MODE)
+          AND t.id != ?
+          AND t.visible = 'yes'
+          AND t.banned = 'no'
+        HAVING score > 1
+        ORDER BY score DESC
+        LIMIT 12
+    ";
+
+    $query_result = $db->sql_query_prepared($query, [$ft, $ft, $id]);
+}
 
 if ($query_result && $db->num_rows($query_result) > 0) {
     $FoundSMTQ   = '';
     $found_count = 0;
 
     while ($SMTQ = $db->fetch_array($query_result)) {
-        if ($SMTQ['score'] > 1) {
-            $SEOLink  = get_torrent_link($SMTQ['id']);
-            $SEOLinkC = get_category_link($SMTQ['category']);
+        $SEOLink  = get_torrent_link($SMTQ['id']);
+        $SEOLinkC = get_category_link($SMTQ['category']);
 
-            $poster = !empty($SMTQ['t_image'])
-                ? htmlspecialchars_uni($SMTQ['t_image'])
-                : $BASEURL . '/include/templates/default/images/no_image.png';
+        $poster = !empty($SMTQ['t_image'])
+            ? htmlspecialchars_uni($SMTQ['t_image'])
+            : $BASEURL . '/include/templates/default/images/no_image.png';
 
-            $uploaderHtml = (!$is_mod && $SMTQ['owner'] != $CURUSER['id'] && $SMTQ['anonymous'] == 'yes')
-                ? '<span class="text-muted small"><i class="bi bi-eye-slash me-1"></i>' . $lang->global['anonymous'] . '</span>'
-                : '<a href="' . get_profile_link($SMTQ['owner']) . '" class="text-decoration-none small">'
-                  . format_name($SMTQ['username'], $SMTQ['usergroup']) . '</a>'
-                  . ($SMTQ['anonymous'] == 'yes' ? ' <span class="text-muted small">(' . $lang->global['anonymous'] . ')</span>' : '');
+        $uploaderHtml = (!$is_mod && $SMTQ['owner'] != $CURUSER['id'] && $SMTQ['anonymous'] == 'yes')
+            ? '<span class="text-muted small"><i class="bi bi-eye-slash me-1"></i>' . $lang->global['anonymous'] . '</span>'
+            : '<a href="' . get_profile_link($SMTQ['owner']) . '" class="text-decoration-none small">'
+              . format_name($SMTQ['username'], $SMTQ['usergroup']) . '</a>'
+              . ($SMTQ['anonymous'] == 'yes' ? ' <span class="text-muted small">(' . $lang->global['anonymous'] . ')</span>' : '');
 
-            $FoundSMTQ .= '
-            <div class="col-6 col-md-4 col-lg-3">
-                <div class="card h-100 border-0 shadow-sm similar-torrent-card">
-                    <a href="' . $SEOLink . '" class="text-decoration-none">
-                        <div class="position-relative overflow-hidden" style="height:160px;">
-                            <img src="' . $poster . '"
-                                 class="card-img-top w-100 h-100"
-                                 style="object-fit:cover; transition: transform 0.3s ease;"
-                                 alt="' . htmlspecialchars_uni($SMTQ['name']) . '"
-                                 onerror="this.src=\'' . $BASEURL . '/include/templates/default/images/no_image.png\'">
-                            <div class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center similar-overlay">
-                                <i class="bi bi-play-circle-fill text-white" style="font-size:2.5rem; opacity:0.9;"></i>
-                            </div>
-                            <a href="' . $SEOLinkC . '" class="position-absolute top-0 end-0 m-2">
-                                <span class="badge bg-dark bg-opacity-75">
-                                    <i class="' . $SMTQ['catimage'] . '"></i>
-                                </span>
-                            </a>
-                            <div class="position-absolute bottom-0 start-0 m-2 d-flex gap-1">
-                                <span class="badge bg-success bg-opacity-90">
-                                    <i class="bi bi-arrow-up-circle me-1"></i>' . ts_nf($SMTQ['seeders']) . '
-                                </span>
-                                <span class="badge bg-danger bg-opacity-90">
-                                    <i class="bi bi-arrow-down-circle me-1"></i>' . ts_nf($SMTQ['leechers']) . '
-                                </span>
-                            </div>
+        $FoundSMTQ .= '
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card h-100 border-0 shadow-sm similar-torrent-card">
+                <a href="' . $SEOLink . '" class="text-decoration-none">
+                    <div class="position-relative overflow-hidden" style="height:160px;">
+                        <img src="' . $poster . '"
+                             class="card-img-top w-100 h-100"
+                             style="object-fit:cover; transition: transform 0.3s ease;"
+                             alt="' . htmlspecialchars_uni($SMTQ['name']) . '"
+                             onerror="this.src=\'' . $BASEURL . '/include/templates/default/images/no_image.png\'">
+                        <div class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center similar-overlay">
+                            <i class="bi bi-play-circle-fill text-white" style="font-size:2.5rem; opacity:0.9;"></i>
                         </div>
-                    </a>
-                    <div class="card-body p-2">
-                        <a href="' . $SEOLink . '" class="text-decoration-none text-dark">
-                            <h6 class="card-title mb-1 text-truncate small fw-semibold"
-                                title="' . htmlspecialchars_uni($SMTQ['name']) . '">
-                                ' . htmlspecialchars_uni($SMTQ['name']) . '
-                            </h6>
+                        <a href="' . $SEOLinkC . '" class="position-absolute top-0 end-0 m-2">
+                            <span class="badge bg-dark bg-opacity-75">
+                                <i class="' . $SMTQ['catimage'] . '"></i>
+                            </span>
                         </a>
-                        <div class="d-flex justify-content-between align-items-center">
-                            ' . $uploaderHtml . '
-                            <span class="text-muted small">' . mksize($SMTQ['size']) . '</span>
+                        <div class="position-absolute bottom-0 start-0 m-2 d-flex gap-1">
+                            <span class="badge bg-success bg-opacity-90">
+                                <i class="bi bi-arrow-up-circle me-1"></i>' . ts_nf($SMTQ['seeders']) . '
+                            </span>
+                            <span class="badge bg-danger bg-opacity-90">
+                                <i class="bi bi-arrow-down-circle me-1"></i>' . ts_nf($SMTQ['leechers']) . '
+                            </span>
                         </div>
                     </div>
+                </a>
+                <div class="card-body p-2">
+                    <a href="' . $SEOLink . '" class="text-decoration-none text-dark">
+                        <h6 class="card-title mb-1 text-truncate small fw-semibold"
+                            title="' . htmlspecialchars_uni($SMTQ['name']) . '">
+                            ' . htmlspecialchars_uni($SMTQ['name']) . '
+                        </h6>
+                    </a>
+                    <div class="d-flex justify-content-between align-items-center">
+                        ' . $uploaderHtml . '
+                        <span class="text-muted small">' . mksize($SMTQ['size']) . '</span>
+                    </div>
                 </div>
-            </div>';
+            </div>
+        </div>';
 
-            $found_count++;
-        }
+        $found_count++;
     }
 
     if ($FoundSMTQ) {
@@ -516,22 +500,24 @@ $sratio = $Torrent['leechers'] > 0 ? $Torrent['seeders'] / $Torrent['leechers'] 
 $lratio = $Torrent['seeders'] > 0 ? $Torrent['leechers'] / $Torrent['seeders'] : 1;
 
 // ── Rating data ─────────────────────────────────────────────────────────────
+// Один запрос: среднее, число голосов и оценка текущего пользователя
 $showcommenttable = '';
 $threadcount      = 0;
 
-$user_rating  = 0;
-$rating_data  = [
-    'avg'         => (float)($torrent2['rating_avg'] ?? 0),
-    'count'       => (int)($torrent2['rating_count'] ?? 0),
-    'user_rating' => $user_rating,
-];
+$q2 = $db->sql_query_prepared("
+    SELECT ROUND(AVG(rating), 1)                      AS avg_r,
+           COUNT(*)                                   AS cnt,
+           MAX(CASE WHEN user_id = ? THEN rating END) AS mine
+    FROM torrent_ratings
+    WHERE torrent_id = ?
+", [(int)$CURUSER['id'], $id]);
+$rr = $q2 ? ($db->fetch_array($q2) ?: []) : [];
 
-if ($CURUSER['id']) {
-    $q2 = $db->sql_query_prepared("SELECT rating FROM torrent_ratings WHERE torrent_id = ? AND user_id = ? LIMIT 1", [$id, $CURUSER['id']]);
-    if ($q2 && ($ur = $db->fetch_array($q2))) {
-        $rating_data['user_rating'] = (int)$ur['rating'];
-    }
-}
+$rating_data = [
+    'avg'         => (float)($rr['avg_r'] ?? 0),
+    'count'       => (int)($rr['cnt'] ?? 0),
+    'user_rating' => (int)($rr['mine'] ?? 0),
+];
 
 // ── "Уже скачивали" ──────────────────────────────────────────────────────────
 $already_snatched = false;
@@ -602,7 +588,7 @@ $rating_html = '
 
 // ── Comments ────────────────────────────────────────────────────────────────
 $query       = $db->sql_query_prepared("SELECT COUNT(id) AS commentss FROM comments c WHERE torrent = ?", [$id]);
-$threadcount = $query ? $db->fetch_field($query, "commentss") : 0;
+$threadcount = $query ? (int)$db->fetch_field($query, "commentss") : 0;
 
 // Ссылка на конкретный комментарий (…-comment-{pid}.html): проверяем, что он есть и относится к этому торренту
 $target_comment = null;
@@ -617,15 +603,14 @@ if (!empty($mybb->input['pid'])) {
         $cnf_desc  = htmlspecialchars($lang->details['comment_not_found_desc'] ?? 'It may have been deleted or merged with another comment, or the link is incorrect.');
         $cnf_btn   = htmlspecialchars($lang->details['comment_not_found_last'] ?? 'Latest comments');
         $cnf_close = htmlspecialchars($lang->details['comment_not_found_close'] ?? 'Close');
-		
-		// Последний комментарий этого торрента — кнопка ведёт прямо к нему
+
+        // Последний комментарий этого торрента — кнопка ведёт прямо к нему
         $cnf_last  = '';
         $cnf_q     = $db->sql_query_prepared("SELECT MAX(id) AS last_id FROM comments WHERE torrent = ?", [(int)$id]);
         $cnf_lid   = $cnf_q ? (int)$db->fetch_field($cnf_q, 'last_id') : 0;
         if ($cnf_lid > 0) {
             $cnf_last = $BASEURL . '/' . get_comment_link($cnf_lid, (int)$id) . '#pid' . $cnf_lid;
         }
-        
 
         $showcommenttable .= '
     <style>
@@ -650,12 +635,11 @@ if (!empty($mybb->input['pid'])) {
                 <p class="cnf-title">' . $cnf_title . '<span class="cnf-pid">#' . $cnf_pid . '</span></p>
                 <p class="cnf-desc">' . $cnf_desc . '</p>
             </div>
-            
-			' . ($cnf_last !== '' ? '<a href="' . htmlspecialchars($cnf_last) . '" class="btn btn-sm btn-warning px-3 text-nowrap">
+
+            ' . ($cnf_last !== '' ? '<a href="' . htmlspecialchars($cnf_last) . '" class="btn btn-sm btn-warning px-3 text-nowrap">
                 <i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $cnf_btn . '
             </a>' : '') . '
-			
-			
+
             <button type="button" class="btn-close cnf-close" aria-label="' . $cnf_close . '"
                     onclick="this.closest(\'#comment-not-found\').remove()"></button>
         </div>
@@ -696,11 +680,9 @@ if (!$threadcount) {
         }
     }
 
-    $query           = $db->sql_query_prepared("SELECT COUNT(*) AS replies FROM comments c WHERE c.torrent = ?", [$id]);
-    $thread['replies'] = $query ? (int)$db->fetch_field($query, 'replies') - 1 : -1;
-
-    $postcount = $thread['replies'] + 1;
-    $pages     = ceil($postcount / $perpage);
+    // Общее число уже посчитано выше — второй COUNT не нужен
+    $postcount = $threadcount;
+    $pages     = (int)ceil($postcount / $perpage);
 
     if (isset($mybb->input['page']) && $mybb->input['page'] == "last") {
         $page = $pages;
@@ -913,25 +895,20 @@ if (!empty($Torrent['t_link'])) {
     $html    = $Torrent['t_link'];
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
 
-   $ShowTLINK = '
-	
-	<div class="container mt-3">
-  <div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">
-	<span style="float: right;">
-		<div id="imdbupdatebutton" name="imdbupdatebutton">
-		<a href="#" onclick="TS_IMDB('.$id.'); return false;"><b><u><i>'.$refresh.'</i></u></b></a></div></span>'.$lang->details['t_link'].'
-
-     </div>
-	 
-    <div class="card-body"><div id="imdbdetails" name="imdbdetails">'.$Torrent['t_link'].'</div></div> 
-   
-  </div>
-</div>
-	
-	<br />
-	
-	';
+    $ShowTLINK = '
+    <div class="container mt-3">
+        <div class="card">
+            <div class="card-header rounded-bottom text-19 fw-bold">
+                <span style="float: right;">
+                    <div id="imdbupdatebutton" name="imdbupdatebutton">
+                        <a href="#" onclick="TS_IMDB(' . $id . '); return false;"><b><u><i>' . $refresh . '</i></u></b></a>
+                    </div>
+                </span>' . $lang->details['t_link'] . '
+            </div>
+            <div class="card-body"><div id="imdbdetails" name="imdbdetails">' . $Torrent['t_link'] . '</div></div>
+        </div>
+    </div>
+    <br />';
 }
 
 // ── Manage dropdown ─────────────────────────────────────────────────────────
@@ -980,16 +957,13 @@ if ($is_mod) {
     $ags_t_close      = htmlspecialchars($lang->details['close'], ENT_QUOTES);
     $ags_t_status     = htmlspecialchars(addslashes($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']), ENT_QUOTES);
     $ags_t_info       = htmlspecialchars($lang->details['torrentinfo'], ENT_QUOTES);
-	
-	
-	    $ags_t_nuke = htmlspecialchars(
+
+    $ags_t_nuke = htmlspecialchars(
         ($Torrent['isnuked'] ?? 'no') === 'yes'
             ? ($lang->details['tip_nuked'] ?? 'Nuked: change reason / unnuke')
             : ($lang->details['tip_nuke'] ?? 'Nuke torrent'),
         ENT_QUOTES
     );
-	
-	
 
     $show_manage .= '
     <a href="' . $BASEURL . '/admin/index.php?act=hit_and_run&torrentid=' . $id . '" class="manage-icon-btn">
@@ -1006,7 +980,7 @@ if ($is_mod) {
         . '</button>
     </form>
 
-       <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
+    <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
         <i class="fa-sharp fa-solid fa-info" style="color: #94b4eb;" alt="' . $ags_t_info . '" title="' . $ags_t_info . '"></i></a>
 
     <a href="' . $BASEURL . '/admin/nuketorrent.php?id=' . $id . '" class="manage-icon-btn">
@@ -1043,6 +1017,7 @@ if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent")) {
                 }
             }
         }
+        unset($current);
     } catch (\Throwable $e) {
         $TorrentObj = null;
         $tree       = null;
@@ -1222,6 +1197,7 @@ $act = '<span id="bookmark' . $Torrent['id'] . '">'
 
 // ── Main layout ─────────────────────────────────────────────────────────────
 $ags_health    = getHealthPercentage($Torrent['seeders'], $Torrent['leechers']);
+$ags_health_c  = getHealthColor($Torrent['seeders'], $Torrent['leechers']);
 $ags_numfiles  = (int)$Torrent['numfiles'];
 $ags_files_lbl = htmlspecialchars(ags_fmt(ags_plural($ags_numfiles, $lang->details['lbl_files']), ts_nf($ags_numfiles)));
 
@@ -1271,7 +1247,7 @@ $details = '
                     <span class="badge meta-badge meta-badge-size" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '">
                         <i class="bi bi-hdd-fill me-1"></i>' . mksize($Torrent['size']) . '
                     </span>
-                    <span class="badge meta-badge meta-badge-health bg-' . getHealthColor($Torrent['seeders'], $Torrent['leechers']) . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '">
+                    <span class="badge meta-badge meta-badge-health bg-' . $ags_health_c . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '">
                         <i class="bi bi-activity me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '
                     </span>
                     <span class="badge meta-badge meta-badge-files" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '">
@@ -1369,13 +1345,13 @@ $details = '
                     <span class="small fw-semibold text-muted">
                         <i class="bi bi-heart-pulse-fill me-1 text-danger"></i>' . htmlspecialchars($lang->details['lbl_torrent_health'], ENT_QUOTES) . '
                     </span>
-                    <span class="small fw-bold">' . getHealthPercentage($Torrent['seeders'], $Torrent['leechers']) . '%</span>
+                    <span class="small fw-bold">' . $ags_health . '%</span>
                 </div>
                 <div class="progress health-progress" role="progressbar"
-                     aria-valuenow="' . getHealthPercentage($Torrent['seeders'], $Torrent['leechers']) . '"
+                     aria-valuenow="' . $ags_health . '"
                      aria-valuemin="0" aria-valuemax="100">
-                    <div class="progress-bar bg-' . getHealthColor($Torrent['seeders'], $Torrent['leechers']) . '"
-                         style="width: ' . getHealthPercentage($Torrent['seeders'], $Torrent['leechers']) . '%"></div>
+                    <div class="progress-bar bg-' . $ags_health_c . '"
+                         style="width: ' . $ags_health . '%"></div>
                 </div>
             </div>
 
@@ -1586,7 +1562,7 @@ $details = '
     ' . $showcommenttable . '
 </div>
 
-' . $magnetModal . '';
+' . ($magnetModal ?? '') . '';
 
 
 echo '

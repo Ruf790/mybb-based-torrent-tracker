@@ -1,12 +1,10 @@
 <?php
 
-
 declare(strict_types=1);
 
 define('SCRIPTNAME', 'forumdisplay.php');
 define('IN_MYBB', 1);
 define('THIS_SCRIPT', 'forumdisplay.php');
-
 
 define('IN_FORUM', true);
 
@@ -20,6 +18,91 @@ require_once INC_PATH . '/functions_parent_list.php';
 
 $lang->load('forumdisplay');
 
+// ─── Хелперы вёрстки (всё под .fd-page, общий st-ui.css) ─────────────────────
+// Lang-строка как есть (в ланге forumdisplay есть строки с HTML - *_html),
+// с fallback для новых ключей, которых ещё может не быть в файлах ланга.
+function fd_l(string $key, string $fallback = ''): string
+{
+    global $lang;
+    return (string)($lang->forumdisplay[$key] ?? ($fallback !== '' ? $fallback : $key));
+}
+
+// Lang-строка с {1}/{2}… (lang->load() превращает их в %1$s - заменяем оба).
+function fd_fmt(string $key, string $fallback, string|int|float ...$args): string
+{
+    $s = fd_l($key, $fallback);
+    foreach ($args as $i => $a) {
+        $n = $i + 1;
+        $s = str_replace(['{' . $n . '}', '%' . $n . '$s'], (string)$a, $s);
+    }
+    return $s;
+}
+
+// Число для вывода: ts_nf() только для чисел (у перемещённых тем там '-').
+function fd_num(mixed $v): string
+{
+    return is_numeric($v) ? ts_nf((int)$v) : htmlspecialchars_uni((string)$v);
+}
+
+// Плашка-пилюля.
+function fd_badge(string $soft, string $icon, string $text = '', string $title = ''): string
+{
+    return '<span class="st-badge ' . $soft . '"' . ($title !== '' ? ' title="' . htmlspecialchars_uni($title) . '"' : '') . '>'
+         . ($icon !== '' ? '<i class="fa-solid ' . $icon . '"></i>' : '')
+         . ($text !== '' ? '<span>' . $text . '</span>' : '')
+         . '</span>';
+}
+
+// Аватар: картинка или буква. $username - СЫРОЕ имя.
+function fd_avatar(array $u, int $size = 32): string
+{
+    $ua = format_avatar((string)($u['avatar'] ?? ''), (string)($u['avatardimensions'] ?? ''), '50|50');
+    $img = (string)($ua['image'] ?? '');
+    if (str_starts_with($img, '<')) return $img;
+    if ($img !== '' && $img !== 'default' && empty($ua['is_placeholder'])) {
+        return '<img src="' . htmlspecialchars_uni($img) . '" class="fd-ava" style="--fd-ava:' . $size . 'px" alt="" loading="lazy">';
+    }
+    $letter = htmlspecialchars_uni(mb_strtoupper(mb_substr((string)($u['username'] ?? ''), 0, 1)) ?: '?');
+    return '<span class="fd-ava fd-ava--letter" style="--fd-ava:' . $size . 'px">' . $letter . '</span>';
+}
+
+// Заглушка пустого списка (.st-empty).
+function fd_empty(string $icon, string $soft, string $title, string $hint): string
+{
+    return '<div class="st-empty">'
+         .   '<div class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></div>'
+         .   '<div class="fd-empty__title">' . $title . '</div>'
+         .   ($hint !== '' ? '<div class="fd-empty__hint">' . $hint . '</div>' : '')
+         . '</div>';
+}
+
+// Звёзды рейтинга (10-звёздочная шкала), FA6.
+function fd_rating(float $avg, int $num): string
+{
+    $stars = '';
+    for ($i = 1; $i <= 10; $i++) {
+        $stars .= match (true) {
+            $avg >= $i       => '<i class="fa-solid fa-star"></i>',
+            $avg >= $i - 0.5 => '<i class="fa-solid fa-star-half-stroke"></i>',
+            default          => '<i class="fa-regular fa-star"></i>',
+        };
+    }
+    return '<span class="fd-rating" title="' . round($avg, 1) . ' / 10">'
+         . '<span class="fd-rating__stars">' . $stars . '</span>'
+         . '<span class="fd-rating__val">' . round($avg, 1) . ' <span class="fd-rating__num">(' . ts_nf($num) . ')</span></span>'
+         . '</span>';
+}
+
+// <select> фильтра: [value => label], $sel - выбранное значение.
+function fd_select(string $name, array $opts, string $sel, string $icon): string
+{
+    $html = '<label class="fd-filter__field"><i class="fa-solid ' . $icon . '"></i>'
+          . '<select name="' . $name . '" class="form-select form-select-sm">';
+    foreach ($opts as $v => $label) {
+        $html .= '<option value="' . htmlspecialchars_uni((string)$v) . '"' . ((string)$v === $sel ? ' selected' : '') . '>' . $label . '</option>';
+    }
+    return $html . '</select></label>';
+}
 
 if (empty($CURUSER['id'])) {
     print_no_permission();
@@ -115,30 +198,16 @@ while ($forum = $db->fetch_array($query)) {
 $bgcolor       = 'trow1';
 $showdepth     = 3; // subforumsindex != 0
 $subforums     = '';
-$child_forums  = build_forumbits($fid, 2);
-
+$child_forums  = build_forumbits($fid, 2, 'st');   // 'st' - общий рендер строк форумов (st-ui.css)
 if (!empty($child_forums) && !empty($child_forums['forum_list'])) {
     $forums        = $child_forums['forum_list'];
     $sub_forums_in = sprintf($lang->forumdisplay['sec_subforums_in'], $foruminfo['name']); // name is already escaped
-    
-	
-	$subforums = '
-	
-	<div class="card mb-3 border-0">
-<div class="card-header rounded">
-	
-<h5 class="mb-0 text-19">'.$sub_forums_in.'</h5>
-</div>
-<div class="card-body ps-1 pe-1 pt-0 border-bottom-rounded">
-'.$forums.'
-	
-</div>
-</div>';
-	
-	
-	
-	
-	
+
+    $subforums = '<section class="st-card fd-subforums">'
+        . '<div class="st-card__head"><span class="st-ico st-soft-info"><i class="fa-solid fa-folder-tree"></i></span>'
+        . '<span class="fd-subforums__title">' . $sub_forums_in . '</span></div>'
+        . '<div class="fd-subforums__body">' . $forums . '</div>'
+        . '</section>';
 }
 
 $excols = 'forumdisplay';
@@ -148,37 +217,30 @@ if ($foruminfo['linkto']) {
     header('Location: ' . $foruminfo['linkto']);
     exit;
 }
-
 // ─── Forum jump & New thread ──────────────────────────────────────────────────
 $forumjump = build_forum_jump('', $fid, 1);
 $newthread  = '';
 
 if ($foruminfo['type'] === 'f' && $foruminfo['open'] != 0 && $fpermissions['canpostthreads'] != 0) {
-    
-	
-	$newthread = '<a href="newthread.php?fid='.$fid.'" class="btn btn-primary" role="button"><i class="fa-solid fa-pencil"></i> &nbsp;'.$lang->forumdisplay['btn_post_thread'].'</a>';
-	
-	
+    $newthread = '<a href="newthread.php?fid=' . $fid . '" class="btn btn-primary st-pill fd-btn" role="button">'
+               . '<i class="fa-solid fa-pen"></i><span>' . $lang->forumdisplay['btn_post_thread'] . '</span></a>';
 }
 
+// Поиск по форуму. postcode обязателен: search.php?action=do_search без него
+// отвечает «неверный поиск» (verify_post_check), раньше форма не работала.
 $searchforum = '';
 if ($fpermissions['cansearch'] != 0 && $foruminfo['type'] === 'f') {
-    
-	$searchforum = '<div class="row g-1">
-<div class="col align-self-center">
-<form action="search.php">
-<input type="text" name="keywords" class="form-control border form-control-sm border" placeholder="'.$lang->forumdisplay['ph_search_keywords'].'" />
-	</div>
-	<div class="col-auto align-self-center">
-			<button type="submit" class="btn btn-primary btn-sm" value="Go!"><i class="fa-solid fa-magnifying-glass"></i> &nbsp;'.$lang->global['search_button'].'</button>
-	<input type="hidden" name="action" value="do_search" />
-	<input type="hidden" name="forums[]" value="'.$fid.'" />
-	<input type="hidden" name="postthread" value="1" />
-	</form>
-</div>
-</div>';
-	
-	
+    $searchforum = '<form action="search.php" method="post" class="fd-search" role="search">'
+        . '<input type="hidden" name="action" value="do_search">'
+        . '<input type="hidden" name="postcode" value="' . generate_post_check() . '">'
+        . '<input type="hidden" name="forums[]" value="' . $fid . '">'
+        . '<input type="hidden" name="postthread" value="1">'
+        . '<div class="input-group input-group-sm st-subject">'
+        .   '<span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>'
+        .   '<input type="text" name="keywords" class="form-control" placeholder="' . $lang->forumdisplay['ph_search_keywords'] . '" aria-label="' . $lang->forumdisplay['ph_search_keywords'] . '">'
+        .   '<button type="submit" class="btn btn-primary">' . $lang->global['search_button'] . '</button>'
+        . '</div>'
+        . '</form>';
 }
 
 // ─── Статистика форума ────────────────────────────────────────────────────────
@@ -191,49 +253,28 @@ if (is_array($forum_stats)) {
     $has_announcements = !empty($forum_stats[-1]['announcements']) || !empty($forum_stats[$fid]['announcements']);
 }
 
-// ─── Модераторы ───────────────────────────────────────────────────────────────
-$done_moderators = ['users' => [], 'groups' => []];
-$moderators      = '';
-$comma           = '';
-
+// ─── Объявления в родительских форумах ───────────────────────────────────────
 foreach (explode(',', $parentlist) as $mfid) {
     if (!empty($forum_stats[(int)$mfid]['announcements'])) {
         $has_announcements = true;
     }
-
-    if (!isset($moderatorcache[$mfid]) || !is_array($moderatorcache[$mfid])) {
-        continue;
-    }
-
-    foreach ($moderatorcache[$mfid] as $modtype) {
-        foreach ($modtype as $moderator) {
-            if (!empty($moderator['isgroup'])) {
-                if (in_array($moderator['id'], $done_moderators['groups'], true)) {
-                    continue;
-                }
-                $moderator['title']    = htmlspecialchars_uni($moderator['title']);
-                $moderators           .= $comma . $moderator['title'];
-                $done_moderators['groups'][] = $moderator['id'];
-            } else {
-                if (in_array($moderator['id'], $done_moderators['users'], true)) {
-                    continue;
-                }
-                $moderator['profilelink'] = get_profile_link($moderator['id']);
-                $moderator['username']    = format_name(
-                    htmlspecialchars_uni($moderator['username']),
-                    (int)($moderator['usergroup'] ?? 1)
-                );
-                $moderators .= $comma . '<a href="' . $moderator['profilelink'] . '">' . $moderator['username'] . '</a>';
-                $done_moderators['users'][] = $moderator['id'];
-            }
-            $comma = 'comma';
-        }
-    }
 }
 
-$comma       = '';
+// ─── Модераторы ───────────────────────────────────────────────────────────────
+// Модераторы сайта — пользователи группы UC_MODERATOR (таблицы moderators больше нет).
+// Раньше здесь читался $moderatorcache, который в этом файле нигде не задавался.
+$mod_links = [];
+$q = $db->sql_query_prepared(
+    "SELECT id, username, usergroup FROM users WHERE usergroup = ? ORDER BY username",
+    [UC_MODERATOR]
+);
+while ($q && ($m = $db->fetch_array($q))) {
+    $mod_links[] = '<a href="' . get_profile_link((int)$m['id']) . '">'
+        . format_name(htmlspecialchars_uni($m['username']), (int)$m['usergroup']) . '</a>';
+}
+$moderators = implode($lang->global['comma'] . ' ', $mod_links);
 $moderatedby = $moderators
-    ? '<span class="small">' . $lang->forumdisplay['lbl_moderated_by'] . ' <strong>' . $moderators . '</strong></span><br />'
+    ? '<span class="fd-mods"><i class="fa-solid fa-shield-halved"></i><span>' . $lang->forumdisplay['lbl_moderated_by'] . ' ' . $moderators . '</span></span>'
     : '';
 
 // ─── Пользователи на форуме ───────────────────────────────────────────────────
@@ -291,10 +332,12 @@ if ($browsingthisforum != 0) {
         : '';
     $onlinesep  = ($invisonline !== '' && $onlinemembers) ? ', ' : '';
     $onlinesep2 = (($invisonline !== '' && $guestcount) || ($onlinemembers && $guestcount)) ? ', ' : '';
-    $usersbrowsing = '<div class="card border-0 rounded mt-5">
-    <div class="card-body bg-nav rounded">
-        <strong>' . $lang->forumdisplay['lbl_users_browsing'] . '</strong> ' . $onlinemembers . ' ' . $onlinesep . ' ' . $invisonline . ' ' . $onlinesep2 . ' ' . $guestsonline . '
-    </div></div>';
+    $browsing_list = trim($onlinemembers . ' ' . $onlinesep . ' ' . $invisonline . ' ' . $onlinesep2 . ' ' . $guestsonline);
+    $usersbrowsing = '<section class="st-card fd-browsing">'
+        . '<div class="st-card__body">'
+        .   '<span class="st-ico st-soft-success"><i class="fa-solid fa-users"></i></span>'
+        .   '<div class="fd-browsing__text"><strong>' . $lang->forumdisplay['lbl_users_browsing'] . '</strong> ' . $browsing_list . '</div>'
+        . '</div></section>';
 }
 
 // ─── Правила форума ───────────────────────────────────────────────────────────
@@ -306,13 +349,10 @@ $visible_states = ['1'];
 $is_mod         = is_mod($usergroups);
 
 if ($is_mod) {
-    
-	$inlinemodcol = '<div class="form-check form-switch float-end">
-    <input class="form-check-input form-check-input-sm" type="checkbox" name="allbox" id="allbox" onclick="inlineModeration.checkAll(this)">
-</div>';
-	
-	
-	
+    $inlinemodcol = '<div class="form-check form-switch fd-allbox" title="' . htmlspecialchars_uni(fd_l('tip_select_all', 'Select all')) . '">'
+        . '<input class="form-check-input" type="checkbox" name="allbox" id="allbox" onclick="inlineModeration.checkAll(this)">'
+        . '</div>';
+
     $ismod       = true;
     $inlinecount = 0;
     $inlinemod   = '';
@@ -420,8 +460,6 @@ $sorturl = ($mybb->input['page'] > 1)
     ? get_forum_link($fid, $mybb->input['page']) . $string . "datecut=$datecut&amp;prefix=$tprefix"
     : get_forum_link($fid) . $string . "datecut=$datecut&amp;prefix=$tprefix";
 
-$orderarrow['$sortby'] = '<span class="smalltext">[<a href="' . $sorturl . '&amp;sortby=' . $sortby . '&amp;order=' . $oppsortnext . '">' . $lang->forumdisplay[$oppsort === 'asc' ? 'lbl_sort_asc' : 'lbl_sort_desc'] . '</a>]</span>';
-
 // ─── Подсчёт тредов ───────────────────────────────────────────────────────────
 $threadcount = 0;
 $useronly    = '';
@@ -441,7 +479,6 @@ if ($fpermissions['canviewthreads'] != 0) {
         $forum_threads = $db->fetch_array($query);
 
         if (in_array(1, $visible_states))  { $threadcount += (int)$forum_threads['threads']; }
-        if (in_array(-1, $visible_states)) { $threadcount += (int)($forum_threads['deletedthreads'] ?? 0); }
 
         if (in_array(0, $visible_states)) {
             $threadcount += (int)$forum_threads['unapprovedthreads'];
@@ -503,16 +540,12 @@ if ($mybb->input['sortby'] || $mybb->input['order'] || ($mybb->input['datecut'] 
 
 $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
- 
-
-
     if ($sortfield === 'averagerating') 
 	{
         $t = 't.'; $sortfield = 'lastpost';
     }
     $lpbackground = 'trow1';
     $colspan      = '6';
-
 
 if ($ismod ?? false) {
     ++$colspan;
@@ -528,34 +561,36 @@ if ($has_announcements) {
     $sql               = build_parent_list($fid, 'fid', 'OR', $parentlist);
     $time              = TIMENOW;
 
-   $query = $db->sql_query_prepared("
-    SELECT a.*, u.username
-    FROM announcements a
-    LEFT JOIN users u ON (u.id = a.uid)
-    WHERE a.type IN ('forum', 'global')
-      AND a.startdate <= ?
-      AND (a.enddate >= ? OR a.enddate = '0')
-      AND ($sql OR a.fid = '-1')
-    ORDER BY a.startdate DESC $limit
-", [(int)$time, (int)$time]);
+    $query = $db->sql_query_prepared("
+        SELECT a.*, u.username
+        FROM announcements a
+        LEFT JOIN users u ON (u.id = a.uid)
+        WHERE a.type IN ('forum', 'global')
+          AND a.startdate <= ?
+          AND (a.enddate >= ? OR a.enddate = '0')
+          AND ($sql OR a.fid = '-1')
+        ORDER BY a.startdate DESC $limit
+    ", [(int)$time, (int)$time]);
 
     $cookie = [];
     if (isset($mybb->cookies['mybb']['announcements'])) {
         $cookie = my_unserialize(stripslashes($mybb->cookies['mybb']['announcements']), false);
     }
+    if (!is_array($cookie)) $cookie = [];
 
     $bgcolor = 'trow1';
 
-    while ($announcement = $db->fetch_array($query)) {
-        [$new_class, $folder] = ($announcement['startdate'] > $CURUSER['lastvisit'] && empty($cookie[$announcement['id']]))
-            ? [' class="subject_new"', 'newfolder']
-            : [' class="subject_old"', 'folder'];
+    while ($query && ($announcement = $db->fetch_array($query))) {
+        $ann_id = (int)$announcement['id'];
+        $is_new = $announcement['startdate'] > $CURUSER['lastvisit'] && empty($cookie[$ann_id]);
+        $new_class = $is_new ? 'subject_new' : 'subject_old';
 
-        if (isset($cookie[$announcement['id']]) && $cookie[$announcement['aid']] < $CURUSER['lastvisit']) {
-            unset($cookie[$announcement['id']]);
+        // раньше тут читался $cookie[$announcement['aid']] - такого поля нет
+        if (isset($cookie[$ann_id]) && $cookie[$ann_id] < $CURUSER['lastvisit']) {
+            unset($cookie[$ann_id]);
         }
 
-        $announcement['announcementlink'] = get_announcement_link((int)$announcement['id']);
+        $announcement['announcementlink'] = get_announcement_link($ann_id);
         $announcement['subject']          = htmlspecialchars_uni($parser->parse_badwords($announcement['subject']));
         $postdate                         = my_datee('relative', $announcement['startdate']);
         $announcement['username']         = htmlspecialchars_uni($announcement['username']);
@@ -563,28 +598,21 @@ if ($has_announcements) {
 
         $rating       = '';
         $lpbackground = 'trow1';
-
-        $modann = ($ismod ?? false)
-            ? '<td align="center" class="' . $bgcolor . ' forumdisplay_announcement">-</td>'
-            : '';
+        $modann       = '';
 
         $plugins->run_hooks('forumdisplay_announcement');
-        
-		
-		$announcements .= '<div class="card border-bottom border-bottom-2 border-2 border-0 rounded-0" style="border-bottom: 2px solid;">
-	<div class="card-body py-0 px-1 inline_row">
-<div class="row py-3">
-		<div class="col align-self-center ms-2">
-			<h6 class="mb-0 text-forum"><a href="'.$announcement['announcementlink'].'">'.$announcement['subject'].'</a> <span class="text-muted small">'.$lang->forumdisplay['lbl_by'].'</span> <span class="links small">'.$announcement['profilelink'].'</h6></span>
-	</div>
-	<div class="col-lg-3 align-self-center small text-muted text-wrap text-uppercase">
-				'.$postdate.'
-	</div>
-		</div>
-	</div>
-</div>';
-		
-		
+
+        $announcements .= '<div class="fd-item fd-item--ann">'
+            . '<span class="st-ico st-soft-warning fd-item__ico"><i class="fa-solid fa-bullhorn"></i></span>'
+            . '<div class="fd-item__body">'
+            .   '<div class="fd-item__top">'
+            .     fd_badge('st-soft-warning', 'fa-thumbtack', fd_l('lbl_announcement', 'Announcement'))
+            .     '<a href="' . $announcement['announcementlink'] . '" class="fd-item__title ' . $new_class . '">' . $announcement['subject'] . '</a>'
+            .   '</div>'
+            .   '<div class="fd-item__meta"><span><i class="fa-solid fa-user"></i>' . $lang->forumdisplay['lbl_by'] . ' ' . $announcement['profilelink'] . '</span>'
+            .   '<span><i class="fa-solid fa-clock"></i>' . $postdate . '</span></div>'
+            . '</div>'
+            . '</div>';
     }
 
     if ($announcements) {
@@ -602,8 +630,6 @@ if ($has_announcements) {
 // ─── Треды ────────────────────────────────────────────────────────────────────
 $tids        = [];
 $threadcache = [];
-
-
 
 if ($fpermissions['canviewthreads'] != 0) {
     $plugins->run_hooks('forumdisplay_get_threads');
@@ -637,8 +663,9 @@ if ($fpermissions['canviewthreads'] != 0) {
     $args = ['threadcache' => &$threadcache, 'tids' => &$tids];
     $plugins->run_hooks('forumdisplay_before_thread', $args);
 }
-
 // ─── Select All (для модераторов) ─────────────────────────────────────────────
+// id selectAllrow / allSelectedrow и класс hiddenrow нужны inline_moderation.js.
+// Раньше это были <tr> вне таблицы и они вообще не выводились на страницу.
 $is_mod   = is_mod($usergroups);
 $selectall = '';
 
@@ -646,17 +673,13 @@ if ($is_mod && $threadcount > $perpage) {
     $page_selected = sprintf($lang->forumdisplay['sel_page_html'], count($threadcache));
     $select_all    = sprintf($lang->forumdisplay['sel_select_all_html'], (int)$threadcount);
     $all_selected  = sprintf($lang->forumdisplay['sel_all_html'], (int)$threadcount);
-   
 
-$selectall = '
-<tr id="selectAllrow" class="hiddenrow">
-    <td colspan="8" class="selectall">' . $page_selected . ' <a href="javascript:void(0)" onclick="inlineModeration.selectAll(); return false;">' . $select_all . '</a></td>
-</tr>
-<tr id="allSelectedrow" class="hiddenrow">
-    <td colspan="8" class="selectall">' . $all_selected . ' <a href="javascript:void(0)" onclick="inlineModeration.clearChecked(); return false;">' . $lang->forumdisplay['btn_clear_selection'] . '</a></td>
-</tr>';
-   
-   
+    $selectall = '<div id="selectAllrow" class="hiddenrow fd-selectall">'
+        . '<i class="fa-solid fa-circle-info"></i> ' . $page_selected
+        . ' <a href="javascript:void(0)" onclick="inlineModeration.selectAll(); return false;">' . $select_all . '</a></div>'
+        . '<div id="allSelectedrow" class="hiddenrow fd-selectall">'
+        . '<i class="fa-solid fa-circle-check"></i> ' . $all_selected
+        . ' <a href="javascript:void(0)" onclick="inlineModeration.clearChecked(); return false;">' . $lang->forumdisplay['btn_clear_selection'] . '</a></div>';
 }
 
 $tids_str = !empty($tids) ? implode(',', $tids) : '';
@@ -724,16 +747,26 @@ if (!empty($threadcache) && is_array($threadcache)) {
     $maxmultipagelinks = $maxmultipagelinks ?? 5;
     $f_postsperpage    = (isset($f_postsperpage) && (int)$f_postsperpage > 0) ? (int)$f_postsperpage : 20;
 
+    // Аватары последних отписавшихся - одним запросом на страницу.
+    // Раньше тут стоял плейсхолдер <avatarep_uid_[ID]> от плагина, которого нет,
+    // и он выводился в HTML как есть (несуществующий тег).
+    $lp_users = [];
+    $lp_uids  = array_values(array_unique(array_filter(array_map(fn($t) => (int)$t['lastposteruid'], $threadcache))));
+    if ($lp_uids) {
+        $ph = implode(',', array_fill(0, count($lp_uids), '?'));
+        $q  = $db->sql_query_prepared("SELECT id, username, avatar, avatardimensions FROM users WHERE id IN ({$ph})", $lp_uids);
+        while ($q && ($u = $db->fetch_array($q))) $lp_users[(int)$u['id']] = $u;
+    }
+
+    $hottopic      = 20;
+    $hottopicviews = 150;
+
     foreach ($threadcache as $thread) {
         $plugins->run_hooks('forumdisplay_thread');
 
-        $moved = explode('|', $thread['closed']);
-
-        $bgcolor = match (true) {
-            $thread['visible'] == 0  => 'trow_shaded',
-            $thread['visible'] == -1 => 'trow_shaded trow_deleted',
-            default                  => 'trow1',
-        };
+        $moved    = explode('|', (string)$thread['closed']);
+        $is_moved = $moved[0] === 'moved';
+        $bgcolor  = $thread['visible'] == 0 ? 'trow_shaded' : 'trow1';
 
         $thread_type_class = ($thread['sticky'] == 1) ? ' forumdisplay_sticky' : ' forumdisplay_regular';
         $folder = $prefix = '';
@@ -746,46 +779,17 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $thread['profilelink'] = build_profile_link($thread['username'], $thread['uid']);
         }
 
-
         $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
 
-        if ($thread['sticky'] == 1 && !isset($donestickysep)) {
-            $threads      .= '';
-            $shownormalsep = true;
-            $donestickysep = true;
-        } elseif ($thread['sticky'] == 0 && !empty($shownormalsep)) {
-            $threads      .= '';
-            $shownormalsep = false;
-        }
-
-        // ── Thread rating display ──────────────────────────────────────────
+        // ── Рейтинг ──────────────────────────────────────────────────────
         $rating = '';
         if (!empty($thread['numratings']) && $thread['numratings'] > 0) {
-            $rating_avg = $thread['totalratings'] / $thread['numratings'];
-            $avg_stars  = '';
-            for ($ri = 1; $ri <= 10; $ri++) {
-                if ($rating_avg >= $ri)           $avg_stars .= '<i class="bi bi-star-fill rating-star-filled"></i>';
-                elseif ($rating_avg >= $ri - 0.5) $avg_stars .= '<i class="bi bi-star-half rating-star-filled"></i>';
-                else                              $avg_stars .= '<i class="bi bi-star rating-star-empty"></i>';
-            }
-            
-			
-			
-			$rating = '<div class="d-flex align-items-center gap-1 ms-2">
-    <div class="d-flex gap-0" style="color:#f59e0b;font-size:1rem;">' . $avg_stars . '</div>
-    <span class="text-muted ms-1" style="font-size:0.75rem;">'
-        . round($rating_avg, 1) . ' <span class="opacity-50">(' . ts_nf($thread['numratings']) . ')</span>
-    </span>
-</div>';
-        
-		}
+            $rating = fd_rating($thread['totalratings'] / $thread['numratings'], (int)$thread['numratings']);
+        }
 
-
-        // ─ Многостраничность треда ───────────────────────────────────────────
+        // ─ Многостраничность треда ───────────────────────────────────────
         $thread['pages']     = 0;
         $thread['multipage'] = '';
-        $threadpages         = '';
-        $morelink            = '';
         $thread['posts']     = $thread['replies'] + 1;
 
         if (is_mod($usergroups)) {
@@ -794,70 +798,49 @@ if (!empty($threadcache) && is_array($threadcache)) {
 
         if ($thread['posts'] > $f_postsperpage) {
             $thread['pages'] = (int)ceil($thread['posts'] / $f_postsperpage);
+            $pagesstop       = $thread['pages'] > $maxmultipagelinks ? $maxmultipagelinks - 1 : $thread['pages'];
 
-            if ($thread['pages'] > $maxmultipagelinks) {
-                $pagesstop = $maxmultipagelinks - 1;
-                $page_link = get_thread_link($thread['tid'], $thread['pages']);
-                $morelink  = '... <a href="' . $page_link . '" class="btn-fd">' . $thread['pages'] . '</a>';
-            } else {
-                $pagesstop = $thread['pages'];
-            }
-
+            $threadpages = '';
             for ($i = 1; $i <= $pagesstop; ++$i) {
-                $threadpages .= '<a href="' . get_thread_link($thread['tid'], $i) . '" class="btn-fd">' . $i . '</a>';
+                $threadpages .= '<a href="' . get_thread_link($thread['tid'], $i) . '">' . $i . '</a>';
             }
-
-            $thread['multipage'] = '<div class="d-block small"><span class="text-desc">' . $lang->forumdisplay['lbl_pages'] . '</span> ' . $threadpages . $morelink . '</div>';
+            if ($thread['pages'] > $maxmultipagelinks) {
+                $threadpages .= '<span class="fd-pages__gap">…</span><a href="' . get_thread_link($thread['tid'], $thread['pages']) . '">' . $thread['pages'] . '</a>';
+            }
+            $thread['multipage'] = '<div class="fd-pages" aria-label="' . htmlspecialchars_uni(strip_tags($lang->forumdisplay['lbl_pages'])) . '">' . $threadpages . '</div>';
         }
 
-        // ─ Инлайн-модерация ──────────────────────────────────────────────────
-        // Состояние выбора чекбоксов теперь хранится в localStorage
-        // (inline_moderation.js), а не в куке — сервер его не видит при
-        // рендере. JS сам проставляет checked/счётчик сразу на
-        // DOMContentLoaded, поэтому здесь всегда рендерим "не выбрано":
-        // это лишь исходное состояние до долей секунды, пока не сработает JS.
+        // ─ Инлайн-модерация ──────────────────────────────────────────────
+        // Выбор хранится в localStorage (inline_moderation.js), исходно "не выбрано".
         $modbit = '';
         if (is_mod($usergroups)) {
-            $inlinecheck = '';
-            $multitid = $thread['tid'];
-            
-		
-			$modbit = '<div class="form-check form-switch float-end m-0">
-                    <input class="form-check-input" type="checkbox" 
-                      name="inlinemod_'.$multitid.'" 
-                      id="inlinemod_'.$multitid.'" 
-                      value="1" 
-                      '.$inlinecheck.'>
-             </div>';
-			
-			
-			
-			
-			
+            $multitid = (int)$thread['tid'];
+            $modbit = '<div class="form-check form-switch fd-item__mod">'
+                    . '<input class="form-check-input" type="checkbox" name="inlinemod_' . $multitid . '" id="inlinemod_' . $multitid . '" value="1">'
+                    . '</div>';
         }
 
-        if ($moved[0] === 'moved') {
-            $prefix         = 'moved_prefix';
-            $thread['tid']  = $moved[1];
+        if ($is_moved) {
+            $prefix            = 'moved_prefix';
+            $thread['tid']     = $moved[1];
             $thread['replies'] = '-';
             $thread['views']   = '-';
         }
 
-        $moved_badge = ($prefix === 'moved_prefix')
-            ? '<span class="badge bg-secondary me-1"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>' . $lang->forumdisplay['lbl_moved'] . '</span>'
-            : '';
-
         $thread['threadlink']   = get_thread_link($thread['tid']);
         $thread['lastpostlink'] = get_thread_link($thread['tid'], 0, 'lastpost');
 
+        // ─ Состояние: точка / новое / горячее / закрыто ──────────────────
         $folder_label = '';
-        if (isset($thread['doticon'])) {
+        $has_dot      = isset($thread['doticon']);
+        if ($has_dot) {
             $folder       = 'dot_';
             $folder_label .= $lang->forumdisplay['tip_icon_dot'];
         }
 
         $gotounread = '';
         $new_class  = 'subject_old';
+        $is_new     = false;
 
         if ($threadreadcut > 0 && $CURUSER['id'] && $thread['lastpost'] > $forum_read) {
             $last_read = $thread['lastread'] ?? $read_cutoff;
@@ -869,38 +852,46 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $last_read = $forum_read;
         }
 
-        if ($thread['lastpost'] > $last_read && $moved[0] !== 'moved') {
-            $folder      .= 'new';
+        if ($thread['lastpost'] > $last_read && !$is_moved) {
+            $is_new        = true;
+            $folder       .= 'new';
             $folder_label .= $lang->forumdisplay['tip_icon_new'];
-            $new_class    = 'subject_new';
+            $new_class     = 'subject_new';
             $thread['newpostlink'] = get_thread_link($thread['tid'], 0, 'newpost');
-            $gotounread   = '<a href="' . $thread['newpostlink'] . '">
-            <img src="pic/jump.png" alt="' . $lang->forumdisplay['tip_goto_first_unread'] . '" title="' . $lang->forumdisplay['tip_goto_first_unread'] . '" /></a> ';
-            $unreadpost   = 1;
+            $gotounread    = '<a href="' . $thread['newpostlink'] . '" class="fd-unread" title="' . htmlspecialchars_uni($lang->forumdisplay['tip_goto_first_unread']) . '" aria-label="' . htmlspecialchars_uni($lang->forumdisplay['tip_goto_first_unread']) . '"><i class="fa-solid fa-angles-right"></i></a>';
+            $unreadpost    = 1;
         } else {
             $folder_label .= $lang->forumdisplay['tip_icon_no_new'];
         }
 
-        $hottopic      = 20;
-        $hottopicviews = 150;
-
-        if ($thread['replies'] >= $hottopic || $thread['views'] >= $hottopicviews) {
-            $folder      .= 'hot';
+        $is_hot = is_numeric($thread['replies']) && is_numeric($thread['views'])
+               && ($thread['replies'] >= $hottopic || $thread['views'] >= $hottopicviews);
+        if ($is_hot) {
+            $folder       .= 'hot';
             $folder_label .= $lang->forumdisplay['tip_icon_hot'];
         }
 
-        if ($thread['closed'] == 1) {
-            $folder      .= 'close';
+        $is_closed = $thread['closed'] == 1;
+        if ($is_closed) {
+            $folder       .= 'close';
             $folder_label .= $lang->forumdisplay['tip_icon_close'];
         }
 
-        if ($moved[0] === 'moved') {
+        if ($is_moved) {
             $folder     = 'move';
             $gotounread = '';
         }
 
         $folder .= 'folder';
-        $folder_label_attr = htmlspecialchars($folder_label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $folder_label_attr = htmlspecialchars(strip_tags($folder_label), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        // Иконка состояния (вместо спрайтов thread_status *folder)
+        [$st_icon, $st_soft] = match (true) {
+            $is_moved  => ['fa-arrow-right-arrow-left', 'st-soft-info'],
+            $is_closed => ['fa-lock', $is_new ? 'st-soft-primary' : 'st-soft-muted'],
+            $is_hot    => ['fa-fire', $is_new ? 'st-soft-danger' : 'st-soft-warning'],
+            default    => ['fa-comments', $is_new ? 'st-soft-primary' : 'st-soft-muted'],
+        };
 
         $inline_edit_tid   = $thread['tid'];
         $inline_edit_class = '';
@@ -910,89 +901,101 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $inline_edit_class = 'subject_editable';
         }
 
-        $lastposteruid  = $thread['lastposteruid'];
-        $lastposter     = htmlspecialchars_uni($thread['lastposter'] ?: $lang->forumdisplay['lbl_guest']);
+        $lastposteruid  = (int)$thread['lastposteruid'];
+        $lastposter_raw = (string)($thread['lastposter'] ?: $lang->forumdisplay['lbl_guest']);
+        $lastposter     = htmlspecialchars_uni($lastposter_raw);
         $lastpostdate   = my_datee('relative', $thread['lastpost']);
         $lastposterlink = ($lastposteruid == 0) ? $lastposter : build_profile_link($lastposter, $lastposteruid);
+        $lp_avatar      = fd_avatar($lp_users[$lastposteruid] ?? ['username' => $lastposter_raw], 34);
 
-        $thread['replies'] = ts_nf($thread['replies']);
-        $thread['views']   = ts_nf($thread['views']);
+        // Раньше replies сначала форматировался ts_nf() ("1,234"), а потом
+        // выводился через (int) - на 1000+ ответов показывалась «1».
+        $replies_html = fd_num($thread['replies']);
+        $views_html   = fd_num($thread['views']);
+        $thread['replies'] = $replies_html;
+        $thread['views']   = $views_html;
 
-        // ─ Неодобренные посты ────────────────────────────────────────────────
+        // ─ Бейджи ────────────────────────────────────────────────────────
+        $badges = '';
+        if ($thread['sticky'] == 1) {
+            $badges .= fd_badge('st-soft-warning', 'fa-thumbtack', fd_l('lbl_sticky', 'Sticky'));
+        }
+        if ($is_moved) {
+            $badges .= fd_badge('st-soft-info', 'fa-arrow-right-arrow-left', $lang->forumdisplay['lbl_moved']);
+        }
+        if ($is_closed) {
+            $badges .= fd_badge('st-soft-muted', 'fa-lock', '', strip_tags($lang->forumdisplay['tip_icon_close']));
+        }
+        if ($thread['visible'] == 0) {
+            $badges .= fd_badge('st-soft-danger', 'fa-eye-slash', fd_l('lbl_unapproved', 'Unapproved'));
+        }
+
+        // ─ Неодобренные посты ────────────────────────────────────────────
         $unapproved_posts = '';
         if (($thread['unapprovedposts'] ?? 0) > 0) {
             $unapproved_posts_count = ($thread['unapprovedposts'] > 1)
                 ? sprintf($lang->forumdisplay['tip_unapproved_many'], $thread['unapprovedposts'])
                 : $lang->forumdisplay['tip_unapproved_one'];
-            $thread['unapprovedposts'] = ts_nf($thread['unapprovedposts']);
-            
-			
-			$unapproved_posts = '<span title="'.$unapproved_posts_count.'">('.$thread['unapprovedposts'].')</span>';
-			
-			
-			
+            $thread['unapprovedposts'] = ts_nf((int)$thread['unapprovedposts']);
+            $unapproved_posts = fd_badge('st-soft-danger', 'fa-hourglass-half', $thread['unapprovedposts'], strip_tags($unapproved_posts_count));
         }
 
-        // ─ Вложения ──────────────────────────────────────────────────────────
+        // ─ Вложения ──────────────────────────────────────────────────────
         $attachment_count = '';
         if (($enableattachments ?? 0) == 1 && ($thread['attachmentcount'] ?? 0) > 0) {
-            $label            = ($thread['attachmentcount'] > 1)
+            $label = ($thread['attachmentcount'] > 1)
                 ? sprintf($lang->forumdisplay['tip_attachment_many'], $thread['attachmentcount'])
                 : $lang->forumdisplay['tip_attachment_one'];
-            $attachment_count = '<i class="fa-solid fa-paperclip" style="color:#444;opacity:.4" title="' . $label . '"></i>';
+            $attachment_count = '<span class="fd-attach" title="' . htmlspecialchars_uni(strip_tags($label)) . '"><i class="fa-solid fa-paperclip"></i>' . (int)$thread['attachmentcount'] . '</span>';
         }
 
         $plugins->run_hooks('forumdisplay_thread_end');
 
         $thread['start_datetime'] = my_datee('relative', $thread['dateline']);
-        
-		$threads .= '<div class="card border-bottom border-0 rounded-0">
-	<div class="card-body py-0 px-1 inline_row '.$bgcolor.'">
-<div class="row py-2">
-		<div class="col align-self-center ms-2" style="min-width:0;">
-				
-		<h6 class="mb-0 text-forum" style="overflow-wrap:anywhere;"><a href="'.$thread['threadlink'].'">'.$moved_badge.'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
-		
-		<div class="links small">'.$lang->forumdisplay['lbl_by'].' '.$thread['profilelink'].''.$rating.'</div>
 
+        $row_class = 'fd-item inline_row' . ($thread['sticky'] == 1 ? ' fd-item--sticky' : '')
+                   . ($thread['visible'] == 0 ? ' fd-item--unapproved' : '')
+                   . ($is_new ? ' fd-item--new' : '');
 
-		
-		<div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none mt-1">
-			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label_attr.'"></span>
-		</div>
-		
-		</div>
-			<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center text-end">
-			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label_attr.'"></span>
-				'.$thread['multipage'].'
-			</div>
-		<div class="col-1 d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center text-center">
-			
-			
-			<h6 class="mb-0"><a href="' . $BASEURL . '/misc.php?action=whoposted&amp;tid=' . (int)$thread['tid'] . '" onclick="whoPosted(' . (int)$thread['tid'] . '); return false;">' . (int)$thread['replies'] . '</a></h6>
-<span class="text-muted small">' . $lang->forumdisplay['lbl_replies'] . '</span>
-			
-			
-		</div>
-			
-		<div class="col-12 col-sm-12 col-md-12 col-lg-3 col-xl-3 col-xxl-3 mt-3 mt-sm-3 mt-md-3 mt-lg-0">
-			<div class="row">
-				<div class="col-auto align-self-center">
-					<avatarep_uid_['.$thread['lastposteruid'].']>
-				</div>
-				<div class="col align-self-center me-2">'.$lastposterlink.'<br /><span class="small text-muted text-uppercase">'.$lastpostdate.'</span> '.$modbit.'
-					</div>
-				</div>
-				
-				
-				
-				
-			</div>
-			</div>
-	</div>
-			</div>';
-		
-		
+        $threads .= '<div class="' . $row_class . '">'
+            // иконка состояния
+            . '<span class="st-ico ' . $st_soft . ' fd-item__ico" title="' . $folder_label_attr . '">'
+            .   '<i class="fa-solid ' . $st_icon . '"></i>'
+            .   ($has_dot ? '<span class="fd-dot" aria-hidden="true"></span>' : '')
+            . '</span>'
+            // тема
+            . '<div class="fd-item__body">'
+            .   '<div class="fd-item__top">'
+            .     $badges
+            .     '<a href="' . $thread['threadlink'] . '" class="fd-item__title"><span class="' . $inline_edit_class . ' ' . $new_class . '" id="tid_' . $inline_edit_tid . '">' . $thread['subject'] . '</span></a>'
+            .     $unapproved_posts
+            .   '</div>'
+            .   '<div class="fd-item__meta">'
+            .     '<span><i class="fa-solid fa-user"></i>' . $thread['profilelink'] . '</span>'
+            .     '<span><i class="fa-solid fa-calendar"></i>' . $thread['start_datetime'] . '</span>'
+            .     $attachment_count
+            .     '<span class="fd-item__stats-inline"><i class="fa-solid fa-comments"></i>' . $replies_html
+            .       ' <i class="fa-solid fa-eye ms-2"></i>' . $views_html . '</span>'
+            .     $rating
+            .   '</div>'
+            .   $thread['multipage']
+            . '</div>'
+            // ответы / просмотры
+            . '<div class="fd-item__stats">'
+            .   '<a class="fd-stat" href="' . $BASEURL . '/misc.php?action=whoposted&amp;tid=' . (int)$thread['tid'] . '" onclick="whoPosted(' . (int)$thread['tid'] . '); return false;">'
+            .     '<span class="fd-stat__val">' . $replies_html . '</span><span class="fd-stat__lbl">' . $lang->forumdisplay['lbl_replies'] . '</span></a>'
+            .   '<div class="fd-stat"><span class="fd-stat__val">' . $views_html . '</span><span class="fd-stat__lbl">' . fd_l('lbl_views', 'Views') . '</span></div>'
+            . '</div>'
+            // последнее сообщение
+            . '<div class="fd-item__last">'
+            .   '<a href="' . $thread['lastpostlink'] . '" class="fd-item__last-ava" tabindex="-1" aria-hidden="true">' . $lp_avatar . '</a>'
+            .   '<div class="fd-item__last-text">'
+            .     '<div class="fd-item__last-who">' . $lastposterlink . $gotounread . '</div>'
+            .     '<a href="' . $thread['lastpostlink'] . '" class="fd-item__last-date">' . $lastpostdate . '</a>'
+            .   '</div>'
+            . '</div>'
+            . $modbit
+            . '</div>';
     }
 
     // ─── Инлайн-модерация (меню) ─────────────────────────────────────────────
@@ -1015,29 +1018,22 @@ if (!empty($threadcache) && is_array($threadcache)) {
             default           => "(CONCAT(',',forums,',') LIKE '%,$fid,%' OR CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='') AND (`groups`='' OR CONCAT(',',`groups`,',') LIKE '%,-1,%'{$gidswhere}) AND type = 't'",
         };
 
-		
-
         if ($customthreadtools) {
             //eval('$customthreadtools = "' . $templates->get('forumdisplay_inlinemoderation_custom') . '";');
         }
 
-        $inlinemodopenclose = $inlinemodstickunstick = $inlinemodsoftdelete = '';
-        $inlinemodrestore   = $inlinemoddelete       = $inlinemodmanage    = '';
+        $inlinemodopenclose = $inlinemodstickunstick = '';
+        $inlinemoddelete    = $inlinemodmanage       = '';
         $inlinemodapproveunapprove = '';
 
         $inlinemodopenclose = '<option value="multiclosethreads">'.$lang->forumdisplay['opt_close_threads'].'</option>
         <option value="multiopenthreads">'.$lang->forumdisplay['opt_open_threads'].'</option>';
-		
-		
-		
+
         $inlinemodstickunstick = '<option value="multistickthreads">'.$lang->forumdisplay['opt_stick_threads'].'</option>
         <option value="multiunstickthreads">'.$lang->forumdisplay['opt_unstick_threads'].'</option>';
-		
-		
+
         $inlinemodapproveunapprove = '<option value="multiapprovethreads">'.$lang->forumdisplay['opt_approve_threads'].'</option>
         <option value="multiunapprovethreads">'.$lang->forumdisplay['opt_unapprove_threads'].'</option>';
-		
-		
 
         $inlinemoddelete = '<option value="multideletethreads">' . $lang->forumdisplay['opt_delete_threads'] . '</option>';
         $inlinemodmanage = '<option value="multimovethreads">' . $lang->forumdisplay['opt_move_threads'] . '</option>';
@@ -1050,6 +1046,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
             . $inlinemodapproveunapprove
             . '</optgroup>';
 
+        // JS модалки удаления — inline, как раньше (scripts/forumdisplay.js не нужен)
 $inline_modal_js = <<<'JS'
     document.addEventListener('DOMContentLoaded', function() {
         // t(key, englishFallback, ...args): AGS_LANG is emitted by PHP in <head>
@@ -1127,7 +1124,7 @@ $inline_modal_js = <<<'JS'
                         previewContainer.innerHTML = '';
 
                         threadIds.forEach(function(tid) {
-                            var titleEl   = document.querySelector('a[id="tid_' + tid + '"]');
+                            var titleEl   = document.getElementById('tid_' + tid);
                             var titleText = titleEl ? titleEl.innerText.trim() : t('thread_id', 'Thread ID: {1}', tid);
 
                             var preview = document.createElement('div');
@@ -1206,47 +1203,26 @@ $inline_modal_js = <<<'JS'
         }
     });
 
-    function escapeHtml(str) {
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === "&") return "&amp;";
-            if (m === "<") return "&lt;";
-            if (m === ">") return "&gt;";
-            return m;
-        });
-    }
+
 JS;
 
-$inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
-<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_moderation.js?ver=1832"></script>
-<form action="moderation.php" method="post" id="inlinemoderation_threads">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-<input type="hidden" name="fid" value="'.$fid.'" />
-<input type="hidden" name="modtype" value="inlinethread" />
-<div class="row g-1 text-end">
-    <div class="col d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center">
-        &nbsp;
-    </div>
-    <div class="col-lg-auto align-self-center">
-        <select name="action" id="inlinemoderation_threads_selector" class="form-select form-select-sm w-auto pe-5">
-            <option value="delayedmoderation">'.$lang->forumdisplay['opt_delayed_moderation'].'</option>
-           '.$standardthreadtools.'
-            '.$customthreadtools.'
-        </select>
-    </div>
-    <div class="col-auto align-self-center">
-        <input type="submit" class="btn btn-primary btn-sm" name="go" value="'.$lang->forumdisplay['btn_inline_go'].' ('.$inlinecount.')" id="inline_go" />
-    </div>
-    <div class="col-auto align-self-center">
-        <button type="button" onclick="inlineModeration.clearChecked();" class="btn btn-secondary btn-sm">
-            <i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->forumdisplay['btn_clear'].'
-        </button>
-    </div>
-</div>
-</form>
-</div>
+        $inlinemod = '<form action="moderation.php" method="post" id="inlinemoderation_threads" class="fd-inlinemod">'
+            . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
+            . '<input type="hidden" name="fid" value="' . $fid . '">'
+            . '<input type="hidden" name="modtype" value="inlinethread">'
+            . '<span class="fd-inlinemod__lbl"><i class="fa-solid fa-shield-halved"></i>' . fd_l('lbl_inline_mod', 'Moderation') . '</span>'
+            . '<select name="action" id="inlinemoderation_threads_selector" class="form-select form-select-sm">'
+            .   '<option value="delayedmoderation">' . $lang->forumdisplay['opt_delayed_moderation'] . '</option>'
+            .   $standardthreadtools
+            .   $customthreadtools
+            . '</select>'
+            . '<input type="submit" class="btn btn-sm btn-primary st-pill" name="go" value="' . htmlspecialchars_uni($lang->forumdisplay['btn_inline_go'] . ' (' . $inlinecount . ')') . '" id="inline_go">'
+            . '<button type="button" onclick="inlineModeration.clearChecked();" class="btn btn-sm btn-outline-secondary st-pill" title="' . htmlspecialchars_uni(strip_tags($lang->forumdisplay['btn_clear'])) . '">'
+            .   '<i class="fa-solid fa-xmark"></i><span class="fd-hide-xs">' . $lang->forumdisplay['btn_clear'] . '</span></button>'
+            . '</form>'
 
-<!-- Модалка удаления тредов -->
-<div class="modal fade" id="deleteThreadsModal" tabindex="-1" aria-labelledby="deleteThreadsModalLabel" aria-hidden="true">
+            // ── Модалка удаления тем — прежний вид (id нужны JS ниже) ──
+            . '<div class="modal fade" id="deleteThreadsModal" tabindex="-1" aria-labelledby="deleteThreadsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow">
 
@@ -1336,23 +1312,17 @@ $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
 
         </div>
     </div>
-</div>
+</div>'
 
-<script type="text/javascript">
-<!--
-    var go_text = ' . json_encode($lang->forumdisplay['btn_inline_go'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
-    var all_text = "' . (int)$threadcount . '";
-    var inlineType = "forum";
-    var inlineId = ' . (int)$fid . ';
-
-' . $inline_modal_js . '
-// -->
-</script>';
-
-		
-		
-		
-		
+            // глобальные переменные, которые читает inline_moderation.js
+            . '<script>'
+            . 'var go_text = ' . json_encode($lang->forumdisplay['btn_inline_go'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';'
+            . 'var all_text = "' . (int)$threadcount . '";'
+            . 'var inlineType = "forum";'
+            . 'var inlineId = ' . (int)$fid . ';'
+            . '</script>'
+            . '<script src="' . $BASEURL . '/scripts/inline_moderation.js?ver=1832"></script>'
+            . '<script>' . $inline_modal_js . '</script>';
     }
 }
 
@@ -1380,182 +1350,113 @@ if ($CURUSER['id']) {
         $add_remove_subscription_text = $lang->forumdisplay['btn_unsubscribe'];
     }
 
-    $addremovesubscription = '<a href="usercp.php?action=' . $add_remove_subscription . 'subscription&amp;type=forum&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-secondary">&nbsp;' . $add_remove_subscription_text . '&nbsp;</a>';
+    $addremovesubscription = '<a href="usercp.php?action=' . $add_remove_subscription . 'subscription&amp;type=forum&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-outline-secondary st-pill fd-btn">'
+        . '<i class="fa-' . ($add_remove_subscription === 'add' ? 'regular' : 'solid') . ' fa-bell' . ($add_remove_subscription === 'add' ? '' : '-slash') . '"></i>'
+        . '<span>' . $add_remove_subscription_text . '</span></a>';
 }
 
 // ─── Финальный рендер ─────────────────────────────────────────────────────────
 $inline_edit_js = $clearstoredpass = '';
+$threadslist    = '';
+$head_actions   = '';
+$rssdiscovery   = '';
 
 if ($foruminfo['type'] !== 'c') {
     if ($fpermissions['canviewthreads'] != 1) {
-        
-		
-		$threads = '<div class="ps-3 pe-3">
-    <div class="empty-state text-center p-5">
-        <div class="mb-4">
-            <div class="bg-danger bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                <i class="fa-solid fa-lock fa-3x text-danger"></i>
-            </div>
-        </div>
-        <h5 class="text-danger mb-3">' . $lang->forumdisplay['err_no_permission'] . '</h5>
-        <p class="text-muted mb-0">
-            <i class="fa-regular fa-circle-question me-1"></i>
-            ' . $lang->forumdisplay['hint_no_permission'] . '
-        </p>
-    </div>
-</div>';
-
-		
+        $threads = fd_empty('fa-lock', 'st-soft-danger', $lang->forumdisplay['err_no_permission'], $lang->forumdisplay['hint_no_permission']);
     }
 
     if (!$threadcount && $fpermissions['canviewthreads'] == 1) {
-        
-		$threads = '<div class="text-center p-5">
-    <div class="mb-4">
-        <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center p-3" style="width: 70px; height: 70px;">
-            <i class="fa-regular fa-file-lines fa-3x text-secondary"></i>
-        </div>
-    </div>
-    <h5 class="text-secondary mb-2">' . $lang->forumdisplay['msg_no_threads_title'] . '</h5>
-    <p class="text-muted">' . $lang->forumdisplay['msg_no_threads_hint'] . '</p>
-</div>';
-
+        $threads = fd_empty('fa-file-lines', 'st-soft-muted', $lang->forumdisplay['msg_no_threads_title'], $lang->forumdisplay['msg_no_threads_hint']);
     }
 
     if ($foruminfo['password'] !== '') {
-        $clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '">'.$lang->forumdisplay['lbl_clear_stored_password'].'</a>';
+        $clearstoredpass = '<a href="misc.php?action=clearpass&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '" class="fd-clearpass"><i class="fa-solid fa-key"></i>' . $lang->forumdisplay['lbl_clear_stored_password'] . '</a>';
     }
 
-    $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;' . $lang->forumdisplay['btn_go'] . '</button>';
+    // ── Сортировка: пилюли в шапке списка (сброс на 1-ю страницу) ─────────
+    $sortbase = get_forum_link($fid) . $string . "datecut=$datecut&amp;prefix=$tprefix";
+    $sort_opts = [
+        'lastpost' => $lang->forumdisplay['opt_sort_lastpost'],
+        'subject'  => $lang->forumdisplay['opt_sort_subject'],
+        'starter'  => $lang->forumdisplay['opt_sort_starter'],
+        'started'  => $lang->forumdisplay['opt_sort_started'],
+        'replies'  => $lang->forumdisplay['opt_sort_replies'],
+        'views'    => $lang->forumdisplay['opt_sort_views'],
+    ];
+    $sortpills = '';
+    foreach ($sort_opts as $key => $label) {
+        $active = $mybb->input['sortby'] === $key;
+        $next   = $active ? $oppsort : (in_array($key, ['subject', 'starter'], true) ? 'asc' : 'desc');
+        $arrow  = $active ? '<i class="fa-solid ' . ($sortordernow === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') . '"></i>' : '';
+        $sortpills .= '<a href="' . $sortbase . '&amp;sortby=' . $key . '&amp;order=' . $next . '" class="btn btn-sm btn-outline-secondary st-pill fd-sort' . ($active ? ' active' : '') . '"'
+                    . ($active ? ' aria-current="true"' : '') . '>' . $label . $arrow . '</a>';
+    }
 
-    $forumsort = '';
-    
-	$forumsort = '<form action="forumdisplay.php" method="get">
-				<input type="hidden" name="fid" value="'.$fid.'" />
-
-<div class="p-3 bg-nav border-0 rounded-bottom text-center">
-<div class="row g-2">
-	<div class="col d-none do-sm-none d-md-none d-lg-block d-xl-block d-xxl-block">
-		&nbsp;
-	</div>
-<div class="col-lg-auto align-self-center">
-				<select class="form-select border form-select-sm pe-5" name="sortby">
-					<option value="subject"'.$sortsel['subject'].'>'.$lang->forumdisplay['opt_sort_subject'].'</option>
-					<option value="lastpost"'.$sortsel['lastpost'].'>'.$lang->forumdisplay['opt_sort_lastpost'].'</option>
-					<option value="starter"'.$sortsel['starter'].'>'.$lang->forumdisplay['opt_sort_starter'].'</option>
-					<option value="started"'.$sortsel['started'].'>'.$lang->forumdisplay['opt_sort_started'].'</option>
-					
-					<option value="replies"'.$sortsel['replies'].'>'.$lang->forumdisplay['opt_sort_replies'].'</option>
-					<option value="views"'.$sortsel['views'].'>'.$lang->forumdisplay['opt_sort_views'].'</option>
-				</select>
-	</div>
-	<div class="col-lg-auto align-self-center">
-				<select name="order" class="form-select border form-select-sm pe-5">
-					<option value="asc"'.$ordersel['asc'].'>'.$lang->forumdisplay['opt_order_asc'].'</option>
-					<option value="desc"'.$ordersel['desc'].'>'.$lang->forumdisplay['opt_order_desc'].'</option>
-				</select>
-	</div>
-	<div class="col-lg-auto align-self-center">
-				<select name="datecut" class="form-select border form-select-sm pe-5">
-					<option value="1"'.$datecutsel['1'].'>'.$lang->forumdisplay['opt_date_1day'].'</option>
-					<option value="5"'.$datecutsel['5'].'>'.$lang->forumdisplay['opt_date_5days'].'</option>
-					<option value="10"'.$datecutsel['10'].'>'.$lang->forumdisplay['opt_date_10days'].'</option>
-					<option value="20"'.$datecutsel['20'].'>'.$lang->forumdisplay['opt_date_20days'].'</option>
-					<option value="50"'.$datecutsel['50'].'>'.$lang->forumdisplay['opt_date_50days'].'</option>
-					<option value="75"'.$datecutsel['75'].'>'.$lang->forumdisplay['opt_date_75days'].'</option>
-					<option value="100"'.$datecutsel['100'].'>'.$lang->forumdisplay['opt_date_100days'].'</option>
-					<option value="365"'.$datecutsel['365'].'>'.$lang->forumdisplay['opt_date_lastyear'].'</option>
-					<option value="9999"'.$datecutsel['9999'].'>'.$lang->forumdisplay['opt_date_beginning'].'</option>
-				</select>
-	</div>
-	
-				
-	
-	<div class="col-auto align-self-center text-end">
-				'.$gobutton.'
-				</form>
-	</div>
-		<div class="col d-none do-sm-none d-md-none d-lg-block d-xl-block d-xxl-block">
-		&nbsp;
-	</div>
-	</div>
-	</div>';
-
-	
-	
-	
-	
+    // ── Фильтр (GET-форма, имена полей прежние) ──────────────────────────
+    $forumsort = '<form action="forumdisplay.php" method="get" class="st-toolbar st-toolbar--bottom fd-filter">'
+        . '<input type="hidden" name="fid" value="' . $fid . '">'
+        . fd_select('sortby', [
+              'subject'  => $lang->forumdisplay['opt_sort_subject'],
+              'lastpost' => $lang->forumdisplay['opt_sort_lastpost'],
+              'starter'  => $lang->forumdisplay['opt_sort_starter'],
+              'started'  => $lang->forumdisplay['opt_sort_started'],
+              'replies'  => $lang->forumdisplay['opt_sort_replies'],
+              'views'    => $lang->forumdisplay['opt_sort_views'],
+          ], (string)$mybb->input['sortby'], 'fa-arrow-down-wide-short')
+        . fd_select('order', [
+              'asc'  => $lang->forumdisplay['opt_order_asc'],
+              'desc' => $lang->forumdisplay['opt_order_desc'],
+          ], $sortordernow, 'fa-arrow-up-short-wide')
+        . fd_select('datecut', [
+              1    => $lang->forumdisplay['opt_date_1day'],
+              5    => $lang->forumdisplay['opt_date_5days'],
+              10   => $lang->forumdisplay['opt_date_10days'],
+              20   => $lang->forumdisplay['opt_date_20days'],
+              50   => $lang->forumdisplay['opt_date_50days'],
+              75   => $lang->forumdisplay['opt_date_75days'],
+              100  => $lang->forumdisplay['opt_date_100days'],
+              365  => $lang->forumdisplay['opt_date_lastyear'],
+              9999 => $lang->forumdisplay['opt_date_beginning'],
+          ], (string)(int)$datecut, 'fa-calendar')
+        . '<button type="submit" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-filter"></i> ' . $lang->forumdisplay['btn_go'] . '</button>'
+        . '</form>';
 
     $plugins->run_hooks('forumdisplay_threadlist');
 
     $rss_title = sprintf($lang->forumdisplay['tip_rss_latest'], htmlspecialchars(htmlspecialchars_decode($foruminfo['name']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
-	$rssdiscovery = '<link rel="alternate" type="application/rss+xml" title="'.$rss_title.' (RSS 2.0)" href="'.$BASEURL.'/syndication.php?fid='.$fid.'" />
-<link rel="alternate" type="application/atom+xml" title="'.$rss_title.' (Atom 1.0)" href="'.$BASEURL.'/syndication.php?type=atom1.0&amp;fid='.$fid.'" />';
-	
-	
-	
-$threadslist  = '<div class="row m-0 me-0 pe-0 p-0 mb-3">
-		<div class="col ms-0 ps-0 text-center text-sm-center text-md-center text-lg-start align-self-center">
-			'.$multipage.'
-		</div>
-	<div class="col-12 col-sm-12 col-md-12 col-lg-auto col-xl-auto col-xxl-auto mt-3 mt-sm-3 mt-md-3 mt-lg-0 me-0 pe-0 text-end align-self-center">
-		<a href="misc.php?action=markread&amp;fid='.$fid.''.$post_code_string.'" class="btn btn-secondary" title="'.$lang->forumdisplay['tip_mark_read'].'">&nbsp;<i class="fa-solid fa-check"></i>&nbsp;</a> &nbsp; '.$addremovesubscription.' &nbsp; '.$newthread.'
-	</div>
-</div>
+    $rssdiscovery = '<link rel="alternate" type="application/rss+xml" title="' . $rss_title . ' (RSS 2.0)" href="' . $BASEURL . '/syndication.php?fid=' . $fid . '">'
+                  . '<link rel="alternate" type="application/atom+xml" title="' . $rss_title . ' (Atom 1.0)" href="' . $BASEURL . '/syndication.php?type=atom1.0&amp;fid=' . $fid . '">';
 
-<div class="card border-0">
-<div class="card-header py-3 bg-nav rounded border-bottom-0">
-	
-	<div class="row">
-		<div class="col">
-	<p class="mb-0"><a href="'.$sorturl.'&amp;sortby=subject&amp;order=asc">'.$lang->forumdisplay['lbl_thread'].'</a> '.$orderarrow['subject'].' &mdash; <a href="'.$sorturl.'&amp;sortby=starter&amp;order=asc">'.$lang->forumdisplay['lbl_author'].'</a></p>
-		</div>
-		<div class="col-1 d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block text-center">
-			<p class="mb-0">
-				&nbsp;<a href="'.$sorturl.'&amp;sortby=replies&amp;order=desc">'.$lang->forumdisplay['lbl_replies'].'</a>
-			</p>
-		</div>
-		<div class="col-3">
-			<span class="float-end">'.$inlinemodcol.'</span>
-			&nbsp;<a href="'.$sorturl.'&amp;sortby=lastpost&amp;order=desc" class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->forumdisplay['lbl_last_post'].'</a>
-			
-		</div>
-	</div>
-</div>
-</div>
+    // Действия в шапке. Раньше в ссылке «прочитано» был неопределённый
+    // $post_code_string (warning + ссылка без my_post_key).
+    $head_actions = '<div class="fd-head__actions">'
+        . '<a href="misc.php?action=markread&amp;fid=' . $fid . '&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-outline-secondary st-pill fd-btn" title="' . htmlspecialchars_uni(strip_tags($lang->forumdisplay['tip_mark_read'])) . '">'
+        .   '<i class="fa-solid fa-check-double"></i><span class="fd-hide-sm">' . strip_tags($lang->forumdisplay['tip_mark_read']) . '</span></a>'
+        . $addremovesubscription
+        . $newthread
+        . '</div>';
 
+    $pager = $multipage !== '' ? '<div class="st-pager fd-pager">' . $multipage . '</div>' : '';
 
-
-
-'.$announcementlist.'
-'.$threads.'
-
-'.$forumsort.'
-
-
-<div class="mt-3">'.$multipage.'</div>
-
-
-
-<div class="row mt-5 m-0 p-0 border-top border-bottom">
-	<div class="col-lg-4 align-self-center py-3">
-		'.$searchforum.'
-	</div>
-	<div class="col d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block">
-		&nbsp;
-	</div>
-'.$inlinemod.'
-</div>
-
-'.$inline_edit_js.'';
-
-
-	
-	
-	
+    $threadslist = $pager
+        . '<section class="st-card fd-list">'
+        .   '<div class="st-toolbar fd-sortbar">'
+        .     '<span class="fd-sortbar__lbl"><i class="fa-solid fa-arrow-down-wide-short"></i>' . fd_l('lbl_sort_by', 'Sort by') . '</span>'
+        .     '<div class="fd-sortbar__pills">' . $sortpills . '</div>'
+        .     $inlinemodcol
+        .   '</div>'
+        .   $selectall
+        .   $announcementlist
+        .   $threads
+        .   $forumsort
+        . '</section>'
+        . $pager
+        . (($searchforum !== '' || $inlinemod !== '')
+            ? '<div class="st-card fd-bottom">' . $searchforum . $inlinemod . '</div>'
+            : '')
+        . $inline_edit_js;
 } else {
-    $rssdiscovery = $threadslist = '';
-
     if (empty($forums)) {
         error($lang->forumdisplay['err_contains_no_forums']);
     }
@@ -1572,57 +1473,59 @@ foreach ($lang->forumdisplay as $lang_key => $lang_val) {
         $ags_lang_js[substr((string)$lang_key, 3)] = $lang_val;
     }
 }
-$ags_lang_json = json_encode($ags_lang_js, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+$json_flags    = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+$ags_lang_json = json_encode($ags_lang_js, $json_flags);
 
-$forums = '<html>
-<head>
-<title>'.$SITENAME.' - '.$foruminfo['name'].' </title>
+// ─── Шапка форума ────────────────────────────────────────────────────────────
+$head_meta = [];
+if ($foruminfo['type'] !== 'c') {
+    $head_meta[] = '<span><i class="fa-solid fa-comments"></i>' . fd_fmt('lbl_threads_count', '{1} threads', ts_nf((int)$threadcount)) . '</span>';
+}
+if ($moderatedby !== '') $head_meta[] = $moderatedby;
+if ($rssdiscovery !== '') {
+    $head_meta[] = '<a href="' . $BASEURL . '/syndication.php?fid=' . $fid . '"><i class="fa-solid fa-rss"></i>RSS</a>';
+}
+if ($clearstoredpass !== '') $head_meta[] = $clearstoredpass;
 
+$forum_desc = trim((string)($foruminfo['description'] ?? ''));
 
-'.$rssdiscovery.'
-<script type="text/javascript">
-<!--
-	lang.no_new_posts = "'.$lang->global['no_new_posts'].'";
-	lang.click_mark_read = "'.$lang->global['click_mark_read'].'";
-	lang.inline_edit_description = '.json_encode($lang->forumdisplay['js_click_hold_edit'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT).';
-	lang.post_fetch_error = "'.$lang->global['post_fetch_error'].'";
-// -->
-</script>
-<script type="text/javascript">
-const AGS_LANG = '.$ags_lang_json.';
-</script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_edit.js?ver=1822"></script>
-</head>
-<body>
+$page_head = '<header class="st-card st-head fd-head">'
+    . '<div class="st-head__icon st-soft-primary"><i class="fa-solid ' . ($foruminfo['type'] === 'c' ? 'fa-folder-tree' : 'fa-comments') . '"></i></div>'
+    . '<div class="fd-head__text">'
+    .   '<h1 class="st-title">' . htmlspecialchars_uni(htmlspecialchars_decode($foruminfo['name'])) . '</h1>'
+    .   ($forum_desc !== '' ? '<div class="fd-head__desc">' . $forum_desc . '</div>' : '')
+    .   ($head_meta ? '<div class="st-head__meta">' . implode('', $head_meta) . '</div>' : '')
+    . '</div>'
+    . $head_actions
+    . '</header>';
 
-	
-<div class="container-md">
-'.$rules.'
-	'.$moderatedby.'
-'.$subforums.'
-'.$threadslist.'
-
-
-	
-'.$usersbrowsing.'
-
-</div>
-	
-
-</body>
-</html>';
-
-
-
-
-
-
-
-stdhead('title');
+// Раньше: stdhead('title') - заголовок вкладки был буквально «title»,
+// а страница собиралась во вложенный <html><head><body> внутри body.
+stdhead(htmlspecialchars_decode($foruminfo['name']));
 build_breadcrumb();
 
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=5">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/forumdisplay.css?ver=1">';
+echo $rssdiscovery;
+echo '<script>'
+   . 'if (typeof lang === "object" && lang) {'
+   .   'lang.no_new_posts = ' . json_encode($lang->global['no_new_posts'], $json_flags) . ';'
+   .   'lang.click_mark_read = ' . json_encode($lang->global['click_mark_read'], $json_flags) . ';'
+   .   'lang.inline_edit_description = ' . json_encode($lang->forumdisplay['js_click_hold_edit'], $json_flags) . ';'
+   .   'lang.post_fetch_error = ' . json_encode($lang->global['post_fetch_error'], $json_flags) . ';'
+   . '}'
+   . 'const AGS_LANG = ' . $ags_lang_json . ';'
+   . '</script>';
+echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
+echo '<script src="' . $BASEURL . '/scripts/inline_edit.js?ver=1822"></script>';
 echo '<script src="' . $BASEURL . '/scripts/whoposted_js.js?ver=1" defer></script>';
 
-echo $forums;
+echo '<div class="container-md st-page fd-page">'
+   . $rules
+   . $page_head
+   . $subforums
+   . $threadslist
+   . $usersbrowsing
+   . '</div>';
+
 stdfoot();

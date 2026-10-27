@@ -28,7 +28,7 @@ require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_ratio.php';
 require_once INC_PATH . '/functions_icons.php';
-require_once INC_PATH . '/function_loginattemptcheck.php';
+require_once INC_PATH . '/functions_loginattemptcheck.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_additions.php';

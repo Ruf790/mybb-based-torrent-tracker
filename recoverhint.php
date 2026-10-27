@@ -69,7 +69,7 @@ function generate_reset_token()
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
 require_once 'global.php';
-require_once INC_PATH . '/function_loginattemptcheck.php';
+require_once INC_PATH . '/functions_loginattemptcheck.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/datahandler.php';
 

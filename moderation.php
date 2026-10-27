@@ -93,8 +93,8 @@ if (isset($forum)) {
 
 $log_multithreads_actions = [
     'do_multideletethreads', 'multiclosethreads', 'multiopenthreads',
-    'multiapprovethreads', 'multiunapprovethreads', 'multirestorethreads',
-    'multisoftdeletethreads', 'multistickthreads', 'multiunstickthreads',
+    'multiapprovethreads', 'multiunapprovethreads',
+    'multistickthreads', 'multiunstickthreads',
     'do_multimovethreads',
 ];
 
@@ -108,9 +108,10 @@ if (in_array($action, $log_multithreads_actions)) {
 
 $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
 
-$loginbox = '<div class="alert bg-nav p-2 mb-3">
-    <i class="fa-solid fa-user"></i> ' . $CURUSER['username'] . ' &mdash;
-    <a href="member.php?action=logout&amp;logoutkey=' . $mybb->user['logoutkey'] . '" class="links">'
+$loginbox = '<div class="md-actor">
+    <span class="st-ico st-soft-muted"><i class="fa-solid fa-user-shield"></i></span>
+    <span class="md-actor__name">' . $CURUSER['username'] . '</span>
+    <a href="member.php?action=logout&amp;logoutkey=' . $mybb->user['logoutkey'] . '" class="md-actor__switch"><i class="fa-solid fa-right-left me-1"></i>'
     . $lang->global['change_user'] . '</a>
 </div>';
 
@@ -143,6 +144,125 @@ function build_month_options(int $selected, array $lang_months): string {
     return $html;
 }
 
+// ── Page UI helpers («новый стиль»: st-ui.css + moderation-page.css, всё под .md-page) ──
+function md_assets(): void
+{
+    global $BASEURL;
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=4">' . PHP_EOL
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/moderation-page.css?ver=1">' . PHP_EOL;
+}
+
+/** Шапка страницы: иконка в мягком квадрате + заголовок + подзаголовок + мета + блок справа */
+function md_head(string $icon, string $soft, string $title, string $sub = '', string $meta = '', string $aside = ''): string
+{
+    $sub   = $sub   !== '' ? '<p class="md-sub">' . $sub . '</p>' : '';
+    $meta  = $meta  !== '' ? '<div class="st-head__meta">' . $meta . '</div>' : '';
+    $aside = $aside !== '' ? '<div class="md-head__aside">' . $aside . '</div>' : '';
+    return '<div class="st-card st-head md-head">
+    <span class="st-head__icon st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>
+    <div class="md-head__main"><h1 class="st-title">' . $title . '</h1>' . $sub . $meta . '</div>' . $aside . '
+</div>';
+}
+
+/** Мета-элемент шапки: <span><i></i>текст</span> */
+function md_meta(string $icon, string $html): string
+{
+    return '<span><i class="fa-solid ' . $icon . '"></i>' . $html . '</span>';
+}
+
+/** Карточка-секция с заголовком */
+function md_card(string $icon, string $soft, string $title, string $body, string $sub = '', string $extra = ''): string
+{
+    $sub = $sub !== '' ? '<span class="md-card__sub">' . $sub . '</span>' : '';
+    return '<div class="st-card md-card">
+    <div class="st-card__head md-card__head">
+        <span class="st-ico st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>
+        <span class="md-card__ttl"><span class="md-card__title">' . $title . '</span>' . $sub . '</span>' . $extra . '
+    </div>
+    <div class="st-card__body">' . $body . '</div>
+</div>';
+}
+
+/** Подсказка/предупреждение: $kind = info|warning|danger */
+function md_note(string $kind, string $icon, string $html, string $title = ''): string
+{
+    $title = $title !== '' ? '<strong class="md-note__title">' . $title . '</strong>' : '';
+    return '<div class="md-note md-note--' . $kind . '"><i class="fa-solid ' . $icon . '"></i><div class="min-w-0">' . $title . $html . '</div></div>';
+}
+
+/** Галочка/радио плиткой (.st-check) */
+function md_check(string $type, string $name, string $value, string $label, bool $checked = false,
+                  string $id = '', string $icon = '', string $desc = ''): string
+{
+    $idattr = $id !== '' ? ' id="' . $id . '"' : '';
+    $icon   = $icon !== '' ? '<i class="fa-solid ' . $icon . ' md-check__ico"></i>' : '';
+    $desc   = $desc !== '' ? '<small class="md-check__desc">' . $desc . '</small>' : '';
+    return '<label class="st-check md-check"><input type="' . $type . '" class="form-check-input" name="' . $name . '" value="' . $value . '"'
+         . $idattr . ($checked ? ' checked="checked"' : '') . ' /><span class="md-check__txt">' . $icon
+         . '<span class="md-check__lbl">' . $label . $desc . '</span></span></label>';
+}
+
+/** KPI-плитка */
+function md_kpi(string $val, string $lbl, string $soft = 'primary'): string
+{
+    return '<div class="st-kpi md-kpi md-kpi--' . $soft . '"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div>';
+}
+
+/** Строка «название — значение» */
+function md_row(string $lbl, string $val): string
+{
+    return '<div class="st-row"><span class="st-row__lbl">' . $lbl . '</span><span class="st-row__val">' . $val . '</span></div>';
+}
+
+/** Пост в списке (split / merge) с галочкой выбора */
+function md_post(string $username, string $date, string $message, string $pick): string
+{
+    return '<div class="md-post">
+    <div class="md-post__head">
+        <span class="md-post__who"><i class="fa-solid fa-user"></i>' . $username . '</span>
+        <span class="md-post__date"><i class="fa-regular fa-clock"></i>' . $date . '</span>
+        <span class="md-post__pick">' . $pick . '</span>
+    </div>
+    <div class="md-post__body">' . $message . '</div>
+</div>';
+}
+
+/** Номер шага в заголовке карточки */
+function md_step(int $n, string $title): string
+{
+    return '<span class="md-step">' . $n . '</span>' . $title;
+}
+
+/** Липкая панель снизу: «назад» слева, кнопки справа */
+function md_submitbar(string $cancel_url, string $cancel_label, string $buttons): string
+{
+    return '<div class="st-submitbar">
+    <a href="' . $cancel_url . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left me-1"></i>' . $cancel_label . '</a>
+    <div class="md-submitbar__btns">' . $buttons . '</div>
+</div>';
+}
+
+/** Куда вести «Отмена»: ?url=… или запасной адрес (раньше при пустом url ссылка была href="") */
+function md_cancel_url(string $fallback): string
+{
+    global $mybb;
+    $u = htmlspecialchars_uni($mybb->get_input('url'));
+    return $u !== '' ? $u : $fallback;
+}
+
+/** Обёртка страницы */
+function md_page(string $html, string $mod = ''): string
+{
+    return '<div class="container-md st-page md-page' . ($mod !== '' ? ' ' . $mod : '') . '">' . PHP_EOL . $html . PHP_EOL . '</div>';
+}
+
+/** Карточка «кто выполняет действие» */
+function md_actor_card(): string
+{
+    global $lang, $loginbox;
+    return md_card('fa-shield-halved', 'muted', $lang->moderation['sec_security'], $loginbox);
+}
+
 
 
 // ── Moderation assets (SweetAlert2, toast, moderation JS) ───────────────────
@@ -150,7 +270,7 @@ $_mod_assets = '<script>const AGS_LANG = ' . mod_js_lang() . ';</script>' . PHP_
     . '<link rel="stylesheet" href="' . htmlspecialchars($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">' . PHP_EOL
     . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/sweetalert2.min.js"></script>' . PHP_EOL
     . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/toast.js"></script>' . PHP_EOL
-    . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/moderation.js?ver=21"></script>';
+    . '<script src="' . htmlspecialchars($BASEURL) . '/scripts/moderation.js?ver=22"></script>';
 
 // ── Begin switch ─────────────────────────────────────────────────────────────
 switch ($action) {
@@ -158,6 +278,7 @@ switch ($action) {
     // ── Cancel delayed moderation ────────────────────────────────────────────
     case 'cancel_delayedmoderation':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         add_breadcrumb($lang->moderation['delayed_moderation']);
         $plugins->run_hooks('moderation_cancel_delayedmoderation');
         $db->sql_query_prepared("DELETE FROM delayedmoderation WHERE did = ?", [$mybb->get_input('did', MyBB::INPUT_INT)]);
@@ -176,6 +297,7 @@ switch ($action) {
     case 'do_delayedmoderation':
     case 'delayedmoderation':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
 
         $localized_time_offset = ($CURUSER['timezone'] + $CURUSER['dst']) * 3600;
 
@@ -203,13 +325,11 @@ switch ($action) {
         add_breadcrumb($lang->moderation['delayed_moderation']);
 
         $errors = [];
-      
+
         $allowed_types = [
             'move', 'merge', 'removeredirects', 'removesubscriptions',
             'openclosethread', 'deletethread', 'stick', 'approveunapprovethread',
         ];
-
-       
 
         $mybb->input['delayedmoderation'] = $mybb->get_input('delayedmoderation', MyBB::INPUT_ARRAY);
         $mybb->input['type'] = $mybb->get_input('type');
@@ -245,18 +365,21 @@ switch ($action) {
 
             if ($dateDay < 1 || $dateDay > 31)     $errors[] = $lang->moderation['error_delayedmoderation_invalid_date_day'];
             if ($dateMonth < 1 || $dateMonth > 12) $errors[] = $lang->moderation['error_delayedmoderation_invalid_date_month'];
-            if ($dateYear < gmdate('Y', TIMENOW + $localized_time_offset)) {
+            if ($dateYear < (int)gmdate('Y', TIMENOW + $localized_time_offset)) {
                 $errors[] = $lang->moderation['error_delayedmoderation_invalid_date_year'];
             }
 
-            $date_time_parts = explode(' ', $mybb->get_input('date_time'));
+            $date_time_raw   = $mybb->get_input('date_time');
+            $date_time_parts = explode(' ', trim($date_time_raw));
             $time_parts      = explode(':', (string)($date_time_parts[0] ?? ''));
             $hour = (int)($time_parts[0] ?? 0);
             $min  = (int)($time_parts[1] ?? 0);
 
-            if (stristr($mybb->input['date_time'] ?? '', 'pm')) {
+            // 12-часовой формат: 12pm = 12, 12am = 0 (раньше 12pm превращалось в 0:xx)
+            if (stripos($date_time_raw, 'pm') !== false && $hour < 12) {
                 $hour += 12;
-                if ($hour >= 24) $hour = 0;
+            } elseif (stripos($date_time_raw, 'am') !== false && $hour === 12) {
+                $hour = 0;
             }
 
             $rundate = gmmktime($hour, $min, (int)date('s', TIMENOW), $dateMonth, $dateDay, $dateYear)
@@ -343,10 +466,8 @@ switch ($action) {
             'approveunapprovethread' => $lang->moderation['approve_unapprove_thread'],
         ];
 
-
         // ── Delayed mods list ────────────────────────────────────────────────
         $delayedmods = '';
-       
 
         if ($tid === 0) {
             $tids = $mybb->get_input('inlinetype') === 'search'
@@ -371,7 +492,8 @@ switch ($action) {
             $where_params = ['%,' . $tid . ',%'];
         }
 
-        $query = $db->sql_query_prepared("
+        // Пустой список тем давал «WHERE » без условия → ошибка SQL; тогда просто не запрашиваем
+        $query = $where_statement === '' ? false : $db->sql_query_prepared("
             SELECT d.*, u.username, f.name AS fname
             FROM delayedmoderation d
             LEFT JOIN users u ON (u.id = d.uid)
@@ -381,65 +503,92 @@ switch ($action) {
             LIMIT 0, 20
         ", $where_params);
 
-        while ($delayedmod = $db->fetch_array($query)) {
+        $md_info = static fn(string $lbl, string $val): string =>
+            '<div class="md-info"><span class="md-info__lbl">' . $lbl . '</span> ' . $val . '</div>';
+
+        while ($query && ($delayedmod = $db->fetch_array($query))) {
             $delayedmod['dateline']    = my_datee('normal', $delayedmod['delaydateline'], '', 2);
-            $delayedmod['username']    = htmlspecialchars_uni($delayedmod['username']);
+            $delayedmod['username']    = htmlspecialchars_uni((string)$delayedmod['username']);
             $delayedmod['profilelink'] = build_profile_link($delayedmod['username'], $delayedmod['uid']);
-            $delayedmod['action']      = $actions[$delayedmod['type']] ?? $delayedmod['type'];
+            $delayedmod['action']      = $actions[$delayedmod['type']] ?? htmlspecialchars_uni((string)$delayedmod['type']);
             $info = '';
 
-            if (strpos($delayedmod['tids'], ',') === false) {
-                $delayed_thread           = get_thread($delayedmod['tids']);
-                $delayed_thread['link']   = get_thread_link($delayed_thread['tid']);
-                $delayed_thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($delayed_thread['subject']));
-                $info .= '<strong>' . $lang->moderation['thread'] . '</strong> <a href="' . $delayed_thread['link'] . '">' . $delayed_thread['subject'] . '</a><br />';
+            if (strpos((string)$delayedmod['tids'], ',') === false) {
+                // Тема могла быть удалена — раньше это давало warning'и и пустую ссылку
+                $delayed_thread = get_thread((int)$delayedmod['tids']);
+                if ($delayed_thread) {
+                    $info .= $md_info($lang->moderation['thread'], '<a href="' . get_thread_link($delayed_thread['tid']) . '">'
+                        . htmlspecialchars_uni($parser->parse_badwords($delayed_thread['subject'])) . '</a>');
+                } else {
+                    $info .= $md_info($lang->moderation['thread'], '#' . (int)$delayedmod['tids']);
+                }
             } else {
-                $info .= '<strong>' . $lang->moderation['thread'] . '</strong> ' . $lang->moderation['multiple_threads'] . '<br />';
+                $info .= $md_info($lang->moderation['thread'], $lang->moderation['multiple_threads']);
             }
 
             if ($delayedmod['fname']) {
-                $delayedmod['link']  = get_forum_link($delayedmod['fid']);
-                $delayedmod['fname'] = htmlspecialchars_uni($delayedmod['fname']);
-                $info .= '<strong>' . $lang->moderation['forum'] . '</strong> <a href="' . $delayedmod['link'] . '">' . $delayedmod['fname'] . '</a><br />';
+                $info .= $md_info($lang->moderation['forum'], '<a href="' . get_forum_link($delayedmod['fid']) . '">'
+                    . htmlspecialchars_uni($delayedmod['fname']) . '</a>');
             }
 
             $delayedmod['inputs'] = my_unserialize($delayedmod['inputs']);
+            if (!is_array($delayedmod['inputs'])) $delayedmod['inputs'] = [];
 
             if ($delayedmod['type'] === 'move') {
-                $delayedmod['link'] = get_forum_link($delayedmod['inputs']['new_forum']);
-                $delayedmod['name'] = htmlspecialchars_uni($forum_cache[$delayedmod['inputs']['new_forum']]['name']);
-                $info .= '<strong>' . $lang->moderation['new_forum'] . '</strong> <a href="' . $delayedmod['link'] . '">' . $delayedmod['name'] . '</a><br />';
+                $nf = (int)($delayedmod['inputs']['new_forum'] ?? 0);
+                $info .= $md_info($lang->moderation['new_forum'], '<a href="' . get_forum_link($nf) . '">'
+                    . htmlspecialchars_uni((string)($forum_cache[$nf]['name'] ?? ('#' . $nf))) . '</a>');
             } elseif ($delayedmod['type'] === 'merge') {
-                $delayedmod['subject']   = htmlspecialchars_uni($delayedmod['inputs']['subject']);
-                $delayedmod['threadurl'] = htmlspecialchars_uni($delayedmod['inputs']['threadurl']);
+                // Раньше тема/URL слияния вычислялись, но не выводились
+                $m_subject = htmlspecialchars_uni((string)($delayedmod['inputs']['subject'] ?? ''));
+                $m_url     = htmlspecialchars_uni((string)($delayedmod['inputs']['threadurl'] ?? ''));
+                if ($m_subject !== '') $info .= $md_info($lang->moderation['new_subject'], $m_subject);
+                if ($m_url !== '')     $info .= $md_info($lang->moderation['thread_to_merge_with'], '<span class="md-break">' . $m_url . '</span>');
             }
 
-            $delayedmods .= $delayedmod['profilelink'] . '</div>
-    <div class="col-lg align-self-center">' . $delayedmod['dateline'] . '</div>
-    <div class="col-lg align-self-center">' . $delayedmod['action'] . '</div>
-    <div class="col-lg align-self-center">' . $info . '</div>
-    <div class="col-lg align-self-center"><a href="moderation.php?action=cancel_delayedmoderation&amp;tid=' . $tid . '&amp;fid=' . $fid . '&amp;did=' . $delayedmod['did'] . '&amp;my_post_key=' . $mybb->post_code . '">' . $lang->moderation['cancel'] . '</a></div>
+            $cancel_href = 'moderation.php?action=cancel_delayedmoderation&amp;tid=' . $tid . '&amp;fid=' . $fid
+                         . '&amp;did=' . (int)$delayedmod['did'] . '&amp;my_post_key=' . $mybb->post_code;
+
+            $delayedmods .= '<div class="md-qrow">
+    <div class="md-qrow__who"><i class="fa-solid fa-user-shield"></i>' . $delayedmod['profilelink'] . '</div>
+    <div class="md-qrow__when"><i class="fa-regular fa-clock"></i>' . $delayedmod['dateline'] . '</div>
+    <div class="md-qrow__what"><span class="st-badge st-soft-primary">' . $delayedmod['action'] . '</span></div>
+    <div class="md-qrow__info">' . $info . '</div>
+    <div class="md-qrow__act"><a href="' . $cancel_href . '" class="btn btn-sm btn-outline-danger st-pill"><i class="fa-solid fa-xmark me-1"></i>' . $lang->moderation['cancel'] . '</a></div>
 </div>';
-           
         }
 
-        if (!$delayedmods) {
-            $delayedmods = '<div class="py-2 border-top">' . $lang->moderation['no_delayed_mods'] . '</div>';
+        if ($delayedmods !== '') {
+            $delayedmods = '<div class="md-queue">
+    <div class="md-qrow md-qrow--head">
+        <div>' . $lang->moderation['mod_username'] . '</div>
+        <div>' . $lang->moderation['time_to_perform_action'] . '</div>
+        <div>' . $lang->moderation['mod_actions'] . '</div>
+        <div>' . $lang->moderation['mod_information'] . '</div>
+        <div>' . $lang->moderation['actions'] . '</div>
+    </div>' . $delayedmods . '
+</div>';
+        } else {
+            $delayedmods = '<div class="st-empty"><i class="fa-regular fa-calendar-xmark"></i><div>' . $lang->moderation['no_delayed_mods'] . '</div></div>';
         }
 
         // ── Build thread/inline vars ─────────────────────────────────────────
         $url = '';
+        $sel = static fn(string $s): bool => $s !== '';
+
         if ($mybb->get_input('tid', MyBB::INPUT_INT)) {
             $thread['link'] = get_thread_link($tid);
-            $threads = '<div class="p-3 mt-3 mb-3 border rounded bg-light"><a href="' . $thread['link'] . '">' . $thread['subject'] . '</a></div>';
-            $moderation_delayedmoderation_merge = '<input type="radio" name="type" class="form-check-input" value="merge" ' . $type_selected['merge'] . ' id="type_merge" onclick="toggleType();" />
-                <label for="type_merge" class="form-check-label">' . $lang->moderation['merge_threads'] . '</label><br />
-                <dd style="margin-top:4px;width:100%;" id="type_merge_expanded">
-                    ' . $lang->moderation['new_subject'] . '<br />
-                    <input type="text" class="form-control border form-control-sm" name="delayedmoderation[subject]" value="' . ($mybb->input['delayedmoderation']['subject'] ?? '') . '" size="40" /><br />
-                    ' . $lang->moderation['thread_to_merge_with'] . '<br />
-                    <input type="text" class="form-control border form-control-sm" name="delayedmoderation[threadurl]" value="' . ($mybb->input['delayedmoderation']['threadurl'] ?? '') . '" size="40" />
-                    <br /><span class="text-muted">' . $lang->moderation['merge_with_note'] . '</span>';
+            $threads = md_meta('fa-comments', '<a href="' . $thread['link'] . '">' . $thread['subject'] . '</a>');
+            $cancel_url = $thread['link'];
+            // Раньше <dd> здесь не закрывался и ломал разметку формы
+            $merge_option = md_check('radio', 'type', 'merge', $lang->moderation['merge_threads'], $sel($type_selected['merge']), 'type_merge', 'fa-code-merge');
+            $merge_panel  = '<div id="type_merge_expanded" class="md-expand"><div class="md-panel">
+    <label class="md-label" for="dm_subject">' . $lang->moderation['new_subject'] . '</label>
+    <input type="text" class="form-control" id="dm_subject" name="delayedmoderation[subject]" value="' . ($mybb->input['delayedmoderation']['subject'] ?? '') . '" />
+    <label class="md-label mt-3" for="dm_threadurl">' . $lang->moderation['thread_to_merge_with'] . '</label>
+    <input type="text" class="form-control" id="dm_threadurl" name="delayedmoderation[threadurl]" value="' . ($mybb->input['delayedmoderation']['threadurl'] ?? '') . '" />
+    <div class="md-hint mt-2">' . $lang->moderation['merge_with_note'] . '</div>
+</div></div>';
         } else {
             $tids = $mybb->get_input('inlinetype') === 'search'
                 ? getids($mybb->get_input('searchid'), 'search')
@@ -451,24 +600,22 @@ switch ($action) {
             if (count($tids) < 1) {
                 stderr($lang->moderation['error_inline_nothreadsselected']);
             }
-            $threads = ags_fmt($lang->moderation['threads_selected'], count($tids));
-            $moderation_delayedmoderation_merge = '';
+            $threads      = md_meta('fa-layer-group', ags_fmt($lang->moderation['threads_selected'], count($tids)));
+            $cancel_url   = md_cancel_url(get_forum_link($fid));
+            $merge_option = '';
+            $merge_panel  = '';
         }
 
-        $redirect_expire = $mybb->get_input('redirect_expire');
-
-        $moderation_delayedmoderation_move = '<br />' . $lang->moderation['method'] . '<br />
-            <label class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="move" ' . $method_selected['move'] . ' /> ' . $lang->moderation['method_move'] . '</label><br />
-            <label class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="redirect" ' . $method_selected['redirect'] . ' /> ' . $lang->moderation['method_move_redirect'] . '</label>
-            <input type="text" class="form-control border form-control-sm mt-2" style="width:200px" name="delayedmoderation[redirect_expire]" value="' . $redirect_expire . '" size="3" /> ' . $lang->moderation['redirect_expire_note'] . '<br /><br />
-            <label class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="copy" ' . $method_selected['copy'] . ' /> ' . $lang->moderation['method_copy'] . '</label><br />';
+        // Раньше брался несуществующий $_POST['redirect_expire'] — введённое значение терялось после ошибки
+        $redirect_expire = (int)($mybb->input['delayedmoderation']['redirect_expire'] ?? 0);
+        $redirect_expire = $redirect_expire > 0 ? (string)$redirect_expire : '';
 
         // Date day options
         $dateday = '';
         $sel_day = $mybb->get_input('date_day', MyBB::INPUT_INT);
         for ($day = 1; $day <= 31; ++$day) {
-            $sel = ($sel_day === $day) ? ' selected="selected"' : '';
-            $dateday .= "<option value=\"{$day}\"{$sel}>{$day}</option>";
+            $s = ($sel_day === $day) ? ' selected="selected"' : '';
+            $dateday .= "<option value=\"{$day}\"{$s}>{$day}</option>";
         }
 
         $sel_month = $mybb->get_input('date_month', MyBB::INPUT_INT);
@@ -480,147 +627,83 @@ switch ($action) {
         ];
         $datemonth = '';
         foreach (['01','02','03','04','05','06','07','08','09','10','11','12'] as $i => $m) {
-            $sel = ((int)$m === $sel_month) ? ' selected="selected"' : '';
-            $datemonth .= "<option value=\"{$m}\"{$sel}>{$month_names[$i]}</option>\n";
+            $s = ((int)$m === $sel_month) ? ' selected="selected"' : '';
+            $datemonth .= "<option value=\"{$m}\"{$s}>{$month_names[$i]}</option>\n";
         }
 
-        $dateyear = gmdate('Y', TIMENOW + $localized_time_offset);
-        $datetime = gmdate($timeformat, TIMENOW + $localized_time_offset);
+        // Год/время: после ошибки оставляем введённое; время по умолчанию в 24-часовом H:i —
+        // form-validation2.js принимает только HH:MM, а $timeformat мог быть с AM/PM и блокировал отправку
+        $dateyear = $mybb->get_input('date_year', MyBB::INPUT_INT) ?: (int)gmdate('Y', TIMENOW + $localized_time_offset);
+        $datetime = htmlspecialchars_uni($mybb->get_input('date_time')) ?: gmdate('H:i', TIMENOW + $localized_time_offset);
 
-        $openclosethread = '<input type="radio" name="type" class="form-check-input" value="openclosethread" ' . $type_selected['openclosethread'] . ' id="type_openclosethread" onclick="toggleType();" />
-            <label for="type_openclosethread" class="form-check-label">' . $lang->moderation['open_close_thread'] . '</label><br />';
+        $type_grid = md_check('radio', 'type', 'openclosethread', $lang->moderation['open_close_thread'], $sel($type_selected['openclosethread']), 'type_openclosethread', 'fa-lock-open')
+            . md_check('radio', 'type', 'deletethread', $lang->moderation['delete_thread'], $sel($type_selected['deletethread']), 'type_deletethread', 'fa-trash-can')
+            . md_check('radio', 'type', 'stick', $lang->moderation['stick_unstick_thread'], $sel($type_selected['stick']), 'type_stick_unstick_thread', 'fa-thumbtack')
+            . md_check('radio', 'type', 'move', $lang->moderation['move_copy_thread'], $sel($type_selected['move']), 'type_movecopythread', 'fa-right-left')
+            . $merge_option
+            . md_check('radio', 'type', 'removeredirects', $lang->moderation['remove_redirects'], $sel($type_selected['removeredirects']), 'type_removeredirects', 'fa-link-slash')
+            . md_check('radio', 'type', 'removesubscriptions', $lang->moderation['remove_subscriptions'], $sel($type_selected['removesubscriptions']), 'type_removesubscriptions', 'fa-bell-slash')
+            . md_check('radio', 'type', 'approveunapprovethread', $lang->moderation['approve_unapprove_thread'], $sel($type_selected['approveunapprovethread']), 'type_approveunapprovethread', 'fa-circle-check');
 
-        $deletethread = '<input type="radio" name="type" class="form-check-input" value="deletethread" ' . $type_selected['deletethread'] . ' id="type_deletethread" onclick="toggleType();" />
-            <label for="type_deletethread" class="form-check-label">' . $lang->moderation['delete_thread'] . '</label><br />';
-
-        $stickunstickthread = '<input type="radio" name="type" class="form-check-input" value="stick" ' . $type_selected['stick'] . ' id="type_stick_unstick_thread" />
-            <label for="type_stick_unstick_thread" class="form-check-label">' . $lang->moderation['stick_unstick_thread'] . '</label><br />';
-
-        $approveunapprovethread = '<input type="radio" name="type" class="form-check-input" value="approveunapprovethread" ' . $type_selected['approveunapprovethread'] . ' id="type_approveunapprovethread" onclick="toggleType();" />
-            <label for="type_approveunapprovethread" class="form-check-label">' . $lang->moderation['approve_unapprove_thread'] . '</label>';
+        $move_panel = '<div id="type_movecopythread_expanded" class="md-expand"><div class="md-panel">
+    <div class="md-label">' . $lang->moderation['new_forum'] . '</div>
+    <div class="md-forum">' . $forumselect . '</div>
+    <div class="md-label mt-3">' . $lang->moderation['method'] . '</div>
+    <div class="md-grid">'
+        . md_check('radio', 'delayedmoderation[method]', 'move', $lang->moderation['method_move'], $sel($method_selected['move']), '', 'fa-arrow-right')
+        . md_check('radio', 'delayedmoderation[method]', 'redirect', $lang->moderation['method_move_redirect'], $sel($method_selected['redirect']), '', 'fa-link')
+        . md_check('radio', 'delayedmoderation[method]', 'copy', $lang->moderation['method_copy'], $sel($method_selected['copy']), '', 'fa-copy') . '
+    </div>
+    <div class="md-inline mt-2">
+        <input type="number" min="0" class="form-control md-days" name="delayedmoderation[redirect_expire]" value="' . $redirect_expire . '" placeholder="' . $lang->moderation['ph_days'] . '" />
+        <span class="md-hint">' . $lang->moderation['redirect_expire_note'] . '</span>
+    </div>
+</div></div>';
 
         $plugins->run_hooks('moderation_delayedmoderation');
 
-        $delayedmoderation = <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>{$SITENAME} - {$lang->moderation['delayed_moderation']} | {$lang->moderation['mod_center']}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/mod2.css">
-</head>
-<body>
-<div class="container fade-in">
-    {$display_errors}
-    <div class="glass-card mb-4 overflow-hidden">
-        <div class="premium-header">
-            <i class="fas fa-clock fa-fw"></i>
-            <div><h3>{$lang->moderation['delayed_mod_queue']}</h3><p>{$lang->moderation['sub_delayed_queue']}</p></div>
-            <i class="fas fa-calendar-week ms-auto opacity-50"></i>
-        </div>
-        <div class="p-3 p-md-4">
-            <div class="d-none d-lg-flex row-header-custom align-items-center">
-                <div class="col-3"><i class="fas fa-user-shield me-2"></i> {$lang->moderation['mod_username']}</div>
-                <div class="col-3"><i class="fas fa-hourglass-half me-2"></i> {$lang->moderation['time_to_perform_action']}</div>
-                <div class="col-2"><i class="fas fa-tasks me-2"></i> {$lang->moderation['mod_actions']}</div>
-                <div class="col-2"><i class="fas fa-info-circle me-2"></i> {$lang->moderation['mod_information']}</div>
-                <div class="col-2"><i class="fas fa-edit me-2"></i> {$lang->moderation['actions']}</div>
-            </div>
-            <div id="delayedQueueWrapper">{$delayedmods}</div>
-        </div>
-    </div>
+        $forum_meta = isset($forum['name']) ? md_meta('fa-folder', htmlspecialchars_uni($forum['name'])) : '';
 
-    <form action="moderation.php" method="post" id="delayedModForm">
-        <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-        <input type="hidden" name="action" value="do_delayedmoderation" />
-        <input type="hidden" name="url" value="{$url}" />
-        <input type="hidden" name="tid" value="{$tid}" />
-        <input type="hidden" name="fid" value="{$fid}" />
+        $when = '<div class="md-label"><i class="fa-solid fa-stopwatch me-1"></i>' . $lang->moderation['run_moderation_time'] . '</div>
+<div class="md-when">
+    <select name="date_day" class="form-select" aria-label="' . $lang->moderation['run_moderation_time'] . '">' . $dateday . '</select>
+    <select name="date_month" class="form-select" aria-label="' . $lang->moderation['run_moderation_time'] . '">' . $datemonth . '</select>
+    <input type="text" name="date_year" value="' . $dateyear . '" size="4" maxlength="4" inputmode="numeric" class="form-control" />
+    <div class="input-group"><span class="input-group-text"><i class="fa-regular fa-clock"></i></span><input type="text" name="date_time" value="' . $datetime . '" inputmode="numeric" class="form-control" /></div>
+</div>';
 
-        <div class="glass-card mb-4">
-            <div class="premium-header">
-                <i class="fas fa-calendar-alt fa-fw"></i>
-                <div><h3>{$lang->moderation['delayed_moderation']}</h3><p>{$lang->moderation['sub_delayed_form']}</p></div>
-            </div>
-            <div class="p-4">
-                <div class="mb-4" style="background:#eef3fa;border-radius:24px;padding:12px 20px;">
-                    <i class="fas fa-info-circle me-2" style="color:#0d6efd;"></i> {$lang->moderation['delayed_moderation_desc']}
-                </div>
-                {$loginbox}
-                <div class="mt-3 fw-semibold">{$threads}</div>
-                <div class="mt-4">
-                    <label class="form-label fw-semibold mb-2"><i class="fas fa-stopwatch me-1"></i> {$lang->moderation['run_moderation_time']}</label>
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-3 col-sm-6"><select name="date_day" class="form-select w-100">{$dateday}</select></div>
-                        <div class="col-md-3 col-sm-6"><select name="date_month" class="form-select w-100">{$datemonth}</select></div>
-                        <div class="col-md-3 col-sm-6"><input type="text" name="date_year" value="{$dateyear}" size="4" maxlength="4" class="form-control w-100" /></div>
-                        <div class="col-md-3 col-sm-6"><input type="text" name="date_time" value="{$datetime}" class="form-control w-100" /></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="glass-card mb-4">
-            <div class="premium-header">
-                <i class="fas fa-gavel fa-fw"></i>
-                <div><h3>{$lang->moderation['moderation_action']}</h3></div>
-            </div>
-            <div class="p-4">
-                <script type="text/javascript" src="{$BASEURL}/scripts/toggle-type.js"></script>
-                <div class="mb-3">
-                    {$openclosethread}
-                    {$deletethread}
-                    {$stickunstickthread}
-                </div>
-                <div class="radio-card">
-                    <input type="radio" name="type" value="move" {$type_selected['move']} id="type_movecopythread" />
-                    <label for="type_movecopythread" class="fw-semibold flex-grow-1">{$lang->moderation['move_copy_thread']}</label>
-                </div>
-                <div id="type_movecopythread_expanded" style="display:none;">
-                    <div class="expandable-panel">
-                        {$forumselect}
-                        <div class="mt-2">{$moderation_delayedmoderation_move}</div>
-                    </div>
-                </div>
-                {$moderation_delayedmoderation_merge}
-                <div class="radio-card mt-2">
-                    <input type="radio" name="type" value="removeredirects" {$type_selected['removeredirects']} id="type_removeredirects" />
-                    <label for="type_removeredirects" class="fw-semibold flex-grow-1">{$lang->moderation['remove_redirects']}</label>
-                </div>
-                <div class="radio-card">
-                    <input type="radio" name="type" value="removesubscriptions" {$type_selected['removesubscriptions']} id="type_removesubscriptions" />
-                    <label for="type_removesubscriptions" class="fw-semibold flex-grow-1">{$lang->moderation['remove_subscriptions']}</label>
-                </div>
-                {$approveunapprovethread}
-               
-            </div>
-            <div class="card-footer text-center border-0 bg-transparent pb-4">
-                <button type="submit" class="btn-gradient px-5 py-3">
-                    <i class="fas fa-calendar-check me-2"></i> {$lang->moderation['save_delayed_moderation']}
-                </button>
-            </div>
-        </div>
-    </form>
-</div>
-<script type="text/javascript" src="{$BASEURL}/scripts/form-validation2.js?ver=21"></script>
-<link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/mod.css">
-</body>
-</html>
-HTML;
+        $delayedmoderation = md_page(
+            $display_errors
+            . md_head('fa-clock', 'primary', $lang->moderation['delayed_moderation'], $lang->moderation['sub_delayed_form'], $threads . $forum_meta)
+            . md_card('fa-calendar-week', 'info', $lang->moderation['delayed_mod_queue'], $delayedmods, $lang->moderation['sub_delayed_queue'])
+            . '<form action="moderation.php" method="post" id="delayedModForm" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_delayedmoderation" />
+    <input type="hidden" name="url" value="' . $url . '" />
+    <input type="hidden" name="tid" value="' . $tid . '" />
+    <input type="hidden" name="fid" value="' . $fid . '" />'
+            . md_card('fa-calendar-days', 'primary', $lang->moderation['delayed_moderation'],
+                md_note('info', 'fa-circle-info', $lang->moderation['delayed_moderation_desc']) . $loginbox . $when)
+            . md_card('fa-gavel', 'warning', $lang->moderation['moderation_action'],
+                '<div class="md-grid">' . $type_grid . '</div>' . $move_panel . $merge_panel)
+            . md_submitbar($cancel_url, $lang->moderation['cancel'],
+                '<button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-calendar-check me-1"></i>' . $lang->moderation['save_delayed_moderation'] . '</button>')
+            . '</form>
+<script src="' . $BASEURL . '/scripts/toggle-type.js"></script>
+<script src="' . $BASEURL . '/scripts/form-validation2.js?ver=22"></script>'
+        );
 
         stdhead($lang->moderation['delayed_moderation']);
+        md_assets();
         echo $delayedmoderation;
-echo $_mod_assets;
-stdfoot();
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Open / close thread ──────────────────────────────────────────────────
     case 'openclosethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         if ($thread['closed'] == 1) {
             $openclose = 'opened';
@@ -640,7 +723,6 @@ stdfoot();
     case 'stick':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_stick');
 
@@ -662,7 +744,6 @@ stdfoot();
     case 'removeredirects':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $plugins->run_hooks('moderation_removeredirects');
         $moderation->remove_redirects($tid);
@@ -684,6 +765,7 @@ stdfoot();
 
     // ── Delete poll (confirmation) ───────────────────────────────────────────
     case 'deletepoll':
+        if (!is_mod($usergroups)) error_no_permission();
         add_breadcrumb($lang->moderation['nav_deletepoll']);
         $plugins->run_hooks('moderation_deletepoll');
 
@@ -691,67 +773,35 @@ stdfoot();
         $poll = $q ? $db->fetch_array($q) : null;
         if (!$poll) stderr($lang->moderation['error_invalidpoll']);
 
-        $deletepoll = <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - {$lang->moderation['delete_poll']}</title>
-   
-    <style>
-        .poll-card { max-width:500px; margin:0 auto; border:none; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,.1); }
-        .poll-header { background:#dc3545; color:white; padding:25px; border-radius:15px 15px 0 0; text-align:center; }
-        .btn-delete { background:#dc3545; border:none; padding:12px 30px; font-weight:600; transition:all .2s; }
-        .btn-delete:hover { background:#c82333; transform:translateY(-2px); }
-        .security-box { background:#f8f9fa; border-radius:10px; padding:20px; margin:20px 0; }
-    </style>
-</head>
-<body>
-    <div class="container mt-3">
-        <div class="poll-card">
-            <div class="poll-header">
-                <div style="font-size:48px"><i class="fas fa-chart-bar"></i></div>
-                <h4 class="mb-2">{$lang->moderation['delete_poll']}</h4>
-                <p class="mb-0 opacity-75">{$lang->moderation['tip_cannot_undo']}</p>
-            </div>
-            <form action="moderation.php" method="post">
-                <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-                <input type="hidden" name="action" value="do_deletepoll" />
-                <input type="hidden" name="tid" value="{$tid}" />
-                <input type="hidden" name="delete" value="1" />
-                <div class="card-body p-4">
-                    <div class="alert alert-danger mb-4">
-                        <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>{$lang->moderation['lbl_warning']}</h5>
-                        <p class="mb-0">{$lang->moderation['warn_poll_delete']}</p>
-                    </div>
-                    <div class="security-box">
-                        <h6><i class="fas fa-shield-alt me-2"></i>{$lang->moderation['sec_security']}</h6>
-                        <div class="mt-2">{$loginbox}</div>
-                    </div>
-                </div>
-                <div class="card-footer bg-white py-3 text-end">
-                    <a href="showthread.php?tid={$tid}" class="btn btn-outline-secondary me-2"><i class="fas fa-times me-1"></i> {$lang->moderation['cancel']}</a>
-                    <button type="submit" class="btn btn-delete text-white" name="submit" value="{$lang->moderation['delete_poll']}">
-                        <i class="fas fa-trash-alt me-1"></i> {$lang->moderation['delete_poll']}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</body>
-</html>
-HTML;
+        $thread_link = get_thread_link($tid);
+
+        $deletepoll = md_page(
+            md_head('fa-square-poll-vertical', 'danger', $lang->moderation['delete_poll'], $lang->moderation['tip_cannot_undo'],
+                md_meta('fa-comments', '<a href="' . $thread_link . '">' . $thread['subject'] . '</a>'))
+            . '<form action="moderation.php" method="post" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_deletepoll" />
+    <input type="hidden" name="tid" value="' . $tid . '" />
+    <input type="hidden" name="delete" value="1" />'
+            . md_note('danger', 'fa-triangle-exclamation', $lang->moderation['warn_poll_delete'], $lang->moderation['lbl_warning'])
+            . md_actor_card()
+            . md_submitbar($thread_link, $lang->moderation['cancel'],
+                '<button type="submit" class="btn btn-danger st-pill" name="submit" value="' . $lang->moderation['delete_poll'] . '"><i class="fa-solid fa-trash-can me-1"></i>' . $lang->moderation['delete_poll'] . '</button>')
+            . '</form>',
+            'md-narrow'
+        );
+
         stdhead($lang->moderation['delete_poll']);
+        md_assets();
         echo $deletepoll;
-echo $_mod_assets;
-stdfoot();
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do delete poll ───────────────────────────────────────────────────────
     case 'do_deletepoll':
         verify_post_check($mybb->get_input('my_post_key'));
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
+        if (!is_mod($usergroups)) error_no_permission();
         if (!isset($mybb->input['delete'])) stderr($lang->moderation['redirect_pollnotdeleted']);
 
         $q = $db->sql_query_prepared("SELECT pid FROM polls WHERE tid = ?", [$tid]);
@@ -768,7 +818,6 @@ stdfoot();
     case 'approvethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $thread = get_thread($tid);
         $plugins->run_hooks('moderation_approvethread');
@@ -781,7 +830,6 @@ stdfoot();
     case 'unapprovethread':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $thread = get_thread($tid);
         $plugins->run_hooks('moderation_unapprovethread');
@@ -798,7 +846,6 @@ stdfoot();
         $moveto = $mybb->get_input('moveto', MyBB::INPUT_INT);
         $method = $mybb->get_input('method');
 
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $newforum = get_forum($moveto);
         if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') {
@@ -829,7 +876,6 @@ stdfoot();
     case 'do_merge':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_do_merge');
 
@@ -861,7 +907,8 @@ stdfoot();
         if (!$mergethread)        stderr($lang->moderation['error_badmergeurl']);
         if ($mergetid === $tid)   stderr($lang->moderation['error_mergewithself']);
 
-        $subject = $mybb->get_input('subject') ?: $thread['subject'];
+        // $thread['subject'] выше уже экранирован для вывода — берём исходную тему из кеша
+        $subject = trim($mybb->get_input('subject')) ?: (string)(get_thread($tid)['subject'] ?? '');
         $moderation->merge_threads($mergetid, $tid, $subject);
         log_moderator_action($modlogdata, 'Threads Merged');
         redirect(get_thread_link($tid), $lang->moderation['redirect_threadsmerged']);
@@ -871,7 +918,6 @@ stdfoot();
     case 'split':
         add_breadcrumb($lang->moderation['nav_split']);
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $query = $db->sql_query_prepared("
             SELECT p.*, u.*
@@ -886,46 +932,51 @@ stdfoot();
         $posts = '';
         while ($post = $db->fetch_array($query)) {
             $postdate         = my_datee('relative', $post['dateline']);
-            $post['username'] = htmlspecialchars_uni($post['username']);
+            $post['username'] = htmlspecialchars_uni((string)$post['username']);
             $message          = $parser->parse_message($post['message'], $parser_options_default);
-            $posts .= '<div class="mt-4 mb-4 border border-5 p-3 rounded">
-                ' . $lang->moderation['posted_by'] . ' ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
-                <input type="checkbox" class="form-check-input" name="splitpost[' . $post['pid'] . ']" value="1" />
-                <br /><br />' . $message . '
-            </div>';
+            $posts .= md_post($post['username'], $postdate, $message,
+                md_check('checkbox', 'splitpost[' . (int)$post['pid'] . ']', '1', '#' . (int)$post['pid']));
         }
 
         clearinline($tid, 'thread');
         $forumselect = build_forum_jump('', $fid, 1, '', 0, true, '', 'moveto');
         $plugins->run_hooks('moderation_split');
 
+        $thread_link = get_thread_link($tid);
+
+        $split_page = md_page(
+            md_head('fa-arrows-split-up-and-left', 'info', $lang->moderation['split_thread'], '',
+                md_meta('fa-comments', '<a href="' . $thread_link . '">' . $thread['subject'] . '</a>'))
+            . '<form action="moderation.php" method="post" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_split" />
+    <input type="hidden" name="tid" value="' . $tid . '" />'
+            . md_actor_card()
+            . md_card('fa-circle-plus', 'primary', $lang->moderation['new_thread_info'],
+                '<label class="md-label" for="md_newsubject">' . $lang->moderation['new_subject'] . '</label>
+<div class="input-group st-subject mb-3">
+    <span class="input-group-text"><i class="fa-solid fa-heading"></i></span>
+    <input type="text" class="form-control" id="md_newsubject" name="newsubject" value="' . $lang->moderation['split_thread_subject'] . ' ' . $thread['subject'] . '" />
+</div>
+<div class="md-label">' . $lang->moderation['new_forum'] . '</div>
+<div class="md-forum">' . $forumselect . '</div>')
+            . md_card('fa-list-check', 'warning', $lang->moderation['posts_to_split'], '<div class="md-posts">' . $posts . '</div>')
+            . md_submitbar($thread_link, $lang->moderation['cancel'],
+                '<button type="submit" class="btn btn-primary st-pill" name="submit" value="' . $lang->moderation['split_thread'] . '"><i class="fa-solid fa-arrows-split-up-and-left me-1"></i>' . $lang->moderation['split_thread'] . '</button>')
+            . '</form>'
+        );
+
         stdhead($lang->moderation['split_thread']);
-        echo '<form action="moderation.php" method="post">
-            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-            <div class="container-md"><div class="card"><div class="card-body">
-                <div class="legend mb-4">' . $lang->moderation['split_thread'] . '</div>
-                <div class="ps-3 pe-3">' . $loginbox . '</div>
-                <div class="ps-3 pe-3 mt-3">' . $lang->moderation['new_subject'] . '
-                    <input type="text" class="form-control border form-control-sm mb-3" name="newsubject" value="' . $lang->moderation['split_thread_subject'] . ' ' . $thread['subject'] . '" size="50" />
-                    ' . $lang->moderation['new_forum'] . ' ' . $forumselect . '
-                </div>
-                <div class="legend mt-4 mb-4">' . $lang->moderation['posts_to_split'] . '</div>
-                <div class="ps-3 pe-3">' . $posts . '
-                    <div class="mt-3 text-end"><input type="submit" class="btn btn-primary" name="submit" value="' . $lang->moderation['split_thread'] . '" /></div>
-                    <input type="hidden" name="action" value="do_split" />
-                    <input type="hidden" name="tid" value="' . $tid . '" />
-                </div>
-            </div></div></div>
-        </form>';
-echo $_mod_assets;
-stdfoot();
+        md_assets();
+        echo $split_page;
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do split ─────────────────────────────────────────────────────────────
     case 'do_split':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) stderr($lang->moderation['error_thread_deleted']);
 
         $plugins->run_hooks('moderation_do_split');
 
@@ -957,7 +1008,6 @@ stdfoot();
     case 'removesubscriptions':
         verify_post_check($mybb->get_input('my_post_key'));
         if (!is_mod($usergroups)) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->moderation['error_thread_deleted'], $lang->moderation['error']);
 
         $plugins->run_hooks('moderation_removesubscriptions');
         $moderation->remove_thread_subscriptions($tid, true);
@@ -1110,6 +1160,7 @@ stdfoot();
 
     // ── Move threads (inline) — show form ────────────────────────────────────
     case 'multimovethreads':
+        if (!is_mod($usergroups)) error_no_permission();
         add_breadcrumb($lang->moderation['nav_multi_movethreads']);
 
         $threads = !empty($mybb->input['searchid'])
@@ -1127,120 +1178,44 @@ stdfoot();
 
         $forumselect = build_forum_jump('', '', 1, '', 0, true, '', 'moveto');
         $return_url  = htmlspecialchars_uni($mybb->get_input('url'));
+        $cancel_url  = md_cancel_url(get_forum_link($fid));
 
         $bulk_threads_hint = ags_fmt($lang->moderation['hint_bulk_threads'], $thread_count);
+        $forum_meta = isset($forum['name']) ? md_meta('fa-folder', htmlspecialchars_uni($forum['name'])) : '';
 
-        $movethreads = <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - {$lang->moderation['move_threads']}</title>
-   
-    <style>
-        .method-option { cursor:pointer; border:1px solid #dee2e6; border-radius:.5rem; padding:1rem; margin-bottom:1rem; transition:all .2s; }
-        .method-option:hover { background-color:#f8f9fa; }
-        .method-option.selected { border-color:#0d6efd; background-color:#e7f1ff; }
-        .radio-circle { width:20px; height:20px; border:2px solid #0d6efd; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-left:1rem; }
-        .radio-circle-inner { width:10px; height:10px; border-radius:50%; background-color:#0d6efd; display:none; }
-        .method-option.selected .radio-circle-inner { display:block; }
-        .threads-badge { font-size:2.5rem; font-weight:bold; color:#0d6efd; }
-        .redirect-input { max-width:120px; display:inline-block; }
-    </style>
-</head>
-<body>
-<div class="container mt-3">
-    <div class="card">
-        <div class="card-header text-center bg-primary bg-opacity-10">
-            <i class="fas fa-exchange-alt fa-2x text-primary"></i>
-            <h2 class="h4 mt-2">{$lang->moderation['move_threads']}</h2>
-            <p class="mb-0 text-muted">{$lang->moderation['sub_move_threads']}</p>
-            <div class="mt-3">
-                <div class="threads-badge"><i class="fas fa-layer-group"></i> {$thread_count}</div>
-                <p class="text-muted small mb-0">{$lang->moderation['lbl_threads_selected']}</p>
-            </div>
-        </div>
-        <form action="moderation.php" method="post" id="multiMoveForm">
-            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-            <input type="hidden" name="action" value="do_multimovethreads" />
-            <input type="hidden" name="fid" value="{$fid}" />
-            <input type="hidden" name="threads" value="{$inlineids}" />
-            <input type="hidden" name="url" value="{$return_url}" />
-            <div class="card-body">
-                <div class="mb-4">
-                    <div class="card bg-light border-0">
-                        <div class="card-body">
-                            <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
-                            {$loginbox}
-                        </div>
-                    </div>
-                </div>
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    {$bulk_threads_hint}
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>{$lang->moderation['new_forum']}</label>
-                    {$forumselect}
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-bold"><i class="fas fa-cogs me-2 text-primary"></i>{$lang->moderation['method']}</label>
-                    <div class="method-option" onclick="selectMethod('move')">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-arrow-right fa-2x me-3 text-primary"></i>
-                            <div class="flex-grow-1"><div class="fw-bold">{$lang->moderation['method_move']}</div></div>
-                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
-                        </div>
-                        <input type="radio" name="method" value="move" class="d-none">
-                    </div>
-                    <div class="method-option selected" onclick="selectMethod('redirect')">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-link fa-2x me-3 text-primary"></i>
-                            <div class="flex-grow-1"><div class="fw-bold">{$lang->moderation['method_move_redirect']}</div></div>
-                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
-                        </div>
-                        <div class="mt-2">
-                            <input type="number" name="redirect_expire" class="form-control redirect-input" placeholder="{$lang->moderation['ph_days']}" min="1" max="365">
-                            <small class="text-muted ms-2">{$lang->moderation['redirect_expire_note']}</small>
-                        </div>
-                        <input type="radio" name="method" value="redirect" checked class="d-none">
-                    </div>
-                    <div class="method-option" onclick="selectMethod('copy')">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-copy fa-2x me-3 text-primary"></i>
-                            <div class="flex-grow-1"><div class="fw-bold">{$lang->moderation['method_copy']}</div></div>
-                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
-                        </div>
-                        <input type="radio" name="method" value="copy" class="d-none">
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-light text-end">
-                <a href="{$return_url}" class="btn btn-outline-secondary me-2"><i class="fas fa-arrow-left me-1"></i> {$lang->moderation['cancel']}</a>
-                <button type="submit" name="submit" class="btn btn-primary">
-                    <i class="fas fa-exchange-alt me-1"></i> {$lang->moderation['move_threads']}
-                </button>
-            </div>
-        </form>
-    </div>
+        $movethreads = md_page(
+            md_head('fa-right-left', 'primary', $lang->moderation['move_threads'], $lang->moderation['sub_move_threads'], $forum_meta,
+                md_kpi((string)$thread_count, $lang->moderation['lbl_threads_selected']))
+            . '<form action="moderation.php" method="post" id="multiMoveForm" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_multimovethreads" />
+    <input type="hidden" name="fid" value="' . $fid . '" />
+    <input type="hidden" name="threads" value="' . $inlineids . '" />
+    <input type="hidden" name="url" value="' . $return_url . '" />'
+            . md_actor_card()
+            . md_card('fa-folder-open', 'primary', $lang->moderation['new_forum'],
+                md_note('info', 'fa-circle-info', $bulk_threads_hint)
+                . '<div class="md-forum">' . $forumselect . '</div>
+<div class="md-label mt-3">' . $lang->moderation['method'] . '</div>
+<div class="md-grid">'
+                . md_check('radio', 'method', 'move', $lang->moderation['method_move'], false, '', 'fa-arrow-right')
+                . md_check('radio', 'method', 'redirect', $lang->moderation['method_move_redirect'], true, '', 'fa-link')
+                . md_check('radio', 'method', 'copy', $lang->moderation['method_copy'], false, '', 'fa-copy') . '
 </div>
-<script>
-function selectMethod(method) {
-    document.querySelectorAll('.method-option').forEach(o => { o.classList.remove('selected'); o.querySelector('input[type="radio"]').checked = false; });
-    const opt = [...document.querySelectorAll('.method-option')].find(o => o.querySelector('input[type="radio"]').value === method);
-    if (opt) { opt.classList.add('selected'); opt.querySelector('input[type="radio"]').checked = true; }
-}
-selectMethod('redirect');
-</script>
-</body>
-</html>
-HTML;
+<div class="md-inline mt-2">
+    <input type="number" name="redirect_expire" class="form-control md-days" placeholder="' . $lang->moderation['ph_days'] . '" min="1" max="365" />
+    <span class="md-hint">' . $lang->moderation['redirect_expire_note'] . '</span>
+</div>')
+            . md_submitbar($cancel_url, $lang->moderation['cancel'],
+                '<button type="submit" name="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-right-left me-1"></i>' . $lang->moderation['move_threads'] . '</button>')
+            . '</form>'
+        );
 
-        stdhead();
+        stdhead($lang->moderation['move_threads']);
+        md_assets();
         echo $movethreads;
-echo $_mod_assets;
-stdfoot();
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do move threads (inline) ─────────────────────────────────────────────
@@ -1316,6 +1291,7 @@ stdfoot();
 
     // ── Merge posts (inline) — show form ─────────────────────────────────────
     case 'multimergeposts':
+        if (!is_mod($usergroups)) error_no_permission();
         add_breadcrumb($lang->moderation['nav_multi_mergeposts']);
 
         $posts = $mybb->get_input('inlinetype') === 'search'
@@ -1350,11 +1326,9 @@ stdfoot();
         while ($post = $db->fetch_array($query)) {
             $postdate = my_datee('relative', $post['dateline']);
             $message  = $parser->parse_message($post['message'], $parser_options_default);
-            $postlist .= '<div class="mt-4 mb-4 border border-5 p-3 rounded">
-                ' . $lang->moderation['posted_by'] . ' ' . $post['username'] . ' <span class="text-muted">' . $postdate . '</span>
-                <input type="checkbox" class="form-check-input" checked="checked" name="mergepost[' . $post['pid'] . ']" value="1" />
-                <br /><br />' . $message . '
-            </div>';
+            // Имя раньше выводилось без экранирования (XSS)
+            $postlist .= md_post(htmlspecialchars_uni((string)$post['username']), $postdate, $message,
+                md_check('checkbox', 'mergepost[' . (int)$post['pid'] . ']', '1', '#' . (int)$post['pid'], true));
         }
 
         $inlineids  = implode('|', $posts);
@@ -1365,158 +1339,55 @@ stdfoot();
             : clearinline($tid, 'thread');
 
         $return_url = htmlspecialchars_uni($mybb->get_input('url'));
+        $cancel_url = md_cancel_url(get_thread_link($tid));
 
         $posts_selected_text = ags_fmt($lang->moderation['lbl_posts_selected'], $post_count);
 
+        $thread_meta = isset($thread['subject']) ? md_meta('fa-comments', '<a href="' . get_thread_link($tid) . '">' . $thread['subject'] . '</a>') : '';
+
+        $merge_preview = '<div class="md-mpreview">
+    <div class="md-label">' . $lang->moderation['lbl_preview'] . '</div>
+    <div class="md-bubble"><span class="md-avatar"></span><div class="md-bubble__txt">' . $lang->moderation['lbl_preview_first'] . '</div></div>
+    <div class="md-sep-hr" id="hrPreview"></div>
+    <div class="md-sep-nl d-none" id="newlinePreview"><i class="fa-solid fa-arrow-down me-1"></i>' . $lang->moderation['lbl_preview_newparagraph'] . '</div>
+    <div class="md-bubble"><span class="md-avatar"></span><div class="md-bubble__txt">' . $lang->moderation['lbl_preview_second'] . '</div></div>
+</div>';
+
+        $merge_page = md_page(
+            md_head('fa-shuffle', 'primary', $lang->moderation['merge_posts'], $lang->moderation['sub_merge_posts'], $thread_meta,
+                md_kpi((string)$post_count, $lang->moderation['step_posts_to_merge']))
+            . '<form action="moderation.php" method="post" id="mergePostsForm" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_multimergeposts" />
+    <input type="hidden" name="tid" value="' . $tid . '" />
+    <input type="hidden" name="url" value="' . $return_url . '" />'
+            . md_actor_card()
+            . md_card('fa-grip-lines', 'info', md_step(1, $lang->moderation['step_select_separator']),
+                '<div class="md-grid md-grid--2">'
+                . md_check('radio', 'sep', 'hr', $lang->moderation['horizontal_rule'], true, '', 'fa-minus', $lang->moderation['tip_sep_hr'])
+                . md_check('radio', 'sep', 'new_line', $lang->moderation['new_line'], false, '', 'fa-arrow-down', $lang->moderation['tip_sep_newline'])
+                . '</div>' . $merge_preview)
+            . md_card('fa-list-check', 'warning', md_step(2, $lang->moderation['step_posts_to_merge']),
+                '<div class="md-posts">' . $postlist . '</div>' . md_note('info', 'fa-circle-info', $lang->moderation['tip_merge_chrono']),
+                '', '<span class="st-badge st-soft-primary ms-auto">' . $posts_selected_text . '</span>')
+            . md_submitbar($cancel_url, $lang->moderation['btn_cancel_return'],
+                '<button type="submit" class="btn btn-primary st-pill" name="submit" value="' . $lang->moderation['merge_posts'] . '"><i class="fa-solid fa-shuffle me-1"></i>' . $lang->moderation['merge_posts'] . '</button>')
+            . '</form>
+<script src="' . $BASEURL . '/scripts/moderation-page.js?ver=1"></script>'
+        );
+
+        // Раньше тут не было stdfoot() и ассетов — страница обрывалась без подвала
         stdhead($lang->moderation['merge_posts']);
-        echo <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - {$lang->moderation['merge_posts']}</title>
-    <style>
-        .merge-header { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%) !important; color:white; border-radius:10px 10px 0 0; position:relative; overflow:hidden; }
-        .merge-header::after { content:''; position:absolute; inset:0; background:radial-gradient(circle at 85% -20%, rgba(255,255,255,.18), transparent 60%); }
-        .merge-icon { width:80px; height:80px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; }
-
-        .step-badge { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--bs-primary); color:white; font-size:.8rem; font-weight:700; margin-right:10px; flex-shrink:0; }
-        .step-title { display:flex; align-items:center; }
-
-        .option-card { border:2px solid #e9ecef; border-radius:12px; transition:all .2s ease; cursor:pointer; margin-bottom:15px; position:relative; }
-        .option-card:hover { border-color:#b6d4fe; transform:translateY(-2px); box-shadow:0 6px 16px rgba(13,110,253,.08); }
-        .option-card.selected { border-color:var(--bs-primary); background:rgba(13,110,253,.05); box-shadow:0 6px 16px rgba(13,110,253,.12); }
-        .option-check { position:absolute; top:12px; right:12px; width:22px; height:22px; border-radius:50%; background:var(--bs-primary); color:white; display:none; align-items:center; justify-content:center; font-size:.7rem; }
-        .option-card.selected .option-check { display:flex; }
-        .option-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-right:15px; flex-shrink:0; }
-        .hr-option .option-icon { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%); color:white; }
-        .newline-option .option-icon { background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%); color:white; }
-
-        .btn-merge { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%); border:none; padding:12px 30px; font-weight:600; font-size:1.1rem; transition:all .2s ease; }
-        .btn-merge:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(13,110,253,.35); }
-
-        .preview-area { background:#f8f9fa; border:1px solid #e9ecef; border-radius:12px; padding:24px; margin-top:16px; }
-        .preview-label { color:#6c757d; font-size:.78rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; font-weight:600; }
-        .preview-post { display:flex; gap:12px; align-items:flex-start; }
-        .preview-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--bs-primary),#6ea8fe); flex-shrink:0; }
-        .preview-bubble { background:white; border:1px solid #e9ecef; border-radius:10px; padding:10px 14px; font-size:.9rem; color:#495057; flex:1; }
-        .separator-preview { border-top:2px dashed var(--bs-primary); margin:18px 0 18px 46px; opacity:.6; }
-        .newline-preview { color:var(--bs-primary); font-size:.78rem; font-weight:600; margin:14px 0 14px 46px; }
-
-        .posts-count-pill { font-size:.85rem; padding:.4rem .8rem; }
-    </style>
-</head>
-<body>
-<div class="container mt-3">
-    <div class="card border-0 shadow-sm">
-        <div class="merge-header p-5">
-            <div class="text-center position-relative">
-                <div class="merge-icon"><i class="fas fa-shuffle fa-2x"></i></div>
-                <h1 class="h3 mb-2 fw-bold">{$lang->moderation['merge_posts']}</h1>
-                <p class="mb-0 opacity-75">{$lang->moderation['sub_merge_posts']}</p>
-            </div>
-        </div>
-        <form action="moderation.php" method="post">
-            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-            <input type="hidden" name="action" value="do_multimergeposts" />
-            <input type="hidden" name="tid" value="{$tid}" />
-            <input type="hidden" name="url" value="{$return_url}" />
-            <div class="card-body p-5">
-                <div class="mb-5">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
-                            {$loginbox}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-5">
-                    <h5 class="h6 mb-4 step-title"><span class="step-badge">1</span>{$lang->moderation['step_select_separator']}</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="option-card hr-option selected p-4" onclick="selectOption('hr')">
-                                <div class="option-check"><i class="fas fa-check"></i></div>
-                                <div class="d-flex align-items-center">
-                                    <div class="option-icon"><i class="fas fa-minus fa-lg"></i></div>
-                                    <div><h6 class="mb-1 fw-bold">{$lang->moderation['horizontal_rule']}</h6><p class="mb-0 text-muted small">{$lang->moderation['tip_sep_hr']}</p></div>
-                                </div>
-                                <input type="radio" name="sep" value="hr" checked style="display:none;" />
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="option-card newline-option p-4" onclick="selectOption('new_line')">
-                                <div class="option-check"><i class="fas fa-check"></i></div>
-                                <div class="d-flex align-items-center">
-                                    <div class="option-icon"><i class="fas fa-arrow-down fa-lg"></i></div>
-                                    <div><h6 class="mb-1 fw-bold">{$lang->moderation['new_line']}</h6><p class="mb-0 text-muted small">{$lang->moderation['tip_sep_newline']}</p></div>
-                                </div>
-                                <input type="radio" name="sep" value="new_line" style="display:none;" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="preview-area">
-                        <div class="preview-label">{$lang->moderation['lbl_preview']}</div>
-                        <div class="preview-post">
-                            <div class="preview-avatar"></div>
-                            <div class="preview-bubble">{$lang->moderation['lbl_preview_first']}</div>
-                        </div>
-                        <div class="separator-preview" id="hrPreview"></div>
-                        <div class="newline-preview d-none" id="newlinePreview"><i class="fas fa-arrow-down me-1"></i>{$lang->moderation['lbl_preview_newparagraph']}</div>
-                        <div class="preview-post">
-                            <div class="preview-avatar"></div>
-                            <div class="preview-bubble">{$lang->moderation['lbl_preview_second']}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <h5 class="h6 mb-4 step-title">
-                        <span class="step-badge">2</span>{$lang->moderation['step_posts_to_merge']}
-                        <span class="badge bg-primary posts-count-pill ms-2">{$posts_selected_text}</span>
-                    </h5>
-                    {$postlist}
-                    <div class="alert alert-info mt-3 mb-0">
-                        <i class="fas fa-info-circle me-2"></i>{$lang->moderation['tip_merge_chrono']}
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-light py-4">
-                <div class="d-flex justify-content-between align-items-center">
-                    <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
-                    <button type="submit" class="btn btn-merge text-white" name="submit" value="{$lang->moderation['merge_posts']}">
-                        <i class="fas fa-shuffle me-2"></i>{$lang->moderation['merge_posts']}
-                    </button>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-<script>
-function selectOption(sep) {
-    document.querySelectorAll('.option-card').forEach(function (card) {
-        card.classList.remove('selected');
-        card.querySelector('input[type="radio"]').checked = false;
-    });
-
-    const card = document.querySelector(sep === 'hr' ? '.hr-option' : '.newline-option');
-    card.classList.add('selected');
-    card.querySelector('input[type="radio"]').checked = true;
-
-    document.getElementById('hrPreview').classList.toggle('d-none', sep !== 'hr');
-    document.getElementById('newlinePreview').classList.toggle('d-none', sep !== 'new_line');
-}
-</script>
-</body>
-</html>
-HTML;
+        md_assets();
+        echo $merge_page;
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do merge posts (inline) ──────────────────────────────────────────────
     case 'do_multimergeposts':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
 
         $mergepost = $mybb->get_input('mergepost', MyBB::INPUT_ARRAY);
         if (count($mergepost) <= 1) stderr($lang->moderation['error_nomergeposts']);
@@ -1577,89 +1448,43 @@ HTML;
         $post_count  = count($posts);
         $split_warning = ags_fmt($lang->moderation['warn_split_posts'], $post_count);
 
-        stdhead($lang->moderation['split_thread']);
-        echo <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - {$lang->moderation['split_thread']}</title>
-    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/split.css">
-</head>
-<body>
-<div class="container mt-3">
-    <div class="split-card">
-        <div class="split-header">
-            <div class="split-icon"><i class="fas fa-arrows-split-up-and-left"></i></div>
-            <h1 class="h3 mb-2">{$lang->moderation['split_thread']}</h1>
-            <p class="mb-0 opacity-75">{$lang->moderation['sub_split_posts']}</p>
-            <div class="mt-4">
-                <div class="post-count"><i class="fas fa-comments"></i> <span id="postsCount">{$post_count}</span></div>
-                <p class="text-white opacity-75 mb-0">{$lang->moderation['lbl_posts_selected_split']}</p>
-            </div>
-        </div>
-        <form action="moderation.php" method="post" id="splitThreadForm">
-            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-            <input type="hidden" name="action" value="do_multisplitposts" />
-            <input type="hidden" name="tid" value="{$tid}" />
-            <input type="hidden" name="posts" value="{$inlineids}" />
-            <input type="hidden" name="url" value="{$return_url}" />
-            <div class="card-body p-4">
-                <div class="security-box">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
-                    {$loginbox}
-                </div>
-                <div class="info-box">
-                    <div class="d-flex">
-                        <i class="fas fa-info-circle fa-2x me-3 mt-1 text-primary"></i>
-                        <div>
-                            <h6 class="mb-2">{$lang->moderation['sec_split_info']}</h6>
-                            <p class="mb-0 small">{$lang->moderation['tip_split_info']}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="original-thread">
-                    <h6 class="fw-bold mb-2"><i class="fas fa-file-alt me-2 text-primary"></i>{$lang->moderation['sec_original_thread']}</h6>
-                    <div class="info-item">
-                        <div class="info-icon"><i class="fas fa-hashtag"></i></div>
-                        <div><div class="small text-muted">{$lang->moderation['lbl_thread_id']}</div><div class="fw-bold">#{$tid}</div></div>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-plus-circle me-2 text-primary"></i>{$lang->moderation['new_thread_info']}</h5>
-                    <div class="input-group-custom">
-                        <label class="form-label fw-bold text-primary">{$lang->moderation['new_subject']}</label>
-                        <input type="text" class="form-control form-control-custom" name="newsubject"
-                               value="{$lang->moderation['split_thread_subject']} {$thread['subject']}" required>
-                    </div>
-                    <div class="input-group-custom">
-                        <label class="form-label fw-bold text-primary">{$lang->moderation['new_forum']}</label>
-                        {$forumselect}
-                    </div>
-                </div>
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    {$split_warning}
-                </div>
-            </div>
-            <div class="card-footer bg-light py-4">
-                <div class="d-flex justify-content-between align-items-center">
-                    <a href="{$return_url}" class="btn btn-cancel text-white"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
-                    <button type="submit" class="btn btn-split text-white" name="submit" value="{$lang->moderation['split_thread']}">
-                        <i class="fas fa-arrows-split-up-and-left me-2"></i>{$lang->moderation['split_thread']}
-                    </button>
-                </div>
-            </div>
-        </form>
-    </div>
+        $cancel_url  = md_cancel_url(get_thread_link($tid));
+        $thread_link = get_thread_link($tid);
+
+        $splitposts_page = md_page(
+            md_head('fa-arrows-split-up-and-left', 'info', $lang->moderation['split_thread'], $lang->moderation['sub_split_posts'],
+                md_meta('fa-comments', '<a href="' . $thread_link . '">' . $thread['subject'] . '</a>'),
+                md_kpi('<span id="postsCount">' . $post_count . '</span>', $lang->moderation['lbl_posts_selected_split']))
+            . '<form action="moderation.php" method="post" id="splitThreadForm" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_multisplitposts" />
+    <input type="hidden" name="tid" value="' . $tid . '" />
+    <input type="hidden" name="posts" value="' . $inlineids . '" />
+    <input type="hidden" name="url" value="' . $return_url . '" />'
+            . md_actor_card()
+            . md_note('info', 'fa-circle-info', $lang->moderation['tip_split_info'], $lang->moderation['sec_split_info'])
+            . md_card('fa-file-lines', 'muted', $lang->moderation['sec_original_thread'],
+                '<div class="st-rows">' . md_row($lang->moderation['lbl_thread_id'], '<a href="' . $thread_link . '">#' . $tid . '</a>') . '</div>')
+            . md_card('fa-circle-plus', 'primary', $lang->moderation['new_thread_info'],
+                '<label class="md-label" for="md_newsubject">' . $lang->moderation['new_subject'] . '</label>
+<div class="input-group st-subject mb-3">
+    <span class="input-group-text"><i class="fa-solid fa-heading"></i></span>
+    <input type="text" class="form-control" id="md_newsubject" name="newsubject" value="' . $lang->moderation['split_thread_subject'] . ' ' . $thread['subject'] . '" required />
 </div>
-<script src="{$BASEURL}/scripts/split-thread.js?ver=22"></script>
-</body>
-</html>
-HTML;
-echo $_mod_assets;
-stdfoot();
+<div class="md-label">' . $lang->moderation['new_forum'] . '</div>
+<div class="md-forum">' . $forumselect . '</div>')
+            . md_note('warning', 'fa-triangle-exclamation', $split_warning)
+            . md_submitbar($cancel_url, $lang->moderation['btn_cancel_return'],
+                '<button type="submit" class="btn btn-primary st-pill" name="submit" value="' . $lang->moderation['split_thread'] . '"><i class="fa-solid fa-arrows-split-up-and-left me-1"></i>' . $lang->moderation['split_thread'] . '</button>')
+            . '</form>
+<script src="' . $BASEURL . '/scripts/split-thread.js?ver=23"></script>'
+        );
+
+        stdhead($lang->moderation['split_thread']);
+        md_assets();
+        echo $splitposts_page;
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do split posts (inline) ──────────────────────────────────────────────
@@ -1742,183 +1567,55 @@ stdfoot();
         $posts_selected_text = ags_fmt($lang->moderation['lbl_posts_selected'], $post_count);
         $move_posts_count    = ags_fmt($lang->moderation['lbl_posts_count'], $post_count);
 
-        stdhead();
-        build_breadcrumb();
-        echo <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$SITENAME} - {$lang->moderation['move_posts']}</title>
-    <style>
-        .move-header { background: linear-gradient(135deg, var(--bs-primary) 0%, #0b5ed7 100%); color: white; border-radius: 10px 10px 0 0; }
-        .move-icon { width:80px; height:80px; background:rgba(255,255,255,.2); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; }
-        .url-input-container { position:relative; margin-bottom:25px; }
-        .url-input { padding-left:45px; padding-right:45px; border:2px solid #e9ecef; border-radius:10px; transition:all .3s; }
-        .url-input:focus { border-color:var(--bs-primary); box-shadow:0 0 0 .2rem rgba(13,110,253,.25); }
-        .url-icon { position:absolute; left:15px; top:50%; transform:translateY(-50%); color:var(--bs-primary); z-index:4; }
-        .url-clear { position:absolute; right:15px; top:50%; transform:translateY(-50%); color:#6c757d; cursor:pointer; opacity:.5; transition:opacity .2s; z-index:4; }
-        .url-clear:hover { opacity:1; color:#dc3545; }
-        .info-box { background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); border-left:4px solid var(--bs-primary); border-radius:8px; padding:20px; margin-bottom:25px; }
-        .info-icon { width:48px; height:48px; background:rgba(13,110,253,.1); border-radius:12px; display:flex; align-items:center; justify-content:center; margin-right:15px; color:var(--bs-primary); }
-        .stats-box { background:white; border:2px solid #e9ecef; border-radius:10px; padding:15px; margin-bottom:20px; }
-        .stat-item { display:flex; align-items:center; margin-bottom:10px; }
-        .stat-item:last-child { margin-bottom:0; }
-        .stat-icon { width:36px; height:36px; background:#f8f9fa; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-right:12px; color:var(--bs-primary); }
-        .stat-label { font-size:.9rem; color:#6c757d; }
-        .stat-value { font-weight:600; color:#495057; }
-        .btn-move { background:linear-gradient(135deg,var(--bs-primary) 0%,#0b5ed7 100%); border:none; padding:12px 30px; font-weight:600; font-size:1.1rem; transition:all .3s; }
-        .btn-move:hover { transform:translateY(-2px); box-shadow:0 5px 20px rgba(13,110,253,.3); }
-        .post-count-badge { background:linear-gradient(135deg,var(--bs-primary) 0%,#0b5ed7 100%); color:white; padding:5px 15px; border-radius:20px; font-size:.9rem; font-weight:600; display:inline-block; margin-left:10px; }
-        .thread-preview { background:white; border:2px dashed #dee2e6; border-radius:10px; padding:20px; margin-top:20px; display:none; }
-        .thread-preview.show { display:block; }
-        .thread-example { font-size:.85rem; color:#6c757d; margin-top:5px; padding:8px 12px; background:#f8f9fa; border-radius:6px; border-left:3px solid var(--bs-primary); }
-    </style>
-</head>
-<body>
-<div class="container mt-3">
-    <div class="card">
-        <div class="move-header p-5">
-            <div class="text-center">
-                <div class="move-icon"><i class="fas fa-arrow-right fa-2x"></i></div>
-                <h1 class="h3 mb-2">{$lang->moderation['move_posts']}</h1>
-                <p class="mb-0 opacity-75">{$lang->moderation['sub_move_posts']}</p>
-            </div>
-        </div>
-        <form action="moderation.php" method="post" id="moveForm">
-            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-            <input type="hidden" name="action" value="do_multimoveposts" />
-            <input type="hidden" name="tid" value="{$tid}" />
-            <input type="hidden" name="posts" value="{$inlineids}" />
-            <input type="hidden" name="url" value="{$return_url}" />
-            <div class="card-body p-5">
-                <div class="mb-5">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <h5 class="h6 mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>{$lang->moderation['sec_security']}</h5>
-                            {$loginbox}
-                        </div>
-                    </div>
-                </div>
-                <div class="info-box mb-4">
-                    <div class="d-flex align-items-start">
-                        <div class="info-icon"><i class="fas fa-info-circle fa-lg"></i></div>
-                        <div>
-                            <h5 class="h6 mb-2">{$lang->moderation['sec_how_to_move']}</h5>
-                            <p class="mb-0 text-muted small">{$lang->moderation['tip_move_posts']}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="stats-box mb-4">
-                    <div class="stat-item">
-                        <div class="stat-icon"><i class="fas fa-comments"></i></div>
-                        <div><div class="stat-label">{$lang->moderation['lbl_posts_to_move']}</div><div class="stat-value">{$move_posts_count}</div></div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-icon"><i class="fas fa-hashtag"></i></div>
-                        <div><div class="stat-label">{$lang->moderation['lbl_current_tid']}</div><div class="stat-value">#{$tid}</div></div>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-bold mb-3">
-                        <i class="fas fa-link me-2 text-primary"></i>{$lang->moderation['lbl_dest_url']}
-                        <span class="post-count-badge">{$posts_selected_text}</span>
-                    </label>
-                    <div class="url-input-container">
-                        <i class="fas fa-link url-icon"></i>
-                        <input type="text" class="form-control url-input" name="threadurl" id="threadUrl"
-                               placeholder="{$lang->moderation['ph_thread_url']}" autocomplete="off" required>
-                        <i class="fas fa-times url-clear" id="clearUrl" onclick="document.getElementById('threadUrl').value='';document.getElementById('threadPreview').classList.remove('show');"></i>
-                    </div>
-                    <div class="thread-example">
-                        <i class="fas fa-lightbulb me-2 text-warning"></i>
-                        <strong>{$lang->moderation['lbl_example']}</strong> https://example.com/forum/showthread.php?tid=456
-                    </div>
-                    <div class="thread-preview" id="threadPreview">
-                        <div class="preview-title d-flex align-items-center fw-bold mb-2">
-                            <i class="fas fa-eye me-2 text-primary"></i>{$lang->moderation['lbl_thread_preview']}
-                        </div>
-                        <div class="preview-content text-muted" id="previewContent">{$lang->moderation['lbl_preview_empty']}</div>
-                    </div>
-                </div>
-                <div class="alert alert-warning">
-                    <div class="d-flex">
-                        <i class="fas fa-exclamation-triangle fa-lg me-3 mt-1 text-warning"></i>
-                        <div>
-                            <h6 class="alert-heading mb-2">{$lang->moderation['sec_important_notes']}</h6>
-                            <ul class="mb-0 small">
-                                <li>{$lang->moderation['hint_move_note_1']}</li>
-                                <li>{$lang->moderation['hint_move_note_2']}</li>
-                                <li>{$lang->moderation['hint_move_note_3']}</li>
-                                <li>{$lang->moderation['hint_move_note_4']}</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-light py-4">
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
-                    <div class="mb-3 mb-md-0">
-                        <a href="{$return_url}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>{$lang->moderation['btn_cancel_return']}</a>
-                    </div>
-                    <div class="d-flex gap-3">
-                        <button type="button" class="btn btn-outline-primary" id="validateBtn">
-                            <i class="fas fa-check-circle me-2"></i>{$lang->moderation['btn_validate_url']}
-                        </button>
-                        <button type="submit" class="btn btn-move text-white" name="submit" value="{$lang->moderation['move_posts']}">
-                            <i class="fas fa-arrow-right me-2"></i>{$lang->moderation['move_posts']}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </form>
-    </div>
+        $cancel_url  = md_cancel_url(get_thread_link($tid));
+        $thread_link = get_thread_link($tid);
+        $example_url = htmlspecialchars_uni($BASEURL) . '/showthread.php?tid=456';
+
+        $notes = '<ul class="md-list">'
+            . '<li>' . $lang->moderation['hint_move_note_1'] . '</li>'
+            . '<li>' . $lang->moderation['hint_move_note_2'] . '</li>'
+            . '<li>' . $lang->moderation['hint_move_note_3'] . '</li>'
+            . '<li>' . $lang->moderation['hint_move_note_4'] . '</li></ul>';
+
+        $moveposts_page = md_page(
+            md_head('fa-arrow-right-to-bracket', 'primary', $lang->moderation['move_posts'], $lang->moderation['sub_move_posts'],
+                md_meta('fa-comments', '<a href="' . $thread_link . '">' . $thread['subject'] . '</a>'))
+            . '<div class="md-kpis">'
+                . md_kpi((string)$post_count, $lang->moderation['lbl_posts_to_move'])
+                . md_kpi('#' . $tid, $lang->moderation['lbl_current_tid'], 'muted')
+            . '</div>'
+            . '<form action="moderation.php" method="post" id="moveForm" class="md-form">
+    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    <input type="hidden" name="action" value="do_multimoveposts" />
+    <input type="hidden" name="tid" value="' . $tid . '" />
+    <input type="hidden" name="posts" value="' . $inlineids . '" />
+    <input type="hidden" name="url" value="' . $return_url . '" />'
+            . md_actor_card()
+            . md_note('info', 'fa-circle-info', $lang->moderation['tip_move_posts'], $lang->moderation['sec_how_to_move'])
+            . md_card('fa-link', 'primary', $lang->moderation['lbl_dest_url'],
+                '<div class="input-group st-subject">
+    <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
+    <input type="text" class="form-control" name="threadurl" id="threadUrl" placeholder="' . $lang->moderation['ph_thread_url'] . '" autocomplete="off" required />
+    <button type="button" class="btn btn-outline-secondary" id="clearUrl" aria-label="' . $lang->moderation['cancel'] . '"><i class="fa-solid fa-xmark"></i></button>
 </div>
-<script>
-function t(key, fallback, ...args) {
-    let s = (typeof AGS_LANG === 'object' && AGS_LANG !== null && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
-    args.forEach(function (a, i) { s = s.split('{' + (i + 1) + '}').join(String(a)); });
-    return s;
-}
-document.getElementById('validateBtn')?.addEventListener('click', function() {
-    const url = document.getElementById('threadUrl').value.trim();
-    const preview = document.getElementById('threadPreview');
-    const content = document.getElementById('previewContent');
-    if (!url) { alert(t('enter_url', 'Please enter a thread URL first.')); return; }
-    const tidMatch = url.match(/[?&]tid=(\d+)/) || url.match(/thread-(\d+)/);
-    preview.classList.add('show');
-    content.textContent = '';
-    if (tidMatch) {
-        const spinner = document.createElement('i');
-        spinner.className = 'fas fa-spinner fa-spin me-2';
-        const idEl = document.createElement('strong');
-        idEl.textContent = tidMatch[1];
-        const parts = t('loading_thread', 'Loading thread info... Thread ID: {1}').split('{1}');
-        content.appendChild(spinner);
-        content.appendChild(document.createTextNode(parts[0]));
-        content.appendChild(idEl);
-        if (parts.length > 1) content.appendChild(document.createTextNode(parts.slice(1).join('')));
-    } else {
-        const wrap = document.createElement('span');
-        wrap.className = 'text-danger';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-times me-1';
-        wrap.appendChild(icon);
-        wrap.appendChild(document.createTextNode(t('bad_url', 'Could not find thread ID in URL. Please check the URL format.')));
-        content.appendChild(wrap);
-    }
-});
-document.getElementById('clearUrl')?.addEventListener('click', function() {
-    document.getElementById('threadUrl').value = '';
-    document.getElementById('threadPreview').classList.remove('show');
-});
-</script>
-</body>
-</html>
-HTML;
-echo $_mod_assets;
-stdfoot();
+<div class="md-hint md-example"><i class="fa-solid fa-lightbulb me-1"></i><strong>' . $lang->moderation['lbl_example'] . '</strong> <span class="md-break">' . $example_url . '</span></div>
+<div class="md-preview" id="threadPreview">
+    <div class="md-label"><i class="fa-solid fa-eye me-1"></i>' . $lang->moderation['lbl_thread_preview'] . '</div>
+    <div class="md-preview__body" id="previewContent">' . $lang->moderation['lbl_preview_empty'] . '</div>
+</div>', '', '<span class="st-badge st-soft-primary ms-auto">' . $posts_selected_text . '</span>')
+            . md_note('warning', 'fa-triangle-exclamation', $notes, $lang->moderation['sec_important_notes'])
+            . md_submitbar($cancel_url, $lang->moderation['btn_cancel_return'],
+                '<button type="button" class="btn btn-outline-primary st-pill" id="validateBtn"><i class="fa-solid fa-circle-check me-1"></i>' . $lang->moderation['btn_validate_url'] . '</button>
+        <button type="submit" class="btn btn-primary st-pill btn-move" name="submit" value="' . $lang->moderation['move_posts'] . '"><i class="fa-solid fa-arrow-right me-1"></i>' . $lang->moderation['move_posts'] . '</button>')
+            . '</form>'
+        );
+
+        stdhead($lang->moderation['move_posts']);
+        md_assets();
+        build_breadcrumb();
+        echo $moveposts_page;
+        echo $_mod_assets;
+        stdfoot();
         break;
 
     // ── Do move posts (inline) ───────────────────────────────────────────────

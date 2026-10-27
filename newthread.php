@@ -9,6 +9,7 @@ define('IN_FORUM', true);
 
 require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
+require_once INC_PATH . '/functions_compose.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_subscription_method.php';
@@ -59,7 +60,7 @@ if (!$forum) { stderr($lang->global['error_invalidforum'] ?? 'Invalid forum.', $
 
 
 build_forum_breadcrumb($fid);
-add_breadcrumb('New Thread');
+add_breadcrumb($lang->newthread['nav_newthread']);
 
 $forumpermissions = forum_permissions($fid);
 
@@ -148,42 +149,11 @@ if ($enableattachments == 1
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
         if (isset($ret['success'])) {
-            $attachment = ['aid' => '{1}', 'icon' => '{2}', 'filename' => '{3}', 'size' => '{4}'];
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post"
-                onclick="(function(){var a=' . $attachment['aid'] . ';var t=\'[attachment=\'+a+\']\';
-                var e=document.getElementById(\'message\');if(e)e.value+=t;})()" />';
-            
-			
-			$attach_rem_options = '
-			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
-			
-			';
-            
-			
-			$attach_mod_options = '';
-            
-			$attemplate = '
-			
-			
-			<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-		
-	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
-		
-	</div>
-	<div class="col-lg-4 text-lg-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>';
-			
-			
-			
-			
-			
-            $ret['template'] = $attemplate;
+            // Шаблон для post.js: {1}=aid, {2}=иконка, {3}=имя файла, {4}=размер
+            $ret['template'] = compose_attach_item(
+                '{1}', '{2}', '{3}', '{4}',
+                compose_att_insert('{1}', 'Insert Into Post') . compose_att_remove('{1}', $lang->post3['btn_remove_attachment'])
+            );
             $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]);
             $usage = $db->fetch_array($query);
             $ret['usage'] = mksize($usage['ausage']);
@@ -308,21 +278,21 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
         mark_thread_read($tid, $fid);
 
         if ($new_thread['savedraft'] == 1) {
-            $redirect_newthread = 'draft_saved';
+            $redirect_newthread = $lang->newthread['draft_saved'];
             $url = 'usercp.php?action=drafts';
         } elseif ($mybb->get_input('postpoll', MyBB::INPUT_INT) && $forumpermissions['canpostpolls']) {
             $url = "polls.php?action=newpoll&tid=$tid&polloptions=" . $mybb->get_input('numpolloptions', MyBB::INPUT_INT);
-            $redirect_newthread .= 'redirect_newthread_poll';
+            $redirect_newthread .= $lang->newthread['redirect_newthread'] . $lang->newthread['redirect_newthread_poll'];
         } elseif (!$visible) {
-            $redirect_newthread .= 'The administrator has specified that all new threads require moderation. You will now be returned to the thread listing';
+            $redirect_newthread .= $lang->newthread['redirect_newthread'] . $lang->newthread['redirect_newthread_moderation'];
             $url = get_forum_link($fid);
             $force_redirect = true;
         } elseif ($visible == 1 && $forumpermissions['canviewthreads'] != 1) {
-            $redirect_newthread .= 'You do not have permission to view threads in this forum.';
+            $redirect_newthread .= $lang->newthread['redirect_newthread'] . $lang->newthread['redirect_newthread_unviewable'];
             $url = get_forum_link($fid);
             $force_redirect = true;
         } else {
-            $redirect_newthread .= 'You will now be taken to the new thread';
+            $redirect_newthread .= $lang->newthread['redirect_newthread'] . $lang->newthread['redirect_newthread_thread'];
             $url = get_thread_link($tid);
         }
 
@@ -332,9 +302,6 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
 
         $plugins->run_hooks('newthread_do_newthread_end');
 
-        if (!$mybb->get_input('postpoll', MyBB::INPUT_INT)) {
-            $redirect_newthread .= sprintf('redirect_return_forum', get_forum_link($fid));
-        }
         redirect($url, $redirect_newthread, '', $force_redirect);
     }
 }
@@ -413,11 +380,11 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
                     $multiquote_deselect = $lang->newthread['multiquote_external_deselect'] ?? '';
                     $multiquote_quote    = $external_quotes === 1 ? ($lang->newthread['multiquote_external_one_quote'] ?? '') : ($lang->newthread['multiquote_external_quote'] ?? '');
 
-                    $multiquote_external = '
-                    <div id="multiquote_unloaded"><span class="smalltext">' . $multiquote_text . '
-                        <a href="./newthread.php?fid=' . $fid . '&amp;load_all_quotes=1" onclick="return Post.loadMultiQuotedAll();">' . $multiquote_quote . '</a>,
-                        <a href="javascript:void(0)" onclick="Post.clearMultiQuoted(); return false;">' . $multiquote_deselect . '</a>
-                    </span></div>';
+                    $multiquote_external = compose_notice(
+                        $multiquote_text . ' <a href="./newthread.php?fid=' . $fid . '&amp;load_all_quotes=1" onclick="return Post.loadMultiQuotedAll();">' . $multiquote_quote . '</a>, '
+                        . '<a href="javascript:void(0)" onclick="Post.clearMultiQuoted(); return false;">' . $multiquote_deselect . '</a>',
+                        'info', 'fa-quote-left', 'multiquote_unloaded'
+                    );
                 }
             }
         }
@@ -544,57 +511,28 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
 
     $posthash = htmlspecialchars_uni($mybb->get_input('posthash'));
 
-    // ── Post options ──────────────────────────────────────────────────────────
-    $postoptions = '<a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-postop" role="button">
-               <i class="fa-solid fa-gear"></i> &nbsp;Post Options:
-           </a>';
+    // ── Options: subscription, mod, attachments, poll ─────────────────────────
+    $is_mod = is_mod($usergroups);
 
-    // ── Mod options ───────────────────────────────────────────────────────────
-    $modoptions  = '';
-    $closeoption = '';
-    $stickoption = '';
-    $is_mod     = is_mod($usergroups);
+    $toggles = compose_toggle('collapse-postop', 'fa-gear', $lang->newthread['post_options']);
+    $panels  = compose_panel(
+        'collapse-postop', 'fa-bell', 'st-soft-primary', $lang->global['thread_subscription_method'],
+        compose_subscription($subscribe, $nonesubscribe, $emailsubscribe, $pmsubscribe),
+        $lang->global['thread_subscription_method_desc']
+    );
 
     if ($is_mod) {
         $modopts     = $mybb->get_input('modoptions', MyBB::INPUT_ARRAY);
         $closecheck  = ($modopts['closethread'] ?? 0) == 1 ? 'checked="checked"' : '';
         $stickycheck = ($modopts['stickthread']  ?? 0) == 1 ? 'checked="checked"' : '';
 
-        $closeoption = '<input type="checkbox" class="form-check-input" name="modoptions[closethread]" value="1" ' . $closecheck . ' />
-            &nbsp;<b>Close Thread</b>: prevent further posting in this thread';
-
-        $stickoption = '<br /><input type="checkbox" class="form-check-input" name="modoptions[stickthread]" value="1" ' . $stickycheck . ' />
-            &nbsp;<b>Stick Thread:</b> stick this thread to the top of the forum';
-
-        if ($closeoption || $stickoption) {
-            $modoptions = '&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-modop" role="button">
-                <i class="fa-solid fa-screwdriver-wrench"></i> &nbsp;Moderator Options:
-            </a>&nbsp;&nbsp;';
-        }
+        $toggles .= compose_toggle('collapse-modop', 'fa-screwdriver-wrench', $lang->newthread['mod_options']);
+        $panels  .= compose_panel(
+            'collapse-modop', 'fa-shield-halved', 'st-soft-danger', $lang->newthread['mod_options'],
+            compose_check('checkbox', 'modoptions[closethread]', '1', $closecheck, $lang->newthread['close_thread'])
+            . compose_check('checkbox', 'modoptions[stickthread]', '1', $stickycheck, $lang->newthread['stick_thread'])
+        );
     }
-
-   
-	 $subscriptionmethod = '
-	
-	
-	<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->global['thread_subscription_method'].'</div>
-<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->global['thread_subscription_method'].'
-</div>
-<div class="col">
-	<div class="text-desc mb-3">'.$lang->global['thread_subscription_method_desc'].'</div>
-	<label class="form-check-label"><input type="radio" class="form-check-input" name="postoptions[subscriptionmethod]" '.$subscribe.'value="" /> '.$lang->global['no_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$nonesubscribe.'value="none" /> '.$lang->global['no_subscribe_notification'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$emailsubscribe.'value="email"/> '.$lang->global['instant_email_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$pmsubscribe.'value="pm" /> '.$lang->global['instant_pm_subscribe'].'</label>
-</div>
-</div>';
-	
-	
-	
-	
-	
 
     // ── Attachments box ───────────────────────────────────────────────────────
     $attachbox = '';
@@ -615,72 +553,15 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
             $attachment['size']     = mksize($attachment['filesize']);
             $attachment['icon']     = get_attachment_icon(get_extension($attachment['filename']));
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
+            $aid                    = (string)(int)$attachment['aid'];
+            $unapproved             = $attachment['visible'] != 1;
 
-            $aid = (int)$attachment['aid'];
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn_' . $aid . '"
-                onclick="(function(){var t=\'[attachment=' . $aid . ']\';var e=document.getElementById(\'message\');if(e)e.value+=t;})()" />';
-
-              $attach_rem_options = '
-			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
-			
-			';
-			
-			
-			
-            $attach_mod_options = '';
-
-            if ($attachment['visible'] != 1) {
-                
-				$attachments .= '
-				
-				<div class="alert bg-danger border-0 mt-2" id="attachment_'.$attachment['aid'].'">
-<div class="row">
-<div class="col-8 text-start">
-		
-		'.$attachment['icon'].' <a href="attachment.php?aid='.$attachment['aid'].'" target="_blank">'.$attachment['filename'].'</a> ('.$attachment['size'].') 
-		
-	</div>
-	<div class="col-4 text-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>';
-				
-				
-				
-				
-				
-				
-            } else {
-                
-				
-				$attachments .= '
-				
-				
-				<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-		
-	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
-		
-	</div>
-	<div class="col-lg-4 text-lg-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>';
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-            }
+            $attachments .= compose_attach_item(
+                $aid, $attachment['icon'], $attachment['filename'], $attachment['size'],
+                compose_att_insert($aid, 'Insert Into Post') . compose_att_remove($aid, $lang->post3['btn_remove_attachment']),
+                $unapproved,
+                $unapproved ? 'attachment.php?aid=' . $aid : ''
+            );
             $attachcount++;
         }
 
@@ -692,100 +573,49 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
         $friendlyquota = $usergroups['attachquota'] == 0 ? 'unlimited' : mksize($usergroups['attachquota'] * 1024);
         $attach_quota  = sprintf($lang->newthread['attach_quota'], $friendlyquota);
 
-        $link_viewattachments = '';
-        if ($usage['ausage'] !== null) {
-            $friendlyusage = mksize($usage['ausage']);
-            $attach_usage  = sprintf('attach_usage', $friendlyusage);
-            
-			
-			$link_viewattachments = '<a href="usercp.php?action=attachments">'.$lang->global['view_attachments'].'</a>';
-			
-			
-        } else {
-            $attach_usage = '';
-        }
+        $link_viewattachments = $usage['ausage'] !== null
+            ? '<a href="usercp.php?action=attachments">' . $lang->global['view_attachments'] . '</a>'
+            : '';
 
-       
-        $attach_add_options = '';
-        if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach)) {
-            $attach_add_options = '<button type="submit" class="btn btn-primary" name="newattachment" value="Add Attachment" tabindex="13">
-                <i class="fa-solid fa-upload"></i> &nbsp;Add Attachment</button>';
-        }
+        $attach_buttons = compose_attach_buttons(
+            $lang->post3['btn_add_attachment'],
+            $lang->post3['btn_update_attachment'],
+            $maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach),
+            ($usergroups['caneditattachments'] || $forumpermissions['caneditattachments']) && $attachcount > 0
+        );
 
-        $attach_update_options = '';
-        if (($usergroups['caneditattachments'] || $forumpermissions['caneditattachments']) && $attachcount > 0) {
-            $attach_update_options = '<button type="submit" class="btn btn-primary" name="updateattachment" value="Update Attachment" tabindex="12">
-                <i class="fa-solid fa-check"></i> &nbsp;Update Attachment</button>';
-        }
+        $attachbox = compose_attachbox($attach_quota, $link_viewattachments, $lang->post3['lbl_new_attachment'], $attach_buttons, $attachments);
 
-        if ($attach_add_options || $attach_update_options) {
-            
-			
-			$newattach = '
-			<div class="row mb-2">
-	<div class="col-12">
-
-		<div id="upload_bar" style="background: #0066A2; height: 5px; width: 0%;"></div>
-		<div id="dropzone" style="padding: 30px 0; background: #f0faf6; cursor: pointer; border-radius: 5px; text-align: center; width:100%">
-			<i class="fas fa-paperclip"></i>
-			<div style="pointer-events: none;"></div>
-			
-		</div>
-	</div>
-</div>
-
-<label for="attachments[]">'.$lang->post3['lbl_new_attachment'].'</label>
-<div class="alert bg-nav mb-0">
-<input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
-</div>
-<div class="mt-2">
-'.$attach_add_options.' &nbsp;'.$attach_update_options.'
-</div>';
-			
-			
-			
-			
-        }
-        
-		
-		$attachbox = '
-		
-		<div class="card border-0">
-<div class="pb-3 border-bottom text-muted mb-3">'.$attach_quota.'</div>
-'.$newattach.'
-'.$attachments.'
-</div>';
-        
-		
-		
+        $toggles .= compose_toggle('collapse-attach', 'fa-paperclip', $lang->newthread['attachments']);
+        $panels  .= compose_panel('collapse-attach', 'fa-paperclip', 'st-soft-info', $lang->newthread['attachments'], $attachbox);
     }
+
+    // ── Poll ──────────────────────────────────────────────────────────────────
+    $maxpolloptions = '10';
+    $max_options    = sprintf($lang->newthread['max_options'], $maxpolloptions);
+
+    $toggles .= compose_toggle('collapse-pollop', 'fa-square-poll-vertical', $lang->newthread['poll']);
+    $panels  .= compose_panel(
+        'collapse-pollop', 'fa-square-poll-vertical', 'st-soft-warning', $lang->newthread['poll'],
+        compose_check('checkbox', 'postpoll', '1', $postpollchecked, $lang->newthread['poll_check'])
+        . '<div class="cp-pollnum">'
+        . '<label class="form-label small mb-1" for="cp_numpolloptions">' . $lang->newthread['num_options'] . '</label>'
+        . '<div class="d-flex flex-wrap align-items-center gap-2">'
+        . '<input type="number" min="2" max="' . $maxpolloptions . '" class="form-control form-control-sm" name="numpolloptions" id="cp_numpolloptions" value="' . $numpolloptions . '" />'
+        . '<span class="st-meta">' . $max_options . '</span></div></div>',
+        $lang->newthread['poll_desc']
+    );
 
     // ── Save draft button ─────────────────────────────────────────────────────
     $savedraftbutton = $CURUSER['id']
-        ? '<button type="submit" class="btn-thread ms-2" name="savedraft" value="Save as Draft">
-               <i class="fa-regular fa-note-sticky"></i> &nbsp;Save as Draft
-           </button>'
+        ? '<button type="submit" class="btn btn-outline-secondary st-pill" name="savedraft" value="Save as Draft">'
+          . '<i class="fa-regular fa-note-sticky me-1"></i>Save as Draft</button>'
         : '';
-
-    // ── Poll box ──────────────────────────────────────────────────────────────
-    $maxpolloptions = '10';
-    $max_options    = sprintf($lang->newthread['max_options'], $maxpolloptions);
-   
-    $pollbox = '
-
-	&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-pollop" role="button"><i class="fa-solid fa-circle-plus"></i> &nbsp;'.$lang->newthread['poll'].'</a>&nbsp;&nbsp;
-
-	';
 
     // ── Moderation notice ─────────────────────────────────────────────────────
     $moderation_notice = '';
     if ($CURUSER['moderateposts'] == 1) {
-        $moderation_text = $lang->newthread['moderation_user_posts'];
-        
-		
-		$moderation_notice = '<div class="red_alert">'.$moderation_text.'</div>';
-		
-		
+        $moderation_notice = compose_notice($lang->newthread['moderation_user_posts']);
     }
 
     $php_max_upload_size  = get_php_upload_limit();
@@ -801,9 +631,8 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
         }
     }
     $ags_lang_json = json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-   
-   
-   $post_javascript = '
+
+    $post_javascript = '
 <script type="text/javascript">
 const AGS_LANG = '.$ags_lang_json.';
 lang.add_attachment = AGS_LANG.add_attachment;
@@ -822,9 +651,6 @@ mybb_max_file_uploads = '.$maxattachments.';
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1833"></script>';
-   
-   
-   
 
     $plugins->run_hooks('newthread_end');
 
@@ -832,178 +658,55 @@ mybb_max_file_uploads = '.$maxattachments.';
     $newthread_in   = sprintf($lang->newthread['newthread_in'], $forum['name']);
 
     stdhead($newthread_in);
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=6">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/compose.css?ver=1">';
+    echo postbit_css_link();
     build_breadcrumb();
-    
-	
-	$newthread = '
-	
-	<html>
-<head>
-<title>'.$lang->newthread['newthread_in'].'</title>
 
+    $head = compose_head(
+        'fa-pen-to-square', 'st-soft-success', $lang->newthread['post_new_thread'],
+        compose_meta('fa-folder-open', '<a href="' . get_forum_link($fid) . '">' . htmlspecialchars_uni($forum['name']) . '</a>')
+        . ($CURUSER['id'] ? compose_meta('fa-user', $CURUSER['username']) : '')
+    );
 
-'.$post_javascript.'
+    $submitbar = compose_submitbar(
+        '<button type="submit" class="btn btn-outline-secondary st-pill" name="previewpost" value="' . $lang->newthread['preview_post'] . '" tabindex="5">'
+        . '<i class="fa-solid fa-eye me-1"></i>' . $lang->newthread['preview_post'] . '</button>' . $savedraftbutton,
+        '<button type="submit" class="btn btn-primary st-pill px-4" name="post_thread" value="' . $lang->newthread['post_thread'] . '" tabindex="4" accesskey="s">'
+        . '<i class="fa-solid fa-paper-plane me-1"></i>' . $lang->newthread['post_thread'] . '</button>'
+    );
 
-</head>
-<body>
-	<div class="container-md">		
-'.$preview.'
-'.$thread_errors.'
-'.$attacherror.'
-'.$moderation_notice.'
-		
+    echo $post_javascript . compose_insert_script() . '
+<div class="container-md st-page cp-page">
+' . $head . '
+' . compose_preview($preview, $lang->newthread['preview_post']) . '
+' . $thread_errors . $attacherror . $moderation_notice . '
+<form action="newthread.php?fid=' . $fid . '&amp;processed=1" method="post" enctype="multipart/form-data" name="input" class="cp-form">
+<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+<div id="fileIdsContainer"></div>
 
-<form action="newthread.php?fid='.$fid.'&amp;processed=1" method="post" enctype="multipart/form-data" name="input">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-
-<div id="fileIdsContainer"></div>	
-
-	
-	<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
-		
-		
-		<div class="col align-self-center m-0 p-0">
-	<input type="text" class="form-control form-control border mb-3" name="subject" maxlength="85" placeholder="'.$lang->newthread['thread_subject'].'" value="'.$subject.'" tabindex="1" />
-		</div>
-	</div>
-	
-
-			'.$codebuttons.'
-
-
-<div class="row">
-	<div class="col">
-
-
-
-
-      
-      <textarea class="form-control" id="message" name="message" style="height: 400px" tabindex="2" placeholder="Write your Thread using BBCode...">'.$message.'</textarea>
-   
-    
-	
-	
-	
-	</div>
-	
-	
-	
-	
-
-	</div>
-	
-	
-
-<div class="mt-2 mb-3">
-'.$postoptions.'	
-'.$modoptions.'
-<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->newthread['attachments'].'</a>		
-'.$pollbox.'
-<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->newthread['preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->newthread['preview_post'].'</button>
-'.$savedraftbutton.'	
-	</div>
-	
-	
-	
-
-<!-- pollop -->
-<div id="collapse-pollop" class="collapse">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->newthread['poll'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->newthread['poll'].'
+<div class="st-card cp-editor">
+    <div class="st-compose-body">
+        ' . compose_input('fa-heading', '<input type="text" class="form-control" name="subject" maxlength="85" placeholder="' . strip_tags($lang->newthread['thread_subject']) . '" value="' . $subject . '" tabindex="1" />') . '
+        ' . $codebuttons . '
+        <textarea class="form-control st-editor-text" id="message" name="message" tabindex="2" placeholder="Write your Thread using BBCode...">' . $message . '</textarea>
+        ' . $multiquote_external . '
+    </div>
+    <div class="st-optbar">' . $toggles . '</div>
 </div>
-<div class="col">
-<div class="text-desc mb-3">'.$lang->newthread['poll_desc'].'</div>
-<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->newthread['poll_check'].'</label>	
-<div class="mt-3">'.$lang->newthread['num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$max_options.'
-</div>	
-</div>
-</div>
-</div>
-<!-- pollop -->		
- <!-- attach -->
-<div id="collapse-attach" class="collapse">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->newthread['attachments'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->newthread['attachments'].'
-</div>
-<div class="col">
-'.$attachbox.'
-</div>
-</div>
-</div>
-<!-- attach -->
- <!-- modop -->
-<div id="collapse-modop" class="collapse">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->newthread['mod_options'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->newthread['mod_options'].'
-</div>
-<div class="col">
-'.$closeoption.'
-'.$stickoption.'
-</div>
-</div>
-</div>
-<!-- modop -->		
-<!-- postop -->
-<div id="collapse-postop" class="collapse">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->newthread['post_options'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 
-<div class="col">
+' . $panels . '
+' . $submitbar . '
 
-</div>
-</div>
-'.$subscriptionmethod.'		
-</div>
-<!-- postop -->		
-	
-	'.$multiquote_external.'
-
-
-	</div>
-	<div class="card-footer text-center">
-<button type="post_thread" class="btn btn-primary" name="post_thread" value="'.$lang->newthread['post_thread'].'" tabindex="4" accesskey="s"><i class="fa-solid fa-pencil"></i> &nbsp;'.$lang->newthread['post_thread'].'</button></div>
-</div>
 <input type="hidden" name="action" value="do_newthread" />
-<input type="hidden" name="posthash" value="'.$posthash.'" />
+<input type="hidden" name="posthash" value="' . $posthash . '" />
 <input type="hidden" name="attachmentaid" value="" />
 <input type="hidden" name="attachmentact" value="" />
-<input type="hidden" name="quoted_ids" value="'.$quoted_ids.'" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-'.$editdraftpid.'
+<input type="hidden" name="quoted_ids" value="' . $quoted_ids . '" />
+<input type="hidden" name="tid" value="' . $tid . '" />
+' . $editdraftpid . '
 </form>
+</div>';
 
-	</div></div>
-
-	
-<script>
-document.addEventListener(\'DOMContentLoaded\', function() {
-    // Заменяем старый jQuery код на чистый JavaScript
-    if (Post.fileInput && Post.fileInput.parentElement && Post.fileInput.parentElement.parentElement) {
-        Post.fileInput.parentElement.parentElement.style.display = \'block\';
-    }
-    if (Post.dropZone && Post.dropZone.parentElement && Post.dropZone.parentElement.parentElement) {
-        Post.dropZone.parentElement.parentElement.style.display = \'none\';
-    }
-});
-</script>
-</body>
-</html>';
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-    echo $newthread;
     stdfoot();
 }

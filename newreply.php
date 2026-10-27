@@ -11,6 +11,7 @@ define('IN_FORUM', true);
 require_once 'global.php';
 
 require_once INC_PATH . '/functions_post.php';
+require_once INC_PATH . '/functions_compose.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_subscription_method.php';
@@ -58,7 +59,7 @@ build_forum_breadcrumb($fid);
 $thread_subject    = $thread['subject'];
 $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
 add_breadcrumb($thread['subject'], get_thread_link($thread['tid']));
-add_breadcrumb('Post Reply');
+add_breadcrumb($lang->newreply['nav_newreply']);
 
 $forumpermissions = forum_permissions($fid);
 
@@ -133,24 +134,11 @@ if ($enableattachments == 1
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
         if (isset($ret['success'])) {
-            $attachment = ['aid' => '{1}', 'icon' => '{2}', 'filename' => '{3}', 'size' => '{4}'];
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post"'
-                        . ' onclick="(function(){var a='.$attachment['aid'].';var t=\'[attachment=\'+a+\']\';'
-                        . 'var e=document.getElementById(\'message\');if(e)e.value+=t;})()" />';
-            $attach_rem_options = '<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'"'
-                                . ' value="Remove" onclick="return Post.removeAttachment('.$attachment['aid'].');" />';
-            $attach_mod_options = '';
-            $ret['template'] = '
-<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-    '.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong>
-</div>
-<div class="col-lg-4 text-lg-end">
-    '.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-</div>
-</div>
-</div>';
+            // Шаблон для post.js: {1}=aid, {2}=иконка, {3}=имя файла, {4}=размер
+            $ret['template'] = compose_attach_item(
+                '{1}', '{2}', '{3}', '{4}',
+                compose_att_insert('{1}', 'Insert Into Post') . compose_att_remove('{1}', $lang->post3['btn_remove_attachment'])
+            );
             $query        = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]);
             $usage        = $db->fetch_array($query);
             $ret['usage'] = mksize($usage['ausage']);
@@ -460,20 +448,16 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             if ($maxquotedepth !== '0') $message = remove_message_quotes($message);
 
             if ($external_quotes > 0) {
+                $L = $lang->newreply;
                 [$multiquote_text, $multiquote_deselect, $multiquote_quote] = $external_quotes === 1
-                    ? ['multiquote_external_one', 'multiquote_external_one_deselect', 'multiquote_external_one_quote']
-                    : [sprintf('multiquote_external', $external_quotes), 'multiquote_external_deselect', 'multiquote_external_quote'];
+                    ? [$L['multiquote_external_one'], $L['multiquote_external_one_deselect'], $L['multiquote_external_one_quote']]
+                    : [sprintf($L['multiquote_external'], $external_quotes), $L['multiquote_external_deselect'], $L['multiquote_external_quote']];
 
-                $multiquote_external = '
-				
-				
-				
-				<div id="multiquote_unloaded"><span class="smalltext">'.$multiquote_text.' <a href="./newreply.php?tid='.$tid.'" onclick="return Post.loadMultiQuoted();">'.$multiquote_quote.'</a>, <a href="javascript:void(0)" onclick="Post.clearMultiQuoted(); return false;">'.$multiquote_deselect.'</a></span></div>
-				
-				
-				';
-				
-				
+                $multiquote_external = compose_notice(
+                    $multiquote_text . ' <a href="./newreply.php?tid=' . $tid . '" onclick="return Post.loadMultiQuoted();">' . $multiquote_quote . '</a>, '
+                    . '<a href="javascript:void(0)" onclick="Post.clearMultiQuoted(); return false;">' . $multiquote_deselect . '</a>',
+                    'info', 'fa-quote-left', 'multiquote_unloaded'
+                );
             }
 
             $quoted_ids = implode('|', $quoted_ids_arr);
@@ -614,29 +598,12 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             $attachment['size']     = mksize($attachment['filesize']);
             $attachment['icon']     = get_attachment_icon(get_extension($attachment['filename']));
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
-            $aid                    = (int)$attachment['aid'];
+            $aid                    = (string)(int)$attachment['aid'];
 
-            $attach_mod_options = '';
-            $attach_rem_options = '<input type="submit" class="btn btn-page" name="rem_'.$aid.'"'
-                                . ' value="Remove" onclick="return Post.removeAttachment('.$aid.');" />';
-            $postinsert         = '<input type="button" class="btn btn-page" name="insert"'
-                                . ' value="Insert Into Post" id="insertBtn_'.$aid.'" />'
-                                . '<script>document.getElementById("insertBtn_'.$aid.'")'
-                                . '.addEventListener("click",function(e){e.preventDefault();'
-                                . 'var el=document.getElementById("message");'
-                                . 'if(el)el.value+=\'[attachment='.$aid.']\';});</script>';
-
-            $attachments .= '
-<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$aid.'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-    '.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong>
-</div>
-<div class="col-lg-4 text-lg-end">
-    '.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-</div>
-</div>
-</div>';
+            $attachments .= compose_attach_item(
+                $aid, $attachment['icon'], $attachment['filename'], $attachment['size'],
+                compose_att_insert($aid, 'Insert Into Post') . compose_att_remove($aid, $lang->post3['btn_remove_attachment'])
+            );
             $attachcount++;
         }
 
@@ -656,91 +623,31 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 
         $link_viewattachments = '';
         if ($usage['ausage'] !== null) {
-            $friendlyusage = mksize($usage['ausage']);
-            $attach_usage  = sprintf($lang->newreply['attach_usage'], $friendlyusage);
-            
-			
-			$link_viewattachments = '
-			
-			<a href="usercp.php?action=attachments">'.$lang->global['view_attachments'].'</a>
-			
-			';
+            $friendlyusage        = mksize($usage['ausage']);
+            $attach_usage         = sprintf($lang->newreply['attach_usage'], $friendlyusage);
+            $link_viewattachments = '<a href="usercp.php?action=attachments">' . $lang->global['view_attachments'] . '</a>';
         }
 
-       
-        $attach_add_options = '';
-        if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach)) {
-            
-			$attach_add_options = '
-			
-			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->post3['btn_add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->post3['btn_add_attachment'].'</button>
-			
-			';
-			
-        }
+        $attach_buttons = compose_attach_buttons(
+            $lang->post3['btn_add_attachment'],
+            $lang->post3['btn_update_attachment'],
+            $maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach),
+            $attachcount > 0
+        );
 
-        $attach_update_options = '';
-        if ($attachcount > 0) {
-            
-			$attach_update_options = '
-			
-			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->post3['btn_update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->post3['btn_update_attachment'].'&nbsp;</button>
-			
-			
-			';	
-			
-			
-        }
-
-        if ($attach_add_options || $attach_update_options) {
-         
-		$newattach = '
-			
-			<div class="row mb-2">
-	<div class="col-12">
-
-		<div id="upload_bar" style="background: #0066A2; height: 5px; width: 0%;"></div>
-		<div id="dropzone" style="padding: 30px 0; background: #f0faf6; cursor: pointer; border-radius: 5px; text-align: center; width:100%">
-			<i class="fas fa-paperclip"></i>
-			<div style="pointer-events: none;"></div>
-			
-		</div>
-	</div>
-</div>
-
-<label for="attachments[]">'.$lang->post3['lbl_new_attachment'].'</label>
-<div class="alert bg-nav mb-0">
-<input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
-</div>
-<div class="mt-2">
-'.$attach_add_options.' &nbsp;'.$attach_update_options.'
-</div>';
-        
-		
-		}
-
-        $attachbox = '
-		
-		<div class="card border-0">
-<div class="pb-3 border-bottom text-muted mb-3">'.$attach_quota.'</div>
-'.$newattach.'
-'.$attachments.'
-</div>';
-		
-		
+        $attachbox = compose_attachbox($attach_quota, $link_viewattachments, $lang->post3['lbl_new_attachment'], $attach_buttons, $attachments);
     }
 
     // ── Save draft ────────────────────────────────────────────────────────────
     $savedraftbutton = '';
     if ($CURUSER['id']) {
-        $savedraftbutton = '<button type="submit" class="btn-thread ms-2" name="savedraft" value="Save as Draft">'
-                         . '<i class="fa-regular fa-note-sticky"></i>&nbsp;Save as Draft</button>';
+        $savedraftbutton = '<button type="submit" class="btn btn-outline-secondary st-pill" name="savedraft" value="Save as Draft">'
+                         . '<i class="fa-regular fa-note-sticky me-1"></i>Save as Draft</button>';
     }
 
     // ── Thread review ─────────────────────────────────────────────────────────
     $reviewmore   = '';
     $threadreview = '';
-    $visibility   = "visible='1'";
 
     $query    = $db->sql_query_prepared(
                     "SELECT COUNT(pid) AS post_count FROM posts WHERE tid = ? AND visible = 1",
@@ -749,10 +656,11 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
     $numposts = (int)$db->fetch_field($query, 'post_count');
 
     if ($numposts > $f_postsperpage) {
-        $numposts           = $f_postsperpage;
-        $thread_review_more = sprintf('thread_review_more', $f_postsperpage, get_thread_link($tid));
-        $reviewmore         = '<tr><td class="thead" align="center"><span class="smalltext"><strong>'
-                            . $thread_review_more . '</strong></span></td></tr>';
+        $numposts = $f_postsperpage;
+        // В строке ланга сломан href (<a href=>"…"), поэтому берём только текст и даём свою ссылку
+        $review_more_text = strip_tags(sprintf($lang->newreply['thread_review_more'], $f_postsperpage, get_thread_link($tid)));
+        $reviewmore       = '<a class="cp-review__more" href="' . get_thread_link($tid) . '" target="_blank">'
+                          . '<i class="fa-solid fa-arrow-up-right-from-square"></i>' . $review_more_text . '</a>';
     }
 
     $pidin = [];
@@ -777,7 +685,6 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             ORDER BY dateline DESC, pid DESC
         ", $pidin);
 
-        $altbg      = 'trow1';
         $reviewbits = '';
 
         while ($post = $db->fetch_array($query)) {
@@ -791,41 +698,36 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             ];
 
             $post['username'] = htmlspecialchars_uni($post['username']);
-            if ($post['visible'] != 1) $altbg = 'trow_shaded';
 
             $plugins->run_hooks('newreply_threadreview_post');
 
             $post['message'] = $parser->parse_message($post['message'], $parser_options);
             get_post_attachments($post['pid'], $post);
-            $reviewmessage = $post['message'];
 
-            $reviewbits .= '
-<tr>
-<td class="tcat"><span class="smalltext"><strong>'
-    . $post['username'] . ' - ' . $reviewpostdate . '</strong></span></td>
-</tr>
-<tr><td class="'.$altbg.' scaleimages">'.$reviewmessage.'</td></tr>';
-
-            $altbg = $altbg === 'trow1' ? 'trow2' : 'trow1';
+            $reviewbits .= '<div class="cp-review__item">'
+                         . '<div class="cp-review__head"><span class="cp-review__who">' . $post['username'] . '</span>'
+                         . '<span class="cp-review__date"><i class="fa-regular fa-clock"></i>' . $reviewpostdate . '</span></div>'
+                         . '<div class="cp-review__body post_body scaleimages">' . $post['message'] . '</div>'
+                         . '</div>';
         }
 
-        $threadreview = '
-<table border="0" cellspacing="1" cellpadding="4" class="tborder tfixed">
-<tr><td class="thead" style="text-align:center;"><strong>Thread Review</strong></td></tr>
-'.$reviewbits.'
-'.$reviewmore.'
-</table>';
+        $threadreview = '<div class="st-card cp-review">'
+                      . '<div class="st-card__head"><span class="st-ico st-soft-info"><i class="fa-solid fa-clock-rotate-left"></i></span>'
+                      . $lang->newreply['thread_review'] . '</div>'
+                      . '<div class="cp-review__list">' . $reviewbits . '</div>'
+                      . $reviewmore
+                      . '</div>';
     }
 
     // ── Post / mod options ────────────────────────────────────────────────────
-    $postoptions = '
+    $is_mod = is_mod($usergroups);
 
-	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->newreply['post_options'].'</a>
-
-	';
-
-    $modoptions = '';
-    $is_mod     = is_mod($usergroups);
+    $toggles = compose_toggle('collapse-postop', 'fa-gear', $lang->newreply['post_options']);
+    $panels  = compose_panel(
+        'collapse-postop', 'fa-bell', 'st-soft-primary', $lang->global['thread_subscription_method'],
+        compose_subscription($subscribe, $nonesubscribe, $emailsubscribe, $pmsubscribe),
+        $lang->global['thread_subscription_method_desc']
+    );
 
     if ($is_mod) {
         if ($mybb->get_input('processed', MyBB::INPUT_INT)) {
@@ -837,58 +739,24 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             $stuck  = $thread['sticky'];
         }
 
-        $closecheck  = $closed ? ' checked="checked"' : '';
-        $stickycheck = $stuck  ? ' checked="checked"' : '';
-
-        $closeoption = '<input type="checkbox" class="form-check-input" name="modoptions[closethread]" value="1"'
-                     . $closecheck.' />&nbsp;<strong>Close Thread</strong>: prevent further posting in this thread';
-        $stickoption = '<br /><input type="checkbox" class="form-check-input" name="modoptions[stickthread]" value="1"'
-                     . $stickycheck.' />&nbsp;<strong>Stick Thread:</strong> stick this thread to the top of the forum';
-
-        if (!empty($closeoption) || !empty($stickoption)) {
-            
-			$modoptions = '
-			
-			&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-modop" role="button"><i class="fa-solid fa-screwdriver-wrench"></i> &nbsp;'.$lang->newreply['mod_options'].'</a>&nbsp;&nbsp;
-			
-			
-			';
-        }
+        $toggles .= compose_toggle('collapse-modop', 'fa-screwdriver-wrench', $lang->newreply['mod_options']);
+        $panels  .= compose_panel(
+            'collapse-modop', 'fa-shield-halved', 'st-soft-danger', $lang->newreply['mod_options'],
+            compose_check('checkbox', 'modoptions[closethread]', '1', $closed ? 'checked="checked"' : '', $lang->newreply['close_thread'])
+            . compose_check('checkbox', 'modoptions[stickthread]', '1', $stuck ? 'checked="checked"' : '', $lang->newreply['stick_thread'])
+        );
     }
 
-  $subscriptionmethod = '
-	
-	
-	<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->global['thread_subscription_method'].'</div>
-<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->global['thread_subscription_method'].'
-</div>
-<div class="col">
-	<div class="text-desc mb-3">'.$lang->global['thread_subscription_method_desc'].'</div>
-	<label class="form-check-label"><input type="radio" class="form-check-input" name="postoptions[subscriptionmethod]" '.$subscribe.'value="" /> '.$lang->global['no_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$nonesubscribe.'value="none" /> '.$lang->global['no_subscribe_notification'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$emailsubscribe.'value="email"/> '.$lang->global['instant_email_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$pmsubscribe.'value="pm" /> '.$lang->global['instant_pm_subscribe'].'</label>
-</div>
-</div>';
-	
-	
-	
-	
+    if ($attachbox !== '') {
+        $toggles .= compose_toggle('collapse-attach', 'fa-paperclip', $lang->global['attachments']);
+        $panels  .= compose_panel('collapse-attach', 'fa-paperclip', 'st-soft-info', $lang->global['attachments'], $attachbox);
+    }
 
     $post_reply_to = sprintf($lang->newreply['post_reply_to'], $thread['subject']);
-    $reply_to      = sprintf($lang->newreply['reply_to'], $thread['subject']);
 
     $moderation_notice = '';
     if ($CURUSER['moderateposts'] == 1) {
-        $moderation_text = $lang->newreply['moderation_user_posts'];
-        
-		
-		$moderation_notice = '<div class="red_alert">'.$moderation_text.'</div>';
-		
-		
-		
+        $moderation_notice = compose_notice($lang->newreply['moderation_user_posts']);
     }
 
     $php_max_upload_size  = get_php_upload_limit();
@@ -904,7 +772,6 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
         }
     }
     $ags_lang_json = json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-  
 
     $post_javascript = '
 <script type="text/javascript">
@@ -931,149 +798,58 @@ mybb_max_file_uploads = '.$maxattachments.';
     $forum['name'] = strip_tags($forum['name']);
 
     stdhead($post_reply_to);
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=6">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/compose.css?ver=1">';
+    echo postbit_css_link();
     build_breadcrumb();
 
-    $newreply = '
-	
-	
-	<html>
-<head>
-<title>'.$post_reply_to.'</title>
+    $head = compose_head(
+        'fa-reply', 'st-soft-primary', $lang->newreply['post_new_reply'],
+        compose_meta('fa-folder-open', '<a href="' . get_forum_link($fid) . '">' . htmlspecialchars_uni($forum['name']) . '</a>')
+        . compose_meta('fa-comments', '<a href="' . get_thread_link($tid) . '">' . $thread['subject'] . '</a>')
+    );
 
-'.$post_javascript.'
-		
-</head>
-<body>
+    $submitbar = compose_submitbar(
+        '<button type="submit" class="btn btn-outline-secondary st-pill" name="previewpost" value="' . $lang->newreply['preview_post'] . '" tabindex="5">'
+        . '<i class="fa-solid fa-eye me-1"></i>' . $lang->newreply['preview_post'] . '</button>' . $savedraftbutton,
+        '<button type="submit" class="btn btn-primary st-pill px-4" name="post_thread" value="' . $lang->newreply['post_reply'] . '" tabindex="3" accesskey="s">'
+        . '<i class="fa-solid fa-paper-plane me-1"></i>' . $lang->newreply['post_reply'] . '</button>'
+    );
 
-	
-
-	
-<div class="container-md">
-'.$preview.'
-'.$maximageserror.'
-'.$attacherror.'
-'.$reply_errors.'
-'.$moderation_notice.'
-<form action="newreply.php?tid='.$tid.'&amp;processed=1" method="post" enctype="multipart/form-data" name="input">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-
+    echo $post_javascript . compose_insert_script() . '
+<div class="container-md st-page cp-page">
+' . $head . '
+' . compose_preview($preview, $lang->newreply['preview_post']) . '
+' . $maximageserror . $attacherror . $reply_errors . $moderation_notice . '
+<form action="newreply.php?tid=' . $tid . '&amp;processed=1" method="post" enctype="multipart/form-data" name="input" class="cp-form">
+<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
 <div id="fileIdsContainer"></div>
 
-
-<div class="mb-3 p-0 pb-2 border-bottom">				
-<input type="text" class="form-control border mb-3" name="subject" maxlength="85" value="'.$subject.'" tabindex="1" />
-</div>
-	
-'.$codebuttons.'
-
-<div class="row">
-<div class="col">
-<textarea id="message" name="message" class="form-control form-control-sm border" style="height: 400px" rows="20" cols="70" tabindex="2" >'.$message.'</textarea>
+<div class="st-card cp-editor">
+    <div class="st-compose-body">
+        ' . compose_input('fa-heading', '<input type="text" class="form-control" name="subject" maxlength="85" value="' . $subject . '" tabindex="1" aria-label="' . strip_tags($lang->newreply['post_subject']) . '" />') . '
+        ' . $codebuttons . '
+        <textarea id="message" name="message" class="form-control st-editor-text" rows="20" cols="70" tabindex="2">' . $message . '</textarea>
+        ' . $multiquote_external . '
+    </div>
+    <div class="st-optbar">' . $toggles . '</div>
 </div>
 
-</div>	
+' . $panels . '
+' . $submitbar . '
 
-<div class="mt-2 mb-3">
-'.$postoptions.'		
-'.$modoptions.'
-<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->global['attachments'].'</a>&nbsp;		
-<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->newreply['preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->newreply['preview_post'].'</button>
-'.$savedraftbutton.'	
-	</div>	
-	
-<!-- attach -->
-<div id="collapse-attach" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">Attachments</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-Attachments
-</div>
-<div class="col">
-'.$attachbox.'
-</div>
-</div>
-</div>
-<!-- attach -->
- <!-- modop -->
-<div id="collapse-modop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">Moderator Options:</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-Moderator Options:
-</div>
-<div class="col">
-'.$closeoption.'
-'.$stickoption.'
-</div>
-</div>
-</div>
-<!-- modop -->	
-<!-- postop -->
-<div id="collapse-postop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">Post Options:</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-
-<div class="col">
-</div>
-</div>
-'.$subscriptionmethod.'		
-</div>
-<!-- postop -->			
-
-	
-
-'.$multiquote_external.'
-
-
-	</div>
-	
-	<div class="card-footer text-center">
-	<button type="post_thread" class="btn btn-primary" name="post_thread" value="'.$lang->newreply['post_reply'].'" tabindex="3" accesskey="s"><i class="fa-solid fa-comment"></i> &nbsp;'.$lang->newreply['post_reply'].'</button></div>
-	</div>
 <input type="hidden" name="action" value="do_newreply" />
-<input type="hidden" name="replyto" value="'.$replyto.'" />
-<input type="hidden" name="posthash" value="'.$posthash.'" />
+<input type="hidden" name="replyto" value="' . $replyto . '" />
+<input type="hidden" name="posthash" value="' . $posthash . '" />
 <input type="hidden" name="attachmentaid" value="" />
 <input type="hidden" name="attachmentact" value="" />
-<input type="hidden" name="quoted_ids" value="'.$quoted_ids.'" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-'.$editdraftpid.'
+<input type="hidden" name="quoted_ids" value="' . $quoted_ids . '" />
+<input type="hidden" name="tid" value="' . $tid . '" />
+' . $editdraftpid . '
 </form>
 
-	</div></div>
-
-
-
-
-
-
-<script>
-document.addEventListener(\'DOMContentLoaded\', function() {
-    // Заменяем старый jQuery код на чистый JavaScript
-    if (Post.fileInput && Post.fileInput.parentElement && Post.fileInput.parentElement.parentElement) {
-        Post.fileInput.parentElement.parentElement.style.display = \'block\';
-    }
-    if (Post.dropZone && Post.dropZone.parentElement && Post.dropZone.parentElement.parentElement) {
-        Post.dropZone.parentElement.parentElement.style.display = \'none\';
-    }
-});
-</script>
-
-
-
-</body>
-</html>';
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-    echo $newreply;
+' . $threadreview . '
+</div>';
 
     stdfoot();
 }

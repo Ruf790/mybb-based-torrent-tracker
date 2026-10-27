@@ -130,7 +130,7 @@ $postKey = function_exists('generate_post_check') ? (string)generate_post_check(
 
 stdhead(chat_t('arch_title', 'Chat archive'));
 ?>
-<link rel="stylesheet" href="<?= $h(rtrim((string)$BASEURL, '/')) ?>/chat.css?ver=<?= CHAT_ASSET_VER ?>">
+<link rel="stylesheet" href="<?= $h(rtrim((string)$BASEURL, '/')) ?>/include/templates/default/style/chat.css?ver=<?= CHAT_ASSET_VER ?>">
 
 <div class="ch-arch container my-3">
 

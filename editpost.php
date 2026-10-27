@@ -16,6 +16,7 @@ require_once 'global.php';
 
 
 require_once INC_PATH."/functions_post.php";
+require_once INC_PATH . '/functions_compose.php';
 require_once INC_PATH."/functions_upload.php";
 require_once INC_PATH . '/functions_subscription_method.php';
 require_once 'cache/smilies.php';
@@ -163,63 +164,16 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
         if (isset($ret['success'])) {
-            $attachment = ['aid'=>'{1}', 'icon'=>'{2}', 'filename'=>'{3}', 'size'=>'{4}'];
-            
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="'.$lang->editpost['btn_insert_into_post'].'" id="insertBtn" />
-
-<script>
-  document.getElementById("insertBtn").addEventListener("click", function(event) {
-    event.preventDefault();
-    const attachmentId = ' . $attachment['aid'] . ';
-    const textarea = document.getElementById("message");
-    const textToInsert = `[attachment=${attachmentId}]`;
-    textarea.value += textToInsert;
-  });
-</script>';
-            
-            // Moderating options
-            $attach_mod_options = '';
-            
-			$attach_mod_options = '
-			
-			<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
-			';
-			
-			
-			
-            
-            $attach_rem_options = '
-			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
-			
-			';
-			
-			
-			
-            $attemplate = '
-			
-			
-			<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-		
-	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
-		
-	</div>
-	<div class="col-lg-4 text-lg-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>';
-			
-			
-			
-			
-		
-			
-			
-            
-            $ret['template'] = $attemplate;
+            // Шаблон для post.js: {1}=aid, {2}=иконка, {3}=имя файла, {4}=размер.
+            // Раньше: id="insertBtn" у каждого вложения (работала только первая кнопка),
+            // кнопка «снять одобрение» выводилась и не-модераторам, а в её onclick
+            // кавычки ломали атрибут ("unapprove" внутри onclick="...").
+            $ret['template'] = compose_attach_item(
+                '{1}', '{2}', '{3}', '{4}',
+                compose_att_insert('{1}', $lang->editpost['btn_insert_into_post'])
+                . ($is_mod ? compose_att_mod('{1}', false, $lang->editpost['btn_unapprove_attachment']) : '')
+                . compose_att_remove('{1}', $lang->post3['btn_remove_attachment'])
+            );
 
             $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
             $usage = $query ? $db->fetch_array($query) : null;
@@ -454,61 +408,42 @@ $modal_parser_options = [
 $modal_message2 = $parser->parse_message($post['message'], $modal_parser_options);
 
 $deletebox = '
-<div class="card border-0 mb-4">
-    <div class="card-header rounded-bottom text-19 fw-bold">
-        '.$lang->editpost['pane_edit_post'].'
-    </div>
-    <div class="card-body">
-        <div class="row g-2 pb-3 border-bottom">
-            <div class="col align-self-center">
-                <i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['tip_delete_note'].'
-            </div>
-            <div class="col-auto text-end align-self-center">
-                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal'.$pid.'" tabindex="9">
-                    <i class="fa-solid fa-trash-can"></i> '.$lang->editpost['btn_delete_now'].'
-                </button>
-            </div>
-        </div>
-    </div>
+<div class="st-card st-danger-box cp-delete">
+    <span class="st-ico st-soft-danger"><i class="fa-solid fa-trash-can"></i></span>
+    <div class="min-w-0 flex-grow-1">' . $lang->editpost['tip_delete_note'] . '</div>
+    <button type="button" class="btn btn-outline-danger st-pill" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '" tabindex="9">
+        <i class="fa-solid fa-trash-can me-1"></i>' . $lang->editpost['btn_delete_now'] . '
+    </button>
 </div>';
 
-$modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
+// Модалка в стиле модалок постбита (.pb-modal из postbit.css). Id — как ждёт delete_post_editpost.js
+$modal_delete = '<div class="modal fade pb-modal" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">'
-        . '<div class="modal-header bg-danger text-white">'
-        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>' . $lang->editpost['modal_delete_title'] . '</h5>'
-        . '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>'
+        . '<div class="modal-header">'
+        . '<span class="pb-modal__ico pb-soft-danger"><i class="fa-solid fa-trash"></i></span>'
+        . '<h5 class="modal-title">' . $lang->editpost['modal_delete_title'] . '</h5>'
+        . '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>'
         . '</div>'
         . '<div class="modal-body">'
-        . '<div class="text-center mb-3">'
-        . '<i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>'
-        . '<h6 class="fw-bold">' . $lang->editpost['modal_delete_confirm'] . '</h6>'
-        . '<p class="text-muted mb-0">' . $lang->editpost['modal_delete_warning'] . '</p>'
+        . '<div class="pb-warn"><i class="fa-solid fa-triangle-exclamation"></i>'
+        . '<div><div class="fw-semibold">' . $lang->editpost['modal_delete_confirm'] . '</div>'
+        . '<div class="small">' . $lang->editpost['modal_delete_warning'] . '</div></div></div>'
+        . '<div class="pb-quote">'
+        . '<div class="pb-quote__head">'
+        . '<span class="fw-semibold"><i class="fa-solid fa-user me-1"></i>' . $modal_username . '</span>'
+        . '<span class="pb-quote__meta">' . $modal_postdate . ' · ' . sprintf($lang->editpost['lbl_pid'], $pid) . '</span>'
         . '</div>'
-        . '<div class="card border-danger border-opacity-25 mb-3">'
-        . '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">'
-        . '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>' . $modal_username . '</span>'
-        . '<div class="d-flex gap-2 align-items-center">'
-        . '<span class="text-muted small">' . $modal_postdate . '</span>'
-        . '<span class="badge bg-secondary">' . sprintf($lang->editpost['lbl_pid'], $pid) . '</span>'
-        . '</div>'
-        . '</div>'
-        . '<div class="card-body py-2 px-3">'
-        . '<div class="small" style="max-height:350px;overflow-y:auto;">'
-        . '<style>#deletePostModal' . $pid . ' .post_body img{max-width:100%;height:auto;}'
-        . '#deletePostModal' . $pid . ' .post_body blockquote{font-size:0.8rem;padding:0.5rem;}</style>'
-        . '<div>' . $modal_message2 . '</div>'
-        . '</div>'
-        . '</div>'
+        . '<div class="pb-quote__body post_body">' . $modal_message2 . '</div>'
         . '</div>'
         . '<div id="deleteLoading' . $pid . '" class="text-center mt-3" style="display:none;">'
-        . '<div class="spinner-border text-primary" role="status">' . $lang->editpost['modal_deleting_sr'] . '</div>'
-        . '<p class="mt-2 text-muted">' . $lang->editpost['modal_deleting'] . '</p>'
+        . '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">' . $lang->editpost['modal_deleting_sr'] . '</span></div>'
+        . '<p class="mt-2 text-body-secondary">' . $lang->editpost['modal_deleting'] . '</p>'
         . '</div>'
         . '</div>'
         . '<div class="modal-footer">'
-        . '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">'
+        . '<button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">'
         . '<i class="fa-solid fa-xmark me-1"></i>' . $lang->editpost['btn_cancel'] . '</button>'
-        . '<button type="button" class="btn btn-danger" id="confirmDeleteBtn' . $pid . '">'
+        . '<button type="button" class="btn btn-danger rounded-pill px-3" id="confirmDeleteBtn' . $pid . '">'
         . '<i class="fa-solid fa-trash me-1"></i>' . $lang->editpost['btn_delete_post'] . '</button>'
         . '</div>'
         . '</div></div></div>';
@@ -537,106 +472,28 @@ $deletebox .= $modal_delete;
             $attach_ext = strtolower(get_extension($attachment['filename']));
             $image_exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
             if (in_array($attach_ext, $image_exts, true)) {
-                $attachment['icon'] = '<img src="attachment.php?aid=' . $attachment['aid'] . '" alt="" style="width:50px;height:50px;object-fit:cover;border-radius:4px;vertical-align:middle;">';
+                $attachment['icon'] = '<img src="attachment.php?aid=' . (int)$attachment['aid'] . '" alt="" class="cp-att__thumb">';
             } else {
                 $attachment['icon'] = get_attachment_icon($attach_ext);
             }
 
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
+            $aid        = (string)(int)$attachment['aid'];
+            $unapproved = $attachment['visible'] != 1;
 
-            $postinsert = '<input type="button" class="btn btn-page" name="insert" value="'.$lang->editpost['btn_insert_into_post'].'" id="insertBtn" />
-
-<script>
-  document.getElementById("insertBtn").addEventListener("click", function(event) {
-    event.preventDefault();
-    const attachmentId = ' . $attachment['aid'] . ';
-    const textarea = document.getElementById("message");
-    const textToInsert = `[attachment=${attachmentId}]`;
-    textarea.value += textToInsert;
-  });
-</script>';
-            
             // Moderating options
-            $attach_mod_options = '';
-            if ($is_mod) {
-                if ($attachment['visible'] == 1) {
-                    
-					$attach_mod_options = '
-					
-					
-					<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
-					
-					';
+            $attach_mod_options = $is_mod
+                ? compose_att_mod($aid, $unapproved, $lang->editpost[$unapproved ? 'btn_approve_attachment' : 'btn_unapprove_attachment'])
+                : '';
 
-					
-                } else {
-                    
-					$attach_mod_options = '
-					
-					<input type="submit" class="btn btn-page" name="approveattach_'.$attachment['aid'].'" value="'.$lang->editpost['btn_approve_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"approve");" />
-					
-					';
-					
-					
-					
-                }
-            }
-
-            // Remove Attachment
-            $attach_rem_options = '
-			
-			
-			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->post3['btn_remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
-			
-			
-			
-			';
-			
-			
-            
-            if ($attachment['visible'] != 1) {
-                
-				
-				$attachments .= '
-				
-				<div class="alert bg-danger border-0 mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
-<div class="row">
-<div class="col-8 text-start">
-		
-		'.$attachment['icon'].' <a href="attachment.php?aid='.$attachment['aid'].'" target="_blank">'.$attachment['filename'].'</a> ('.$attachment['size'].') 
-		
-	</div>
-	<div class="col-4 text-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>
-				
-				
-				';
-				
-				
-				
-            } else {
-                
-				
-				$attachments .= '
-
-				<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
-<div class="row g-1">
-<div class="col-lg-8 text-start align-self-center">
-		
-	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
-		
-	</div>
-	<div class="col-lg-4 text-lg-end">
-		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
-	</div>
-</div>
-</div>';
-					
-				
-            }
+            $attachments .= compose_attach_item(
+                $aid, $attachment['icon'], $attachment['filename'], $attachment['size'],
+                compose_att_insert($aid, $lang->editpost['btn_insert_into_post'])
+                . $attach_mod_options
+                . compose_att_remove($aid, $lang->post3['btn_remove_attachment']),
+                $unapproved,
+                $unapproved ? 'attachment.php?aid=' . $aid : ''
+            );
             $attachcount++;
         }
         
@@ -670,74 +527,14 @@ $deletebox .= $modal_delete;
             $attach_usage = "";
         }
 
-        $attach_update_options = '';
-        $attach_add_options = '';
-        
-        if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments) && !$noshowattach) {
-            
-			$attach_add_options = '
-			
-			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->post3['btn_add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->post3['btn_add_attachment'].'</button>
-			
-			';
-			
-			
-        }
+        $attach_buttons = compose_attach_buttons(
+            $lang->post3['btn_add_attachment'],
+            $lang->post3['btn_update_attachment'],
+            $maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments) && !$noshowattach,
+            $attachcount > 0
+        );
 
-        if ($attachcount > 0) {
-            
-			$attach_update_options = '
-			
-			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->post3['btn_update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->post3['btn_update_attachment'].'&nbsp;</button>
-			
-			
-			';	
-			
-			
-        }
-
-        if ($attach_add_options || $attach_update_options) {
-            
-			
-			$newattach = '
-			
-			<div class="row mb-2">
-	<div class="col-12">
-
-		<div id="upload_bar" style="background: #0066A2; height: 5px; width: 0%;"></div>
-		<div id="dropzone" style="padding: 30px 0; background: #f0faf6; cursor: pointer; border-radius: 5px; text-align: center; width:100%">
-			<img src="pic/paperclip.png" alt="" />
-			<div style="pointer-events: none;"></div>
-			
-		</div>
-	</div>
-</div>
-
-<label for="attachments[]">'.$lang->post3['lbl_new_attachment'].'</label>
-<div class="alert bg-nav mb-0">
-<input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
-</div>
-<div class="mt-2">
-'.$attach_add_options.' &nbsp;'.$attach_update_options.'
-</div>';
-			
-			
-			
-        }
-        
-        $attachbox = '
-		
-		<div class="card border-0">
-<div class="pb-3 border-bottom text-muted mb-3">'.$attach_quota.'</div>
-'.$newattach.'
-'.$attachments.'
-</div>';
-		
-		
-		
-		
-		
-		
+        $attachbox = compose_attachbox($attach_quota, $link_viewattachments, $lang->post3['lbl_new_attachment'], $attach_buttons, $attachments);
     } else {
         $attachbox = '';
     }
@@ -890,11 +687,8 @@ $deletebox .= $modal_delete;
     
     if ($alloweditreason == 1) {
         
-		$editreason = '
-		
-		<input type="text" class="form-control border mb-3" name="editreason" size="40" placeholder="'.$lang->editpost['ph_edit_reason'].'" maxlength="150" value="'.$reason.'" tabindex="5" />
-		
-		';
+        $editreason = compose_input('fa-comment-dots',
+            '<input type="text" class="form-control" name="editreason" size="40" placeholder="' . $lang->editpost['ph_edit_reason'] . '" maxlength="150" value="' . $reason . '" tabindex="5" />');
 		
 		
         $bgcolor = "trow2";
@@ -905,22 +699,7 @@ $deletebox .= $modal_delete;
     }
 
     // Fetch subscription select box
-    $subscriptionmethod = '
-	
-	
-	<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->global['thread_subscription_method'].'</div>
-<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->global['thread_subscription_method'].'
-</div>
-<div class="col">
-	<div class="text-desc mb-3">'.$lang->global['thread_subscription_method_desc'].'</div>
-	<label class="form-check-label"><input type="radio" class="form-check-input" name="postoptions[subscriptionmethod]" '.$subscribe.'value="" /> '.$lang->global['no_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$nonesubscribe.'value="none" /> '.$lang->global['no_subscribe_notification'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$emailsubscribe.'value="email"/> '.$lang->global['instant_email_subscribe'].'</label><br />
-	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$pmsubscribe.'value="pm" /> '.$lang->global['instant_pm_subscribe'].'</label>
-</div>
-</div>';
+    $subscriptionmethod = compose_subscription($subscribe, $nonesubscribe, $emailsubscribe, $pmsubscribe);
 	
 	
 	
@@ -950,39 +729,19 @@ $deletebox .= $modal_delete;
             $postpollchecked = 'checked="checked"';
         }
         
-        $pollbox = '
-		
-		
-		&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-pollop" role="button"><i class="fa-solid fa-circle-plus"></i> &nbsp;'.$lang->editpost['pane_poll'].'</a>&nbsp;&nbsp;
-		
-		
-		
-		
-		';
+        $pollbox = compose_toggle('collapse-pollop', 'fa-square-poll-vertical', $lang->editpost['pane_poll']);
 
-        // FIX: панель #collapse-pollop раньше вставлялась как голый HTML
-        // без всякого условия ниже по шаблону, независимо от того, есть ли
-        // вообще кнопка-триггер ($pollbox) её открыть - отсюда "Undefined
-        // variable $postpollchecked/$numpolloptions", когда условие выше
-        // ложное (не мод / уже есть опрос / не первый пост). Строим панель
-        // тем же условием, что и саму кнопку.
-        $pollpanel = '
-<!-- pollop -->
-<div id="collapse-pollop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_poll'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['pane_poll'].'
-</div>
-<div class="col">
-<div class="text-desc mb-3">'.$lang->editpost['tip_poll_desc'].'</div>
-<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['lbl_poll_check'].'</label>	
-<div class="mt-3">'.$lang->editpost['lbl_poll_num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$max_options.'
-</div>	
-</div>
-</div>
-</div>
-<!-- pollop -->';
+        // Панель строится тем же условием, что и кнопка (иначе Undefined variable $postpollchecked)
+        $pollpanel = compose_panel(
+            'collapse-pollop', 'fa-square-poll-vertical', 'st-soft-warning', $lang->editpost['pane_poll'],
+            compose_check('checkbox', 'postpoll', '1', $postpollchecked, $lang->editpost['lbl_poll_check'])
+            . '<div class="cp-pollnum">'
+            . '<label class="form-label small mb-1" for="cp_numpolloptions">' . $lang->editpost['lbl_poll_num_options'] . '</label>'
+            . '<div class="d-flex flex-wrap align-items-center gap-2">'
+            . '<input type="number" min="2" max="' . $maxpolloptions . '" class="form-control form-control-sm" name="numpolloptions" id="cp_numpolloptions" value="' . $numpolloptions . '" />'
+            . '<span class="st-meta">' . $max_options . '</span></div></div>',
+            $lang->editpost['tip_poll_desc']
+        );
 		
 		
 		
@@ -996,11 +755,7 @@ $deletebox .= $modal_delete;
 
     $postoptions = '';
     
-	$postoptions = '
-	
-	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->editpost['pane_post_options'].'</a>
-	
-	';
+    $postoptions = compose_toggle('collapse-postop', 'fa-gear', $lang->editpost['pane_post_options']);
 	
 	
 
@@ -1038,142 +793,70 @@ $deletebox .= $modal_delete;
 
     $forum['name'] = strip_tags($forum['name']);
 
-    $editpost = '
-	
-	
-	<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->editpost['pane_edit_post'].'</title>
+    // ── Панели опций ─────────────────────────────────────────────────────────
+    // Модераторские «закрыть/закрепить» не выводим: кнопки-переключателя для них никогда
+    // не было, а do_editpost эти поля (postoptions[closethread/stickthread]) не обрабатывает.
+    $toggles = $postoptions;
+    $panels  = compose_panel(
+        'collapse-postop', 'fa-bell', 'st-soft-primary', $lang->global['thread_subscription_method'],
+        $signature . $subscriptionmethod,
+        $lang->global['thread_subscription_method_desc']
+    );
+    if ($attachbox !== '') {
+        $toggles .= compose_toggle('collapse-attach', 'fa-paperclip', $lang->editpost['pane_attachments']);
+        $panels  .= compose_panel('collapse-attach', 'fa-paperclip', 'st-soft-info', $lang->editpost['pane_attachments'], $attachbox);
+    }
+    $toggles .= $pollbox;
+    $panels  .= $pollpanel;
 
-'.$post_javascript.'
-		
-</head>
-<body>
+    $head = compose_head(
+        'fa-pen', 'st-soft-warning', $lang->editpost['pane_edit_post'],
+        compose_meta('fa-folder-open', '<a href="' . get_forum_link($fid) . '">' . htmlspecialchars_uni($forum['name']) . '</a>')
+        . compose_meta('fa-comments', '<a href="' . get_post_link($pid, $tid) . '#pid' . $pid . '">' . $thread['subject'] . '</a>')
+    );
 
-	
-	<div class="container-md">
-		
-'.$preview.'
-'.$post_errors.'
-'.$attacherror.'
-'.$moderation_notice.'
-'.$deletebox.'
-<form id="editpost" action="editpost.php?pid='.$pid.'&amp;processed=1" method="post" enctype="multipart/form-data" name="input">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+    $submitbar = compose_submitbar(
+        '<button type="submit" class="btn btn-outline-secondary st-pill" name="previewpost" value="' . $lang->editpost['btn_preview_post'] . '" tabindex="5">'
+        . '<i class="fa-solid fa-eye me-1"></i>' . $lang->editpost['btn_preview_post'] . '</button>',
+        '<button type="submit" class="btn btn-primary st-pill px-4" name="submitbutton" value="' . $lang->editpost['btn_update_post'] . '" tabindex="3" accesskey="s">'
+        . '<i class="fa-solid fa-floppy-disk me-1"></i>' . $lang->editpost['btn_update_post'] . '</button>'
+    );
+
+    $editpost = $post_javascript . compose_insert_script() . '
+<div class="container-md st-page cp-page">
+' . $head . '
+' . compose_preview($preview, $lang->editpost['btn_preview_post']) . '
+' . $post_errors . $attacherror . $moderation_notice . '
+' . $deletebox . '
+<form id="editpost" action="editpost.php?pid=' . $pid . '&amp;processed=1" method="post" enctype="multipart/form-data" name="input" class="cp-form">
+<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
 <div id="fileIdsContainer"></div>
-	
-	
 
-		<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
-			<div class="col align-self-center m-0 p-0">
-'.$editreason.'
-			</div>
-	</div>
-	
-	<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
-			 <div class="col align-self-center m-0 p-0">
-			 <input type="text" class="form-control border mb-3" name="subject" maxlength="85" value="'.$subject.'" tabindex="1" />
-		</div>
-	</div>
-		'.$codebuttons.' 
-<div class="row">
-	<div class="col">
-<textarea id="message" name="message" class="form-control form-control-sm border" style="height: 400px" rows="20" cols="70" tabindex="2" >'.$message.'</textarea>
-		</div>
+<div class="st-card cp-editor">
+    <div class="st-compose-body">
+        ' . $editreason . '
+        ' . compose_input('fa-heading', '<input type="text" class="form-control" name="subject" maxlength="85" value="' . $subject . '" tabindex="1" />') . '
+        ' . $codebuttons . '
+        <textarea id="message" name="message" class="form-control st-editor-text" rows="20" cols="70" tabindex="2">' . $message . '</textarea>
+    </div>
+    <div class="st-optbar">' . $toggles . '</div>
+</div>
 
-	</div>
-	
-	
+' . $panels . '
+' . $submitbar . '
 
-<div class="mt-2 mb-3">
-'.$postoptions.'		
-<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->editpost['pane_attachments'].'</a>		
-'.$pollbox.'
-<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->editpost['btn_preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['btn_preview_post'].'</button>
-
-		
-
-<!-- pollop -->
-'.$pollpanel.'
- <!-- attach -->
-<div id="collapse-attach" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_attachments'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['pane_attachments'].'
-</div>
-<div class="col">
-'.$attachbox.'
-</div>
-</div>
-</div>
-<!-- attach -->
- <!-- modop -->
-<div id="collapse-modop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_mod_options'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['pane_mod_options'].'
-</div>
-<div class="col">
-'.$closeoption.'
-'.$stickoption.'
-</div>
-</div>
-</div>
-<!-- modop -->	
-<!-- postop -->
-<div id="collapse-postop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['pane_post_options'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['pane_post_options'].'
-</div>
-<div class="col">
-'.$signature.'
-
-</div>
-</div>
-'.$subscriptionmethod.'		
-</div>
-<!-- postop -->		
-			
-        </div>
-	</div>
-
-	<div class="card-footer text-center">
-		<button type="submit" class="btn btn-primary lift" name="submitbutton" value="'.$lang->editpost['btn_update_post'].'" tabindex="3" accesskey="s"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['btn_update_post'].'</button>
-	</div>
-		
 <input type="hidden" name="action" value="do_editpost" />
 <input type="hidden" name="attachmentaid" value="" />
 <input type="hidden" name="attachmentact" value="" />
 </form>
-	</div></div>
+</div>';
 
-<script>
-document.addEventListener(\'DOMContentLoaded\', function() {
-    // Показываем родительский элемент fileInput
-    if (Post.fileInput && Post.fileInput.parentElement && Post.fileInput.parentElement.parentElement) {
-        Post.fileInput.parentElement.parentElement.style.display = \'\';
-    }
-    
-    // Скрываем родительский элемент dropZone
-    if (Post.dropZone && Post.dropZone.parentElement && Post.dropZone.parentElement.parentElement) {
-        Post.dropZone.parentElement.parentElement.style.display = \'none\';
-    }
-});
-</script>	
-</body>
-</html>';
-	
-	
-	
-	
     stdhead();
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=6">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/compose.css?ver=1">';
+    echo postbit_css_link();   // модалка удаления — в стиле постбита
     build_breadcrumb();
-	
-	
+
 	// JS-строки из ланга (ключи js_*) -> AGS_LANG без префикса
 	$ags_lang = [];
 	foreach ([$lang->post3, $lang->editpost] as $ags_src) {
@@ -1185,10 +868,7 @@ document.addEventListener(\'DOMContentLoaded\', function() {
 	}
 	echo '<script>const AGS_LANG = ' . json_encode($ags_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
 	echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_post_editpost.js?ver=1"></script>';
-	
-	
-	
-	
+
     echo $editpost;
     stdfoot();
 }

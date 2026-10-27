@@ -29,7 +29,7 @@ $plugins->run_hooks('showteam_start');
 $timecut = TIMENOW - $wolcutoffmins;
 $is_mod  = is_mod($usergroups);
 
-$teamgroups = $moderators = [];
+$teamgroups = [];
 
 /* ── Groups to show ─────────────────────────────────────────────────── */
 // Отдельный массив: $usergroups - это права текущего юзера, смешивать их
@@ -41,33 +41,12 @@ while ($query && ($ug = $db->fetch_array($query))) {
 
 if (empty($teamgroups)) stderr($lang->showteam['error_noteamstoshow']);
 
-/* ── Forum moderators (показываются в группе 6 «Moderators») ───────── */
-if (isset($teamgroups[6])) {
-    $query = $db->sql_query_prepared("
-        SELECT m.*, f.name
-        FROM moderators m
-        LEFT JOIN users u ON (u.id = m.id)
-        LEFT JOIN forums f ON (f.fid = m.fid)
-        WHERE f.active = 1 AND m.isgroup = 0
-        ORDER BY u.username
-    ");
-    while ($query && ($mod = $db->fetch_array($query))) {
-        $moderators[(int)$mod['id']][] = $mod;
-    }
-}
-
-$forum_permissions = forum_permissions();
-
-/* ── Fetch users: основная группа из списка команды или модератор форума ── */
+/* ── Fetch users: основная группа из списка команды ─────────────────────────
+   Модераторы — это группа 6 (UC_MODERATOR) и показываются как обычная группа
+   (таблицы moderators с модераторами отдельных форумов больше нет). */
 $group_ids = array_keys($teamgroups);
 $where     = 'usergroup IN (' . implode(',', array_fill(0, count($group_ids), '?')) . ')';
 $params    = $group_ids;
-
-if ($moderators) {
-    $mod_ids = array_keys($moderators);
-    $where  .= ' OR id IN (' . implode(',', array_fill(0, count($mod_ids), '?')) . ')';
-    $params  = array_merge($params, $mod_ids);
-}
 
 $query = $db->sql_query_prepared(
     "SELECT id, username, usergroup,
@@ -82,29 +61,15 @@ while ($query && ($user = $db->fetch_array($query))) {
     $uid   = (int)$user['id'];
     $group = (int)$user['usergroup'];
 
-    // Модератор форумов - в группу 6 со списком его форумов
-    if (isset($moderators[$uid])) {
-        $forumlist = '';
-        foreach ($moderators[$uid] as $forum) {
-            if (($forum_permissions[$forum['fid']]['canview'] ?? 0) == 1) {
-                $forumlist .= '<a href="' . get_forum_link($forum['fid']) . '" class="badge bg-light text-dark border me-1 mb-1">'
-                            . htmlspecialchars_uni($forum['name']) . '</a>';
-            }
-        }
-        $user['forumlist'] = $forumlist;
-        $teamgroups[6]['user_list'][$uid] = $user;
-    }
-
     // Своя (основная) группа, если она в списке команды
-    if (isset($teamgroups[$group]) && !isset($teamgroups[$group]['user_list'][$uid])) {
+    if (isset($teamgroups[$group])) {
         $teamgroups[$group]['user_list'][$uid] = $user;
     }
 }
 
 /* ── Helper: build one member card ──────────────────────────────────── */
-function build_member_card(array $user, string $scopeHtml, bool $showScope,
-                            bool $online, string $emailcode, string $pmcode,
-                            string $lastvisit): string
+function build_member_card(array $user, bool $online, string $emailcode,
+                            string $pmcode, string $lastvisit): string
 {
     global $lang;
 
@@ -122,10 +87,6 @@ function build_member_card(array $user, string $scopeHtml, bool $showScope,
 
     $tip_lastvisit = htmlspecialchars_uni($lang->showteam['tip_lastvisit']);
 
-    $scope_block = ($showScope && $scopeHtml)
-        ? '<div class="scope-list mt-2">' . $scopeHtml . '</div>'
-        : '';
-
     $actions = ($emailcode || $pmcode)
         ? '<div class="mt-3 d-flex gap-2 flex-wrap">' . $emailcode . $pmcode . '</div>'
         : '';
@@ -140,7 +101,6 @@ function build_member_card(array $user, string $scopeHtml, bool $showScope,
             </div>
             <div class="team-info">
                 <div class="team-name"><a href="{$user['profilelink']}">{$user['username']}</a></div>
-                {$scope_block}
                 <div class="team-meta" title="{$tip_lastvisit}">
                     <i class="fas fa-clock me-1" aria-hidden="true"></i>{$lastvisit}
                 </div>
@@ -158,7 +118,7 @@ $grouplist = '';
 foreach ($teamgroups as $usergroup) {
     if (!isset($usergroup['user_list'])) continue;
 
-    $modrows = $usergrouprows = '';
+    $rows = '';
 
     foreach ($usergroup['user_list'] as $user) {
         $plainname           = (string)$user['username'];
@@ -198,19 +158,9 @@ foreach ($teamgroups as $usergroup) {
 
         $plugins->run_hooks('showteam_user');
 
-        // В группе модераторов у каждого показываем его форумы
-        $isMod = (int)$usergroup['gid'] === 6 && !empty($user['forumlist']);
-
-        if ($isMod) {
-            $modrows .= build_member_card($user, $user['forumlist'], true, $online,
-                                          $emailcode, $pmcode, $lastvisit);
-        } else {
-            $usergrouprows .= build_member_card($user, '', false, $online,
-                                                $emailcode, $pmcode, $lastvisit);
-        }
+        $rows .= build_member_card($user, $online, $emailcode, $pmcode, $lastvisit);
     }
 
-    $rows = $modrows . $usergrouprows;
     if (!$rows) continue;
 
     $section_title = htmlspecialchars_uni((string)$usergroup['title']);
@@ -340,15 +290,6 @@ build_breadcrumb();
     font-size: .8rem;
     color: #64748b;
     margin-top: .25rem;
-}
-
-.scope-list {
-    font-size: .8rem;
-    line-height: 1.6;
-}
-
-.scope-list a {
-    font-size: .75rem;
 }
 
 /* Buttons */

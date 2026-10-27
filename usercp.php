@@ -6442,7 +6442,11 @@ if ($mybb->input['action'] === '2fa') {
 if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post') {
     verify_post_check($mybb->get_input('my_post_key'));
 
-    $uid  = (int)$CURUSER['id'];
+    $uid = (int)($CURUSER['id'] ?? 0);
+    if ($uid <= 0) {
+        print_no_permission();
+    }
+
     $mode = $mybb->get_input('mode');
 
     // ── Remove a specific known device ────────────────────────────────────
@@ -6455,19 +6459,19 @@ if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post'
     }
 
     // ── Log out everywhere ────────────────────────────────────────────────
-    $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [$uid]);
+    // Новый loginkey делает недействительными cookie mybbuser на всех устройствах
     update_loginkey($uid);
-
+    $session->destroy_user_sessions($uid);
+    $session->destroy_session();
     my_unsetcookie('mybbuser');
-    my_unsetcookie('sid');
-	
-	
-	// This is a full "log out everywhere" — the admin-panel 2FA gate must not
-    // outlive it, otherwise the user could still be logged into /admin/ for
-    // up to 8 hours after believing every session was terminated.
-    unset($_SESSION['admin_2fa_ok_' . $uid]);
-    unset($_SESSION['admin_2fa_fail_count']);
-	
+
+    // Флаг 2FA админки в ЭТОМ браузере. На других устройствах доступ
+    // закрывается тем, что их cookie mybbuser больше не действительна.
+    unset($_SESSION['admin_2fa_ok_' . $uid], $_SESSION['admin_2fa_fail_count']);
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
 
     redirect('member.php?action=login', $lang->usercp['flash_logged_out_all']);
 }
@@ -6511,7 +6515,7 @@ if ($mybb->input['action'] === 'sessions') {
     };
 
     // ── IP + geolocation ────────────────────────────────────────────────────
-    require_once INC_PATH . '/function_loginattemptcheck.php';
+    require_once INC_PATH . '/functions_loginattemptcheck.php';
 
     $ip = '';
     if (!empty($session_row['ip'])) {

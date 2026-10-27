@@ -174,6 +174,7 @@ class trackerlanguage
 	public $nuketorrent;
 	public $notifications;
 	public $chat;
+	public $query_explain;
 	
 	
 	

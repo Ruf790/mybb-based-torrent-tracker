@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 /**
@@ -90,7 +91,8 @@ function notify_lang(): array
     if (!isset($lang->notifications) || !is_array($lang->notifications)) {
         $lang->load('notifications');
     }
-    return (array)$lang->notifications;
+
+	return (array)$lang->notifications;
 }
 
 /** Only relative links (no scheme, no //host) — the link is used for a redirect. */

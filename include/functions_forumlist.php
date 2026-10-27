@@ -28,9 +28,13 @@ function subforums_count(array $array = []): int
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function build_forumbits(int $pid = 0, int $depth = 1): ?array
+// $variant: ''   - прежний рендер (старые шаблоны, forum.css);
+//           'st' - рендер в стиле st-ui: категории/строки форумов/чипы подфорумов
+//                  (классы st-fcat / st-frow / st-fchip, стили в st-ui.css).
+//                  Используют index2.php и forumdisplay.php (подфорумы).
+function build_forumbits(int $pid = 0, int $depth = 1, string $variant = ''): ?array
 {
-    global $db, $fcache, $moderatorcache, $forumpermissions, $BASEURL,
+    global $db, $fcache, $moderators_list, $forumpermissions, $BASEURL, $CURUSER,
            $theme, $mybb, $collapsed, $lang, $showdepth, $plugins, $parser, $forum_viewers;
     static $private_forums;
 	
@@ -100,14 +104,16 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
                     }
 
                     if (!empty($fids)) {
-                        $fids  = implode(',', $fids);
-                        $query = $db->simple_select(
-                            'threads',
-                            'tid, fid, subject, lastpost, lastposter, lastposteruid',
-                            "uid = '{$CURUSER['id']}' AND fid IN ($fids) AND visible != '-2'",
-                            ['order_by' => 'lastpost', 'order_dir' => 'desc']
+                        $fids  = array_map('intval', $fids);
+                        $ph    = implode(',', array_fill(0, count($fids), '?'));
+                        $query = $db->sql_query_prepared(
+                            "SELECT tid, fid, subject, lastpost, lastposter, lastposteruid
+                             FROM threads
+                             WHERE uid = ? AND fid IN ({$ph}) AND visible = 1
+                             ORDER BY lastpost DESC",
+                            [(int)($CURUSER['id'] ?? 0), ...$fids]
                         );
-                        while ($thread = $db->fetch_array($query)) {
+                        while ($query && ($thread = $db->fetch_array($query))) {
                             if (!isset($private_forums[$thread['fid']])) {
                                 $private_forums[$thread['fid']] = $thread;
                             }
@@ -153,7 +159,7 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
 
             // Подфорумы
             if (isset($fcache[$forum['fid']])) {
-                $forum_info = build_forumbits($forum['fid'], $depth + 1);
+                $forum_info = build_forumbits($forum['fid'], $depth + 1, $variant);
 
                 $forum['threads']           += $forum_info['counters']['threads'];
                 $forum['posts']             += $forum_info['counters']['posts'];
@@ -217,7 +223,12 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
                 $subforumsindex       = 2;
                 $subforumsstatusicons = 1;
 
-                if ($donecount < $subforumsindex) {
+                if ($donecount < $subforumsindex && $variant === 'st') {
+                    $forum_list .= '<a href="' . $forum_url . '" class="st-fchip' . ($lightbulb['folder'] === 'on' ? ' st-fchip--new' : '') . '"'
+                        . ' title="' . htmlspecialchars_uni(strip_tags((string)$lightbulb['altonoff'])) . '">'
+                        . '<i class="fa-solid fa-folder"></i>' . $forum['name'] . '</a>';
+                    $comma = $lang->global['comma'];
+                } elseif ($donecount < $subforumsindex) {
                     $statusicon = '';
 
                     if ($subforumsstatusicons == 1) {
@@ -236,10 +247,10 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
 
                 ++$donecount;
                 if ($donecount == $subforumsindex && subforums_count($fcache[$pid]) > $donecount) {
-                    $forum_list .= $comma . sprintf(
+                    $forum_list .= ($variant === 'st' ? '<span class="st-fchip st-fchip--more">' : $comma) . sprintf(
                         $lang->global['more_subforums'],
                         subforums_count($fcache[$pid]) - $donecount
-                    );
+                    ) . ($variant === 'st' ? '</span>' : '');
                 }
                 continue;
             }
@@ -347,34 +358,12 @@ function build_forumbits(int $pid = 0, int $depth = 1): ?array
                 $threads = ts_nf($forum['threads']);
             }
 
-            // Список модераторов
-            $modlist = '';
-            // (раскомментируй блок ниже, если нужен вывод модераторов)
-           
-            $done_mods  = ['users' => [], 'groups' => []];
-            $mods_parts = [];
-            foreach (explode(',', $forum['parentlist']) as $mfid) {
-                if (!isset($moderatorcache[$mfid]) || !is_array($moderatorcache[$mfid])) { continue; }
-                foreach ($moderatorcache[$mfid] as $modtype) {
-                    foreach ($modtype as $moderator) {
-                        if ($moderator['isgroup']) {
-                            if (in_array($moderator['id'], $done_mods['groups'])) { continue; }
-                            $mods_parts[] = htmlspecialchars_uni($moderator['title']);
-                            $done_mods['groups'][] = $moderator['id'];
-                        } else {
-                            if (in_array($moderator['id'], $done_mods['users'])) { continue; }
-                            $mods_parts[] = '<a href="' . get_profile_link($moderator['id']) . '">'
-                                . htmlspecialchars_uni($moderator['username']) . '</a>';
-                            $done_mods['users'][] = $moderator['id'];
-                        }
-                    }
-                }
-            }
-            if ($mods_parts) {
-                $modlist = '<div class="small mt-1">moderated_by ' . implode(', ', $mods_parts) . '</div>';
-            }
-            
+            // Список модераторов — общий для всех форумов, собирается один раз в index2.php
+            // (пользователи группы UC_MODERATOR). Подпись «Moderators:» добавляет шаблон.
+            $modlist = (string)($moderators_list ?? '');
 
+
+            $forum_desc = (string)$forum['description'];   // для 'st' (старый рендер описание стирает)
             $forum['description'] = '';
 
             // Состояние коллапса категории
@@ -404,6 +393,13 @@ if ($depth == 2 && $sub_forums) {
     $subforums = '<div class="mt-2">' . $sub_forums . '</div>';
 } elseif ($depth == 1 && $sub_forums) {
     $subforums = $sub_forums;
+}
+
+if ($variant === 'st') {
+    $forum_list .= _forumbit_render_st($depth, $forum, $forum_url, $lightbulb, $unapproved, $sub_forums,
+        $lastpost_data, ($forum['linkto'] != '' || $hideinfo || $hidelastpostinfo), $threads, $posts, $forum_desc,
+        $expdisplay !== '');
+    continue;
 }
 
 $forum_list .= _forumbit_render($depth, $forumcat, $forum, $forum_url, $lightbulb, $unapproved,
@@ -536,7 +532,9 @@ function _forumbit_render(
         <strong><a href="' . $forum_url . '">' . $forum['name'] . '</a></strong>'
         . $forum_viewers_text
         . '<div class="smalltext" style="font-size:16px;">'
-        . $forum['description'] . $modlist . $subforums . '</div>
+        . $forum['description']
+        . ($modlist ? '<div class="small mt-1"><i class="fa-solid fa-user-shield me-1"></i>Moderators: ' . $modlist . '</div>' : '')
+        . $subforums . '</div>
     </div>
     <div class="col align-self-center text-center d-none d-lg-block" style="width:auto">
         ' . $threads . $unapproved['unapproved_threads'] . '<br />
@@ -699,6 +697,134 @@ function _forumbit_render(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Рендер 'st' (index2.php, подфорумы forumdisplay.php). Классы - в st-ui.css.
+//   depth 1: категория-карточка (или одиночный форум верхнего уровня)
+//   depth 2: строка форума
+//   depth 3: чипы подфорумов - собираются выше, в build_forumbits()
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Строка ланга: index -> forumdisplay -> global -> fallback.
+function _forumbit_l(string $key, string $fallback): string
+{
+    global $lang;
+    return (string)($lang->index[$key] ?? $lang->forumdisplay[$key] ?? $lang->global[$key] ?? $fallback);
+}
+
+function _forumbit_render_st(
+    int    $depth,
+    array  $forum,
+    string $forum_url,
+    array  $lightbulb,
+    array  $unapproved,
+    string $sub_forums,
+    array  $lastpost_data,
+    bool   $hidden,
+    string $threads,
+    string $posts,
+    string $description,
+    bool   $collapsed
+): string {
+    $fid = (int)$forum['fid'];
+
+    // ── depth 1, категория: карточка с шапкой и строками форумов ──────────
+    // id cat_N_e / cat_N_icon и toggleCategory(N) - как раньше (scripts/forum.js).
+    // Раньше было style="display:display: none;;" - свёрнутое состояние
+    // из куки на сервере никогда не применялось.
+    if ($depth === 1 && $forum['type'] === 'c') {
+        return '<section class="st-card st-fcat" id="cat_' . $fid . '">'
+            . '<div class="st-card__head st-fcat__head">'
+            .   '<span class="st-ico st-soft-primary"><i class="fa-solid fa-folder-tree"></i></span>'
+            .   '<div class="st-fcat__titles">'
+            .     '<a href="' . $forum_url . '" class="st-fcat__title">' . $forum['name'] . '</a>'
+            .     ($description !== '' ? '<div class="st-fcat__desc">' . $description . '</div>' : '')
+            .   '</div>'
+            .   '<button type="button" class="st-icon-btn st-fcat__toggle" onclick="toggleCategory(' . $fid . ')"'
+            .     ' aria-controls="cat_' . $fid . '_e" aria-expanded="' . ($collapsed ? 'false' : 'true') . '"'
+            .     ' title="' . htmlspecialchars_uni(_forumbit_l('expcol_collapse', 'Collapse / expand')) . '">'
+            .     '<i class="fa-solid fa-chevron-down" id="cat_' . $fid . '_icon"></i>'
+            .   '</button>'
+            . '</div>'
+            . '<div class="st-fcat__body" id="cat_' . $fid . '_e"' . ($collapsed ? ' style="display: none;"' : '') . '>'
+            .   ($sub_forums !== ''
+                    ? $sub_forums
+                    : '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-regular fa-folder-open"></i></div>'
+                      . _forumbit_l('lbl_cat_empty', 'No forums in this category') . '</div>')
+            . '</div>'
+            . '</section>';
+    }
+
+    [$icon, $soft] = match ($lightbulb['folder']) {
+        'on'       => ['fa-comments', 'st-soft-primary'],
+        'offclose' => ['fa-lock', 'st-soft-muted'],
+        'offlink'  => ['fa-arrow-up-right-from-square', 'st-soft-info'],
+        default    => ['fa-comments', 'st-soft-muted'],
+    };
+    $is_new = $lightbulb['folder'] === 'on';
+
+    // ── последнее сообщение ───────────────────────────────────────────────
+    if ($forum['linkto'] != '') {
+        $last = '<div class="st-frow__last st-frow__last--muted"><span class="st-ico st-soft-info"><i class="fa-solid fa-link"></i></span>'
+              . '<div class="st-frow__last-text">' . _forumbit_l('forum_redirect', 'Redirect forum') . '</div></div>';
+    } elseif ($hidden) {
+        $last = '<div class="st-frow__last st-frow__last--muted"><span class="st-ico st-soft-warning"><i class="fa-solid fa-lock"></i></span>'
+              . '<div class="st-frow__last-text">' . _forumbit_l('lastvisit_hidden', 'Hidden') . '</div></div>';
+    } elseif (empty($lastpost_data['lastpost'])) {
+        $last = '<div class="st-frow__last st-frow__last--muted"><span class="st-ico st-soft-muted"><i class="fa-regular fa-calendar-xmark"></i></span>'
+              . '<div class="st-frow__last-text">' . _forumbit_l('lbl_never', 'No posts yet') . '</div></div>';
+    } else {
+        global $parser;
+        $subject_full = htmlspecialchars_uni((string)$parser->parse_badwords((string)$lastpost_data['lastpostsubject']));
+        // lastposter уже экранирован выше в build_forumbits()
+        $poster       = (string)$lastpost_data['lastposter'];
+        $poster_link  = (int)$lastpost_data['lastposteruid'] ? build_profile_link($poster, (int)$lastpost_data['lastposteruid']) : $poster;
+        $last = '<div class="st-frow__last">'
+              . '<div class="st-frow__last-text">'
+              .   '<a href="' . get_thread_link((int)$lastpost_data['lastposttid'], 0, 'lastpost') . '" class="st-frow__last-subj" title="' . $subject_full . '">' . $subject_full . '</a>'
+              .   '<div class="st-frow__last-date">' . $poster_link . ' · ' . my_datee('relative', $lastpost_data['lastpost']) . '</div>'
+              . '</div></div>';
+    }
+
+    // ── бейджи: смотрят сейчас / неодобренные ─────────────────────────────
+    // Раньше: текст 'viewing_one' / sprintf('viewing_multiple') без $lang,
+    // а бейдж неодобренных проверялся через (int) от HTML-строки (всегда 0).
+    $badges = '';
+    if (!empty($forum['viewers']) && $forum['linkto'] == '') {
+        $v_label = (int)$forum['viewers'] === 1
+            ? _forumbit_l('viewing_one', '1 viewing')
+            : sprintf(_forumbit_l('viewing_multiple', '%s viewing'), (int)$forum['viewers']);
+        $badges .= '<span class="st-badge st-soft-success" title="' . htmlspecialchars_uni(strip_tags($v_label)) . '"><i class="fa-solid fa-eye"></i>' . (int)$forum['viewers'] . '</span>';
+    }
+    $unapp = trim($unapproved['unapproved_threads'] . ' ' . $unapproved['unapproved_posts']);
+    if ($unapp !== '') {
+        $badges .= '<span class="st-badge st-soft-danger st-frow__unapp"><i class="fa-solid fa-hourglass-half"></i>' . $unapp . '</span>';
+    }
+
+    $row = '<div class="st-frow' . ($is_new ? ' st-frow--new' : '') . '">'
+        . '<span class="st-ico ' . $soft . ' st-frow__ico" title="' . htmlspecialchars_uni(strip_tags((string)$lightbulb['altonoff'])) . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="st-frow__body">'
+        .   '<div class="st-frow__top"><a href="' . $forum_url . '" class="st-frow__title">' . $forum['name'] . '</a>' . $badges . '</div>'
+        .   ($description !== '' ? '<div class="st-frow__desc">' . $description . '</div>' : '')
+        .   ($sub_forums !== '' ? '<div class="st-fchips">' . $sub_forums . '</div>' : '')
+        .   '<div class="st-frow__inline"><span><i class="fa-solid fa-comments"></i>' . $threads . '</span><span><i class="fa-solid fa-comment-dots"></i>' . $posts . '</span></div>'
+        . '</div>'
+        . '<div class="st-frow__stats">'
+        .   '<div class="st-fstat"><span class="st-fstat__val">' . $threads . '</span><span class="st-fstat__lbl">' . _forumbit_l('lbl_threads', 'Threads') . '</span></div>'
+        .   '<div class="st-fstat"><span class="st-fstat__val">' . $posts . '</span><span class="st-fstat__lbl">' . _forumbit_l('lbl_posts', 'Posts') . '</span></div>'
+        . '</div>'
+        . $last
+        . '</div>';
+
+    // depth 1, но не категория (форум верхнего уровня без категории) -
+    // старый рендер такие форумы не выводил вовсе (возвращал '').
+    if ($depth === 1) {
+        return '<section class="st-card st-fcat st-fcat--single">' . $row . '</section>';
+    }
+    return $row;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function get_forum_lightbulb(array $forum, array $lastpost, int $locked = 0): array
 {
     global $mybb, $lang, $db, $unread_forums, $CURUSER, $threadreadcut;
@@ -754,15 +880,15 @@ function get_forum_unapproved(array $forum): array
 
     if ($forum['unapprovedposts']) {
         $label = ($forum['unapprovedposts'] > 1)
-            ? sprintf($lang->index['forum_unapproved_posts_count'],  $forum['unapprovedposts'])
-            : sprintf($lang->index['forum_unapproved_post_count'], 1);
+            ? sprintf(($lang->index['forum_unapproved_posts_count'] ?? '%s unapproved posts'),  $forum['unapprovedposts'])
+            : sprintf(($lang->index['forum_unapproved_post_count'] ?? '%s unapproved post'), 1);
         $unapproved_posts = '<span title="' . $label . '">(' . ts_nf($forum['unapprovedposts']) . ')</span>';
     }
 
     if ($forum['unapprovedthreads']) {
         $label = ($forum['unapprovedthreads'] > 1)
-            ? sprintf($lang->index['forum_unapproved_threads_count'], $forum['unapprovedthreads'])
-            : sprintf($lang->index['forum_unapproved_thread_count'], 1);
+            ? sprintf(($lang->index['forum_unapproved_threads_count'] ?? '%s unapproved threads'), $forum['unapprovedthreads'])
+            : sprintf(($lang->index['forum_unapproved_thread_count'] ?? '%s unapproved thread'), 1);
         $unapproved_threads = '<span title="' . $label . '">(' . ts_nf($forum['unapprovedthreads']) . ')</span>';
     }
 

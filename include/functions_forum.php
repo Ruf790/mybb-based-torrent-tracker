@@ -980,52 +980,63 @@ function get_forum_link(int|string $fid, int|string $page = 0): string
 }
 
 // ── build_breadcrumb ──────────────────────────────────────────────────────────
-function build_breadcrumb(): void
+function build_breadcrumb(bool $show_title = true): void
 {
-    global $nav, $navbits, $f_threadsperpage;
+    global $navbits, $BASEURL;
+    static $css_done = false;
 
-    $navsep = '&nbsp; <i class="fa-solid fa-angle-right little"></i> &nbsp;';
-    $activesep = '';
+    if (!is_array($navbits) || !$navbits) {
+        return;
+    }
 
-    if (is_array($navbits)) {
-        reset($navbits);
-        foreach ($navbits as $key => $navbit) {
-            if (!isset($navbits[$key + 1])) {
-                continue;
+    $navbits = array_values($navbits);
+    $last    = count($navbits) - 1;
+
+    $sep   = '<i class="fa-solid fa-angle-right st-crumbs__sep" aria-hidden="true"></i>';
+    $items = '';
+    foreach ($navbits as $i => $navbit) {
+        $name = (string)($navbit['name'] ?? '');
+        $url  = preg_replace('/&amp;page=1$/', '', str_replace('-page-1.html', '.html', (string)($navbit['url'] ?? '')));
+        $home = $i === 0 ? '<i class="fa-solid fa-house"></i>' : '';
+
+        if ($i === $last) {
+            if ($show_title) {
+                break;   // текущая страница — в заголовке ниже
             }
-
-            $sep = isset($navbits[$key + 2]) ? $navsep : '';
-            $multipage_dropdown = '';
-
-            if (!empty($navbit['multipage'])) {
-                $tpp = max(1, (int)($f_threadsperpage ?: 20));
-                $mp  = multipage((int)$navbit['multipage']['num_threads'], $tpp, (int)$navbit['multipage']['current_page'], $navbit['multipage']['url'], true);
-                if ($mp) {
-                    $sep = $multipage_dropdown . $sep;
-                }
-            }
-
-            $navbit['url'] = preg_replace('/&amp;page=1$/', '', str_replace('-page-1.html', '.html', $navbit['url']));
-            $nav .= '<a href="' . $navbit['url'] . '">' . $navbit['name'] . '</a>' . $sep;
+            $items .= '<li class="st-crumbs__item st-crumbs__item--current" aria-current="page">' . ($i > 0 ? $sep : '')
+                    . '<span class="st-crumbs__text" title="' . strip_tags($name) . '">' . $home . $name . '</span></li>';
+            break;
         }
 
-        $navsize = count($navbits);
-        $navbit  = $navbits[$navsize - 1];
+        $inner = $home . '<span class="st-crumbs__label">' . $name . '</span>';
+        $items .= '<li class="st-crumbs__item">' . ($i > 0 ? $sep : '')
+                . ($url !== '' ? '<a href="' . $url . '" title="' . strip_tags($name) . '">' . $inner . '</a>' : '<span class="st-crumbs__text">' . $inner . '</span>')
+                . '</li>';
     }
 
-    if ($nav) {
-        $activesep = '&nbsp; <i class="fa-solid fa-angle-right little"></i> &nbsp;';
+    $css = '';
+    if (!$css_done) {
+        $css_done = true;
+        $css = '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/breadcrumb.css?ver=11">';
     }
 
-    $activebit = '<br><div class="border-bottom border-2 mb-0 mt-3 rounded-0"><h3>' . $navbit['name'] . '</h3></div><br>';
+    $title = $show_title
+        ? '<h1 class="st-crumbs__title">' . ($navbits[$last]['name'] ?? '') . '</h1>'
+        : '';
 
-    echo '
-    <div class="container mt-3">
-        <div class="navigation">
-            ' . $nav . $activesep . $activebit . '
-        </div>
+    echo $css . '
+    <div class="container-md st-crumbs">
+        <nav aria-label="breadcrumb"><ol class="st-crumbs__list">' . $items . '</ol></nav>
+        ' . $title . '
     </div>';
 }
+
+
+
+
+
+
+
 
 // ── build_forum_breadcrumb ────────────────────────────────────────────────────
 function build_forum_breadcrumb(int|string $fid, array $multipage = []): int

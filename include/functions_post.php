@@ -1,5 +1,51 @@
 <?php
 
+/* =============================================================================
+   Постбит форума в «новом стиле».
+   Разметка — классы pb-* (include/templates/default/style/postbit.css).
+   CSS подключается самим build_postbit() один раз за запрос, поэтому пост
+   выглядит одинаково на showthread, private, announcements и в предпросмотрах.
+   Id/классы, на которые опираются скрипты, сохранены:
+     post_{pid}, pid{pid}, pid_{pid}, edited_by_{pid}, inline_row, .card-title,
+     multiquote_link_{pid}, inlinemod_{pid}, editPostModal{pid}, deletePostModal{pid},
+     ignored_post_{pid}, show_ignored_link_{pid}, .report-post-btn + data-*
+   ============================================================================= */
+
+/** <link> на postbit.css — один раз за запрос, не в AJAX-ответах */
+function postbit_css_link(): string
+{
+    static $done = false;
+    global $BASEURL;
+
+    if ($done || (defined('SCRIPTNAME') && SCRIPTNAME === 'xmlhttp.php')) {
+        return '';
+    }
+    $done = true;
+
+    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=241">';
+}
+
+/** Аватар автора: ссылка + картинка (заглушка-иконка для гостей и запрещённых удалённых аватаров) */
+function postbit_avatar(array $post, string $mod = ''): string
+{
+    $cls = 'pb-avatar' . ($mod !== '' ? ' pb-avatar--' . $mod : '');
+
+    if (empty($post['userusername'])) {
+        return '<span class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></span>';
+    }
+
+    $av = format_avatar($post['avatar'] ?? '', $post['avatardimensions'] ?? '');
+    $link = $post['profilelink_plain'];
+
+    if (!empty($av['is_html'])) {
+        // format_avatar() вернул HTML-заглушку вместо URL — в src его ставить нельзя
+        return '<a href="' . $link . '" class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></a>';
+    }
+
+    return '<a href="' . $link . '" class="' . $cls . (!empty($av['is_placeholder']) ? ' pb-avatar--ph' : '') . '">'
+         . '<img src="' . $av['image'] . '" alt="" loading="lazy"></a>';
+}
+
 function build_ignore_bit(array $post, string $ignored_message, string &$post_visibility, array $lang): string
 {
     $post_visibility = "display: none;";
@@ -8,11 +54,15 @@ function build_ignore_bit(array $post, string $ignored_message, string &$post_vi
     $show_label      = htmlspecialchars($lang['postbit_show_ignored_post'] ?? 'Show');
     $hide_label      = htmlspecialchars($lang['postbit_hide_ignored_post'] ?? 'Hide');
 
-    return '<div class="ignored_post collapse show" id="ignored_post_' . $pid . '">'
-         . '<div class="ignored_post_author"><strong><span class="largetext">' . $profilelink . '</span></strong></div>'
-         . '<div class="ignored_post_message">'
-         . '<div class="show_ignored_post float_right" id="show_ignored_link_' . $pid . '">'
-         . '<button type="button" class="btn btn-outline-primary btn-sm rounded-2 d-flex align-items-center gap-2"'
+    // ignor.js: #ignored_post_{pid}, #show_ignored_link_{pid} button > i.bi-eye + span, data-*-label, btn-outline-primary/secondary
+    return '<div class="ignored_post pb-ignored" id="ignored_post_' . $pid . '">'
+         . '<span class="pb-ignored__ico"><i class="fa-solid fa-eye-slash"></i></span>'
+         . '<div class="ignored_post_message pb-ignored__text">'
+         . '<div class="ignored_post_author pb-ignored__who">' . $profilelink . '</div>'
+         . $ignored_message
+         . '</div>'
+         . '<div class="show_ignored_post" id="show_ignored_link_' . $pid . '">'
+         . '<button type="button" class="btn btn-outline-primary btn-sm rounded-pill d-inline-flex align-items-center gap-2"'
          . ' onclick="showIgnoredPost(' . $pid . '); return false;"'
          . ' data-show-label="' . $show_label . '"'
          . ' data-hide-label="' . $hide_label . '">'
@@ -20,76 +70,53 @@ function build_ignore_bit(array $post, string $ignored_message, string &$post_vi
          . '<span>' . $show_label . '</span>'
          . '</button>'
          . '</div>'
-         . $ignored_message
-         . '</div>'
+         . '</div>';
+}
+
+/** Меню «⋮» в подвале — только если в нём есть пункты */
+function build_postbit_menu(array $post): string
+{
+    $items = $post['button_quote'] . $post['button_quickdelete'] . $post['button_quickrestore']
+           . $post['button_report'] . $post['button_warn'] . $post['button_purgespammer']
+           . $post['button_reply_pm'] . $post['button_replyall_pm'] . $post['button_forward_pm'] . $post['button_delete_pm'];
+
+    if ($items === '') {
+        return '';
+    }
+
+    return '<div class="dropdown pb-menu">'
+         . '<button type="button" class="pb-more" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More">'
+         . '<i class="fa-solid fa-ellipsis-vertical"></i></button>'
+         . '<div class="dropdown-menu dropdown-menu-end">' . $items . '</div>'
          . '</div>';
 }
 
 function build_postbit_footer(array $post): string
 {
-    $pid = (int)$post['pid'];
-
-    return '<div class="card-footer border-top-0 py-2 my-0">'
-         . '<div class="row mt-0 pt-0 mb-0 pb-0">'
-
-         . '<div class="col-auto align-self-center small text-start pe-0 me-0">'
+    return '<div class="pb-foot">'
          . $post['button_multiquote']
-         . '</div>'
-
-         . '<div class="col-auto align-self-center small text-start pe-0 me-0">'
          . $post['button_rep']
-         . '</div>'
-
-         . '<div class="col align-self-center small text-end">'
+         . '<span class="pb-foot__sp"></span>'
          . $post['button_edit']
-         . '</div>'
-
-         . '<div class="col-auto text-end align-self-center">'
-         . '<div class="hidden-text">'
-         . '<div class="dropdown d-flex justify-content-end align-self-center">'
-         . '<a class="bg-transparent border-0 text-muted" aria-expanded="true" data-bs-toggle="dropdown" role="button">'
-         . '&nbsp;<i class="fa-solid fa-ellipsis-vertical"></i>&nbsp;'
-         . '</a>'
-         . '<div class="dropdown-menu border">'
-         . $post['button_quote']
-         . $post['button_quickdelete']
-         . $post['button_quickrestore']
-         . $post['button_report']
-         . $post['button_warn']
-         . $post['button_purgespammer']
-         . $post['button_reply_pm']
-         . $post['button_replyall_pm']
-         . $post['button_forward_pm']
-         . $post['button_delete_pm']
-         . '</div>'
-         . '</div>'
-         . '</div>'
-         . '</div>'
-
-         . '</div>'
+         . build_postbit_menu($post)
          . '</div>';
 }
 
 function build_postbit_header(array $post): string
 {
-    return '<div class="row m-0 p-0 mb-3 mb-lg-0">'
+    $title = !empty($post['usertitle']) && !empty($post['userusername'])
+        ? '<span class="pb-utitle">' . $post['usertitle'] . '</span>'
+        : '';
 
-         . '<div class="col-auto d-block d-lg-none m-0 p-0 me-2 align-self-center">'
-         . $post['useravatar']
+    return '<div class="pb-head">'
+         . '<div class="pb-head__av">' . postbit_avatar($post, 'sm') . '</div>'
+         . '<div class="pb-who">'
+         . '<div class="pb-author card-title">' . $post['profilelink'] . $post['onlinestatus'] . '</div>'
+         . '<div class="pb-meta">' . $title
+         . '<span class="pb-date"><i class="fa-regular fa-clock"></i>' . $post['postdate'] . '</span>'
          . '</div>'
-
-         . '<div class="col m-0 p-0 align-self-center">'
-         . '<h6 class="card-title mb-0 mb-lg-3">'
-         . '<span class="fw-bold">' . $post['profilelink'] . '</span>'
-         . ' ' . $post['onlinestatus']
-         . ' &nbsp;&nbsp;<span class="text-uppercase text-desc small fw-normal">' . $post['postdate'] . '</span>'
-         . '</h6>'
          . '</div>'
-
-         . '<div class="col-auto m-0 p-0 align-self-center text-end text-14">'
-         . $post['posturl']
-         . '</div>'
-
+         . '<div class="pb-num">' . $post['posturl'] . '</div>'
          . '</div>';
 }
 
@@ -97,13 +124,13 @@ function build_postbit_body(array $post, string $unapproved_shade): string
 {
     $pid = (int)$post['pid'];
 
-    return '<div class="card-body inline_row ' . $unapproved_shade . '">'
-         . build_postbit_header($post)
+    return build_postbit_header($post)
+         . '<div class="pb-body">'
          . '<div class="post_body scaleimages" id="pid_' . $pid . '">'
          . $post['message']
          . $post['attachments']
          . '</div>'
-         . '<span class="post_edit" id="edited_by_' . $pid . '">' . $post['editedmsg'] . '</span>'
+         . '<span class="post_edit pb-edited-wrap" id="edited_by_' . $pid . '">' . $post['editedmsg'] . '</span>'
          . $post['signature']
          . $post['poststatus']
          . $post['input_editreason']
@@ -114,12 +141,10 @@ function build_postbit_body(array $post, string $unapproved_shade): string
 function build_postbit_modals(array $post, object $parser, array $parser_options, array $lang): array
 {
     global $lang;
-	
-	$pid        = (int)$post['pid'];
+
+    $pid        = (int)$post['pid'];
     $message    = htmlspecialchars_uni($post['message']);
     $editreason = htmlspecialchars_uni($post['editreason']);
-
-    //$t = static fn(string $key): string => htmlspecialchars($lang[$key] ?? $key, ENT_QUOTES, 'UTF-8');
 
     $bbcode_buttons = [
         ['[b]',        '[/b]',        '<b>B</b>'],
@@ -142,12 +167,11 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         ['[spoiler]',  '[/spoiler]',  $lang->showthread['pb_bb_spoiler']],
     ];
 
-
     $toolbar = '';
     foreach ($bbcode_buttons as [$open, $close, $label]) {
         $o = addslashes($open);
         $c = addslashes($close);
-        $toolbar .= '<button class="btn btn-sm btn-light" onclick="wrapBBCode(\'' . $o . '\',\'' . $c . '\',' . $pid . ')">' . $label . '</button>';
+        $toolbar .= '<button type="button" class="btn btn-sm btn-light" onclick="wrapBBCode(\'' . $o . '\',\'' . $c . '\',' . $pid . ')">' . $label . '</button>';
     }
     $toolbar .= '<button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel' . $pid . '"><i class="fa-solid fa-magnet"></i> ' . $lang->showthread['pb_torrent'] . '</button>';
 
@@ -177,7 +201,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . '<input type="text" class="form-control" id="editReasonInput' . $pid . '" value="' . $editreason . '">'
         . '</div>'
         . '<h6>' . $lang->showthread['pb_live_preview'] . '</h6>'
-        . '<div id="editPostPreview' . $pid . '" class="border p-2 bg-light rounded" style="min-height:100px;"></div>'
+        . '<div id="editPostPreview' . $pid . '" class="border p-2 bg-body-tertiary rounded" style="min-height:100px;"></div>'
         . '</div>'
         . '<div class="modal-footer">'
         . '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">' . $lang->showthread['pb_cancel'] . '</button>'
@@ -185,23 +209,20 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . '</div>'
         . '</div></div></div>';
 
-    
-	
-	$parser_options = array(
-	    "allow_html" => 0,
-	    "allow_mycode" => 1,
-	    "allow_smilies" => 1,
-	    "allow_imgcode" => 1,
-	    "allow_videocode" => 1,
-	    "filter_badwords" => 1
-    );
-	
-	
-	
-	
-	$message2    = $parser->parse_message($post['message'], $parser_options);
-    $username    = htmlspecialchars_uni($post['username']);
-    $postdate    = $post['postdate'];
+
+    $parser_options = [
+        "allow_html"      => 0,
+        "allow_mycode"    => 1,
+        "allow_smilies"   => 1,
+        "allow_imgcode"   => 1,
+        "allow_videocode" => 1,
+        "filter_badwords" => 1,
+    ];
+
+    $message2 = $parser->parse_message($post['message'], $parser_options);
+    // $post['username'] уже экранирован в build_postbit() — второй htmlspecialchars давал &amp;amp;
+    $username = $post['username'];
+    $postdate = $post['postdate'];
 
     $modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">'
@@ -254,9 +275,15 @@ function build_postbit($post, $post_type = 0)
     global $moderator, $forummoderator, $thread, $permissions, $forum_threads;
     global $titlescache, $page, $forumpermissions, $attachcache;
     global $lang, $ismod, $inlinecookie, $inlinecount, $groupscache, $fid;
-    global $plugins, $parser, $cache, $ignored_users, $hascustomtitle;
+    global $parser, $cache, $ignored_users, $hascustomtitle;
 
     $hascustomtitle = 0;
+
+    // Модалки правки/удаления и подписи поста берут тексты из ланга showthread.
+    // На newreply.php (AJAX быстрого ответа), editpost/newthread (предпросмотр) он не загружен.
+    if (!is_array($lang->showthread ?? null)) {
+        $lang->load('showthread');
+    }
 
     foreach (['aid','pmid','posturl','button_multiquote','subject_extra','attachments',
           'button_rep','button_warn','button_purgespammer','button_pm','button_reply_pm',
@@ -270,8 +297,6 @@ if (empty($post['pid'])) $post['pid'] = 0;
     $unapproved_shade = '';
     if (isset($post['visible']) && $post['visible'] == 0 && $post_type == 0) {
         $altbg = $unapproved_shade = 'unapproved_post';
-    } elseif (isset($post['visible']) && $post['visible'] == -1 && $post_type == 0) {
-        $altbg = $unapproved_shade = 'unapproved_post deleted_post';
     } elseif ($altbg == 'trow1') {
         $altbg = 'trow2';
     } else {
@@ -366,29 +391,13 @@ if (empty($post['pid'])) $post['pid'] = 0;
         $timecut   = TIMENOW - $wolcutoffmins;
 
         if ($post['lastactive'] > $timecut && ($post['invisible'] != 1 || $usergroups['canviewwolinvis'] == 1) && $post['lastvisit'] != $post['lastactive']) {
-            $post['onlinestatus'] = '<a href="online.php" title="' . $lang->global['postbit_status_online'] . '">'
-                . '<i class="fa-solid fa-circle-dot smaller" style="vertical-align:0.115em;padding-left:4px;color:#68c000"></i></a>';
+            $post['onlinestatus'] = '<a href="online.php" class="pb-dot pb-dot--on" title="' . $lang->global['postbit_status_online'] . '"></a>';
         } else {
-            $post['onlinestatus'] = '<i class="fa-solid fa-circle-dot smaller" title="' . $lang->global['postbit_status_offline'] . '" style="vertical-align:0.115em;padding-left:4px;color:#ccc"></i>';
+            $post['onlinestatus'] = '<span class="pb-dot" title="' . $lang->global['postbit_status_offline'] . '"></span>';
         }
 
-        $post['useravatar'] = '';
-        if (true) {
-            $useravatar = format_avatar($post['avatar'], $post['avatardimensions']);
-			
-			$avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
-			
-            
-            $post['useravatar'] =
-                '<div class="d-none d-lg-block">'
-                . '<div class="author_avatar"><a href="' . $post['profilelink_plain'] . '">'
-                . '<img class="'.$avatarClass.'" style="width:100px;" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
-                . '</a></div></div>'
-                . '<div class="d-block d-lg-none">'
-                . '<div class="author_avatar"><a href="' . $post['profilelink_plain'] . '">'
-                . '<img class="'.$avatarClass.'" style="width:30px;height:30px;" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
-                . '</a></div></div>';
-        }
+        // Аватар строит postbit_avatar() (боковой и мобильный варианты)
+        $post['useravatar'] = postbit_avatar($post);
 
         $post['userregdate']  = my_datee($regdateformat, $post['added']);
         $post['user_details'] = '<i class="bi bi-chat-fill"></i> ' . $post['postnum'];
@@ -397,7 +406,8 @@ if (empty($post['pid'])) $post['pid'] = 0;
     } else {
         $post['profilelink']  = format_name($post['username'], 1);
         $post['title']        = htmlspecialchars_uni($usergroup['title'] ?: 'guest');
-        $post['userstars']    = $post['useravatar'] = '';
+        $post['userstars']    = '';
+        $post['useravatar']   = postbit_avatar($post);   // иконка-заглушка гостя
         $post['userregdate']  = $post['postnum'] = 'na';
         $post['button_profile'] = $post['button_email'] = $post['button_www'] = '';
         $post['signature']    = $post['button_pm'] = $post['button_find'] = '';
@@ -442,7 +452,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
                 $post['editreason'] = htmlspecialchars_uni($parser->parse_badwords($post['editreason']));
                 $editreason = ' ' . $lang->global['postbit_editreason'] . ': ' . $post['editreason'];
             }
-            $post['editedmsg'] = '<div class="mt-3"><span class="small">'
+            $post['editedmsg'] = '<div class="pb-edited"><i class="fa-regular fa-pen-to-square"></i><span>'
                 . $post['editnote'] . ' ' . $post['editedprofilelink'] . '.' . $editreason
                 . '</span></div>';
         }
@@ -452,26 +462,27 @@ if (empty($post['pid'])) $post['pid'] = 0;
         if ($is_mod || ($forumpermissions['caneditposts'] == 1 && $CURUSER['id'] == $post['uid'] && $thread['closed'] != 1 && $CURUSER['id'] != 0)) {
             $pid = (int)$post['pid'];
 
+            $del_label = $lang->showthread['pb_delete'] ?? 'pb_delete';
             $post['button_edit'] =
-                '<div class="d-none d-lg-block"><div class="dropdown">'
-                . '<a class="postlinks" aria-expanded="false" data-bs-toggle="dropdown" type="button">'
-                . '<i class="fa-solid fa-pencil"></i> &nbsp;' . $lang->global['postbit_button_edit']
-                . '</a>'
-                . '<div class="dropdown-menu border">'
+                // Десктоп: меню «Изменить» (быстрая правка / полная / удалить)
+                '<div class="dropdown pb-only-lg">'
+                . '<button type="button" class="pb-act" aria-expanded="false" data-bs-toggle="dropdown">'
+                . '<i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '<i class="fa-solid fa-chevron-down pb-act__caret"></i>'
+                . '</button>'
+                . '<div class="dropdown-menu dropdown-menu-end">'
                 . '<a href="javascript:void(0)" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#editPostModal' . $pid . '">'
                 . '<i class="fa-solid fa-clock"></i> &nbsp;' . $lang->global['postbit_quick_edit'] . '</a>'
                 . '<a href="editpost.php?pid=' . $pid . '" class="dropdown-item">'
                 . '<i class="fa-solid fa-pen-to-square"></i> &nbsp;' . $lang->global['postbit_full_edit'] . '</a>'
                 . '<div class="dropdown-divider"></div>'
                 . '<a href="javascript:void(0)" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '">'
-                . '<i class="fa-solid fa-trash"></i> &nbsp;' . ($lang->showthread['pb_delete'] ?? 'pb_delete') . '</a>'
-                . '</div></div></div>'
-                . '<div class="d-block d-lg-none"><div class="dropdown">'
-                . '<a href="editpost.php?pid=' . $pid . '" class="links me-2">'
-                . '<i class="fa-solid fa-pencil"></i> &nbsp;' . $lang->global['postbit_button_edit'] . '</a>'
-                . '<a href="javascript:void(0)" class="links text-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '">'
-                . '<i class="fa-solid fa-trash"></i> &nbsp;' . ($lang->showthread['pb_delete'] ?? 'pb_delete') . '</a>'
-                . '</div></div>';
+                . '<i class="fa-solid fa-trash"></i> &nbsp;' . $del_label . '</a>'
+                . '</div></div>'
+                // Телефон: сразу полная правка и удаление
+                . '<a href="editpost.php?pid=' . $pid . '" class="pb-act pb-only-sm">'
+                . '<i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '</a>'
+                . '<a href="javascript:void(0)" class="pb-act pb-act--danger pb-only-sm" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '" title="' . $del_label . '">'
+                . '<i class="fa-solid fa-trash"></i></a>';
 
             [$modals, $modaldelete, $postbit_parsed_message] = build_postbit_modals($post, $parser, $parser_options, $lang->global);
         }
@@ -482,9 +493,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
         ? 'checked="checked"' : '';
                 
 
-            $post['inlinecheck'] = '<div class="form-check form-switch d-inline-block">'
-                . '<input type="checkbox" class="form-check-input" name="inlinemod_' . (int)$post['pid'] . '" id="inlinemod_' . (int)$post['pid'] . '" value="1" style="vertical-align:middle;margin-bottom:7px;" ' . $inlinecheck . '>'
-                . '</div>&nbsp;';
+            $post['inlinecheck'] = '<span class="form-check form-switch pb-switch">'
+                . '<input type="checkbox" class="form-check-input" name="inlinemod_' . (int)$post['pid'] . '" id="inlinemod_' . (int)$post['pid'] . '" value="1" ' . $inlinecheck . '>'
+                . '</span>';
 
             if ($inlinecheck) $inlinecount++;
             if ($post['visible'] == 0) $invisiblepost = 1;
@@ -496,7 +507,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
         $post['postlink'] = get_post_link($post['pid'], $post['tid']);
         $post_number      = ts_nf($postcounter);
         $post['posturl']  = $post['inlinecheck']
-            . ' <a href="' . $post['postlink'] . '#pid' . (int)$post['pid'] . '" title="' . $post['subject_title'] . '">#' . $post_number . '</a>';
+            . '<a href="' . $post['postlink'] . '#pid' . (int)$post['pid'] . '" class="pb-numlink" title="' . $post['subject_title'] . '">#' . $post_number . '</a>';
 
         /* ── Quote / report buttons ───────────────────────────────── */
         global $forum, $thread;
@@ -532,9 +543,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
                 '<a href="javascript:void(0)" onclick="Thread.multiQuote(' . (int)$post['pid'] . '); return false;"'
                 . ' style="display:none;" id="multiquote_link_' . (int)$post['pid'] . '"'
                 . ' title="' . $lang->global['postbit_multiquote'] . '"'
-                . ' class="postbit_multiquote postbit_mirage postlinks">'
+                . ' class="postbit_multiquote postbit_mirage postlinks pb-act">'
                 . '<span id="multiquote_' . (int)$post['pid'] . '">'
-                . '<i class="fa-solid fa-quote-left"></i> &nbsp;' . $lang->global['postbit_button_multiquote']
+                . '<i class="fa-solid fa-quote-left"></i> ' . $lang->global['postbit_button_multiquote']
                 . '</span></a>';
         }
 
@@ -543,14 +554,14 @@ if (empty($post['pid'])) $post['pid'] = 0;
         if ($is_mod) {
             $post['button_edit'] =
                 '<a href="admin/index.php?act=announcements_forum&amp;action=edit&amp;id=' . (int)$post['aid'] . '"'
-                . ' title="' . $lang->announcements['announcement_edit'] . '"'
-                . ' class="postbit_edit postlinks">'
-                . '<i class="fa-solid fa-pencil"></i> &nbsp;' . $lang->global['postbit_button_edit'] . '</a>';
+                . ' title="' . ($lang->announcements['announcement_edit'] ?? $lang->global['postbit_button_edit']) . '"'
+                . ' class="postbit_edit postlinks pb-act">'
+                . '<i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '</a>';
 
             $post['button_quickdelete'] =
                 '<a href="#"'
                 . ' onclick="afDelete(' . (int)$post['aid'] . ', \'' . addslashes($post['subject']) . '\'); return false;"'
-                . ' class="postbit_qdelete dropdown-item p-2">'
+                . ' class="postbit_qdelete dropdown-item">'
                 . '<i class="fa-solid fa-trash"></i> &nbsp;' . $lang->global['postbit_button_qdelete'] . '</a>';
         }
     }
@@ -565,7 +576,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
         } elseif ($is_mod && $postcounter == 1 && $post['visible'] == 0) {
             $status_type = $lang->global['postbit_thread_unapproved'];
         }
-        $post['poststatus'] = '<div class="mt-3"><span class="status_type small">' . $status_type . '</span></div>';
+        if ($status_type !== '') {
+            $post['poststatus'] = '<div class="pb-status"><span class="status_type pb-tag pb-soft-warning"><i class="fa-solid fa-hourglass-half"></i>' . $status_type . '</span></div>';
+        }
     }
 
     /* ── Highlight search terms ──────────────────────────────────── */
@@ -592,21 +605,17 @@ if (empty($post['pid'])) $post['pid'] = 0;
             'allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
             'allow_imgcode'=>0,'me_username'=>1,'filter_badwords'=>1,
         ]);
-        $post['signature'] = '<div class="signature scaleimages mt-4"><hr />' . $post['signature'] . '</div>';
+        $post['signature'] = $post['signature'] !== ''
+            ? '<div class="signature scaleimages pb-sig">' . $post['signature'] . '</div>'
+            : '';
     } else {
         $post['signature'] = '';
     }
 
-    /* ── Plugin hooks ────────────────────────────────────────────── */
-    $post_visibility = $ignore_bit = $deleted_bit = '';
+    /* ── Ignored / own unapproved (только посты темы) ─────────────── */
+    $post_visibility = $ignore_bit = '';
 
-    switch ($post_type) {
-        case 1: $post = $plugins->run_hooks("postbit_prev",         $post); break;
-        case 2: $post = $plugins->run_hooks("postbit_pm",           $post); break;
-        case 3: $post = $plugins->run_hooks("postbit_announcement",  $post); break;
-        default:
-            $post = $plugins->run_hooks("postbit", $post);
-
+    if ($post_type == 0) {
             if (!isset($ignored_users)) {
                 $ignored_users = [];
                 if ($CURUSER['id'] > 0 && $CURUSER['ignorelist'] != "") {
@@ -623,51 +632,28 @@ if (empty($post['pid'])) $post['pid'] = 0;
             }
 
             // Ignored user
-            if (is_array($ignored_users) && $post['uid'] != 0 && !empty($ignored_users[$post['uid']]) && empty($deleted_bit)) {
+            if (is_array($ignored_users) && $post['uid'] != 0 && !empty($ignored_users[$post['uid']])) {
                 $ignored_message = sprintf($lang->showthread['pb_ignored'] ?? '%s', htmlspecialchars_uni($post['username']));
                 $ignore_bit      = build_ignore_bit($post, $ignored_message, $post_visibility, $lang->global);
             }
-            break;
-    }
-
-    /* ── Deleted post ────────────────────────────────────────────── */
-    if ($post_type == 0 && $post['visible'] == -1) {
-        return '<div class="row mb-4 ps-5 pe-5">'
-             . '<div class="col align-self-center">'
-             . '<a id="pid' . (int)$post['pid'] . '" name="pid' . (int)$post['pid'] . '"></a>'
-             . '<div id="post_' . (int)$post['pid'] . '" class="post deleted_post_hidden"></div>'
-             . '<i class="bi bi-info-circle"></i> ' . ($lang->showthread['pb_post_deleted'] ?? 'pb_post_deleted')
-             . '</div></div>';
     }
 
     /* ── Render postbit ──────────────────────────────────────────── */
-    $pid     = (int)$post['pid'];
-    $footer  = build_postbit_footer($post);
-    $body    = build_postbit_body($post, $unapproved_shade);
+    $pid = (int)$post['pid'];
 
-    $postbit = $ignore_bit . $deleted_bit
+    // .inline_row — на неё вешает .trow_selected inline_moderation.js
+    $postbit = postbit_css_link()
+             . $ignore_bit
              . '<a name="pid' . $pid . '" id="pid' . $pid . '"></a>'
-             . '<div class="row g-2 mb-4" style="' . $post_visibility . '" id="post_' . $pid . '">'
-             . '<div class="col-auto d-none d-lg-block">' . $post['useravatar'] . '</div>'
-             . '<div class="col"><div class="card">'
-             . $body
-             . '<div class="card-footer border-top-0 py-2 my-0">'
-             . '<div class="row mt-0 pt-0 mb-0 pb-0">'
-             . '<div class="col-auto align-self-center small text-start pe-0 me-0">' . $post['button_multiquote'] . '</div>'
-             . '<div class="col-auto align-self-center small text-start pe-0 me-0">' . $post['button_rep'] . '</div>'
-             . '<div class="col align-self-center small text-end">' . $post['button_edit'] . '</div>'
+             . '<div class="pb-post" style="' . $post_visibility . '" id="post_' . $pid . '">'
+             . '<div class="pb-side">' . $post['useravatar'] . '</div>'
+             . '<article class="pb-card inline_row ' . $unapproved_shade . '">'
+             . build_postbit_body($post, $unapproved_shade)
+             . build_postbit_footer($post)
+             . '</article>'
+             . '</div>'
              . $modals
-             . $modaldelete
-             . '<div class="col-auto text-end align-self-center">'
-             . '<div class="hidden-text"><div class="dropdown d-flex justify-content-end align-self-center">'
-             . '<a class="bg-transparent border-0 text-muted" aria-expanded="true" data-bs-toggle="dropdown" role="button">&nbsp;<i class="fa-solid fa-ellipsis-vertical"></i>&nbsp;</a>'
-             . '<div class="dropdown-menu border">'
-             . $post['button_quote'] . $post['button_quickdelete'] . $post['button_quickrestore']
-             . $post['button_report'] . $post['button_warn'] . $post['button_purgespammer']
-             . $post['button_reply_pm'] . $post['button_replyall_pm'] . $post['button_forward_pm'] . $post['button_delete_pm']
-             . '</div></div></div></div>'
-             . '</div></div>'
-             . '</div></div></div>';
+             . $modaldelete;
 
     $GLOBALS['post'] = '';
     return $postbit;
@@ -678,7 +664,6 @@ function get_post_attachments($id, &$post)
     global $attachcache, $mybb, $theme, $forumpermissions, $attachthumbnails, $lang;
 
     $validationcount = 0;
-    $tcount = 0;
     $post['attachmentlist'] = $post['thumblist'] = $post['imagelist'] = '';
 
     if (!isset($forumpermissions)) {
@@ -714,19 +699,18 @@ function get_post_attachments($id, &$post)
         $inline = stripos($post['message'], '[attachment=' . $attachment['aid'] . ']') !== false;
 
         if ($attachment['thumbnail'] != "SMALL" && $attachment['thumbnail'] != "" && $attachthumbnails == "yes") {
-            $attbit = '<div class="col-auto">'
-                    . '<a href="attachment.php?aid=' . (int)$attachment['aid'] . '" target="_blank">'
-                    . '<img src="attachment.php?thumbnail=' . (int)$attachment['aid'] . '" style="width:80px;height:80px" class="img-thumbnail display-inline" alt="" title="' . htmlspecialchars($title_attr) . '">'
-                    . '</a></div>';
+            $attbit = '<a href="attachment.php?aid=' . (int)$attachment['aid'] . '" target="_blank" class="pb-thumb">'
+                    . '<img src="attachment.php?thumbnail=' . (int)$attachment['aid'] . '" alt="" title="' . htmlspecialchars($title_attr) . '">'
+                    . '</a>';
         } elseif (($attachment['thumbnail'] == "SMALL" || $attachthumbnails == "no") && $isimage) {
-            $attbit = '<img src="attachment.php?aid=' . (int)$attachment['aid'] . '" class="attachment" style="width:16px;height:16px;" alt="" title="' . htmlspecialchars($title_attr) . '">&nbsp;&nbsp;&nbsp;';
+            $attbit = '<img src="attachment.php?aid=' . (int)$attachment['aid'] . '" class="attachment pb-attimg" alt="" title="' . htmlspecialchars($title_attr) . '">';
         } else {
-            $attbit = '<div class="row mt-2 g-1 text-muted">'
-                    . '<div class="col-auto align-self-center">' . $attachment['icon'] . '</div>'
-                    . '<div class="col align-self-center">'
+            $attbit = '<div class="pb-file">'
+                    . '<span class="pb-file__ico">' . $attachment['icon'] . '</span>'
+                    . '<div class="pb-file__text">'
                     . '<a href="attachment.php?aid=' . (int)$attachment['aid'] . '" target="_blank" title="' . $attachdate . '">' . $attachment['filename'] . '</a>'
-                    . ' (' . $lang->global['postbit_attachment_size'] . ' <span class="text-dark">' . $attachment['filesize'] . '</span>'
-                    . ' ' . $lang->global['postbit_attachment_downloads'] . ' <span class="text-dark">' . $attachment['downloads'] . '</span>)'
+                    . '<span class="pb-file__meta">' . $lang->global['postbit_attachment_size'] . ' <b>' . $attachment['filesize'] . '</b>'
+                    . ' · ' . $lang->global['postbit_attachment_downloads'] . ' <b>' . $attachment['downloads'] . '</b></span>'
                     . '</div></div>';
         }
 
@@ -735,15 +719,11 @@ function get_post_attachments($id, &$post)
         } else {
             if ($attachment['thumbnail'] != "SMALL" && $attachment['thumbnail'] != "" && $attachthumbnails == "yes") {
                 $post['thumblist'] .= $attbit;
-                if ($tcount == 5) { $post['thumblist'] .= "<br />"; $tcount = 0; }
-                ++$tcount;
             } elseif (($attachment['thumbnail'] == "SMALL" || $attachthumbnails == "no") && $isimage) {
                 if ($forumpermissions['candlattachments']) {
                     $post['imagelist'] .= $attbit;
                 } else {
                     $post['thumblist'] .= $attbit;
-                    if ($tcount == 5) { $post['thumblist'] .= "<br />"; $tcount = 0; }
-                    ++$tcount;
                 }
             } else {
                 $post['attachmentlist'] .= $attbit;
@@ -756,24 +736,20 @@ function get_post_attachments($id, &$post)
             ? $lang->global['postbit_unapproved_attachment']
             : sprintf($lang->global['postbit_unapproved_attachments'], $validationcount);
 
-        $post['attachmentlist'] .= '<div class="row ms-0 me-0 mt-0 border-top p-3 mb-0">'
-            . '<div class="col-auto align-self-center small">'
-            . '<i class="fa-solid fa-xmark"></i> &nbsp;' . $msg
-            . '</div></div>';
+        $post['attachmentlist'] .= '<div class="pb-status"><span class="pb-tag pb-soft-warning"><i class="fa-solid fa-hourglass-half"></i>' . $msg . '</span></div>';
     }
 
     $post['attachedthumbs'] = $post['thumblist']
-        ? '<div class="row mt-2">' . $post['thumblist'] . '</div>'
+        ? '<div class="pb-thumbs">' . $post['thumblist'] . '</div>'
         : '';
 
     $post['attachedimages'] = $post['imagelist']
-        ? $lang->global['postbit_attachments_images'] . '<br />' . $post['imagelist'] . '<br />'
+        ? '<div class="pb-atts__lbl">' . $lang->global['postbit_attachments_images'] . '</div><div class="pb-thumbs">' . $post['imagelist'] . '</div>'
         : '';
 
     if ($post['attachmentlist'] || $post['thumblist'] || $post['imagelist']) {
-        $post['attachments'] = '<div class="mb-0 mt-4">'
-            . '<i class="fa-solid fa-paperclip"></i> <strong>' . $lang->global['postbit_attachments'] . '</strong>'
-            . '<hr />'
+        $post['attachments'] = '<div class="pb-atts">'
+            . '<div class="pb-atts__lbl"><i class="fa-solid fa-paperclip"></i>' . $lang->global['postbit_attachments'] . '</div>'
             . $post['attachmentlist']
             . $post['attachedthumbs']
             . $post['attachedimages']

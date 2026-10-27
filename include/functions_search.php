@@ -38,13 +38,11 @@ function escape_like_pattern(string $value): string
 // ─────────────────────────────────────────────────────────────────────────────
 function make_searchable_forums(int|string $pid = 0, int|string $selitem = 0, int $addselect = 1, string $depth = ''): string
 {
-    
-    global $db, $pforumcache, $permissioncache, $mybb, $selecteddone,
-           $forumlist, $forumlistbits, $theme, $templates, $lang, $forumpass;
+    global $db, $pforumcache, $permissioncache, $forumlist, $forumlistbits, $lang;
 
-$pid     = (int)$pid;
+    $pid     = (int)$pid;
     $selitem = (int)$selitem;
-
+    $forumlistbits ??= '';
 
     if (!is_array($pforumcache)) {
         $q = $db->sql_query_prepared(
@@ -59,32 +57,19 @@ $pid     = (int)$pid;
         $permissioncache = forum_permissions();
     }
 
-    if (is_array($pforumcache[$pid])) {
+    $hideprivateforums = 1;
+    if (is_array($pforumcache[$pid] ?? null)) {
         foreach ($pforumcache[$pid] as $main) {
             foreach ($main as $forum) {
-                $hideprivateforums = '1';
-                $perms = $permissioncache[$forum['fid']];
+                $perms = $permissioncache[$forum['fid']] ?? [];
 
-                if (($perms['canview'] == 1 || $hideprivateforums == 0) && $perms['cansearch'] != 0) {
-                    if ($selitem == $forum['fid']) {
-                        $optionselected = 'selected';
-                        $selecteddone   = '1';
-                    } else {
-                        $optionselected = '';
-                        $selecteddone   = '0';
-                    }
-                    
-					$forumlistbits .= '
-					
-					<option value="'.$forum['fid'].'">'.$depth.' '.$forum['name'].'</option>
-					
-					';
-					
-					
+                if ((($perms['canview'] ?? 0) == 1 || $hideprivateforums == 0) && ($perms['cansearch'] ?? 0) != 0) {
+                    $sel  = $selitem === (int)$forum['fid'] ? ' selected' : '';
+                    $name = htmlspecialchars_uni(strip_tags((string)$forum['name']));
+                    $forumlistbits .= '<option value="' . (int)$forum['fid'] . '"' . $sel . '>' . $depth . $name . '</option>';
 
                     if (!empty($pforumcache[$forum['fid']])) {
-                        $newdepth      = $depth . '&nbsp;&nbsp;&nbsp;&nbsp;';
-                        $forumlistbits .= make_searchable_forums($forum['fid'], $selitem, 0, $newdepth);
+                        make_searchable_forums($forum['fid'], $selitem, 0, $depth . '&nbsp;&nbsp;&nbsp;&nbsp;');
                     }
                 }
             }
@@ -92,26 +77,14 @@ $pid     = (int)$pid;
     }
 
     if ($addselect) {
-        
-		$forumlist = '
-<select name="forums[]" id="select" class="form-select form-select-sm border mb-4" multiple="multiple">
-    <option value="all" selected="selected">' . $lang->search['search_all_forums'] . '</option>
-    <option value="all">----------------------</option>
-    ' . $forumlistbits . '
-</select>
-
-<script>
-    var select = document.getElementById(\'select\');
-    select.size = select.length;
-</script>';
-		
-		
-		
-		
-		
-		
-		
-		
+        // Высота списка - по числу форумов, но не больше 12 строк (дальше - скролл).
+        // Раньше inline-скрипт ставил size = числу всех опций (на большом форуме - простыня).
+        $size = max(4, min(12, substr_count($forumlistbits, '<option') + 2));
+        $forumlist = '<select name="forums[]" id="select" class="form-select sr-forums" multiple size="' . $size . '">'
+                   . '<option value="all" selected>' . htmlspecialchars_uni((string)$lang->search['search_all_forums']) . '</option>'
+                   . '<option value="all" disabled>──────────</option>'
+                   . $forumlistbits
+                   . '</select>';
     }
 
     return $forumlist ?? '';

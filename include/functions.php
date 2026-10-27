@@ -942,7 +942,6 @@ function update_stats(array $changes = []): void
         'numthreads', 'numunapprovedthreads',
         'numposts', 'numunapprovedposts',
         'numusers',
-        'numdeletedposts', 'numdeletedthreads',
     ];
 
     foreach ($counters as $counter) {

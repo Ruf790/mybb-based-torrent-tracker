@@ -55,31 +55,21 @@ class Moderation
             $forum = get_forum($thread['fid']);
             $fid   = $forum['fid'];
 
-            if ((int)$thread['visible'] === 1 || (int)$thread['visible'] === -1) {
+            if ((int)$thread['visible'] === 1) {
                 $forum_counters[$fid] ??= [
                     'num_threads'           => 0,
                     'num_posts'             => 0,
                     'num_unapprovedthreads' => 0,
                     'num_unapprovedposts'   => 0,
-                    'num_deletedthreads'    => 0,
-                    'num_deletedposts'      => 0,
                 ];
                 $user_counters[$thread['uid']] ??= ['num_posts' => 0, 'num_threads' => 0];
 
                 ++$forum_counters[$fid]['num_unapprovedthreads'];
-                $forum_counters[$fid]['num_unapprovedposts'] += $thread['replies'] + $thread['deletedposts'] + 1;
+                $forum_counters[$fid]['num_unapprovedposts'] += $thread['replies'] + 1;
+                ++$forum_counters[$fid]['num_threads'];
+                $forum_counters[$fid]['num_posts']           += $thread['replies'] + 1;
 
-                if ((int)$thread['visible'] === 1) {
-                    ++$forum_counters[$fid]['num_threads'];
-                    $forum_counters[$fid]['num_posts']        += $thread['replies'] + 1;
-                    $forum_counters[$fid]['num_deletedposts'] += $thread['deletedposts'];
-                } else {
-                    ++$forum_counters[$fid]['num_deletedthreads'];
-                    $forum_counters[$fid]['num_deletedposts']   += $thread['replies'] + $thread['unapprovedposts'] + $thread['deletedposts'] + 1;
-                    $forum_counters[$fid]['num_unapprovedposts'] += $thread['unapprovedposts'];
-                }
-
-                if ((int)$thread['visible'] === 1 && $forum['usepostcounts'] != 0) {
+                if ($forum['usepostcounts'] != 0) {
                     $q2 = $db->sql_query_prepared(
                         "SELECT COUNT(pid) AS posts, uid FROM posts WHERE tid = ? AND (visible = '1' OR pid = ?) AND uid > 0 GROUP BY uid",
                         [$thread['tid'], $thread['firstpost']]
@@ -90,7 +80,7 @@ class Moderation
                     }
                 }
 
-                if ((int)$thread['visible'] === 1 && $forum['usethreadcounts'] != 0 && !str_starts_with((string)$thread['closed'], 'moved|')) {
+                if ($forum['usethreadcounts'] != 0 && !str_starts_with((string)$thread['closed'], 'moved|')) {
                     ++$user_counters[$thread['uid']]['num_threads'];
                 }
             }
@@ -125,8 +115,6 @@ class Moderation
                 'unapprovedthreads' => "+{$c['num_unapprovedthreads']}",
                 'posts'             => "-{$c['num_posts']}",
                 'unapprovedposts'   => "+{$c['num_unapprovedposts']}",
-                'deletedthreads'    => "-{$c['num_deletedthreads']}",
-                'deletedposts'      => "-{$c['num_deletedposts']}",
             ]);
             update_forum_lastpost((int)$fid);
         }
@@ -251,7 +239,7 @@ class Moderation
             SELECT p.tid
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$ph}) AND p.visible IN (-1,1) AND t.firstpost = p.pid AND t.visible IN (-1,1)
+            WHERE p.pid IN ({$ph}) AND p.visible = 1 AND t.firstpost = p.pid AND t.visible = 1
         ", $params);
         while ($query && ($post = $db->fetch_array($query))) {
             $threads_to_update[] = (int)$post['tid'];
@@ -270,32 +258,23 @@ class Moderation
             SELECT p.pid, p.tid, p.visible, p.fid, p.uid, t.visible AS threadvisible
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$ph}) AND p.visible IN (-1,1) AND t.firstpost != p.pid
+            WHERE p.pid IN ({$ph}) AND p.visible = 1 AND t.firstpost != p.pid
         ", $params);
         while ($query && ($post = $db->fetch_array($query))) {
             $unapproved_pids[] = (int)$post['pid'];
 
             $thread_counters[$post['tid']] ??= ['replies' => 0, 'unapprovedposts' => 0];
             ++$thread_counters[$post['tid']]['unapprovedposts'];
+            ++$thread_counters[$post['tid']]['replies'];
 
-            if ((int)$post['visible'] === 1) {
-                ++$thread_counters[$post['tid']]['replies'];
-            } else {
-                $thread_counters[$post['tid']]['deletedposts'] = ($thread_counters[$post['tid']]['deletedposts'] ?? 0) + 1;
-            }
-
-            if ((int)$post['threadvisible'] !== 0) {
+            if ((int)$post['threadvisible'] === 1) {
                 $forum_counters[$post['fid']] ??= ['num_posts' => 0, 'num_unapproved_posts' => 0];
                 ++$forum_counters[$post['fid']]['num_unapproved_posts'];
-                if ((int)$post['visible'] === 1) {
-                    ++$forum_counters[$post['fid']]['num_posts'];
-                } else {
-                    $forum_counters[$post['fid']]['num_deleted_posts'] = ($forum_counters[$post['fid']]['num_deleted_posts'] ?? 0) + 1;
-                }
+                ++$forum_counters[$post['fid']]['num_posts'];
             }
 
             $forum = get_forum($post['fid']);
-            if ($forum['usepostcounts'] != 0 && (int)$post['visible'] === 1 && (int)$post['threadvisible'] === 1) {
+            if ($forum['usepostcounts'] != 0 && (int)$post['threadvisible'] === 1) {
                 $user_counters[$post['uid']] ??= 0;
                 --$user_counters[$post['uid']];
             }
@@ -354,7 +333,7 @@ class Moderation
         [$ph, $params] = $this->inClause($tids);
         $query = $db->sql_query_prepared("SELECT * FROM threads WHERE tid IN ({$ph})", $params);
         while ($query && ($thread = $db->fetch_array($query))) {
-            if ((int)$thread['visible'] === 1 || (int)$thread['visible'] === -1) {
+            if ((int)$thread['visible'] !== 0) {
                 continue;
             }
 
@@ -367,8 +346,7 @@ class Moderation
 
             ++$forum_counters[$fid]['num_threads'];
             $forum_counters[$fid]['num_posts']            += $thread['replies'] + 1;
-            $forum_counters[$fid]['num_deleted_posts']     = ($forum_counters[$fid]['num_deleted_posts'] ?? 0) + $thread['deletedposts'];
-            $forum_counters[$fid]['num_unapproved_posts'] += $thread['deletedposts'] + $thread['replies'] + 1;
+            $forum_counters[$fid]['num_unapproved_posts'] += $thread['replies'] + 1;
 
             if ($forum['usepostcounts'] != 0) {
                 $q2 = $db->sql_query_prepared(
@@ -648,7 +626,7 @@ if (count($groups) > 0) {
         $forum     = get_forum($thread['fid']);
         $userposts = [];
         $pids      = [];
-        $num_unapproved_posts = $num_approved_posts = $num_deleted_posts = 0;
+        $num_unapproved_posts = $num_approved_posts = 0;
 
         $query = $db->sql_query_prepared("SELECT pid, uid, visible FROM posts WHERE tid = ?", [$tid]);
         while ($query && ($post = $db->fetch_array($query))) {
@@ -659,24 +637,31 @@ if (count($groups) > 0) {
             }
             remove_attachments((int)$post['pid']);
 
-            if (((int)$post['visible'] === 0 && (int)$thread['visible'] !== -1) || (int)$thread['visible'] === 0) {
+            if ((int)$post['visible'] === 0 || (int)$thread['visible'] === 0) {
                 ++$num_unapproved_posts;
-            } elseif ((int)$post['visible'] === -1 || (int)$thread['visible'] === -1) {
-                ++$num_deleted_posts;
             } else {
                 ++$num_approved_posts;
-                $userposts[$post['uid']]['num_posts'] = ($userposts[$post['uid']]['num_posts'] ?? 0) + 1;
+                $userposts[$post['uid']]['kps_posts'] = ($userposts[$post['uid']]['kps_posts'] ?? 0) + 1;
+                if ($forum['usepostcounts'] != 0) {
+                    $userposts[$post['uid']]['num_posts'] = ($userposts[$post['uid']]['num_posts'] ?? 0) + 1;
+                }
             }
         }
 
-        $userposts[$thread['uid']]['num_threads'] = ($userposts[$thread['uid']]['num_threads'] ?? 0) + 1;
+        // Тема-редирект (moved|), неодобренная тема и форум без счёта тем в threadnum не входили
+        if ((int)$thread['visible'] === 1 && $forum['usethreadcounts'] != 0 && !str_starts_with((string)$thread['closed'], 'moved|')) {
+            $userposts[$thread['uid']]['num_threads'] = ($userposts[$thread['uid']]['num_threads'] ?? 0) + 1;
+        }
 
         foreach ($userposts as $uid => $subtract) {
+            // Бонусы снимаются за каждый одобренный пост, независимо от счёта постов форума
+            if (!empty($subtract['kps_posts'])) {
+                kps('-', $kpscomment * $subtract['kps_posts'], (int)$uid);
+            }
+
             $update = [];
             if (isset($subtract['num_posts'])) {
                 $update['postnum'] = "-{$subtract['num_posts']}";
-				
-				kps('-', $kpscomment * $subtract['num_posts'], (int)$uid);
             }
             if (isset($subtract['num_threads'])) {
                 $update['threadnum'] = "-{$subtract['num_threads']}";
@@ -726,13 +711,17 @@ if (count($groups) > 0) {
         ];
 
         match ((int)$thread['visible']) {
-            1  => $updated_counters['threads']           = -1,
-            -1 => $updated_counters['deletedthreads']    = -1,
+            1       => $updated_counters['threads']           = -1,
             default => $updated_counters['unapprovedthreads'] = -1,
         };
 
-        if (str_contains((string)$thread['closed'], 'moved|') && (int)$thread['visible'] === 1) {
-            $updated_counters['posts'] = -1;
+        // Редирект числится в форуме как один пост
+        if (str_starts_with((string)$thread['closed'], 'moved|')) {
+            if ((int)$thread['visible'] === 1) {
+                $updated_counters['posts'] = -1;
+            } else {
+                $updated_counters['unapprovedposts'] = -1;
+            }
         }
 
         update_forum_counters($thread['fid'], $updated_counters);
@@ -761,9 +750,14 @@ if (count($groups) > 0) {
             return false;
         }
 
-        update_user_counters($post['uid'], ['postnum' => '-1']);
-		
-		kps('-', $kpscomment, (int)$post['uid']);
+        // Неодобренный пост (или пост в неодобренной теме) в postnum не входил
+        $post_counted = (int)$post['visible'] === 1 && (int)$post['threadvisible'] === 1;
+        $forum        = get_forum($post['fid']);
+        if ($post_counted && $forum['usepostcounts'] != 0) {
+            update_user_counters($post['uid'], ['postnum' => '-1']);
+        }
+
+        kps('-', $kpscomment, (int)$post['uid']);
 
         if (!function_exists('remove_attachments')) {
             require INC_PATH . '/functions_upload.php';
@@ -784,10 +778,15 @@ if (count($groups) > 0) {
 
         $plugins->run_hooks('class_moderation_delete_post', $post['pid']);
 
-        update_thread_counters((int)$post['tid'], ['replies' => '-1']);
+        // Неодобренный пост считался в unapprovedposts, а не в replies/posts
+        update_thread_counters((int)$post['tid'], (int)$post['visible'] === 1
+            ? ['replies' => '-1']
+            : ['unapprovedposts' => '-1']);
         update_last_post((int)$post['tid']);
 
-        update_forum_counters($post['fid'], ['posts' => '-1']);
+        update_forum_counters($post['fid'], $post_counted
+            ? ['posts' => '-1']
+            : ['unapprovedposts' => '-1']);
         update_forum_lastpost((int)$post['fid']);
 
         return true;
@@ -828,7 +827,7 @@ if (count($groups) > 0) {
 
         while ($query && ($post = $db->fetch_array($query))) {
             $threads[$post['tid']] = $post['tid'];
-            $thread_counters[$post['tid']] ??= ['replies' => 0, 'attachmentcount' => 0];
+            $thread_counters[$post['tid']] ??= ['replies' => 0, 'unapprovedposts' => 0, 'attachmentcount' => 0];
 
             if ($first) {
                 $masterpid = $post['pid'];
@@ -840,27 +839,28 @@ if (count($groups) > 0) {
             } else {
                 $message .= $sep === 'new_line' ? "\n\n {$post['message']}" : "[hr]{$post['message']}";
 
-                $forum_counters[$post['fid']] ??= ['num_posts' => 0];
+                $forum_counters[$post['fid']] ??= ['num_posts' => 0, 'unapprovedposts' => 0];
 
                 if ((int)$post['visible'] === 1) {
                     --$thread_counters[$post['tid']]['replies'];
                     $user_counters[$post['uid']] ??= ['num_posts' => 0, 'num_threads' => 0];
+                    $post_forum = get_forum($post['fid']);
 
-                    if ((int)$post['threadvisible'] === 1) {
+                    if ($post_forum['usepostcounts'] != 0 && (int)$post['threadvisible'] === 1) {
                         --$user_counters[$post['uid']]['num_posts'];
                     }
-                    if ((int)$post['threadfirstpost'] === (int)$post['pid'] && (int)$post['threadvisible'] === 1) {
+                    if ((int)$post['threadfirstpost'] === (int)$post['pid'] && $post_forum['usethreadcounts'] != 0 && (int)$post['threadvisible'] === 1) {
                         --$user_counters[$post['uid']]['num_threads'];
                     }
                     $thread_counters[$post['tid']]['attachmentcount'] -= $post['attachmentcount'];
+                } else {
+                    --$thread_counters[$post['tid']]['unapprovedposts'];
                 }
 
                 if ((int)$post['threadvisible'] === 1 && (int)$post['visible'] === 1) {
                     --$forum_counters[$post['fid']]['num_posts'];
-                } elseif ((int)$post['threadvisible'] === 0 || ((int)$post['visible'] === 0 && (int)$post['threadvisible'] !== -1)) {
-                    $forum_counters[$post['fid']]['unapprovedposts'] = ($forum_counters[$post['fid']]['unapprovedposts'] ?? 0) - 1;
                 } else {
-                    $forum_counters[$post['fid']]['deletedposts'] = ($forum_counters[$post['fid']]['deletedposts'] ?? 0) - 1;
+                    --$forum_counters[$post['fid']]['unapprovedposts'];
                 }
 
                 if ((int)$visible === 1) {
@@ -889,15 +889,22 @@ if (count($groups) > 0) {
 
             if ((int)$thread['visible'] !== (int)$new_firstpost['visible']) {
                 $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$thread['visible'], $new_firstpost['pid']]);
+                $thread_counters[$thread['tid']] ??= ['replies' => 0, 'unapprovedposts' => 0, 'attachmentcount' => 0];
+                // Пост переходит из своего счётчика в счётчик видимости темы (как в стоке MyBB)
                 if ((int)$new_firstpost['visible'] === 1) {
                     --$thread_counters[$thread['tid']]['replies'];
+                } else {
+                    --$thread_counters[$thread['tid']]['unapprovedposts'];
                 }
                 if ((int)$thread['visible'] === 1) {
                     ++$thread_counters[$thread['tid']]['replies'];
+                } else {
+                    ++$thread_counters[$thread['tid']]['unapprovedposts'];
                 }
             }
 
-            if ((int)$new_firstpost['uid'] !== (int)$thread['uid'] && (int)$thread['visible'] === 1) {
+            $thread_forum = get_forum($thread['fid']);
+            if ((int)$new_firstpost['uid'] !== (int)$thread['uid'] && $thread_forum['usethreadcounts'] != 0 && (int)$thread['visible'] === 1) {
                 $user_counters[$new_firstpost['uid']] ??= ['num_posts' => 0, 'num_threads' => 0];
                 ++$user_counters[$new_firstpost['uid']]['num_threads'];
             }
@@ -911,13 +918,17 @@ if (count($groups) > 0) {
         foreach ($thread_counters as $tid => $c) {
             update_thread_counters($tid, [
                 'replies'         => signed($c['replies']),
+                'unapprovedposts' => signed($c['unapprovedposts'] ?? 0),
                 'attachmentcount' => signed($c['attachmentcount']),
             ]);
             update_last_post($tid);
         }
 
         foreach ($forum_counters as $fid => $c) {
-            update_forum_counters($fid, ['posts' => signed($c['num_posts'])]);
+            update_forum_counters($fid, [
+                'posts'           => signed($c['num_posts']),
+                'unapprovedposts' => signed($c['unapprovedposts']),
+            ]);
             update_forum_lastpost((int)$fid);
         }
 
@@ -932,6 +943,8 @@ if (count($groups) > 0) {
     }
 
     // ── merge_threads ─────────────────────────────────────────────────────────
+    // Порт стоковой MyBB 1.8 без мягкого удаления: опрос, тема, рейтинг,
+    // счётчики темы/форумов/пользователей, синхронизация первого поста.
 
     public function merge_threads(int $mergetid, int $tid, string $subject): bool
     {
@@ -947,45 +960,87 @@ if (count($groups) > 0) {
             return false;
         }
 
-        $user_posts = [];
+        $forum_cache = $cache->read('forums');
+        $t_postcount   = (int)($forum_cache[$thread['fid']]['usepostcounts'] ?? 1) === 1;
+        $m_postcount   = (int)($forum_cache[$mergethread['fid']]['usepostcounts'] ?? 1) === 1;
+        $t_threadcount = (int)($forum_cache[$thread['fid']]['usethreadcounts'] ?? 1) === 1;
+        $t_visible     = (int)$thread['visible'] === 1;
+        $m_visible     = (int)$mergethread['visible'] === 1;
 
-        if ((int)$thread['visible'] !== (int)$mergethread['visible']) {
+        // ── Опрос: переносим, если у целевой темы его нет; иначе лишний удаляем ──
+        if (!$thread['poll'] && $mergethread['poll']) {
+            $db->sql_query_prepared("UPDATE polls SET tid = ? WHERE tid = ?", [$tid, $mergetid]);
+            $db->sql_query_prepared("UPDATE threads SET poll = ? WHERE tid = ?", [(int)$mergethread['poll'], $tid]);
+            // Отвязываем опрос от старой темы, иначе delete_thread() ниже удалит его голоса
+            $db->sql_query_prepared("UPDATE threads SET poll = 0 WHERE tid = ?", [$mergetid]);
+        } elseif ($mergethread['poll']) {
+            $db->sql_query_prepared("DELETE FROM polls WHERE pid = ?", [(int)$mergethread['poll']]);
+            $db->sql_query_prepared("DELETE FROM pollvotes WHERE pid = ?", [(int)$mergethread['poll']]);
+            $db->sql_query_prepared("UPDATE threads SET poll = 0 WHERE tid = ?", [$mergetid]);
+        }
+
+        // ── postnum: одобренные посты присоединяемой темы ──
+        // Пост учитывался, если его тема была одобрена и форум считает посты;
+        // после слияния — по тем же условиям для целевой темы.
+        $user_posts   = [];
+        $was_counted  = $m_visible && $m_postcount;
+        $will_counted = $t_visible && $t_postcount;
+        if ($was_counted !== $will_counted) {
+            $delta = $will_counted ? 1 : -1;
             $query = $db->sql_query_prepared(
-                "SELECT uid, COUNT(pid) AS postnum FROM posts WHERE tid = ? AND visible = 1 GROUP BY uid",
+                "SELECT uid, COUNT(pid) AS postnum FROM posts WHERE tid = ? AND visible = 1 AND uid > 0 GROUP BY uid",
                 [$mergetid]
             );
             while ($query && ($post = $db->fetch_array($query))) {
-                $user_posts[$post['uid']]['postnum'] ??= 0;
-                if ((int)$mergethread['visible'] === 1) {
-                    $user_posts[$post['uid']]['postnum'] -= $post['postnum'];
-                } elseif ((int)$thread['visible'] === 1) {
-                    $user_posts[$post['uid']]['postnum'] += $post['postnum'];
-                }
+                $user_posts[$post['uid']]['postnum'] = ($user_posts[$post['uid']]['postnum'] ?? 0) + $delta * (int)$post['postnum'];
             }
         }
 
+        // ── Переносим посты, редиректы и жалобы ──
         $db->sql_query_prepared(
             "UPDATE posts SET tid = ?, fid = ?, replyto = 0 WHERE tid = ?",
             [$tid, $thread['fid'], $mergetid]
         );
-
         $db->sql_query_prepared("UPDATE threads SET closed = ? WHERE closed = ?", ["moved|{$tid}", "moved|{$mergetid}"]);
+        // delete_thread() удаляет жалобы по thread_id — переносим их вместе с постами
+        $db->sql_query_prepared(
+            "UPDATE reports SET thread_id = ? WHERE type = 'forumpost' AND thread_id = ?",
+            [$tid, $mergetid]
+        );
 
-        // Handle subscriptions
+        // ── Рейтинг: переносим оценки тех, кто ещё не оценивал целевую тему, и пересчитываем ──
+        $db->sql_query_prepared(
+            "UPDATE threadratings SET tid = ?
+             WHERE tid = ? AND user_id NOT IN (
+                 SELECT user_id FROM (SELECT user_id FROM threadratings WHERE tid = ?) AS existing
+             )",
+            [$tid, $mergetid, $tid]
+        );
+        $query   = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS num, COALESCE(SUM(rating), 0) AS total FROM threadratings WHERE tid = ?",
+            [$tid]
+        );
+        $ratings = $query ? $db->fetch_array($query) : ['num' => 0, 'total' => 0];
+
+        $db->sql_query_prepared(
+            "UPDATE threads SET subject = ?, numratings = ?, totalratings = ? WHERE tid = ?",
+            [$subject, (int)$ratings['num'], (int)$ratings['total'], $tid]
+        );
+
+        // ── Подписки ──
         $subscriptions = [];
         $query = $db->sql_query_prepared(
             "SELECT tid, uid FROM threadsubscriptions WHERE tid = ? OR tid = ?",
             [$mergetid, $tid]
         );
         while ($query && ($sub = $db->fetch_array($query))) {
-            $subscriptions[$sub['tid']][] = $sub['uid'];
+            $subscriptions[(int)$sub['tid']][] = (int)$sub['uid'];
         }
-
         if (!empty($subscriptions[$mergetid])) {
-            $update_users = array_filter(
+            $update_users = array_values(array_filter(
                 $subscriptions[$mergetid],
-                fn($user) => !isset($subscriptions[$tid]) || !in_array($user, $subscriptions[$tid], true)
-            );
+                fn(int $user) => !isset($subscriptions[$tid]) || !in_array($user, $subscriptions[$tid], true)
+            ));
             if (!empty($update_users)) {
                 [$ph, $params] = $this->inClause($update_users);
                 $db->sql_query_prepared(
@@ -996,64 +1051,116 @@ if (count($groups) > 0) {
         }
         $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid = ?", [$mergetid]);
 
-        $merge_data = [
-            'mergetid' => $mergetid,
-            'tid'      => $tid,
-            'subject'  => $subject,
-        ];
+        $merge_data = ['mergetid' => $mergetid, 'tid' => $tid, 'subject' => $subject];
         $plugins->run_hooks('class_moderation_merge_threads', $merge_data);
 
+        // Сбрасываем кеш get_thread(): опрос уже отвязан, delete_thread() должен это видеть
+        get_thread($mergetid, true);
         $this->delete_thread($mergetid);
 
-        // Adjust reply counters
-        if ((int)$mergethread['visible'] === 1) {
-            ++$mergethread['replies'];
-        } elseif ((int)$mergethread['visible'] === -1) {
-            ++$mergethread['deletedposts'];
-        } else {
-            ++$mergethread['unapprovedposts'];
-        }
+        // ── Счётчики присоединённых постов (с бывшим первым постом) ──
+        // В одобренной теме первый пост — в replies, в неодобренной — в unapprovedposts
+        $pre_replies    = (int)$mergethread['replies']         + ($m_visible ? 1 : 0);
+        $pre_unapproved = (int)$mergethread['unapprovedposts'] + ($m_visible ? 0 : 1);
+        $post_replies    = $pre_replies;
+        $post_unapproved = $pre_unapproved;
 
-        // Sync first post visibility
-        $q = $db->sql_query_prepared(
+        // ── Первый пост целевой темы мог смениться (присоединённая тема старше) ──
+        $query = $db->sql_query_prepared(
             "SELECT pid, uid, visible FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
             [$tid]
         );
-        $new_firstpost = $q ? $db->fetch_array($q) : null;
+        $new_firstpost = $query ? $db->fetch_array($query) : null;
 
-        if ((int)$thread['visible'] !== (int)$new_firstpost['visible']) {
-            $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$thread['visible'], $new_firstpost['pid']]);
+        if ($new_firstpost) {
+            if ((int)$thread['visible'] !== (int)$new_firstpost['visible']) {
+                // Видимость первого поста приводим к видимости темы
+                $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [(int)$thread['visible'], (int)$new_firstpost['pid']]);
+
+                if ((int)$new_firstpost['visible'] === 1) {
+                    --$post_replies;
+                    ++$post_unapproved;
+                } else {
+                    --$post_unapproved;
+                    ++$post_replies;
+                    // Пост стал одобренным в одобренной теме — теперь он учитывается в postnum
+                    if ($will_counted && (int)$new_firstpost['uid'] > 0) {
+                        $user_posts[$new_firstpost['uid']]['postnum'] = ($user_posts[$new_firstpost['uid']]['postnum'] ?? 0) + 1;
+                    }
+                }
+            }
+
+            if ((int)$new_firstpost['pid'] !== (int)$thread['firstpost']) {
+                update_first_post($tid);
+
+                // Автор темы сменился — переносим ему тему в threadnum
+                if ((int)$thread['uid'] !== (int)$new_firstpost['uid'] && $t_visible && $t_threadcount) {
+                    $user_posts[$thread['uid']]['threadnum']        = ($user_posts[$thread['uid']]['threadnum'] ?? 0) - 1;
+                    $user_posts[$new_firstpost['uid']]['threadnum'] = ($user_posts[$new_firstpost['uid']]['threadnum'] ?? 0) + 1;
+                }
+            }
+
+            // Присоединённые посты считаем ответами на первый пост
+            $db->sql_query_prepared(
+                "UPDATE posts SET replyto = ? WHERE tid = ? AND replyto = 0 AND pid != ?",
+                [(int)$new_firstpost['pid'], $tid, (int)$new_firstpost['pid']]
+            );
         }
 
-        if ((int)$new_firstpost['pid'] !== (int)$thread['firstpost']) {
-            update_first_post((int)$thread['tid']);
+        // ── Счётчики форумов ──
+        // Из старого форума уходят посты в старом состоянии, в целевой приходят в новом.
+        // В неодобренной теме все её посты числятся в unapprovedposts форума.
+        $forum_delta = [];
+        $mfid = (int)$mergethread['fid'];
+        $tfid = (int)$thread['fid'];
+        foreach ([$mfid, $tfid] as $f) {
+            $forum_delta[$f] ??= ['posts' => 0, 'unapprovedposts' => 0];
+        }
+        if ($m_visible) {
+            $forum_delta[$mfid]['posts']           -= $pre_replies;
+            $forum_delta[$mfid]['unapprovedposts'] -= $pre_unapproved;
+        } else {
+            $forum_delta[$mfid]['unapprovedposts'] -= $pre_replies + $pre_unapproved;
+        }
+        if ($t_visible) {
+            $forum_delta[$tfid]['posts']           += $post_replies;
+            $forum_delta[$tfid]['unapprovedposts'] += $post_unapproved;
+        } else {
+            $forum_delta[$tfid]['unapprovedposts'] += $post_replies + $post_unapproved;
+        }
+        foreach ($forum_delta as $f => $d) {
+            if ($d['posts'] !== 0 || $d['unapprovedposts'] !== 0) {
+                update_forum_counters($f, [
+                    'posts'           => signed($d['posts']),
+                    'unapprovedposts' => signed($d['unapprovedposts']),
+                ]);
+            }
+        }
+        if ($mfid !== $tfid) {
+            update_forum_lastpost($mfid);
         }
 
-        if ((int)$thread['uid'] !== (int)$new_firstpost['uid'] && (int)$thread['visible'] === 1) {
-            $user_posts[$thread['uid']]['threadnum']          = ($user_posts[$thread['uid']]['threadnum'] ?? 0) - 1;
-            $user_posts[$new_firstpost['uid']]['threadnum']   = ($user_posts[$new_firstpost['uid']]['threadnum'] ?? 0) + 1;
-        }
-
-        if ($mergethread['fid'] != $thread['fid']) {
-            update_forum_counters($thread['fid'],    ['posts' => "+{$mergethread['replies']}"]);
-            update_forum_counters($mergethread['fid'], ['posts' => "-{$mergethread['replies']}"]);
-            update_forum_lastpost((int)$mergethread['fid']);
-        }
-
+        // ── Счётчики пользователей ──
         foreach ($user_posts as $uid => $counters) {
             $update = [];
             foreach ($counters as $key => $val) {
-                $update[$key] = $val >= 0 ? "+{$val}" : (string)$val;
+                if ($val !== 0) {
+                    $update[$key] = signed($val);
+                }
             }
-            update_user_counters($uid, $update);
+            if (!empty($update)) {
+                update_user_counters($uid, $update);
+            }
         }
 
+        // ── Счётчики целевой темы ──
         update_thread_counters($tid, [
-            'replies'         => "+{$mergethread['replies']}",
-            'attachmentcount' => "+{$mergethread['attachmentcount']}",
+            'replies'         => signed($post_replies),
+            'unapprovedposts' => signed($post_unapproved),
+            'attachmentcount' => signed((int)$mergethread['attachmentcount']),
         ]);
         update_last_post($tid);
-        update_forum_lastpost((int)$thread['fid']);
+        update_forum_lastpost($tfid);
 
         return true;
     }
@@ -1075,12 +1182,11 @@ if (count($groups) > 0) {
         $forum = get_forum($fid);
 
         $num_threads = $num_unapproved_threads = $num_posts = $num_unapproved_posts = 0;
-        $num_deleted_posts = $num_deleted_threads = 0;
 
+        // В одобренной теме неодобренные посты считаются отдельно; в неодобренной — все посты неодобренные
         match ((int)$thread['visible']) {
-            1  => [$num_threads, $num_posts] = [1, $thread['replies'] + 1],
-            -1 => [$num_deleted_threads, $num_deleted_posts] = [1, $thread['replies'] + $thread['deletedposts'] + $thread['unapprovedposts'] + 1],
-            default => [$num_unapproved_threads, $num_unapproved_posts] = [1, $thread['replies'] + $thread['unapprovedposts'] + $thread['deletedposts'] + 1],
+            1       => [$num_threads, $num_posts, $num_unapproved_posts] = [1, $thread['replies'] + 1, (int)$thread['unapprovedposts']],
+            default => [$num_unapproved_threads, $num_unapproved_posts] = [1, $thread['replies'] + $thread['unapprovedposts'] + 1],
         };
 
         $newtid = null;
@@ -1136,11 +1242,11 @@ if (count($groups) > 0) {
                 $copy_data = ['tid' => $tid, 'new_fid' => $new_fid];
                 $plugins->run_hooks('class_moderation_copy_thread', $copy_data);
 
-                $copy_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'attachmentcount'];
+                $copy_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'unapprovedposts', 'closed', 'sticky', 'visible', 'attachmentcount'];
                 $copy_values  = [
                     $new_fid, $thread['subject'], $thread['uid'], $thread['username'], $thread['dateline'],
                     0, $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
-                    $thread['views'], $thread['replies'], $thread['closed'], $thread['sticky'],
+                    $thread['views'], $thread['replies'], (int)$thread['unapprovedposts'], $thread['closed'], $thread['sticky'],
                     (int)$thread['visible'], $thread['attachmentcount'],
                 ];
                 $placeholders = implode(',', array_fill(0, count($copy_columns), '?'));
@@ -1204,6 +1310,15 @@ if (count($groups) > 0) {
                 $plugins->run_hooks('class_moderation_move_simple', $move_data);
                 $db->sql_query_prepared("UPDATE threads SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
                 $db->sql_query_prepared("UPDATE posts SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
+
+                // Тема вернулась в форум, где лежит её редирект, — редирект больше не нужен
+                $query = $db->sql_query_prepared(
+                    "SELECT tid FROM threads WHERE closed = ? AND fid = ?",
+                    ["moved|{$tid}", $new_fid]
+                );
+                while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
+                    $this->delete_thread((int)$redirect_tid);
+                }
                 break;
         }
 
@@ -1237,18 +1352,27 @@ if (count($groups) > 0) {
             update_user_counters($thread['uid'], ['threadnum' => '+1']);
         }
 
-        update_forum_counters($new_fid, ['threads' => "+{$num_threads}", 'posts' => "+{$num_posts}"]);
+        update_forum_counters($new_fid, [
+            'threads'           => "+{$num_threads}",
+            'unapprovedthreads' => "+{$num_unapproved_threads}",
+            'posts'             => "+{$num_posts}",
+            'unapprovedposts'   => "+{$num_unapproved_posts}",
+        ]);
         update_forum_lastpost((int)$new_fid);
 
         if ($method !== 'copy') {
             if ($method === 'redirect') {
                 match ((int)$thread['visible']) {
-                    -1      => [$num_deleted_threads--, $num_deleted_posts--],
                     0       => [$num_unapproved_threads--, $num_unapproved_posts--],
                     default => [$num_threads--, $num_posts--],
                 };
             }
-            update_forum_counters($fid, ['threads' => "-{$num_threads}", 'posts' => "-{$num_posts}"]);
+            update_forum_counters($fid, [
+                'threads'           => "-{$num_threads}",
+                'unapprovedthreads' => "-{$num_unapproved_threads}",
+                'posts'             => "-{$num_posts}",
+                'unapprovedposts'   => "-{$num_unapproved_posts}",
+            ]);
             update_forum_lastpost((int)$fid);
         }
 		
@@ -1263,44 +1387,57 @@ if (count($groups) > 0) {
     }
 
     // ── split_posts ───────────────────────────────────────────────────────────
+    // Порт стоковой MyBB 1.8 без мягкого удаления: счётчики тем, форумов и
+    // пользователей, вложения, смена первого поста в старой и целевой теме.
 
     public function split_posts(array $pids, int $tid, int $moveto, string $newsubject, int $destination_tid = 0): int|false
     {
-        global $db, $thread, $plugins, $cache;
+        global $db, $plugins, $cache;
 
-        $pids  = $this->normalizeIds($pids);
-        $newtid = $destination_tid;
-
+        $pids = $this->normalizeIds($pids);
         if (empty($pids)) {
             return false;
         }
 
-        if (!isset($thread['tid']) || (int)$thread['tid'] !== $tid) {
-            $thread = get_thread($tid);
-        }
-        if (!$thread) {
+        $forum_cache = $cache->read('forums');
+        $counts_posts   = static fn(int $f): bool => (int)($forum_cache[$f]['usepostcounts'] ?? 1) === 1;
+        $counts_threads = static fn(int $f): bool => (int)($forum_cache[$f]['usethreadcounts'] ?? 1) === 1;
+
+        // Самый ранний из отделяемых постов — станет первым в новой теме
+        [$ph, $params] = $this->inClause($pids);
+        $q = $db->sql_query_prepared(
+            "SELECT pid, uid, visible, username, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid LIMIT 1",
+            $params
+        );
+        $post_info = $q ? $db->fetch_array($q) : null;
+        if (!$post_info) {
             return false;
         }
 
-        $forum_cache = $cache->read('forums');
+        $thread_counters = [];
+        $forum_counters  = [];
+        $user_counters   = [];
+        $newtid          = $destination_tid;
 
-        $newthread = null;
-        if ($destination_tid > 0) {
-            $newthread = get_thread($destination_tid);
-        }
+        $init_forum = static function (array &$fc, int $f): void {
+            $fc[$f] ??= ['threads' => 0, 'unapprovedthreads' => 0, 'posts' => 0, 'unapprovedposts' => 0];
+        };
+        $init_user = static function (array &$uc, int $u): void {
+            $uc[$u] ??= ['postnum' => 0, 'threadnum' => 0];
+        };
 
         if ($destination_tid === 0) {
-            // Get the oldest post to use as subject/dateline for new thread
-            [$ph, $params] = $this->inClause($pids);
-            $q = $db->sql_query_prepared("SELECT uid, username, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid LIMIT 1", $params);
-            $post_info = $q ? $db->fetch_array($q) : null;
+            // ── Новая тема ──
+            if (empty($forum_cache[$moveto])) {
+                return false;
+            }
+            $visible = (int)$post_info['visible'];
 
             $split_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'visible'];
-            
-			$split_values  = [
-                $moveto, $newsubject, $post_info['uid'], $post_info['username'], $post_info['dateline'],
-                0, $post_info['dateline'], $post_info['uid'], $post_info['username'],
-                0, 0, (int)$thread['visible'],
+            $split_values  = [
+                $moveto, $newsubject, (int)$post_info['uid'], $post_info['username'], (int)$post_info['dateline'],
+                (int)$post_info['pid'], (int)$post_info['dateline'], (int)$post_info['uid'], $post_info['username'],
+                0, 0, $visible,
             ];
             $placeholders = implode(',', array_fill(0, count($split_columns), '?'));
             $db->sql_query_prepared(
@@ -1308,100 +1445,226 @@ if (count($groups) > 0) {
                 $split_values
             );
             $newtid = (int)$db->insert_id();
+
+            $init_forum($forum_counters, $moveto);
+            if ($visible === 1) {
+                ++$forum_counters[$moveto]['threads'];
+                if ($counts_threads($moveto) && (int)$post_info['uid'] > 0) {
+                    $init_user($user_counters, (int)$post_info['uid']);
+                    ++$user_counters[(int)$post_info['uid']]['threadnum'];
+                }
+            } else {
+                ++$forum_counters[$moveto]['unapprovedthreads'];
+            }
+
+            $newthread = [
+                'tid'      => $newtid,
+                'fid'      => $moveto,
+                'uid'      => (int)$post_info['uid'],
+                'dateline' => (int)$post_info['dateline'],
+                'visible'  => $visible,
+            ];
+        } else {
+            // ── Существующая тема ──
+            $newthread = get_thread($destination_tid);
+            if (!$newthread) {
+                return false;
+            }
+            $moveto = (int)$newthread['fid'];
         }
 
-        $newthread ??= get_thread($newtid);
+        $init_forum($forum_counters, $moveto);
+        $new_visible   = (int)$newthread['visible'];
+        $new_postcount = $counts_posts($moveto);
 
-        $thread_counters = [
-            $tid    => ['replies' => 0, 'unapprovedposts' => 0, 'deletedposts' => 0],
-            $newtid => ['replies' => 0, 'unapprovedposts' => 0, 'deletedposts' => 0],
-        ];
-        $forum_counters = [
-            $thread['fid'] => ['posts' => 0, 'unapprovedposts' => 0, 'deletedposts' => 0],
-            $moveto        => ['posts' => 0, 'unapprovedposts' => 0, 'deletedposts' => 0],
-        ];
-        $user_counters = [];
-
+        // Посты до переноса — нужны их старые tid/fid
         [$ph, $params] = $this->inClause($pids);
         $q = $db->sql_query_prepared("
-            SELECT p.pid, p.uid, p.fid, p.tid, p.visible, p.dateline,
-                   t.visible AS threadvisible, t.firstpost AS threadfirstpost
+            SELECT p.pid, p.tid, p.fid, p.visible, p.uid, p.dateline,
+                   t.visible AS threadvisible, t.firstpost, COUNT(a.aid) AS postattachmentcount
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
+            LEFT JOIN attachments a ON a.pid = p.pid AND a.visible = 1
             WHERE p.pid IN ({$ph})
-            ORDER BY p.dateline ASC, p.pid ASC
+            GROUP BY p.pid
         ", $params);
+        $rows = [];
+        while ($q && ($row = $db->fetch_array($q))) {
+            $rows[] = $row;
+        }
 
-        $post_info = null;
-        while ($q && ($post = $db->fetch_array($q))) {
-            $post_info ??= $post;
+        [$ph, $params] = $this->inClause($pids);
+        $db->sql_query_prepared(
+            "UPDATE posts SET tid = ?, fid = ?, replyto = 0 WHERE pid IN ({$ph})",
+            [$newtid, $moveto, ...$params]
+        );
 
-            $db->sql_query_prepared("UPDATE posts SET tid = ?, fid = ? WHERE pid = ?", [$newtid, $moveto, $post['pid']]);
+        $thread_counters[$newtid] = ['replies' => 0, 'unapprovedposts' => 0, 'attachmentcount' => 0];
 
-            // Remove from old thread
-            $user_counters[$post['uid']] ??= ['postnum' => 0, 'threadnum' => 0];
+        foreach ($rows as $post) {
+            $ptid = (int)$post['tid'];
+            $pfid = (int)$post['fid'];
+            $uid  = (int)$post['uid'];
+            $pvis = (int)$post['visible'];
+            $tvis = (int)$post['threadvisible'];
+            $old_postcount = $counts_posts($pfid);
 
-            if ((int)$post['visible'] === 1) {
-                --$thread_counters[$tid]['replies'];
-                --$forum_counters[$thread['fid']]['posts'];
-                if ($forum_cache[$post['fid']]['usepostcounts'] == 1 && (int)$post['threadvisible'] === 1) {
-                    --$user_counters[$post['uid']]['postnum'];
+            $thread_counters[$ptid] ??= ['replies' => 0, 'unapprovedposts' => 0, 'attachmentcount' => 0];
+            $init_forum($forum_counters, $pfid);
+            $init_user($user_counters, $uid);
+
+            // ── Убираем из старой темы ──
+            if ($pvis === 1) {
+                // Переносим в тему/форум, где пост не учитывается в postnum
+                if ($tvis === 1 && $old_postcount && (!$new_postcount || $new_visible !== 1)) {
+                    --$user_counters[$uid]['postnum'];
                 }
-            } elseif ((int)$post['visible'] === 0) {
-                --$thread_counters[$tid]['unapprovedposts'];
-                --$forum_counters[$thread['fid']]['unapprovedposts'];
+                --$thread_counters[$ptid]['replies'];
             } else {
-                --$thread_counters[$tid]['deletedposts'];
-                --$forum_counters[$thread['fid']]['deletedposts'];
+                --$thread_counters[$ptid]['unapprovedposts'];
+            }
+            if ($tvis === 1 && $pvis === 1) {
+                --$forum_counters[$pfid]['posts'];
+            } else {
+                --$forum_counters[$pfid]['unapprovedposts'];
             }
 
-            // Add to new thread
-            if ((int)$post['visible'] === 1) {
-                ++$thread_counters[$newtid]['replies'];
-                ++$forum_counters[$moveto]['posts'];
-                if ($newthread['visible'] == 1 && $forum_cache[$moveto]['usepostcounts'] == 1) {
-                    ++$user_counters[$post['uid']]['postnum'];
+            // Вложения переходят вместе с постом
+            $thread_counters[$ptid]['attachmentcount']   -= (int)$post['postattachmentcount'];
+            $thread_counters[$newtid]['attachmentcount'] += (int)$post['postattachmentcount'];
+
+            // ── Отделён первый пост старой темы — назначаем новый ──
+            if ((int)$post['firstpost'] === (int)$post['pid']) {
+                $fq  = $db->sql_query_prepared(
+                    "SELECT pid, visible, uid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
+                    [$ptid]
+                );
+                $nfp = $fq ? $db->fetch_array($fq) : null;
+
+                if ($nfp) {
+                    $nfp_uid = (int)$nfp['uid'];
+                    $init_user($user_counters, $nfp_uid);
+
+                    // Видимость первого поста приводим к видимости темы
+                    if ($tvis !== (int)$nfp['visible']) {
+                        $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$tvis, (int)$nfp['pid']]);
+
+                        if ((int)$nfp['visible'] === 1) {
+                            --$thread_counters[$ptid]['replies'];
+                        } else {
+                            --$thread_counters[$ptid]['unapprovedposts'];
+                        }
+                        // До смены пост числился в unapprovedposts форума:
+                        // либо тема неодобрена, либо сам пост
+                        --$forum_counters[$pfid]['unapprovedposts'];
+
+                        if ($tvis === 1) {
+                            ++$thread_counters[$ptid]['replies'];
+                            ++$forum_counters[$pfid]['posts'];
+                            if ($old_postcount && $nfp_uid > 0) {
+                                ++$user_counters[$nfp_uid]['postnum'];
+                            }
+                        } else {
+                            ++$thread_counters[$ptid]['unapprovedposts'];
+                            ++$forum_counters[$pfid]['unapprovedposts'];
+                        }
+                    }
+
+                    // Сменился автор старой темы
+                    if ($tvis === 1 && $counts_threads($pfid) && $uid !== $nfp_uid) {
+                        --$user_counters[$uid]['threadnum'];
+                        ++$user_counters[$nfp_uid]['threadnum'];
+                    }
+
+                    update_first_post($ptid);
                 }
-            } elseif ((int)$post['visible'] === 0) {
-                ++$thread_counters[$newtid]['unapprovedposts'];
-                ++$forum_counters[$moveto]['unapprovedposts'];
+            }
+
+            // ── Пост стал первым в существующей теме (он старше её первого поста) ──
+            if ($destination_tid > 0 && (int)$post['pid'] === (int)$post_info['pid'] && (int)$post['dateline'] < (int)$newthread['dateline']) {
+                if ($pvis !== $new_visible) {
+                    $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$new_visible, (int)$post['pid']]);
+                    $pvis = $new_visible;
+                }
+                if ($new_visible === 1 && $counts_threads($moveto) && $uid !== (int)$newthread['uid']) {
+                    ++$user_counters[$uid]['threadnum'];
+                    $init_user($user_counters, (int)$newthread['uid']);
+                    --$user_counters[(int)$newthread['uid']]['threadnum'];
+                }
+                update_first_post($newtid);
+            }
+
+            // ── Добавляем в новую тему ──
+            if ($pvis === 1) {
+                // Переносим в тему/форум, где пост начинает учитываться в postnum
+                if ($new_visible === 1 && $new_postcount && (!$old_postcount || $tvis !== 1)) {
+                    ++$user_counters[$uid]['postnum'];
+                }
+                ++$thread_counters[$newtid]['replies'];
             } else {
-                ++$thread_counters[$newtid]['deletedposts'];
-                ++$forum_counters[$moveto]['deletedposts'];
+                ++$thread_counters[$newtid]['unapprovedposts'];
+            }
+            if ($new_visible === 1 && $pvis === 1) {
+                ++$forum_counters[$moveto]['posts'];
+            } else {
+                ++$forum_counters[$moveto]['unapprovedposts'];
             }
         }
 
-        // Compensate for firstpost of new thread
+        // Первый пост новой темы не входит в replies/unapprovedposts
         if ($destination_tid === 0) {
-            match ((int)$newthread['visible']) {
-                1       => --$thread_counters[$newtid]['replies'],
-                0       => --$thread_counters[$newtid]['unapprovedposts'],
-                default => --$thread_counters[$newtid]['deletedposts'],
-            };
+            if ($new_visible === 1) {
+                --$thread_counters[$newtid]['replies'];
+            } else {
+                --$thread_counters[$newtid]['unapprovedposts'];
+            }
+        }
+
+        // Перенесённые посты считаем ответами на первый пост целевой темы
+        $fq = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1", [$newtid]);
+        $new_first = $fq ? $db->fetch_array($fq) : null;
+        if ($new_first) {
+            $db->sql_query_prepared(
+                "UPDATE posts SET replyto = ? WHERE tid = ? AND replyto = 0 AND pid != ?",
+                [(int)$new_first['pid'], $newtid, (int)$new_first['pid']]
+            );
         }
 
         $split_data = [
-    'pids'           => $pids,
-    'tid'            => $tid,
-    'moveto'         => $moveto,
-    'newsubject'     => $newsubject,
-    'destination_tid'=> $destination_tid,
-];
-$plugins->run_hooks('class_moderation_split_posts', $split_data);
+            'pids'            => $pids,
+            'tid'             => $tid,
+            'moveto'          => $moveto,
+            'newsubject'      => $newsubject,
+            'destination_tid' => $destination_tid,
+        ];
+        $plugins->run_hooks('class_moderation_split_posts', $split_data);
 
+        // ── Пользователи ──
         foreach ($user_counters as $uid => $counters) {
+            if ($uid <= 0) {
+                continue;
+            }
             $update = [];
             foreach ($counters as $key => $val) {
-                $update[$key] = $val >= 0 ? "+{$val}" : (string)$val;
+                if ($val !== 0) {
+                    $update[$key] = signed($val);
+                }
             }
-            update_user_counters($uid, $update);
+            if (!empty($update)) {
+                update_user_counters($uid, $update);
+            }
         }
 
+        // ── Темы ──
         foreach ($thread_counters as $t => $counters) {
-            if ($t == $newtid) {
-                $q  = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1", [$newtid]);
-                $fp = $q ? $db->fetch_array($q) : null;
-                $db->sql_query_prepared("UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?", [$newsubject, $fp['pid']]);
+            if ($t === $newtid) {
+                // Тема первого поста новой темы = её название
+                if ($destination_tid === 0 && $new_first) {
+                    $db->sql_query_prepared(
+                        "UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?",
+                        [$newsubject, (int)$new_first['pid']]
+                    );
+                }
             } else {
                 $q = $db->sql_query_prepared("
                     SELECT p.pid, t.subject
@@ -1410,31 +1673,28 @@ $plugins->run_hooks('class_moderation_split_posts', $split_data);
                     WHERE p.tid = ?
                     ORDER BY p.dateline ASC, p.pid ASC
                     LIMIT 1
-                ", [$tid]);
+                ", [$t]);
                 $oldthread = $q ? $db->fetch_array($q) : null;
-                $db->sql_query_prepared(
-                    "UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?",
-                    [$oldthread['subject'], $oldthread['pid']]
-                );
+                // Тема могла опустеть целиком — тогда её удалит вызывающий код
+                if ($oldthread) {
+                    $db->sql_query_prepared(
+                        "UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?",
+                        [$oldthread['subject'], (int)$oldthread['pid']]
+                    );
+                }
             }
 
-            $c = [];
-            foreach ($counters as $key => $val) {
-                $c[$key] = $val >= 0 ? "+{$val}" : (string)$val;
-            }
-            update_thread_counters($t, $c);
+            update_thread_counters($t, array_map('signed', $counters));
             update_last_post($t);
         }
 
+        // ── Форумы ──
         foreach ($forum_counters as $f => $counters) {
-            $c = [];
-            foreach ($counters as $key => $val) {
-                $c[$key] = $val >= 0 ? "+{$val}" : (string)$val;
-            }
-            update_forum_counters($f, $c);
+            update_forum_counters($f, array_map('signed', $counters));
             update_forum_lastpost((int)$f);
         }
 
         return $newtid;
     }
+
 }

@@ -11,6 +11,11 @@ declare(strict_types=1);
  * Прогресс: при выдаче в exam_progress записывается стартовое значение каждого
  * показателя (init_value), дальше прирост = текущее - стартовое.
  *
+ * users.exam_active: 1, если у пользователя есть попытка со status = NORMAL.
+ * Шапка (functions_exam_header.php) читает его из $CURUSER и без экзамена не делает запросов.
+ * Держится в синхроне через exam_sync_user_flag() / exam_sync_all_flags() после
+ * каждого изменения exam_users (выдача, итоги, отказ, avoid/recover/remove, удаление экзамена).
+ *
  * Тексты: lang-файл 'exam' (english / russian). Системные ЛС уходят через send_pm()
  * с lang-ключами на языке получателя; write_log()/savelog()/modcomment - на английском.
  */
@@ -359,6 +364,38 @@ function exam_has_ongoing(int $uid): bool
     ));
 }
 
+/**
+ * users.exam_active = есть ли у пользователя попытка со status = NORMAL.
+ * Вызывать после любого изменения exam_users этого пользователя.
+ */
+function exam_sync_user_flag(int $uid): void
+{
+    global $db;
+    if ($uid <= 0) return;
+    $db->sql_query_prepared(
+        'UPDATE users SET exam_active = EXISTS(
+             SELECT 1 FROM exam_users WHERE uid = ? AND status = ?
+         ) WHERE id = ?',
+        [$uid, EXAM_USER_STATUS_NORMAL, $uid]
+    );
+}
+
+/**
+ * Пересинхронизация флага у всех (после удаления экзамена целиком и в конце крона
+ * как страховка). Пишет только строки, где флаг разошёлся.
+ */
+function exam_sync_all_flags(): void
+{
+    global $db;
+    $db->sql_query_prepared(
+        'UPDATE users u
+         LEFT JOIN (SELECT DISTINCT uid FROM exam_users WHERE status = ?) e ON e.uid = u.id
+         SET u.exam_active = (e.uid IS NOT NULL)
+         WHERE u.exam_active <> (e.uid IS NOT NULL)',
+        [EXAM_USER_STATUS_NORMAL]
+    );
+}
+
 function exam_ongoing_count(int $examId): int
 {
     global $db;
@@ -380,6 +417,8 @@ function exam_insert_user(array $exam, array $user, int $begin, int $end): int
         [(int)$user['id'], (int)$exam['id'], EXAM_USER_STATUS_NORMAL, exam_dt($begin), exam_dt($end), $now, $now]
     );
     $id = (int)$db->insert_id();
+    // Новая попытка всегда NORMAL - флаг ставим сразу, без EXISTS
+    $db->sql_query_prepared('UPDATE users SET exam_active = 1 WHERE id = ?', [(int)$user['id']]);
     $eu = exam_user_get($id);
     if ($eu) {
         exam_update_progress($eu, $exam, $user); // снимок стартовых значений
@@ -789,6 +828,7 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
             if (!$user || !$exam) {
                 $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_user_id = ?', [$euId]);
                 $db->sql_query_prepared('DELETE FROM exam_users WHERE id = ?', [$euId]);
+                exam_sync_user_flag($uid);
                 continue;
             }
 
@@ -813,6 +853,8 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
             );
             if ((int)$db->affected_rows() !== 1) continue;
             $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_user_id = ?', [$euId]);
+            // До выдачи следующего цикла: exam_insert_user() ниже снова поставит 1
+            exam_sync_user_flag($uid);
 
             if ($isDone) {
                 if ($isTask) {
@@ -883,6 +925,8 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
     foreach ($summary as $s) {
         exam_check_anomaly($s['exam']);
     }
+    // Страховка: лечит любой рассинхрон users.exam_active
+    exam_sync_all_flags();
     return $total;
 }
 
@@ -1072,6 +1116,7 @@ function exam_task_abandon(int $uid, int $examUserId): int
         throw new ExamException(exam_t('err_task_finished'));
     }
     $db->sql_query_prepared('DELETE FROM exam_progress WHERE exam_user_id = ?', [(int)$eu['id']]);
+    exam_sync_user_flag($uid);
 
     $name = (string)$exam['name'];
     if ($deduct > 0) {
@@ -1157,18 +1202,26 @@ const EXAM_BG = [
 ];
 
 /**
- * Текущий экзамен / задание пользователя. Вывести после stdhead() на всех страницах,
- * как msgalert() в NexusPHP:  echo exam_render_current((int)$CURUSER['id']);
+ * Старая плашка (до exam_render_header_notice() в functions_exam_header.php).
+ * Если её больше нигде не вызывают - можно удалить целиком (EXAM_BG выше оставить).
  */
 function exam_render_current(int $uid): string
 {
-    global $db, $BASEURL;
+    global $db, $BASEURL, $CURUSER;
+
+    // Тот же флаг, что и в шапке: без экзамена - без запроса
+    if ((int)($CURUSER['id'] ?? 0) === $uid && (int)($CURUSER['exam_active'] ?? 0) === 0) {
+        return '';
+    }
 
     $eu = $db->fetch_array($db->sql_query_prepared(
         'SELECT * FROM exam_users WHERE uid = ? AND status = ? ORDER BY exam_id DESC LIMIT 1',
         [$uid, EXAM_USER_STATUS_NORMAL]
     ));
-    if (!$eu) return '';
+    if (!$eu) {
+        exam_sync_user_flag($uid);
+        return '';
+    }
     $exam = exam_get((int)$eu['exam_id']);
     if (!$exam) return '';
 

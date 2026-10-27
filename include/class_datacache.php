@@ -82,9 +82,6 @@ class datacache
     public float $call_time = 0.0;
 
     // Internal state for build helpers
-    private array $moderators                    = [];
-    private array $built_moderators              = [0 => []];
-    private array $moderators_forum_cache        = [];
     private array $forum_permissions             = [0 => []];
     private array $built_forum_permissions       = [0 => []];
     private array $forum_permissions_forum_cache = [];
@@ -366,62 +363,6 @@ class datacache
         return true;
     }
 
-    public function update_moderators(): bool
-    {
-        global $forum_cache, $db;
-
-        $this->built_moderators       = [0 => []];
-        $this->moderators             = [];
-        $this->moderators_forum_cache = [];
-
-        cache_forums(true);
-        if (!is_array($forum_cache)) {
-            return false;
-        }
-
-        foreach ($forum_cache as $forum) {
-            $this->moderators_forum_cache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
-        }
-
-        // Individual moderators
-        $query = $db->sql_query_prepared("
-            SELECT m.*, u.username, u.usergroup
-            FROM moderators m
-            LEFT JOIN users u ON m.id = u.id
-            WHERE m.isgroup = '0'
-            ORDER BY u.username
-        ");
-        while ($query && ($mod = $db->fetch_array($query))) {
-            $this->moderators[$mod['fid']]['users'][$mod['id']] = $mod;
-        }
-
-        // Group moderators
-        $query = $db->sql_query_prepared("
-            SELECT m.*, u.title
-            FROM moderators m
-            LEFT JOIN usergroups u ON m.id = u.gid
-            WHERE m.isgroup = '1'
-            ORDER BY u.title
-        ");
-        while ($query && ($mod = $db->fetch_array($query))) {
-            $this->moderators[$mod['fid']]['usergroups'][$mod['id']] = $mod;
-        }
-
-        foreach (array_keys($this->moderators) as $fid) {
-            if (isset($this->moderators[$fid]['users'])) {
-                uasort(
-                    $this->moderators[$fid]['users'],
-                    static fn(array $a, array $b): int => strcasecmp($a['username'], $b['username'])
-                );
-            }
-        }
-
-        $this->build_moderators();
-        $this->update('moderators', $this->built_moderators);
-
-        return true;
-    }
-
     public function update_awaitingactivation(): void
     {
         global $db;
@@ -665,25 +606,6 @@ class datacache
                     }
                 }
                 $this->build_forum_permissions($perms, $fid);
-            }
-        }
-    }
-
-    private function build_moderators(array $moderators = [], int|string $pid = 0): void
-    {
-        foreach ($this->moderators_forum_cache[$pid] ?? [] as $main) {
-            foreach ($main as $forum) {
-                $fid        = (int)$forum['fid'];
-                $forum_mods = $moderators;
-
-                if (isset($this->moderators[$fid])) {
-                    $forum_mods = $forum_mods
-                        ? array_merge($forum_mods, $this->moderators[$fid])
-                        : $this->moderators[$fid];
-                }
-
-                $this->built_moderators[$fid] = $forum_mods;
-                $this->build_moderators($forum_mods, $fid);
             }
         }
     }

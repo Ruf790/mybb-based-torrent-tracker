@@ -7,6 +7,9 @@ declare(strict_types=1);
  *
  * Used in include/templates/default/header.php:
  *     $warnmessages[] = exam_render_header_notice((int)$CURUSER['id']);
+ *
+ * Users without an ongoing exam/task: no queries at all (users.exam_active = 0,
+ * kept in sync by exam_sync_user_flag() / exam_sync_all_flags() in functions_exam.php).
  */
 
 if (!defined('IN_TRACKER') && !defined('STAFF_PANEL')) {
@@ -19,20 +22,29 @@ require_once __DIR__ . '/functions_exam.php';
 
 function exam_render_header_notice(int $uid): string
 {
-    global $db, $BASEURL, $lang;
+    global $db, $BASEURL, $lang, $CURUSER;
 
     if ($uid <= 0) return '';
-    $lang->load('exam_header');
-    $L = $lang->exam_header;
 
-    // One indexed query per page view; nothing else for users without an exam
+    // Flag from the already loaded user row: no exam - nothing to query or load
+    if ((int)($CURUSER['id'] ?? 0) === $uid && (int)($CURUSER['exam_active'] ?? 0) === 0) {
+        return '';
+    }
+
     $eu = $db->fetch_array($db->sql_query_prepared(
         'SELECT * FROM exam_users WHERE uid = ? AND status = ? ORDER BY exam_id DESC LIMIT 1',
         [$uid, EXAM_USER_STATUS_NORMAL]
     ));
-    if (!$eu) return '';
+    if (!$eu) {
+        // Flag out of sync - fix it so the next page view skips the query
+        exam_sync_user_flag($uid);
+        return '';
+    }
     $exam = exam_get((int)$eu['exam_id']);
     if (!$exam) return '';
+
+    $lang->load('exam_header');
+    $L = $lang->exam_header;
 
     // Same as NexusPHP: refresh progress on view, but at most once per 5 minutes
     $formatted = null;

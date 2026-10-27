@@ -169,7 +169,7 @@ function ucp_page_open(string $page): void
     if (!empty($ucp_page_opened)) { return; }
     $ucp_page_opened = true;
     $page = preg_replace('/[^a-z0-9_]/', '', strtolower($page));
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_pages.css?ver=1">'
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_pages.css?ver=2">'
        . '<div class="ucp-pg ucp-pg-' . $page . '" data-ucp-page="' . $page . '">';
 }
 
@@ -337,8 +337,7 @@ $lang_update_username  = htmlspecialchars($lang->usercp['update_username']      
 
  
 $_tpl_out =
-'<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/change_username.css">
+'
  
 <form action="usercp.php" method="post">
 <input type="hidden" name="my_post_key" value="' . $postCode . '" />
@@ -777,7 +776,6 @@ $current_cats = implode('', $cat_matches[0]);
     
 	$_tpl_out = '
 	
-	<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_options.css">
 
 <form action="usercp.php" method="post">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
@@ -1111,7 +1109,6 @@ if ($mybb->input['action'] === 'email') {
     $_tpl_out = '
 	
 	
-	<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
 
 
 <form action="usercp.php" method="post">
@@ -1288,8 +1285,7 @@ if ($mybb->input['action'] === 'password') {
     build_breadcrumb();
 
     echo
-'<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">
-<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/password.css">
+'
 
 <form action="usercp.php" method="post">
 <input type="hidden" name="my_post_key" value="' . $postCode . '" />
@@ -1640,7 +1636,7 @@ if ($mybb->input['action'] === 'avatar') {
     ucp_page_open('avatar');
     build_breadcrumb();
     
-	$_tpl_out = '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
+	$_tpl_out = '
 
 
 <form enctype="multipart/form-data" action="usercp.php" method="post" id="avatarForm">
@@ -2062,7 +2058,6 @@ if ($sig && $heading) {
         
 		$editsig = '
 		
-		<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
 
 
 <form action="usercp.php" method="post">
@@ -3929,7 +3924,6 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
 	], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
 
 	$_tpl_out = '
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/buddy.css">
 
 
 ' . $swal_assets . '
@@ -4353,7 +4347,7 @@ if ($mybb->input['action'] === 'profile') {
     ucp_page_open('profile');
     
 	
-	$_tpl_out = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
+	$_tpl_out = '
 '.$header.'
 
 <form action="usercp.php" method="post" name="input">
@@ -4903,7 +4897,7 @@ if (!$mybb->input['action']) {
     stdhead($lang->usercp['user_cp']);
     ucp_page_open('home');
     
-	$_tpl_out = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp.css">
+	$_tpl_out = '
 
 <div class="container-md py-4">
     <div class="row g-4">
@@ -5134,7 +5128,7 @@ if ($mybb->input['action'] === '2fa') {
     ucp_page_open('2fa');
     build_breadcrumb();
 
-    echo '<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">';
+    echo '';
 
     echo '
 <div class="container-md py-4">

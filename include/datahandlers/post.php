@@ -647,10 +647,9 @@ if (in_array($author_group, $merge_ignore_groups, true)) {
         } elseif ($thread['visible'] == 0) {
             $thread_update = ['replies' => '+1'];
             update_forum_counters((int)$post['fid'], ['unapprovedposts' => '+1']);
-        } elseif ($thread['visible'] == -1) {
-            $thread_update = ['replies' => '+1'];
-            update_forum_counters((int)$post['fid'], ['deletedposts' => '+1']);
-        }
+        } 
+		
+		
 
         if ($visible == 1 && $thread['visible'] != 1) {
             update_last_post((int)$post['tid']);

@@ -159,6 +159,28 @@ function ucp_js_lang(array $map): string
          . ');</script>';
 }
 
+// ── Helper: User CP page wrapper ───────────────────────────────────────────
+// Все стили страниц UCP лежат в usercp_pages.css и заскоуплены под
+// .ucp-pg-<page>; ucp_page_open() вызывается сразу после stdhead(),
+// ucp_page_close() — перед stdfoot(). Скрипты страниц — scripts/usercp.js.
+function ucp_page_open(string $page): void
+{
+    global $BASEURL, $ucp_page_opened;
+    if (!empty($ucp_page_opened)) { return; }
+    $ucp_page_opened = true;
+    $page = preg_replace('/[^a-z0-9_]/', '', strtolower($page));
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_pages.css?ver=1">'
+       . '<div class="ucp-pg ucp-pg-' . $page . '" data-ucp-page="' . $page . '">';
+}
+
+function ucp_page_close(): void
+{
+    global $BASEURL, $ucp_page_opened;
+    if (empty($ucp_page_opened)) { return; }
+    $ucp_page_opened = false;
+    echo '</div><script src="' . $BASEURL . '/scripts/usercp.js?ver=1904"></script>';
+}
+
 // ── Helper: clean list of positive unique int ids (for IN (...)) ──────────
 function ucp_int_ids(array $raw): array
 {
@@ -297,6 +319,7 @@ if ($mybb->input['action'] === 'changename') {
     $plugins->run_hooks('usercp_changename_end');
 
     stdhead($lang->usercp['change_username']);
+    ucp_page_open('changename');
     build_breadcrumb();
     
 	
@@ -749,84 +772,12 @@ $current_cats = implode('', $cat_matches[0]);
 
     $plugins->run_hooks('usercp_options_end');
     stdhead($lang->usercp['edit_options']);
+    ucp_page_open('options');
     build_breadcrumb();
     
 	$_tpl_out = '
 	
-	<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['edit_options'].'</title>
-    
 	<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_options.css">
-
-<style>	
-	.category-icon-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.cat-pick-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 14px 18px;
-    min-width: 90px;
-    border: 1.5px solid #dee2e6;
-    border-radius: 14px;
-    background: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    color: #6c757d;
-    font-size: 0.78rem;
-    font-weight: 500;
-    line-height: 1.2;
-    text-align: center;
-}
-
-.cat-pick-btn i {
-    font-size: 1.8rem;
-    transition: transform 0.2s ease;
-}
-
-.cat-pick-btn:hover {
-    border-color: #0d6efd;
-    color: #0d6efd;
-    background: #f0f5ff;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(13,110,253,0.15);
-}
-
-.cat-pick-btn:hover i {
-    transform: scale(1.2);
-}
-
-.cat-pick-btn.active {
-    border-color: #0d6efd;
-    border-width: 2px;
-    background: #e7f1ff;
-    color: #0d6efd;
-    box-shadow: 0 0 0 3px rgba(13,110,253,0.12);
-    transform: translateY(-2px);
-}
-
-.cat-pick-btn.active span {
-    font-weight: 700;
-}
-
-
-</style>
-
-
-
-    
-</head>
-<body>
 
 <form action="usercp.php" method="post">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
@@ -1041,12 +992,10 @@ $current_cats = implode('', $cat_matches[0]);
 </form>
 
 
-<script src="'.$BASEURL.'/scripts/usercp.js?ver=1903"></script>
 
 <script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
 
-</body>
-</html>';
+';
 	
 
 	echo $_tpl_out;
@@ -1156,55 +1105,13 @@ if ($mybb->input['action'] === 'email') {
 
     $plugins->run_hooks('usercp_email');
     stdhead($lang->usercp['change_email']);
+    ucp_page_open('email');
     build_breadcrumb();
    
     $_tpl_out = '
 	
 	
-	<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['change_email'].'</title>
-   
-    <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
-    
-
-      <style>
-
-        * {
-            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
-        }
-        
-        @media (max-width: 768px) {
-            .card-body {
-                padding: 1.2rem;
-            }
-            
-            .btn-primary {
-                padding: 0.5rem 1rem;
-                font-size: 0.9rem;
-            }
-        }
-        
-        /* Email validation feedback */
-        .email-feedback {
-            font-size: 0.8rem;
-            margin-top: 0.25rem;
-        }
-        
-        .email-feedback.valid {
-            color: var(--icon-success);
-        }
-        
-        .email-feedback.invalid {
-            color: var(--icon-danger);
-        }
-    </style>
-   
-</head>
-<body>
+	<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
 
 
 <form action="usercp.php" method="post">
@@ -1309,8 +1216,7 @@ if ($mybb->input['action'] === 'email') {
 <script src="'.$BASEURL.'/scripts/password-toggle.js" defer></script>
 
 
-</body>
-</html>';
+';
 	
 	
 	
@@ -1378,6 +1284,7 @@ if ($mybb->input['action'] === 'password') {
     // stdhead/build_breadcrumb вызываются ПОСЛЕ подготовки данных,
     // чтобы заголовок страницы уже имел правильную lang-строку
     stdhead($lang->usercp['change_password'] ?? '');
+    ucp_page_open('password');
     build_breadcrumb();
 
     echo
@@ -1730,84 +1637,10 @@ if ($mybb->input['action'] === 'avatar') {
     $avatar_error ??= '';
 
     stdhead($lang->usercp['change_avatar']);
+    ucp_page_open('avatar');
     build_breadcrumb();
     
-	$_tpl_out = '<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['change_avatar'].'</title>
-  
-    <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
-    <style>
-	
-	
-	:root {
-    /* Gradients */
-	/* Avatar ring */
-	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
-    }
-
-
-	
-
-    /* ---------- AVATAR RING + STATUS DOT ---------- */
-    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
-      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
-    .avatar-ring>*{display:block; border-radius:50%}	
-	
-	
-	
-        * {
-            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
-        }
-        
-        @media (max-width: 768px) {
-            .card-body {
-                padding: 1.2rem;
-            }
-            
-            .btn-primary, .btn-danger {
-                padding: 0.5rem 1rem;
-                font-size: 0.9rem;
-            }
-        }
-        
-        /* File input styling */
-        .file-input-wrapper {
-            margin-top: 0.5rem;
-        }
-        
-        .file-input-wrapper input[type="file"] {
-            display: block;
-            width: 100%;
-            padding: 0.5rem;
-            border-radius: 0.75rem;
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            color: var(--text-primary);
-            cursor: pointer;
-        }
-        
-        .file-input-wrapper input[type="file"]::-webkit-file-upload-button {
-            background: var(--btn-primary);
-            border: none;
-            color: white;
-            padding: 0.4rem 1rem;
-            border-radius: 0.5rem;
-            margin-right: 0.5rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .file-input-wrapper input[type="file"]::-webkit-file-upload-button:hover {
-            background: var(--btn-primary-hover);
-        }
-    </style>
-    
-</head>
-<body>
+	$_tpl_out = '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
 
 
 <form enctype="multipart/form-data" action="usercp.php" method="post" id="avatarForm">
@@ -1919,8 +1752,7 @@ if ($mybb->input['action'] === 'avatar') {
 <script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
 
 
-</body>
-</html>';
+';
 
 
 	echo $_tpl_out;
@@ -2020,16 +1852,12 @@ if ($mybb->input['action'] === 'addsubscription') {
 
         $plugins->run_hooks('usercp2_addsubscription_thread');
         stdhead($lang->usercp['subscribe_to_thread']);
+        ucp_page_open('addsubscription');
         build_breadcrumb();
         
 		$_tpl_out = '
 		
-		<html>
-<head>
-<title>'.$lang->usercp['subscribe_to_thread'].'</title>
-
-</head>
-<body>
+		
 
 <form action="usercp.php" method="post" name="input">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
@@ -2117,12 +1945,12 @@ if ($mybb->input['action'] === 'addsubscription') {
 	</div>
 </form>
 
-</body>
-</html>';
+';
 		
 		
 		
 		echo $_tpl_out;
+        ucp_page_close();
         exit;
     }
 }
@@ -2184,12 +2012,7 @@ if ($sig && $heading) {
 	   $editsig = '
 	   
 	   
-	   <html>
-<head>
-<title>'.$SITENAME.' - '.$lang->usercp['edit_sig'].'</title>
-
-</head>
-<body>
+	   
 
 <div class="container">
 <div class="row">
@@ -2211,8 +2034,7 @@ if ($sig && $heading) {
 	</div></div>
 	</div></div>
 
-</body>
-</html>';
+';
 	   	
 		
 		
@@ -2240,46 +2062,7 @@ if ($sig && $heading) {
         
 		$editsig = '
 		
-		<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['edit_sig'].'</title>
-     
-	<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
-    
- <style>
-       
-        
-        /* Character counter */
-        .char-counter {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            text-align: right;
-        }
-        
-        .char-counter.warning {
-            color: var(--icon-warning);
-        }
-        
-        .char-counter.danger {
-            color: var(--icon-danger);
-        }
-        
-        /* Editor toolbar styling */
-        .editor-toolbar {
-            background: var(--bg-nav);
-            padding: 0.5rem;
-            border-radius: 0.75rem 0.75rem 0 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-    </style>
-    
-   
-</head>
-<body>
+		<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
 
 
 <form action="usercp.php" method="post">
@@ -2401,8 +2184,7 @@ if ($sig && $heading) {
 
 <script src="'.$BASEURL.'/scripts/char-counter.js"></script>
 
-</body>
-</html>';
+';
 		
 		
 		
@@ -2410,6 +2192,7 @@ if ($sig && $heading) {
     }
 
     stdhead($lang->usercp['edit_sig']);
+    ucp_page_open('editsig');
     build_breadcrumb();
     echo $editsig;
 }
@@ -2838,120 +2621,7 @@ if ($mybb->input['action'] === 'subscriptions') {
 </div>
 
 
-<style>
-    /* Стили для карточки подписки */
-    .subscription-card {
-        background: white;
-        border: 1px solid #e9ecef;
-        transition: all 0.3s ease;
-    }
-    
-    .subscription-card:hover {
-        border-color: #28a745;
-        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
-    }
-    
-    .subscription-card.selected {
-        border-color: #28a745;
-        background-color: rgba(40, 167, 69, 0.05);
-    }
-    
-    .hover-lift:hover {
-        transform: translateY(-2px);
-    }
-    
-    .transition-all {
-        transition: all 0.3s ease;
-    }
-    
-    /* Стили для переключателя */
-    .form-switch .form-check-input {
-        width: 3em;
-        height: 1.5em;
-        cursor: pointer;
-        border-color: #adb5bd;
-    }
-    
-    .form-switch .form-check-input:checked {
-        background-color: #28a745;
-        border-color: #28a745;
-    }
-    
-    .form-switch .form-check-input:focus {
-        box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.25);
-    }
-    
-    /* Стили для статистики */
-    .stat-item {
-        padding: 6px 10px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        border: 1px solid #e9ecef;
-    }
-    
-    .stat-icon {
-        font-size: 1.2rem;
-    }
-    
-    /* Стили для заголовка темы */
-    .thread-title {
-        color: #212529;
-        line-height: 1.4;
-    }
-    
-    .thread-title:hover {
-        color: #28a745;
-    }
-    
-    .last-post-info {
-        border-left: 3px solid #e9ecef !important;
-        transition: border-color 0.3s ease;
-    }
-    
-    .subscription-card.selected .last-post-info {
-        border-left: 3px solid #28a745 !important;
-    }
-    
-    /* Анимации */
-    .additional-info {
-        animation: slideDown 0.3s ease;
-    }
-    
-    @keyframes slideDown {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    /* Адаптивность */
-    @media (max-width: 992px) {
-        .subscription-card .row > div {
-            margin-bottom: 15px;
-        }
-        
-        .last-post-info {
-            border-left: none !important;
-            border-top: 3px solid #e9ecef !important;
-            padding-left: 0 !important;
-            padding-top: 15px;
-        }
-        
-        .subscription-card.selected .last-post-info {
-            border-top: 3px solid #28a745 !important;
-        }
-    }
-    
-    @media (max-width: 768px) {
-        .subscription-card {
-            padding: 15px !important;
-        }
-    }
-</style>
+
 ';
 			
 			
@@ -2998,135 +2668,12 @@ if ($mybb->input['action'] === 'subscriptions') {
 
     $plugins->run_hooks('usercp_subscriptions_end');
     stdhead($lang->usercp['subscriptions']);
+    ucp_page_open('subscriptions');
     build_breadcrumb();
     
 	
 	
-	$_tpl_out = '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['subscriptions'].'</title>
-    <style>
-        /* Стили для переключателей подписок */
-        .subscription-switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 26px;
-            flex-shrink: 0;
-        }
-        
-        .subscription-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        
-        .switch-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .3s;
-            border-radius: 34px;
-        }
-        
-        .switch-slider:before {
-            position: absolute;
-            content: "";
-            height: 20px;
-            width: 20px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        }
-        
-        .subscription-switch input:checked + .switch-slider {
-            background-color: #28a745;
-        }
-        
-        .subscription-switch input:checked + .switch-slider:before {
-            transform: translateX(24px);
-        }
-        
-        /* Стили для карточек подписок */
-        .subscription-card {
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 12px;
-            background: white;
-            transition: all 0.3s ease;
-        }
-        
-        .subscription-card:hover {
-            border-color: #28a745;
-            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.1);
-            transform: translateY(-1px);
-        }
-        
-        .subscription-card.selected {
-            border-color: #28a745;
-            background-color: rgba(40, 167, 69, 0.05);
-        }
-        
-        .thread-info {
-            flex: 1;
-            min-width: 0;
-        }
-        
-        .thread-title {
-            color: #212529;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        
-        .thread-title:hover {
-            color: #28a745;
-        }
-        
-        .subscription-date {
-            font-size: 0.85rem;
-            color: #6c757d;
-        }
-        
-        .last-post-info {
-            background: #f8f9fa;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.85rem;
-        }
-        
-        /* Адаптивность */
-        @media (max-width: 768px) {
-            .subscription-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }
-            
-            .subscription-actions {
-                width: 100%;
-                justify-content: space-between;
-            }
-            
-            .last-post-info {
-                margin-top: 10px;
-            }
-        }
-    </style>
-   
-</head>
-<body>
+	$_tpl_out = '
   
     
     <div class="container-md py-4">
@@ -3211,8 +2758,7 @@ if ($mybb->input['action'] === 'subscriptions') {
     <script type="text/javascript" src="' . $BASEURL . '/scripts/subscriptions.js?ver=31"></script>
 	
 	
-</body>
-</html>';
+';
 
 echo $_tpl_out;
 	
@@ -3458,17 +3004,14 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 
     $plugins->run_hooks('usercp_forumsubscriptions_end');
     stdhead($lang->usercp['forum_subscriptions']);
+    ucp_page_open('forumsubscriptions');
     build_breadcrumb();
     
 	
 	
 $_tpl_out = '
     
-	<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->usercp['forum_subscriptions'].'</title>
-</head>
-<body>
+	
 	<div class="container-md">
 <div class="row">
 <div class="col-lg-3">
@@ -3488,8 +3031,7 @@ $_tpl_out = '
 	</div>
 		</div>
 	</div>
-</body>
-</html>';
+';
  
     
  
@@ -3555,17 +3097,6 @@ if ($mybb->input['action'] === 'bookmarks') {
     );
 
 
-    echo '<style>
-    .bookmark-card{transition:transform .3s ease,box-shadow .3s ease,opacity .3s ease;border-radius:12px;opacity:0;transform:translateY(20px);animation:fadeInUp .5s forwards}
-    .bookmark-card:hover{transform:translateY(-5px);box-shadow:0 12px 30px rgba(0,0,0,.2)}
-    .bookmark-img{width:100%;height:180px;object-fit:cover;transition:transform .3s ease}
-    .bookmark-card:hover .bookmark-img{transform:scale(1.05)}
-    .bookmark-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);padding:.3rem}
-    .bookmark-overlay h6{color:#fff;margin:0;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    @keyframes fadeInUp{to{opacity:1;transform:translateY(0)}}
-    @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-    .animate-bounce{animation:bounce 1.5s infinite}
-    </style>';
 
     $bookmark_cards = '';
     $counter = 0;
@@ -3679,90 +3210,16 @@ if ($mybb->input['action'] === 'bookmarks') {
 </div>
 HTML;
 
-    ?>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const form           = document.getElementById('bookmarksForm');
-    const cardsContainer = form.querySelector('.row.g-4');
-    const postCode       = <?= json_encode($mybb->post_code) ?>;
 
-    function showToast(message, ok = true) {
-        const el  = document.getElementById('toastNotification');
-        const msg = document.getElementById('toastMessage');
-        if (!el || !msg) return;
-        el.className = `toast align-items-center text-bg-${ok ? 'success' : 'danger'} border-0`;
-        msg.textContent = message;
-        new bootstrap.Toast(el, { delay: 3000 }).show();
-    }
-
-    function showEmptyState() {
-        cardsContainer.innerHTML = `
-        <div class="col-12 text-center py-5 text-muted">
-            <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
-                <i class="fa-regular fa-bookmark"></i>
-            </div>
-            <h5 class="mb-2 fw-semibold"><?= htmlspecialchars_uni($lang->usercp['lbl_bookmarks_empty']) ?></h5>
-            <p class="mb-4"><?= htmlspecialchars_uni($lang->usercp['hint_bookmarks_empty']) ?></p>
-            <a href="browse.php" class="btn btn-primary btn-sm shadow-sm">
-                <i class="fa-solid fa-magnifying-glass me-1"></i> <?= htmlspecialchars_uni($lang->usercp['btn_browse_torrents']) ?>
-            </a>
-        </div>`;
-        document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.remove();
-        document.querySelector('[data-bs-target="#confirmDeleteAllModal"]')?.remove();
-    }
-
-    document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.addEventListener('click', function () {
-        const count = form.querySelectorAll('input[type="checkbox"]:checked').length;
-        if (!count) { showToast(<?= json_encode($lang->usercp['js_select_bookmark'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>, false); return; }
-        document.getElementById('selectedCount').textContent = count;
-        new bootstrap.Modal(document.getElementById('confirmDeleteSelectedModal')).show();
-    });
-
-    document.getElementById('confirmDeleteSelectedBtn')?.addEventListener('click', function () {
-        const fd = new FormData(form);
-        fd.set('do', 'delete');
-        fetch('usercp.php', { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(d => {
-                if (d.status === 'success') {
-                    form.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-                        const card = cb.closest('.col-xl-3, .col-lg-4, .col-md-6');
-                        card.style.transition = 'all .5s ease';
-                        card.style.opacity    = '0';
-                        card.style.transform  = 'scale(.95)';
-                        setTimeout(() => card.remove(), 500);
-                    });
-                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteSelectedModal'))?.hide();
-                    showToast(d.message, true);
-                    setTimeout(() => { if (!cardsContainer.children.length) showEmptyState(); }, 600);
-                } else { showToast(d.message, false); }
-            });
-    });
-
-    document.getElementById('confirmDeleteAllBtn')?.addEventListener('click', function () {
-        const fd = new FormData();
-        fd.append('action', 'removebookmarks');
-        fd.append('my_post_key', postCode);
-        fetch('usercp.php', { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(d => {
-                if (d.status === 'success') {
-                    document.querySelectorAll('.col-xl-3, .col-lg-4, .col-md-6').forEach(c => {
-                        c.style.transition = 'all .5s ease';
-                        c.style.opacity    = '0';
-                        setTimeout(() => c.remove(), 500);
-                    });
-                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteAllModal'))?.hide();
-                    showToast(d.message, true);
-                    setTimeout(showEmptyState, 600);
-                } else { showToast(d.message, false); }
-            });
-    });
-});
-</script>
-    <?php
 
     stdhead($lang->usercp['lbl_my_bookmarks'] . ' - ' . $SITENAME);
+    ucp_page_open('bookmarks');
+    echo ucp_js_lang([
+        'bm_empty_title' => 'lbl_bookmarks_empty',
+        'bm_empty_hint'  => 'hint_bookmarks_empty',
+        'bm_browse'      => 'btn_browse_torrents',
+        'bm_select_one'  => 'js_select_bookmark',
+    ]);
     build_breadcrumb();
     echo $bookmarks_html;
 }
@@ -3929,29 +3386,9 @@ if ($mybb->input['action'] === 'manage_files') {
 HTML;
 
     stdhead($lang->usercp['lbl_my_files'] . ' - ' . $SITENAME);
+    ucp_page_open('manage_files');
 
-    echo '<style>
-    .file-card{transition:all .3s ease;border-radius:12px;overflow:hidden}
-    .file-card:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.15)!important}
-    .file-preview-wrapper{position:relative;height:180px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f8f9fa,#e9ecef);border-radius:10px;overflow:hidden;margin-bottom:1rem}
-    .file-checkbox{position:absolute;top:12px;right:12px;z-index:2}
-    .file-checkbox-input{opacity:0;position:absolute}
-    .file-checkbox-label{width:22px;height:22px;border:2px solid #dee2e6;border-radius:5px;background:#fff;cursor:pointer;transition:all .2s ease;display:block}
-    .file-checkbox-input:checked+.file-checkbox-label{background:#0d6efd;border-color:#0d6efd}
-    .file-checkbox-input:checked+.file-checkbox-label::after{content:"✓";color:#fff;font-size:.9rem;font-weight:700;display:block;text-align:center;line-height:18px}
-    </style>';
 
-    echo '<script>
-    document.addEventListener("DOMContentLoaded",function(){
-        const selectAll=document.getElementById("select-all");
-        const cbs=document.querySelectorAll(".file-checkbox-input");
-        const cnt=document.getElementById("selected-count");
-        selectAll?.addEventListener("change",function(){cbs.forEach(c=>c.checked=this.checked);update()});
-        cbs.forEach(c=>c.addEventListener("change",update));
-        function update(){const n=document.querySelectorAll(".file-checkbox-input:checked").length;if(cnt)cnt.textContent=n;if(selectAll)selectAll.checked=n===cbs.length&&cbs.length>0}
-        document.querySelectorAll(".file-card").forEach((c,i)=>{c.style.opacity="0";c.style.transform="translateY(20px)";setTimeout(()=>{c.style.transition="opacity .6s ease,transform .6s ease";c.style.opacity="1";c.style.transform="translateY(0)"},100+i*100)});
-    });
-    </script>';
 
     build_breadcrumb();
     echo $files_html;
@@ -4479,6 +3916,7 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
     $plugins->run_hooks('usercp_editlists_end');
 
     stdhead($lang->usercp['edit_lists']);
+    ucp_page_open('editlists');
     build_breadcrumb();
     
 	
@@ -4492,170 +3930,7 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
 
 	$_tpl_out = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/buddy.css">
-<style>
-/* ── Buddy / Ignore lists ───────────────────────────────────── */
-.ucp-lists .ucp-card {
-    border: 1px solid var(--bs-border-color-translucent);
-    border-radius: 1rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
-    height: 100%;
-}
-.ucp-lists .ucp-card .card-header {
-    display: flex; align-items: center; gap: .75rem;
-    background: transparent;
-    border-bottom: 1px solid var(--bs-border-color-translucent);
-    padding: .9rem 1.1rem;
-    font-weight: 600;
-}
-.ucp-lists .ucp-icon {
-    width: 38px; height: 38px; flex-shrink: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border-radius: .75rem;
-    font-size: 1rem;
-}
-.ucp-lists .ucp-icon-buddy   { color: var(--bs-success); background: rgba(var(--bs-success-rgb), .12); }
-.ucp-lists .ucp-icon-ignored { color: var(--bs-danger);  background: rgba(var(--bs-danger-rgb), .12); }
-.ucp-lists .ucp-icon-received { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); }
-.ucp-lists .ucp-icon-sent     { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .14); }
-.ucp-lists .ucp-count {
-    margin-left: auto;
-    font-size: .75rem; font-weight: 600;
-    padding: .2rem .6rem;
-    border-radius: 50rem;
-    background: var(--bs-tertiary-bg);
-    color: var(--bs-secondary-color);
-    border: 1px solid var(--bs-border-color-translucent);
-}
-.ucp-lists .ucp-count-active {
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-    color: #fff;
-}
-.ucp-lists .ucp-help { font-size: .8rem; color: var(--bs-secondary-color); margin-bottom: .5rem; }
 
-/* Поле выбора пользователей (разметку создаёт usercp.js) */
-.ucp-lists .user-select {
-    position: relative;
-    display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
-    min-height: 44px;
-    padding: .35rem .5rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: .75rem;
-    background: var(--bs-body-bg);
-    transition: border-color .15s ease, box-shadow .15s ease;
-}
-.ucp-lists .user-select:focus-within {
-    border-color: rgba(var(--bs-primary-rgb), .6);
-    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
-}
-.ucp-lists .user-select > input {
-    flex: 1 1 140px; min-width: 120px;
-    border: 0; outline: 0;
-    background: transparent;
-    color: var(--bs-body-color);
-    padding: .25rem;
-}
-.ucp-lists .user-tag {
-    display: inline-flex; align-items: center; gap: .35rem;
-    padding: .15rem .35rem .15rem .25rem;
-    border-radius: 50rem;
-    background: rgba(var(--bs-primary-rgb), .1);
-    border: 1px solid rgba(var(--bs-primary-rgb), .3);
-    color: var(--bs-primary);
-    font-size: .85rem; font-weight: 600;
-}
-.ucp-lists .user-tag img,
-.ucp-lists .user-option img {
-    width: 22px; height: 22px; border-radius: 50%; object-fit: cover;
-}
-.ucp-lists .user-tag-remove {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    cursor: pointer;
-    line-height: 1;
-    transition: background-color .15s ease;
-}
-.ucp-lists .user-tag-remove:hover { background: rgba(var(--bs-primary-rgb), .2); }
-.ucp-lists .user-dropdown {
-    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050;
-    max-height: 260px; overflow-y: auto;
-    padding: .25rem;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: .75rem;
-    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
-}
-.ucp-lists .user-dropdown[hidden] { display: none; }
-.ucp-lists .user-option {
-    display: flex; align-items: center; gap: .5rem;
-    padding: .45rem .6rem;
-    border-radius: .5rem;
-    cursor: pointer;
-}
-.ucp-lists .user-option img { width: 28px; height: 28px; }
-.ucp-lists .user-option:hover { background: var(--bs-tertiary-bg); }
-
-/* Список */
-.ucp-lists .ucp-list-title {
-    font-size: .75rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .04em;
-    color: var(--bs-secondary-color);
-    margin: 1.25rem 0 .5rem;
-}
-.ucp-lists .ucp-list { max-height: 420px; overflow-y: auto; margin: 0 -.35rem; }
-.ucp-lists .ucp-list-row {
-    display: flex; align-items: center; gap: .65rem;
-    padding: .5rem .6rem;
-    border-radius: .6rem;
-    transition: background-color .15s ease;
-}
-.ucp-lists .ucp-list-row:hover { background: var(--bs-tertiary-bg); }
-.ucp-lists .ucp-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.ucp-lists .ucp-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #adb5bd; }
-.ucp-lists .ucp-status-online { background: #68c000; box-shadow: 0 0 0 3px rgba(104, 192, 0, .18); }
-.ucp-lists .ucp-ignored-mark { color: var(--bs-secondary-color); font-size: .8rem; width: 14px; text-align: center; }
-.ucp-lists .ucp-list-remove {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; flex-shrink: 0;
-    border-radius: 50%;
-    color: var(--bs-secondary-color);
-    text-decoration: none;
-    opacity: .6;
-    transition: opacity .15s ease, color .15s ease, background-color .15s ease;
-}
-.ucp-lists .ucp-list-row:hover .ucp-list-remove { opacity: 1; }
-.ucp-lists .ucp-list-remove:hover { color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .1); }
-.ucp-lists .ucp-list-date {
-    display: block;
-    font-size: .75rem; font-weight: 400;
-    color: var(--bs-secondary-color);
-}
-.ucp-lists .ucp-req-mark {
-    width: 26px; height: 26px; flex-shrink: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    font-size: .7rem;
-}
-.ucp-lists .ucp-req-in  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .1); }
-.ucp-lists .ucp-req-out { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .12); }
-.ucp-lists .ucp-req-actions { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; }
-.ucp-lists .ucp-req-pending {
-    font-size: .72rem; font-weight: 600;
-    padding: .15rem .55rem;
-    border-radius: 50rem;
-    color: var(--bs-warning-text-emphasis);
-    background: var(--bs-warning-bg-subtle);
-}
-.ucp-lists .ucp-list-empty {
-    display: flex; flex-direction: column; align-items: center; gap: .4rem;
-    padding: 1.75rem 1rem;
-    text-align: center;
-    color: var(--bs-secondary-color);
-    font-size: .9rem;
-}
-.ucp-lists .ucp-list-empty i { font-size: 1.6rem; opacity: .5; }
-</style>
 
 ' . $swal_assets . '
 ' . ucp_js_lang([
@@ -4665,7 +3940,6 @@ $buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
     'remove_from_list_confirm' => 'js_confirm_remove_user',
     'list_update_failed' => 'js_list_update_failed',
 ]) . '
-<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript">
     window.lang = Object.assign(window.lang || {}, ' . $ucp_lang_js . ');
 </script>
@@ -4924,79 +4198,7 @@ if ($mybb->input['action'] === 'drafts') {
     </div>
 </div>
 
-<style>
-    /* Draft Element Styles */
-    .draft-card {
-        border: 1px solid #e9ecef;
-        transition: all 0.3s ease;
-    }
-    
-    .draft-card:hover {
-        border-color: #dc3545;
-        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.1);
-    }
-    
-    .draft-card.selected {
-        border-color: #dc3545;
-        background-color: rgba(220, 53, 69, 0.05);
-    }
-    
-    .hover-lift:hover {
-        transform: translateY(-2px);
-    }
-    
-    .transition-all {
-        transition: all 0.3s ease;
-    }
-    
-    .hover-primary:hover {
-        color: #0d6efd !important;
-    }
-    
-    /* Toggle Switch Styles */
-    .form-switch .form-check-input {
-        width: 3em;
-        height: 1.5em;
-        cursor: pointer;
-        border-color: #adb5bd;
-    }
-    
-    .form-switch .form-check-input:checked {
-        background-color: #dc3545;
-        border-color: #dc3545;
-    }
-    
-    .form-switch .form-check-input:focus {
-        box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
-    }
-    
-    /* Text Preview Styles */
-    .draft-preview {
-        max-height: 48px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        line-height: 1.4;
-    }
-    
-    /* Animations */
-    .additional-info {
-        animation: slideDown 0.3s ease;
-    }
-    
-    @keyframes slideDown {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-</style>';
+';
 			
 			
 			
@@ -5031,66 +4233,11 @@ if ($mybb->input['action'] === 'drafts') {
 
     $plugins->run_hooks('usercp_drafts_end');
     stdhead($lang->usercp['drafts']);
+    ucp_page_open('drafts');
     build_breadcrumb();
     
 	
-	$_tpl_out = '<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>'.$SITENAME.' - '.$lang->usercp['drafts'].'</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<style>
-.draft-switch {
-    position: relative;
-    display: inline-block;
-    width: 60px;
-    height: 30px;
-}
-.draft-switch input { display:none; }
-.draft-slider {
-    position:absolute;
-    inset:0;
-    background:#ccc;
-    border-radius:30px;
-    cursor:pointer;
-    transition:.3s;
-}
-.draft-slider:before {
-    content:"";
-    position:absolute;
-    width:22px;
-    height:22px;
-    left:4px;
-    bottom:4px;
-    background:#fff;
-    border-radius:50%;
-    transition:.3s;
-}
-.draft-switch input:checked + .draft-slider {
-    background:#dc3545;
-}
-.draft-switch input:checked + .draft-slider:before {
-    transform:translateX(28px);
-}
-
-.draft-card {
-    border:1px solid #e9ecef;
-    border-radius:10px;
-    padding:16px;
-    margin-bottom:12px;
-    transition:.3s;
-}
-.draft-card.selected {
-    border-color:#dc3545;
-    background:rgba(220,53,69,.05);
-}
-</style>
-
-
-</head>
-<body>
+	$_tpl_out = '
 
 <form action="usercp.php" method="post" id="draftsForm">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'">
@@ -5148,8 +4295,7 @@ if ($mybb->input['action'] === 'drafts') {
 ]) . '
 <script type="text/javascript" src="' . $BASEURL . '/scripts/drafts.js?ver=3"></script>
 
-</body>
-</html>'; 
+'; 
 	
 	
 	echo $_tpl_out;
@@ -5204,19 +4350,10 @@ if ($mybb->input['action'] === 'profile') {
 
     $plugins->run_hooks('usercp_profile_end');
     stdhead($lang->usercp['edit_profile']);
+    ucp_page_open('profile');
     
 	
-	$_tpl_out = '<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['edit_profile'].'</title>
-    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
-
-    
-</head>
-<body>
+	$_tpl_out = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp_profile.css">
 '.$header.'
 
 <form action="usercp.php" method="post" name="input">
@@ -5316,8 +4453,7 @@ if ($mybb->input['action'] === 'profile') {
 
 <script src="' . $BASEURL . '/scripts/theme-switcher.js"></script>
 
-</body>
-</html>'; 
+'; 
 	
 	
 	echo $_tpl_out;
@@ -5628,267 +4764,11 @@ if ($mybb->input['action'] === 'attachments') {
 
     $plugins->run_hooks('usercp_attachments_end');
     stdhead($lang->usercp['attachments_manager']);
-    // CSS раньше дописывался к каждой строке внутри цикла (≈2,5 КБ × N вложений)
-    echo '<style>
-    .attachment-item {
-        transition: all 0.3s ease;
-        border: 1px solid #e9ecef;
-    }
-    
-    .attachment-item:hover {
-        border-color: #0d6efd;
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
-    }
-    
-    .hover-shadow:hover {
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
-    }
-    
-    .hover-primary:hover {
-        color: #0d6efd !important;
-    }
-    
-    .transition-all {
-        transition: all 0.3s ease;
-    }
-    
-    /* Кастомный стиль для переключателя */
-    .form-switch .form-check-input {
-        width: 3em;
-        height: 1.5em;
-        cursor: pointer;
-    }
-    
-    .form-switch .form-check-input:checked {
-        background-color: #0d6efd;
-        border-color: #0d6efd;
-    }
-    
-    .attachment-icon {
-        width: 48px;
-        height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #f8f9fa;
-        border-radius: 8px;
-        border: 1px solid #dee2e6;
-        overflow: hidden;
-        flex-shrink: 0;
-    }
-
-    .attachment-thumb-link {
-        display: block;
-        width: 100%;
-        height: 100%;
-    }
-
-    .attachment-thumb {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-        transition: transform .2s ease;
-    }
-
-    .attachment-thumb-link:hover .attachment-thumb {
-        transform: scale(1.08);
-    }
-    
-    .additional-info {
-        animation: fadeIn 0.3s ease;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @media (max-width: 768px) {
-        .attachment-item .row > div {
-            margin-bottom: 10px;
-        }
-        
-        .d-flex.justify-content-end {
-            justify-content: flex-start !important;
-        }
-    }
-</style>';
+    ucp_page_open('attachments');
     
 	$_tpl_out = '
 	
-	<!DOCTYPE html>
-<html lang="eng">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['attachments_manager'].'</title>
-
-    <style>
-        .att-page-header {
-            background: linear-gradient(135deg, #0d6efd 0%, #0a4fc4 100%);
-            border-radius: 16px;
-            padding: 1.75rem 2rem;
-            color: #fff;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 8px 24px rgba(13,110,253,.25);
-        }
-        .att-page-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
-        .att-page-header h2 i {
-            margin-right: .5rem;
-            opacity: .9;
-        }
-        .att-page-header p {
-            margin: .35rem 0 0;
-            opacity: .85;
-            font-size: .9rem;
-        }
-
-        .att-stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 14px;
-            margin-bottom: 1.5rem;
-        }
-        .att-stat-card {
-            background: #fff;
-            border: 1px solid #eef0f2;
-            border-radius: 14px;
-            padding: 1.1rem 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            transition: transform .2s ease, box-shadow .2s ease;
-        }
-        .att-stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 24px rgba(0,0,0,.07);
-        }
-        .att-stat-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.15rem;
-            flex-shrink: 0;
-        }
-        .att-stat-icon.is-primary { background: rgba(13,110,253,.1); color: #0d6efd; }
-        .att-stat-icon.is-success { background: rgba(25,135,84,.1);  color: #198754; }
-        .att-stat-icon.is-info    { background: rgba(13,202,240,.12); color: #0aa2c0; }
-        .att-stat-icon.is-warning { background: rgba(255,193,7,.12);  color: #cc9a06; }
-        .att-stat-icon.is-danger  { background: rgba(220,53,69,.1);   color: #dc3545; }
-        .att-stat-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-            line-height: 1.1;
-            color: #212529;
-        }
-        .att-stat-label {
-            font-size: .78rem;
-            color: #8a8f98;
-            margin-top: 2px;
-        }
-
-        .att-card {
-            background: #fff;
-            border: 1px solid #eef0f2;
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        .att-card-header {
-            padding: 1.1rem 1.5rem;
-            border-bottom: 1px solid #f1f2f4;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .att-card-header h5 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.05rem;
-            color: #212529;
-        }
-        .att-card-header h5 i {
-            color: #0d6efd;
-            margin-right: .5rem;
-        }
-        .att-card-body { padding: 1.25rem 1.5rem; }
-
-        .att-usage-note {
-            background: #f0f6ff;
-            border: 1px solid #d6e7ff;
-            border-radius: 10px;
-            padding: .75rem 1.1rem;
-            font-size: .88rem;
-            color: #0a4fc4;
-            margin-bottom: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: .6rem;
-        }
-
-        /* Toggle switch */
-        .form-switch-custom {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 28px;
-        }
-        .form-switch-custom input { opacity: 0; width: 0; height: 0; }
-        .switch-slider {
-            position: absolute; cursor: pointer; inset: 0;
-            background-color: #dadfe4;
-            transition: .25s;
-            border-radius: 28px;
-        }
-        .switch-slider:before {
-            position: absolute; content: "";
-            height: 21px; width: 21px; left: 3.5px; bottom: 3.5px;
-            background-color: #fff;
-            transition: .25s;
-            border-radius: 50%;
-            box-shadow: 0 1px 3px rgba(0,0,0,.2);
-        }
-        .form-switch-custom input:checked + .switch-slider { background-color: #0d6efd; }
-        .form-switch-custom input:checked + .switch-slider:before { transform: translateX(22px); }
-
-        .att-footer {
-            padding: 1.1rem 1.5rem;
-            border-top: 1px solid #f1f2f4;
-            text-align: center;
-            background: #fafbfc;
-        }
-        .att-delete-btn {
-            border: none;
-            border-radius: 10px;
-            padding: .65rem 1.5rem;
-            font-weight: 600;
-            background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%);
-            color: #fff;
-            transition: transform .15s ease, box-shadow .15s ease;
-        }
-        .att-delete-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(220,53,69,.35);
-        }
-
-        @media (max-width: 768px) {
-            .att-page-header { padding: 1.25rem 1.5rem; }
-            .att-card-body, .att-card-header { padding: 1rem; }
-        }
-    </style>
-
-</head>
-<body>
+	
     <div class="container-md py-4">
         <div class="row">
             <!-- Навигация -->
@@ -5981,10 +4861,8 @@ if ($mybb->input['action'] === 'attachments') {
         </div>
     </div>
 ' . $swal_assets . '
-<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1903"></script>
 <script type="text/javascript" src="' . $BASEURL . '/scripts/attachments.js"></script>
-</body>
-</html>';
+';
 	
 	
 	
@@ -6023,17 +4901,9 @@ if (!$mybb->input['action']) {
 
     $plugins->run_hooks('usercp_end');
     stdhead($lang->usercp['user_cp']);
+    ucp_page_open('home');
     
-	$_tpl_out = '<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>'.$SITENAME.' - '.$lang->usercp['user_cp'].'</title>
-    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp.css">
-	
-
-</head>
+	$_tpl_out = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/usercp.css">
 
 <div class="container-md py-4">
     <div class="row g-4">
@@ -6145,7 +5015,7 @@ if (!$mybb->input['action']) {
     </div>
 </div>
 
-</html>'; 
+'; 
 	
 	echo $_tpl_out;
 
@@ -6261,6 +5131,7 @@ if ($mybb->input['action'] === '2fa') {
     }
 
     stdhead($lang->usercp['nav_2fa']);
+    ucp_page_open('2fa');
     build_breadcrumb();
 
     echo '<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">';
@@ -6435,6 +5306,7 @@ if ($mybb->input['action'] === '2fa') {
 </div><!-- container -->';
 
     echo $swal_assets;
+    ucp_page_close();
     stdfoot();
     exit;
 }
@@ -6543,6 +5415,7 @@ if ($mybb->input['action'] === 'sessions') {
     $is_current   = !empty($session_row['sid']) && $session_row['sid'] === $current_sid;
 
     stdhead($lang->usercp['lbl_active_session']);
+    ucp_page_open('sessions');
     build_breadcrumb();
 
     echo '
@@ -6689,6 +5562,7 @@ if ($mybb->input['action'] === 'sessions') {
 </div><!-- container -->';
 
     echo $swal_assets;
+    ucp_page_close();
     stdfoot();
     exit;
 }
@@ -6701,4 +5575,5 @@ if ($mybb->input['action'] === 'sessions') {
 
 
 
+ucp_page_close();
 stdfoot();

@@ -159,6 +159,65 @@ function ucp_js_lang(array $map): string
          . ');</script>';
 }
 
+// ── Helper: clean list of positive unique int ids (for IN (...)) ──────────
+function ucp_int_ids(array $raw): array
+{
+    return array_values(array_unique(array_filter(array_map('intval', $raw), static fn(int $v): bool => $v > 0)));
+}
+
+// ── Helper: delete one comment_files entry (file + [img] in linked texts) ──
+// Читает тексты свежими на каждый файл — безопасно, когда несколько файлов
+// одного пользователя лежат в одном и том же посте/комментарии/торренте.
+function ucp_delete_comment_file(int $file_id, int $uid): bool
+{
+    global $db;
+
+    $query = $db->sql_query_prepared("
+        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
+               c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
+               p.message AS post_message, pm.message AS pm_message
+        FROM comment_files cf
+        LEFT JOIN comments c ON c.id=cf.comment_id
+        LEFT JOIN news n ON n.id=cf.news_id
+        LEFT JOIN torrents t ON t.id=cf.torrent_id
+        LEFT JOIN posts p ON p.pid=cf.post_id
+        LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
+        WHERE cf.id=? AND cf.user_id=? LIMIT 1", [$file_id, $uid]);
+
+    $file = $query ? $db->fetch_array($query) : null;
+    if (empty($file)) {
+        return false;
+    }
+
+    $path = (string) ($file['file_path'] ?? '');
+    if ($path !== '' && is_file($path)) {
+        @unlink($path);
+    }
+
+    $filename = basename($path);
+    if ($filename !== '') {
+        $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
+
+        foreach ([
+            ['text',    'comments',        'id',   $file['comment_id'],  $file['comment_text']],
+            ['body',    'news',            'id',   $file['news_id'],     $file['news_text']],
+            ['descr',   'torrents',        'id',   $file['torrent_id'],  $file['torrent_description']],
+            ['message', 'posts',           'pid',  $file['post_id'],     $file['post_message']],
+            ['message', 'privatemessages', 'pmid', $file['messages_id'], $file['pm_message']],
+        ] as [$field, $table, $id_field, $id, $content]) {
+            if ($id && $content !== null) {
+                $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
+                if ($new_text !== null && $new_text !== $content) {
+                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
+                }
+            }
+        }
+    }
+
+    $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, $uid]);
+    return true;
+}
+
 // ── Helper: file type icon ─────────────────────────────────────────────────
 function get_file_type_icon(string $file_type): string
 {
@@ -2467,8 +2526,11 @@ if ($mybb->input['action'] === 'do_subscriptions') {
     }
 
     $plugins->run_hooks('usercp_do_subscriptions_start');
-    $mybb->input['check'] = array_map('intval', $mybb->get_input('check', MyBB::INPUT_ARRAY));
-    $tids = implode(',', $mybb->input['check']);
+    $check = ucp_int_ids($mybb->get_input('check', MyBB::INPUT_ARRAY));
+    if (!$check) {
+        error($lang->usercp['no_subscriptions_selected']);
+    }
+    $tids = implode(',', $check);
 
     if ($mybb->get_input('do') === 'delete') {
         $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid IN ($tids) AND uid = ?", [(int)$CURUSER['id']]);
@@ -2546,20 +2608,22 @@ if ($mybb->input['action'] === 'subscriptions') {
         $tids = implode(',', array_keys($subscriptions));
 
         // Forum read times
+        // Только форумы тем этой страницы, а не вся таблица forums
         $readforums = [];
-        $q = $db->sql_query_prepared("
-            SELECT f.fid, fr.dateline AS lastread
-            FROM forums f
-            LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
-            WHERE f.active != 0 ORDER BY pid, disporder
-        ", [(int)$CURUSER['id']]);
-        while ($q && ($forum = $db->fetch_array($q))) {
-            $readforums[$forum['fid']] = $forum['lastread'];
+        $page_fids  = ucp_int_ids(array_column($subscriptions, 'fid'));
+        if ($page_fids) {
+            $q = $db->sql_query_prepared(
+                "SELECT fid, dateline AS lastread FROM forumsread WHERE uid=? AND fid IN (" . implode(',', $page_fids) . ")",
+                [(int)$CURUSER['id']]
+            );
+            while ($q && ($forum = $db->fetch_array($q))) {
+                $readforums[$forum['fid']] = $forum['lastread'];
+            }
         }
 
         // Dot icons
         if ((int) ($dotfolders ?? 1) !== 0) {
-            $q = $db->sql_query_prepared("SELECT tid,uid FROM posts WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            $q = $db->sql_query_prepared("SELECT DISTINCT tid FROM posts WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
             while ($q && ($post = $db->fetch_array($q))) {
                 $subscriptions[$post['tid']]['doticon'] = 1;
             }
@@ -2568,7 +2632,7 @@ if ($mybb->input['action'] === 'subscriptions') {
         // Thread read times
         $threadreadcut = (int) ($threadreadcut ?? 7);
         if ($threadreadcut > 0) {
-            $q = $db->sql_query_prepared("SELECT * FROM threadsread WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            $q = $db->sql_query_prepared("SELECT tid, dateline FROM threadsread WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
             while ($q && ($rt = $db->fetch_array($q))) {
                 $subscriptions[$rt['tid']]['lastread'] = $rt['dateline'];
             }
@@ -3195,17 +3259,6 @@ if ($mybb->input['action'] === 'removesubscription'
 if ($mybb->input['action'] === 'forumsubscriptions') {
     $plugins->run_hooks('usercp_forumsubscriptions_start');
 
-    $readforums = [];
-    $q = $db->sql_query_prepared("
-        SELECT f.fid, fr.dateline AS lastread
-        FROM forums f
-        LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
-        WHERE f.active != 0 ORDER BY pid, disporder
-    ", [(int)$CURUSER['id']]);
-    while ($q && ($forum = $db->fetch_array($q))) {
-        $readforums[$forum['fid']] = $forum['lastread'];
-    }
-
     $fpermissions = forum_permissions();
     require_once INC_PATH . '/functions_forumlist.php';
 
@@ -3457,8 +3510,12 @@ if ($mybb->input['action'] === 'do_removebookmarks') {
         exit;
     }
 
-    $mybb->input['check'] = array_map('intval', $mybb->get_input('check', MyBB::INPUT_ARRAY));
-    $tids = implode(',', $mybb->input['check']);
+    $check = ucp_int_ids($mybb->get_input('check', MyBB::INPUT_ARRAY));
+    if (!$check) {
+        echo json_encode(['status' => 'error', 'message' => $lang->usercp['no_books_selected']]);
+        exit;
+    }
+    $tids = implode(',', $check);
 
     if ($mybb->get_input('do') === 'delete') {
         $db->sql_query_prepared("DELETE FROM bookmarks WHERE torrentid IN ($tids) AND userid = ?", [(int)$CURUSER['id']]);
@@ -3907,47 +3964,11 @@ if ($mybb->input['action'] === 'do_remove_files') {
     verify_post_check($mybb->get_input('my_post_key'));
 
     $deleted = 0;
+    $ids     = ucp_int_ids($mybb->get_input('file_ids', MyBB::INPUT_ARRAY));
 
-    if (isset($mybb->input['file_ids']) && is_array($mybb->input['file_ids'])) {
-        foreach ($mybb->input['file_ids'] as $raw_id) {
-            $file_id = (int) $raw_id;
-            $query   = $db->sql_query_prepared("
-                SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
-                       c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
-                       p.message AS post_message, pm.message AS pm_message
-                FROM comment_files cf
-                LEFT JOIN comments c ON c.id=cf.comment_id
-                LEFT JOIN news n ON n.id=cf.news_id
-                LEFT JOIN torrents t ON t.id=cf.torrent_id
-                LEFT JOIN posts p ON p.pid=cf.post_id
-                LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-                WHERE cf.id=? AND cf.user_id=?", [$file_id, (int) $CURUSER['id']]);
-
-            if ($query && $db->num_rows($query) > 0) {
-                $file = $db->fetch_array($query);
-                if (!empty($file['file_path']) && file_exists($file['file_path'])) {
-                    @unlink($file['file_path']);
-                }
-
-                $filename      = basename($file['file_path']);
-                $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
-
-                foreach ([
-                    ['text',    'comments',        'id',  $file['comment_id'],  $file['comment_text']],
-                    ['body',    'news',             'id',  $file['news_id'],     $file['news_text']],
-                    ['descr',   'torrents',         'id',  $file['torrent_id'],  $file['torrent_description']],
-                    ['message', 'posts',        'pid', $file['post_id'],     $file['post_message']],
-                    ['message', 'privatemessages',  'pmid',$file['messages_id'],$file['pm_message']],
-                ] as [$field, $table, $id_field, $id, $content]) {
-                    if ($id) {
-                        $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
-                        if ($new_text !== $content) {
-                            $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
-                        }
-                    }
-                }
-
-                $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, (int)$CURUSER['id']]);
+    if ($ids) {
+        foreach ($ids as $file_id) {
+            if (ucp_delete_comment_file($file_id, (int) $CURUSER['id'])) {
                 $deleted++;
             }
         }
@@ -3966,43 +3987,19 @@ if ($mybb->input['action'] === 'remove_all_files') {
     verify_post_check($mybb->get_input('my_post_key'));
 
     $uid   = (int) $CURUSER['id'];
-    $query = $db->sql_query_prepared("
-        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
-               c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
-               p.message AS post_message, pm.message AS pm_message
-        FROM comment_files cf
-        LEFT JOIN comments c ON c.id=cf.comment_id
-        LEFT JOIN news n ON n.id=cf.news_id
-        LEFT JOIN torrents t ON t.id=cf.torrent_id
-        LEFT JOIN posts p ON p.pid=cf.post_id
-        LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-        WHERE cf.user_id=?", [$uid]);
+    // Только id: тексты читаются заново для каждого файла внутри хелпера, иначе
+    // при двух файлах в одном посте второй UPDATE затирал первую замену.
+    $ids   = [];
+    $query = $db->sql_query_prepared("SELECT id FROM comment_files WHERE user_id=?", [$uid]);
+    while ($query && ($row = $db->fetch_array($query))) {
+        $ids[] = (int) $row['id'];
+    }
 
     $deleted = 0;
-    while ($query && ($file = $db->fetch_array($query))) {
-        if (!empty($file['file_path']) && file_exists($file['file_path'])) {
-            @unlink($file['file_path']);
+    foreach ($ids as $file_id) {
+        if (ucp_delete_comment_file($file_id, $uid)) {
+            $deleted++;
         }
-        $filename      = basename($file['file_path']);
-        $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
-
-        foreach ([
-            ['text',    'comments',       'id',   $file['comment_id'],  $file['comment_text']],
-            ['body',    'news',           'id',   $file['news_id'],     $file['news_text']],
-            ['descr',   'torrents',       'id',   $file['torrent_id'],  $file['torrent_description']],
-            ['message', 'posts',      'pid',  $file['post_id'],     $file['post_message']],
-            ['message', 'privatemessages','pmid',  $file['messages_id'],$file['pm_message']],
-        ] as [$field, $table, $id_field, $id, $content]) {
-            if ($id) {
-                $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
-                if ($new_text !== $content) {
-                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
-                }
-            }
-        }
-
-        $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file['id'], $uid]);
-        $deleted++;
     }
 
     header('Location: usercp.php?action=manage_files&msg=' . urlencode(sprintf($lang->usercp['flash_all_files_deleted'], $deleted)));
@@ -4017,12 +4014,12 @@ if ($mybb->input['action'] === 'acceptrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { error($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_acceptrequest_start');
 
     $user = get_user((int)$request['uid']);
-    if (empty($user)) { error('user_doesnt_exist'); }
+    if (empty($user)) { error($lang->usercp['user_doesnt_exist']); }
 
     // Add current user to the requestor's buddy list
     $requester_buddylist   = array_filter(explode(',', $user['buddylist']));
@@ -4040,10 +4037,12 @@ if ($mybb->input['action'] === 'acceptrequest') {
 
     require_once INC_PATH . '/functions_pm.php';
     send_pm([
-        'subject' => $lang->usercp['buddyrequest_accepted_request_message'],
-        'message' => $lang->usercp['buddyrequest_accepted_request'],
-        'touid'   => $user['id'],
-    ], $CURUSER['id'], true);
+        'subject'       => ['buddyrequest_accepted_request'],
+        'message'       => ['buddyrequest_accepted_request_message'],
+        'touid'         => (int) $user['id'],
+        'language'      => (string) ($user['language'] ?? ''),
+        'language_file' => 'usercp',
+    ], (int) $CURUSER['id'], true);
 
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_acceptrequest_end');
@@ -4055,11 +4054,11 @@ if ($mybb->input['action'] === 'declinerequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { error($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_declinerequest_start');
-    $user = get_user($request['uid']);
-    if (empty($user)) { error('user_doesnt_exist'); }
+    $user = get_user((int) $request['uid']);
+    if (empty($user)) { error($lang->usercp['user_doesnt_exist']); }
 
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_declinerequest_end');
@@ -4071,7 +4070,7 @@ if ($mybb->input['action'] === 'cancelrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND uid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { error($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_cancelrequest_start');
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
@@ -4123,27 +4122,27 @@ if ($mybb->input['action'] === 'do_editlists') {
             $field = in_array($db->type, ['mysql', 'mysqli'], true) ? 'username' : 'LOWER(username)';
             $lowered_users = array_map('strtolower', $users);
             $placeholders  = implode(',', array_fill(0, count($lowered_users), '?'));
-            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
+            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm,language FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
 
             while ($q && ($user = $db->fetch_array($q))) {
                 $found_users++;
 
                 if (in_array($user['id'], $existing_users) || in_array($user['id'], $selected_list)) {
-                    $string        = 'users_already_on_' . ($isIgnored ? 'ignored' : 'buddy') . '_list';
+                    $string        = 'users_already_on_' . ($isIgnored ? 'ignore' : 'buddy') . '_list';
                     if (in_array($user['id'], $selected_list)) { $string .= '_alt'; }
-                    $error_message = $lang->$string;
+                    $error_message = $lang->usercp[$string] ?? '';
                     array_pop($users);
                     continue;
                 }
 
                 if (isset($requests[$user['id']])) {
-                    $error_message = $isIgnored ? 'users_already_sent_request_alt' : 'users_already_sent_request';
+                    $error_message = $lang->usercp[$isIgnored ? 'users_already_sent_request_alt' : 'users_already_sent_request'] ?? '';
                     array_pop($users);
                     continue;
                 }
 
                 if (isset($requests_rec[$user['id']])) {
-                    $error_message = $isIgnored ? 'users_already_rec_request_alt' : 'users_already_rec_request';
+                    $error_message = $lang->usercp[$isIgnored ? 'users_already_rec_request_alt' : 'users_already_rec_request'] ?? '';
                     array_pop($users);
                     continue;
                 }
@@ -4151,7 +4150,13 @@ if ($mybb->input['action'] === 'do_editlists') {
                 if ($user['buddyrequestsauto'] == 1 && !$isIgnored) {
                     $existing_users[] = $user['id'];
                     require_once INC_PATH . '/functions_pm.php';
-                    send_pm($user['id'], $lang->usercp['buddyrequest_new_buddy_message'], $lang->usercp['buddyrequest_new_buddy'], $CURUSER['id']);
+                    send_pm([
+                        'subject'       => ['buddyrequest_new_buddy'],
+                        'message'       => ['buddyrequest_new_buddy_message'],
+                        'touid'         => (int) $user['id'],
+                        'language'      => (string) ($user['language'] ?? ''),
+                        'language_file' => 'usercp',
+                    ], (int) $CURUSER['id'], true);
                 } elseif ($user['buddyrequestsauto'] != 1 && !$isIgnored) {
                     $db->sql_query_prepared(
                         "INSERT INTO buddyrequests (`uid`,`touid`,`date`) VALUES (?,?,?)",
@@ -4159,14 +4164,13 @@ if ($mybb->input['action'] === 'do_editlists') {
                     );
                     require_once INC_PATH . '/functions_pm.php';
                     send_pm([
-                        'subject'       => $lang->usercp['buddyrequest_received'],
-                        'message'       => sprintf($lang->usercp['buddyrequest_received_message'], $CURUSER['username']),
+                        'subject'       => ['buddyrequest_received'],
+                        'message'       => ['buddyrequest_received_message'],
                         'touid'         => (int) $user['id'],
-                        'fromid'        => (int) $CURUSER['id'],
                         'receivepms'    => (int) $user['buddyrequestspm'],
-                        'language'      => $user['language'],
+                        'language'      => (string) ($user['language'] ?? ''),
                         'language_file' => 'usercp',
-                    ]);
+                    ], (int) $CURUSER['id']);
                     $sent = true;
                 } elseif ($isIgnored) {
                     $existing_users[] = $user['id'];
@@ -4199,12 +4203,11 @@ if ($mybb->input['action'] === 'do_editlists') {
             unset($existing_users[$key]);
             $del_user = get_user($del_id);
             if (!empty($del_user) && !$isIgnored) {
-                $bl  = $del_user['buddylist'] ? explode(',', $del_user['buddylist']) : [];
-                $k2  = array_search($del_id, $bl);
-                if ($k2 !== false) { unset($bl[$k2]); }
-                $nl  = preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $bl));
-                $nl  = trim($nl, ',');
-                $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$nl, (int) $del_user['uid']]);
+                // Убираем СЕБЯ из списка друга (раньше искался $del_id и UPDATE шёл по несуществующему uid → id=0)
+                $bl  = $del_user['buddylist'] ? explode(',', (string) $del_user['buddylist']) : [];
+                $bl  = array_filter($bl, static fn($v) => (int) $v !== (int) $CURUSER['id'] && (int) $v > 0);
+                $nl  = implode(',', array_map('intval', $bl));
+                $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$nl, (int) $del_user['id']]);
             }
             $tmpl = $isIgnored ? $lang->usercp['removed_from_ignore_list'] : $lang->usercp['removed_from_buddy_list'];
             $message = sprintf($tmpl, htmlspecialchars_uni($del_user['username'] ?? ''));
@@ -5544,7 +5547,7 @@ if ($mybb->input['action'] === 'attachments') {
                     <div class="row small text-muted">
                         <div class="col-md-3">
                             <i class="fas fa-file me-1"></i>
-                            ' . $lang->usercp['lbl_type'] . ': <span class="text-dark">'.$attachment['filetype'].'</span>
+                            ' . $lang->usercp['lbl_type'] . ': <span class="text-dark">'.htmlspecialchars_uni((string)$attachment['filetype']).'</span>
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-expand-alt me-1"></i>
@@ -5556,7 +5559,7 @@ if ($mybb->input['action'] === 'attachments') {
                         </div>
                         <div class="col-md-3">
                             <i class="fas fa-user me-1"></i>
-                            ' . $lang->usercp['lbl_uploaded_by'] . ': <span class="text-dark">'.$attachment['username'].'</span>
+                            ' . $lang->usercp['lbl_uploaded_by'] . ': <span class="text-dark">'.htmlspecialchars_uni((string)($attachment['username'] ?? '')).'</span>
                         </div>
                     </div>
                 </div>
@@ -5565,7 +5568,68 @@ if ($mybb->input['action'] === 'attachments') {
     </div>
 </div>
 
-<style>
+';
+
+
+
+            $bandwidth      += $attachment['filesize'] * $attachment['downloads'];
+            $totaldownloads += $attachment['downloads'];
+            $totalusage     += $attachment['filesize'];
+            $totalattachments++;
+        } else {
+            remove_attachment($attachment['pid'], $attachment['posthash'], $attachment['aid']);
+        }
+        $processedattachments++;
+    }
+
+    $multipage = '';
+    if ($processedattachments >= $perpage || $page > 1) {
+        $q = $db->sql_query_prepared("
+            SELECT SUM(a.filesize) AS ausage, COUNT(a.aid) AS acount
+            FROM attachments a
+            LEFT JOIN posts p ON (a.pid=p.pid)
+            LEFT JOIN threads t ON (t.tid=p.tid)
+            WHERE a.uid=? {$f_perm_sql}", [(int) $CURUSER['id']]);
+        $usage         = $db->fetch_array($q);
+        $totalusage    = $usage['ausage'];
+        $totalattachments = $usage['acount'];
+        $multipage     = multipage($totalattachments, $perpage, $page, 'usercp.php?action=attachments');
+    }
+
+    $friendlyusage = mksize((int) $totalusage);
+    $attachquota   = $lang->usercp['unlimited'];
+    if ($usergroups['attachquota']) {
+        $percent       = round(($totalusage / ($usergroups['attachquota'] * 1024)) * 100);
+        $friendlyusage .= sprintf($lang->usercp['attachments_usage_percent'], $percent);
+        $attachquota   = mksize($usergroups['attachquota'] * 1024);
+        $usagenote     = sprintf($lang->usercp['attachments_usage_quota'], $friendlyusage, $attachquota, $totalattachments);
+    } else {
+        $usagenote = sprintf($lang->usercp['attachments_usage'], $friendlyusage, $totalattachments);
+    }
+
+    $bandwidth     = mksize($bandwidth);
+    
+	$attachments_present = !empty($attachments);
+	$delete_button = '<input type="hidden" name="action" value="do_attachments" />';
+
+    if (!$attachments) {
+        
+		$attachments = '
+        <div class="col-12 text-center py-5 text-muted">
+            <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
+                <i class="fa-regular fa-paperclip"></i>
+            </div>
+            <h5 class="mb-2 fw-semibold">' . $lang->usercp['no_attachments'] . '</h5>
+        </div>';
+		
+        $usagenote     = '';
+        $delete_button = '';
+    }
+
+    $plugins->run_hooks('usercp_attachments_end');
+    stdhead($lang->usercp['attachments_manager']);
+    // CSS раньше дописывался к каждой строке внутри цикла (≈2,5 КБ × N вложений)
+    echo '<style>
     .attachment-item {
         transition: all 0.3s ease;
         border: 1px solid #e9ecef;
@@ -5651,65 +5715,6 @@ if ($mybb->input['action'] === 'attachments') {
         }
     }
 </style>';
-
-
-
-            $bandwidth      += $attachment['filesize'] * $attachment['downloads'];
-            $totaldownloads += $attachment['downloads'];
-            $totalusage     += $attachment['filesize'];
-            $totalattachments++;
-        } else {
-            remove_attachment($attachment['pid'], $attachment['posthash'], $attachment['aid']);
-        }
-        $processedattachments++;
-    }
-
-    $multipage = '';
-    if ($processedattachments >= $perpage || $page > 1) {
-        $q = $db->sql_query_prepared("
-            SELECT SUM(a.filesize) AS ausage, COUNT(a.aid) AS acount
-            FROM attachments a
-            LEFT JOIN posts p ON (a.pid=p.pid)
-            LEFT JOIN threads t ON (t.tid=p.tid)
-            WHERE a.uid=? {$f_perm_sql}", [(int) $CURUSER['id']]);
-        $usage         = $db->fetch_array($q);
-        $totalusage    = $usage['ausage'];
-        $totalattachments = $usage['acount'];
-        $multipage     = multipage($totalattachments, $perpage, $page, 'usercp.php?action=attachments');
-    }
-
-    $friendlyusage = mksize((int) $totalusage);
-    $attachquota   = $lang->usercp['unlimited'];
-    if ($usergroups['attachquota']) {
-        $percent       = round(($totalusage / ($usergroups['attachquota'] * 1024)) * 100);
-        $friendlyusage .= sprintf($lang->usercp['attachments_usage_percent'], $percent);
-        $attachquota   = mksize($usergroups['attachquota'] * 1024);
-        $usagenote     = sprintf($lang->usercp['attachments_usage_quota'], $friendlyusage, $attachquota, $totalattachments);
-    } else {
-        $usagenote = sprintf($lang->usercp['attachments_usage'], $friendlyusage, $totalattachments);
-    }
-
-    $bandwidth     = mksize($bandwidth);
-    
-	$attachments_present = !empty($attachments);
-	$delete_button = '<input type="hidden" name="action" value="do_attachments" />';
-
-    if (!$attachments) {
-        
-		$attachments = '
-        <div class="col-12 text-center py-5 text-muted">
-            <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
-                <i class="fa-regular fa-paperclip"></i>
-            </div>
-            <h5 class="mb-2 fw-semibold">' . $lang->usercp['no_attachments'] . '</h5>
-        </div>';
-		
-        $usagenote     = '';
-        $delete_button = '';
-    }
-
-    $plugins->run_hooks('usercp_attachments_end');
-    stdhead($lang->usercp['attachments_manager']);
     
 	$_tpl_out = '
 	

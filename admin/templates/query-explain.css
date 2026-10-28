@@ -1,0 +1,122 @@
+/* =============================================================================
+   query-explain.css — admin/query_explain.php («Подробнее» в отладке подвала).
+   Общие компоненты — st-ui.css; здесь только qe-*, всё под .qe-page.
+   Цвета — переменные Bootstrap (светлая и тёмная темы).
+   ============================================================================= */
+
+.qe-page { padding-top: .5rem; padding-bottom: 1.5rem; }
+.qe-page .qe-lbl { margin-bottom: .5rem; font-size: 0.862rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--bs-secondary-color); }
+
+/* Полосы распределения */
+.qe-page .qe-bar { display: flex; height: .75rem; border-radius: 999px; overflow: hidden; background: var(--bs-secondary-bg); }
+.qe-page .qe-bar__php { background: var(--bs-success); }
+.qe-page .qe-bar__sql { background: var(--bs-info); }
+.qe-page .qe-legend { display: flex; flex-wrap: wrap; gap: .4rem 1.5rem; margin-top: .6rem; font-size: 1.012em; color: var(--bs-secondary-color); }
+.qe-page .qe-legend b { color: var(--bs-emphasis-color); }
+.qe-page .qe-legend small { opacity: .7; }
+.qe-page .qe-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .4rem; vertical-align: .05em; }
+.qe-page .qe-dot--php { background: var(--bs-success); }
+.qe-page .qe-dot--sql { background: var(--bs-info); }
+
+.qe-page .qe-speed { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin-top: .75rem; }
+.qe-page .qe-speed__item {
+  display: flex; flex-direction: column; padding: .6rem .75rem; border-radius: .7rem;
+  border: 1px solid var(--bs-border-color); border-left-width: 3px; background: var(--bs-body-bg);
+}
+.qe-page .qe-speed__item b { font-size: 1.552rem; line-height: 1.1; color: var(--bs-emphasis-color); }
+.qe-page .qe-speed__item span { font-size: 0.897em; color: var(--bs-secondary-color); }
+.qe-page .qe-speed__item small { font-size: 0.897em; font-weight: 600; }
+.qe-page .qe-speed__item--ok  { border-left-color: var(--bs-success); }
+.qe-page .qe-speed__item--ok small  { color: var(--bs-success-text-emphasis); }
+.qe-page .qe-speed__item--mid { border-left-color: var(--bs-warning); }
+.qe-page .qe-speed__item--mid small { color: var(--bs-warning-text-emphasis); }
+.qe-page .qe-speed__item--bad { border-left-color: var(--bs-danger); }
+.qe-page .qe-speed__item--bad small { color: var(--bs-danger-text-emphasis); }
+
+.qe-page .qe-exts { display: flex; flex-wrap: wrap; gap: .35rem; }
+.qe-page .st-row__lbl .fa-brands { margin-right: .45rem; opacity: .75; }
+
+/* Вкладки */
+.qe-page .st-tabs .st-badge { font-size: 0.828em; padding: .1rem .5rem; }
+.qe-page .qe-note {
+  display: flex; align-items: center; gap: .5rem; margin-bottom: .9rem; padding: .6rem .85rem; border-radius: .7rem;
+  background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); font-size: 1.035em;
+}
+.qe-page .qe-pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .9rem; font-weight: 600; color: var(--bs-emphasis-color); }
+.qe-page .qe-pane-head > span:first-child { margin-right: auto; }
+
+/* Карточка запроса */
+.qe-page .qe-list { display: flex; flex-direction: column; gap: .85rem; }
+.qe-page .qe-q { border: 1px solid var(--bs-border-color); border-radius: .9rem; overflow: hidden; background: var(--bs-body-bg); }
+.qe-page .qe-q--warn { border-color: rgba(var(--bs-danger-rgb), .45); }
+.qe-page .qe-q__head {
+  display: flex; align-items: center; gap: .6rem; padding: .6rem .9rem;
+  background: var(--bs-tertiary-bg); border-bottom: 1px solid var(--bs-border-color);
+}
+.qe-page .qe-q__head .st-ico { width: 1.9rem; height: 1.9rem; font-size: 0.92rem; border-radius: .5rem; }
+.qe-page .qe-q__title { font-size: 1.058em; color: var(--bs-emphasis-color); min-width: 0; overflow-wrap: anywhere; }
+.qe-page .qe-q__num {
+  flex: 0 0 auto; min-width: 1.7rem; height: 1.7rem; padding: 0 .35rem; display: inline-grid; place-items: center;
+  border-radius: 999px; font-size: 0.862rem; font-weight: 700;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); color: var(--bs-secondary-color);
+}
+.qe-page .qe-q__body { padding: .85rem .9rem; display: flex; flex-direction: column; gap: .75rem; }
+.qe-page .qe-q__foot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .4rem 1rem;
+  padding: .55rem .9rem; border-top: 1px solid var(--bs-border-color-translucent); font-size: 0.977em; color: var(--bs-secondary-color);
+}
+.qe-page .qe-time { font-family: var(--bs-font-monospace); font-weight: 600; color: var(--bs-emphasis-color); }
+.qe-page .qe-time i { margin-right: .35rem; opacity: .6; }
+
+.qe-page .qe-sql,
+.qe-page .qe-plan {
+  margin: 0; padding: .75rem .9rem; border-radius: .7rem; max-height: 320px; overflow: auto;
+  font-family: var(--bs-font-monospace); font-size: 0.92rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); color: var(--bs-emphasis-color);
+}
+.qe-page .qe-plan { background: var(--bs-body-bg); border-style: dashed; }
+
+.qe-page .qe-tablewrap { border: 1px solid var(--bs-border-color); border-radius: .7rem; }
+.qe-page .qe-table { font-size: 0.943rem; --bs-table-bg: transparent; }
+.qe-page .qe-table th {
+  white-space: nowrap; font-size: 0.828rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border-bottom-color: var(--bs-border-color);
+}
+.qe-page .qe-table td { vertical-align: middle; border-color: var(--bs-border-color-translucent); }
+.qe-page .qe-table tbody tr:last-child td { border-bottom: 0; }
+.qe-page .qe-table tbody tr:hover td { background: var(--bs-tertiary-bg); }
+.qe-page .qe-table .st-badge { font-size: 0.828rem; padding: .12rem .5rem; }
+.qe-page .qe-null { color: var(--bs-secondary-color); opacity: .5; }
+.qe-page .qe-key { color: var(--bs-primary-text-emphasis); }
+.qe-page .qe-err { border-radius: .7rem; background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+
+/* Кэш */
+.qe-page .qe-clist,
+.qe-page .qe-flist { border: 1px solid var(--bs-border-color); border-radius: .8rem; overflow: hidden; }
+.qe-page .qe-c {
+  display: flex; align-items: center; gap: .7rem; padding: .5rem .85rem;
+  border-bottom: 1px solid var(--bs-border-color-translucent); font-size: 1.012em;
+}
+.qe-page .qe-c:last-child,
+.qe-page .qe-f:last-child { border-bottom: 0; }
+.qe-page .qe-c:hover,
+.qe-page .qe-f:hover { background: var(--bs-tertiary-bg); }
+.qe-page .qe-c__hit { min-width: 3.4rem; justify-content: center; }
+.qe-page .qe-c__verb { font-weight: 600; color: var(--bs-emphasis-color); min-width: 4rem; }
+.qe-page .qe-c__key { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.qe-page .qe-c__time { flex: 0 0 auto; font-family: var(--bs-font-monospace); color: var(--bs-secondary-color); }
+
+/* Подключённые файлы */
+.qe-page .qe-f { display: flex; align-items: center; gap: .75rem; padding: .55rem .85rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+.qe-page .qe-f__ico { width: 1.2rem; text-align: center; font-size: 1.208rem; }
+.qe-page .qe-f__body { flex: 1 1 auto; min-width: 0; }
+.qe-page .qe-f__name { font-weight: 600; color: var(--bs-emphasis-color); }
+.qe-page .qe-f__dir { font-size: 0.897em; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.qe-page .qe-f__dir i { margin-right: .35rem; }
+.qe-page .qe-f__size { flex: 0 0 auto; font-size: 0.92em; color: var(--bs-success-text-emphasis); }
+
+@media (max-width: 575.98px) {
+  .qe-page .qe-speed { grid-template-columns: 1fr; }
+  .qe-page .qe-c { flex-wrap: wrap; }
+  .qe-page .qe-c__key { flex-basis: 100%; order: 5; }
+}

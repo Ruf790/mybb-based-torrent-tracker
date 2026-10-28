@@ -81,14 +81,17 @@ function calctime(float $time): string
     global $lang;
 
     $stat = round($time * 100, 3);
-    $val = sprintf('%.4f', $time);
+    $val  = sprintf('%.4f', $time);
 
-    return match (true) {
-        $stat <= 40  => $val . ' <span class="badge bg-success">' . hsafe($lang->query_explain['speed_excellent'] ?? 'Excellent') . '</span>',
-        $stat <= 70  => $val . ' <span class="badge bg-success-subtle text-success border">' . hsafe($lang->query_explain['speed_good'] ?? 'Good') . '</span>',
-        $stat <= 98  => $val . ' <span class="badge bg-warning text-dark">' . hsafe($lang->query_explain['speed_regular'] ?? 'Regular') . '</span>',
-        default      => $val . ' <span class="badge bg-danger">' . hsafe($lang->query_explain['speed_bad'] ?? 'Bad') . '</span>'
+    [$soft, $key, $fb] = match (true) {
+        $stat <= 40 => ['st-soft-success', 'speed_excellent', 'Excellent'],
+        $stat <= 70 => ['st-soft-info',    'speed_good',      'Good'],
+        $stat <= 98 => ['st-soft-warning', 'speed_regular',   'Regular'],
+        default     => ['st-soft-danger',  'speed_bad',       'Bad'],
     };
+
+    return '<span class="qe-time"><i class="fa-regular fa-clock"></i>' . $val . 's</span>'
+         . ' <span class="st-badge ' . $soft . '">' . hsafe($lang->query_explain[$key] ?? $fb) . '</span>';
 }
 
 function hsafe(mixed $s): string
@@ -181,17 +184,25 @@ function format_sql_with_syntax(string $sql): string
 function format_explain_value(string $column, mixed $value): string
 {
     $value = hsafe($value);
+    if ($value === '') {
+        return '<span class="qe-null">—</span>';
+    }
 
     if ($column === 'type') {
-        return match (true) {
-            str_contains($value, 'ref') => '<span class="badge bg-success badge-sm">' . $value . '</span>',
-            $value === 'ALL' => '<span class="badge bg-danger badge-sm">' . $value . '</span>',
-            default => '<span class="badge bg-warning badge-sm">' . $value . '</span>'
+        $soft = match (true) {
+            str_contains($value, 'ref') || in_array($value, ['const', 'system', 'eq_ref'], true) => 'st-soft-success',
+            $value === 'ALL' => 'st-soft-danger',
+            default          => 'st-soft-warning',
         };
+        return '<span class="st-badge ' . $soft . '">' . $value . '</span>';
+    }
+
+    if ($column === 'key') {
+        return '<code class="qe-key">' . $value . '</code>';
     }
 
     if ($column === 'Extra') {
-        return preg_replace('/Using (\w+)/', '<span class="badge bg-info badge-sm">Using $1</span>', $value);
+        return preg_replace('/Using (\w+)/', '<span class="st-badge st-soft-info">Using $1</span>', $value) ?? $value;
     }
 
     return $value;
@@ -215,207 +226,132 @@ function get_php_extensions_status(): string
 {
     global $lang;
 
-    $importantExtensions = ['mysqli', 'pdo_mysql', 'json', 'mbstring', 'xml', 'curl'];
-    $extensionsHtml = '';
-
-    foreach ($importantExtensions as $ext) {
+    $html = '';
+    foreach (['mysqli', 'pdo_mysql', 'json', 'mbstring', 'xml', 'curl'] as $ext) {
         $loaded = extension_loaded($ext);
-        $status = $loaded ? 'bg-success' : 'bg-danger';
-        $text   = $loaded
-            ? ($lang->query_explain['ext_loaded'] ?? 'Loaded')
-            : ($lang->query_explain['ext_missing'] ?? 'Missing');
-        $extensionsHtml .= '<span class="badge ' . $status . ' me-1 mb-1">' . $ext . ': ' . hsafe($text) . '</span>';
+        $text   = $loaded ? ($lang->query_explain['ext_loaded'] ?? 'Loaded') : ($lang->query_explain['ext_missing'] ?? 'Missing');
+        $html  .= '<span class="st-badge ' . ($loaded ? 'st-soft-success' : 'st-soft-danger') . '">'
+                . '<i class="fa-solid ' . ($loaded ? 'fa-check' : 'fa-xmark') . '"></i>' . $ext . ': ' . hsafe($text) . '</span>';
     }
-
-    return $extensionsHtml;
+    return $html;
 }
 
-function render_enhanced_stats(int $printed, int $skipped, float $queryTime, float $totalTime, string $memoryUsage, bool $deep): string
+/** Строка из query_explain.lang.php без «:» на конце */
+function qe_l(string $key, string $fallback): string
+{
+    global $lang;
+    return hsafe(rtrim(trim((string)($lang->query_explain[$key] ?? $fallback)), ':'));
+}
+
+/** Карточка запроса / обращения к кэшу */
+function qe_card(int $id, string $soft, string $icon, string $title, string $badge, string $body, string $foot, string $extra_cls = ''): string
+{
+    return '
+    <article class="qe-q' . ($extra_cls !== '' ? ' ' . $extra_cls : '') . '" id="qe-' . $id . '">
+        <div class="qe-q__head">
+            <span class="qe-q__num">' . $id . '</span>
+            <span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>
+            <strong class="qe-q__title">' . $title . '</strong>
+            <span class="ms-auto">' . $badge . '</span>
+        </div>
+        <div class="qe-q__body">' . $body . '</div>
+        <div class="qe-q__foot">' . $foot . '</div>
+    </article>';
+}
+
+function qe_sql(string $sql): string
+{
+    return '<pre class="qe-sql">' . format_sql_with_syntax($sql) . '</pre>';
+}
+
+/** Тип запроса → цвет и иконка */
+function qe_type_style(string $type): array
+{
+    return match ($type) {
+        'SELECT', 'WITH' => ['st-soft-primary', 'fa-magnifying-glass'],
+        'INSERT', 'REPLACE' => ['st-soft-success', 'fa-plus'],
+        'UPDATE' => ['st-soft-warning', 'fa-pen'],
+        'DELETE' => ['st-soft-danger', 'fa-trash'],
+        default  => ['st-soft-info', 'fa-terminal'],
+    };
+}
+
+/** Сводка вверху страницы: KPI, распределение времени, сведения о системе */
+function render_dashboard(int $printed, int $skipped, float $queryTime, float $totalTime, string $memoryUsage, bool $deep, array $speed, int $cacheCount, int $filesCount): string
 {
     global $lang;
 
-    $phpTime = $totalTime - $queryTime;
-    $percentPhp = $totalTime > 0 ? number_format(($phpTime / $totalTime) * 100, 2) : '0.00';
-    $percentSql = $totalTime > 0 ? number_format(($queryTime / $totalTime) * 100, 2) : '0.00';
+    $phpTime    = max(0.0, $totalTime - $queryTime);
+    $percentPhp = $totalTime > 0 ? round($phpTime / $totalTime * 100, 2) : 0.0;
+    $percentSql = $totalTime > 0 ? round($queryTime / $totalTime * 100, 2) : 0.0;
+    $unknown    = $lang->query_explain['unknown'] ?? 'Unknown';
+    $memoryPeak = function_exists('memory_get_peak_usage') ? mksize(memory_get_peak_usage()) : $unknown;
 
-    $unknown = $lang->query_explain['unknown'] ?? 'Unknown';
+    $gzip = ($GLOBALS['gzipcompress'] ?? '') === 'yes'
+        ? '<span class="st-badge st-soft-success">' . hsafe($lang->query_explain['enabled'] ?? 'Enabled') . '</span>'
+        : '<span class="st-badge st-soft-muted">' . hsafe($lang->query_explain['disabled'] ?? 'Disabled') . '</span>';
 
-    $memoryPeak = function_exists('memory_get_peak_usage')
-        ? mksize(memory_get_peak_usage())
-        : $unknown;
+    $n   = max(1, (int)$speed['total_queries']);
+    $pct = static fn(int $v): float => round($v / $n * 100, 1);
 
-    $mysqlVersion  = get_mysql_version() ?: $unknown;
-    $serverLoad    = server_load() ?: $unknown;
-    $phpExtensions = get_php_extensions_status();
+    $kpi = static fn(string $icon, string $soft, string $val, string $lbl): string =>
+        '<div class="col-6 col-lg-3"><div class="st-kpi"><span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div></div></div>';
 
-    $gzipHtml = ($GLOBALS['gzipcompress'] ?? '') === 'yes'
-        ? '<span class="badge bg-success">' . hsafe($lang->query_explain['enabled'] ?? 'Enabled') . '</span>'
-        : '<span class="badge bg-secondary">' . hsafe($lang->query_explain['disabled'] ?? 'Disabled') . '</span>';
+    $row = static fn(string $icon, string $lbl, string $val): string =>
+        '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid ' . $icon . '"></i>' . $lbl . '</span><span class="st-row__val">' . $val . '</span></div>';
 
     return '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header bg-light text-dark">
-                <h5 class="mb-0">' . hsafe($lang->query_explain['stats_title'] ?? 'Performance Statistics') . '</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="performance-chart mb-4">
-                            <h6>' . hsafe($lang->query_explain['time_distribution'] ?? 'Time Distribution') . '</h6>
-                            <div class="progress" style="height: 25px;">
-                                <div class="progress-bar bg-success" style="width: ' . $percentPhp . '%"
-                                     title="PHP: ' . $percentPhp . '%">
-                                    PHP: ' . $percentPhp . '%
-                                </div>
-                                <div class="progress-bar bg-info" style="width: ' . $percentSql . '%"
-                                     title="MySQL: ' . $percentSql . '%">
-                                    MySQL: ' . $percentSql . '%
-                                </div>
-                            </div>
-                        </div>
+    <div class="row g-3 mb-3">
+        ' . $kpi('fa-stopwatch', 'st-soft-primary', sprintf('%.4fs', $totalTime), qe_l('total_time', 'Total Time')) . '
+        ' . $kpi('fa-database', 'st-soft-info', sprintf('%.4fs', $queryTime), 'MySQL · ' . $percentSql . '%') . '
+        ' . $kpi('fa-list-ol', 'st-soft-success', (string)($printed + $skipped), qe_l('total_queries', 'Total Queries') . ($deep && $skipped > 0 ? ' · ' . qe_l('hidden', 'Hidden') . ' ' . $skipped : '')) . '
+        ' . $kpi('fa-memory', 'st-soft-warning', hsafe($memoryUsage ?: $unknown), qe_l('memory_usage', 'Memory Usage')) . '
+    </div>
 
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-label">' . hsafe($lang->query_explain['total_queries'] ?? 'Total Queries:') . '</span>
-                                <span class="stat-value badge bg-primary">' . ($printed + $skipped) . '</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">' . hsafe($lang->query_explain['displayed'] ?? 'Displayed:') . '</span>
-                                <span class="stat-value badge bg-success">' . $printed . '</span>
-                            </div>
-                            ' . ($deep && $skipped > 0 ? '
-                            <div class="stat-item">
-                                <span class="stat-label">' . hsafe($lang->query_explain['hidden'] ?? 'Hidden:') . '</span>
-                                <span class="stat-value badge bg-warning">' . $skipped . '</span>
-                            </div>' : '') . '
-                            <div class="stat-item">
-                                <span class="stat-label">' . hsafe($lang->query_explain['total_time'] ?? 'Total Time:') . '</span>
-                                <span class="stat-value badge bg-secondary">' . sprintf('%.4fs', $totalTime) . '</span>
-                            </div>
-                        </div>
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-7">
+            <section class="st-card h-100">
+                <div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-chart-simple"></i></span>' . qe_l('stats_title', 'Performance Statistics') . '</div>
+                <div class="st-card__body">
+                    <div class="qe-lbl">' . qe_l('time_distribution', 'Time Distribution') . '</div>
+                    <div class="qe-bar">
+                        <span class="qe-bar__php" style="width:' . $percentPhp . '%"></span><span class="qe-bar__sql" style="width:' . $percentSql . '%"></span>
+                    </div>
+                    <div class="qe-legend">
+                        <span><i class="qe-dot qe-dot--php"></i>PHP <b>' . $percentPhp . '%</b> <small>' . sprintf('%.4fs', $phpTime) . '</small></span>
+                        <span><i class="qe-dot qe-dot--sql"></i>MySQL <b>' . $percentSql . '%</b> <small>' . sprintf('%.4fs', $queryTime) . '</small></span>
                     </div>
 
-                    <div class="col-md-6">
-                        <div class="system-info">
-                            <h6>' . hsafe($lang->query_explain['system_info'] ?? 'System Information') . '</h6>
-                            <table class="table table-sm table-borderless">
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['php_version'] ?? 'PHP Version:') . '</strong></td>
-                                    <td>' . hsafe(PHP_VERSION) . '</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['mysql_version'] ?? 'MySQL Version:') . '</strong></td>
-                                    <td>' . hsafe($mysqlVersion) . '</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['server_load'] ?? 'Server Load:') . '</strong></td>
-                                    <td>' . hsafe($serverLoad) . '</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['memory_usage'] ?? 'Memory Usage:') . '</strong></td>
-                                    <td>' . hsafe($memoryUsage ?: $unknown) . '</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['memory_peak'] ?? 'Peak Memory:') . '</strong></td>
-                                    <td>' . hsafe($memoryPeak) . '</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>' . hsafe($lang->query_explain['gzip'] ?? 'GZip Compression:') . '</strong></td>
-                                    <td>' . $gzipHtml . '</td>
-                                </tr>
-                            </table>
-                        </div>
+                    <div class="qe-lbl mt-4">' . qe_l('summary_title', 'Performance Summary') . '</div>
+                    <div class="qe-bar">
+                        <span class="bg-success" style="width:' . $pct($speed['fast']) . '%"></span><span class="bg-warning" style="width:' . $pct($speed['medium']) . '%"></span><span class="bg-danger" style="width:' . $pct($speed['slow']) . '%"></span>
+                    </div>
+                    <div class="qe-speed">
+                        <div class="qe-speed__item qe-speed__item--ok"><b>' . $speed['fast'] . '</b><span>' . qe_l('fast_queries', 'Fast Queries (<10ms)') . '</span><small>' . $pct($speed['fast']) . '%</small></div>
+                        <div class="qe-speed__item qe-speed__item--mid"><b>' . $speed['medium'] . '</b><span>' . qe_l('medium_queries', 'Medium Queries (10-100ms)') . '</span><small>' . $pct($speed['medium']) . '%</small></div>
+                        <div class="qe-speed__item qe-speed__item--bad"><b>' . $speed['slow'] . '</b><span>' . qe_l('slow_queries', 'Slow Queries (>100ms)') . '</span><small>' . $pct($speed['slow']) . '%</small></div>
                     </div>
                 </div>
-
-                <div class="mt-3">
-                    <h6>' . hsafe($lang->query_explain['php_extensions'] ?? 'PHP Extensions') . '</h6>
-                    <div>' . $phpExtensions . '</div>
+            </section>
+        </div>
+        <div class="col-12 col-lg-5">
+            <section class="st-card h-100">
+                <div class="st-card__head"><span class="st-ico st-soft-success"><i class="fa-solid fa-server"></i></span>' . qe_l('system_info', 'System Information') . '</div>
+                <div class="st-card__body p-0"><div class="st-rows border-0 rounded-0">
+                    ' . $row('fa-brands fa-php', qe_l('php_version', 'PHP Version'), hsafe(PHP_VERSION)) . '
+                    ' . $row('fa-database', qe_l('mysql_version', 'MySQL Version'), hsafe(get_mysql_version() ?: $unknown)) . '
+                    ' . $row('fa-gauge-high', qe_l('server_load', 'Server Load'), hsafe(server_load() ?: $unknown)) . '
+                    ' . $row('fa-memory', qe_l('memory_peak', 'Peak Memory'), hsafe($memoryPeak)) . '
+                    ' . $row('fa-file-zipper', qe_l('gzip', 'GZip Compression'), $gzip) . '
+                </div></div>
+                <div class="st-card__body border-top">
+                    <div class="qe-lbl">' . qe_l('php_extensions', 'PHP Extensions') . '</div>
+                    <div class="qe-exts">' . get_php_extensions_status() . '</div>
                 </div>
-            </div>
+            </section>
         </div>
     </div>';
-}
-
-function render_performance_summary(array $stats): string
-{
-    global $lang;
-
-    $fastPercent = $stats['total_queries'] > 0
-        ? round(($stats['fast'] / $stats['total_queries']) * 100, 1)
-        : 0;
-    $mediumPercent = $stats['total_queries'] > 0
-        ? round(($stats['medium'] / $stats['total_queries']) * 100, 1)
-        : 0;
-    $slowPercent = $stats['total_queries'] > 0
-        ? round(($stats['slow'] / $stats['total_queries']) * 100, 1)
-        : 0;
-
-    return '
-    <div class="container mt-3">
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h6 class="mb-0">' . hsafe($lang->query_explain['summary_title'] ?? 'Performance Summary') . '</h6>
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-4">
-                        <div class="text-success">
-                            <h4>' . $stats['fast'] . '</h4>
-                            <small>' . hsafe($lang->query_explain['fast_queries'] ?? 'Fast Queries (<10ms)') . '</small>
-                            <div class="mt-1">' . $fastPercent . '%</div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="text-warning">
-                            <h4>' . $stats['medium'] . '</h4>
-                            <small>' . hsafe($lang->query_explain['medium_queries'] ?? 'Medium Queries (10-100ms)') . '</small>
-                            <div class="mt-1">' . $mediumPercent . '%</div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="text-danger">
-                            <h4>' . $stats['slow'] . '</h4>
-                            <small>' . hsafe($lang->query_explain['slow_queries'] ?? 'Slow Queries (>100ms)') . '</small>
-                            <div class="mt-1">' . $slowPercent . '%</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
-}
-
-function render_custom_styles(): string
-{
-    return '
-    <style>
-    .sql-keyword { color: #d73a49; font-weight: bold; }
-    .sql-string { color: #032f62; }
-    .sql-number { color: #005cc5; }
-    .sql-comment { color: #6a737d; font-style: italic; }
-
-    .performance-chart .progress { background: #e9ecef; }
-    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-    .stat-item { display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0; }
-    .stat-label { font-size: 0.875rem; }
-    .stat-value { font-size: 0.75rem; }
-
-    .bg-orange { background-color: #fd7e14 !important; }
-
-    .query-card { transition: transform 0.2s; }
-    .query-card:hover { transform: translateY(-2px); }
-
-    .badge-sm { font-size: 0.7em; }
-
-    .sql-code {
-        background: #f8f9fa !important;
-        padding: 1rem !important;
-        border-radius: 0.375rem !important;
-        border: 1px solid #dee2e6 !important;
-    }
-    </style>';
 }
 
 function explain_query(string $sql, ?float $execTime = null, bool $deep = false, int $id = 1): string
@@ -471,8 +407,8 @@ function render_multiple_statements_error(string $sql): string
 {
     global $lang;
 
-    return '<div class="alert alert-danger">' . hsafe($lang->query_explain['err_multi_statements'] ?? 'Multiple statements are not allowed.') . '</div>'
-         . '<div class="card-body"><pre>' . hsafe($sql) . '</pre></div>';
+    return '<div class="st-danger-box qe-err"><i class="fa-solid fa-ban"></i><div>' . hsafe($lang->query_explain['err_multi_statements'] ?? 'Multiple statements are not allowed.') . '</div></div>'
+         . qe_sql($sql);
 }
 
 function get_query_type(string $sql): string
@@ -531,8 +467,8 @@ function render_deep_analysis_result(int $id, string $sql, string $analysis, str
     $warningsHtml = '';
     if (!empty($warnings)) {
         $warningsHtml = '
-        <div class="table-responsive mt-3">
-            <table class="table table-sm table-bordered">
+        <div class="table-responsive qe-tablewrap mt-3">
+            <table class="table table-sm qe-table mb-0">
                 <thead><tr>'
                     . '<th>' . hsafe($lang->query_explain['warn_level'] ?? 'Level') . '</th>'
                     . '<th>' . hsafe($lang->query_explain['warn_code'] ?? 'Code') . '</th>'
@@ -543,22 +479,14 @@ function render_deep_analysis_result(int $id, string $sql, string $analysis, str
         </div>';
     }
 
-    $formattedSql = format_sql_with_syntax($sql);
-
-    return '
-        <div class="card-header bg-primary text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong>' . hsafe(sprintf($lang->query_explain['hdr_deep'] ?? '#%1$s - Deep Plan (EXPLAIN ANALYZE)', $id)) . '</strong>
-                <div class="badge bg-light text-dark">' . hsafe($lang->query_explain['badge_deep'] ?? 'Deep Analysis') . '</div>
-            </div>
-        </div>
-        <div class="card-body">
-            <div class="mb-2"><pre class="sql-code">' . $formattedSql . '</pre></div>
-            <pre class="mb-0" style="white-space:pre-wrap">' . hsafe($analysis) . '</pre>
-            ' . $warningsHtml . '
-        </div>
-        <div class="card-footer">' . hsafe($lang->query_explain['measured_time'] ?? 'Measured time:') . ' ' . $timeHtml
-            . ' • ' . hsafe($lang->query_explain['executed_analyze'] ?? 'Executed with ANALYZE') . '</div>';
+    return qe_card(
+        $id, 'st-soft-primary', 'fa-microscope',
+        hsafe(sprintf($lang->query_explain['hdr_deep'] ?? '#%1$s - Deep Plan (EXPLAIN ANALYZE)', $id)),
+        '<span class="st-badge st-soft-primary">' . hsafe($lang->query_explain['badge_deep'] ?? 'Deep Analysis') . '</span>',
+        qe_sql($sql) . '<pre class="qe-plan">' . hsafe($analysis) . '</pre>' . $warningsHtml,
+        '<span>' . hsafe($lang->query_explain['measured_time'] ?? 'Measured time:') . ' ' . $timeHtml . '</span>'
+        . '<small>' . hsafe($lang->query_explain['executed_analyze'] ?? 'Executed with ANALYZE') . '</small>'
+    );
 }
 
 function explain_select_query(mysqli $link, string $sqlClean, string $sql, string $timeHtml, int $id): string
@@ -590,105 +518,60 @@ function render_explain_table(int $id, string $sql, string $timeHtml, array $row
 
     $headers = implode('', array_map(fn($col) => '<th>' . hsafe($col) . '</th>', $columns));
 
-    $body = '';
+    $body    = '';
+    $has_all = false;
     foreach ($rows as $row) {
-        $body .= '<tr>';
+        $has_all = $has_all || (($row['type'] ?? '') === 'ALL');
+        $body   .= '<tr>';
         foreach ($columns as $col) {
-            $value = $row[$col] ?? '';
-            $formattedValue = format_explain_value((string)$col, $value);
-            $body .= '<td>' . $formattedValue . '</td>';
+            $body .= '<td>' . format_explain_value((string)$col, $row[$col] ?? '') . '</td>';
         }
         $body .= '</tr>';
     }
 
-    $formattedSql = format_sql_with_syntax($sql);
-
-    return '
-        <div class="card-header bg-primary text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong>' . hsafe(sprintf($lang->query_explain['hdr_select'] ?? '#%1$s - Select Query', $id)) . '</strong>
-                <div class="badge bg-light text-dark">' . hsafe(sprintf($lang->query_explain['explain_rows'] ?? '%1$s row(s) in explain', count($rows))) . '</div>
-            </div>
-        </div>
-        <div class="card-body">
-            ' . $formattedSql . '
-        </div>
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped table-hover">
-                <thead class="table-light"><tr>' . $headers . '</tr></thead>
-                <tbody>' . $body . '</tbody>
-            </table>
-        </div>
-        <div class="card-footer d-flex justify-content-between align-items-center">
-            <span>' . $timeHtml . '</span>
-            <small class="text-muted">' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>
-        </div>';
+    return qe_card(
+        $id, 'st-soft-primary', 'fa-magnifying-glass',
+        hsafe(sprintf($lang->query_explain['hdr_select'] ?? '#%1$s - Select Query', $id)),
+        '<span class="st-badge st-soft-muted">' . hsafe(sprintf($lang->query_explain['explain_rows'] ?? '%1$s row(s) in explain', count($rows))) . '</span>',
+        qe_sql($sql)
+        . '<div class="table-responsive qe-tablewrap"><table class="table table-sm qe-table mb-0"><thead><tr>' . $headers . '</tr></thead><tbody>' . $body . '</tbody></table></div>',
+        '<span>' . $timeHtml . '</span><small>' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>',
+        $has_all ? 'qe-q--warn' : ''
+    );
 }
 
 function render_read_query(int $id, string $sql, string $timeHtml, string $error = ''): string
 {
     global $lang;
 
-    $errorHtml = $error
-        ? '<div class="alert alert-warning mt-2">' . hsafe($lang->query_explain['err_explain_failed'] ?? 'EXPLAIN failed:') . ' ' . hsafe($error) . '</div>'
+    $errorHtml = $error !== ''
+        ? '<div class="st-danger-box qe-err mt-2"><i class="fa-solid fa-triangle-exclamation"></i><div>' . hsafe($lang->query_explain['err_explain_failed'] ?? 'EXPLAIN failed:') . ' ' . hsafe($error) . '</div></div>'
         : '';
-    $formattedSql = format_sql_with_syntax($sql);
 
-    return '
-        <div class="card-header bg-secondary text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong>' . hsafe(sprintf($lang->query_explain['hdr_read'] ?? '#%1$s - Read Query', $id)) . '</strong>
-                <div class="badge bg-light text-dark">' . hsafe($lang->query_explain['badge_read_only'] ?? 'Read Only') . '</div>
-            </div>
-        </div>
-        <div class="card-body">
-            <pre class="sql-code">' . $formattedSql . '</pre>' . $errorHtml . '
-        </div>
-        <div class="card-footer d-flex justify-content-between align-items-center">
-            <span>' . $timeHtml . '</span>
-            <small class="text-muted">' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>
-        </div>';
+    return qe_card(
+        $id, 'st-soft-muted', 'fa-book-open',
+        hsafe(sprintf($lang->query_explain['hdr_read'] ?? '#%1$s - Read Query', $id)),
+        '<span class="st-badge st-soft-muted">' . hsafe($lang->query_explain['badge_read_only'] ?? 'Read Only') . '</span>',
+        qe_sql($sql) . $errorHtml,
+        '<span>' . $timeHtml . '</span><small>' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>'
+    );
 }
 
 function explain_write_query(mysqli $link, string $sqlClean, string $sql, string $timeHtml, int $id, string $queryType): string
 {
     global $lang;
 
-    $affected = @mysqli_affected_rows($link);
-    $insertId = @mysqli_insert_id($link);
+    // Запрос здесь не выполняется: mysqli_affected_rows()/insert_id() вернули бы данные
+    // последнего запроса на соединении (этой страницы), а не исходного — поэтому не показываем.
+    [$soft, $icon] = qe_type_style($queryType);
 
-    $meta = [];
-    if ($affected >= 0) {
-        $meta[] = sprintf($lang->query_explain['affected_rows'] ?? 'Affected rows: %1$s', $affected);
-    }
-    if ($insertId > 0) {
-        $meta[] = sprintf($lang->query_explain['insert_id'] ?? 'Insert ID: %1$s', $insertId);
-    }
-
-    $metaHtml = $meta ? ' • ' . hsafe(implode(' | ', $meta)) : '';
-    $formattedSql = format_sql_with_syntax($sql);
-
-    $headerClass = match ($queryType) {
-        'INSERT' => 'bg-success',
-        'UPDATE' => 'bg-warning',
-        'DELETE' => 'bg-danger',
-        default => 'bg-info'
-    };
-
-    return '
-        <div class="card-header ' . $headerClass . ' text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong>' . hsafe(sprintf($lang->query_explain['hdr_write'] ?? '#%1$s - %2$s Query', $id, $queryType)) . '</strong>
-                <div class="badge bg-light text-dark">' . hsafe($lang->query_explain['badge_write'] ?? 'Write Operation') . '</div>
-            </div>
-        </div>
-        <div class="card-body">
-            ' . $formattedSql . '
-        </div>
-        <div class="card-footer d-flex justify-content-between align-items-center">
-            <span>' . $timeHtml . $metaHtml . '</span>
-            <small class="text-muted">' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>
-        </div>';
+    return qe_card(
+        $id, $soft, $icon,
+        hsafe(sprintf($lang->query_explain['hdr_write'] ?? '#%1$s - %2$s Query', $id, $queryType)),
+        '<span class="st-badge ' . $soft . '">' . hsafe($lang->query_explain['badge_write'] ?? 'Write Operation') . '</span>',
+        qe_sql($sql),
+        '<span>' . $timeHtml . '</span><small>' . hsafe(sprintf($lang->query_explain['query_num'] ?? 'Query #%1$s', $id)) . '</small>'
+    );
 }
 
 function splitsql(string $sql): string
@@ -758,7 +641,7 @@ if (!$token_valid) {
         . '</div>');
 }
 
-// Just the size: the label is printed by render_enhanced_stats()
+// Just the size: the label is printed by render_dashboard()
 // (before it was " - <b>Memory Usage:</b> 2 MB", so the label showed twice)
 $memoryUsage = function_exists('memory_get_usage') ? mksize(memory_get_usage()) : '';
 
@@ -776,17 +659,17 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
         return;
     }
 
-    $output = render_custom_styles();
-    $queryId = 1;
-    $queryTime = 0.0;
-    $printed = 0;
-    $skipped = 0;
+    $queriesHtml = '';
+    $queryId     = 1;
+    $queryTime   = 0.0;
+    $printed     = 0;
+    $skipped     = 0;
 
     $performanceStats = [
-        'fast' => 0,
-        'medium' => 0,
-        'slow' => 0,
-        'total_queries' => count($queries)
+        'fast'          => 0,
+        'medium'        => 0,
+        'slow'          => 0,
+        'total_queries' => count($queries),
     ];
 
     foreach ($queries as $queryData) {
@@ -816,21 +699,14 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
             continue;
         }
 
-        $output .= '
-        <div class="container mt-3">
-            <div class="card shadow-sm query-card">' . $html . '</div>
-        </div>';
+        $queriesHtml .= $html;
 
         $queryId++;
         $queryTime += $execTime;
         $printed++;
     }
 
-    $output .= render_enhanced_stats($printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
-    $output .= render_performance_summary($performanceStats);
-    $output .= process_cache_calls($cacheCallsRaw);
-
-    render_final_output($output, $printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
+    render_final_output($queriesHtml, $printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep, $performanceStats, $cacheCallsRaw);
 }
 
 function decode_query_data(string $queryData): array
@@ -874,146 +750,148 @@ function render_cache_call(int $id, array $call): string
 {
     global $lang;
 
-    // HIT / MISS are standard cache terms — left as they are
-    $hitLabel  = $call['hit'] ? 'HIT' : 'MISS';
-    $hitClass  = $call['hit'] ? 'bg-success' : 'bg-danger';
-    $timeHtml  = '<b>' . hsafe($lang->query_explain['call_time'] ?? 'Call Time:') . '</b> ' . format_time_duration($call['time']);
-
+    // HIT / MISS — стандартные термины кэша, без перевода
     return '
-        <div class="card-header bg-primary text-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <strong>' . hsafe(sprintf($lang->query_explain['hdr_cache_call'] ?? '#%1$s - %2$s Call', $id, ucfirst($call['verb']))) . '</strong>
-                <div class="badge ' . $hitClass . '">' . $hitLabel . '</div>
-            </div>
-        </div>
-        <div class="card-body">
-            <code>' . hsafe($call['key']) . '</code>
-        </div>
-        <div class="card-footer d-flex justify-content-between align-items-center">
-            <span>' . $timeHtml . '</span>
-            <small class="text-muted">' . hsafe(sprintf($lang->query_explain['call_num'] ?? 'Call #%1$s', $id)) . '</small>
-        </div>';
+    <div class="qe-c">
+        <span class="qe-q__num">' . $id . '</span>
+        <span class="st-badge ' . ($call['hit'] ? 'st-soft-success' : 'st-soft-danger') . ' qe-c__hit">' . ($call['hit'] ? 'HIT' : 'MISS') . '</span>
+        <span class="qe-c__verb">' . hsafe(ucfirst($call['verb'])) . '</span>
+        <code class="qe-c__key">' . hsafe($call['key']) . '</code>
+        <span class="qe-c__time" title="' . hsafe(rtrim($lang->query_explain['call_time'] ?? 'Call Time:', ':')) . '">' . format_time_duration($call['time']) . '</span>
+    </div>';
 }
 
-function process_cache_calls(array $cacheCallsRaw): string
+/** @return array{0:string,1:int} HTML списка и число обращений */
+function process_cache_calls(array $cacheCallsRaw): array
 {
     global $lang;
 
-    if (empty($cacheCallsRaw)) {
-        return '';
-    }
-
-    $cards     = '';
+    $rows      = '';
     $id        = 1;
     $totalTime = 0.0;
-    $printed   = 0;
+    $hits      = 0;
 
     foreach ($cacheCallsRaw as $raw) {
         $call = decode_cache_call_data((string)$raw);
         if ($call === null) {
             continue;
         }
-
         $totalTime += $call['time'];
-
-        $cards .= '
-        <div class="container mt-3">
-            <div class="card shadow-sm query-card">' . render_cache_call($id, $call) . '</div>
-        </div>';
-
+        $hits      += $call['hit'] ? 1 : 0;
+        $rows      .= render_cache_call($id, $call);
         $id++;
-        $printed++;
     }
 
-    if ($printed === 0) {
-        return '';
+    $count = $id - 1;
+    if ($count === 0) {
+        return ['', 0];
     }
 
-    $heading = '
-    <div class="container mt-4">
-        <h4>' . hsafe(sprintf($lang->query_explain['cache_calls_title'] ?? 'Cache Calls (%1$s Total, %2$s)', $printed, strip_tags((string)format_time_duration($totalTime)))) . '</h4>
-    </div>';
+    $head = '<div class="qe-pane-head">'
+          . '<span>' . hsafe(sprintf($lang->query_explain['cache_calls_title'] ?? 'Cache Calls (%1$s Total, %2$s)', $count, strip_tags((string)format_time_duration($totalTime)))) . '</span>'
+          . '<span class="st-badge st-soft-success">HIT ' . $hits . '</span>'
+          . '<span class="st-badge st-soft-danger">MISS ' . ($count - $hits) . '</span>'
+          . '</div>';
 
-    return $heading . $cards;
+    return [$head . '<div class="qe-clist">' . $rows . '</div>', $count];
 }
 
 function render_no_queries(): void
 {
-    global $lang;
+    global $lang, $BASEURL;
 
     stdhead($lang->query_explain['page_title'] ?? 'DEBUG MODE');
-    echo '<div class="container mt-4"><div class="alert alert-warning">'
-        . hsafe($lang->query_explain['no_queries'] ?? 'There is no query to show.')
-        . '</div></div>';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=6">'
+       . '<div class="container-md st-page qe-page"><div class="st-card"><div class="st-empty">'
+       . '<span class="st-ico st-soft-muted"><i class="fa-solid fa-database"></i></span>'
+       . '<div class="fw-semibold">' . hsafe($lang->query_explain['no_queries'] ?? 'There is no query to show.') . '</div>'
+       . '</div></div></div>';
     stdfoot();
     exit;
 }
 
-function render_final_output(string $output, int $printed, int $skipped, float $queryTime, float $totalTime, string $memoryUsage, bool $deep): void
+function render_final_output(string $queriesHtml, int $printed, int $skipped, float $queryTime, float $totalTime, string $memoryUsage, bool $deep, array $speed = [], array $cacheCallsRaw = []): void
 {
-    global $lang;
+    global $lang, $BASEURL;
 
-    $includedFiles = array_map(
-        fn($file) => str_replace('\\', '/', $file),
-        get_included_files()
-    );
+    [$cacheHtml, $cacheCount] = process_cache_calls($cacheCallsRaw);
 
-    $output .= '
-<div class="container mt-4">
-    <div class="card">
-        <div class="card-header bg-primary text-white py-3 position-relative">
-            <div class="position-absolute top-0 end-0 mt-2 me-3">
-                <span class="badge bg-white text-dark fs-6">' . hsafe(sprintf($lang->query_explain['files_count'] ?? '%1$s files', count($includedFiles))) . '</span>
-            </div>
-            <h4 class="mb-0 d-flex align-items-center">
-                <i class="fas fa-file-import me-3"></i>
-                ' . hsafe($lang->query_explain['included_files'] ?? 'Included Files') . '
-            </h4>
-        </div>
-        <div class="card-body p-0">
-            <div class="list-group list-group-flush">';
-
-    $coreBadge = '<span class="badge bg-warning text-dark ms-2">' . hsafe($lang->query_explain['badge_core'] ?? 'Core') . '</span>';
-
+    $includedFiles = array_map(fn($file) => str_replace('\\', '/', $file), get_included_files());
+    $coreBadge     = '<span class="st-badge st-soft-warning">' . hsafe($lang->query_explain['badge_core'] ?? 'Core') . '</span>';
+    $filesHtml     = '';
+    $filesSize     = 0;
     foreach ($includedFiles as $index => $file) {
         $isCore = str_contains($file, 'core') || str_contains($file, 'config');
-        $fileType = pathinfo($file, PATHINFO_EXTENSION);
-
-        $output .= '
-                <div class="list-group-item d-flex align-items-center py-3 border-0 ' . ($index % 2 === 0 ? 'bg-light' : '') . '">
-                    <div class="flex-shrink-0">
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center"
-                             style="width: 40px; height: 40px;">
-                            <span class="fw-bold">' . ($index + 1) . '</span>
-                        </div>
-                    </div>
-                    <div class="flex-grow-1 ms-3">
-                        <div class="d-flex align-items-center mb-1">
-                            <code class="fs-6 text-dark fw-semibold">' . hsafe(basename($file)) . '</code>
-                            ' . ($isCore ? $coreBadge : '') . '
-                        </div>
-                        <small class="text-muted d-block">
-                            <i class="fas fa-folder me-1"></i>' . hsafe(dirname($file)) . '
-                        </small>
-                    </div>
-                    <div class="flex-shrink-0 text-end">
-                        <small class="text-muted d-block">' . hsafe(strtoupper($fileType)) . '</small>
-                        ' . (file_exists($file) ? '<small class="text-success">' . formatBytes((int)filesize($file)) . '</small>' : '') . '
-                    </div>
-                </div>';
+        $size   = file_exists($file) ? (int)filesize($file) : 0;
+        $filesSize += $size;
+        $filesHtml .= '
+        <div class="qe-f">
+            <span class="qe-q__num">' . ($index + 1) . '</span>
+            <i class="' . getFileIcon($file) . ' qe-f__ico"></i>
+            <div class="qe-f__body">
+                <div><code class="qe-f__name">' . hsafe(basename($file)) . '</code> ' . ($isCore ? $coreBadge : '') . '</div>
+                <div class="qe-f__dir"><i class="fa-regular fa-folder"></i>' . hsafe(dirname($file)) . '</div>
+            </div>
+            <span class="qe-f__size">' . ($size > 0 ? formatBytes($size) : '') . '</span>
+        </div>';
     }
 
-    $output .= '
+    $speed += ['fast' => 0, 'medium' => 0, 'slow' => 0, 'total_queries' => $printed + $skipped];
+
+    $hiddenNote = ($deep && $skipped > 0)
+        ? '<div class="qe-note"><i class="fa-solid fa-circle-info"></i>' . hsafe(sprintf($lang->query_explain['hidden_non_select'] ?? 'Hidden non-SELECT queries: %1$s', $skipped)) . '</div>'
+        : '';
+
+    $tab = static fn(string $id, string $icon, string $label, int $n, bool $active = false): string =>
+        '<li class="nav-item" role="presentation"><button class="nav-link' . ($active ? ' active' : '') . '" data-bs-toggle="tab" data-bs-target="#qe-tab-' . $id . '" type="button" role="tab">'
+        . '<i class="fa-solid ' . $icon . '"></i>' . $label . '<span class="st-badge st-soft-muted">' . $n . '</span></button></li>';
+
+    $output = '
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">
+<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/query-explain.css?ver=2">
+<div class="container-md st-page qe-page">
+
+    <div class="st-card mb-3">
+        <div class="st-head">
+            <span class="st-head__icon st-soft-warning"><i class="fa-solid fa-bug"></i></span>
+            <div class="min-w-0">
+                <h1 class="st-title mb-0">' . hsafe($lang->query_explain['page_title'] ?? 'DEBUG MODE') . '</h1>
+                <div class="st-meta mt-1">
+                    ' . qe_l('total_queries', 'Total Queries') . ' <b>' . ($printed + $skipped) . '</b> ·
+                    ' . qe_l('displayed', 'Displayed') . ' <b>' . $printed . '</b> ·
+                    ' . qe_l('total_time', 'Total Time') . ' <b>' . sprintf('%.4fs', $totalTime) . '</b>
+                </div>
             </div>
+            ' . ($deep ? '<span class="st-badge st-soft-primary ms-auto"><i class="fa-solid fa-microscope"></i>EXPLAIN ANALYZE</span>' : '') . '
         </div>
     </div>
-</div>';
 
-    if ($deep && $skipped > 0) {
-        $output .= '<div class="container mt-2"><div class="alert alert-info">'
-            . hsafe(sprintf($lang->query_explain['hidden_non_select'] ?? 'Hidden non-SELECT queries: %1$s', $skipped))
-            . '</div></div>';
-    }
+    ' . render_dashboard($printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep, $speed, $cacheCount, count($includedFiles)) . '
+
+    <section class="st-card">
+        <div class="st-tabs-wrap">
+            <ul class="nav st-tabs" role="tablist">
+                ' . $tab('sql', 'fa-database', 'SQL', $printed, true) . '
+                ' . ($cacheCount > 0 ? $tab('cache', 'fa-bolt', qe_l('tab_cache', 'Cache'), $cacheCount) : '') . '
+                ' . $tab('files', 'fa-file-import', qe_l('included_files', 'Included Files'), count($includedFiles)) . '
+            </ul>
+        </div>
+        <div class="st-card__body tab-content">
+            <div class="tab-pane fade show active" id="qe-tab-sql" role="tabpanel">
+                ' . $hiddenNote . '
+                <div class="qe-list">' . $queriesHtml . '</div>
+            </div>
+            ' . ($cacheCount > 0 ? '<div class="tab-pane fade" id="qe-tab-cache" role="tabpanel">' . $cacheHtml . '</div>' : '') . '
+            <div class="tab-pane fade" id="qe-tab-files" role="tabpanel">
+                <div class="qe-pane-head">
+                    <span>' . hsafe(sprintf($lang->query_explain['files_count'] ?? '%1$s files', count($includedFiles))) . '</span>
+                    <span class="st-badge st-soft-muted">' . formatBytes($filesSize) . '</span>
+                </div>
+                <div class="qe-flist">' . $filesHtml . '</div>
+            </div>
+        </div>
+    </section>
+</div>';
 
     stdhead($lang->query_explain['page_title'] ?? 'DEBUG MODE');
     echo $output;

@@ -732,7 +732,8 @@ if ($mybb->input['action'] === 'register') {
             foreach (array_map('trim', explode(',', $usertppoptions)) as $val) {
                 $tpp_option = sprintf($lang->member['tpp_option'], $val);
                 
-				$tppoptions .= '<option value="'.$val.'"'.$selected.'>'.$tpp_option.'</option>';
+				//$tppoptions .= '<option value="'.$val.'"'.$selected.'>'.$tpp_option.'</option>';
+				$tppoptions .= '<option value="'.$val.'">'.$tpp_option.'</option>';
             }
             
 			$tppselect = '<div class="mb-2 pb-3">
@@ -750,7 +751,8 @@ if ($mybb->input['action'] === 'register') {
             foreach (array_map('trim', explode(',', $userpppoptions)) as $val) {
                 $ppp_option = sprintf($lang->member['ppp_option'], $val);
                 
-				$pppoptions .= '<option value="'.$val.'"'.$selected.'>'.$ppp_option.'</option>';
+				//$pppoptions .= '<option value="'.$val.'"'.$selected.'>'.$ppp_option.'</option>';
+				$pppoptions .= '<option value="'.$val.'">'.$ppp_option.'</option>';
 				
             }
             
@@ -1736,22 +1738,40 @@ if ($mybb->input['action'] === 'login') {
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'logout') {
     $plugins->run_hooks('member_logout_start');
-    if (!$CURUSER['id']) { redirect('index.php', $lang->member['redirect_alreadyloggedout']); }
-    if (isset($mybb->input['sid']) && $mybb->get_input('sid') !== $session->sid) { stderr($lang->member['error_notloggedout']); }
-    $logoutkey = md5($CURUSER['loginkey']);
-    if ($mybb->get_input('logoutkey') !== $logoutkey) { stderr($lang->member['error_notloggedout']); }
-    my_unsetcookie('mybbuser');
-    my_unsetcookie('sid');
-    if ($CURUSER['id']) {
-        $time = TIMENOW;
-        $db->sql_query_prepared("UPDATE users SET lastvisit = ?, lastactive = ? WHERE id = ?", [$time, $time, $CURUSER['id']]);
-        $db->sql_query_prepared("DELETE FROM sessions WHERE sid = ?", [$session->sid]);
 
-        // Clear the admin-panel 2FA gate so a future login (same browser/session,
-        // possibly a different account) doesn't inherit a stale "verified" state.
-        unset($_SESSION['admin_2fa_ok_' . (int)$CURUSER['id']]);
-        unset($_SESSION['admin_2fa_fail_count']);
+    if (empty($CURUSER['id'])) {
+        redirect('index.php', $lang->member['redirect_alreadyloggedout']);
     }
+
+    if (isset($mybb->input['sid']) && !hash_equals($session->sid, (string)$mybb->get_input('sid'))) {
+        stderr($lang->member['error_notloggedout']);
+    }
+
+    $logoutkey = $session->make_logoutkey((string)$CURUSER['loginkey']);
+    if (!hash_equals($logoutkey, (string)$mybb->get_input('logoutkey'))) {
+        stderr($lang->member['error_notloggedout']);
+    }
+
+    $uid  = (int)$CURUSER['id'];
+    $time = TIMENOW;
+
+    $db->sql_query_prepared(
+        "UPDATE users SET lastvisit = ?, lastactive = ? WHERE id = ?",
+        [$time, $time, $uid]
+    );
+
+    // Удаляет строку из sessions и cookie sid
+    $session->destroy_session();
+    my_unsetcookie('mybbuser');
+
+    // Clear the admin-panel 2FA gate so a future login (same browser/session,
+    // possibly a different account) doesn't inherit a stale "verified" state.
+    unset($_SESSION['admin_2fa_ok_' . $uid], $_SESSION['admin_2fa_fail_count']);
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+
     $plugins->run_hooks('member_logout_end');
     redirect('member.php?action=login', $lang->member['redirect_loggedout']);
 }

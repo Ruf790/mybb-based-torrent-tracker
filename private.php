@@ -21,7 +21,8 @@ $lang->load('private');
 /** Text from private.lang.php (English fallback), escaped for HTML */
 $pl = static fn(string $key, string $fallback): string
     => htmlspecialchars((string)($lang->private[$key] ?? $fallback), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-/** "No Avatar" placeholder (the text comes from header.lang.php, loaded on every page) */
+
+/** "No Avatar" placeholder */
 $noAvatarSvg = '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">'
     . htmlspecialchars((string)($lang->header['hdr_no_avatar'] ?? 'No Avatar'), ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</text></svg>';
 
@@ -267,9 +268,9 @@ if ($mybb->input['action'] === 'send') {
 
             require_once INC_PATH . '/functions_posting.php';
             $maxpmquotedepth = 5;
-if ($maxpmquotedepth !== 0) {
-    $message = remove_message_quotes($message, $maxpmquotedepth);
-}
+            if ($maxpmquotedepth !== 0) {
+                $message = remove_message_quotes($message, $maxpmquotedepth);
+            }
 
             $do = $mybb->input['do'];
             if ($do === 'forward') {
@@ -326,100 +327,87 @@ if ($maxpmquotedepth !== 0) {
 
     $private_send_tracking = '';
     if ($mybb->usergroup['cantrackpms']) {
-        $private_send_tracking = '<input type="checkbox" class="form-check-input" name="options[readreceipt]" value="1" tabindex="8" '
-            . $optionschecked['readreceipt'] . ' /> ' . $lang->private['quickreply_read_receipt'];
+        $private_send_tracking = ucp_check(
+            'options[readreceipt]',
+            $optionschecked['readreceipt'],
+            $lang->private['quickreply_read_receipt'],
+            'fa-envelope-open-text',
+            'info'
+        );
     }
 
     $plugins->run_hooks('private_send_end');
 
-    $send = '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>' . $lang->private['compose_pm'] . '</title>
-    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/private.css">
-    <script src="' . $BASEURL . '/scripts/usercp.js?ver=1827"></script>
-</head>
-<body>
-<form action="private.php" method="post" name="input">
-<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-<div id="fileIdsContainer"></div>
-<div class="container-md py-4">
-<div class="row g-4">
-    <div class="col-lg-3">' . $usercpnav . '</div>
-    <div class="col-lg-9">
-        ' . $preview . '
-        ' . $send_errors . '
-        <div class="card">
-            <div class="card-body">
-                <div class="mb-4 pb-3 border-bottom">
-                    <label class="fw-semibold mb-2"><i class="fas fa-users text-primary me-2"></i> ' . $pl('compose_to', "Recipients:") . '</label>
-                    <input name="to" id="to" value="' . $to . '" tabindex="1" class="form-control border" placeholder="' . $pl('pm_search_users', "Search for users") . '" style="display:none;">
-                    <div id="to-container"></div>
-                    <div class="select2-counter" id="recipientCounter"><i class="fas fa-user-plus me-1"></i> ' . $pl('compose_to', "Recipients:") . ' 0/' . (int)$usergroups['maxpmrecipients'] . '</div>
-                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i> ' . $pl('pm_recipients_hint', "Click to search and select users (minimum 2 characters)") . '</small>
-                </div>
-                <div class="mb-4 pb-3 border-bottom">
-                    <label class="fw-semibold mb-2"><i class="fas fa-heading text-primary me-2"></i> ' . $pl('compose_subject', "Subject:") . '</label>
-                    <input type="text" class="form-control" name="subject" maxlength="85" value="' . $subject . '" tabindex="3" placeholder="' . $pl('pm_subject_placeholder', "Enter message subject...") . '" />
-                </div>
-                <div class="mb-3">
-                    <label class="fw-semibold mb-2"><i class="fas fa-pen-fancy text-primary me-2"></i> ' . $pl('compose_message', "Message:") . '</label>
-                    ' . $codebuttons . '
-                    <textarea name="message" id="message" class="form-control" style="width:100%;height:350px" tabindex="4" placeholder="' . $pl('pm_message_placeholder', "Write your message here...") . '">' . $message . '</textarea>
-                </div>
-                <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
-                    <a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-pmop" role="button">
-                        <i class="fas fa-cog"></i> ' . $pl('compose_options', "Options:") . '
-                    </a>
-                    <button type="submit" class="btn-thread" name="preview" value="Preview" tabindex="11">
-                        <i class="fas fa-eye"></i> ' . $pl('preview', "Preview") . '
-                    </button>
-                </div>
-                <div id="collapse-pmop" class="collapse">
-                    <div class="mt-3 pt-2">
-                        <div class="row g-3">
-                            <div class="col-lg-9">
-                                <div class="form-check mb-2">
-                                    <input type="checkbox" class="form-check-input" name="options[savecopy]" value="1" tabindex="7" ' . $optionschecked['savecopy'] . ' id="savecopy" />
-                                    <label class="form-check-label" for="savecopy"><i class="fas fa-save text-success me-1"></i> ' . ($lang->private['options_save_copy'] ?? 'Save a copy in my Sent Items folder') . '</label>
-                                </div>
-                                ' . $private_send_tracking . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <input type="hidden" name="action" value="do_send" />
-                <input type="hidden" name="pmid" value="' . $pmid . '" />
-                <input type="hidden" name="do" value="' . $do . '" />
-            </div>
-            <div class="card-footer text-center">
-                <button type="submit" class="btn btn-primary" name="submit" value="Send Message" tabindex="9">
-                    <i class="fas fa-paper-plane"></i> ' . $pl('send_message', "Send Message") . '
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
-</form>
-<script>window.maxRecipients = ' . (int)$usergroups['maxpmrecipients'] . ';
+    $send = ucp_open('fa-pen-fancy', 'primary', $lang->private['compose_pm'], $pl('pm_recipients_hint', ''))
+        . $preview
+        . $send_errors
+        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-select2.css">'
+        . '<form action="private.php" method="post" name="input">'
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '<div id="fileIdsContainer"></div>'
+
+        . ucp_sec_open('fa-users', 'primary', $pl('compose_to', 'Recipients:'))
+        .   '<div class="st-field st-field--split">'
+        .     '<label class="st-label" for="to"><i class="fa-solid fa-users text-primary"></i>' . $pl('compose_to', 'Recipients:') . '</label>'
+        .     '<input name="to" id="to" value="' . $to . '" tabindex="1" class="form-control" placeholder="' . $pl('pm_search_users', 'Search for users') . '" style="display:none;">'
+        .     '<div id="to-container"></div>'
+        .     '<div class="select2-counter" id="recipientCounter"><i class="fa-solid fa-user-plus me-1"></i> ' . $pl('compose_to', 'Recipients:') . ' 0/' . (int)$usergroups['maxpmrecipients'] . '</div>'
+        .     '<div class="st-hint"><i class="fa-solid fa-circle-info"></i>' . $pl('pm_recipients_hint', 'Click to search and select users (minimum 2 characters)') . '</div>'
+        .   '</div>'
+        . ucp_sec_close()
+
+        . ucp_sec_open('fa-heading', 'info', $pl('compose_subject', 'Subject:'))
+        .   '<div class="st-field">'
+        .     '<label class="st-label" for="subject"><i class="fa-solid fa-heading text-info"></i>' . $pl('compose_subject', 'Subject:') . '</label>'
+        .     '<input type="text" class="form-control" name="subject" id="subject" maxlength="85" value="' . $subject . '" tabindex="3" placeholder="' . $pl('pm_subject_placeholder', 'Enter message subject...') . '" />'
+        .   '</div>'
+        . ucp_sec_close()
+
+        . ucp_sec_open('fa-pen-fancy', 'primary', $pl('compose_message', 'Message:'))
+        .   $codebuttons
+        .   '<textarea name="message" id="message" class="form-control st-editor-text" style="width:100%;height:350px" tabindex="4" placeholder="' . $pl('pm_message_placeholder', 'Write your message here...') . '">' . $message . '</textarea>'
+        . ucp_sec_close()
+
+        . '<div class="st-optbar">'
+        .   '<a class="st-toggle" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-pmop" role="button">'
+        .     '<i class="fa-solid fa-gear"></i> ' . $pl('compose_options', 'Options:')
+        .   '</a>'
+        .   '<button type="submit" class="btn btn-outline-secondary st-pill" name="preview" value="Preview" tabindex="11">'
+        .     '<i class="fa-solid fa-eye me-1"></i>' . $pl('preview', 'Preview')
+        .   '</button>'
+        . '</div>'
+
+        . '<div id="collapse-pmop" class="collapse mt-2">'
+        .   ucp_check('options[savecopy]', $optionschecked['savecopy'], $lang->private['options_save_copy'] ?? 'Save a copy in my Sent Items folder', 'fa-save', 'success')
+        .   $private_send_tracking
+        . '</div>'
+
+        . '<input type="hidden" name="action" value="do_send" />'
+        . '<input type="hidden" name="pmid" value="' . $pmid . '" />'
+        . '<input type="hidden" name="do" value="' . $do . '" />'
+
+        . '<div class="st-submitbar justify-content-end">'
+        .   '<button type="submit" class="btn btn-primary st-pill" name="submit" value="Send Message" tabindex="9">'
+        .     '<i class="fa-solid fa-paper-plane me-2"></i>' . $pl('send_message', 'Send Message')
+        .   '</button>'
+        . '</div>'
+        . '</form>'
+        . ucp_close()
+        . '<script>window.maxRecipients = ' . (int)$usergroups['maxpmrecipients'] . ';
 window.SELECT2_LANG = ' . json_encode([
-    // texts for scripts/select2-field.js: header.lang.php (loaded on every page) + private.lang.php
     'searchUser'      => (string)($lang->private['pm_search_users'] ?? 'Search for users'),
     'noMatches'       => (string)($lang->header['select2_nomatches'] ?? 'No matches found'),
     'inputTooShort'   => (string)($lang->header['select2_inputtooshort_plural'] ?? 'Please enter {1} or more characters'),
     'selectionTooBig' => (string)($lang->header['select2_toobig_plural'] ?? 'You can only select {1} items'),
     'counterLabel'    => (string)($lang->private['compose_to'] ?? 'Recipients:'),
-], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>
-<script src="' . $BASEURL . '/scripts/select2-field.js?ver=2"></script>
-</body>
-</html>';
+], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>'
+        . '<script src="' . $BASEURL . '/scripts/select2-field.js?ver=2"></script>';
 
-    stdhead('title');
+    stdhead($lang->private['compose_pm']);
+    build_breadcrumb();
     echo $send;
     stdfoot();
+    exit;
 }
 
 // ── Read PM ───────────────────────────────────────────────────────────────────
@@ -442,16 +430,11 @@ if ($action === 'read') {
         exit;
     }
 
- 
-	
-	if (!empty($pm['usergroup']) && isset($groupscache[$pm['usergroup']])) 
-	{
-       foreach (['title' => 'grouptitle', 'usertitle' => 'groupusertitle', 'image' => 'groupimage', 'namestyle' => 'namestyle'] as $field => $key) 
-	   {
-          $pm[$key] = $groupscache[$pm['usergroup']][$field];
-       }
+    if (!empty($pm['usergroup']) && isset($groupscache[$pm['usergroup']])) {
+        foreach (['title' => 'grouptitle', 'usertitle' => 'groupusertitle', 'image' => 'groupimage', 'namestyle' => 'namestyle'] as $field => $key) {
+            $pm[$key] = $groupscache[$pm['usergroup']][$field];
+        }
     }
-	
 
     $receiptadd = null;
     if ($pm['receipt'] == 1) {
@@ -473,16 +456,16 @@ if ($action === 'read') {
     } elseif ($pm['status'] == 3 && $pm['statustime']) {
         $reply_date   = my_datee('relative', $pm['statustime']);
         $reply_string = (TIMENOW - $pm['statustime']) < 3600 ? $lang->private['you_replied'] : $lang->private['you_replied_on'];
-        $action_time  = '<div class="mb-4 alert bg-success text-white border-0 little"><i class="fa-solid fa-check"></i> &nbsp;' . sprintf($reply_string, $reply_date) . '</div>';
+        $action_time  = '<div class="st-notice st-soft-success mb-3"><i class="fa-solid fa-check"></i><div>' . sprintf($reply_string, $reply_date) . '</div></div>';
     } elseif ($pm['status'] == 4 && $pm['statustime']) {
         $forward_date   = my_datee('relative', $pm['statustime']);
         $forward_string = (TIMENOW - $pm['statustime']) < 3600 ? $lang->private['you_forwarded'] : $lang->private['you_forwarded_on'];
-        $action_time    = '<div class="mb-4 alert bg-success text-white border-0 little"><i class="fa-solid fa-check"></i> &nbsp;' . sprintf($forward_string, $forward_date) . '</div>';
+        $action_time    = '<div class="st-notice st-soft-success mb-3"><i class="fa-solid fa-check"></i><div>' . sprintf($forward_string, $forward_date) . '</div></div>';
     }
 
     $pm['userusername'] = $pm['username'];
     $pm['subject']      = htmlspecialchars_uni($parser->parse_badwords($pm['subject']));
-    if ($pm['fromid'] == 0) $pm['username'] = ''.$SITENAME.' Engine';
+    if ($pm['fromid'] == 0) $pm['username'] = '' . $SITENAME . ' Engine';
     if (!$pm['username'])   $pm['username'] = 'na';
 
     $pm['recipients'] = my_unserialize($pm['recipients']);
@@ -534,19 +517,18 @@ if ($action === 'read') {
         $optionschecked = ['savecopy' => 'checked="checked"', 'readreceipt' => 'checked="checked"'];
 
         require_once INC_PATH . '/functions_posting.php';
-       
-	   
-	  $quoted_data = [
-    'message'     => htmlspecialchars_uni($parser->parse_badwords($pm['message'])),
-    'username'    => $pm['username'],
-    'quote_is_pm' => true,
-];
-$quoted_message = parse_quoted_message($quoted_data);
 
-$maxpmquotedepth = 5;
-if ($maxpmquotedepth !== 0) {
-    $quoted_message = remove_message_quotes($quoted_message, $maxpmquotedepth);
-}
+        $quoted_data = [
+            'message'     => htmlspecialchars_uni($parser->parse_badwords($pm['message'])),
+            'username'    => $pm['username'],
+            'quote_is_pm' => true,
+        ];
+        $quoted_message = parse_quoted_message($quoted_data);
+
+        $maxpmquotedepth = 5;
+        if ($maxpmquotedepth !== 0) {
+            $quoted_message = remove_message_quotes($quoted_message, $maxpmquotedepth);
+        }
 
         $subject = preg_replace('#(FW|RE):( *)#is', '', $pm['subject']);
         $to = $CURUSER['id'] === $pm['fromid']
@@ -554,47 +536,47 @@ if ($maxpmquotedepth !== 0) {
             : htmlspecialchars_uni($db->fetch_field($db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$pm['fromid']]), 'username'));
 
         $private_send_tracking = $mybb->usergroup['cantrackpms']
-            ? '<input type="checkbox" class="form-check-input" name="options[readreceipt]" value="1" tabindex="8" ' . $optionschecked['readreceipt'] . ' /> ' . $lang->private['quickreply_read_receipt']
+            ? ucp_check('options[readreceipt]', $optionschecked['readreceipt'], $lang->private['quickreply_read_receipt'], 'fa-envelope-open-text', 'info')
             : '';
 
-        $quickreply = '<form action="private.php" method="post" name="input">
-    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-    <input type="hidden" name="to" value="' . $to . '" />
-    <input type="hidden" name="bcc" value="' . $bcc_form_val . '" />
-    <input type="hidden" name="subject" value="Re: ' . $subject . '" />
-    <input type="hidden" name="action" value="do_send" />
-    <input type="hidden" name="pmid" value="' . $pmid . '" />
-    <input type="hidden" name="do" value="reply" />
-    <div class="row d-flex g-2 mb-4 mt-5">
-        <div class="col-auto d-none d-lg-block"><img src="' . $CURUSER['avatar'] . '" class="rounded img-fluid" style="width:100px;"></div>
-        <div class="col">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="mb-2">' . $CURUSER['username'] . '</h6>
-                    <textarea class="form-control form-control-sm border-0 p-0" style="resize:none;height:150px;" name="message" id="message" tabindex="1">' . $quoted_message . '</textarea>
-                    <div id="collapse-reply" class="collapse bg-nav mt-3 p-2">
-                        <input type="checkbox" class="form-check-input" name="options[savecopy]" value="1" ' . $optionschecked['savecopy'] . ' /> ' . $lang->private['quickreply_save_copy'] . '<br />
-                        ' . $private_send_tracking . '
-                    </div>
-                </div>
-                <div class="card-footer border-top-0">
-                    <input type="submit" class="btn btn-primary" value="' . $lang->private['send_message'] . '" tabindex="2" accesskey="s" />
-                    <a class="btn btn-thread ms-3 me-3" data-bs-toggle="collapse" href="#collapse-reply" role="button"><i class="fa-solid fa-gear"></i></a>
-                    <input type="submit" class="btn btn-thread" name="preview" value="' . $lang->private['preview'] . '" tabindex="3" />
-                </div>
-            </div>
-        </div>
-    </div>
-</form>';
+        $quickreply = '<form action="private.php" method="post" name="input" class="mt-4">'
+            . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+            . '<input type="hidden" name="to" value="' . $to . '" />'
+            . '<input type="hidden" name="bcc" value="' . $bcc_form_val . '" />'
+            . '<input type="hidden" name="subject" value="Re: ' . $subject . '" />'
+            . '<input type="hidden" name="action" value="do_send" />'
+            . '<input type="hidden" name="pmid" value="' . $pmid . '" />'
+            . '<input type="hidden" name="do" value="reply" />'
+            . ucp_sec_open('fa-reply', 'primary', $lang->private['quickreply_save_copy'] ?? 'Quick Reply')
+            .   '<div class="st-field">'
+            .     '<label class="st-label" for="message"><i class="fa-solid fa-pen-fancy text-primary"></i>' . ($lang->private['compose_message'] ?? 'Message') . '</label>'
+            .     '<textarea class="form-control st-editor-text" style="min-height:150px;" name="message" id="message" tabindex="1">' . $quoted_message . '</textarea>'
+            .   '</div>'
+            .   '<div id="collapse-reply" class="collapse mt-2">'
+            .     ucp_check('options[savecopy]', $optionschecked['savecopy'], $lang->private['quickreply_save_copy'], 'fa-save', 'success')
+            .     $private_send_tracking
+            .   '</div>'
+            . ucp_sec_close()
+            . '<div class="st-submitbar justify-content-between">'
+            .   '<a class="btn btn-outline-secondary st-pill" data-bs-toggle="collapse" href="#collapse-reply" role="button"><i class="fa-solid fa-gear"></i></a>'
+            .   '<div class="d-flex gap-2">'
+            .     '<button type="submit" class="btn btn-outline-secondary st-pill" name="preview" value="' . $lang->private['preview'] . '" tabindex="3"><i class="fa-solid fa-eye me-1"></i>' . $lang->private['preview'] . '</button>'
+            .     '<button type="submit" class="btn btn-primary st-pill" value="' . $lang->private['send_message'] . '" tabindex="2" accesskey="s"><i class="fa-solid fa-paper-plane me-1"></i>' . $lang->private['send_message'] . '</button>'
+            .   '</div>'
+            . '</div>'
+            . '</form>';
     }
 
     $plugins->run_hooks('private_read_end');
     stdhead('title');
-    echo '<div class="container-md"><div class="row">
-        <div class="col-lg-3">' . $usercpnav . '</div>
-        <div class="col">' . $action_time . '<div id="posts">' . $message . '</div>' . $quickreply . '</div>
-    </div></div>';
+    build_breadcrumb();
+    echo ucp_open('fa-envelope-open-text', 'info', $pm['subject'])
+        . $action_time
+        . '<div id="posts">' . $message . '</div>'
+        . $quickreply
+        . ucp_close();
     stdfoot();
+    exit;
 }
 
 // ── Tracking ─────────────────────────────────────────────────────────────────
@@ -629,33 +611,33 @@ if ($action === 'tracking') {
         $rm['tousername']  = htmlspecialchars_uni($rm['tousername']);
         $rm['profilelink'] = build_profile_link($rm['tousername'], $rm['toid']);
         $readdate          = my_datee('relative', $rm['readtime']);
-        // FIX: было <avatarep_uid_[N]> - незакрытый/несуществующий тег,
-        // браузер его молча игнорировал, аватар никогда не показывался.
-        // Тот же паттерн format_avatar()/$ava_img, что и в основном инбоксе.
         $rm_useravatar = format_avatar($rm['avatar'], $rm['avatardimensions']);
         $rm_ava_img = str_starts_with($rm_useravatar['image'], '<')
             ? $noAvatarSvg
             : '<img class="user-avatar" src="' . $rm_useravatar['image'] . '" alt="" ' . $rm_useravatar['width_height'] . ' />';
-        $readmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
-            <div class="row g-2 pb-3 border-bottom mb-0">
-                <div class="col-auto col-lg-1 align-self-center">' . $rm_ava_img . '</div>
-                <div class="col align-self-center">
-                    <h6 class="mb-0 text-forum">' . $rm['subject'] . '</h6>
-                    <span class="links small">' . $rm['profilelink'] . '</span>
-                </div>
-                <div class="col-auto d-none d-lg-block align-self-center"><i class="fa-solid fa-envelope-open text-muted"></i></div>
-                <div class="col-lg-3 text-muted align-self-center">' . $readdate . '
-                    <span class="float-end"><input type="checkbox" class="form-check-input" name="readcheck[' . $rm['pmid'] . ']" value="1" /></span>
-                </div>
-            </div>
-        </div></div>';
+        $readmessages .= '<div class="st-frow">'
+            . '<div class="col-auto">' . $rm_ava_img . '</div>'
+            . '<div class="st-frow__body">'
+            .   '<div class="st-frow__top"><a class="st-frow__title" href="private.php?action=read&amp;pmid=' . $rm['pmid'] . '">' . $rm['subject'] . '</a></div>'
+            .   '<div class="st-frow__desc">' . $rm['profilelink'] . '</div>'
+            . '</div>'
+            . '<div class="st-frow__last">'
+            .   '<span class="st-badge st-soft-info"><i class="fa-regular fa-clock"></i>' . $readdate . '</span>'
+            .   '<input type="checkbox" class="form-check-input ms-2" name="readcheck[' . $rm['pmid'] . ']" value="1" />'
+            . '</div>'
+            . '</div>';
     }
 
     $stoptrackingread = !empty($readmessages)
-        ? '<div class="text-center"><button type="submit" class="btn btn-primary btn-sm" name="stoptracking" value="' . $lang->private['stop_tracking'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['stop_tracking'] . '</button> &nbsp; <a href="private.php?action=stopalltracking&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-primary btn-sm" style="color:#fff!important"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['stop_tracking_all'] . '</a></div>'
+        ? '<div class="st-submitbar justify-content-center">'
+        .   '<button type="submit" class="btn btn-outline-primary st-pill" name="stoptracking" value="' . $lang->private['stop_tracking'] . '"><i class="fa-solid fa-xmark me-1"></i>' . $lang->private['stop_tracking'] . '</button>'
+        .   '<a href="private.php?action=stopalltracking&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-outline-danger st-pill"><i class="fa-solid fa-xmark me-1"></i>' . $lang->private['stop_tracking_all'] . '</a>'
+        . '</div>'
         : '';
 
-    if (!$readmessages) $readmessages = '<div class="ps-3 pe-3 pb-3">' . $lang->private['no_unreadmessages'] . '</div>';
+    if (!$readmessages) {
+        $readmessages = '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-regular fa-envelope-open"></i></div>' . $lang->private['no_unreadmessages'] . '</div>';
+    }
 
     // Unread messages
     $unread_count_query = $db->sql_query_prepared(
@@ -682,75 +664,74 @@ if ($action === 'tracking') {
         $um['tousername']  = htmlspecialchars_uni($um['tousername']);
         $um['profilelink'] = build_profile_link($um['tousername'], $um['toid']);
         $senddate          = my_datee('relative', $um['dateline']);
-        // FIX: тот же сломанный <avatarep_uid_[N]> плейсхолдер, что и в блоке
-        // read-сообщений выше.
         $um_useravatar = format_avatar($um['avatar'], $um['avatardimensions']);
         $um_ava_img = str_starts_with($um_useravatar['image'], '<')
             ? $noAvatarSvg
             : '<img class="user-avatar" src="' . $um_useravatar['image'] . '" alt="" ' . $um_useravatar['width_height'] . ' />';
-        $unreadmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
-            <div class="row g-2 pb-3 border-bottom mb-0">
-                <div class="col-auto col-lg-1 align-self-center">' . $um_ava_img . '</div>
-                <div class="col align-self-center">
-                    <h6 class="mb-0 text-forum">' . $um['subject'] . '</h6>
-                    <span class="links small">' . $um['profilelink'] . '</span>
-                </div>
-                <div class="col-auto d-none d-lg-block align-self-center"><i class="fa-solid fa-envelope text-danger"></i></div>
-                <div class="col-lg-3 text-muted align-self-center">' . $senddate . '
-                    <span class="float-end"><input type="checkbox" class="form-check-input" name="unreadcheck[' . $um['pmid'] . ']" value="1" /></span>
-                </div>
-            </div>
-        </div></div>';
+        $unreadmessages .= '<div class="st-frow">'
+            . '<div class="col-auto">' . $um_ava_img . '</div>'
+            . '<div class="st-frow__body">'
+            .   '<div class="st-frow__top"><a class="st-frow__title" href="private.php?action=read&amp;pmid=' . $um['pmid'] . '">' . $um['subject'] . '</a></div>'
+            .   '<div class="st-frow__desc">' . $um['profilelink'] . '</div>'
+            . '</div>'
+            . '<div class="st-frow__last">'
+            .   '<span class="st-badge st-soft-warning"><i class="fa-regular fa-clock"></i>' . $senddate . '</span>'
+            .   '<input type="checkbox" class="form-check-input ms-2" name="unreadcheck[' . $um['pmid'] . ']" value="1" />'
+            . '</div>'
+            . '</div>';
     }
 
     $stoptrackingunread = !empty($unreadmessages)
-        ? '<div class="text-center">
-            <button type="submit" class="btn btn-primary btn-sm" name="stoptrackingunread" value="' . $lang->private['stop_tracking'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['stop_tracking'] . '</button> &nbsp;
-            <button type="submit" class="btn btn-primary btn-sm" name="cancel" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['delete'] . '</button>
-           </div>'
+        ? '<div class="st-submitbar justify-content-center">'
+        .   '<button type="submit" class="btn btn-outline-primary st-pill" name="stoptrackingunread" value="' . $lang->private['stop_tracking'] . '"><i class="fa-solid fa-xmark me-1"></i>' . $lang->private['stop_tracking'] . '</button>'
+        .   '<button type="submit" class="btn btn-outline-danger st-pill" name="cancel" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-trash me-1"></i>' . $lang->private['delete'] . '</button>'
+        . '</div>'
         : '';
 
-    if (!$unreadmessages) $unreadmessages = '<div class="ps-3 pe-3 pb-3">' . $lang->private['no_unreadmessages'] . '</div>';
+    if (!$unreadmessages) {
+        $unreadmessages = '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-regular fa-envelope"></i></div>' . $lang->private['no_unreadmessages'] . '</div>';
+    }
 
     $plugins->run_hooks('private_tracking_end');
     stdhead($lang->private['pm_tracking']);
-    echo '<div class="container-md"><div class="row">
-        <div class="col-lg-3">' . $usercpnav . '</div>
-        <div class="col">
-            <form action="private.php" method="post">
-            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-            <input type="hidden" name="action" value="do_tracking" />
-            <div class="card border-0 mb-4"><div class="card-header py-3 bg-nav rounded border-bottom-0">
-                <div class="row g-2 text-forum">
-                    <div class="col-1">&nbsp;</div>
-                    <div class="col align-self-center">' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</div>
-                    <div class="col-3 align-self-center"><span class="d-none d-lg-inline-block">' . $lang->private['dateread'] . '</span>
-                        <span class="float-end"><input type="checkbox" class="form-check-input checkall" name="allbox" /></span>
-                    </div>
-                </div>
-            </div></div>
-            ' . $readmessages . '
-            <div class="card border-0 mb-4"><div class="card-header py-3 bg-nav rounded border-bottom-0">' . $stoptrackingread . '</div></div>
-            </form>
-            ' . $unread_multipage . '
-            <form action="private.php" method="post">
-            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-            <input type="hidden" name="action" value="do_tracking" />
-            <div class="card border-0 mb-4"><div class="card-header py-3 bg-nav rounded border-bottom-0">
-                <div class="row g-2 text-forum">
-                    <div class="col-1">&nbsp;</div>
-                    <div class="col align-self-center">' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</div>
-                    <div class="col-3 align-self-center"><span class="d-none d-lg-inline-block">' . $lang->private['datesent'] . '</span>
-                        <span class="float-end"><input type="checkbox" class="form-check-input checkall" name="allbox" /></span>
-                    </div>
-                </div>
-            </div></div>
-            ' . $unreadmessages . '
-            <div class="card border-0 mb-4"><div class="card-header py-3 bg-nav rounded border-bottom-0">' . $stoptrackingunread . '</div></div>
-            </form>
-        </div>
-    </div></div>';
+    build_breadcrumb();
+
+    echo ucp_open('fa-envelope-open-text', 'info', $lang->private['pm_tracking'])
+
+        . '<form action="private.php" method="post">'
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '<input type="hidden" name="action" value="do_tracking" />'
+        . '<div class="st-card mb-3 overflow-hidden">'
+        .   '<div class="st-card__head">'
+        .     '<span class="st-ico st-soft-info"><i class="fa-solid fa-envelope-open"></i></span>'
+        .     '<span>' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</span>'
+        .     '<span class="st-badge st-soft-info ms-auto">' . $lang->private['dateread'] . '</span>'
+        .   '</div>'
+        .   '<div class="st-card__body">' . $readmessages . '</div>'
+        .   $stoptrackingread
+        . '</div>'
+        . '</form>'
+
+        . $read_multipage
+
+        . '<form action="private.php" method="post" class="mt-3">'
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '<input type="hidden" name="action" value="do_tracking" />'
+        . '<div class="st-card mb-3 overflow-hidden">'
+        .   '<div class="st-card__head">'
+        .     '<span class="st-ico st-soft-warning"><i class="fa-solid fa-envelope"></i></span>'
+        .     '<span>' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</span>'
+        .     '<span class="st-badge st-soft-warning ms-auto">' . $lang->private['datesent'] . '</span>'
+        .   '</div>'
+        .   '<div class="st-card__body">' . $unreadmessages . '</div>'
+        .   $stoptrackingunread
+        . '</div>'
+        . '</form>'
+
+        . ucp_close();
+
     stdfoot();
+    exit;
 }
 
 // ── Do tracking ──────────────────────────────────────────────────────────────
@@ -828,8 +809,6 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
         $check = $mybb->get_input('check', MyBB::INPUT_ARRAY);
         $uid   = (int)$CURUSER['id'];
 
-        // Раньше при пустом выборе, ненайденных сообщениях или ошибке БД всё равно
-        // показывалось «удалено» — теперь каждый из этих случаев виден явно.
         $pmid_list = array_values(array_unique(array_filter(array_map('intval', array_keys($check)))));
         if (empty($pmid_list)) {
             error($lang->private['err_no_pms_selected'] ?? 'You did not select any messages.');
@@ -837,8 +816,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
 
         $ph = implode(',', array_fill(0, count($pmid_list), '?'));
 
-        // Какие из выбранных реально принадлежат пользователю и где лежат
-        $found = [];   // pmid => folder
+        $found = [];
         $query = $db->sql_query_prepared(
             "SELECT pmid, folder FROM privatemessages WHERE pmid IN ({$ph}) AND uid = ?",
             [...$pmid_list, $uid]
@@ -855,14 +833,12 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
         $to_trash = array_keys(array_filter($found, fn(int $f): bool => $f !== 4));
         $errors   = [];
 
-        // Из корзины — удаляем насовсем, одним запросом
         if ($in_trash) {
             $ph_t = implode(',', array_fill(0, count($in_trash), '?'));
             if (!$db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid IN ({$ph_t}) AND uid = ?", [...$in_trash, $uid])) {
                 $errors[] = 'DELETE: ' . (string)$db->error();
             }
         }
-        // Из остальных папок — в корзину, одним запросом
         if ($to_trash) {
             $ph_m = implode(',', array_fill(0, count($to_trash), '?'));
             if (!$db->sql_query_prepared(
@@ -964,16 +940,15 @@ if (!$mybb->input['action']) {
     $end     = $start + $perpage;
     $upper   = min($end, $pmscount);
 
-   $page_url = (!empty($mybb->input['order']) || ($sortby && $sortby !== 'dateline'))
-    ? "private.php?fid={$fid}&sortby={$sortby}&order={$sortordernow}"
-    : "private.php?fid={$fid}";
+    $page_url = (!empty($mybb->input['order']) || ($sortby && $sortby !== 'dateline'))
+        ? "private.php?fid={$fid}&sortby={$sortby}&order={$sortordernow}"
+        : "private.php?fid={$fid}";
     $multipage = multipage($pmscount, $perpage, $page, $page_url);
 
     $selective  = '';
     $messagelist = '';
     $cached_users = [];
 
-    // Cache recipients for sent/drafts folders
     if ($folder == 2 || $folder == 3) {
         $u = ($sortfield === 'username') ? 'u.' : 'pm.';
         $get_users = [];
@@ -1017,7 +992,6 @@ if (!$mybb->input['action']) {
     ", [$folder, $CURUSER['id'], $start, $perpage]);
 
     if ($query && $db->num_rows($query) > 0) {
-        
         while ($message = $db->fetch_array($query)) {
             $msgstatus = $msgalt = $fa_icon_html = $badge_class = $popover_title = $popover_content = '';
 
@@ -1026,33 +1000,33 @@ if (!$mybb->input['action']) {
                     $msgstatus     = 'new_pm',
                     $msgalt        = $lang->private['new_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-envelope fa-fw"></i>',
-                    $badge_class   = 'status-new',
-                    $popover_title = $pl('new_pm', "New Message"),
-                    $popover_content = $pl('pm_status_new_desc', "This message has not been read yet"),
+                    $badge_class   = 'st-soft-danger',
+                    $popover_title = $pl('new_pm', 'New Message'),
+                    $popover_content = $pl('pm_status_new_desc', 'This message has not been read yet'),
                 ],
                 1 => [
                     $msgstatus     = 'old_pm',
                     $msgalt        = $lang->private['old_pm'],
                     $fa_icon_html  = '<i class="fa-regular fa-envelope-open fa-fw"></i>',
-                    $badge_class   = 'status-read',
-                    $popover_title = $pl('old_pm', "Read Message"),
-                    $popover_content = $pl('pm_status_read_desc', "This message has been read"),
+                    $badge_class   = 'st-soft-muted',
+                    $popover_title = $pl('old_pm', 'Read Message'),
+                    $popover_content = $pl('pm_status_read_desc', 'This message has been read'),
                 ],
                 3 => [
                     $msgstatus     = 're_pm',
                     $msgalt        = $lang->private['reply_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-reply fa-fw"></i>',
-                    $badge_class   = 'status-reply',
-                    $popover_title = $pl('reply_pm', "Reply to Message"),
-                    $popover_content = $pl('pm_status_reply_desc', "This is a reply to a previous message"),
+                    $badge_class   = 'st-soft-info',
+                    $popover_title = $pl('reply_pm', 'Reply to Message'),
+                    $popover_content = $pl('pm_status_reply_desc', 'This is a reply to a previous message'),
                 ],
                 4 => [
                     $msgstatus     = 'fw_pm',
                     $msgalt        = $lang->private['fwd_pm'],
                     $fa_icon_html  = '<i class="fa-solid fa-share fa-fw"></i>',
-                    $badge_class   = 'status-forward',
-                    $popover_title = $pl('fwd_pm', "Forwarded Message"),
-                    $popover_content = $pl('pm_status_fwd_desc', "This message has been forwarded"),
+                    $badge_class   = 'st-soft-success',
+                    $popover_title = $pl('fwd_pm', 'Forwarded Message'),
+                    $popover_content = $pl('pm_status_fwd_desc', 'This message has been forwarded'),
                 ],
                 default => null,
             };
@@ -1104,7 +1078,7 @@ if (!$mybb->input['action']) {
                 : '<img class="user-avatar" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
 
             $denyreceipt = ($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
-                ? '<span class="smalltext"><a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '&amp;denyreceipt=1">' . $lang->private['deny_receipt'] . '</a></span>'
+                ? '<span class="st-meta ms-2"><a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '&amp;denyreceipt=1">' . $lang->private['deny_receipt'] . '</a></span>'
                 : '';
 
             if (!trim($message['subject'])) $message['subject'] = ($lang->private['pm_no_subject'] ?? '[no subject]');
@@ -1113,132 +1087,87 @@ if (!$mybb->input['action']) {
 
             $plugins->run_hooks('private_message');
 
-            $messagelist .= '<div class="card message-card shadow-sm border-0 mb-3">
-    <div class="card-body p-4">
-        <div class="row align-items-center g-3">
-            <div class="col-auto">' . $ava_img . '</div>
-            <div class="col">
-                <div class="d-flex flex-column">
-                    <h6 class="mb-1">
-                        <a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '" class="message-title ' . $msgstatus . ' text-decoration-none fw-semibold">' . $message['subject'] . '</a>
-                        ' . $denyreceipt . '
-                    </h6>
-                    <span class="text-muted small"><i class="fas fa-user me-1"></i>' . $tofromusername . '</span>
-                </div>
-            </div>
-            <div class="col-12 col-lg-5">
-                <div class="d-flex align-items-center justify-content-lg-end gap-2 flex-nowrap">
-                    <span class="status-badge ' . $badge_class . ' d-none d-lg-inline-flex flex-shrink-0" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body" title="' . $msgalt . '">' . $fa_icon_html . '</span>
-                    <span class="text-muted small text-nowrap"><i class="far fa-clock me-1"></i>' . $senddate . '</span>
-                    <div class="form-check form-switch message-select-switch">
-                        <input type="checkbox" form="pmForm" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>';
-            
+            $messagelist .= '<div class="st-frow message-card">'
+                . '<input type="checkbox" form="pmForm" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">'
+                . '<div class="st-frow__body">'
+                .   '<div class="st-frow__top">'
+                .     '<a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '" class="st-frow__title ' . $msgstatus . '">' . $message['subject'] . '</a>'
+                .     $denyreceipt
+                .   '</div>'
+                .   '<div class="st-frow__desc"><i class="fa-solid fa-user me-1"></i>' . $tofromusername . '</div>'
+                . '</div>'
+                . '<div class="st-frow__last">'
+                .   '<span class="st-badge ' . $badge_class . '" title="' . $msgalt . '" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body">' . $fa_icon_html . '</span>'
+                .   '<span class="st-meta text-nowrap"><i class="fa-regular fa-clock me-1"></i>' . $senddate . '</span>'
+                . '</div>'
+                . '</div>';
         }
     } else {
-        $messagelist .= '<div class="text-center py-5">
-            <div style="font-size:64px;color:#cbd5e0;margin-bottom:20px;"><i class="fas fa-inbox"></i></div>
-            <div style="font-size:18px;color:#4a5568;margin-bottom:10px;"><strong>' . $lang->private['nomessages'] . '</strong></div>
-            <div style="font-size:14px;color:#718096;"><i class="fas fa-envelope-open-text"></i> ' . $pl('pm_mailbox_empty', "Your mailbox is empty") . '</div>
-        </div>';
+        $messagelist .= '<div class="st-empty">'
+            . '<div class="st-ico st-soft-muted"><i class="fa-regular fa-envelope"></i></div>'
+            . '<strong>' . $lang->private['nomessages'] . '</strong>'
+            . '<div class="st-meta mt-1"><i class="fa-regular fa-envelope-open-text me-1"></i> ' . $pl('pm_mailbox_empty', 'Your mailbox is empty') . '</div>'
+            . '</div>';
     }
 
-    // PM quota bar
     $pmspacebar = '';
+    $limitwarning = '';
     if ($usergroups['pmquota'] != 0) {
         $quota_query = $db->sql_query_prepared("SELECT COUNT(*) AS total FROM privatemessages WHERE uid = ?", [$CURUSER['id']]);
         $pmscount_arr = $quota_query ? $db->fetch_array($quota_query) : null;
-        $spaceused    = $pmscount_arr['total'] == 0 ? 0 : min(100, $pmscount_arr['total'] / $usergroups['pmquota'] * 100);
-        $pmspacebar   = '<div class="progress mt-3" style="height:40px"><div class="progress-bar" role="progressbar" style="width:' . $spaceused . '%"></div></div>
-            <div class="mt-1">' . round($spaceused, 0) . '% ' . $lang->private['pmspaceused'] . '</div>';
-        $limitwarning = $pmscount_arr['total'] >= $usergroups['pmquota']
-            ? '<div class="progress mt-3"><div class="progress-bar" role="progressbar">' . $lang->private['reached_warning'] . '</div></div>'
+        $total = (int)($pmscount_arr['total'] ?? 0);
+        $spaceused    = $total == 0 ? 0 : min(100, $total / $usergroups['pmquota'] * 100);
+        $pmspacebar   = '<div class="progress mt-3" style="height:24px"><div class="progress-bar" role="progressbar" style="width:' . $spaceused . '%"></div></div>'
+            . '<div class="st-meta mt-1">' . round($spaceused, 0) . '% ' . $lang->private['pmspaceused'] . '</div>';
+        $limitwarning = $total >= $usergroups['pmquota']
+            ? '<div class="st-notice st-soft-danger mb-3"><i class="fa-solid fa-triangle-exclamation"></i><div>' . $lang->private['reached_warning'] . '</div></div>'
             : '';
-    } else {
-        $limitwarning = '';
     }
 
     $plugins->run_hooks('private_end');
 
     stdhead('title');
+    build_breadcrumb();
     echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
-    echo '<div class="container-md"><div class="row">
-    <div class="col-lg-3">' . $usercpnav . '</div>
-    <div class="col">
-        ' . $limitwarning . '
-        <form action="private.php" method="post" name="pmForm" id="pmForm">
-        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-        <input type="hidden" name="action" value="do_stuff" />
-        <div class="card border-0 mb-3">
-            <div class="card-header py-3 bg-nav rounded border-bottom-0">
-                <div class="row g-2 text-forum">
-                    <div class="col-1">&nbsp;</div>
-                    <div class="col align-self-center">
-                        <a href="private.php?fid=' . $fid . '&amp;sortby=subject&amp;order=asc">' . $lang->private['message_title'] . '</a> &mdash;
-                        <a href="private.php?fid=' . $fid . '&amp;sortby=username&amp;order=asc">' . $sender . '</a>
-                    </div>
-                    <div class="col-3 align-self-center">
-                        <div class="d-flex align-items-center justify-content-end gap-2">
-                            <a href="private.php?fid=' . $fid . '&amp;sortby=dateline&amp;order=desc" class="d-none d-lg-inline-block text-decoration-none">' . $lang->private['date_sent'] . '</a>
-                            <div class="form-check form-switch ms-auto">
-                                <input class="form-check-input select-all-switch" type="checkbox" role="switch" id="selectAllSwitch" title="' . $lang->private['check_all'] . '">
-                                <label class="form-check-label small ms-2" for="selectAllSwitch">' . $lang->private['check_all'] . '</label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        ' . $messagelist . '
-        <div class="card border-0 mt-3">
-            <div class="card-header py-3 bg-nav rounded border-bottom-0">
-                <div class="row g-1">
-                    <div class="col">&nbsp;</div>
-                    <div class="col-auto">
-                        <button type="submit" form="pmForm" class="btn btn-primary btn-sm" name="moveto" value="' . $lang->private['move_to'] . '">' . $lang->private['move_to'] . ' &nbsp;<i class="fa-solid fa-arrow-right"></i></button>
-                    </div>
-                    <div class="col-auto">' . $folderoplist . '</div>
-                    <div class="col-auto">&nbsp;' . $lang->private['or'] . '&nbsp;
-                        <button type="submit" form="pmForm" class="btn btn-primary btn-sm" name="delete" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->private['delete'] . '</button>
-                    </div>
-                    <div class="col">&nbsp;</div>
-                </div>
-            </div>
-        </div>
-        </form>
-        ' . $multipage . '
-        ' . $pmspacebar . '
-    </div>
-</div></div>
-<style>
-.status-badge { display:inline-flex !important; flex-shrink:0 !important; position:static !important; top:auto !important; left:auto !important; right:auto !important; bottom:auto !important; margin:0 !important; float:none !important; align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;min-height:40px;border-radius:10px;font-size:16px;transition:all .3s;cursor:default;border:1px solid transparent;box-shadow:0 3px 8px rgba(0,0,0,.08); }
-.status-badge:hover { transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,0,0,.12); }
-.status-badge.status-new { background:linear-gradient(135deg,rgba(231,76,60,.15),rgba(231,76,60,.08));color:#e74c3c;border-color:rgba(231,76,60,.2);animation:pulse-glow 2s infinite; }
-.status-badge.status-read { background:linear-gradient(135deg,rgba(149,165,166,.15),rgba(149,165,166,.08));color:#95a5a6;border-color:rgba(149,165,166,.2); }
-.status-badge.status-reply { background:linear-gradient(135deg,rgba(52,152,219,.15),rgba(52,152,219,.08));color:#3498db;border-color:rgba(52,152,219,.2); }
-.status-badge.status-forward { background:linear-gradient(135deg,rgba(39,174,96,.15),rgba(39,174,96,.08));color:#27ae60;border-color:rgba(39,174,96,.2); }
-@keyframes pulse-glow { 0%{box-shadow:0 0 0 0 rgba(231,76,60,.4)} 70%{box-shadow:0 0 0 8px rgba(231,76,60,0)} 100%{box-shadow:0 0 0 0 rgba(231,76,60,0)} }
-.message-card { border-radius:12px;transition:all .3s;background:linear-gradient(135deg,#fff,#f8f9fa); }
-.message-card:hover { transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.1)!important; }
-.user-avatar { width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #e9ecef;transition:border-color .3s; }
-.user-avatar:hover { border-color:#007bff; }
-.nav-avatar { width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid #ccc; }
-.message-title { color:#2c3e50;transition:color .2s; }
-.message-title:hover { color:#3498db; }
-</style>
-<script>
+
+    echo ucp_open('fa-envelope', 'primary', $foldernames[$fid] ?: $lang->private['nav_pms'], $foldername)
+        . $limitwarning
+        . '<form action="private.php" method="post" name="pmForm" id="pmForm">'
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '<input type="hidden" name="action" value="do_stuff" />'
+
+        . '<div class="st-card mb-3 overflow-hidden">'
+        .   '<div class="st-card__head">'
+        .     '<span class="st-ico st-soft-primary"><i class="fa-solid fa-inbox"></i></span>'
+        .     '<a href="private.php?fid=' . $fid . '&amp;sortby=subject&amp;order=asc" class="text-decoration-none">' . $lang->private['message_title'] . '</a>'
+        .     '<span class="st-sep"></span>'
+        .     '<a href="private.php?fid=' . $fid . '&amp;sortby=username&amp;order=asc" class="text-decoration-none">' . $sender . '</a>'
+        .     '<a href="private.php?fid=' . $fid . '&amp;sortby=dateline&amp;order=desc" class="st-meta ms-auto text-decoration-none">' . $lang->private['date_sent'] . '</a>'
+        .     '<label class="d-flex align-items-center gap-2 mb-0 ms-3 st-meta" for="selectAllSwitch">' . $lang->private['check_all']
+        .       '<input class="form-check-input select-all-switch" type="checkbox" id="selectAllSwitch"></label>'
+        .   '</div>'
+        .   '<div>' . $messagelist . '</div>'
+        .   '<div class="st-optbar justify-content-between">'
+        .     '<div class="d-flex align-items-center gap-2">'
+        .       '<button type="submit" form="pmForm" class="btn btn-primary st-pill" name="moveto" value="' . $lang->private['move_to'] . '">' . $lang->private['move_to'] . ' &nbsp;<i class="fa-solid fa-arrow-right"></i></button>'
+        .       $folderoplist
+        .     '</div>'
+        .     '<button type="submit" form="pmForm" class="btn btn-outline-danger st-pill" name="delete" value="' . $lang->private['delete'] . '"><i class="fa-solid fa-xmark me-1"></i>' . $lang->private['delete'] . '</button>'
+        .   '</div>'
+        . '</div>'
+        . '</form>'
+        . ($multipage ? '<div class="st-pager d-flex justify-content-center mt-3">' . $multipage . '</div>' : '')
+        . $pmspacebar
+        . ucp_close();
+
+    echo '<script>
 document.addEventListener("DOMContentLoaded", function() {
     const toggles = document.querySelectorAll(".message-select-toggle");
     const selectAll = document.getElementById("selectAllSwitch");
     function updateSelectAll() {
         if (!selectAll) return;
         const checked = document.querySelectorAll(".message-select-toggle:checked").length;
-        selectAll.checked = checked === toggles.length;
+        selectAll.checked = toggles.length > 0 && checked === toggles.length;
         selectAll.indeterminate = checked > 0 && checked < toggles.length;
     }
     toggles.forEach(t => {
@@ -1250,9 +1179,12 @@ document.addEventListener("DOMContentLoaded", function() {
     if (selectAll) {
         selectAll.addEventListener("change", function() {
             toggles.forEach(t => { t.checked = this.checked; t.closest(".message-card")?.classList.toggle("selected", this.checked); });
+            updateSelectAll();
         });
     }
 });
 </script>';
+
     stdfoot();
+    exit;
 }

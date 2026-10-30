@@ -1,414 +1,339 @@
 <?php
 
-
 declare(strict_types=1);
 
-define("IN_MYBB", 1);
+define('IN_MYBB', 1);
 define('THIS_SCRIPT', 'online.php');
-define("SCRIPTNAME", "online.php");
-
-
-
+define('SCRIPTNAME', 'online.php');
 define('IN_FORUM', true);
+
 require_once 'global.php';
 
-
-
 require_once INC_PATH . '/functions_multipage.php';
-require_once INC_PATH . "/functions_post.php";
-require_once INC_PATH . "/functions_online.php";
+require_once INC_PATH . '/functions_post.php';
+require_once INC_PATH . '/functions_online.php';
 
-// Load global language phrases
-$lang->load("online");
+define('WOL_VERSION', '1.0');
 
-// Make navigation
-add_breadcrumb($lang->online['nav_online'], "online.php");
+$lang->load('online');
 
-if($mybb->get_input('action') == "today")
+add_breadcrumb($lang->online['nav_online'], 'online.php');
+
+$wol_css = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/online.css?v=' . WOL_VERSION . '">';
+
+function wol_kpi(string $icon, string $soft, string $value, string $label, string $sub = ''): string
 {
-    add_breadcrumb($lang->online['nav_onlinetoday']);
+    return '
+        <div class="col-6 col-lg-3">
+            <div class="wol-card wol-kpi">
+                <div class="wol-kpi__icon ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></div>
+                <div>
+                    <div class="wol-kpi__value">' . $value . '</div>
+                    <div class="wol-kpi__label">' . $label . ($sub !== '' ? ' <span class="wol-kpi__sub">' . $sub . '</span>' : '') . '</div>
+                </div>
+            </div>
+        </div>';
+}
 
-    $plugins->run_hooks("online_today_start");
+function wol_paging(int $total, int $perpage): array
+{
+    global $mybb;
 
-    $threshold = TIMENOW - (60 * 60 * 24);
-    $query = $db->sql_query_prepared(
-        "SELECT COUNT(id) AS users FROM users WHERE lastactive > ?",
-        [$threshold]
-    );
-    $todaycount = (int)$db->fetch_field($query, "users");
-
-    $query = $db->sql_query_prepared(
-        "SELECT COUNT(id) AS users FROM users WHERE lastactive > ? AND invisible = 1",
-        [$threshold]
-    );
-    $invis_count = (int)$db->fetch_field($query, "users");
-
-    
-    
-    if(!$ts_perpage || (int)$ts_perpage < 1)
-    {
-        $ts_perpage = 20;
-    }
-
-    // Add pagination
-    $perpage = (int)$ts_perpage;
-
-    if($mybb->get_input('page', MyBB::INPUT_INT) > 0)
-    {
-        $page = $mybb->get_input('page', MyBB::INPUT_INT);
-        $start = ($page - 1) * $perpage;
-        $pages = $todaycount > 0 ? (int)ceil($todaycount / $perpage) : 1;
-        if($page > $pages)
-        {
-            $start = 0;
-            $page = 1;
-        }
-    }
-    else
-    {
-        $start = 0;
+    $pages = max(1, (int)ceil($total / $perpage));
+    $page  = $mybb->get_input('page', MyBB::INPUT_INT);
+    if ($page < 1 || $page > $pages) {
         $page = 1;
     }
 
+    return [$page, ($page - 1) * $perpage, $pages];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Who was online today
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->get_input('action') === 'today') {
+    add_breadcrumb($lang->online['nav_onlinetoday']);
+    $plugins->run_hooks('online_today_start');
+
+    $threshold = TIMENOW - 86400;
+
     $query = $db->sql_query_prepared(
-        "SELECT * FROM users WHERE lastactive > ? ORDER BY lastactive DESC LIMIT ?, ?",
+        "SELECT COUNT(*) AS total, COALESCE(SUM(invisible = 1), 0) AS hidden
+         FROM users WHERE lastactive > ?",
+        [$threshold]
+    );
+    $row         = $query ? $db->fetch_array($query) : [];
+    $todaycount  = (int)($row['total'] ?? 0);
+    $invis_count = (int)($row['hidden'] ?? 0);
+
+    $perpage = (int)($ts_perpage ?? 0) > 0 ? (int)$ts_perpage : 20;
+    [$page, $start, $pages] = wol_paging($todaycount, $perpage);
+
+    $query = $db->sql_query_prepared(
+        "SELECT id, username, usergroup, invisible, lastactive, avatar, avatardimensions
+         FROM users WHERE lastactive > ?
+         ORDER BY lastactive DESC LIMIT ?, ?",
         [$threshold, $start, $perpage]
     );
 
-    $todayrows = '';
-    while($online = $db->fetch_array($query))
-    {
-        $invisiblemark = '';
-        if(isset($online['invisible']) && $online['invisible'] == 1)
-        {
-            $invisiblemark = "*";
+    $can_see_invisible = (int)($usergroups['canviewwolinvis'] ?? 0) === 1
+        || (int)($usergroups['canstaffpanel'] ?? 0) === 1;
+    $my_uid = (int)($CURUSER['id'] ?? 0);
+
+    $rows = '';
+    while ($query && ($u = $db->fetch_array($query))) {
+        $uid       = (int)$u['id'];
+        $invisible = (int)($u['invisible'] ?? 0) === 1;
+
+        if ($invisible && !$can_see_invisible && $uid !== $my_uid) {
+            continue;
         }
 
-        if(!isset($online['invisible']) || $online['invisible'] != 1 || 
-           (isset($usergroups['canviewwolinvis']) && $usergroups['canviewwolinvis'] == 1) || 
-           (isset($online['id']) && isset($CURUSER['id']) && $online['id'] == $CURUSER['id']))
-        {
-            $username = format_name(htmlspecialchars_uni($online['username'] ?? ''), (int)($online['usergroup'] ?? 1));
-            $online['profilelink'] = build_profile_link($username, $online['id'] ?? 0);
-            $onlinetime = my_datee('normal', $online['lastactive'] ?? TIMENOW);
+        $name   = format_name(htmlspecialchars_uni((string)$u['username']), (int)($u['usergroup'] ?? 1));
+        $avatar = format_avatar((string)($u['avatar'] ?? ''), (string)($u['avatardimensions'] ?? ''));
+        $last   = (int)($u['lastactive'] ?? 0);
 
-            $todayrows .= '
-			<div class="col-lg-6 mb-3">
-    <div class="card card-user-online h-100">
-        <div class="card-body d-flex align-items-center p-3">
-            <div class="user-avatar me-3">
-                <img src="'.$online['avatar'].'" alt="'.$online['username'].'" class="rounded-circle" width="60" height="60">
-            </div>
-            <div class="user-info flex-grow-1">
-                <h6 class="mb-1 fw-semibold">'.$online['profilelink'].''.$invisiblemark.'</h6>
-                <p class="text-muted small mb-0">
-                    <i class="bi bi-clock me-1"></i>'.$onlinetime.'
-                </p>
-            </div>
-        </div>
-    </div>
-</div>';
-			
-			
-			
-			
-			
-        }
+        $rows .= '
+            <tr>
+                <td data-sort="' . htmlspecialchars(mb_strtolower((string)$u['username']), ENT_QUOTES) . '">
+                    <div class="d-flex align-items-center gap-2 wol-user">
+                        <img class="wol-avatar" src="' . $avatar['image'] . '" alt="" loading="lazy">
+                        <div class="lh-sm">
+                            ' . build_profile_link($name, $uid)
+                            . ($invisible ? ' <span class="wol-badge wol-soft-muted" title="' . htmlspecialchars($lang->online['tip_invisible'], ENT_QUOTES) . '"><i class="fa-solid fa-eye-slash"></i></span>' : '')
+                            . ($uid === $my_uid ? ' <span class="wol-badge wol-soft-primary">' . $lang->online['txt_you'] . '</span>' : '') . '
+                            <div class="wol-meta"><i class="fa-solid fa-id-badge me-1"></i>' . $uid . '</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="wol-date text-end" data-sort="' . $last . '">
+                    <div><i class="fa-regular fa-clock"></i>' . my_datee('relative', $last) . '</div>
+                </td>
+            </tr>';
     }
 
-    $multipage = multipage($todaycount, $perpage, $page, "online.php?action=today");
+    $multipage = multipage($todaycount, $perpage, $page, 'online.php?action=today');
 
-    $todaycount_display = ts_nf($todaycount);
-    $invis_count_display = ts_nf($invis_count);
-
-    if($todaycount == 1)
-    {
-        $onlinetoday = $lang->online['member_online_today'];
-    }
-    else
-    {
-        $onlinetoday = sprintf($lang->online['members_were_online_today'], $todaycount_display);
-    }
-
-    if($invis_count > 0)
-    {
-        $string = $lang->online['members_online_hidden'];
-
-        if($invis_count == 1)
-        {
-            $string = $lang->online['member_online_hidden'];
-        }
-
-        $onlinetoday .= sprintf($string, $invis_count_display);
-    }
-
-    $plugins->run_hooks("online_today_end");
+    $plugins->run_hooks('online_today_end');
 
     stdhead($lang->online['online_today']);
-    
     build_breadcrumb();
-    
-    $today = '
-	
-	<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->online['online_today'].'</title>
+    echo $wol_css;
+    ?>
+<div class="container mt-3 py-4 wol-page">
 
-</head>
-<body>
-	<div class="container-md">
-		<div class="card border-0 mb-4">
-	
-		<div class="row g-2">
-		'.$todayrows.'
-		</div>
-			
-		</div>
-		
-		'.$multipage.'
-	</div>
-</body>
-</html>';
-	
-	
-	
-	
-	
-	
-    
-    echo $today;
-    
+    <div class="wol-card wol-head mb-3">
+        <div class="wol-head__icon"><i class="fa-solid fa-calendar-day"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="wol-title"><?php echo $lang->online['online_today']; ?></h1>
+            <p><?php echo $lang->online['today_subtitle']; ?></p>
+        </div>
+        <a href="online.php" class="btn btn-outline-secondary wol-pill d-none d-md-inline-flex align-items-center">
+            <i class="fa-solid fa-users me-2"></i><?php echo $lang->online['users_online']; ?>
+        </a>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <?php
+        echo wol_kpi('fa-user-clock', 'wol-soft-primary', ts_nf($todaycount), $lang->online['kpi_today']);
+        echo wol_kpi('fa-eye-slash', 'wol-soft-muted', ts_nf($invis_count), $lang->online['kpi_invisible']);
+        ?>
+    </div>
+
+    <div class="wol-card overflow-hidden">
+    <?php if ($rows !== ''): ?>
+        <div class="wol-toolbar">
+            <span><i class="fa-solid fa-list me-1"></i><?php echo ags_fmt($lang->online['txt_showing'], ts_nf($start + 1), ts_nf(min($start + $perpage, $todaycount)), ts_nf($todaycount)); ?></span>
+            <?php if ($todaycount > $perpage) { echo '<div>' . $multipage . '</div>'; } ?>
+        </div>
+        <div class="table-responsive">
+            <table class="table wol-table">
+                <thead>
+                    <tr>
+                        <th><i class="fa-solid fa-user"></i><?php echo $lang->online['on_username']; ?></th>
+                        <th class="text-end"><i class="fa-solid fa-clock"></i><?php echo $lang->online['col_last_active']; ?></th>
+                    </tr>
+                </thead>
+                <tbody><?php echo $rows; ?></tbody>
+            </table>
+        </div>
+        <?php if ($todaycount > $perpage): ?>
+        <div class="wol-toolbar wol-toolbar--bottom">
+            <span><?php echo ags_fmt($lang->online['txt_page_of'], $page, $pages); ?></span>
+            <div><?php echo $multipage; ?></div>
+        </div>
+        <?php endif; ?>
+    <?php else: ?>
+        <div class="wol-empty">
+            <div class="wol-empty__icon wol-soft-muted"><i class="fa-solid fa-moon"></i></div>
+            <h4 class="wol-title"><?php echo $lang->online['empty_today_title']; ?></h4>
+            <p class="text-body-secondary mb-0"><?php echo $lang->online['empty_today_text']; ?></p>
+        </div>
+    <?php endif; ?>
+    </div>
+</div>
+    <?php
     stdfoot();
+    exit;
 }
-else
-{
-    $plugins->run_hooks("online_start");
 
-    // Custom sorting options
-    $sql = "IF(s.uid > 0, 1, 0) DESC, s.time DESC";
-    $refresh_string = '';
+// ══════════════════════════════════════════════════════════════════════════
+// Who's online now
+// ══════════════════════════════════════════════════════════════════════════
+$plugins->run_hooks('online_start');
 
-    if($mybb->get_input('sortby') == "username")
-    {
-        $sql = "u.username ASC, s.time DESC";
-        $refresh_string = "?sortby=username";
-    }
-    elseif($mybb->get_input('sortby') == "location")
-    {
-        $sql = "s.location, s.time DESC";
-        $refresh_string = "?sortby=location";
-    }
+$sortby = $mybb->get_input('sortby');
+$order  = match ($sortby) {
+    'username' => 'u.username ASC, s.time DESC',
+    'location' => 's.location ASC, s.time DESC',
+    default    => 'IF(s.uid > 0, 1, 0) DESC, s.time DESC',
+};
+if (!in_array($sortby, ['username', 'location', 'time'], true)) {
+    $sortby = 'time';
+}
+$refresh_string = $sortby !== 'time' ? '?sortby=' . $sortby : '';
 
-    $timesearch = TIMENOW - ($wolcutoffmins ?? 15) * 60;
+$cutoff_mins = (int)($wolcutoffmins ?? 15) > 0 ? (int)$wolcutoffmins : 15;
+$timesearch  = TIMENOW - $cutoff_mins * 60;
 
-    // Get online count
-    $query = $db->sql_query_prepared(
-        "SELECT COUNT(DISTINCT CONCAT(COALESCE(uid, 0), '-', ip)) AS online 
-         FROM sessions 
-         WHERE time > ?",
-        [$timesearch]
-    );
-
-    $online_count = (int)$db->fetch_field($query, "online");
-
-    if(!isset($f_threadsperpage) || (int)($f_threadsperpage ?? 20) < 1)
-    {
-        $f_threadsperpage = 20;
-    }
-
-    // How many pages are there?
-    $perpage = (int)$f_threadsperpage;
-
-    if($mybb->get_input('page', MyBB::INPUT_INT) > 0)
-    {
-        $page = $mybb->get_input('page', MyBB::INPUT_INT);
-        $start = ($page - 1) * $perpage;
-        $pages = $online_count > 0 ? (int)ceil($online_count / $perpage) : 1;
-        if($page > $pages)
-        {
-            $start = 0;
-            $page = 1;
-        }
-    }
-    else
-    {
-        $start = 0;
-        $page = 1;
-    }
-
-    // Assemble page URL
-    $multipage = multipage($online_count, $perpage, $page, "online.php" . $refresh_string);
-
-    // Query for active sessions with PHP 8.4 compatibility
-    $dbversion = $db->get_version();
-    
-    // Simplified query for better compatibility
-    $query = $db->sql_query_prepared(
-        "SELECT s.sid, s.ip, s.uid, s.time, s.location, u.username, s.nopermission, 
-                u.invisible, u.usergroup
-         FROM sessions s
-         LEFT JOIN users u ON (s.uid = u.id)
-         WHERE s.time > ?
-         ORDER BY $sql
-         LIMIT ?, ?",
-        [$timesearch, $start, $perpage]
-    );
-
-    // Fetch spiders
-    $spiders = $cache->read("spiders") ?? [];
-
-    $users = [];
-    $guests = [];
-
-    while($user = $db->fetch_array($query))
-    {
-        $plugins->run_hooks("online_user");
-
-        // Fetch the WOL activity
-        //$user['activity'] = fetch_wol_activity($user['location'] ?? '', $user['nopermission'] ?? 0);
-		
-		
-		$user['activity'] = fetch_wol_activity(
-    $user['location'] ?? '',
-    (bool)($user['nopermission'] ?? 0)
+// Только залогиненные: гостей и ботов в sessions больше нет.
+$query = $db->sql_query_prepared(
+    "SELECT s.sid, s.ip, s.uid, s.time, s.location, s.nopermission,
+            u.username, u.invisible, u.usergroup, u.avatar, u.avatardimensions
+     FROM sessions s
+     LEFT JOIN users u ON (s.uid = u.id)
+     WHERE s.uid != 0 AND s.time > ?
+     ORDER BY {$order}",
+    [$timesearch]
 );
-		
-		
-		
-		
-		
 
-        $botkey = strtolower(str_replace("bot=", '', $user['sid'] ?? ''));
+$list        = [];   // key => row, in SQL order
+$n_members   = 0;
+$n_hidden    = 0;
 
-        // Have a registered user
-        if(($user['uid'] ?? 0) > 0)
-        {
-            if(!isset($users[$user['uid']]) || ($users[$user['uid']]['time'] ?? 0) < ($user['time'] ?? 0))
-            {
-                $users[$user['uid']] = $user;
-            }
+while ($query && ($user = $db->fetch_array($query))) {
+    $plugins->run_hooks('online_user');
+
+    $uid = (int)($user['uid'] ?? 0);
+    if ($uid <= 0) {
+        continue;
+    }
+
+    $key = 'u' . $uid;
+    if (!isset($list[$key])) {
+        $n_members++;
+        if ((int)($user['invisible'] ?? 0) === 1) {
+            $n_hidden++;
         }
-        // Otherwise this session is a bot
-        elseif(isset($user['sid']) && str_contains($user['sid'], "bot=") && isset($spiders[$botkey]))
-        {
-            $user['bot'] = $spiders[$botkey]['name'] ?? '';
-            $user['usergroup'] = $spiders[$botkey]['usergroup'] ?? '';
-            $guests[] = $user;
-        }
-        // Or a guest
-        else
-        {
-            $guests[] = $user;
-        }
+    } elseif ((int)$list[$key]['time'] >= (int)$user['time']) {
+        continue;
     }
 
-    // Now we build the actual online rows
-    $online_rows = '';
-    
-    // Process registered users
-    foreach($users as $user)
-    {
-        $online_rows .= build_wol_row($user);
-    }
-    
-    // Process guests and bots
-    foreach($guests as $user)
-    {
-        $online_rows .= build_wol_row($user);
-    }
-
-    // Fetch the most online information
-    $most_online = $cache->read("mostonline") ?? ['numusers' => 0, 'time' => TIMENOW];
-    $record_count = (int)($most_online['numusers'] ?? 0);
-    $record_date = my_datee('relative', $most_online['time'] ?? TIMENOW);
-
-    // Set automatic refreshing if enabled
-    $refreshwol = "1";
-    
-    $refresh = '';
-    if($refreshwol > 0)
-    {
-        $refresh_time = (int)$refreshwol * 60;
-        
-        $refresh = '
-		
-		<meta http-equiv="refresh" content="'.$refresh_time.';URL=online.php'.$refresh_string.'" />
-		
-		';
-		
-		
-    }
-
-    $plugins->run_hooks("online_end");
-
-    stdhead($lang->online['users_online']);
-    
-    build_breadcrumb();
-    
-     $online = '
-	 
-	 <html>
-<head>
-<title>'.$SITENAME.' - '.$lang->online['users_online'].'</title>
-
-'.$refresh.'
-</head>
-<body>
-
-	
-	<div class="container-md">
-		
-<div class="card bg-nav border-0 mb-2">
-<div class="card-body text-center">
-	
-	<div class="row">
-		<div class="col-4 text-lg-start">
-            <a href="online.php?sortby=username"><i class="fa-solid fa-user"></i> &nbsp;'.$lang->online['on_username'].'</a>
-		</div>
-		<div class="col-4 text-lg-center">
-			<a href="online.php?sortby=time"><i class="fa-solid fa-clock"></i> &nbsp;'.$lang->online['time'].'</a>
-		</div>
-		<div class="col-4 text-lg-end">
-			</a><a href="online.php?sortby=location"><i class="fa-solid fa-location-dot"></i> &nbsp;'.$lang->online['location'].'</a>	
-		</div></div>
-		</div></div>
-	
-	<div class="card border-0">
-		
-	
-	
-	
-		<div class="row g-2">
-		'.$online_rows.'
-	
-	
-			
-	
-		</div>
-		<div class="card-footer border-top-0 rounded text-center">
-			<div class="row g-3">
-				<div class="col-lg-6 text-lg-end">
-		<a href="online.php?action=today" class="links"><i class="fa-solid fa-globe"></i> &nbsp;'.$lang->online['online_today'].'</a>
-				</div>
-				<div class="col-lg-6 text-lg-start">
-					<a href="online.php" class="links"><i class="fa-solid fa-rotate-right"></i> &nbsp;'.$lang->online['refresh_page'].'</a>
-				</div>
-			</div>
-		</div>
-	</div>
-		
-	</div>
-	'.$multipage.'
-	
-	
-</body>
-</html>';
-	 
-	
-	 
-	 
-    
-    echo $online;
-    
-    stdfoot();
+    $user['activity'] = fetch_wol_activity((string)($user['location'] ?? ''), (bool)($user['nopermission'] ?? 0));
+    $list[$key] = $user;
 }
+
+$total   = count($list);
+$perpage = (int)($f_threadsperpage ?? 0) > 0 ? (int)$f_threadsperpage : 20;
+[$page, $start, $pages] = wol_paging($total, $perpage);
+
+$online_rows = '';
+foreach (array_slice($list, $start, $perpage) as $user) {
+    $online_rows .= build_wol_row($user);
+}
+
+$multipage = multipage($total, $perpage, $page, 'online.php' . $refresh_string);
+
+$most_online  = $cache->read('mostonline') ?? [];
+$record_count = (int)($most_online['numusers'] ?? 0);
+$record_date  = !empty($most_online['time']) ? my_datee('relative', (int)$most_online['time']) : '';
+
+$is_staff    = (int)($usergroups['canstaffpanel'] ?? 0) === 1;
+$refresh_min = 1;
+
+$plugins->run_hooks('online_end');
+
+stdhead($lang->online['users_online']);
+build_breadcrumb();
+echo $wol_css;
+
+$sort_tab = static function (string $key, string $icon, string $label) use ($sortby): string {
+    $href   = 'online.php' . ($key !== 'time' ? '?sortby=' . $key : '');
+    $active = $sortby === $key ? ' active' : '';
+    return '<a class="wol-tab' . $active . '" href="' . $href . '"><i class="fa-solid ' . $icon . '"></i>' . $label . '</a>';
+};
+?>
+<div class="container mt-3 py-4 wol-page">
+
+    <div class="wol-card wol-head mb-3">
+        <div class="wol-head__icon"><i class="fa-solid fa-users"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="wol-title"><?php echo $lang->online['users_online']; ?></h1>
+            <p><?php echo ags_fmt($lang->online['sec_subtitle'], $cutoff_mins); ?></p>
+        </div>
+        <span class="wol-badge wol-soft-success d-none d-md-inline-flex">
+            <span class="wol-live"></span><?php echo ags_fmt($lang->online['badge_autorefresh'], $refresh_min); ?>
+        </span>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <?php
+        echo wol_kpi('fa-user', 'wol-soft-primary', ts_nf($n_members), $lang->online['kpi_members'],
+            $n_hidden > 0 ? '(' . ags_fmt($lang->online['kpi_hidden'], ts_nf($n_hidden)) . ')' : '');
+        echo wol_kpi('fa-trophy', 'wol-soft-success', ts_nf($record_count), $lang->online['kpi_record'],
+            $record_date !== '' ? '(' . $record_date . ')' : '');
+        ?>
+    </div>
+
+    <div class="wol-card overflow-hidden">
+        <div class="wol-toolbar">
+            <div class="wol-tabs">
+                <span class="wol-meta me-1"><?php echo $lang->online['lbl_sort']; ?></span>
+                <?php
+                echo $sort_tab('time', 'fa-clock', $lang->online['time']);
+                echo $sort_tab('username', 'fa-user', $lang->online['on_username']);
+                echo $sort_tab('location', 'fa-location-dot', $lang->online['location']);
+                ?>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="online.php?action=today" class="btn btn-sm btn-outline-secondary wol-pill"><i class="fa-solid fa-calendar-day me-1"></i><?php echo $lang->online['online_today']; ?></a>
+                <a href="online.php<?php echo $refresh_string; ?>" class="btn btn-sm btn-outline-primary wol-pill"><i class="fa-solid fa-rotate-right me-1"></i><?php echo $lang->online['refresh_page']; ?></a>
+            </div>
+        </div>
+
+    <?php if ($online_rows !== ''): ?>
+        <div class="table-responsive">
+            <table class="table wol-table">
+                <thead>
+                    <tr>
+                        <th><i class="fa-solid fa-user"></i><?php echo $lang->online['on_username']; ?></th>
+                        <th><i class="fa-solid fa-location-dot"></i><?php echo $lang->online['location']; ?></th>
+                        <?php if ($is_staff): ?><th><i class="fa-solid fa-network-wired"></i><?php echo $lang->online['col_ip']; ?></th><?php endif; ?>
+                        <th class="text-end"><i class="fa-solid fa-clock"></i><?php echo $lang->online['time']; ?></th>
+                    </tr>
+                </thead>
+                <tbody><?php echo $online_rows; ?></tbody>
+            </table>
+        </div>
+
+        <?php if ($total > $perpage): ?>
+        <div class="wol-toolbar wol-toolbar--bottom">
+            <span><?php echo ags_fmt($lang->online['txt_page_of'], $page, $pages); ?></span>
+            <div><?php echo $multipage; ?></div>
+        </div>
+        <?php endif; ?>
+    <?php else: ?>
+        <div class="wol-empty">
+            <div class="wol-empty__icon wol-soft-muted"><i class="fa-solid fa-ghost"></i></div>
+            <h4 class="wol-title"><?php echo $lang->online['empty_title']; ?></h4>
+            <p class="text-body-secondary mb-0"><?php echo $lang->online['empty_text']; ?></p>
+        </div>
+    <?php endif; ?>
+    </div>
+</div>
+
+<script>
+setTimeout(function () { location.reload(); }, <?php echo $refresh_min * 60000; ?>);
+</script>
+<?php
+stdfoot();

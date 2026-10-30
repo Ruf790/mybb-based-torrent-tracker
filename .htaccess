@@ -1,6 +1,18 @@
 Options -MultiViews +FollowSymlinks -Indexes
 RewriteEngine On
 
+
+# Block internet scanners (LeakIX, Censys, Palo Alto Xpanse, zgrab, RedTail)
+RewriteCond %{HTTP_USER_AGENT} (l9explore|l9tcpid|CensysInspect|Palo\ Alto\ Networks|zgrab|libredtail) [NC]
+RewriteRule .* - [F,L]
+
+# Answer them with plain text instead of error.php (no PHP, no session)
+<If "%{HTTP_USER_AGENT} =~ /(l9explore|l9tcpid|CensysInspect|Palo Alto Networks|zgrab|libredtail)/i">
+	ErrorDocument 403 "Forbidden"
+</If>
+
+
+
 # Apache 2.4 syntax (order/deny only worked through mod_access_compat)
 <Files ".ht*">
 	Require all denied

@@ -15,14 +15,12 @@ $lang->load('usercp');
 $plugins->run_hooks('index_start');
 
 // ─── Хелперы вёрстки (всё под .fx-page) ──────────────────────────────────────
-// Lang-строка index с fallback для новых ключей.
 function fx_l(string $key, string $fallback): string
 {
     global $lang;
     return (string)($lang->index[$key] ?? $fallback);
 }
 
-// {1}/{2}… и %1$s - оба формата (lang->load() превращает {N} в %N$s).
 function fx_fmt(string $key, string $fallback, string|int|float ...$args): string
 {
     $s = fx_l($key, $fallback);
@@ -33,7 +31,6 @@ function fx_fmt(string $key, string $fallback, string|int|float ...$args): strin
     return $s;
 }
 
-// KPI-плитка (.st-kpi).
 function fx_kpi(string $icon, string $soft, string $value, string $label, string $href = ''): string
 {
     $tag = $href !== '' ? 'a href="' . $href . '"' : 'div';
@@ -44,7 +41,6 @@ function fx_kpi(string $icon, string $soft, string $value, string $label, string
          . '</' . $end . '>';
 }
 
-// Цифра в шапке: крупное число + подпись.
 function fx_hstat(string $icon, string $value, string $label, string $mod = ''): string
 {
     return '<div class="fx-hstat' . ($mod !== '' ? ' fx-hstat--' . $mod : '') . '">'
@@ -53,7 +49,6 @@ function fx_hstat(string $icon, string $value, string $label, string $mod = ''):
          . '</div>';
 }
 
-// Кнопка-пилюля.
 function fx_pill(string $href, string $icon, string $text, string $variant = 'btn-outline-secondary'): string
 {
     return '<a href="' . $href . '" class="btn btn-sm ' . $variant . ' st-pill fx-pill"><i class="fa-solid ' . $icon . '"></i><span>' . $text . '</span></a>';
@@ -67,14 +62,15 @@ if (($CURUSER['id'] ?? 0) != 0) {
 
 /* ── Who's Online ────────────────────────────────────────────────────── */
 $timesearch  = TIMENOW - (int)$wolcutoffmins;
-$membercount = $guestcount = $anoncount = $botcount = 0;
-$forum_viewers = $doneusers = $onlinemembers = $onlinebots = [];
+$membercount = $guestcount = $anoncount = 0;
+$forum_viewers = $doneusers = $onlinemembers = [];
 
-// Forum viewer counts (guests per forum)
+// Forum viewer counts (guests per forum) — гостей в sessions больше нет,
+// но запрос оставлен на случай, если появятся.
 $q = $db->sql_query_prepared("
     SELECT location1, COUNT(DISTINCT ip) AS guestcount
     FROM sessions
-    WHERE uid = 0 AND location1 != 0 AND SUBSTR(sid,4,1) != '=' AND time > ?
+    WHERE uid = 0 AND location1 != 0 AND time > ?
     GROUP BY location1
 ", [$timesearch]);
 while ($q && ($loc = $db->fetch_array($q))) {
@@ -83,27 +79,22 @@ while ($q && ($loc = $db->fetch_array($q))) {
 
 // Total guest count
 $q = $db->sql_query_prepared(
-    "SELECT COUNT(DISTINCT ip) AS guestcount FROM sessions WHERE uid = 0 AND SUBSTR(sid,4,1) != '=' AND time > ?",
+    "SELECT COUNT(DISTINCT ip) AS guestcount FROM sessions WHERE uid = 0 AND time > ?",
     [$timesearch]
 );
 $guestcount = $q ? (int)$db->fetch_field($q, 'guestcount') : 0;
 
-// Members & bots
+// Members (гостей и ботов в sessions нет)
 $q = $db->sql_query_prepared("
     SELECT s.sid, s.ip, s.uid, s.time, s.location, s.location1,
            u.username, u.invisible, u.usergroup
     FROM sessions s
     LEFT JOIN users u ON s.uid = u.id
-    WHERE (s.uid != 0 OR SUBSTR(s.sid,4,1) = '=') AND s.time > ?
+    WHERE s.uid != 0 AND s.time > ?
     ORDER BY u.username ASC, s.time DESC
 ", [$timesearch]);
 
-$spiders           = $cache->read('spiders');
-$woldisplayspiders = '1';
-
 while ($q && ($user = $db->fetch_array($q))) {
-    $botkey = my_strtolower(str_replace('bot=', '', $user['sid']));
-
     if ($user['uid'] > 0) {
         if (empty($doneusers[$user['uid']]) || $doneusers[$user['uid']] < $user['time']) {
             if ($user['invisible'] == 1) ++$anoncount;
@@ -121,10 +112,6 @@ while ($q && ($user = $db->fetch_array($q))) {
             }
             $doneusers[$user['uid']] = $user['time'];
         }
-    } elseif (str_contains($user['sid'], 'bot=') && !empty($spiders[$botkey]) && $woldisplayspiders == 1) {
-        $onlinebots[$spiders[$botkey]['name']] = '<span class="fx-chip fx-chip--bot"><i class="fa-solid fa-robot"></i>'
-            . format_name(htmlspecialchars_uni($spiders[$botkey]['name']), (int)$spiders[$botkey]['usergroup']) . '</span>';
-        ++$botcount;
     }
 
     if ($user['location1']) {
@@ -132,9 +119,8 @@ while ($q && ($user = $db->fetch_array($q))) {
     }
 }
 
-ksort($onlinebots);
-$onlinelist  = array_merge($onlinebots, $onlinemembers);
-$onlinecount = $membercount + $guestcount + $botcount;
+$onlinelist  = $onlinemembers;
+$onlinecount = $membercount + $guestcount;
 
 /* ── Birthdays ───────────────────────────────────────────────────────── */
 $bdays = $birthdays = '';
@@ -170,7 +156,6 @@ if (!empty($today_bdays)) {
     $bday_ugs = $cache->read('usergroups') ?: [];
     foreach ($today_bdays as $bdayuser) {
         $bday_gid = (int)($bdayuser['usergroup'] ?? 1);
-        // Группы с выключенным «показывать в списке дней рождения» пропускаем
         if (isset($bday_ugs[$bday_gid]) && (int)($bday_ugs[$bday_gid]['showinbirthdaylist'] ?? 1) !== 1) continue;
 
         $bday = explode('-', (string)$bdayuser['birthday']);
@@ -186,7 +171,6 @@ if (!empty($today_bdays)) {
 }
 
 if ($hiddencount > 0) {
-    // Раньше: $lang->birthdayhidden - свойство, которого нет (ключ лежит в $lang->index)
     $bdays .= '<span class="fx-chip fx-chip--muted">' . $hiddencount . ' ' . fx_l('birthdayhidden', 'hidden') . '</span>';
 }
 
@@ -201,17 +185,14 @@ if ($bdaycount > 0 || $hiddencount > 0) {
 $stats = $cache->read('stats');
 if (!is_array($stats)) $stats = [];
 
-// Новых участников за сегодня (с полуночи)
 $today_start = strtotime('today');
 $q = $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM users WHERE added >= ?", [$today_start]);
 $new_members_today = $q ? (int)$db->fetch_field($q, 'cnt') : 0;
 
-// Раньше lastusername выводился без экранирования
 $newestmember = !empty($stats['lastusername'])
     ? build_profile_link(htmlspecialchars_uni($stats['lastusername']), (int)$stats['lastuid'])
     : '—';
 
-// Читаем через $cache (таблица datacache) - тот же механизм, что в index.php
 $onlinestats = $cache->read('onlinestats');
 if (!is_array($onlinestats)) {
     $onlinestats = [];
@@ -246,7 +227,6 @@ while ($q && ($forum = $db->fetch_array($q))) {
 }
 
 $forumpermissions = forum_permissions();
-// Модераторы сайта — пользователи группы UC_MODERATOR. Один запрос на страницу.
 $site_moderators = [];
 $q = $db->sql_query_prepared(
     "SELECT id, username, usergroup FROM users WHERE usergroup = ? ORDER BY username",
@@ -262,7 +242,7 @@ $moderators_list = implode($lang->global['comma'] . ' ', $site_moderators);
 $excols           = 'index';
 $permissioncache  = null;
 $bgcolor          = 'trow1';
-$showdepth        = 3;   // subforumsindex = "2"
+$showdepth        = 3;
 
 $forum_list = build_forumbits(0, 1, 'st');
 $forums = (!empty($forum_list) && !empty($forum_list['forum_list']))
@@ -286,8 +266,6 @@ if (!my_validate_url($contactlink, true) && !str_starts_with($contactlink, 'mail
     $contactlink = $BASEURL . '/' . $contactlink;
 }
 
-// Раньше: href="{$contactlink}" в одинарных кавычках - ссылка вела буквально
-// на «{$contactlink}», а в «прочитать всё» был неопределённый $post_code_string.
 $links = fx_pill(htmlspecialchars_uni($contactlink), 'fa-envelope', $lang->index['bottomlinks_contactus'])
        . fx_pill('showteam.php', 'fa-address-book', $lang->index['bottomlinks_forumteam'])
        . fx_pill($BASEURL . '/misc.php?action=markread&amp;my_post_key=' . $mybb->post_code, 'fa-check-double', $lang->global['bottomlinks_markread'])
@@ -326,7 +304,6 @@ $whosonline = '<section class="st-card fx-online">'
     .     fx_kpi('fa-user', 'st-soft-primary', ts_nf($membercount), fx_l('lbl_members', 'Members'))
     .     fx_kpi('fa-user-secret', 'st-soft-muted', ts_nf($guestcount), fx_l('lbl_guests', 'Guests'))
     .     fx_kpi('fa-eye-slash', 'st-soft-info', ts_nf($anoncount), fx_l('lbl_invisible', 'Invisible'))
-    .     fx_kpi('fa-robot', 'st-soft-warning', ts_nf($botcount), fx_l('lbl_bots', 'Bots'))
     .   '</div>'
     .   ($onlinelist
             ? '<div class="fx-chips">' . implode('', $onlinelist) . '</div>'
@@ -353,7 +330,6 @@ $boardstats = '<section class="st-card fx-stats">'
     . '</section>';
 
 /* ── Output ──────────────────────────────────────────────────────────── */
-// Раньше страница собиралась во вложенный <html><head><body> внутри body.
 stdhead($SITENAME . ' FORUMS');
 
 $json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
@@ -365,7 +341,6 @@ echo '<script>'
    .   'lang.click_mark_read = ' . json_encode($lang->index['click_mark_read'] ?? '', $json_flags) . ';'
    . '}'
    . '</script>';
-// forum.js раньше подключался внутри КАЖДОЙ категории (N раз на странице)
 echo '<script src="' . $BASEURL . '/scripts/forum.js"></script>';
 
 echo '<div class="container-md st-page fx-page">'

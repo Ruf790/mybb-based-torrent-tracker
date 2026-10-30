@@ -97,14 +97,9 @@ while ($_active_users = $db->fetch_array($_wgo_query)) {
     $_usernames[] = $username_html;
 }
 
-$_dt = TIMENOW - (24 * 60 * 60);
 
-// Count guest sessions in the last 24 hours
-$_qsquery = $db->sql_query_prepared(
-    'SELECT 1 FROM sessions WHERE uid = 0 AND time > ?',
-    [$_dt]
-);
-$_guests = ts_nf($db->num_rows($_qsquery));
+
+
 
 $timeLimit = TIMENOW - (24 * 60 * 60);
 
@@ -585,9 +580,8 @@ document.addEventListener("DOMContentLoaded", function () {
     <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
       <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_visible']), $_active_members2) ?></span>
       <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_hidden']), $_hidden_members2) ?></span>
-      <span class="badge bg-warning text-dark fs-6"><i class="fa-solid fa-users me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_guests']), $_guests) ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_users']), (int)$_active_members2 + (int)$_hidden_members2 + (int)$_guests) ?></span>
-    </div>
+      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_users']), (int)$_active_members2 + (int)$_hidden_members2) ?></span>
+	</div>
     <div class="user-list d-flex flex-wrap gap-3">
       <?php foreach ($_usernames2 as $user_html2): ?>
         <div class="user-card border rounded p-3 shadow-sm" style="min-width: 120px; max-width: 180px;"><?= $user_html2 ?></div>

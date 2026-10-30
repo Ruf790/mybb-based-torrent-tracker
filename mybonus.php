@@ -797,7 +797,8 @@ foreach ((array)$lang->mybonus as $k => $v) {
 }
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/mybonus.css?ver=2" type="text/css" media="screen" />
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bonuslog.css?ver=1111">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=12" type="text/css" media="screen" />
+
 
 <div class="container py-5">
 
@@ -813,23 +814,45 @@ foreach ((array)$lang->mybonus as $k => $v) {
         <a class="bl-btn" href="<?= $BASEURL ?>/bonuslog.php"><i class="fa-solid fa-clock-rotate-left"></i><?= $lang->mybonus['btn_bonus_history'] ?></a>
     </div>
 
-    <?php $recent = bonus_log_fetch((int)$CURUSER['id'], null, 5); if ($recent): ?>
+   <?php $recent = bonus_log_fetch((int)$CURUSER['id'], null, 5); if ($recent): ?>
     <!-- Recent activity (bonus log) -->
-    <div class="bl-card bl-recent">
-        <div class="bl-recent__head">
-            <h4><i class="fa-solid fa-clock-rotate-left me-2"></i><?= $lang->mybonus['sec_recent_activity'] ?></h4>
-            <a href="<?= $BASEURL ?>/bonuslog.php"><?= $lang->mybonus['lbl_view_all'] ?></a>
+    <div class="st-card mb-4 overflow-hidden">
+        <div class="st-card__head d-flex align-items-center gap-2">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-clock-rotate-left"></i></span>
+            <span class="fw-bold"><?= $lang->mybonus['sec_recent_activity'] ?></span>
+            <a href="<?= $BASEURL ?>/bonuslog.php" class="ms-auto text-decoration-none st-meta fw-semibold">
+                <?= $lang->mybonus['lbl_view_all'] ?> <i class="fa-solid fa-arrow-right ms-1"></i>
+            </a>
         </div>
-        <?php foreach ($recent as $r): $a = (float)$r['amount']; [, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other']; ?>
-        <div class="bl-recent__row">
-            <span class="bl-sub"><?= date('d.m H:i', (int)$r['added']) ?></span>
-            <i class="fa-solid <?= $icon ?> bl-sub"></i>
-            <span class="bl-reason"><?= htmlspecialchars((string)$r['reason'], ENT_QUOTES, 'UTF-8') ?></span>
-            <strong class="<?= $a >= 0 ? 'bl-plus' : 'bl-minus' ?>"><?= htmlspecialchars(bonus_log_amount($a), ENT_QUOTES, 'UTF-8') ?></strong>
+        <div class="st-card__body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <tbody>
+                        <?php foreach ($recent as $r): 
+                            $a = (float)$r['amount']; 
+                            [, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other']; 
+                        ?>
+                        <tr>
+                            <td class="text-muted text-nowrap" style="width: 100px;">
+                                <?= date('d.m H:i', (int)$r['added']) ?>
+                            </td>
+                            <td class="text-muted" style="width: 40px;">
+                                <i class="fa-solid <?= $icon ?>"></i>
+                            </td>
+                            <td class="text-body text-truncate" style="max-width: 400px;">
+                                <?= htmlspecialchars((string)$r['reason'], ENT_QUOTES, 'UTF-8') ?>
+                            </td>
+                            <td class="text-end fw-bold <?= $a >= 0 ? 'text-success' : 'text-danger' ?> text-nowrap">
+                                <?= htmlspecialchars(bonus_log_amount($a), ENT_QUOTES, 'UTF-8') ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <?php endforeach; ?>
     </div>
-    <?php endif; ?>
+<?php endif; ?>
 
     <!-- Секция расчёта -->
     <div class="row mb-5">
@@ -843,7 +866,7 @@ foreach ((array)$lang->mybonus as $k => $v) {
                 </div>
                 <div class="card-body">
 
-                    <!-- Статистика пользователя -->
+                <!-- Статистика пользователя -->
                     <div class="card border-info mb-4">
                         <div class="card-header bg-info text-white">
                             <h5 class="mb-0"><i class="fas fa-user me-2"></i><?= $lang->mybonus['sec_your_calc'] ?></h5>

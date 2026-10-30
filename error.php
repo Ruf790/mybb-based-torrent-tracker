@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+define('NO_ONLINE', 1); // error pages must not create guest sessions
+
+
 require_once __DIR__ . '/global.php';
 require_once INC_PATH . '/settings.php';
 

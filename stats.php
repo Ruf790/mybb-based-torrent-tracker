@@ -224,7 +224,7 @@ $averages = [
 stdhead($L['pane_title']);
 build_breadcrumb();
 ?>
-<link rel="stylesheet" href="<?= $e($BASEURL ?? '') ?>/include/templates/default/style/stats.css?ver=1">
+<link rel="stylesheet" href="<?= $e($BASEURL ?? '') ?>/include/templates/default/style/stats.css?ver=8">
 
 <div class="ag-stats">
 

@@ -2,359 +2,18 @@
 declare(strict_types=1);
 
 /**
- * MyBB 1.8 — Who's Online (WOL) System
- * Modernized for PHP 8.4+ | Clean, Typed, Secure
- * © 2025 xAI Enhanced
+ * Who's Online (WOL) — location parsing and rendering for online.php and the
+ * "last seen" block in member.php.
+ *
+ * sessions.location holds SCRIPT_NAME + query string (rewritten SEO URLs are
+ * already resolved: /user-1.html is stored as /member.php?action=profile&id=1).
  */
 
 if (!defined('IN_MYBB')) {
     exit('Direct access not allowed.');
 }
 
-/**
- * Activity types enum
- */
-enum WolActivity: string
-{
-    case INDEX = 'index';
-	case INDEX2  = 'index2';  
-	case MYBONUS  = 'mybonus';  
-	case TORRENT = 'torrent';   
-    case DOWNLOAD = 'download'; 
-	case UPLOAD = 'upload';
-	case BROWSE = 'browse';
-    case FORUM = 'forumdisplay';
-    case THREAD = 'showthread';
-    case POST = 'showpost';
-    case NEW_THREAD = 'newthread';
-    case NEW_REPLY = 'newreply';
-    case PROFILE = 'member_profile';
-    case EDIT_POST = 'editpost';
-    case ANNOUNCEMENT = 'announcements';
-    case ATTACHMENT = 'attachment';
-   
-    
-	case MODCP                  = 'modcp';
-    case MODCP_MODLOGS          = 'modcp_modlogs';
-    case MODCP_ANNOUNCEMENTS    = 'modcp_announcements';
-    case MODCP_FINDUSER         = 'modcp_finduser';
-    case MODCP_WARNINGLOGS      = 'modcp_warninglogs';
-    case MODCP_IPSEARCH         = 'modcp_ipsearch';
-    case MODCP_REPORT           = 'modcp_report';
-    case MODCP_NEW_ANNOUNCEMENT = 'modcp_new_announcement';
-    case MODCP_DELETE_ANNOUNCEMENT = 'modcp_delete_announcement';
-    case MODCP_EDIT_ANNOUNCEMENT   = 'modcp_edit_announcement';
-    case MODCP_MOD_QUEUE        = 'modcp_mod_queue';
-    case MODCP_EDITPROFILE      = 'modcp_editprofile';
-    case MODCP_BANNING          = 'modcp_banning';
-	
-	
-	
-	case WOL       = 'wol';
-    case WOLTODAY  = 'woltoday';
-	
-	case PRIVATE          = 'private';
-    case PRIVATE_SEND     = 'private_send';
-    case PRIVATE_READ     = 'private_read';
-    case PRIVATE_FOLDERS  = 'private_folders';
-	
-   
-    case USERCP               = 'usercp';
-    case USERCP_PROFILE       = 'usercp_profile';
-    case USERCP_OPTIONS       = 'usercp_options';
-    case USERCP_PASSWORD      = 'usercp_password';
-    case USERCP_EDITSIG       = 'usercp_editsig';
-    case USERCP_AVATAR        = 'usercp_avatar';
-    case USERCP_EDITLISTS     = 'usercp_editlists';
-    case USERCP_FAVORITES     = 'usercp_favorites';
-    case USERCP_SUBSCRIPTIONS = 'usercp_subscriptions';
-    case USERCP_MANAGEFAV     = 'usercp_managefavorites';
-    case USERCP_MANAGESUB     = 'usercp_managesubscriptions';
-    case USERCP_NOTEPAD       = 'usercp_notepad';
-   
-   
-    case UNKNOWN = 'unknown';
-    
-	
-	
-	
-}
-
-/**
- * Readonly DTO for user activity
- */
-readonly class UserActivity
-{
-    public function __construct(
-        public WolActivity $activity,
-        public int $uid = 0,
-        public int $fid = 0,
-        public int $tid = 0,
-        public int $pid = 0,
-        public int $aid = 0,
-        public int $eid = 0,
-        public int $id = 0,
-        public int $page = 1,
-        public string $location = '',
-        public bool $nopermission = false,
-    ) {}
-}
-
-
-
-
-
-
-function build_friendly_wol_location(UserActivity $activity): string
-{
-    global $lang, $db, $usernames, $SITENAME, $threads, $forums, $torrents2, $announcements, $attachments, $posts;
-
-    preload_wol_data($activity);
-	
-	
-
-    return match ($activity->activity) {
-        WolActivity::TORRENT => sprintf(
-            $lang->online['viewing_torrent2'] ?? 'Viewing Torrent: <a href="%1$s">%2$s</a>',
-            get_torrent_link($activity->id),
-            $torrents2[$activity->id] ?? 'Unknown Torrent'
-        ),
-
-        WolActivity::FORUM => sprintf(
-            $lang->online['viewing_forum2'] ?? 'Viewing Forum: <a href="%1$s">%2$s</a>',
-            get_forum_link($activity->fid),
-            $forums[$activity->fid] ?? 'Forum #' . $activity->fid
-        ),
-
-        WolActivity::THREAD => sprintf(
-            $lang->online['reading_thread2'] ?? 'Reading Thread: <a href="%1$s">%2$s</a> (Page %3$s)',
-            get_thread_link($activity->tid, $activity->page),
-            $threads[$activity->tid] ?? 'Unknown Thread',
-            $activity->page
-        ),
-
-        WolActivity::DOWNLOAD => sprintf(
-            $lang->online['downloading_torrent2'] ?? 'Downloading: <a href="%1$s">%2$s</a>',
-            get_download_link($activity->id),
-            $torrents2[$activity->id] ?? 'Torrent #' . $activity->id
-        ),
-
-        WolActivity::PROFILE => sprintf(
-            $lang->online['viewing_profile2'] ?? 'Viewing Profile of <a href="%1$s">%2$s</a>',
-            get_profile_link($activity->uid),
-            $usernames[$activity->uid] ?? 'User'
-        ),
-
-        WolActivity::ANNOUNCEMENT => sprintf(
-            $lang->online['viewing_announcements'] ?? 'Viewing Announcement: <a href="%1$s">%2$s</a>',
-            get_announcement_link($activity->aid),
-            $announcements[$activity->aid] ?? 'Announcement'
-        ),
-
-       
-
-
-WolActivity::ATTACHMENT => sprintf(
-    $lang->online['viewing_attachment2'] ?? 'Viewing Attachment in <a href="%3$s">%2$s</a> (ID: %1$s)',
-    $activity->aid,
-    
-    $threads[$posts[$attachments[$activity->aid] ?? 0] ?? 0]['subject'] ?? 'Unknown Thread',
-    get_thread_link($posts[$attachments[$activity->aid] ?? 0] ?? 0) ?? '#'
-),
-
-
-   
-
-        WolActivity::NEW_THREAD => sprintf(
-            $lang->online['posting_thread2'] ?? 'Creating Thread in <a href="%1$s">%2$s</a>',
-            get_forum_link($activity->fid),
-            $forums[$activity->fid] ?? 'Forum'
-        ),
-
-        WolActivity::NEW_REPLY => sprintf(
-            $lang->online['replying_thread2'] ?? 'Replying in <a href="%1$s">%2$s</a>',
-            get_thread_link($activity->tid),
-            $threads[$activity->tid] ?? 'Thread'
-        ),
-
-        WolActivity::INDEX => sprintf('%s <a href="index.php">Main Index</a>', $SITENAME),
-		
-		WolActivity::INDEX2 => sprintf('%s <a href="index2.php">Main Forum</a>', $SITENAME),
-		
-		WolActivity::MYBONUS => sprintf('%s <a href="mybonus.php">View Bonus Page</a>', $SITENAME),
-		
-		
-		
-		WolActivity::UPLOAD => sprintf('%s <a href="upload.php">Uploading Torrent</a>', $SITENAME),
-		
-		WolActivity::BROWSE => sprintf('%s <a href="browse.php"><a href="browse.php">Viewing Browse Page</a></a>', $SITENAME),
-		
-		
-		
-		WolActivity::USERCP               => $lang->online['user_cp'] ?? 'User Control Panel',
-WolActivity::USERCP_PROFILE       => $lang->online['updating_profile'] ?? 'Updating Profile',
-WolActivity::USERCP_OPTIONS       => $lang->online['updating_options'] ?? 'Updating Options',
-WolActivity::USERCP_PASSWORD      => $lang->online['editing_password'] ?? 'Changing Password',
-WolActivity::USERCP_EDITSIG       => $lang->online['editing_signature'] ?? 'Editing Signature',
-WolActivity::USERCP_AVATAR        => $lang->online['changing_avatar'] ?? 'Changing Avatar',
-WolActivity::USERCP_EDITLISTS     => $lang->online['managing_buddyignorelist'] ?? 'Managing Buddy/Ignore List',
-WolActivity::USERCP_FAVORITES     => $lang->online['viewing_favorites'] ?? 'Viewing Favorites',
-WolActivity::USERCP_SUBSCRIPTIONS => $lang->online['viewing_subscriptions'] ?? 'Viewing Subscriptions',
-WolActivity::USERCP_MANAGEFAV     => $lang->online['managing_favorites'] ?? 'Managing Favorites',
-WolActivity::USERCP_MANAGESUB     => $lang->online['managing_subscriptions'] ?? 'Managing Subscriptions',
-WolActivity::USERCP_NOTEPAD       => $lang->online['editing_pad'] ?? 'Editing Notepad',
-		
-	
-WolActivity::WOL       => $lang->online['viewing_wol'] ?? 'Viewing <a href="online.php">Who\'s Online</a>',
-WolActivity::WOLTODAY  => $lang->online['viewing_woltoday'] ?? 'Viewing <a href="online.php?action=today">Who Was Online Today</a>',
-
-
-
-WolActivity::PRIVATE          => $lang->online['using_pmsystem'] ?? 'Using PM System',
-WolActivity::PRIVATE_SEND     => $lang->online['sending_pm'] ?? 'Sending PM',
-WolActivity::PRIVATE_READ     => $lang->online['reading_pm'] ?? 'Reading PM',
-WolActivity::PRIVATE_FOLDERS  => $lang->online['editing_pmfolders'] ?? 'Editing PM Folders',
-
-
-
-
-WolActivity::MODCP                  => $lang->online['viewing_modcp'] ?? 'Viewing ModCP',
-WolActivity::MODCP_MODLOGS          => $lang->online['viewing_modlogs'] ?? 'Viewing Moderator Logs',
-WolActivity::MODCP_ANNOUNCEMENTS    => $lang->online['managing_announcements'] ?? 'Managing Announcements',
-WolActivity::MODCP_FINDUSER         => $lang->online['search_for_user'] ?? 'Searching for User',
-WolActivity::MODCP_WARNINGLOGS      => $lang->online['managing_warninglogs'] ?? 'Managing Warning Logs',
-WolActivity::MODCP_IPSEARCH         => $lang->online['searching_ips'] ?? 'Searching IPs',
-WolActivity::MODCP_REPORT           => $lang->online['viewing_reports'] ?? 'Viewing Reports',
-WolActivity::MODCP_NEW_ANNOUNCEMENT => $lang->online['adding_announcement'] ?? 'Adding Announcement',
-WolActivity::MODCP_DELETE_ANNOUNCEMENT => $lang->online['deleting_announcement'] ?? 'Deleting Announcement',
-WolActivity::MODCP_EDIT_ANNOUNCEMENT   => $lang->online['editing_announcement'] ?? 'Editing Announcement',
-WolActivity::MODCP_MOD_QUEUE        => $lang->online['managing_modqueue'] ?? 'Managing Moderation Queue',
-WolActivity::MODCP_EDITPROFILE      => $lang->online['editing_user_profiles'] ?? 'Editing User Profiles',
-WolActivity::MODCP_BANNING          => $lang->online['managing_bans'] ?? 'Managing Bans',
-
-
-		
-		
-		
-		
-
-         default => $activity->nopermission
-          ? ($lang->online['viewing_noperms'] ?? 'No permission')
-          : ags_fmt(
-              $lang->online['unknown_location'] ?? '<a href="{1}">Unknown Location</a>',
-              htmlspecialchars_uni($activity->location !== '' ? $activity->location : 'index.php')
-         )
-    
-	
-	};
-}
-
-
-
-function preload_wol_data(UserActivity $activity): void
-{
-    global $db, $usernames, $threads, $forums, $torrents2, $announcements, $attachments, $posts, $fid_list, $tid_list, $uid_list, $aid_list, $id_list, $ann_list;
-
-    $usernames ??= [];
-    $threads ??= [];
-    $forums ??= [];
-    $torrents2 ??= [];
-    $announcements ??= [];
-    $attachments ??= [];
-    $posts ??= [];
-
-    // Users
-    if ($activity->uid && !isset($usernames[$activity->uid])) {
-        $user = $db->fetch_array($db->sql_query_prepared('SELECT id, username FROM users WHERE id = ?', [(int)$activity->uid]));
-        if ($user) $usernames[$user['id']] = htmlspecialchars_uni($user['username']);
-    }
-
-    // Threads
-    if ($activity->tid && !isset($threads[$activity->tid])) {
-        $thread = $db->fetch_array($db->sql_query_prepared('SELECT tid, subject FROM threads WHERE tid = ?', [(int)$activity->tid]));
-        if ($thread) $threads[$thread['tid']] = htmlspecialchars_uni($thread['subject']);
-    }
-
-    // Forums
-    if ($activity->fid && !isset($forums[$activity->fid])) {
-        $forum = $db->fetch_array($db->sql_query_prepared('SELECT fid, name FROM forums WHERE fid = ?', [(int)$activity->fid]));
-        if ($forum) $forums[$forum['fid']] = htmlspecialchars_uni($forum['name']);
-    }
-
-    // Torrents
-    if ($activity->id && !isset($torrents2[$activity->id])) {
-        $torrent = $db->fetch_array($db->sql_query_prepared('SELECT id, name FROM torrents WHERE id = ?', [(int)$activity->id]));
-        if ($torrent) $torrents2[$torrent['id']] = htmlspecialchars_uni($torrent['name']);
-    }
-
-    // Announcements
-    if ($activity->aid && !isset($announcements[$activity->aid])) {
-        $ann = $db->fetch_array($db->sql_query_prepared('SELECT id, subject FROM announcements WHERE id = ?', [(int)$activity->aid]));
-        if ($ann) $announcements[$ann['id']] = htmlspecialchars_uni($ann['subject']);
-    }
-
-    
-	
-	
-	
-		// === ATTACHMENT: aid → pid → tid → thread (на лету) ===
-if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
-    $aid = (int)$activity->aid;
-
-    // 1. Получаем pid из attachments
-    if (!isset($attachments[$aid])) {
-        $att = $db->fetch_array($db->sql_query_prepared('SELECT pid FROM attachments WHERE aid = ?', [$aid]));
-        if ($att) {
-            $attachments[$aid] = (int)$att['pid'];
-        }
-    }
-
-    // 2. Получаем tid из posts
-    if (isset($attachments[$aid])) {
-        $pid = (int)$attachments[$aid];
-        if (!isset($posts[$pid])) {
-            $post = $db->fetch_array($db->sql_query_prepared('SELECT tid FROM posts WHERE pid = ?', [$pid]));
-            if ($post) {
-                $posts[$pid] = (int)$post['tid'];
-            }
-        }
-    }
-
-    // 3. Получаем subject из threads
-    if (isset($posts[$pid])) {
-        $tid = (int)$posts[$pid];
-        if (!isset($threads[$tid])) {
-            $thread = $db->fetch_array($db->sql_query_prepared('SELECT subject FROM threads WHERE tid = ?', [$tid]));
-            if ($thread) {
-                $threads[$tid] = ['subject' => $thread['subject']];
-            }
-        }
-    }
-}
-// === КОНЕЦ ATTACHMENT ===
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-}
-
-
-
-
-
-
-
-
+require_once INC_PATH . '/functions_forum.php';
 
 /**
  * Fill {1}, {2}… placeholders. $lang->load() turns {N} into %N$s,
@@ -371,6 +30,491 @@ if (!function_exists('ags_fmt')) {
         }
         return strtr($str, $map);
     }
+}
+
+/**
+ * Parsed location of one session
+ */
+final class UserActivity
+{
+    public function __construct(
+        public readonly string $key,            // what the visitor is doing, see wol_describe()
+        public readonly string $file = '',      // script name without .php
+        public readonly array $params = [],     // parsed query string
+        public readonly string $location = '',  // raw sessions.location
+        public readonly bool $nopermission = false,
+    ) {}
+
+    public function int(string $name): int
+    {
+        return (int)($this->params[$name] ?? 0);
+    }
+
+    public function str(string $name): string
+    {
+        $v = $this->params[$name] ?? '';
+        return is_string($v) ? $v : '';
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ *  Parsing
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Pages that only need a fixed phrase: file => lang key
+ */
+function wol_static_pages(): array
+{
+    return [
+        'index'          => 'viewing_index',
+        'index2'         => 'wol_forum_index',
+        'upload'         => 'wol_upload',
+        'mybonus'        => 'wol_mybonus',
+        'bonuslog'       => 'wol_bonuslog',
+        'chat'           => 'wol_chat',
+        'chat_archive'   => 'wol_chat_archive',
+        'faq'            => 'wol_faq',
+        'rules'          => 'wol_rules',
+        'formats'        => 'wol_formats',
+        'videoformats'   => 'wol_formats',
+        'links'          => 'wol_links',
+        'memberlist'     => 'viewing_memberlist',
+        'showteam'       => 'wol_team',
+        'stats'          => 'wol_stats',
+        'topten'         => 'wol_topten',
+        'requests'       => 'wol_requests',
+        'offers'         => 'wol_offers',
+        'invite'         => 'wol_invite',
+        'notifications'  => 'wol_notifications',
+        'bookmark'       => 'wol_bookmarks',
+        'contact'        => 'viewing_contact_us',
+        'contactstaff'   => 'wol_contactstaff',
+        'claim'          => 'wol_claim',
+        'task'           => 'wol_tasks',
+        'getrss'         => 'wol_rss',
+        'rss'            => 'wol_rss',
+        'syndication'    => 'wol_rss',
+        'language'       => 'wol_language',
+        'moderation'     => 'wol_moderation',
+        'recoverhint'    => 'member_lostpw',
+        'unbaniprequest' => 'wol_unban',
+        'takereport'     => 'reporting_post',
+        'report_captcha' => 'reporting_post',
+        'takereseed'     => 'wol_reseed',
+        'polls'          => 'wol_polls',
+        'error'          => 'wol_error',
+    ];
+}
+
+/**
+ * Background / AJAX endpoints: they overwrite the location of the page the
+ * visitor actually has open, so we show a neutral "on the site" phrase.
+ */
+function wol_background_pages(): array
+{
+    return [
+        'xmlhttp', 'ajax_imdb', 'ajax_torrent_preview', 'torrent_preview', 'notifications_ajax',
+        'upload_image', 'upload_attachment', 'cron', 'ts_cron', 'clear_ann', 'takeflush',
+        'announce', 'scrape',
+    ];
+}
+
+/**
+ * Parse URL and determine user activity
+ */
+function fetch_wol_activity(string $location, bool $nopermission = false): UserActivity
+{
+    $raw = $location;
+
+    // Stored through htmlspecialchars_uni()
+    $location = html_entity_decode($location, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+    $path  = (string)parse_url($location, PHP_URL_PATH);
+    $query = (string)parse_url($location, PHP_URL_QUERY);
+    $file  = basename($path, '.php');
+    $p     = parse_query_string($query);
+
+    if ($nopermission) {
+        return new UserActivity('noperms', $file, $p, $raw, true);
+    }
+
+    // Staff panel lives in /admin/ and its pages share names with public ones (index.php)
+    if (preg_match('#/admin/#i', $path)) {
+        return new UserActivity('staffpanel', $file, $p, $raw);
+    }
+
+    $action = (string)($p['action'] ?? '');
+
+    $key = match ($file) {
+        'details'       => !empty($p['id']) ? 'torrent' : 'browse',
+        'details_edit'  => 'torrent_edit',
+        'download'      => 'download',
+        'viewsnatches'  => 'snatches',
+        'comment'       => 'torrent_comment',
+        'browse'        => !empty($p['category']) ? 'browse_category' : (($p['search'] ?? '') !== '' ? 'browse_search' : 'browse'),
+        'forumdisplay'  => 'forum',
+        'showthread'    => 'thread',
+        'printthread'   => 'thread_print',
+        'newthread'     => 'thread_new',
+        'newreply'      => 'thread_reply',
+        'editpost'      => 'post_edit',
+        'announcements' => 'announcement',
+        'attachment'    => 'attachment',
+        'search'        => 'search',
+        'userhistory'   => 'userhistory',
+        'online'        => $action === 'today' ? 'woltoday' : 'wol',
+        'member'        => wol_member_key($action, $p),
+        'usercp'        => wol_usercp_key($action),
+        'private'       => wol_private_key($action),
+        'modcp'         => 'modcp:' . $action,
+        'misc'          => wol_misc_key($action),
+        default         => null,
+    };
+
+    if ($key === null) {
+        $static = wol_static_pages();
+        if (isset($static[$file])) {
+            $key = 'static:' . $static[$file];
+        } elseif (in_array($file, wol_background_pages(), true)) {
+            $key = 'background';
+        } else {
+            $key = 'unknown';
+        }
+    }
+
+    return new UserActivity($key, $file, $p, $raw);
+}
+
+function wol_member_key(string $action, array $p): string
+{
+    return match ($action) {
+        'profile'                                   => !empty($p['id']) || !empty($p['uid']) ? 'profile' : 'static:viewing_profile',
+        'register', 'do_register'                   => 'static:registering',
+        'login', 'do_login', 'verify_2fa'           => 'static:logging_in',
+        'logout'                                    => 'static:logging_out',
+        'lostpw', 'do_lostpw', 'resetpassword'      => 'static:member_lostpw',
+        'activate'                                  => 'static:activating_account',
+        'resendactivation', 'do_resendactivation'   => 'static:member_resendactivation',
+        'emailuser', 'do_emailuser'                 => 'static:emailing_user',
+        'viewnotes'                                 => 'static:wol_viewnotes',
+        default                                     => 'static:wol_member',
+    };
+}
+
+function wol_usercp_key(string $action): string
+{
+    return 'static:' . match ($action) {
+        'profile', 'do_profile'     => 'updating_profile',
+        'options', 'do_options'     => 'updating_options',
+        'password', 'do_password'   => 'editing_password',
+        'editsig', 'do_editsig'     => 'editing_signature',
+        'avatar', 'do_avatar'       => 'changing_avatar',
+        'editlists', 'do_editlists' => 'managing_buddyignorelist',
+        'subscriptions'             => 'viewing_subscriptions',
+        'addsubscription', 'do_addsubscription', 'removesubscription', 'removesubscriptions' => 'managing_subscriptions',
+        'notepad', 'do_notepad'     => 'editing_pad',
+        'sessions', 'do_sessions'   => 'wol_usercp_sessions',
+        default                     => 'user_cp',
+    };
+}
+
+function wol_private_key(string $action): string
+{
+    return 'static:' . match ($action) {
+        'send', 'do_send'       => 'sending_pm',
+        'read'                  => 'reading_pm',
+        'folders', 'do_folders' => 'editing_pmfolders',
+        default                 => 'using_pmsystem',
+    };
+}
+
+function wol_misc_key(string $action): string
+{
+    return match ($action) {
+        'whoposted'   => 'whoposted',
+        'help'        => 'static:viewing_helpdocs',
+        'smilies'     => 'static:viewing_smilies',
+        'buddypopup'  => 'static:viewing_buddylist',
+        'syndication' => 'static:viewing_syndication',
+        'markread'    => 'static:wol_markread',
+        default       => 'background',
+    };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ *  Names (users, torrents, threads…) with a per-request cache
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Escaped display name of an object, or '' if it does not exist.
+ */
+function wol_name(string $type, int $id): string
+{
+    global $db;
+    static $cache = [];
+
+    if ($id <= 0) {
+        return '';
+    }
+    if (isset($cache[$type][$id])) {
+        return $cache[$type][$id];
+    }
+
+    $sql = match ($type) {
+        'user'         => 'SELECT username AS n FROM users WHERE id = ?',
+        'torrent'      => 'SELECT name AS n FROM torrents WHERE id = ?',
+        'thread'       => 'SELECT subject AS n FROM threads WHERE tid = ?',
+        'forum'        => 'SELECT name AS n FROM forums WHERE fid = ?',
+        'category'     => 'SELECT name AS n FROM categories WHERE id = ?',
+        'announcement' => 'SELECT subject AS n FROM announcements WHERE id = ?',
+        default        => null,
+    };
+
+    $name = '';
+    if ($sql !== null) {
+        $q   = $db->sql_query_prepared($sql, [$id]);
+        $row = $q ? $db->fetch_array($q) : null;
+        if (is_array($row) && isset($row['n'])) {
+            $name = htmlspecialchars_uni((string)$row['n']);
+        }
+    }
+
+    return $cache[$type][$id] = $name;
+}
+
+/**
+ * Thread id of a post (editpost.php?pid=, attachment → post).
+ */
+function wol_post_tid(int $pid): int
+{
+    global $db;
+    static $cache = [];
+
+    if ($pid <= 0) {
+        return 0;
+    }
+    if (!isset($cache[$pid])) {
+        $q   = $db->sql_query_prepared('SELECT tid FROM posts WHERE pid = ?', [$pid]);
+        $row = $q ? $db->fetch_array($q) : null;
+        $cache[$pid] = (int)($row['tid'] ?? 0);
+    }
+    return $cache[$pid];
+}
+
+function wol_attachment_tid(int $aid): int
+{
+    global $db;
+    static $cache = [];
+
+    if ($aid <= 0) {
+        return 0;
+    }
+    if (!isset($cache[$aid])) {
+        $q   = $db->sql_query_prepared('SELECT pid FROM attachments WHERE aid = ?', [$aid]);
+        $row = $q ? $db->fetch_array($q) : null;
+        $cache[$aid] = wol_post_tid((int)($row['pid'] ?? 0));
+    }
+    return $cache[$aid];
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ *  Rendering
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Lang string with an English fallback.
+ */
+function wol_lang(string $key, string $fallback): string
+{
+    global $lang;
+    $v = $lang->online[$key] ?? '';
+    return is_string($v) && $v !== '' ? $v : $fallback;
+}
+
+/**
+ * "<phrase with link to the object>", or the plain phrase if the object is gone.
+ */
+function wol_linked(string $key, string $fallback, string $plain_key, string $plain_fallback, string $url, string $name, string ...$extra): string
+{
+    if ($name === '') {
+        return wol_lang($plain_key, $plain_fallback);
+    }
+    return ags_fmt(wol_lang($key, $fallback), htmlspecialchars_uni($url), $name, ...$extra);
+}
+
+function build_friendly_wol_location(UserActivity $a): string
+{
+    global $SITENAME, $usergroups;
+
+    // Fixed phrases
+    if (str_starts_with($a->key, 'static:')) {
+        $k = substr($a->key, 7);
+        $s = wol_lang($k, wol_default_phrase($k));
+        return $k === 'viewing_index' ? ags_fmt($s, htmlspecialchars_uni((string)$SITENAME)) : ags_fmt($s, '');
+    }
+
+    if (str_starts_with($a->key, 'modcp:')) {
+        return wol_modcp_phrase(substr($a->key, 6));
+    }
+
+    switch ($a->key) {
+        case 'torrent':
+            $id = $a->int('id');
+            return wol_linked('viewing_torrent2', 'Viewing Torrent Details <a href="{1}">{2}</a>', 'viewing_torrent', 'Viewing Torrent',
+                get_torrent_link($id), wol_name('torrent', $id));
+
+        case 'torrent_edit':
+            $id = $a->int('id');
+            return wol_linked('wol_torrent_edit2', 'Editing torrent <a href="{1}">{2}</a>', 'wol_torrent_edit', 'Editing a torrent',
+                get_torrent_link($id), wol_name('torrent', $id));
+
+        case 'torrent_comment':
+            $id = $a->int('id') ?: $a->int('tid');
+            return wol_linked('wol_comment2', 'Commenting on torrent <a href="{1}">{2}</a>', 'wol_comment', 'Writing a comment',
+                get_torrent_link($id), wol_name('torrent', $id));
+
+        case 'snatches':
+            $id = $a->int('id');
+            return wol_linked('wol_snatches2', 'Viewing snatches of <a href="{1}">{2}</a>', 'wol_snatches', 'Viewing snatch list',
+                get_torrent_link($id), wol_name('torrent', $id));
+
+        case 'download':
+            $id = $a->int('id');
+            return wol_linked('download_torrent2', 'Download Torrent <a href="{1}">{2}</a>', 'download_torrent', 'Download Torrent',
+                get_torrent_link($id), wol_name('torrent', $id));
+
+        case 'browse':
+            return wol_lang('wol_browse', 'Browsing <a href="browse.php">torrents</a>');
+
+        case 'browse_category':
+            $id = $a->int('category');
+            return wol_linked('wol_browse_category', 'Browsing category <a href="{1}">{2}</a>', 'wol_browse', 'Browsing <a href="browse.php">torrents</a>',
+                'browse.php?category=' . $id, wol_name('category', $id));
+
+        case 'browse_search':
+            return wol_lang('wol_browse_search', 'Searching <a href="browse.php">torrents</a>');
+
+        case 'forum':
+            $fid = $a->int('fid');
+            return wol_linked('viewing_forum2', 'Viewing Forum <a href="{1}">{2}</a>', 'viewing_forum', 'Viewing Forum',
+                get_forum_link($fid), wol_name('forum', $fid));
+
+        case 'thread':
+        case 'thread_print':
+            $tid = $a->int('tid') ?: wol_post_tid($a->int('pid'));
+            if ($a->key === 'thread_print') {
+                return wol_linked('printing_thread2', 'Printing Thread <a href="{1}">{2}</a>', 'printing_thread', 'Printing a Thread',
+                    get_thread_link($tid), wol_name('thread', $tid));
+            }
+            $page = $a->int('page');
+            $page_txt = $page > 1 ? '(' . wol_lang('page', 'Page') . ' ' . $page . ')' : '';
+            return wol_linked('reading_thread2', 'Reading Thread <a href="{1}">{2}</a> {3}', 'reading_thread', 'Reading Thread',
+                get_thread_link($tid, $page > 1 ? $page : 0), wol_name('thread', $tid), $page_txt);
+
+        case 'thread_new':
+            $fid = $a->int('fid');
+            return wol_linked('posting_thread2', 'Creating New Thread in <a href="{1}">{2}</a>', 'posting_thread', 'Creating New Thread',
+                get_forum_link($fid), wol_name('forum', $fid));
+
+        case 'thread_reply':
+            $tid = $a->int('tid');
+            return wol_linked('replying_thread2', 'Replying to <a href="{1}">{2}</a>', 'replying_thread', 'Replying to Thread',
+                get_thread_link($tid), wol_name('thread', $tid));
+
+        case 'post_edit':
+            $tid = wol_post_tid($a->int('pid'));
+            return wol_linked('wol_editpost2', 'Editing a post in <a href="{1}">{2}</a>', 'editing_post', 'Editing Post',
+                get_thread_link($tid), wol_name('thread', $tid));
+
+        case 'whoposted':
+            $tid = $a->int('tid');
+            return wol_linked('viewing_whoposted2', 'Viewing Who Posted in <a href="{1}">{2}</a>', 'viewing_whoposted', 'Viewing Who Posted',
+                get_thread_link($tid), wol_name('thread', $tid));
+
+        case 'announcement':
+            $aid = $a->int('aid');
+            return wol_linked('viewing_announcements', 'Viewing Announcement <a href="{1}">{2}</a>', 'viewing_announcements2', 'Viewing Announcement',
+                get_announcement_link($aid), wol_name('announcement', $aid));
+
+        case 'attachment':
+            $aid = $a->int('aid');
+            $tid = wol_attachment_tid($aid);
+            $name = wol_name('thread', $tid);
+            if ($name === '') {
+                return wol_lang('viewing_attachment', 'Viewing Attachment');
+            }
+            return ags_fmt(wol_lang('viewing_attachment2', 'Viewing <a href="attachment.php?aid={1}" target="_blank">Attachment</a> in Thread <a href="{3}">{2}</a>'),
+                (string)$aid, $name, htmlspecialchars_uni(get_thread_link($tid)));
+
+        case 'profile':
+            $uid = $a->int('id') ?: $a->int('uid');
+            return wol_linked('viewing_profile2', 'Viewing Profile of <a href="{1}">{2}</a>', 'viewing_profile', 'Viewing Profile',
+                get_profile_link($uid), wol_name('user', $uid));
+
+        case 'userhistory':
+            $uid = $a->int('id') ?: $a->int('uid');
+            return wol_linked('wol_userhistory2', 'Viewing post history of <a href="{1}">{2}</a>', 'wol_userhistory', 'Viewing post history',
+                get_profile_link($uid), wol_name('user', $uid));
+
+        case 'search':
+            return ags_fmt(wol_lang('searching_forum', '<a href="search.php">Searching</a> {1}'), '');
+
+        case 'wol':
+            return wol_lang('viewing_wol', 'Viewing <a href="online.php">Who\'s Online</a>');
+
+        case 'woltoday':
+            return wol_lang('viewing_woltoday', 'Viewing <a href="online.php?action=today">Who Was Online Today</a>');
+
+        case 'staffpanel':
+            // Non-staff do not need to know which admin page is open
+            return (int)($usergroups['canstaffpanel'] ?? 0) === 1
+                ? wol_lang('wol_staffpanel_link', '<a href="admin/index.php">Staff Panel</a>')
+                : wol_lang('wol_staffpanel', 'Staff Panel');
+
+        case 'background':
+            return ags_fmt(wol_lang('wol_on_site', 'Browsing {1}'), htmlspecialchars_uni((string)$SITENAME));
+
+        case 'noperms':
+            return wol_lang('viewing_noperms', 'Viewing No Permission Page');
+    }
+
+    // Unknown: link to the page itself (escaped — this URL comes from the visitor)
+    return ags_fmt(wol_lang('unknown_location', '<a href="{1}">Unknown Location</a>'),
+        htmlspecialchars_uni($a->location !== '' ? html_entity_decode($a->location, ENT_QUOTES | ENT_HTML5, 'UTF-8') : 'index.php'));
+}
+
+/**
+ * English fallbacks for fixed phrases (used only if a lang key is missing)
+ */
+function wol_default_phrase(string $key): string
+{
+    return match ($key) {
+        'viewing_index'      => '{1} <a href="index.php">Main Index</a>',
+        'viewing_memberlist' => 'Viewing <a href="memberlist.php">Member List</a>',
+        'viewing_contact_us' => 'Viewing <a href="contact.php">Contact Us</a>',
+        default              => ucfirst(str_replace(['wol_', '_'], ['', ' '], $key)),
+    };
+}
+
+function wol_modcp_phrase(string $action): string
+{
+    [$key, $fallback] = match ($action) {
+        'modlogs'             => ['viewing_modlogs', 'Viewing Moderator Logs'],
+        'announcements'       => ['managing_announcements', 'Managing Announcements'],
+        'finduser'            => ['search_for_user', 'Searching for users'],
+        'warninglogs'         => ['managing_warninglogs', 'Managing Warning Logs'],
+        'ipsearch'            => ['searching_ips', 'Searching IPs'],
+        'reports', 'report'   => ['viewing_reports', 'Viewing Reported Posts'],
+        'new_announcement'    => ['adding_announcement', 'Adding an Announcement'],
+        'delete_announcement' => ['deleting_announcement', 'Deleting an Announcement'],
+        'edit_announcement'   => ['editing_announcement', 'Editing an Announcement'],
+        'modqueue', 'mod_queue' => ['managing_modqueue', 'Managing Moderation Queue'],
+        'editprofile'         => ['editing_user_profiles', 'Editing User Profiles'],
+        'banning'             => ['managing_bans', 'Managing Bans'],
+        default               => ['viewing_modcp', 'Viewing Moderator CP'],
+    };
+    return wol_lang($key, $fallback);
 }
 
 /**
@@ -450,239 +594,22 @@ function build_wol_row(array $user): string
     </tr>';
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ *  Helpers
+ * ══════════════════════════════════════════════════════════════════════════ */
 
-
-
-
-
-/**
- * Parse URL and determine user activity
- */
-function fetch_wol_activity(string $location, bool $nopermission = false): UserActivity
-{
-    global $user, $parameters;
-
-    // Parse URL
-    [$file, $query] = explode('?', $location . '?');
-    $file = basename($file, '.php');
-    $params = parse_query_string($query ?? '');
-
-    if ($nopermission) {
-        $file = 'nopermission';
-    }
-
-    // Default activity
-    $activity = match ($file) {
-        'announcements' => handle_announcement($params),
-        'attachment'    => handle_attachment($params),
-        'calendar'      => handle_calendar($params),
-        'forumdisplay'  => handle_forum($params),
-        'member'        => handle_member($params),
-        'misc'          => handle_misc($params),
-        'modcp'         => handle_modcp($params),
-        'newreply'      => handle_newreply($params),
-        'newthread'     => handle_newthread($params),
-        'online'        => handle_online($params),
-        'polls'         => handle_polls($params),
-        'printthread'   => handle_printthread($params),
-        'private'       => handle_private($params),
-        'reputation'    => handle_reputation($params),
-        'showthread'    => handle_showthread($params),
-        'usercp'        => handle_usercp($params),
-        'details'       => handle_details($params),
-        'download'      => handle_download($params),
-        'index'         => WolActivity::INDEX,
-        'index2'        => WolActivity::INDEX2,
-		'mybonus'        => WolActivity::MYBONUS,
-        'upload'        => WolActivity::UPLOAD,
-        'browse'        => WolActivity::BROWSE,
-        'nopermission'  => WolActivity::UNKNOWN,
-        default         => WolActivity::UNKNOWN,
-    };
-	
-	
-
-    return new UserActivity(
-    activity: $activity,
-    uid: $params['uid'] ?? $params['id'] ?? 0,  // ← ДОБАВЬ $params['id'] ?? 
-    fid: $params['fid'] ?? 0,
-    tid: $params['tid'] ?? 0,
-    pid: $params['pid'] ?? 0,
-    aid: $params['aid'] ?? 0,
-    eid: $params['eid'] ?? 0,
-    id:  $params['id'] ?? 0,
-    page: $params['page'] ?? 1,
-    location: $location,
-    nopermission: $nopermission
-	
-	
-	
-);
-
-
-error_log("PARSED PARAMS: " . print_r($params, true));
-
-error_log("PARAMS DEBUG: " . print_r($params, true));
-error_log("UID FINAL: " . ($params['uid'] ?? $params['id'] ?? 0));
-
-}
-
-// === Handlers ===
-function handle_announcement(array $p): WolActivity { global $ann_list; $ann_list[$p['aid'] ?? 0] = (int)($p['aid'] ?? 0); return WolActivity::ANNOUNCEMENT; }
-function handle_attachment(array $p): WolActivity { global $aid_list; $aid_list[] = (int)($p['aid'] ?? 0); return WolActivity::ATTACHMENT; }
-function handle_forum(array $p): WolActivity { global $fid_list; $fid_list[(int)($p['fid'] ?? 0)] = (int)($p['fid'] ?? 0); return WolActivity::FORUM; }
-function handle_newthread(array $p): WolActivity { global $fid_list; $fid_list[(int)($p['fid'] ?? 0)] = (int)($p['fid'] ?? 0); return WolActivity::NEW_THREAD; }
-function handle_newreply(array $p): WolActivity { global $tid_list; $tid_list[(int)($p['tid'] ?? 0)] = (int)($p['tid'] ?? 0); return WolActivity::NEW_REPLY; }
-function handle_showthread(array $p): WolActivity { global $tid_list, $pid_list; $tid_list[(int)($p['tid'] ?? 0)] = (int)($p['tid'] ?? 0); if (($p['action'] ?? '') === 'showpost') { $pid_list[(int)($p['pid'] ?? 0)] = (int)($p['pid'] ?? 0); return WolActivity::POST; } return WolActivity::THREAD; }
-function handle_printthread(array $p): WolActivity { global $tid_list; $tid_list[(int)($p['tid'] ?? 0)] = (int)($p['tid'] ?? 0); return WolActivity::THREAD; }
-
-function handle_online(array $p): WolActivity
-{
-    return match ($p['action'] ?? '') {
-        'today' => WolActivity::WOLTODAY,
-        default => WolActivity::WOL,
-    };
-}
-
-
-function handle_reputation(array $p): WolActivity { global $uid_list; $uid_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0); return WolActivity::PROFILE; }
-
-
-
-
-
-function handle_details(array $p): WolActivity
-{
-    global $id_list;
-    $id_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0);
-    return WolActivity::TORRENT;  // ← ВОЗВРАЩАЙ TORRENT!
-}
-
-function handle_download(array $p): WolActivity
-{
-    global $id_list;
-    $id_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0);
-    return WolActivity::DOWNLOAD;  // ← если нужно
-}
-
-
-
-
-
-function handle_calendar(array $p): WolActivity
-{
-    global $eid_list;
-    return match ($p['action'] ?? '') {
-        'event' => ($eid_list[(int)($p['eid'] ?? 0)] = (int)($p['eid'] ?? 0)) ? WolActivity::INDEX : WolActivity::INDEX,
-        'addevent', 'do_addevent' => WolActivity::INDEX,
-        'editevent', 'do_editevent' => WolActivity::INDEX,
-        default => WolActivity::INDEX,
-    };
-}
-
-function handle_member(array $p): WolActivity
-{
-    global $uid_list;
-    return match ($p['action'] ?? '') {
-        'profile' => ($uid_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0)) ? WolActivity::PROFILE : WolActivity::PROFILE,
-        'register', 'do_register' => WolActivity::PROFILE,
-        'login', 'do_login' => WolActivity::PROFILE,
-        'logout' => WolActivity::PROFILE,
-        default => WolActivity::PROFILE,
-    };
-}
-
-
-
-function handle_modcp(array $p): WolActivity
-{
-    $action = $p['action'] ?? '';
-
-    return match ($action) {
-        'modlogs'           => WolActivity::MODCP_MODLOGS,
-        'announcements'     => WolActivity::MODCP_ANNOUNCEMENTS,
-        'finduser'          => WolActivity::MODCP_FINDUSER,
-        'warninglogs'       => WolActivity::MODCP_WARNINGLOGS,
-        'ipsearch'          => WolActivity::MODCP_IPSEARCH,
-        'report'            => WolActivity::MODCP_REPORT,
-        'new_announcement'  => WolActivity::MODCP_NEW_ANNOUNCEMENT,
-        'delete_announcement' => WolActivity::MODCP_DELETE_ANNOUNCEMENT,
-        'edit_announcement'   => WolActivity::MODCP_EDIT_ANNOUNCEMENT,
-        'mod_queue'         => WolActivity::MODCP_MOD_QUEUE,
-        'editprofile'       => WolActivity::MODCP_EDITPROFILE,
-        'banning'           => WolActivity::MODCP_BANNING,
-        default             => WolActivity::MODCP,
-    };
-}
-
-
-function handle_usercp(array $p): WolActivity
-{
-    $action = $p['action'] ?? '';
-
-    return match ($action) {
-        'profile', 'do_profile'                 => WolActivity::USERCP_PROFILE,
-        'options', 'do_options'                 => WolActivity::USERCP_OPTIONS,
-        'password', 'do_password'               => WolActivity::USERCP_PASSWORD,
-        'editsig', 'do_editsig'                 => WolActivity::USERCP_EDITSIG,
-        'avatar', 'do_avatar'                   => WolActivity::USERCP_AVATAR,
-        'editlists', 'do_editlists'             => WolActivity::USERCP_EDITLISTS,
-        'favorites'                             => WolActivity::USERCP_FAVORITES,
-        'subscriptions'                         => WolActivity::USERCP_SUBSCRIPTIONS,
-        'addfavorite', 'removefavorite', 'removefavorites' => WolActivity::USERCP_MANAGEFAV,
-        'addsubscription', 'do_addsubscription', 'removesubscription', 'removesubscriptions' => WolActivity::USERCP_MANAGESUB,
-        'notepad', 'do_notepad'                 => WolActivity::USERCP_NOTEPAD,
-        default                                 => WolActivity::USERCP,
-    };
-}
-
-function handle_polls(array $p): WolActivity
-{
-    return match ($p['action'] ?? '') {
-        'do_newpoll' => WolActivity::INDEX,
-        'do_editpoll' => WolActivity::INDEX,
-        default => in_array($p['action'] ?? '', ['newpoll', 'editpoll', 'showresults', 'vote'], true) ? WolActivity::INDEX : WolActivity::INDEX,
-    };
-}
-
-function handle_private(array $p): WolActivity
-{
-    $action = $p['action'] ?? '';
-
-    return match ($action) {
-        'send', 'do_send'       => WolActivity::PRIVATE_SEND,
-        'read'                  => WolActivity::PRIVATE_READ,
-        'folders', 'do_folders' => WolActivity::PRIVATE_FOLDERS,
-        default                 => WolActivity::PRIVATE,
-    };
-}
-
-function handle_misc(array $p): WolActivity
-{
-    global $tid_list;
-    if (($p['action'] ?? '') === 'whoposted') {
-        $tid_list[(int)($p['tid'] ?? 0)] = (int)($p['tid'] ?? 0);
-    }
-    return WolActivity::INDEX;
-}
-
-// === Helpers ===
 function parse_query_string(string $query): array
 {
-    // Убираем &amp; → &
     $query = str_replace('&amp;', '&', $query);
 
     $params = [];
     parse_str($query, $params);
 
-    // Приводим числовые параметры к int
-    $int_keys = ['uid', 'fid', 'tid', 'pid', 'aid', 'eid', 'id', 'page'];
-    foreach ($int_keys as $key) {
+    foreach (['uid', 'fid', 'tid', 'pid', 'aid', 'eid', 'id', 'page', 'category'] as $key) {
         if (isset($params[$key])) {
-            $params[$key] = (int)$params[$key];
+            $params[$key] = is_scalar($params[$key]) ? (int)$params[$key] : 0;
         }
     }
 
-    // Экранируем строки
-    return array_map(fn($v) => is_string($v) ? htmlspecialchars($v) : $v, $params);
+    return $params;
 }

@@ -15,7 +15,18 @@ class Session
     public string $ipaddress = '';
     public string $packedip = '';
     public string $useragent = '';
+
+    /**
+     * Поддержка поисковых ботов удалена. Свойство оставлено всегда false
+     * только для совместимости: его читает showthread.php.
+     */
     public bool $is_spider = false;
+
+    /**
+     * Случайный идентификатор гостя (cookie gtok). Гости в таблицу sessions
+     * не пишутся; токен нужен только для привязки my_post_key к посетителю.
+     */
+    public string $guest_token = '';
 
     /**
      * Сколько секунд бездействия сессия считается действительной.
@@ -59,7 +70,7 @@ class Session
     private int $session_uid = 0;
 
     /* ------------------------------------------------------------------ */
-    /*  Инициализация                                                      */
+    /* Инициализация                                                       */
     /* ------------------------------------------------------------------ */
 
     /**
@@ -67,7 +78,7 @@ class Session
      */
     public function init(): void
     {
-        global $db, $mybb, $cache, $plugins;
+        global $db, $mybb, $plugins;
 
         // Get our visitor's IP
         $this->ipaddress = get_ip();
@@ -76,7 +87,6 @@ class Session
 
         // Attempt to find a valid session id in the cookies
         $cookie_sid = $mybb->cookies['sid'] ?? '';
-
         if (
             is_string($cookie_sid)
             && preg_match(self::SID_PATTERN, $cookie_sid) === 1
@@ -109,37 +119,12 @@ class Session
 
         // If no user still, then we have a guest
         if (!isset($mybb->user['id'])) {
-            // Detect if this guest is a search engine spider
-            if ($this->sid === '') {
-                $spiders = $cache->read('spiders');
-                if (is_array($spiders)) {
-                    $ua = strtolower($this->useragent);
-                    foreach ($spiders as $spider) {
-                        $needle = strtolower((string)($spider['useragent'] ?? ''));
-
-                        // Пустая строка совпала бы с любым User-Agent
-                        if ($needle === '') {
-                            continue;
-                        }
-
-                        if (str_contains($ua, $needle)) {
-                            $this->load_spider((int)$spider['sid']);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Still nothing? JUST A GUEST!
-            if (!$this->is_spider) {
-                $this->load_guest();
-            }
+            $this->load_guest();
         }
 
-        // Give the user a cookie if they aren't a spider
+        // Give the user a cookie
         if (
             $this->sid !== ''
-            && !$this->is_spider
             && (!isset($mybb->cookies['sid']) || $mybb->cookies['sid'] !== $this->sid)
         ) {
             my_setcookie('sid', $this->sid, -1, true);
@@ -154,7 +139,7 @@ class Session
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Загрузка пользователя / гостя / бота                               */
+    /* Загрузка пользователя / гостя                                       */
     /* ------------------------------------------------------------------ */
 
     /**
@@ -237,7 +222,6 @@ class Session
         if (!empty($mybb->user['threadsperpages'])) {
             $f_threadsperpage = $mybb->user['threadsperpages'];
         }
-
         if (!empty($mybb->user['postsperpage'])) {
             $f_postsperpage = $mybb->user['postsperpage'];
         }
@@ -245,7 +229,8 @@ class Session
         $this->check_ban();
 
         // Права и оформление (стиль ника, звание, иконка) - по основной группе
-        $mybbgroups      = (string)max(1, (int)($mybb->user['usergroup'] ?? 1));
+        $mybbgroups = (string)max(1, (int)($mybb->user['usergroup'] ?? 1));
+
         $mybb->usergroup = usergroup_permissions($mybbgroups);
 
         if (empty($mybb->user['usertitle'])) {
@@ -256,8 +241,7 @@ class Session
         $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
 
         // Validate user access
-        $script_name = basename((string)($_SERVER['PHP_SELF'] ?? ''));
-
+        $script_name   = basename((string)($_SERVER['PHP_SELF'] ?? ''));
         $is_activation = $mybb->get_input('action') === 'activate' && $script_name === 'member.php';
 
         if (
@@ -288,21 +272,21 @@ class Session
     }
 
     /**
-     * Load a guest user
+     * Load a guest user.
+     * Гость нужен только как контекст (группа 1) для страниц логина,
+     * регистрации и ошибок. В таблицу sessions он НЕ записывается.
      */
     public function load_guest(): void
     {
         global $mybb;
 
         // Раньше эта сессия принадлежала пользователю (например, после выхода) — не переиспользуем её
-        if ($this->sid !== '' && $this->session_uid > 0) {
+        if ($this->sid !== '') {
             $this->delete_session($this->sid);
             $this->sid         = '';
             $this->session_uid = 0;
         }
 
-        // Set up defaults
-        $time = TIMENOW;
         $mybb->user = [
             'usergroup'          => 1,
             'username'           => '',
@@ -314,94 +298,27 @@ class Session
             'sourceeditor'       => 0,
             'subscriptionmethod' => 0,
             'suspendposting'     => 0,
+            'lastactive'         => TIMENOW,
+            'lastvisit'          => TIMENOW,
         ];
-
-        // Handle last visit and activity
-        if (isset($mybb->cookies['mybb']['lastvisit'])) {
-            $lastactive = (int)($mybb->cookies['mybb']['lastactive'] ?? $time);
-            $mybb->user['lastactive'] = $lastactive;
-
-            if ($time - $lastactive > self::ACTIVITY_INTERVAL) {
-                // Новый визит: прошлая активность становится "последним визитом"
-                my_setcookie('mybb[lastvisit]', (string)$lastactive);
-                $mybb->user['lastvisit'] = $lastactive;
-            } else {
-                // Тот же визит: сохраняем прежнее значение lastvisit из cookie
-                $mybb->user['lastvisit'] = (int)$mybb->cookies['mybb']['lastvisit'];
-            }
-        } else {
-            my_setcookie('mybb[lastvisit]', (string)$time);
-            $mybb->user['lastvisit'] = $time;
-        }
-
-        my_setcookie('mybb[lastactive]', (string)$time);
 
         // Gather permissions for guest
         $mybb->usergroup = usergroup_permissions('1');
 
-        // Update online data
-        if (!defined('NO_ONLINE') && !defined('IN_UPGRADE')) {
-            if ($this->sid !== '') {
-                $this->update_session($this->sid);
-            } else {
-                $this->create_session();
-            }
+        // Токен гостя для my_post_key (cookie, не БД)
+        $tok = $mybb->cookies['gtok'] ?? '';
+        if (!is_string($tok) || preg_match('/^[a-f0-9]{32}$/', $tok) !== 1) {
+            $tok = bin2hex(random_bytes(16));
+            my_setcookie('gtok', $tok, -1, true, 'lax');
         }
-
-        $GLOBALS['CURUSER']    = $mybb->user;
-        $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
-    }
-
-    /**
-     * Load a search engine spider
-     */
-    public function load_spider(int $spider_id): void
-    {
-        global $mybb, $db;
-
-        $spider = $this->fetch($db->sql_query_prepared(
-            "SELECT * FROM spiders WHERE sid = ?",
-            [$spider_id]
-        ));
-
-        // Бот не найден в БД — пусть init() обработает его как гостя
-        if (!$spider) {
-            return;
-        }
-
-        $this->is_spider = true;
-        $userGroup = !empty($spider['usergroup']) ? (int)$spider['usergroup'] : 1;
-
-        $mybb->user = [
-            'usergroup' => $userGroup,
-            'username'  => '',
-            'id'        => 0,
-            'invisible' => 0,
-        ];
-
-        // Gather permissions for spider
-        $mybb->usergroup = usergroup_permissions((string)$userGroup);
-
-        // Update spider last visit
-        if ((int)($spider['lastvisit'] ?? 0) < TIMENOW - 120) {
-            $db->sql_query_prepared(
-                "UPDATE spiders SET lastvisit = ? WHERE sid = ?",
-                [TIMENOW, $spider_id]
-            );
-        }
-
-        // Update online data
-        if (!defined('NO_ONLINE') && !defined('IN_UPGRADE')) {
-            $this->sid = 'bot=' . $spider_id;
-            $this->create_session();
-        }
+        $this->guest_token = $tok;
 
         $GLOBALS['CURUSER']    = $mybb->user;
         $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Работа с таблицей sessions                                         */
+    /* Работа с таблицей sessions                                          */
     /* ------------------------------------------------------------------ */
 
     /**
@@ -441,15 +358,13 @@ class Session
 
         $speciallocs = $this->get_special_locations();
 
-        // Delete existing sessions
-        if ($this->is_spider) {
-            $db->sql_query_prepared("DELETE FROM sessions WHERE sid = ?", [$this->sid]);
-        } elseif ($uid > 0 && !$this->allow_multiple_sessions) {
+        // Delete existing sessions of this user (if only one session is allowed)
+        if ($uid > 0 && !$this->allow_multiple_sessions) {
             $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [$uid]);
         }
 
         // Generate session ID
-        $sid = $this->is_spider ? $this->sid : $this->generate_sid();
+        $sid = $this->generate_sid();
 
         $onlinedata = [
             'sid'          => $sid,
@@ -465,6 +380,7 @@ class Session
         ];
 
         $set = implode(', ', array_map(static fn(string $c): string => "`{$c}` = ?", array_keys($onlinedata)));
+
         $db->sql_query_prepared("REPLACE INTO sessions SET {$set}", array_values($onlinedata));
 
         $this->sid         = $sid;
@@ -523,7 +439,7 @@ class Session
      */
     public function regenerate_session(int $uid = 0): void
     {
-        if ($this->sid !== '' && !$this->is_spider) {
+        if ($this->sid !== '') {
             $this->delete_session($this->sid);
         }
 
@@ -542,7 +458,8 @@ class Session
     {
         global $mybb, $db;
 
-        $array      = [1 => 0, 2 => 0];
+        $array = [1 => 0, 2 => 0];
+
         $scriptName = (string)($_SERVER['PHP_SELF'] ?? '');
 
         if (str_contains($scriptName, 'forumdisplay.php')) {
@@ -552,7 +469,6 @@ class Session
             }
         } elseif (str_contains($scriptName, 'showthread.php')) {
             $tid = $mybb->get_input('tid', MyBB::INPUT_INT);
-
             if ($tid > 0 && $tid < 4294967296) {
                 $array[2] = $tid;
             } elseif (!empty($mybb->input['pid'])) {
@@ -577,7 +493,7 @@ class Session
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Вспомогательные методы                                             */
+    /* Вспомогательные методы                                              */
     /* ------------------------------------------------------------------ */
 
     /**
@@ -588,8 +504,9 @@ class Session
     {
         global $mybb, $db;
 
-        $user       = $mybb->user;
-        $time       = TIMENOW;
+        $user = $mybb->user;
+        $time = TIMENOW;
+
         $lastactive = (int)($user['lastactive'] ?? 0);
         $new_visit  = ($time - $lastactive) > self::ACTIVITY_INTERVAL;
 
@@ -638,7 +555,6 @@ class Session
 
         if ($new_visit) {
             $mybb->user['lastvisit'] = $lastactive;
-
             require_once INC_PATH . '/functions_user.php';
             update_pm_count('', 2);
         }
@@ -651,7 +567,8 @@ class Session
     {
         global $mybb, $db, $cache;
 
-        $time        = TIMENOW;
+        $time = TIMENOW;
+
         $usergroups  = $cache->read('usergroups');
         $userGroupId = (int)($mybb->user['usergroup'] ?? 0);
 
@@ -662,11 +579,11 @@ class Session
             ));
 
             if ($ban) {
-                $mybb->user['banned']      = 1;
-                $mybb->user['bandate']     = $ban['dateline'];
-                $mybb->user['banlifted']   = $ban['lifted'];
-                $mybb->user['banoldgroup'] = $ban['oldgroup'];
-                $mybb->user['banreason']   = $ban['reason'];
+                $mybb->user['banned']       = 1;
+                $mybb->user['bandate']      = $ban['dateline'];
+                $mybb->user['banlifted']    = $ban['lifted'];
+                $mybb->user['banoldgroup']  = $ban['oldgroup'];
+                $mybb->user['banreason']    = $ban['reason'];
             } else {
                 $mybb->user['banned'] = 0;
             }
@@ -700,7 +617,6 @@ class Session
         if ($this->bind_user_agent) {
             $stored  = self::truncate((string)$session['useragent'], self::USERAGENT_MAX_LEN);
             $current = self::truncate($this->useragent, self::USERAGENT_MAX_LEN);
-
             if (!hash_equals($stored, $current)) {
                 return false;
             }
@@ -721,7 +637,6 @@ class Session
         if ($stored === $current) {
             return true;
         }
-
         if (strlen($stored) !== strlen($current)) {
             return false;
         }

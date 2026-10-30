@@ -2130,10 +2130,14 @@ function generate_post_check(int $rotation_shift = 0): string
     $rotation_interval = 6 * 3600;
     $rotation = (int) floor(TIMENOW / $rotation_interval) + $rotation_shift;
 
+$identity = !empty($CURUSER['id'])
+    ? $CURUSER['loginkey'] . $CURUSER['added']
+    : ($session->guest_token ?: $session->sid);
 
-    $identity = !empty($CURUSER['id'])
-        ? $CURUSER['loginkey'] . $CURUSER['added']
-        : $session->sid;
+if ($identity === '') {
+    throw new RuntimeException('No identity for post check');
+}
+    
 
     return substr(hash_hmac('sha256', $rotation . $identity, $encryption_key), 0, 32);
 }

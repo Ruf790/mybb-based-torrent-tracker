@@ -207,11 +207,125 @@ function remove_subscribed_forum(int|string $fid, int|string $uid = 0): bool
 }
 
 
+// ── UI helpers (стили — st-ui.css) ─────────────────────────────────────────
+// Общие для usercp.php и private.php.
+// ucp_open() открывает: .st-page > шапка + row[ col-3 меню | col-9 ← контент ].
+// Открытыми остаются 3 div (container, row, col-9) — закрывает ucp_close().
+function ucp_open(string $icon, string $tone, string $title, string $sub = ''): string
+{
+    global $usercpnav, $BASEURL;
+
+    $meta = $sub !== '' ? '<div class="st-head__meta"><span>' . $sub . '</span></div>' : '';
+
+    return '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css">'
+        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ucp.css">'
+        . '<div class="container-md st-page">'
+        .   '<div class="st-card st-head mb-3">'
+        .     '<div class="st-head__icon st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></div>'
+        .     '<div class="min-w-0"><h1 class="st-title">' . $title . '</h1>' . $meta . '</div>'
+        .   '</div>'
+        .   '<div class="row g-3">'
+        .     '<div class="col-lg-3">' . $usercpnav . '</div>'
+        .     '<div class="col-lg-9 min-w-0">';
+}
+
+function ucp_close(): string
+{
+    return '</div></div></div>';
+}
+
+// Секция-карточка: ucp_sec_open(...) . тело . ucp_sec_close()
+function ucp_sec_open(string $icon, string $tone, string $title): string
+{
+    return '<div class="st-card st-form-card">'
+        . '<div class="st-card__head"><span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<span>' . $title . '</span></div><div class="st-card__body">';
+}
+
+function ucp_sec_close(): string
+{
+    return '</div></div>';
+}
+
+// Чекбокс-«таблетка» (.st-check)
+function ucp_check(string $name, string $checked, string $label, string $icon = '', string $tone = '', string $value = '1'): string
+{
+    $ico = $icon !== ''
+        ? '<i class="fa-solid ' . $icon . ' me-1' . ($tone !== '' ? ' text-' . $tone : '') . '"></i>'
+        : '';
+
+    return '<label class="st-check" for="' . $name . '">'
+        . '<input type="checkbox" class="form-check-input" name="' . $name . '" id="' . $name . '" value="' . $value . '" ' . $checked . ' />'
+        . '<span>' . $ico . $label . '</span></label>';
+}
+
+// Поле с подписью и <select>
+function ucp_select(string $name, string $label, string $options, string $icon = '', string $tone = ''): string
+{
+    $ico = $icon !== '' ? '<i class="fa-solid ' . $icon . ($tone !== '' ? ' text-' . $tone : '') . '"></i>' : '';
+
+    return '<div class="st-field"><label class="st-label" for="' . $name . '">' . $ico . $label . '</label>'
+        . '<select name="' . $name . '" id="' . $name . '" class="form-select w-auto mw-100">' . $options . '</select></div>';
+}
+/**
+ * Ссылка меню UCP. $icon — полный класс иконки ('fa-solid fa-key').
+ * Активность определяется по ?action= (do_xxx приравнивается к xxx).
+ */
+function ucp_nav_is_active(string $href): bool
+{
+    global $mybb;
+
+    if (!preg_match('~^usercp\.php(?:\?action=([a-z0-9_]+))?$~i', $href, $m)) {
+        return false;
+    }
+    if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) !== 'usercp.php') {
+        return false;
+    }
+    $cur = preg_replace('/^do_/', '', (string)($mybb->input['action'] ?? ''));
+
+    return $cur === ($m[1] ?? '');
+}
+
+function ucp_nav_link(string $href, string $icon, string $label, string $tone = '', string $extra = '', bool $sub = false): string
+{
+    $cls = 'st-unav__link' . (ucp_nav_is_active($href) ? ' active' : '');
+
+    if ($sub) {
+        $ico = '<i class="' . $icon . ' fa-fw"></i>';
+    } else {
+        $ico = '<span class="st-ico st-soft-' . $tone . '"><i class="' . $icon . '"></i></span>';
+    }
+
+    return '<a href="' . $href . '" class="' . $cls . '">' . $ico
+        . '<span class="min-w-0 text-truncate">' . $label . '</span>' . $extra . '</a>';
+}
+
+/** Раскрывающаяся группа. $items: [[href, icon, label], ...] */
+function ucp_nav_group(string $id, string $icon, string $tone, string $label, array $items): string
+{
+    $open = false;
+    $subs = '';
+    foreach ($items as [$href, $ico, $text]) {
+        $open = $open || ucp_nav_is_active($href);
+        $subs .= ucp_nav_link($href, $ico, $text, '', '', true);
+    }
+
+    return '<div class="st-unav__group">'
+        . '<a class="st-unav__link" data-bs-toggle="collapse" href="#' . $id . '" role="button"'
+        . ' aria-expanded="' . ($open ? 'true' : 'false') . '" aria-controls="' . $id . '">'
+        . '<span class="st-ico st-soft-' . $tone . '"><i class="' . $icon . '"></i></span>'
+        . '<span class="min-w-0 text-truncate">' . $label . '</span>'
+        . '<i class="fa-solid fa-chevron-down st-unav__chev ms-auto"></i></a>'
+        . '<div id="' . $id . '" class="collapse' . ($open ? ' show' : '') . '">'
+        . '<div class="st-unav__sub">' . $subs . '</div></div></div>';
+}
+
 function usercp_menu(): void
 {
-    global $mybb, $theme, $plugins, $lang, $usercpnav, $usercpmenu, $enablepms, $usergroups;
+    global $mybb, $theme, $plugins, $lang, $usercpnav, $usercpmenu, $enablepms, $usergroups, $BASEURL;
 
     $lang->load("usercpnav");
+    $usercpmenu = '';
 
     // Add the default items as plugins with separated priorities of 10
     if ($enablepms != 0 && $usergroups['canusepms'] == 1) {
@@ -223,71 +337,43 @@ function usercp_menu(): void
 
     // Run the plugin hooks
     $plugins->run_hooks("usercp_menu");
-    global $usercpmenu;
 
-    $ucp_nav_home = '
-    <a href="usercp.php" class="btn btn-menu"><i class="fa-solid fa-house me-2"></i>'.$lang->usercpnav['ucp_nav_home'].'</a>';
+    $ucp_nav_home = ucp_nav_link('usercp.php', 'fa-solid fa-house', $lang->usercpnav['ucp_nav_home'], 'primary');
 
-    $usercpnav = '
-    <div class="card mb-4 border-0">
-    <div class="card-body m-0 p-0">
-        '.$ucp_nav_home.'
-'.$usercpmenu.'
-    </div>
-</div>';
+    // Меню самодостаточно: подключает стили и сама создаёт .st-page, поэтому
+    // работает и в usercp.php, и в private.php (вложенный .st-page получает padding 0).
+    $usercpnav = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css">'
+        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ucp.css">'
+        . '<div class="st-page"><nav class="st-card st-unav mb-3">' . $ucp_nav_home . $usercpmenu . '</nav></div>';
 
     $plugins->run_hooks("usercp_menu_built");
 }
 
-
 function usercp_menu_messenger(): void
 {
-    global $db, $mybb, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
+    global $db, $mybb, $CURUSER, $BASEURL, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
 
     $lang->load("usercpnav");
+		
 
-    // 1. Сначала собираем tracking
-    $ucp_nav_tracking = '<a href="private.php?action=tracking" class="btn btn-menu-coll"><i class="fa-solid fa-flag ms-2"></i> &nbsp;&nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_tracking'].'</a>';
+    $items = [
+        ['private.php?action=send', 'fa-solid fa-marker', $lang->usercpnav['ucp_nav_compose']],
+    ];
 
-    // 2. Потом compose
-    $ucp_nav_compose = '<a href="private.php?action=send" class="btn btn-menu-coll"><i class="fa-solid fa-marker ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_compose'].'</a>';
-
-    // 3. Потом папки
-    $folderlinks = $folder_id = $folder_name = '';
     $foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
-    foreach ($foldersexploded as $key => $folders) {
-        $folderinfo = explode("**", $folders, 2);
+    foreach ($foldersexploded as $folders) {
+        $folderinfo    = explode("**", $folders, 2);
         $folderinfo[1] = get_pm_folder_name((int)$folderinfo[0], $folderinfo[1] ?? '');
-        $folder_id = $folderinfo[0];
-        $folder_name = $folderinfo[1];
-        $folderlinks .= '<a href="private.php?fid='.$folder_id.'" class="btn btn-menu-coll"><i class="fa-regular fa-folder-open ms-2"></i> &nbsp;&nbsp; '.$folder_name.'</a>';
+        $items[] = ['private.php?fid=' . $folderinfo[0], 'fa-regular fa-folder-open', $folderinfo[1]];
     }
 
-    if (!isset($collapsedimg['usercppms'])) {
-        $collapsedimg['usercppms'] = '';
-    }
-    if (!isset($collapsed['usercppms_e'])) {
-        $collapsed['usercppms_e'] = '';
-    }
+    $items[] = ['private.php?action=tracking', 'fa-solid fa-flag', $lang->usercpnav['ucp_nav_tracking']];
 
-    // 4. Только теперь собираем итоговый HTML — все переменные уже готовы
-    $usercp_nav_messenger = '
-    <div>
-        <a class="btn btn-menu" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-modu2" role="button">
-            <i class="fa-solid fa-envelope-open-text me-2"></i>'.$lang->usercpnav['ucp_nav_messenger'].'
-        </a>
-        <div id="collapse-modu2" class="collapse bg-transparent">
-            <ul class="list-group list-group-flush ms-0">
-                '.$ucp_nav_compose.'
-                '.$folderlinks.'
-                '.$ucp_nav_tracking.'
-            </ul>
-        </div>
-    </div>';
-
-    $usercpmenu .= $usercp_nav_messenger;
+    $usercpmenu .= ucp_nav_group(
+        'ucp-nav-pm', 'fa-solid fa-envelope-open-text', 'info',
+        $lang->usercpnav['ucp_nav_messenger'], $items
+    );
 }
-
 
 function usercp_menu_profile(): void
 {
@@ -295,38 +381,17 @@ function usercp_menu_profile(): void
 
     $lang->load("usercpnav");
 
-    $changesigop = '<a href="usercp.php?action=editsig" class="btn btn-menu-coll"><i class="fa-solid fa-signature ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_sig'].'</a>';
-
-    if (!isset($collapsedimg['usercpprofile'])) {
-        $collapsedimg['usercpprofile'] = '';
-    }
-
-    if (!isset($collapsed['usercpprofile_e'])) {
-        $collapsed['usercpprofile_e'] = '';
-    }
-
-    $expaltext = in_array("usercpprofile", $collapse ?? []) ? '[+]' : '[-]';
-
-    $usercpmenu .= '
-    <div>
-<a class="btn btn-menu"data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-modu" role="button"><i class="fa-solid fa-gears me-2"></i>'.$lang->usercpnav['ucp_nav_profile'].'</a>
-
-<div id="collapse-modu" class="collapse bg-transparent">
-<ul class="list-group list-group-flush">
-<a href="usercp.php?action=profile" class="btn btn-menu-coll"><i class="fa-solid fa-user-pen ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_profile'].'</a>
-
-<a href="usercp.php?action=password" class="btn btn-menu-coll"><i class="fa-solid fa-key ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_pass'].'</a>
-<a href="usercp.php?action=2fa" class="btn btn-menu-coll"><i class="fa-solid fa-shield-halved ms-2"></i> &nbsp;&nbsp; Two-Factor Authentication</a>
-<a href="usercp.php?action=sessions" class="btn btn-menu-coll"><i class="fa-solid fa-display ms-2"></i> &nbsp;&nbsp; Active Session</a>
-<a href="usercp.php?action=email" class="btn btn-menu-coll"><i class="fa-solid fa-at ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_email'].'</a>
-<a href="usercp.php?action=avatar" class="btn btn-menu-coll"><i class="fa-solid fa-image ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_avatar'].'</a>
-'.$changesigop.'
-<a href="usercp.php?action=options" class="btn btn-menu-coll"><i class="fa-solid fa-gears ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_options'].'</a>
-</ul>
-</div>
-</div>';
+    $usercpmenu .= ucp_nav_group('ucp-nav-profile', 'fa-solid fa-gears', 'primary', $lang->usercpnav['ucp_nav_profile'], [
+        ['usercp.php?action=profile',  'fa-solid fa-user-pen',      $lang->usercpnav['ucp_nav_edit_profile']],
+        ['usercp.php?action=password', 'fa-solid fa-key',           $lang->usercpnav['ucp_nav_change_pass']],
+        ['usercp.php?action=2fa',      'fa-solid fa-shield-halved', 'Two-Factor Authentication'],
+        ['usercp.php?action=sessions', 'fa-solid fa-display',       'Active Session'],
+        ['usercp.php?action=email',    'fa-solid fa-at',            $lang->usercpnav['ucp_nav_change_email']],
+        ['usercp.php?action=avatar',   'fa-solid fa-image',         $lang->usercpnav['ucp_nav_change_avatar']],
+        ['usercp.php?action=editsig',  'fa-solid fa-signature',     $lang->usercpnav['ucp_nav_edit_sig']],
+        ['usercp.php?action=options',  'fa-solid fa-sliders',       $lang->usercpnav['ucp_nav_edit_options']],
+    ]);
 }
-
 
 function usercp_menu_misc(): void
 {
@@ -334,134 +399,28 @@ function usercp_menu_misc(): void
 
     $lang->load("usercpnav");
 
-    $draftstart = $draftend = $attachmentop = '';
-    $draftcount = 'Saved Drafts';
-
     $query = $db->sql_query_prepared("SELECT COUNT(pid) AS draftcount FROM posts WHERE visible = '-2' AND uid = ?", [$CURUSER['id']]);
-    $count = $query ? $db->fetch_field($query, 'draftcount') : 0;
+    $count = $query ? (int)$db->fetch_field($query, 'draftcount') : 0;
 
-    if ($count > 0) {
-        $draftcount = sprintf('<strong>Saved Drafts ('.ts_nf($count).')</strong>');
-    }
-
-    $attachmentop = '<a href="usercp.php?action=attachments" class="btn btn-menu"><i class="fa-solid fa-paperclip me-2"></i>Manage Attachments</a>';
-
-    if (!isset($collapsedimg['usercpmisc'])) {
-        $collapsedimg['usercpmisc'] = '';
-    }
-
-    if (!isset($collapsed['usercpmisc_e'])) {
-        $collapsed['usercpmisc_e'] = '';
-    }
+    $draftbadge = $count > 0
+        ? '<span class="st-badge st-soft-primary ms-auto">' . ts_nf($count) . '</span>'
+        : '';
 
     $profile_link = get_profile_link($CURUSER['id']);
-    //$expaltext = in_array("usercpmisc", $collapse) ? '[+]' : '[-]';
-	
-	$expaltext = in_array("usercpmisc", $collapse ?? []) ? '[+]' : '[-]';
 
-    $usercpmenu .= '
-    <div class="user-cp-nav d-flex flex-column gap-2">
-
-    <div class="nav-section">
-
-        <a href="usercp.php?action=editlists" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-user-group fa-fw me-2"></i>
-            <span>'.$lang->usercpnav['ucp_nav_editlists'].'</span>
-        </a>
-    </div>
-
-    <div class="nav-section">
-        '.$attachmentop.'
-    </div>
-
-    <!-- Контент и подписки -->
-    <div class="nav-section">
-        <a href="usercp.php?action=drafts" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-pen-ruler fa-fw me-2"></i>
-            <span class="badge bg-secondary ms-auto">'.$draftcount.'</span>
-        </a>
-        <a href="usercp.php?action=subscriptions" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-comment fa-fw me-2"></i>
-            <span>'.$lang->usercpnav['ucp_nav_subscribed_threads'].'</span>
-        </a>
-        <a href="usercp.php?action=forumsubscriptions" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-eye fa-fw me-2"></i>
-            <span>'.$lang->usercpnav['ucp_nav_forum_subscriptions'].'</span>
-        </a>
-    </div>
-
-    <!-- Закладки и файлы -->
-    <div class="nav-section">
-        <a href="usercp.php?action=bookmarks" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-bookmark fa-fw me-2"></i>
-            <span>'.$lang->usercpnav['ucp_nav_book'].'</span>
-        </a>
-        <a href="usercp.php?action=manage_files" class="btn btn-menu d-flex align-items-center">
-            <i class="fa-solid fa-folder-open fa-fw me-2"></i>
-            <span>My Files</span>
-        </a>
-    </div>
-
-    <!-- Профиль -->
-    <div class="nav-section mt-3">
-        <a href="'.$profile_link.'" class="btn btn-menu btn-profile d-flex align-items-center">
-            <i class="fa-solid fa-id-card-clip fa-fw me-2"></i>
-            <span>'.$lang->usercpnav['ucp_nav_view_profile'].'</span>
-            <i class="fa-solid fa-arrow-up-right-from-square ms-auto text-muted small"></i>
-        </a>
-    </div>
-</div>
-
-<style>
-.user-cp-nav {
-    padding: 1rem;
+    $usercpmenu .= '<div class="st-unav__sep"></div>'
+        . ucp_nav_link('usercp.php?action=editlists',          'fa-solid fa-user-group',  $lang->usercpnav['ucp_nav_editlists'], 'success')
+        . ucp_nav_link('usercp.php?action=attachments',        'fa-solid fa-paperclip',   'Manage Attachments', 'muted')
+        . ucp_nav_link('usercp.php?action=drafts',             'fa-solid fa-pen-ruler',   $lang->usercpnav['ucp_nav_drafts'] ?? 'Saved Drafts', 'warning', $draftbadge)
+        . ucp_nav_link('usercp.php?action=subscriptions',      'fa-solid fa-comment',     $lang->usercpnav['ucp_nav_subscribed_threads'], 'info')
+        . ucp_nav_link('usercp.php?action=forumsubscriptions', 'fa-solid fa-eye',         $lang->usercpnav['ucp_nav_forum_subscriptions'], 'info')
+        . '<div class="st-unav__sep"></div>'
+        . ucp_nav_link('usercp.php?action=bookmarks',          'fa-solid fa-bookmark',    $lang->usercpnav['ucp_nav_book'], 'danger')
+        . ucp_nav_link('usercp.php?action=manage_files',       'fa-solid fa-folder-open', 'My Files', 'muted')
+        . '<div class="st-unav__sep"></div>'
+        . ucp_nav_link($profile_link, 'fa-solid fa-id-card-clip', $lang->usercpnav['ucp_nav_view_profile'], 'primary',
+            '<i class="fa-solid fa-arrow-up-right-from-square ms-auto small opacity-50"></i>');
 }
-
-.nav-section {
-    padding: 0.5rem 0;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-}
-
-.nav-section:last-child {
-    border-bottom: none;
-}
-
-.btn-menu {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    transition: all 0.2s ease;
-    color: #495057;
-    background: #f8f9fa;
-    border: 1px solid transparent;
-    margin-bottom: 0.25rem;
-}
-
-.btn-menu:hover {
-    background: #e9ecef;
-    border-color: #dee2e6;
-    color: #0d6efd;
-    transform: translateX(3px);
-}
-
-.btn-menu .badge {
-    font-size: 0.75em;
-    padding: 0.25em 0.5em;
-}
-
-.btn-profile {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border: 1px solid #dee2e6;
-}
-
-.btn-profile:hover {
-    background: linear-gradient(135deg, #e9ecef 0%, #dde1e6 100%);
-    border-color: #0d6efd;
-}
-</style>';
-}
-
-
 
 
 function update_pm_count(int|string $uid = 0, int $count_to_update = 7): array

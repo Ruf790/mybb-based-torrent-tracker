@@ -6,8 +6,6 @@
  *  1. Buddy / ignore lists — поиск и добавление пользователей
  *  2. Attachments          — выбор и доп. информация по вложениям
  *  3. Options              — выбор категорий для подписки
- *  4. Bookmarks            — AJAX-удаление закладок (перенесено из usercp.php)
- *  5. My files             — выбор файлов на странице manage_files (перенесено из usercp.php)
  *
  * Каждый блок сам проверяет наличие своих элементов, поэтому файл можно
  * подключать на любой вкладке UserCP.
@@ -367,137 +365,12 @@ window.toggleCatSub = toggleCatSub;
 
 
 /* ══════════════════════════════════════════════════════════
-   4. Bookmarks — удаление выбранных / всех (AJAX)
-   ══════════════════════════════════════════════════════════ */
-
-const ucpEsc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-function initUserCPBookmarks() {
-    const form = document.getElementById('bookmarksForm');
-    if (!form) return;
-    const cardsContainer = form.querySelector('.row.g-4');
-    const postCode       = form.querySelector('input[name="my_post_key"]')?.value || '';
-
-    function showToast(message, ok = true) {
-        const el  = document.getElementById('toastNotification');
-        const msg = document.getElementById('toastMessage');
-        if (!el || !msg) return;
-        el.className = `toast align-items-center text-bg-${ok ? 'success' : 'danger'} border-0`;
-        msg.textContent = message;
-        new bootstrap.Toast(el, { delay: 3000 }).show();
-    }
-
-    function showEmptyState() {
-        if (!cardsContainer) return;
-        cardsContainer.innerHTML = `
-        <div class="col-12 text-center py-5 text-muted">
-            <div class="mb-3 animate-bounce" style="font-size:4rem;color:rgba(108,117,125,.3);">
-                <i class="fa-regular fa-bookmark"></i>
-            </div>
-            <h5 class="mb-2 fw-semibold">${ucpEsc(t('bm_empty_title', 'Your bookmark list is empty'))}</h5>
-            <p class="mb-4">${ucpEsc(t('bm_empty_hint', ''))}</p>
-            <a href="browse.php" class="btn btn-primary btn-sm shadow-sm">
-                <i class="fa-solid fa-magnifying-glass me-1"></i> ${ucpEsc(t('bm_browse', 'Browse Torrents'))}
-            </a>
-        </div>`;
-        document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.remove();
-        document.querySelector('[data-bs-target="#confirmDeleteAllModal"]')?.remove();
-    }
-
-    document.querySelector('[data-bs-target="#confirmDeleteSelectedModal"]')?.addEventListener('click', function () {
-        const count = form.querySelectorAll('input[type="checkbox"]:checked').length;
-        if (!count) { showToast(t('bm_select_one', 'Please select at least one bookmark.'), false); return; }
-        const sc = document.getElementById('selectedCount');
-        if (sc) sc.textContent = count;
-        new bootstrap.Modal(document.getElementById('confirmDeleteSelectedModal')).show();
-    });
-
-    document.getElementById('confirmDeleteSelectedBtn')?.addEventListener('click', function () {
-        const fd = new FormData(form);
-        fd.set('do', 'delete');
-        fetch('usercp.php', { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(d => {
-                if (d.status === 'success') {
-                    form.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-                        const card = cb.closest('.col-xl-3, .col-lg-4, .col-md-6');
-                        if (!card) return;
-                        card.style.transition = 'all .5s ease';
-                        card.style.opacity    = '0';
-                        card.style.transform  = 'scale(.95)';
-                        setTimeout(() => card.remove(), 500);
-                    });
-                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteSelectedModal'))?.hide();
-                    showToast(d.message, true);
-                    setTimeout(() => { if (cardsContainer && !cardsContainer.children.length) showEmptyState(); }, 600);
-                } else { showToast(d.message, false); }
-            });
-    });
-
-    document.getElementById('confirmDeleteAllBtn')?.addEventListener('click', function () {
-        const fd = new FormData();
-        fd.append('action', 'removebookmarks');
-        fd.append('my_post_key', postCode);
-        fetch('usercp.php', { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(d => {
-                if (d.status === 'success') {
-                    (cardsContainer || form).querySelectorAll('.col-xl-3, .col-lg-4, .col-md-6').forEach(c => {
-                        c.style.transition = 'all .5s ease';
-                        c.style.opacity    = '0';
-                        setTimeout(() => c.remove(), 500);
-                    });
-                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteAllModal'))?.hide();
-                    showToast(d.message, true);
-                    setTimeout(showEmptyState, 600);
-                } else { showToast(d.message, false); }
-            });
-    });
-}
-
-
-/* ══════════════════════════════════════════════════════════
-   5. My files (manage_files) — «выбрать все», счётчик, анимация карточек
-   ══════════════════════════════════════════════════════════ */
-
-function initUserCPFiles() {
-    const selectAll = document.getElementById('select-all');
-    const cbs       = document.querySelectorAll('.file-checkbox-input');
-    const cnt       = document.getElementById('selected-count');
-
-    function update() {
-        const n = document.querySelectorAll('.file-checkbox-input:checked').length;
-        if (cnt) cnt.textContent = n;
-        if (selectAll) selectAll.checked = n === cbs.length && cbs.length > 0;
-    }
-
-    selectAll?.addEventListener('change', function () { cbs.forEach(c => { c.checked = this.checked; }); update(); });
-    cbs.forEach(c => c.addEventListener('change', update));
-
-    document.querySelectorAll('.file-card').forEach((c, i) => {
-        c.style.opacity   = '0';
-        c.style.transform = 'translateY(20px)';
-        setTimeout(() => {
-            c.style.transition = 'opacity .6s ease,transform .6s ease';
-            c.style.opacity    = '1';
-            c.style.transform  = 'translateY(0)';
-        }, 100 + i * 100);
-    });
-}
-
-
-/* ══════════════════════════════════════════════════════════
    Boot
    ══════════════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', function () {
     UserCP.init();
     if (document.querySelector('.attachment-item')) initUserCPAttachments();
-
-    // Страница UCP — из обёртки ucp_page_open() (usercp.php)
-    const page = document.querySelector('.ucp-pg[data-ucp-page]')?.dataset.ucpPage || '';
-    if (page === 'bookmarks')    initUserCPBookmarks();
-    if (page === 'manage_files') initUserCPFiles();
 });
 
 })();

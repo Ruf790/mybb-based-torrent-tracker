@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         return s;
     }
-    // SweetAlert через ags-dialog.js; без него — нативные alert()/confirm()
     const say = (msg, icon) => (window.agsAlert ? window.agsAlert(msg, icon) : (window.alert(msg), Promise.resolve()));
     const ask = (msg, opts) => (window.agsConfirm ? window.agsConfirm(msg, opts) : Promise.resolve(window.confirm(msg)));
 
@@ -32,6 +31,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const passwordMatch = document.getElementById('passwordMatch');
 
     const complexitySection = document.getElementById('complexitySection');
+    const strengthFill = document.getElementById('strengthFill');
+    const strengthText = document.getElementById('strengthText');
+
+    // Элементы требований
+    const reqUppercase = document.getElementById('complexityUppercase');
+    const reqLowercase = document.getElementById('complexityLowercase');
+    const reqNumber    = document.getElementById('complexityNumber');
+    const reqSpecial   = document.getElementById('complexitySpecial');
 
     // ===== SHOW COMPLEXITY BLOCK =====
     if (complexitySection) {
@@ -67,6 +74,19 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    function renderComplexity(password) {
+        if (!reqUppercase) return;
+        const c = checkComplexity(password);
+        const set = (el, ok) => {
+            el.classList.toggle('valid', ok);
+            el.classList.toggle('invalid', !ok);
+        };
+        set(reqUppercase, c.uppercase);
+        set(reqLowercase, c.lowercase);
+        set(reqNumber, c.number);
+        set(reqSpecial, c.special);
+    }
+
     function validatePasswordLength(password) {
         const length = password.length;
 
@@ -79,20 +99,44 @@ document.addEventListener('DOMContentLoaded', function () {
         return { valid: true };
     }
 
+    // ===== STRENGTH =====
+    function calcStrength(password) {
+        let score = 0;
+        if (password.length >= MIN_PASSWORD_LENGTH) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[a-z]/.test(password)) score++;
+        if (/[0-9]/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+        return Math.min(4, Math.max(0, score - 1)); // 0..4
+    }
+
+    function renderStrength(password) {
+        if (!strengthFill) return;
+        const level = password.length === 0 ? 0 : calcStrength(password);
+        const map = [
+            { cls: '',                          txt: '' },
+            { cls: 'st-strength__fill--weak',   txt: t('pwd_weak', 'Weak') },
+            { cls: 'st-strength__fill--medium', txt: t('pwd_medium', 'Medium') },
+            { cls: 'st-strength__fill--good',   txt: t('pwd_good', 'Good') },
+            { cls: 'st-strength__fill--strong', txt: t('pwd_strong', 'Strong') },
+        ];
+        strengthFill.className = 'st-strength__fill' + (map[level].cls ? ' ' + map[level].cls : '');
+        if (strengthText) strengthText.textContent = map[level].txt;
+    }
+
     function updatePasswordCounter() {
         if (!passwordInput) return;
 
         const length = passwordInput.value.length;
         if (passwordLengthSpan) passwordLengthSpan.textContent = length;
 
-        if (!passwordCharCounter) return;
-
-        passwordCharCounter.classList.remove('warning', 'danger');
-
-        if (length > MAX_PASSWORD_LENGTH) {
-            passwordCharCounter.classList.add('danger');
-        } else if (length > MAX_PASSWORD_LENGTH * 0.8) {
-            passwordCharCounter.classList.add('warning');
+        if (passwordCharCounter) {
+            passwordCharCounter.classList.remove('st-charcount--warning', 'st-charcount--danger');
+            if (length > MAX_PASSWORD_LENGTH) {
+                passwordCharCounter.classList.add('st-charcount--danger');
+            } else if (length > MAX_PASSWORD_LENGTH * 0.8) {
+                passwordCharCounter.classList.add('st-charcount--warning');
+            }
         }
     }
 
@@ -119,6 +163,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (passwordInput) {
         passwordInput.addEventListener('input', function () {
             updatePasswordCounter();
+            renderComplexity(passwordInput.value);
+            renderStrength(passwordInput.value);
             checkPasswordMatch();
         });
     }
@@ -128,8 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ===== SUBMIT =====
-    // Форма с кнопкой #submitBtn, а не первая на странице (первая — поиск в шапке)
-    const form = document.getElementById('submitBtn')?.closest('form') || document.querySelector('form');
+    const form = document.querySelector('form');
 
     if (form) {
         form.addEventListener('submit', function (e) {

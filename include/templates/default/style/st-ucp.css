@@ -1,0 +1,356 @@
+/* =============================================================================
+   st-ucp.css — стили User CP (usercp.php + меню в functions_user.php)
+   Подключается вместе с st-ui.css (карточки, цвета, шапка, тулбары).
+   Всё под .st-page — глобальных переопределений нет.
+   ============================================================================= */
+
+/* ── User CP (usercp.php + меню в functions_user.php) ─────────────────────── */
+.st-page .st-label {
+  display: flex; align-items: center; gap: .5rem; margin-bottom: .35rem;
+  font-weight: 600; font-size: .92em; color: var(--bs-emphasis-color);
+}
+.st-page .st-label i { opacity: .75; }
+.st-page .st-hint { margin-top: .3rem; font-size: .82em; color: var(--bs-secondary-color); }
+.st-page .st-hint i { margin-right: .35rem; opacity: .75; }
+.st-page .st-field + .st-field { margin-top: 1rem; }
+.st-page .st-field--split { padding-bottom: 1rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+.st-page .st-pw { position: relative; }
+.st-page .st-pw .form-control { padding-right: 2.75rem; }
+.st-page .st-pw .toggle-password {
+  position: absolute; top: 50%; right: .35rem; transform: translateY(-50%);
+  border: 0; background: none; color: var(--bs-secondary-color); text-decoration: none;
+}
+.st-page .email-feedback { font-size: .8rem; margin-top: .25rem; }
+.st-page .email-feedback.valid   { color: var(--bs-success); }
+.st-page .email-feedback.invalid { color: var(--bs-danger); }
+.st-page .st-notice {
+  display: flex; align-items: flex-start; gap: .8rem; padding: .75rem 1rem;
+  border-radius: .8rem; font-size: .92em;
+}
+.st-page .st-notice > i { margin-top: .15rem; }
+.st-page .st-form-card .st-card__head + .st-card__body { padding-top: 1.1rem; }
+.st-page .st-form-card + .st-form-card { margin-top: .85rem; }
+
+/* Меню UCP */
+.st-page .st-unav { padding: .5rem; display: flex; flex-direction: column; gap: .15rem; }
+.st-page .st-unav__link {
+  display: flex; align-items: center; gap: .7rem; width: 100%;
+  padding: .5rem .65rem; border-radius: .7rem; border: 0; background: none;
+  color: var(--bs-body-color); font-weight: 600; font-size: .92em; text-align: start; text-decoration: none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.st-page .st-unav__link .st-ico { width: 1.9rem; height: 1.9rem; border-radius: .55rem; font-size: .8rem; }
+.st-page .st-unav__link:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.st-page .st-unav__link.active { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+.st-page .st-unav__chev { font-size: .7rem; opacity: .6; transition: transform .2s ease; }
+.st-page .st-unav__link[aria-expanded="true"] .st-unav__chev { transform: rotate(180deg); }
+.st-page .st-unav__sub {
+  display: flex; flex-direction: column; gap: .1rem;
+  margin: .15rem 0 .35rem 1.35rem; padding-left: .6rem; border-left: 2px solid var(--bs-border-color);
+}
+.st-page .st-unav__sub .st-unav__link { padding: .4rem .6rem; font-weight: 500; font-size: .88em; }
+.st-page .st-unav__sep { height: 1px; margin: .35rem .25rem; background: var(--bs-border-color-translucent); }
+
+/* Пикер категорий (options) — классы cat-pick-btn / active нужны usercp.js */
+.st-page .category-icon-picker { display: flex; flex-wrap: wrap; gap: .5rem; }
+.st-page .cat-pick-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem;
+  min-width: 5.5rem; padding: .75rem .9rem; border-radius: .8rem;
+  border: 1px solid var(--bs-border-color); background: var(--bs-body-bg);
+  color: var(--bs-secondary-color); font-size: .78rem; font-weight: 600; line-height: 1.2; text-align: center;
+  cursor: pointer; transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.st-page .cat-pick-btn i { font-size: 1.4rem; }
+.st-page .cat-pick-btn:hover { border-color: var(--bs-primary); color: var(--bs-primary-text-emphasis); }
+.st-page .cat-pick-btn.active {
+  border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis);
+}
+
+/* Устройства / сессии */
+.st-page .st-dev { display: flex; align-items: center; gap: .85rem; padding: .7rem .9rem; border-top: 1px solid var(--bs-border-color-translucent); }
+.st-page .st-dev:first-child { border-top: 0; }
+.st-page .st-dev:hover { background: var(--bs-tertiary-bg); }
+.st-page .st-dev__body { flex: 1; min-width: 0; }
+.st-page .st-dev__name { font-weight: 600; overflow-wrap: anywhere; }
+
+/* Аватар (usercp avatar) */
+.st-page .avatar-ring {
+  position: relative; display: inline-block; padding: 6px; border-radius: 50%;
+  background: conic-gradient(from 140deg, var(--bs-body-bg) 0 20%, var(--bs-primary-bg-subtle) 20% 70%, var(--bs-body-bg) 70% 100%);
+}
+.st-page .avatar-ring > * { display: block; border-radius: 50%; }
+.st-page .file-input-wrapper input[type="file"] {
+  display: block; width: 100%; padding: .45rem; border-radius: .65rem;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); color: var(--bs-body-color); cursor: pointer;
+}
+.st-page .file-input-wrapper input[type="file"]::file-selector-button {
+  border: 0; margin-right: .6rem; padding: .35rem .9rem; border-radius: 999px; cursor: pointer;
+  background: var(--bs-primary); color: #fff; font-weight: 600;
+}
+
+/* Строки подписок (subscriptions) */
+.st-page .st-sub {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .5rem 1rem;
+  padding: .85rem 1.1rem; border-top: 1px solid var(--bs-border-color-translucent);
+  transition: background-color .15s ease;
+}
+.st-page .st-sub:first-child { border-top: 0; }
+.st-page .st-sub:hover { background: var(--bs-tertiary-bg); }
+.st-page .st-sub.selected { background: var(--bs-primary-bg-subtle); }
+.st-page .st-sub__side { display: flex; align-items: center; gap: 1.25rem; text-align: end; }
+.st-page .st-sub__stats { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem 1rem; text-align: center; }
+@media (max-width: 767.98px) {
+  .st-page .st-sub { grid-template-columns: auto minmax(0, 1fr); }
+  .st-page .st-sub__side { grid-column: 2; justify-content: space-between; text-align: start; }
+}
+
+/* Закладки (bookmarks) */
+.st-page .st-bm { overflow: hidden; opacity: 0; transform: translateY(12px); animation: stBmIn .35s ease forwards; transition: border-color .15s ease; }
+@keyframes stBmIn { to { opacity: 1; transform: none; } }
+.st-page .st-bm:hover { border-color: var(--bs-primary); }
+.st-page .st-bm__thumb { position: relative; display: block; overflow: hidden; }
+.st-page .st-bm__img { display: block; width: 100%; height: 170px; object-fit: cover; transition: transform .3s ease; }
+.st-page .st-bm:hover .st-bm__img { transform: scale(1.04); }
+.st-page .st-bm__title {
+  position: absolute; inset: auto 0 0 0; padding: .35rem .7rem; background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.st-page .st-bm__foot { padding: .7rem .9rem; }
+
+/* Мои файлы (manage_files) */
+.st-page .file-card { position: relative; overflow: hidden; transition: border-color .15s ease; }
+.st-page .file-card:hover { border-color: var(--bs-primary); }
+.st-page .file-preview-wrapper {
+  position: relative; height: 170px; display: flex; align-items: center; justify-content: center;
+  background: var(--bs-tertiary-bg); border-radius: .7rem; overflow: hidden; margin-bottom: 1rem;
+}
+.st-page .file-preview-wrapper img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.st-page .file-checkbox { position: absolute; top: .75rem; right: .75rem; z-index: 2; }
+.st-page .file-checkbox-input { opacity: 0; position: absolute; }
+.st-page .file-checkbox-label {
+  display: block; width: 22px; height: 22px; border: 2px solid var(--bs-border-color); border-radius: 6px;
+  background: var(--bs-body-bg); cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
+}
+.st-page .file-checkbox-input:checked + .file-checkbox-label { background: var(--bs-primary); border-color: var(--bs-primary); }
+.st-page .file-checkbox-input:checked + .file-checkbox-label::after {
+  content: "✓"; display: block; color: #fff; font-size: .9rem; font-weight: 700; text-align: center; line-height: 18px;
+}
+.st-page .file-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem; }
+.st-page .file-badges .st-badge { text-decoration: none; }
+
+/* Вложения (attachments) */
+.st-page .attachment-icon {
+  width: 48px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: .6rem; overflow: hidden;
+}
+.st-page .attachment-thumb-link { display: block; width: 100%; height: 100%; }
+.st-page .attachment-thumb { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .2s ease; }
+.st-page .attachment-thumb-link:hover .attachment-thumb { transform: scale(1.08); }
+
+/* Списки друзей / игнорируемых (editlists) */
+/* ── Buddy / Ignore lists ───────────────────────────────────── */
+.st-page .ucp-lists .ucp-card { height: 100%; }
+.st-page .ucp-lists .ucp-icon {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: .75rem;
+    font-size: 1rem;
+}
+.st-page .ucp-lists .ucp-icon-buddy   { color: var(--bs-success); background: rgba(var(--bs-success-rgb), .12); }
+.st-page .ucp-lists .ucp-icon-ignored { color: var(--bs-danger);  background: rgba(var(--bs-danger-rgb), .12); }
+.st-page .ucp-lists .ucp-icon-received { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); }
+.st-page .ucp-lists .ucp-icon-sent     { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .14); }
+.st-page .ucp-lists .ucp-count {
+    margin-left: auto;
+    font-size: .75rem; font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.st-page .ucp-lists .ucp-count-active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.st-page .ucp-lists .ucp-help { font-size: .8rem; color: var(--bs-secondary-color); margin-bottom: .5rem; }
+
+/* Поле выбора пользователей (разметку создаёт usercp.js) */
+.st-page .ucp-lists .user-select {
+    position: relative;
+    display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    background: var(--bs-body-bg);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.st-page .ucp-lists .user-select:focus-within {
+    border-color: rgba(var(--bs-primary-rgb), .6);
+    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
+}
+.st-page .ucp-lists .user-select > input {
+    flex: 1 1 140px; min-width: 120px;
+    border: 0; outline: 0;
+    background: transparent;
+    color: var(--bs-body-color);
+    padding: .25rem;
+}
+.st-page .ucp-lists .user-tag {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .15rem .35rem .15rem .25rem;
+    border-radius: 50rem;
+    background: rgba(var(--bs-primary-rgb), .1);
+    border: 1px solid rgba(var(--bs-primary-rgb), .3);
+    color: var(--bs-primary);
+    font-size: .85rem; font-weight: 600;
+}
+.st-page .ucp-lists .user-tag img,
+.st-page .ucp-lists .user-option img {
+    width: 22px; height: 22px; border-radius: 50%; object-fit: cover;
+}
+.st-page .ucp-lists .user-tag-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color .15s ease;
+}
+.st-page .ucp-lists .user-tag-remove:hover { background: rgba(var(--bs-primary-rgb), .2); }
+.st-page .ucp-lists .user-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050;
+    max-height: 260px; overflow-y: auto;
+    padding: .25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
+}
+.st-page .ucp-lists .user-dropdown[hidden] { display: none; }
+.st-page .ucp-lists .user-option {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .45rem .6rem;
+    border-radius: .5rem;
+    cursor: pointer;
+}
+.st-page .ucp-lists .user-option img { width: 28px; height: 28px; }
+.st-page .ucp-lists .user-option:hover { background: var(--bs-tertiary-bg); }
+
+/* Список */
+.st-page .ucp-lists .ucp-list-title {
+    font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--bs-secondary-color);
+    margin: 1.25rem 0 .5rem;
+}
+.st-page .ucp-lists .ucp-list { max-height: 420px; overflow-y: auto; margin: 0 -.35rem; }
+.st-page .ucp-lists .ucp-list-row {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .6rem;
+    border-radius: .6rem;
+    transition: background-color .15s ease;
+}
+.st-page .ucp-lists .ucp-list-row:hover { background: var(--bs-tertiary-bg); }
+.st-page .ucp-lists .ucp-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.st-page .ucp-lists .ucp-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #adb5bd; }
+.st-page .ucp-lists .ucp-status-online { background: #68c000; box-shadow: 0 0 0 3px rgba(104, 192, 0, .18); }
+.st-page .ucp-lists .ucp-ignored-mark { color: var(--bs-secondary-color); font-size: .8rem; width: 14px; text-align: center; }
+.st-page .ucp-lists .ucp-list-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; flex-shrink: 0;
+    border-radius: 50%;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    opacity: .6;
+    transition: opacity .15s ease, color .15s ease, background-color .15s ease;
+}
+.st-page .ucp-lists .ucp-list-row:hover .ucp-list-remove { opacity: 1; }
+.st-page .ucp-lists .ucp-list-remove:hover { color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .1); }
+.st-page .ucp-lists .ucp-list-date {
+    display: block;
+    font-size: .75rem; font-weight: 400;
+    color: var(--bs-secondary-color);
+}
+.st-page .ucp-lists .ucp-req-mark {
+    width: 26px; height: 26px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: .7rem;
+}
+.st-page .ucp-lists .ucp-req-in  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .1); }
+.st-page .ucp-lists .ucp-req-out { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .12); }
+.st-page .ucp-lists .ucp-req-actions { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; }
+.st-page .ucp-lists .ucp-req-pending {
+    font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem;
+    border-radius: 50rem;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+}
+.st-page .ucp-lists .ucp-list-empty {
+    display: flex; flex-direction: column; align-items: center; gap: .4rem;
+    padding: 1.75rem 1rem;
+    text-align: center;
+    color: var(--bs-secondary-color);
+    font-size: .9rem;
+}
+.st-page .ucp-lists .ucp-list-empty i { font-size: 1.6rem; opacity: .5; }
+
+
+
+
+
+
+
+
+/* ── Полоса силы пароля ──────────────────────────────────────────────────── */
+.st-page .st-strength { margin-top: .5rem; font-size: .8rem; }
+.st-page .st-strength__bar {
+    height: 4px;
+    background: var(--bs-border-color);
+    border-radius: 2px;
+    margin-top: .5rem;
+    overflow: hidden;
+}
+.st-page .st-strength__fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 2px;
+    transition: width .3s ease, background-color .3s ease;
+}
+.st-page .st-strength__fill--weak   { background: var(--bs-danger);  width: 25%;  }
+.st-page .st-strength__fill--medium { background: var(--bs-warning); width: 50%;  }
+.st-page .st-strength__fill--good   { background: var(--bs-success); width: 75%;  }
+.st-page .st-strength__fill--strong { background: var(--bs-primary); width: 100%; }
+
+/* ── Счётчик символов ────────────────────────────────────────────────────── */
+.st-page .st-charcount {
+    font-size: .75rem;
+    color: var(--bs-secondary-color);
+    margin-top: .25rem;
+}
+.st-page .st-charcount--warning { color: var(--bs-warning); }
+.st-page .st-charcount--danger  { color: var(--bs-danger);  }
+
+/* ── Список требований ───────────────────────────────────────────────────── */
+.st-page .st-complexity {
+    margin-top: .5rem;
+    padding-left: 0;
+    list-style: none;
+}
+.st-page .st-complexity li {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .25rem;
+    font-size: .75rem;
+    color: var(--bs-secondary-color);
+    transition: color .2s ease;
+}
+.st-page .st-complexity li i { width: 1.2rem; font-size: .8rem; }
+.st-page .st-complexity li.valid   { color: var(--bs-success); }
+.st-page .st-complexity li.invalid { color: var(--bs-danger);  }
+.st-page .st-complexity li.warning { color: var(--bs-warning); }

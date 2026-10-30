@@ -1,0 +1,40 @@
+/* =============================================================================
+   comments.css — комментарии к торрентам (include/commenttable.php).
+   Карточка — та же, что у постов форума (pb-* из postbit.css); здесь только
+   то, чего нет у постов: панель модератора и выделение выбранных комментариев.
+   ============================================================================= */
+
+/* Панель над списком */
+.ct-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+  margin-bottom: 1rem; padding: .55rem .85rem; border-radius: .8rem;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+}
+.ct-bar__title {
+  display: inline-flex; align-items: center; gap: .5rem; min-width: 0;
+  font-weight: 600; font-size: .9em; color: var(--bs-secondary-color);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ct-bar__title i { color: var(--bs-primary); }
+.ct-bar__mod { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-left: auto; }
+.ct-bar__all { display: inline-flex; align-items: center; gap: .4rem; font-size: .88em; cursor: pointer; }
+.ct-bar__all .form-check-input { cursor: pointer; }
+.ct-bar .btn { border-radius: 999px; }
+
+/* Выбранный комментарий (commenttable.js ставит .comment-selected на #comment-N) */
+.ct-item .pb-card { transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease; }
+.comment-selected .pb-card {
+  border-color: var(--bs-danger);
+  background-color: rgba(var(--bs-danger-rgb), .035);
+  box-shadow: 0 0 0 .2rem rgba(var(--bs-danger-rgb), .12);
+}
+.comment-selected .pb-card::before { border-left-color: var(--bs-danger); border-bottom-color: var(--bs-danger); }
+.comment-selected .pb-foot { background-color: rgba(var(--bs-danger-rgb), .055); }
+.ct-item .comment-checkbox { width: 2.2em; height: 1.2em; }
+
+/* Цитаты внутри комментариев */
+.ct-item .post_body blockquote { margin: .5rem 0; }
+
+@media (max-width: 575.98px) {
+  .ct-bar__mod { margin-left: 0; width: 100%; }
+}

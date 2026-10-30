@@ -1,0 +1,171 @@
+/* =============================================================================
+   moderation-page.css — moderation.php (отложенная модерация, удаление опроса,
+   разделение/объединение/перенос тем и постов) в стиле st-ui.
+   Заменяет mod.css, mod2.css, split.css и встроенные <style> из шаблонов.
+   Общие блоки (.st-card, .st-head, .st-ico, .st-badge, .st-pill, .st-kpi,
+   .st-rows, .st-check, .st-subject, .st-empty, .st-submitbar) — в st-ui.css.
+   Здесь только своё, всё под .md-page, цвета — переменные Bootstrap.
+   ============================================================================= */
+
+.md-page { padding-bottom: 1rem; }
+.md-page > * + *,
+.md-page .md-form > * + * { margin-top: 1rem; }
+.md-page .md-form > input[type="hidden"] + * { margin-top: 0; }
+.md-page .md-form { margin-top: 1rem; }
+.md-page.md-narrow { max-width: 46rem; }
+.md-page .min-w-0 { min-width: 0; }
+.md-page .md-break { overflow-wrap: anywhere; }
+
+/* ── Шапка ────────────────────────────────────────────────────────────────── */
+.md-page .md-head { flex-wrap: wrap; }
+.md-page .md-sub { margin: .2rem 0 0; color: var(--bs-secondary-color); font-size: .92em; }
+.md-page .md-head .st-head__meta a { overflow-wrap: anywhere; }
+.md-page .md-head__aside { margin-left: auto; }
+.md-page .md-head__aside .st-kpi { min-width: 8.5rem; text-align: center; }
+
+/* ── KPI ──────────────────────────────────────────────────────────────────── */
+.md-page .md-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .75rem; }
+.md-page .md-kpi { padding: .7rem 1rem; border-radius: .9rem; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); }
+.md-page .md-kpi .st-kpi__val { font-family: 'Oswald', sans-serif; font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
+.md-page .md-kpi--primary .st-kpi__val { color: var(--bs-primary-text-emphasis); }
+.md-page .md-kpi--muted .st-kpi__val { color: var(--bs-emphasis-color); }
+.md-page .md-kpi .st-kpi__lbl { font-size: .8em; color: var(--bs-secondary-color); }
+
+/* ── Карточки-секции ──────────────────────────────────────────────────────── */
+.md-page .md-card__head { display: flex; align-items: center; gap: .65rem; flex-wrap: wrap; }
+.md-page .md-card__ttl { display: flex; flex-direction: column; min-width: 0; }
+.md-page .md-card__title { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 1.08em; letter-spacing: .01em; color: var(--bs-emphasis-color); }
+.md-page .md-card__sub { font-size: .82em; color: var(--bs-secondary-color); }
+.md-page .md-card .st-card__body > * + * { margin-top: .85rem; }
+
+.md-page .md-step {
+  display: inline-grid; place-items: center; width: 1.55rem; height: 1.55rem; margin-right: .5rem;
+  border-radius: 50%; font-size: .8em; font-weight: 700; vertical-align: .1em;
+  background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis);
+}
+
+/* ── Кто действует ────────────────────────────────────────────────────────── */
+.md-page .md-actor {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .6rem;
+  padding: .55rem .75rem; border-radius: .75rem; background: var(--bs-tertiary-bg);
+}
+.md-page .md-actor__name { font-weight: 600; color: var(--bs-emphasis-color); }
+.md-page .md-actor__switch { margin-left: auto; font-size: .88em; text-decoration: none; }
+
+/* ── Подсказки ────────────────────────────────────────────────────────────── */
+.md-page .md-note {
+  display: flex; align-items: flex-start; gap: .7rem;
+  padding: .75rem 1rem; border-radius: .75rem; border: 1px solid transparent; font-size: .93em;
+}
+.md-page .md-note > i { margin-top: .2rem; }
+.md-page .md-note__title { display: block; margin-bottom: .15rem; }
+.md-page .md-note--info    { background: var(--bs-info-bg-subtle);    border-color: var(--bs-info-border-subtle);    color: var(--bs-info-text-emphasis); }
+.md-page .md-note--warning { background: var(--bs-warning-bg-subtle); border-color: var(--bs-warning-border-subtle); color: var(--bs-warning-text-emphasis); }
+.md-page .md-note--danger  { background: var(--bs-danger-bg-subtle);  border-color: var(--bs-danger-border-subtle);  color: var(--bs-danger-text-emphasis); }
+.md-page .md-list { margin: .25rem 0 0; padding-left: 1.1rem; }
+.md-page .md-list li + li { margin-top: .15rem; }
+
+/* ── Поля ─────────────────────────────────────────────────────────────────── */
+.md-page .md-label {
+  display: block; margin-bottom: .4rem;
+  font-size: .82em; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--bs-secondary-color);
+}
+.md-page .md-hint { font-size: .86em; color: var(--bs-secondary-color); }
+.md-page .md-example { margin-top: .5rem; }
+.md-page .md-forum select { width: 100% !important; max-width: 32rem; }
+.md-page .md-inline { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+.md-page .md-days { width: 7.5rem; }
+.md-page .md-when { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; }
+
+/* ── Плитки выбора ────────────────────────────────────────────────────────── */
+.md-page .md-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .45rem; }
+.md-page .md-grid--2 { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.md-page .md-grid .md-check { margin: 0; height: 100%; }
+.md-page .md-check__txt { display: inline-flex; align-items: flex-start; gap: .55rem; min-width: 0; }
+.md-page .md-check__ico { margin-top: .2rem; width: 1.1rem; text-align: center; color: var(--bs-primary-text-emphasis); opacity: .85; }
+.md-page .md-check__lbl { display: flex; flex-direction: column; min-width: 0; }
+.md-page .md-check__desc { margin-top: .1rem; font-size: .84em; color: var(--bs-secondary-color); }
+
+/* Раскрывающиеся панели (toggle-type.js выставляет style.display) */
+.md-page .md-expand { display: none; }
+.md-page .md-panel {
+  margin-top: .75rem; padding: .9rem 1rem; border-radius: .75rem;
+  border: 1px dashed var(--bs-border-color); background: var(--bs-tertiary-bg);
+}
+
+/* ── Очередь отложенной модерации ─────────────────────────────────────────── */
+.md-page .md-queue { border: 1px solid var(--bs-border-color); border-radius: .75rem; overflow: hidden; }
+.md-page .md-qrow {
+  display: grid; grid-template-columns: 1.1fr 1.1fr 1fr 2fr auto; gap: .75rem; align-items: center;
+  padding: .65rem .9rem; font-size: .93em;
+}
+.md-page .md-qrow + .md-qrow { border-top: 1px solid var(--bs-border-color); }
+.md-page .md-qrow--head {
+  background: var(--bs-tertiary-bg); font-size: .78em; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--bs-secondary-color);
+}
+.md-page .md-qrow i { margin-right: .4rem; opacity: .7; }
+.md-page .md-qrow__who, .md-page .md-qrow__info { min-width: 0; overflow-wrap: anywhere; }
+.md-page .md-qrow__act { text-align: right; }
+.md-page .md-info + .md-info { margin-top: .1rem; }
+.md-page .md-info__lbl { font-weight: 600; color: var(--bs-secondary-color); }
+
+/* ── Посты (split / merge) ────────────────────────────────────────────────── */
+.md-page .md-posts { display: flex; flex-direction: column; gap: .6rem; }
+.md-page .md-post { border: 1px solid var(--bs-border-color); border-radius: .75rem; overflow: hidden; background: var(--bs-body-bg); }
+.md-page .md-post__head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .35rem 1rem;
+  padding: .45rem .5rem .45rem .9rem; background: var(--bs-tertiary-bg); border-bottom: 1px solid var(--bs-border-color);
+  font-size: .9em;
+}
+.md-page .md-post__head i { margin-right: .35rem; opacity: .7; }
+.md-page .md-post__who { font-weight: 600; color: var(--bs-emphasis-color); }
+.md-page .md-post__date { color: var(--bs-secondary-color); }
+.md-page .md-post__pick { margin-left: auto; }
+.md-page .md-post__pick .md-check { margin: 0; padding-block: .2rem; }
+.md-page .md-post__body { padding: .8rem .9rem; max-height: 22rem; overflow: auto; overflow-wrap: anywhere; }
+.md-page .md-post__body img { max-width: 100%; height: auto; }
+
+/* ── Предпросмотр разделителя (merge) ─────────────────────────────────────── */
+.md-page .md-mpreview { padding: 1rem; border-radius: .75rem; background: var(--bs-tertiary-bg); }
+.md-page .md-bubble { display: flex; gap: .7rem; align-items: flex-start; }
+.md-page .md-avatar { flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: 50%; background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle); }
+.md-page .md-bubble__txt {
+  flex: 1; min-width: 0; padding: .5rem .8rem; border-radius: .7rem; font-size: .9em;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+}
+.md-page .md-sep-hr { margin: .9rem 0 .9rem 2.7rem; border-top: 2px dashed var(--bs-primary-border-subtle); }
+.md-page .md-sep-nl { margin: .7rem 0 .7rem 2.7rem; font-size: .8em; font-weight: 600; color: var(--bs-primary-text-emphasis); }
+
+/* ── Предпросмотр темы (move posts; .show ставит moderation.js) ───────────── */
+.md-page .md-preview {
+  display: none; margin-top: .75rem; padding: .85rem 1rem; border-radius: .75rem;
+  border: 1px dashed var(--bs-border-color); background: var(--bs-tertiary-bg);
+}
+.md-page .md-preview.show { display: block; }
+.md-page .md-preview__body { overflow-wrap: anywhere; }
+
+/* ── Нижняя панель ────────────────────────────────────────────────────────── */
+.md-page .md-submitbar__btns { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+/* ── Телефон ──────────────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+  .md-page .md-qrow { grid-template-columns: 1fr 1fr; }
+  .md-page .md-qrow--head { display: none; }
+  .md-page .md-qrow__info { grid-column: 1 / -1; }
+  .md-page .md-qrow__act { grid-column: 1 / -1; text-align: left; }
+}
+@media (max-width: 575.98px) {
+  .md-page .md-head__aside { margin-left: 0; width: 100%; }
+  .md-page .md-when { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .md-page .md-qrow { grid-template-columns: 1fr; }
+  .md-page .md-submitbar__btns { width: 100%; justify-content: center; }
+  .md-page .md-actor__switch { margin-left: 0; }
+}
+
+/* мелочи */
+.md-page .md-qrow__when { white-space: nowrap; }
+.md-page .md-qrow__what .st-badge { white-space: normal; }
+.md-page .md-head__main { flex: 1 1 12rem; min-width: 0; }
+.md-page .md-qrow a, .md-page .md-info a { text-decoration: none; font-weight: 600; }

@@ -1,0 +1,79 @@
+/* =============================================================================
+   st-select2.css — селектор пользователей (private.php?action=send)
+   Требует st-ui.css (Bootstrap 5.3 переменные --bs-*)
+   ============================================================================= */
+
+.select2-tags-container {
+  position: relative;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .75rem;
+  padding: .5rem;
+  min-height: 48px;
+  cursor: text;
+  background: var(--bs-body-bg);
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.select2-tags-container.focused {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
+}
+.select2-tags-container.limit-reached {
+  border-color: var(--bs-danger);
+  box-shadow: 0 0 0 .2rem rgba(var(--bs-danger-rgb), .15);
+  background: var(--bs-danger-bg-subtle);
+}
+.select2-tag {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .25rem .75rem; border-radius: 2rem;
+  background: var(--bs-tertiary-bg); color: var(--bs-body-color);
+  font-size: .85rem;
+  animation: fadeIn .2s ease;
+}
+.select2-tag-remove {
+  cursor: pointer; color: var(--bs-secondary-color);
+  font-weight: bold; font-size: 1.2rem; line-height: 1;
+  background: none; border: none; padding: 0 .25rem;
+  transition: color .2s;
+}
+.select2-tag-remove:hover { color: var(--bs-danger); }
+.select2-tags-input {
+  border: 0; outline: 0; padding: .25rem 0;
+  flex-grow: 1; min-width: 120px; font-size: .9rem;
+  background: transparent; color: var(--bs-body-color);
+}
+.select2-tags-input::placeholder { color: var(--bs-secondary-color); }
+.select2-dropdown {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: .75rem;
+  max-height: 250px; overflow-y: auto; z-index: 1050;
+  box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
+  display: none;
+}
+.select2-item {
+  padding: .6rem 1rem; cursor: pointer;
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+  font-size: .9rem; color: var(--bs-body-color);
+  transition: background-color .15s ease, color .15s ease;
+}
+.select2-item:last-child { border-bottom: 0; }
+.select2-item:hover, .select2-item.active { background: var(--bs-primary); color: #fff; }
+.select2-message { padding: .6rem 1rem; color: var(--bs-secondary-color); font-style: italic; font-size: .9rem; }
+.select2-counter {
+  font-size: .75rem; color: var(--bs-secondary-color);
+  margin-top: .5rem; display: flex; align-items: center; gap: .5rem;
+}
+.select2-counter.near-limit { color: var(--bs-warning); font-weight: 600; }
+.select2-counter.limit-reached { color: var(--bs-danger); font-weight: 600; }
+.select2-error {
+  color: var(--bs-danger); font-size: .75rem; margin-top: .5rem;
+  padding: .5rem .75rem; background: var(--bs-danger-bg-subtle);
+  border: 1px solid var(--bs-danger); border-radius: .5rem;
+  display: none; align-items: center; gap: .5rem;
+}
+.select2-error.show { display: flex; animation: fadeIn .3s ease; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

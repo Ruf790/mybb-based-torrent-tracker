@@ -1,0 +1,366 @@
+
+/* ============================================
+   Restore notification
+   ============================================ */
+.mod-restore-info {
+    animation: fadeInUp 0.3s ease;
+}
+
+.mod-restore-info .alert {
+    border: none;
+    border-radius: 8px;
+    background: #e8f4fd;
+    color: #0c5460;
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+}
+
+.mod-restore-info .alert .btn-close {
+    font-size: 0.7rem;
+    padding: 0.5rem;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+    .mod-restore-info .alert {
+        background: #1a2a3a;
+        color: #7ab7d4;
+        border: 1px solid #2a4a5a;
+    }
+}
+
+
+
+/* ============================================
+   Progress bar
+   ============================================ */
+.mod-progress-container {
+    padding: 6px 10px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+.mod-progress-container .progress {
+    background: #e9ecef;
+    overflow: hidden;
+    border-radius: 4px;
+}
+.mod-progress-container .progress-bar {
+    background: linear-gradient(90deg, #0d6efd, #0dcaf0);
+    transition: width 0.3s ease;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+    .mod-progress-container {
+        background: #1e293b;
+    }
+    .mod-progress-container .progress {
+        background: #334155;
+    }
+}
+
+
+/* ============================================
+   Poster preview in moderation modal
+   ============================================ */
+
+.mod-poster-column {
+    display: flex;
+    align-items: stretch;
+}
+
+.mod-poster-container {
+    width: 100%;
+    min-height: 280px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 2px dashed #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.mod-poster-container.has-poster {
+    border-color: #0d6efd;
+    border-style: solid;
+    background: #fff;
+}
+
+.mod-poster-placeholder {
+    text-align: center;
+    padding: 1.5rem;
+    color: #94a3b8;
+}
+
+.mod-poster-placeholder i {
+    display: block;
+    margin-bottom: 0.5rem;
+    opacity: 0.5;
+}
+
+.mod-poster-wrapper {
+    width: 100%;
+    height: 100%;
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.mod-poster-img {
+    max-width: 100%;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s ease;
+}
+
+.mod-poster-img:hover {
+    transform: scale(1.02);
+}
+
+.mod-poster-count {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+
+/* Multiple posters grid */
+.mod-poster-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.mod-poster-grid .mod-poster-thumb {
+    width: 100%;
+    aspect-ratio: 1/1.4;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    cursor: zoom-in;
+    display: block;
+}
+
+.mod-poster-grid .mod-poster-thumb:hover {
+    border-color: #0d6efd;
+    transform: scale(1.05);
+    z-index: 1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Wrapper that positions the remove (x) button over a grid thumbnail */
+.mod-poster-thumb-wrap {
+    position: relative;
+}
+
+.mod-poster-thumb-wrap:hover .mod-poster-thumb-remove {
+    opacity: 1;
+}
+
+.mod-poster-thumb-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: #dc3545;
+    color: #fff;
+    font-size: 0.7rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 2;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.mod-poster-thumb-remove:hover {
+    transform: scale(1.15);
+}
+
+/* Summary stats row under the poster preview */
+.mod-summary-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.mod-summary-stat {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
+    white-space: nowrap;
+}
+
+/* Warning shown in the Move block when selected torrents span several categories */
+.mod-move-mismatch-warning {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    background: #fff3cd;
+    color: #664d03;
+    font-size: 0.85rem;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+    .mod-poster-container {
+        background: #1e293b;
+        border-color: #334155;
+    }
+    
+    .mod-poster-container.has-poster {
+        background: #1e293b;
+        border-color: #4dabf7;
+    }
+    
+    .mod-poster-placeholder {
+        color: #64748b;
+    }
+
+    .mod-summary-stat {
+        background: #1e293b;
+        border-color: #334155;
+        color: #cbd5e1;
+    }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .mod-poster-column {
+        margin-bottom: 1rem;
+    }
+    
+    .mod-poster-container {
+        min-height: 180px;
+    }
+    
+    .mod-poster-img {
+        max-height: 200px;
+    }
+    
+    .mod-poster-grid {
+        grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+        max-height: 180px;
+    }
+
+    .mod-summary-stat {
+        font-size: 0.75rem;
+        padding: 5px 8px;
+    }
+}
+
+
+
+
+/* ============================================
+   Torrent Row Highlighting
+   ============================================ */
+
+/* Highlight selected row */
+.torrent-row.selected {
+    background-color: rgba(13, 110, 253, 0.05) !important;
+    border-left: 3px solid #0d6efd;
+    transition: background-color 0.2s ease;
+}
+
+/* ============================================
+   Moderation modal additions: danger confirm
+   modal + selected-torrents mini-list
+   ============================================ */
+.mod-modal-header-danger{
+    background: linear-gradient(135deg,#ef4444,#dc2626) !important;
+}
+.btn-mod-danger{
+    background: linear-gradient(135deg,#ef4444,#dc2626);
+    color:#fff;border:none;border-radius:8px;font-weight:600;
+    font-size:.83rem;padding:.5rem 1.25rem;
+    box-shadow:0 4px 12px rgba(239,68,68,.3);
+    transition:transform .15s ease,box-shadow .15s ease;
+}
+.btn-mod-danger:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(239,68,68,.4);color:#fff;}
+
+.mod-selected-list{
+    margin-top:.75rem;max-height:160px;overflow-y:auto;
+    background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+    padding:.6rem .85rem;font-size:.82rem;
+}
+.mod-selected-list ul{margin:0;padding-left:1.1rem;}
+.mod-selected-list li{padding:.15rem 0;color:#475569;}
+.mod-selected-list .mod-selected-list-more{color:#94a3b8;font-style:italic;}
+
+/* Checkbox style when selected */
+.torrent-row.selected .torrent-checkbox {
+    box-shadow: 0 0 0 2px #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Hover effect */
+.torrent-row:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.torrent-row.selected:hover {
+    background-color: rgba(13, 110, 253, 0.08) !important;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+    .torrent-row.selected {
+        background-color: rgba(13, 110, 253, 0.15) !important;
+        border-left: 3px solid #4dabf7;
+    }
+    
+    .torrent-row.selected:hover {
+        background-color: rgba(13, 110, 253, 0.2) !important;
+    }
+}
+
+/* Fade in animation */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-up {
+    animation: fadeInUp 0.3s ease both;
+}

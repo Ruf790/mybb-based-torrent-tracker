@@ -1,0 +1,58 @@
+:root {
+  --info-gradient: linear-gradient(135deg, #d6e9ff 0%, #b3d8ff 100%);
+}
+
+.card-header4 {
+  background: var(--info-gradient);
+  color: #0d3b66; /* тёмно-синий текст */
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.error-icon4 {
+  font-size: 2.5rem;
+  color: #0d6efd; /* синий Bootstrap */
+  animation: float 3s ease-in-out infinite;
+}
+
+.error-card4 {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(13, 110, 253, 0.2);
+  background-color: #fff;
+  animation: pulse 2s infinite;
+}
+
+/* Заменяем alert-danger на светло-синий */
+.alert4 {
+  background: linear-gradient(135deg, #e7f3ff 0%, #cfe8ff 100%);
+  border: 1px solid #b6daff;
+  color: #084298;
+}
+
+
+
+
+#pm_notice {
+  transition: opacity .3s ease-in-out, transform .3s ease-in-out;
+}
+#pm_notice.fade { opacity: 0; transform: translateY(-6px); }
+#pm_notice.fade.show { opacity: 1; transform: translateY(0); }
+
+
+
+
+/* Анимация плавного подпрыгивания и пульса */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}

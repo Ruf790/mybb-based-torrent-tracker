@@ -1,0 +1,103 @@
+/* Плашка текущего экзамена / задания (.exb) и страница заданий (.tk) */
+
+.exb {
+  --exb-bg: var(--bs-primary-bg-subtle);
+  --exb-border: var(--bs-primary-border-subtle);
+  --exb-accent: var(--bs-primary);
+  border: 1px solid var(--exb-border);
+  background: var(--exb-bg);
+  border-radius: .9rem;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1rem;
+}
+.exb-success   { --exb-bg: var(--bs-success-bg-subtle);   --exb-border: var(--bs-success-border-subtle);   --exb-accent: var(--bs-success); }
+.exb-danger    { --exb-bg: var(--bs-danger-bg-subtle);    --exb-border: var(--bs-danger-border-subtle);    --exb-accent: var(--bs-danger); }
+.exb-warning   { --exb-bg: var(--bs-warning-bg-subtle);   --exb-border: var(--bs-warning-border-subtle);   --exb-accent: var(--bs-warning); }
+.exb-secondary { --exb-bg: var(--bs-secondary-bg-subtle); --exb-border: var(--bs-secondary-border-subtle); --exb-accent: var(--bs-secondary); }
+.exb-info      { --exb-bg: var(--bs-info-bg-subtle);      --exb-border: var(--bs-info-border-subtle);      --exb-accent: var(--bs-info); }
+
+.exb-head { display: flex; gap: .8rem; align-items: center; margin-bottom: .8rem; }
+.exb-head > i { font-size: 1.6rem; color: var(--exb-accent); }
+.exb-head > div { flex: 1; }
+.exb-head strong { display: block; font-size: 1.08rem; }
+.exb-head span { color: var(--bs-secondary-color); font-size: .9em; }
+.exb-link { white-space: nowrap; font-size: .9em; }
+.exb-item + .exb-item { margin-top: .55rem; }
+.exb-line { display: flex; justify-content: space-between; gap: 1rem; font-size: .92em; margin-bottom: .25rem; }
+.exb-line i { margin-right: .4rem; color: var(--bs-secondary-color); font-size: .85em; }
+.exb-item.is-done .exb-line i { color: var(--bs-success); }
+.exb-track { height: .5rem; border-radius: 50rem; background: var(--bs-body-bg); overflow: hidden; }
+.exb-fill { height: 100%; border-radius: 50rem; background: var(--exb-accent); }
+.exb-item.is-done .exb-fill { background: var(--bs-success); }
+.exb-desc { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--exb-border); font-size: .9em; }
+
+/* Страница заданий */
+.tk { font-size: 1.055rem; max-width: 64rem; margin: 0 auto; }
+.tk-head { display: flex; gap: 1rem; align-items: flex-start; margin: .5rem 0 1.25rem; }
+.tk-head > i { font-size: 2rem; color: var(--bs-primary); margin-top: .2rem; }
+.tk-head h1 { font-size: 1.5rem; margin: 0 0 .2rem; font-weight: 600; }
+.tk-head p { margin: 0; color: var(--bs-secondary-color); max-width: 46rem; }
+
+.tk-alert { display: flex; gap: .7rem; align-items: center; padding: .8rem 1.1rem; border-radius: .9rem; margin-bottom: 1rem; }
+.tk-alert--success { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.tk-alert--danger  { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+
+.tk-list { display: flex; flex-direction: column; gap: .9rem; }
+.tk-card {
+  display: grid; grid-template-columns: 1fr 13rem; gap: 1.25rem;
+  padding: 1.1rem 1.3rem; border: 1px solid var(--bs-border-color);
+  border-radius: .9rem; background: var(--bs-body-bg);
+}
+.tk-card.is-claimed { border-color: var(--bs-success); }
+.tk-card h2 { font-size: 1.15rem; margin: 0 0 .35rem; font-weight: 600; }
+.tk-desc { margin: 0 0 .6rem; color: var(--bs-secondary-color); }
+.tk-reqs { margin: 0 0 .7rem; padding-left: 1.1rem; }
+.tk-meta { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; font-size: .88em; color: var(--bs-secondary-color); }
+.tk-meta i { margin-right: .35rem; }
+
+.tk-card__side { display: flex; flex-direction: column; gap: .5rem; justify-content: center; }
+.tk-bonus { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1.05rem; }
+.tk-bonus--plus  { color: var(--bs-success); }
+.tk-bonus--minus { color: var(--bs-danger); font-size: .92rem; font-weight: 500; }
+
+.tk-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .45rem; width: 100%;
+  padding: .5rem 1rem; border-radius: 50rem; margin-top: .3rem;
+  border: 1px solid var(--bs-border-color); background: var(--bs-tertiary-bg); color: var(--bs-body-color);
+  font: inherit; cursor: pointer;
+}
+.tk-btn--primary { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.tk-btn--primary:hover { filter: brightness(1.08); }
+.tk-btn:disabled { opacity: .65; cursor: default; }
+.tk-btn:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+
+.tk-empty { text-align: center; padding: 3rem 1rem; color: var(--bs-secondary-color); border: 1px dashed var(--bs-border-color); border-radius: .9rem; }
+.tk-empty > i { font-size: 2rem; margin-bottom: .6rem; }
+
+.tk-pages { display: flex; gap: .4rem; justify-content: center; margin-top: 1rem; }
+.tk-pages a { padding: .3rem .85rem; border-radius: 50rem; border: 1px solid var(--bs-border-color); text-decoration: none; }
+.tk-pages a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+@media (max-width: 640px) {
+  .tk-card { grid-template-columns: 1fr; }
+}
+
+/* Card under the site header (functions_exam_header.php).
+   Base look comes from errorss.css (error-card222 / card-header22, as the leech warning);
+   here only the color per exam and the requirement rows. */
+.card.exam-card { --exam-c: var(--bs-primary); --exam-rgb: var(--bs-primary-rgb); }
+.card.exam-card--success   { --exam-c: var(--bs-success);   --exam-rgb: var(--bs-success-rgb); }
+.card.exam-card--danger    { --exam-c: var(--bs-danger);    --exam-rgb: var(--bs-danger-rgb); }
+.card.exam-card--warning   { --exam-c: var(--bs-warning);   --exam-rgb: var(--bs-warning-rgb); }
+.card.exam-card--info      { --exam-c: var(--bs-info);      --exam-rgb: var(--bs-info-rgb); }
+.card.exam-card--secondary { --exam-c: var(--bs-secondary); --exam-rgb: var(--bs-secondary-rgb); }
+
+.card.exam-card { box-shadow: 0 .5rem 1.5rem rgba(var(--exam-rgb), .22); }
+.card.exam-card .card-header22 { background: var(--exam-c); }
+
+.exam-req + .exam-req { margin-top: .7rem; }
+.exam-req__line { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .3rem; font-size: .95em; }
+.exam-req__line i { margin-right: .45rem; color: var(--bs-secondary-color); }
+.exam-req.is-done .exam-req__line i { color: var(--bs-success); }
+.exam-req .progress { height: .55rem; }
+.exam-desc { margin: .9rem 0 0; font-size: .92em; color: var(--bs-secondary-color); }

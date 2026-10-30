@@ -1,0 +1,68 @@
+/* Moderation Actions modal — extracted from browse.php */
+
+.btn-mod-trigger{
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    color:#fff;border:none;border-radius:10px;
+    padding:.55rem 1.15rem;font-weight:600;font-size:.83rem;
+    box-shadow:0 4px 14px rgba(59,130,246,.35);
+    transition:transform .15s ease,box-shadow .15s ease;
+}
+.btn-mod-trigger:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(59,130,246,.45);color:#fff;}
+.btn-mod-trigger:active{transform:translateY(0);}
+
+.mod-modal-content{border:none;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(15,23,42,.25);}
+
+.mod-modal-header{
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    color:#fff;border-bottom:none;padding:1rem 1.25rem;
+}
+.mod-modal-header .modal-title{
+    font-size:.85rem;font-weight:700;letter-spacing:1px;
+    text-transform:uppercase;display:flex;align-items:center;color:#fff;
+}
+
+.mod-modal-body{padding:1.5rem;background:#f8fafc;}
+
+.mod-label{
+    display:block;font-size:.75rem;font-weight:600;color:#64748b;
+    text-transform:uppercase;letter-spacing:.6px;margin-bottom:.5rem;
+}
+
+.mod-modal-body #actiontype{
+    border-radius:10px;border:1.5px solid #e2e8f0;font-size:.9rem;
+    padding:.6rem .8rem;
+}
+.mod-modal-body #actiontype:focus{
+    border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);
+}
+
+.mod-move-block{
+    margin-top:1rem;padding:.85rem .9rem;background:#eff6ff;
+    border:1px dashed #93c5fd;border-radius:10px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    animation:modFadeIn .2s ease;
+}
+.mod-move-label{font-size:.78rem;font-weight:600;color:#1d4ed8;white-space:nowrap;}
+@keyframes modFadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
+
+.mod-hint{
+    margin-top:1.25rem;font-size:.78rem;color:#94a3b8;
+    display:flex;align-items:flex-start;gap:.35rem;
+}
+
+.mod-modal-footer{border-top:1px solid #e2e8f0;background:#fff;padding:.9rem 1.25rem;}
+
+.btn-mod-cancel{
+    background:#f1f5f9;color:#475569;border:none;border-radius:8px;
+    font-weight:600;font-size:.83rem;padding:.5rem 1.1rem;
+}
+.btn-mod-cancel:hover{background:#e2e8f0;color:#334155;}
+
+.btn-mod-apply{
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    color:#fff;border:none;border-radius:8px;font-weight:600;
+    font-size:.83rem;padding:.5rem 1.25rem;
+    box-shadow:0 4px 12px rgba(59,130,246,.3);
+    transition:transform .15s ease,box-shadow .15s ease;
+}
+.btn-mod-apply:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(59,130,246,.4);color:#fff;}

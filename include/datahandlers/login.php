@@ -12,13 +12,10 @@ if (!defined("IN_MYBB")) {
  */
 class LoginDataHandler extends DataHandler
 {
-    
     public $language_file = 'datahandler_login';
-
     public $language_prefix = 'logindata';
 
     public array $login_data = [];
-
 
     /**
      * Verify username exists
@@ -28,7 +25,6 @@ class LoginDataHandler extends DataHandler
         $this->get_login_data();
 
         if (empty($this->login_data) || empty($this->login_data['id'])) {
-            
             $this->invalid_combination(true);
             return false;
         }
@@ -52,7 +48,7 @@ class LoginDataHandler extends DataHandler
         }
 
         $args = [
-            'this' => &$this,
+            'this'   => &$this,
             'strict' => &$strict,
         ];
 
@@ -91,24 +87,20 @@ class LoginDataHandler extends DataHandler
     public function invalid_combination(bool $show_login_attempts = false): void
     {
         global $db, $lang, $mybb, $failedlogincount, $failedlogintext;
-        
 
-		$login_text = '';
-        if($show_login_attempts)
-        {
-           if($failedlogincount != 0 && $failedlogintext == 1 && !empty($this->login_data['id']))
-           {
-              $logins = login_attempt_check($this->login_data['id'], false) + 1;
-			  $login_text = sprintf($lang->datahandler_login['logindata_failed_login_again'] ?? '<br />Failed login attempts: %d', $failedlogincount - $logins);
-			  
-			   
-           }
+        $login_text = '';
+
+        if ($show_login_attempts) {
+            if ($failedlogincount != 0 && $failedlogintext == 1 && !empty($this->login_data['id'])) {
+                $logins = login_attempt_check($this->login_data['id'], false) + 1;
+                $login_text = sprintf(
+                    $lang->datahandler_login['logindata_failed_login_again'] ?? '<br />Failed login attempts: %d',
+                    $failedlogincount - $logins
+                );
+            }
         }
 
-       
         $this->set_error('invalidpwordusername', $login_text);
-        
-		
     }
 
     /**
@@ -117,16 +109,14 @@ class LoginDataHandler extends DataHandler
     public function get_login_data(): void
     {
         $user = &$this->data;
- 
+
         $options = ['fields' => '*'];
- 
-		$this->login_data = get_user_by_username($user['username'] ?? '', $options) ?: [];
+        $this->login_data = get_user_by_username($user['username'] ?? '', $options) ?: [];
     }
 
     /**
      * Validate login credentials
      */
-	 
     public function validate_login(): bool
     {
         global $plugins;
@@ -148,7 +138,7 @@ class LoginDataHandler extends DataHandler
         $plugins->run_hooks('datahandler_login_validate_end', $this);
 
         $this->set_validated(true);
-        
+
         return count($this->get_errors()) === 0;
     }
 
@@ -163,18 +153,18 @@ class LoginDataHandler extends DataHandler
 
         $plugins->run_hooks('datahandler_login_complete_start', $this);
 
- 
-        $new_sid = md5(uniqid((string) mt_rand(), true));
-
         // Login to MyBB
         my_setcookie('loginattempts', "1");
 
-        $db->sql_query_prepared("UPDATE sessions SET sid = ?, uid = ? WHERE sid = ?", [$new_sid, $user['id'], $session->sid]);
-        $session->sid = $new_sid;
+        // Новая сессия для пользователя: старый sid (если был) удаляется,
+        // выдаётся свежий random_bytes-sid и ставится cookie "sid".
+        // Гостевых строк в sessions больше нет, поэтому UPDATE по старому sid не нужен.
+        $session->regenerate_session((int)$user['id']);
 
-        my_setcookie("sid", $session->sid, -1, true);
-
-        $db->sql_query_prepared("UPDATE users SET loginattempts = ? WHERE id = ?", [1, $user['id']]);
+        $db->sql_query_prepared(
+            "UPDATE users SET loginattempts = ? WHERE id = ?",
+            [1, $user['id']]
+        );
 
         $remember = null;
         if (!isset($mybb->input['remember']) || $mybb->input['remember'] != "yes") {

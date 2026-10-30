@@ -56,6 +56,20 @@ if (!is_array($groupscache)) {
     $groupscache = $cache->read('usergroups');
 }
 
+
+// Do not use session system for defined pages
+$nosession = $nosession ?? [];            // скрипт может задать его до подключения global.php
+$current_page = strtolower(basename(SCRIPTNAME));
+
+if (
+    (isset($_REQUEST['action']) && is_string($_REQUEST['action']) && isset($nosession[$_REQUEST['action']]))
+    || (isset($_REQUEST['thumbnail']) && $current_page === 'attachment.php')
+) {
+    if (!defined('NO_ONLINE')) {
+        define('NO_ONLINE', true);
+    }
+}
+
 // --- Initialize session system ---
 require_once INC_PATH . '/class_session.php';
 $session = new session();

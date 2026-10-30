@@ -5,6 +5,8 @@
 
 declare(strict_types=1);
 
+define('NO_ONLINE', true);
+
 require_once 'global.php';
 
 if (session_status() === PHP_SESSION_NONE) {

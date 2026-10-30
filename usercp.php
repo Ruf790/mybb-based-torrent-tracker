@@ -135,7 +135,7 @@ function build_avatar_html(array $useravatar): string
 
     return '<div style="position:relative;display:inline-block;">'
          . '<img id="avatarImage" class="' . $avatarClass . '" src="' . $useravatar['image'] . '" alt="" '
-         . 'style="width:124px;height:124px;object-fit:cover;cursor:pointer;" data-original-avatar="' . $useravatar['image'] . '" data-max-mb="' . $maxMb . '">'
+         . 'object-fit:cover;cursor:pointer;" data-original-avatar="' . $useravatar['image'] . '" data-max-mb="' . $maxMb . '">'
          . '<input type="file" id="avatarInput" name="avatarupload" style="display:none;" accept="image/*">'
          . '</div>';
 }

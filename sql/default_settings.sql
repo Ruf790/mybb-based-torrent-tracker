@@ -88,6 +88,12 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('upload_att_image_mb',   '200'),
 ('upload_att_other_mb',   '100'),
 
+('chat_keep_deleted_days', '30'),
+('chat_keep_days',         '0'),
+('notify_keep_read_days', '60'),
+('notify_keep_all_days',  '180'),
+('notify_max_per_user',   '300'),
+
 
 
 -- ── Forum ─────────────────────────────────────────────────────────────────────

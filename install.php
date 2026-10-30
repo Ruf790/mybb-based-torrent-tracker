@@ -3086,16 +3086,6 @@ CREATE TABLE IF NOT EXISTS `snatched` (
   KEY `idx_user_torrent` (`userid`,`torrentid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `spiders` (
-  `sid` int unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL DEFAULT '',
-  `theme` smallint unsigned NOT NULL DEFAULT '0',
-  `language` varchar(20) NOT NULL DEFAULT '',
-  `usergroup` smallint unsigned NOT NULL DEFAULT '0',
-  `useragent` varchar(200) NOT NULL DEFAULT '',
-  `lastvisit` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`sid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `staffmessages` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,

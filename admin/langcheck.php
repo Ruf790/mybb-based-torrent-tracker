@@ -11,6 +11,7 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3" role="alert"><strong>Access denied.</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('notifications');
 $lang->load('langcheck');
 // Fallback для ключей вкладки «Неиспользуемые»: если ланг-файл ещё не обновлён, страница не падает
 if (is_array($lang->langcheck)) {

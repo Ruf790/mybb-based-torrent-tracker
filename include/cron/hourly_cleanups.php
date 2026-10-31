@@ -19,6 +19,13 @@ $db->sql_query_prepared("DELETE FROM loginattempts WHERE banned='no' AND added <
 $CQueryCount++;
 
 
+// ======= Cleanup expired invites =======
+$db->sql_query_prepared("DELETE FROM invites WHERE status = 'expired'");
+$CQueryCount++;
+
+
+
+
 // ======= Peer cleanup =======
 $deadtime = TIMENOW - (int)floor(max(60, (int)$announce_interval) * 1.3);
 

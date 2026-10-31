@@ -46,8 +46,13 @@ if ((int)$tRow['seeders'] > 0) {
     stderr($lang->takewhatever['reseed_has_seeders'] ?? 'This torrent already has seeders.');
 }
 
+// Staff (moderators and up) are not limited: they can request a reseed as often as they want
+$isStaff = function_exists('is_mod')
+    ? (bool)is_mod($usergroups)
+    : !empty($mybb->usergroup['canstaffpanel']) || !empty($mybb->usergroup['issupermod']);
+
 // Cooldown: the reseed bells themselves are the record of the last request
-$recent = $db->sql_query_prepared(
+$recent = $isStaff ? false : $db->sql_query_prepared(
     "SELECT added FROM notifications WHERE type = 'reseed' AND ref_id = ? AND added > ? ORDER BY added DESC LIMIT 1",
     [$reseedid, TIMENOW - RESEED_COOLDOWN_HOURS * 3600]
 );

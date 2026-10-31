@@ -24,6 +24,9 @@ $language['notifications'] = array
 'lbl_system'            => "Система",
 'lbl_deleted_user'      => "Удалённый пользователь",
 
+'n_reseed_multi' => '{1} просит раздать торренты ({3}): {4}',
+
+
 // ── Flash / errors ──
 'flash_marked'          => "Все уведомления отмечены как прочитанные.",
 'flash_deleted'         => "Прочитанные уведомления удалены.",

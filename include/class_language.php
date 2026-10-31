@@ -175,6 +175,16 @@ class trackerlanguage
 	public $notifications;
 	public $chat;
 	public $query_explain;
+	public $offers;
+	public $invites;
+	
+	public $tweak_tracker;
+	
+	public $exam_functions;
+	
+	public $news;
+	
+	public $announcements2;
 	
 	
 	

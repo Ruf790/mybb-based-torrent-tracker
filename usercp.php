@@ -982,7 +982,16 @@ if ($mybb->input['action'] === 'avatar') {
         ? '<button type="submit" class="btn btn-outline-secondary st-pill" name="remove" value="Remove Avatar"><i class="fa-solid fa-xmark"></i> &nbsp;' . $lang->usercp['remove_avatar'] . '</button>'
         : '';
 
-    $plugins->run_hooks('usercp_avatar_end');
+    
+	$avatarupload = '<button type="button" class="btn btn-outline-primary st-pill" '
+        . 'onclick="document.getElementById(\'avatarInput\').click();">'
+        . '<i class="fa-solid fa-folder-open me-2"></i>' . $lang->usercp['lbl_upload_new_avatar']
+        . '</button>';
+	
+	
+	
+	
+	$plugins->run_hooks('usercp_avatar_end');
     $avatar_error ??= '';
 
     stdhead($lang->usercp['change_avatar']);
@@ -1004,7 +1013,7 @@ if ($mybb->input['action'] === 'avatar') {
         .       '<div class="st-meta mt-2"><i class="fa-solid fa-camera me-1"></i>' . $lang->usercp['lbl_current_avatar_caption'] . '</div>'
         .     '</div>'
         .     '<div class="col-md-7">'
-        .       '<label class="st-label" for="avatarupload"><i class="fa-solid fa-cloud-arrow-up text-primary"></i>' . $lang->usercp['lbl_upload_new_avatar'] . '</label>'
+        .       '<label class="st-label" for="avatarInput"><i class="fa-solid fa-cloud-arrow-up text-primary"></i>' . $lang->usercp['lbl_upload_new_avatar'] . '</label>'
         .       '<div class="file-input-wrapper">' . $avatarupload . '</div>'
         .       '<div class="st-hint"><i class="fa-solid fa-circle-info"></i>' . $lang->usercp['hint_avatar_formats'] . '</div>'
         .     '</div>'

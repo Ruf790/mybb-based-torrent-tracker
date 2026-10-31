@@ -469,9 +469,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver
 
 require_once INC_PATH . '/modals.php';
 
-if ((int)$CURUSER['id'] === (int)$torrent2['owner'] || $is_mod) {
-    require_once 'details_edit.php';
-}
+
 
 // ── Hit & Run warning ───────────────────────────────────────────────────────
 $gigs = $CURUSER['downloaded'] / (1024 * 1024 * 1024);
@@ -923,13 +921,6 @@ if ((int)$CURUSER['id'] === (int)$torrent2['owner'] || $is_mod) {
             <i class="bi bi-three-dots-vertical text-primary"></i>
         </a>
         <ul class="dropdown-menu shadow border-0 rounded-2 p-1" aria-labelledby="manageCompactDropdown">
-            <li>
-                <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1"
-                   href="#" data-bs-toggle="modal" data-bs-target="#add_data_Modal">
-                    <i class="bi bi-pencil-square text-success me-2"></i>
-                    <span>' . htmlspecialchars($lang->details['menu_quick_edit']) . '</span>
-                </a>
-            </li>
             <li>
                 <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1"
                    href="upload.php?id=' . $id . '">

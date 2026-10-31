@@ -24,6 +24,8 @@ $language['notifications'] = array
 'lbl_system'            => "System",
 'lbl_deleted_user'      => "Deleted user",
 
+'n_reseed_multi' => '{1} asks you to reseed {3} torrents: {4}',
+
 // ── Flash / errors ──
 'flash_marked'          => "All notifications are marked as read.",
 'flash_deleted'         => "Read notifications have been deleted.",

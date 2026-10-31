@@ -3506,7 +3506,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `cancomment` tinyint UNSIGNED NOT NULL DEFAULT '1',
   `language` varchar(32) NOT NULL DEFAULT 'english',
   `notif_unread` int unsigned NOT NULL DEFAULT '0',
-  `exam_active` tinyint UNSIGNED NOT NULL DEFAULT '0'
+  `exam_active` tinyint UNSIGNED NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   KEY `passkey` (`passkey`),

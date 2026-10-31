@@ -119,26 +119,6 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (41, 0, 3600, 'claim_settle.php', 'Claims: monthly settlement (bonus for reached torrents, removes unreached).', 1, 1),
 (42, 0, 86400, 'chatnotifycleanup.php', 'Cleans up chat (deleted messages, expired bans, presence) and old notifications.', 1, 1);
 
-
-
--- spiders
-INSERT IGNORE INTO `spiders` (`sid`, `name`, `theme`, `language`, `usergroup`, `useragent`, `lastvisit`) VALUES
-(1, 'Google', 0, '', 0, 'Googlebot', 0),
-(2, 'Bing', 0, '', 0, 'bingbot', 0),
-(3, 'Alexa Internet', 0, '', 0, 'ia_archiver', 0),
-(4, 'Ask.com', 0, '', 0, 'Teoma', 0),
-(5, 'Baidu', 0, '', 0, 'Baiduspider', 0),
-(6, 'Yandex', 0, '', 0, 'YandexBot', 0),
-(7, 'Facebook', 0, '', 0, 'facebookexternalhit', 0),
-(8, 'Twitter', 0, '', 0, 'Twitterbot', 0),
-(9, 'Internet Archive', 0, '', 0, 'archive.org_bot', 0),
-(10, 'Discord', 0, '', 0, 'Discordbot', 0),
-(11, 'Applebot', 0, '', 0, 'Applebot', 0),
-(12, 'CheckHost', 0, '', 0, 'CheckHost', 0),
-(13, 'Pingdom', 0, '', 0, 'Pingdom.com_bot', 0),
-(14, 'DuckDuckGo', 0, '', 0, 'DuckDuckBot', 0),
-(15, 'UptimeRobot', 0, '', 0, 'UptimeRobot', 0);
-
 -- smilies
 INSERT IGNORE INTO `smilies` (`sid`, `stitle`, `stext`, `spath`, `sorder`) VALUES
 (152, 'alien2', ':alien2:', 'alien2.gif', 180),

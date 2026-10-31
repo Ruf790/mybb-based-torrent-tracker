@@ -30,6 +30,7 @@ class ReseedRequestHandler
 {
     private const MAX_TORRENTS_PER_REQUEST = 100;
     private const LIST_LIMIT = 500;
+    private const BELL_NAMES = 5; // сколько названий показывать в сводном уведомлении
 
     public function __construct(private array $config, private object $db, private array $curUser) {}
 
@@ -86,6 +87,7 @@ class ReseedRequestHandler
         }
 
         require_once INC_PATH . '/functions_pm.php';
+        require_once INC_PATH . '/functions_notify.php';
         $sent = $requestFrom === 'owner'
             ? $this->notifyUploaders($torrentIds, $subject, $message, $senderId, $useDefault)
             : $this->notifyAllSnatchers($torrentIds, $subject, $message, $senderId, $useDefault);
@@ -136,6 +138,7 @@ class ReseedRequestHandler
         // Раньше тип параметра был object — при ошибке запроса (false) падало с TypeError
         if (!$query) return 0;
         $sent = 0;
+        $bell = []; // uid => [torrent id, name][] — одно уведомление на человека
         while ($t = $this->db->fetch_array($query)) {
             $subj = $subject;
             $text = $message;
@@ -158,6 +161,23 @@ class ReseedRequestHandler
             if (send_pm(['subject' => $subj, 'message' => $body, 'touid' => (int)$t['owner']], $senderId, true)) {
                 $sent++;
             }
+            $bell[(int)$t['owner']][] = [(int)$t['id'], (string)$t['name']];
+        }
+
+        // Колокольчик: 1 торрент → 'reseed', несколько → один 'reseed_multi' со списком названий.
+        // Актор = отправитель (0 = система); notify() сам не уведомит пользователя о его же действии.
+        foreach ($bell as $uid => $items) {
+            $cnt = count($items);
+            if ($cnt === 1) {
+                notify($uid, 'reseed', $senderId, $items[0][0], [$items[0][1]], get_torrent_link($items[0][0]));
+                continue;
+            }
+            $names = array_map(
+                static fn(array $i): string => mb_strimwidth($i[1], 0, 50, '…', 'UTF-8'),
+                array_slice($items, 0, self::BELL_NAMES)
+            );
+            $list = implode(', ', $names) . ($cnt > self::BELL_NAMES ? ' … +' . ($cnt - self::BELL_NAMES) : '');
+            notify($uid, 'reseed_multi', $senderId, 0, [(string)$cnt, $list], get_torrent_link($items[0][0]));
         }
         return $sent;
     }

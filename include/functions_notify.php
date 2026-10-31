@@ -78,6 +78,8 @@ function notify_types(): array
         'offer_uploaded'  => ['icon' => 'fa-gift',         'color' => 'success', 'group' => false],
         'offer_comment'   => ['icon' => 'fa-comments',     'color' => 'primary', 'group' => true],
         'reseed'          => ['icon' => 'fa-seedling',     'color' => 'success', 'group' => false],
+        // Один пакет торрентов в одном уведомлении: {3} = сколько, {4} = названия
+        'reseed_multi'    => ['icon' => 'fa-seedling',     'color' => 'success', 'group' => false],
         'bonus'           => ['icon' => 'fa-coins',        'color' => 'warning', 'group' => false],
         'new_torrent'     => ['icon' => 'fa-file-circle-plus', 'color' => 'success', 'group' => false],
         'system'          => ['icon' => 'fa-bullhorn',     'color' => 'secondary','group' => false],

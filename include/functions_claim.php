@@ -27,19 +27,48 @@ if (!defined('IN_TRACKER') && !defined('IN_CRON') && !defined('STAFF_PANEL')) {
 
 require_once INC_PATH . '/functions_bonuslog.php';
 
-// ── Settings (NexusPHP defaults) ─────────────────────────
-const CLAIM_ENABLED           = true;
-const CLAIM_MIN_AGE_DAYS      = 30;     // torrent must be at least this old (torrent.claim_torrent_ttl)
-const CLAIM_MAX_PER_USER      = 1000;   // claims one user can hold
-const CLAIM_MAX_PER_TORRENT   = 10;     // users that can claim one torrent
-const CLAIM_SEED_HOURS        = 300;    // monthly norm: seed time ...
-const CLAIM_UPLOAD_TIMES      = 2;      // ... or upload this many times the torrent size
-const CLAIM_BONUS_PER_HOUR    = 0.5;    // bonus per hour seeded this month, per reached torrent
-const CLAIM_BONUS_MULTIPLIER  = 1.0;    // torrent.claim_bonus_multiplier
-const CLAIM_REMOVE_DEDUCT     = 600;    // per torrent removed for not reaching the norm
-const CLAIM_GIVE_UP_DEDUCT    = 400;    // giving up a claim by hand
-const CLAIM_MSG_LIST_LIMIT    = 20;     // torrents listed per group in the monthly PM
+// ── Settings ─────────────────────────────────────────────
+// Editable in Staff Panel → Settings → Claims (settings table → include/settings.php).
+// These are the NexusPHP defaults, used while a setting is not saved yet.
+const CLAIM_DEFAULTS = [
+    'claim_enabled'            => 'yes',
+    'claim_min_age_days'       => 30,     // torrent must be at least this old (torrent.claim_torrent_ttl)
+    'claim_max_per_user'       => 1000,   // claims one user can hold
+    'claim_max_per_torrent'    => 10,     // users that can claim one torrent
+    'claim_seed_hours'         => 300,    // monthly norm: seed time ...
+    'claim_upload_times'       => 2,      // ... or upload this many times the torrent size
+    'claim_bonus_per_hour'     => 0.5,    // bonus per hour seeded this month, per reached torrent
+    'claim_remove_deduct'      => 600,    // per torrent removed for not reaching the norm
+    'claim_give_up_deduct'     => 400,    // giving up a claim by hand
+    'claim_warn_days'          => 5,      // bell this many days before the month ends; 0 = off
+    'claim_keeper_max_seeders' => 2,      // "Needs a keeper": torrents with at most this many seeders
+];
+
+const CLAIM_BONUS_MULTIPLIER  = 1.0;      // torrent.claim_bonus_multiplier
+const CLAIM_MSG_LIST_LIMIT    = 20;       // torrents listed per group in the monthly PM
 const CLAIM_POSTER_COLUMN     = 't_image'; // torrents column with the poster (URL or path); '' = no posters
+
+/**
+ * Claim setting: claim_cfg('seed_hours') → $claim_seed_hours from settings.php, or the default.
+ * Numbers come back as int/float, so the callers never mix strings into the maths.
+ */
+function claim_cfg(string $key): int|float
+{
+    $name = 'claim_' . $key;
+    $def  = CLAIM_DEFAULTS[$name] ?? 0;
+    $raw  = $GLOBALS[$name] ?? null;
+    if ($raw === null || $raw === '' || !is_numeric(str_replace(',', '.', (string)$raw))) {
+        return $def;
+    }
+    $v = (float)str_replace(',', '.', (string)$raw);
+    return is_int($def) ? max(0, (int)round($v)) : max(0.0, $v);
+}
+
+function claim_enabled(): bool
+{
+    $v = $GLOBALS['claim_enabled'] ?? CLAIM_DEFAULTS['claim_enabled'];
+    return $v === 'yes' || $v === '1' || $v === 1 || $v === true;
+}
 
 final class ClaimException extends RuntimeException {}
 
@@ -102,14 +131,14 @@ function claim_poster_select(): string
 /** Torrent can be claimed at all (age); for the button on the torrent page. */
 function claim_torrent_old_enough(array $torrent): bool
 {
-    return (int)$torrent['added'] <= TIMENOW - CLAIM_MIN_AGE_DAYS * 86400;
+    return (int)$torrent['added'] <= TIMENOW - claim_cfg('min_age_days') * 86400;
 }
 
 /** ClaimRepository::canBeClaimByUser(). Returns the snatch, throws why not. */
 function claim_check_can(int $uid, int $tid): array
 {
     global $db;
-    if (!CLAIM_ENABLED) throw new ClaimException('Claims are disabled.');
+    if (!claim_enabled()) throw new ClaimException('Claims are disabled.');
 
     $t = $db->fetch_array($db->sql_query_prepared('SELECT id, added FROM torrents WHERE id = ?', [$tid]));
     if (!$t) throw new ClaimException('Torrent not found.');
@@ -117,13 +146,13 @@ function claim_check_can(int $uid, int $tid): array
 
     $snatch = claim_snatch($uid, $tid) ?? throw new ClaimException('You can only claim a torrent you have downloaded.');
     if (!claim_torrent_old_enough($t)) {
-        throw new ClaimException('This torrent can be claimed ' . CLAIM_MIN_AGE_DAYS . ' days after it was uploaded.');
+        throw new ClaimException('This torrent can be claimed ' . claim_cfg('min_age_days') . ' days after it was uploaded.');
     }
-    if (claim_count_user($uid) >= CLAIM_MAX_PER_USER) {
-        throw new ClaimException('You have reached the maximum of ' . CLAIM_MAX_PER_USER . ' claimed torrents.');
+    if (claim_count_user($uid) >= claim_cfg('max_per_user')) {
+        throw new ClaimException('You have reached the maximum of ' . claim_cfg('max_per_user') . ' claimed torrents.');
     }
-    if (claim_count_torrent($tid) >= CLAIM_MAX_PER_TORRENT) {
-        throw new ClaimException('This torrent already has the maximum of ' . CLAIM_MAX_PER_TORRENT . ' claimers.');
+    if (claim_count_torrent($tid) >= claim_cfg('max_per_torrent')) {
+        throw new ClaimException('This torrent already has the maximum of ' . claim_cfg('max_per_torrent') . ' claimers.');
     }
     return $snatch;
 }
@@ -142,16 +171,16 @@ function claim_add(int $uid, int $tid): int
     return (int)$db->insert_id();
 }
 
-/** ClaimRepository::delete(): giving up costs CLAIM_GIVE_UP_DEDUCT. Returns the deducted amount. */
+/** ClaimRepository::delete(): giving up costs claim_cfg('give_up_deduct'). Returns the deducted amount. */
 function claim_give_up(int $uid, int $tid): int
 {
     global $db;
-    if (!CLAIM_ENABLED) throw new ClaimException('Claims are disabled.');
+    if (!claim_enabled()) throw new ClaimException('Claims are disabled.');
 
     $db->sql_query_prepared('DELETE FROM claims WHERE uid = ? AND torrent_id = ?', [$uid, $tid]);
     if ((int)$db->affected_rows() !== 1) throw new ClaimException('You have not claimed this torrent.');
 
-    $deduct = CLAIM_GIVE_UP_DEDUCT;
+    $deduct = claim_cfg('give_up_deduct');
     if ($deduct > 0) {
         $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [$deduct, $uid]);
         bonus_log($uid, -$deduct, 'claim', 'Claim given up: torrent #' . $tid, $tid);
@@ -199,8 +228,8 @@ function claim_progress(array $r): array
 {
     $seed = max(0, (int)($r['seedtime'] ?? 0) - (int)$r['seed_time_begin']);
     $up   = max(0, (int)($r['uploaded'] ?? 0) - (int)$r['uploaded_begin']);
-    $needSeed = CLAIM_SEED_HOURS * 3600;
-    $needUp   = CLAIM_UPLOAD_TIMES * (int)($r['size'] ?? 0);
+    $needSeed = claim_cfg('seed_hours') * 3600;
+    $needUp   = claim_cfg('upload_times') * (int)($r['size'] ?? 0);
 
     $r['seed_this_month'] = $seed;
     $r['up_this_month']   = $up;
@@ -282,7 +311,7 @@ function claim_settle_user(int $uid): array
         $p = claim_progress($r);
         if ($p['reached']) {
             $hours  = $p['seed_this_month'] / 3600;
-            $bonus += $hours * CLAIM_BONUS_PER_HOUR * CLAIM_BONUS_MULTIPLIER;
+            $bonus += $hours * claim_cfg('bonus_per_hour') * CLAIM_BONUS_MULTIPLIER;
             $reached[] = $p;
         } elseif ((int)$r['added'] >= $prevStart) {
             $remain[] = $p;                                // first month: grace
@@ -291,7 +320,7 @@ function claim_settle_user(int $uid): array
         }
     }
     $bonus  = round($bonus, 1);
-    $deduct = CLAIM_REMOVE_DEDUCT * count($removed);
+    $deduct = claim_cfg('remove_deduct') * count($removed);
 
     // Gone torrents / snatches: drop silently (as NexusPHP)
     if ($gone) {
@@ -344,6 +373,101 @@ function claim_settle_user(int $uid): array
 }
 
 
+
+// ── Early warning (our addition) ─────────────────────────
+
+/**
+ * Bell for users whose claims will be removed at the next settlement, claim_warn_days
+ * before the month ends. Once per claim and month (claims.warned_at). The cron calls it
+ * hourly; outside the warning window it returns at once. Returns [users, claims].
+ */
+function claim_warn_cron(): array
+{
+    global $db;
+    $days = (int)claim_cfg('warn_days');
+    $out  = ['users' => 0, 'claims' => 0];
+    if ($days <= 0) return $out;
+
+    $monthStart = claim_month_start();
+    $nextStart  = claim_month_start($monthStart + 32 * 86400);
+    $daysLeft   = (int)ceil(($nextStart - TIMENOW) / 86400);
+    if ($daysLeft > $days || $daysLeft < 1) return $out;
+
+    // Taken before this month = removed at the next settlement if the norm isn't reached
+    $q = $db->sql_query_prepared(
+        "SELECT c.*, t.size,
+                (SELECT MAX(s.seedtime) FROM snatched s WHERE s.userid = c.uid AND s.torrentid = c.torrent_id) AS seedtime,
+                (SELECT MAX(s.uploaded) FROM snatched s WHERE s.userid = c.uid AND s.torrentid = c.torrent_id) AS uploaded
+         FROM claims c
+         JOIN torrents t ON t.id = c.torrent_id
+         WHERE c.added < ? AND (c.warned_at IS NULL OR c.warned_at < ?)",
+        [$monthStart, $monthStart]
+    );
+
+    $risk = [];   // uid => [claim ids]
+    while ($q && ($r = $db->fetch_array($q))) {
+        $p = claim_progress($r);
+        if (!$p['reached'] && !$p['first_period']) {
+            $risk[(int)$r['uid']][] = (int)$r['id'];
+        }
+    }
+    if (!$risk) return $out;
+
+    require_once INC_PATH . '/functions_notify.php';
+    foreach ($risk as $uid => $ids) {
+        try {
+            notify($uid, 'claim_warning', 0, 0, [
+                (string)count($ids),
+                (string)$daysLeft,
+                number_format((float)claim_cfg('remove_deduct') * count($ids)),
+            ], 'claim.php');
+        } catch (\Throwable $e) {
+            if (function_exists('write_log')) write_log("[claims] warn user #{$uid} failed: " . $e->getMessage());
+            continue;
+        }
+        $db->sql_query_prepared(
+            'UPDATE claims SET warned_at = ? WHERE id IN (' . implode(',', array_map('intval', $ids)) . ')',
+            [TIMENOW]
+        );
+        $out['users']++;
+        $out['claims'] += count($ids);
+    }
+    return $out;
+}
+
+// ── "Needs a keeper" (our addition) ──────────────────────
+
+/**
+ * Torrents the user downloaded that are poorly seeded and can still be claimed by him:
+ * old enough, at most claim_keeper_max_seeders seeders, not claimed by him, claimer slots left.
+ * Fewest seeders first.
+ */
+function claim_keeper_list(int $uid, int $limit = 20, int $offset = 0): array
+{
+    global $db;
+    $posterSel = claim_poster_select();
+    $q = $db->sql_query_prepared(
+        "SELECT t.id AS torrent_id, t.name AS torrent_name, t.size, t.added AS torrent_added, t.seeders, t.leechers,
+                {$posterSel},
+                (SELECT COUNT(*) FROM claims c2 WHERE c2.torrent_id = t.id) AS claimers
+         FROM (SELECT DISTINCT torrentid FROM snatched WHERE userid = ?) s
+         JOIN torrents t ON t.id = s.torrentid
+         LEFT JOIN claims mc ON mc.torrent_id = t.id AND mc.uid = ?
+         WHERE mc.id IS NULL AND t.added <= ? AND t.seeders <= ?
+         HAVING claimers < ?
+         ORDER BY t.seeders ASC, claimers ASC, t.added ASC
+         LIMIT " . max(1, $limit) . ' OFFSET ' . max(0, $offset),
+        [
+            $uid, $uid,
+            TIMENOW - (int)claim_cfg('min_age_days') * 86400,
+            (int)claim_cfg('keeper_max_seeders'),
+            (int)claim_cfg('max_per_torrent'),
+        ]
+    );
+    $rows = [];
+    while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
+    return $rows;
+}
 
 /**
  * PM texts of the monthly settlement, in the recipient's language (claim.lang.php,
@@ -403,7 +527,7 @@ function claim_settle_message(array $L, string $month, array $reached, array $re
         return $out ? "[list]\n" . implode("\n", $out) . "\n[/list]" . ($more > 0 ? claim_fmt($L['pm_settle_more'], $more) : '') : '';
     };
     $total   = count($reached) + count($remain) + count($removed);
-    $perHour = rtrim(rtrim(number_format(CLAIM_BONUS_PER_HOUR * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.');
+    $perHour = rtrim(rtrim(number_format(claim_cfg('bonus_per_hour') * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.');
 
     $m   = [claim_fmt($L['pm_settle_total'], $month, $total)];
     $m[] = claim_fmt($L['pm_settle_reached'], count($reached)) . ($reached ? "\n" . $list($reached) : '');
@@ -415,9 +539,9 @@ function claim_settle_message(array $L, string $month, array $reached, array $re
     }
     if ($removed) {
         $m[] = claim_fmt($L['pm_settle_removed'], count($removed)) . "\n" . $list($removed)
-             . "\n" . claim_fmt($L['pm_settle_deduct'], number_format($deduct), number_format(CLAIM_REMOVE_DEDUCT));
+             . "\n" . claim_fmt($L['pm_settle_deduct'], number_format($deduct), number_format(claim_cfg('remove_deduct')));
     }
-    $m[] = claim_fmt($L['pm_settle_norm'], CLAIM_SEED_HOURS, CLAIM_UPLOAD_TIMES, $BASEURL);
+    $m[] = claim_fmt($L['pm_settle_norm'], claim_cfg('seed_hours'), claim_cfg('upload_times'), $BASEURL);
     return implode("\n\n", $m);
 }
 

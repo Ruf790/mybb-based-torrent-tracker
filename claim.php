@@ -95,6 +95,9 @@ if ($torrentId > 0) {
     if (!$owner) stderr($lang->claim['error'], $lang->claim['user_not_found']);
 }
 $isMine  = $torrentId === 0 && $uid === $me;
+// Own page has a second tab: poorly seeded torrents the user downloaded and can claim
+$view    = ($isMine && ($_GET['view'] ?? '') === 'keeper') ? 'keeper' : 'claims';
+$keeper  = $isMine ? claim_keeper_list($me, 50) : [];
 $perPage = 50;
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $total   = $torrentId > 0 ? claim_count_torrent($torrentId) : claim_count_user($uid);
@@ -106,7 +109,7 @@ if (!empty($_COOKIE['claim_flash'])) {
     setcookie('claim_flash', '', ['expires' => 1, 'path' => '/']);
 }
 $postKey = function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? '');
-$selfUrl = 'claim.php' . ($torrentId > 0 ? '?torrent_id=' . $torrentId : ($isMine ? '' : '?uid=' . $uid));
+$selfUrl = 'claim.php' . ($torrentId > 0 ? '?torrent_id=' . $torrentId : ($isMine ? ($view === 'keeper' ? '?view=keeper' : '') : '?uid=' . $uid));
 
 $userLink = static function (array $r) use ($e, $BASEURL): string {
     $name = $e((string)($r['username'] ?? ''));
@@ -140,6 +143,19 @@ stdhead($title);
   .cl-poster { flex: 0 0 auto; width: 48px; height: 68px; border-radius: 6px; overflow: hidden; background: rgba(127,127,127,.15);
                display: flex; align-items: center; justify-content: center; color: rgba(127,127,127,.7); }
   .cl-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cl-tabs { display: flex; gap: .5rem; overflow-x: auto; scrollbar-width: none; margin: 0 0 1rem; }
+  .cl-tabs::-webkit-scrollbar { display: none; }
+  .cl-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .45rem; padding: .45rem 1rem; border-radius: 50rem;
+            text-decoration: none; font-weight: 600; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg);
+            border: 1px solid var(--bs-border-color-translucent); }
+  .cl-tab:hover { color: var(--bs-body-color); }
+  .cl-tab.is-active { color: #fff; background: var(--bs-primary); border-color: var(--bs-primary); }
+  .cl-tab .cl-tab__n { font-size: .78rem; padding: 0 .45rem; border-radius: 50rem; background: rgba(127,127,127,.2); }
+  .cl-tab.is-active .cl-tab__n { background: rgba(255,255,255,.25); }
+  .cl-keeper-note { display: flex; gap: .6rem; align-items: flex-start; padding: .75rem 1rem; margin-bottom: 1rem; }
+  .cl-keeper-note i { color: var(--bs-success); margin-top: .2rem; }
+  .cl-btn--success { color: #fff; background: var(--bs-success); border-color: var(--bs-success); }
+  .cl-seeds-0 { color: var(--bs-danger); font-weight: 700; }
 </style>
 
 <div class="cl">
@@ -167,7 +183,7 @@ stdhead($title);
 
   <div class="cl-kpis">
     <div class="cl-card cl-kpi"><span class="cl-kpi__icon cl-tone-primary"><i class="fa-solid fa-list-check"></i></span>
-      <div><div class="cl-kpi__value"><?= number_format($total) ?><?= $torrentId > 0 ? ' / ' . CLAIM_MAX_PER_TORRENT : ' / ' . number_format(CLAIM_MAX_PER_USER) ?></div>
+      <div><div class="cl-kpi__value"><?= number_format($total) ?><?= $torrentId > 0 ? ' / ' . claim_cfg('max_per_torrent') : ' / ' . number_format(claim_cfg('max_per_user')) ?></div>
       <div class="cl-kpi__label"><?= $torrentId > 0 ? $e($lang->claim['claimers']) : $e($lang->claim['claimed_torrents']) ?></div></div></div>
     <div class="cl-card cl-kpi"><span class="cl-kpi__icon cl-tone-success"><i class="fa-solid fa-circle-check"></i></span>
       <div><div class="cl-kpi__value"><?= number_format($reachedN) ?></div><div class="cl-kpi__label"><?= $e($lang->claim['norm_reached']) ?></div></div></div>
@@ -175,17 +191,72 @@ stdhead($title);
       <div><div class="cl-kpi__value"><?= number_format($riskN) ?></div><div class="cl-kpi__label"><?= $e($lang->claim['at_risk_removal']) ?></div></div></div>
   </div>
 
+  <?php if ($isMine): ?>
+    <nav class="cl-tabs" aria-label="<?= $e($lang->claim['tabs_aria']) ?>">
+      <a class="cl-tab<?= $view === 'claims' ? ' is-active' : '' ?>" href="<?= $BASEURL ?>/claim.php"><i class="fa-solid fa-hand-holding-heart"></i><?= $e($lang->claim['tab_mine']) ?> <span class="cl-tab__n"><?= number_format($total) ?></span></a>
+      <a class="cl-tab<?= $view === 'keeper' ? ' is-active' : '' ?>" href="<?= $BASEURL ?>/claim.php?view=keeper"><i class="fa-solid fa-seedling"></i><?= $e($lang->claim['tab_keeper']) ?> <span class="cl-tab__n"><?= count($keeper) >= 50 ? '50+' : count($keeper) ?></span></a>
+    </nav>
+  <?php endif; ?>
+
   <details class="cl-card cl-rules"<?= $total === 0 ? ' open' : '' ?>>
     <summary><i class="fa-solid fa-circle-info"></i><?= $e($lang->claim['how_it_works']) ?></summary>
     <ul>
-      <li><?= $tr($lang->claim['rule_1'], CLAIM_MIN_AGE_DAYS, number_format(CLAIM_MAX_PER_USER), CLAIM_MAX_PER_TORRENT) ?></li>
-      <li><?= $tr($lang->claim['rule_2'], CLAIM_SEED_HOURS, CLAIM_UPLOAD_TIMES) ?></li>
-      <li><?= $tr($lang->claim['rule_3'], rtrim(rtrim(number_format(CLAIM_BONUS_PER_HOUR * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.')) ?></li>
-      <li><?= $tr($lang->claim['rule_4'], number_format(CLAIM_REMOVE_DEDUCT)) ?></li>
-      <li><?= $tr($lang->claim['rule_5'], number_format(CLAIM_GIVE_UP_DEDUCT)) ?></li>
+      <li><?= $tr($lang->claim['rule_1'], claim_cfg('min_age_days'), number_format(claim_cfg('max_per_user')), claim_cfg('max_per_torrent')) ?></li>
+      <li><?= $tr($lang->claim['rule_2'], claim_cfg('seed_hours'), claim_cfg('upload_times')) ?></li>
+      <li><?= $tr($lang->claim['rule_3'], rtrim(rtrim(number_format(claim_cfg('bonus_per_hour') * CLAIM_BONUS_MULTIPLIER, 2), '0'), '.')) ?></li>
+      <li><?= $tr($lang->claim['rule_4'], number_format(claim_cfg('remove_deduct'))) ?></li>
+      <li><?= $tr($lang->claim['rule_5'], number_format(claim_cfg('give_up_deduct'))) ?></li>
     </ul>
   </details>
 
+  <?php if ($view === 'keeper'): ?>
+  <div class="cl-card cl-keeper-note"><i class="fa-solid fa-circle-info"></i>
+    <span><?= $e($tr($lang->claim['keeper_desc'], (int)claim_cfg('keeper_max_seeders'), (int)claim_cfg('min_age_days'))) ?></span></div>
+  <div class="cl-card cl-table-wrap">
+    <?php if (!$keeper): ?>
+      <div class="cl-empty"><i class="fa-solid fa-face-smile"></i><p><?= $e($lang->claim['keeper_empty']) ?></p></div>
+    <?php else: ?>
+      <table class="cl-table">
+        <thead><tr>
+          <th><?= $e($lang->claim['th_torrent']) ?></th>
+          <th><?= $e($lang->claim['th_seeders']) ?></th>
+          <th><?= $e($lang->claim['th_claimers']) ?></th>
+          <th><?= $e($lang->claim['th_added']) ?></th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($keeper as $k):
+            $poster = $posterUrl($k['poster'] ?? null); $tLink = $BASEURL . '/' . get_torrent_link((int)$k['torrent_id']); ?>
+          <tr>
+            <td><div class="cl-item">
+                <?php if ($poster !== ''): ?>
+                  <a class="cl-poster" href="<?= $e($tLink) ?>"><img src="<?= $e($poster) ?>" alt="" loading="lazy" referrerpolicy="no-referrer"></a>
+                <?php else: ?>
+                  <span class="cl-poster"><i class="fa-solid fa-film"></i></span>
+                <?php endif; ?>
+                <div class="cl-item__text">
+                  <a class="cl-name" href="<?= $e($tLink) ?>"><?= $e((string)$k['torrent_name']) ?></a>
+                  <div class="cl-sub"><?= mksize((float)$k['size']) ?> &middot; <?= $e($tr($lang->claim['leechers_count'], (int)$k['leechers'])) ?></div>
+                </div>
+              </div></td>
+            <td class="cl-nowrap<?= (int)$k['seeders'] === 0 ? ' cl-seeds-0' : '' ?>"><i class="fa-solid fa-arrow-up me-1"></i><?= (int)$k['seeders'] ?></td>
+            <td class="cl-nowrap"><a href="<?= $BASEURL ?>/claim.php?torrent_id=<?= (int)$k['torrent_id'] ?>"><?= (int)$k['claimers'] ?> / <?= (int)claim_cfg('max_per_torrent') ?></a></td>
+            <td class="cl-nowrap"><?= date('d.m.Y', (int)$k['torrent_added']) ?></td>
+            <td class="cl-nowrap">
+              <form method="post" action="<?= $BASEURL ?>/claim.php" data-cl-confirm="<?= $e($tr($lang->claim['confirm_claim'], (int)claim_cfg('seed_hours'), number_format((float)claim_cfg('remove_deduct')))) ?>">
+                <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
+                <input type="hidden" name="torrent_id" value="<?= (int)$k['torrent_id'] ?>">
+                <input type="hidden" name="returnto" value="claim.php?view=keeper">
+                <button class="cl-btn cl-btn--success"><i class="fa-solid fa-hand-holding-heart"></i><?= $e($lang->claim['btn_claim']) ?></button>
+              </form>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
+  <?php else: ?>
   <div class="cl-card cl-table-wrap">
     <?php if (!$rows): ?>
       <div class="cl-empty"><i class="fa-solid fa-seedling"></i>
@@ -195,8 +266,8 @@ stdhead($title);
         <thead><tr>
           <th><?= $e($torrentId > 0 ? $lang->claim['th_user'] : $lang->claim['th_torrent']) ?></th>
           <th><?= $e($lang->claim['th_claimed']) ?></th>
-          <th><?= $e($lang->claim['th_seeded']) ?> <span class="cl-sub"><?= $e($tr($lang->claim['th_seeded_norm'], CLAIM_SEED_HOURS)) ?></span></th>
-          <th><?= $e($lang->claim['th_uploaded']) ?> <span class="cl-sub"><?= $e($tr($lang->claim['th_uploaded_norm'], CLAIM_UPLOAD_TIMES)) ?></span></th>
+          <th><?= $e($lang->claim['th_seeded']) ?> <span class="cl-sub"><?= $e($tr($lang->claim['th_seeded_norm'], claim_cfg('seed_hours'))) ?></span></th>
+          <th><?= $e($lang->claim['th_uploaded']) ?> <span class="cl-sub"><?= $e($tr($lang->claim['th_uploaded_norm'], claim_cfg('upload_times'))) ?></span></th>
           <th><?= $e($lang->claim['th_status']) ?></th>
           <?php if ($isMine): ?><th></th><?php endif; ?>
         </tr></thead>
@@ -237,7 +308,7 @@ stdhead($title);
               <div class="cl-sub"><?= (int)$r['next_settle'] <= TIMENOW ? $e($lang->claim['result_now']) : $e($tr($lang->claim['result_date'], date('d.m.Y', (int)$r['next_settle']))) ?></div></td>
             <?php if ($isMine): ?>
               <td class="cl-nowrap">
-                <form method="post" action="<?= $BASEURL ?>/claim.php" data-cl-confirm="<?= $e($tr($lang->claim['confirm_give_up'], number_format(CLAIM_GIVE_UP_DEDUCT))) ?>">
+                <form method="post" action="<?= $BASEURL ?>/claim.php" data-cl-confirm="<?= $e($tr($lang->claim['confirm_give_up'], number_format(claim_cfg('give_up_deduct')))) ?>">
                   <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
                   <input type="hidden" name="action" value="remove">
                   <input type="hidden" name="torrent_id" value="<?= (int)$r['torrent_id'] ?>">
@@ -253,7 +324,9 @@ stdhead($title);
     <?php endif; ?>
   </div>
 
-  <?php $pages = (int)ceil($total / $perPage); if ($pages > 1): ?>
+  <?php endif; ?>
+
+  <?php $pages = $view === 'keeper' ? 0 : (int)ceil($total / $perPage); if ($pages > 1): ?>
     <nav class="cl-pages">
       <?php for ($i = max(1, $page - 5); $i <= min($pages, $page + 5); $i++): ?>
         <a class="<?= $i === $page ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/<?= $e($selfUrl) ?><?= str_contains($selfUrl, '?') ? '&amp;' : '?' ?>page=<?= $i ?>"><?= $i ?></a>

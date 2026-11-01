@@ -708,13 +708,43 @@ $language['managesettings'] = array
 'hint_notify_keep_read_days'   => "Read notifications older than this are removed.",
 'hint_notify_keep_all_days'    => "Any notification older than this is removed, unread too. Not less than 'Keep read'.",
 'hint_notify_max_per_user'     => "Only the newest N notifications are kept for each user.",
-	
-	
-	
-	
-	
-	
-	
+
+	// ── Claims ──
+	'nav_claims'                     => 'Claims',
+	'pane_claims_title'              => 'Claims',
+	'pane_claims_sub'                => 'Users take old torrents "on keeping" and get bonus for seeding them every month',
+	'pane_claims_tag'                => 'Monthly',
+	'lbl_claim_enabled'              => 'Claims enabled',
+	'sec_claim_limits'               => 'Limits',
+	'sec_claim_limits_hint'          => 'Who can claim what',
+	'lbl_claim_min_age_days'         => 'Torrent age, days',
+	'lbl_claim_max_per_user'         => 'Claims per user',
+	'lbl_claim_max_per_torrent'      => 'Claimers per torrent',
+	'sec_claim_norm'                 => 'Monthly norm',
+	'sec_claim_norm_hint'            => 'A claim is kept if either of the two is reached in a month',
+	'lbl_claim_seed_hours'           => 'Seed hours per month',
+	'lbl_claim_upload_times'         => 'Or upload, × torrent size',
+	'sec_claim_bonus'                => 'Bonus and penalties',
+	'sec_claim_bonus_hint'           => 'Paid / deducted at the monthly settlement (the 1st of the month)',
+	'lbl_claim_bonus_per_hour'       => 'Bonus per seed hour',
+	'lbl_claim_remove_deduct'        => 'Penalty: norm not reached',
+	'lbl_claim_give_up_deduct'       => 'Penalty: given up by hand',
+	'sec_claim_extra'                => 'Reminders and rescue',
+	'sec_claim_extra_hint'           => 'Bell before the month ends and the "Needs a keeper" list',
+	'lbl_claim_warn_days'            => 'Warn days before month end',
+	'lbl_claim_keeper_max_seeders'   => '"Needs a keeper": max seeders',
+	'hint_claim_enabled'             => 'Off: the Claim button disappears and the monthly settlement stops',
+	'hint_claim_min_age_days'        => 'A torrent can be claimed only this many days after upload',
+	'hint_claim_max_per_user'        => 'How many torrents one user can hold',
+	'hint_claim_max_per_torrent'     => 'How many users can claim one torrent',
+	'hint_claim_seed_hours'          => 'Seed time needed per torrent per month (744 h = a whole month)',
+	'hint_claim_upload_times'        => 'Or upload this many times the torrent size; 0 = seed time only',
+	'hint_claim_bonus_per_hour'      => 'Paid for every hour seeded this month, per torrent that reached the norm (e.g. 0.5)',
+	'hint_claim_remove_deduct'       => 'Per torrent removed for not reaching the norm (after the grace month)',
+	'hint_claim_give_up_deduct'      => 'When the user removes a claim himself',
+	'hint_claim_warn_days'           => 'Bell to users whose claims are at risk; 0 = no reminder',
+	'hint_claim_keeper_max_seeders'  => 'Torrents with this many seeders or fewer are offered on the user\'s claims page',
+	'flash_claims_saved'             => 'Claims settings saved successfully!',
 
 );
 ?>

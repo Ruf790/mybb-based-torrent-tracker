@@ -64,6 +64,7 @@ $language['notifications'] = array
 'n_claim'               => "{1} claimed your torrent “{3}” and will keep seeding it",
 'n_claim_many'          => "Your torrent “{3}” was claimed for seeding: {2}, latest by {1}",
 'n_claim_settled'       => "Claim results for {3}: {4} reached the norm, {5} removed, bonus {6}",
+'n_claim_warning'       => "Claims: {3} torrent(s) haven't reached the monthly norm yet. {4} day(s) left, otherwise they are removed and {5} bonus points are deducted",
 'n_request_filled'      => "Your request “{3}” has been filled by {1}",
 'n_request_vote_filled' => "A request you voted for, “{3}”, has been filled by {1}",
 'n_request_comment'     => "New comment on your request “{3}” from {1}",

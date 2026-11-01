@@ -709,9 +709,43 @@ $language['managesettings'] = array
 'hint_notify_keep_read_days'   => "Прочитанные уведомления старше этого срока удаляются.",
 'hint_notify_keep_all_days'    => "Любые уведомления старше этого срока удаляются, даже непрочитанные. Не меньше, чем «Хранить прочитанные».",
 'hint_notify_max_per_user'     => "У каждого пользователя хранятся только N самых новых уведомлений.",
-	
-	
-	
+
+	// ── Claims ──
+	'nav_claims'                     => 'Claims',
+	'pane_claims_title'              => 'Claims',
+	'pane_claims_sub'                => 'Пользователи берут старые раздачи «на сохранение» и каждый месяц получают бонусы за их сидирование',
+	'pane_claims_tag'                => 'Ежемесячно',
+	'lbl_claim_enabled'              => 'Claims включены',
+	'sec_claim_limits'               => 'Ограничения',
+	'sec_claim_limits_hint'          => 'Кто и что может взять',
+	'lbl_claim_min_age_days'         => 'Возраст раздачи, дней',
+	'lbl_claim_max_per_user'         => 'Claims на пользователя',
+	'lbl_claim_max_per_torrent'      => 'Хранителей на раздачу',
+	'sec_claim_norm'                 => 'Месячная норма',
+	'sec_claim_norm_hint'            => 'Claim сохраняется, если за месяц выполнено любое из двух условий',
+	'lbl_claim_seed_hours'           => 'Часов сида в месяц',
+	'lbl_claim_upload_times'         => 'Или отдача, × размер раздачи',
+	'sec_claim_bonus'                => 'Бонусы и штрафы',
+	'sec_claim_bonus_hint'           => 'Начисляются и списываются при ежемесячном расчёте (1-го числа)',
+	'lbl_claim_bonus_per_hour'       => 'Бонус за час сида',
+	'lbl_claim_remove_deduct'        => 'Штраф: норма не выполнена',
+	'lbl_claim_give_up_deduct'       => 'Штраф: отказ вручную',
+	'sec_claim_extra'                => 'Напоминания и спасение раздач',
+	'sec_claim_extra_hint'           => 'Колокольчик перед концом месяца и список «Нужен хранитель»',
+	'lbl_claim_warn_days'            => 'Предупреждать за N дней',
+	'lbl_claim_keeper_max_seeders'   => '«Нужен хранитель»: макс. сидов',
+	'hint_claim_enabled'             => 'Выключено: кнопка «Взять» пропадает, ежемесячный расчёт не идёт',
+	'hint_claim_min_age_days'        => 'Раздачу можно взять только через столько дней после заливки',
+	'hint_claim_max_per_user'        => 'Сколько раздач может держать один пользователь',
+	'hint_claim_max_per_torrent'     => 'Сколько пользователей может взять одну раздачу',
+	'hint_claim_seed_hours'          => 'Сколько часов сида нужно на раздачу в месяц (744 ч = весь месяц)',
+	'hint_claim_upload_times'        => 'Или отдать столько размеров раздачи; 0 = только время сида',
+	'hint_claim_bonus_per_hour'      => 'За каждый час сида в этом месяце, по каждой раздаче с выполненной нормой (например 0.5)',
+	'hint_claim_remove_deduct'       => 'За каждую раздачу, снятую за невыполнение нормы (после льготного месяца)',
+	'hint_claim_give_up_deduct'      => 'Когда пользователь сам отказывается от claim',
+	'hint_claim_warn_days'           => 'Колокольчик тем, у кого claims под угрозой; 0 = не напоминать',
+	'hint_claim_keeper_max_seeders'  => 'Раздачи с таким числом сидов или меньше предлагаются на странице claims пользователя',
+	'flash_claims_saved'             => 'Настройки Claims сохранены!',
 
 );
 ?>

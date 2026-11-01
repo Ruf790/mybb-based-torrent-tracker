@@ -120,6 +120,7 @@ class trackerlanguage
 	public $hit_and_run;
 	public $manage_avatars;	
     public $mass_reseed;
+    public $claims_admin;
     public $sendmail;
     public $staffbox;
     public $staffmess;

@@ -269,3 +269,153 @@
   .st-page .st-frow__ico { width: 2.2rem; height: 2.2rem; font-size: .9rem; }
 }
 .st-page .st-frow__unapp { gap: .25rem; }
+
+/* ═════ Визуальный слой: градиентная шапка, тонированные заголовки,
+        фоновая иконка KPI, подсветка проблемных строк ═════ */
+
+/* 1. Градиентная шапка */
+.st-page .st-head {
+  background: linear-gradient(120deg, var(--bs-primary-bg-subtle) 0%, var(--bs-body-bg) 65%);
+}
+
+/* 2. Подкрашенные заголовки карточек */
+.st-page .st-card > .st-card__head { background: var(--bs-tertiary-bg); }
+
+/* 3. KPI с полупрозрачной иконкой в углу */
+.st-page .st-kpi { position: relative; overflow: hidden; }
+.st-page .st-kpi__bg {
+  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+  opacity: .07; transform: rotate(-12deg); pointer-events: none;
+  color: var(--bs-emphasis-color);
+}
+.st-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.st-page .st-kpi--primary { background: color-mix(in srgb, var(--bs-primary-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-primary-border-subtle); }
+.st-page .st-kpi--success { background: color-mix(in srgb, var(--bs-success-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-success-border-subtle); }
+.st-page .st-kpi--info    { background: color-mix(in srgb, var(--bs-info-bg-subtle) 45%, var(--bs-body-bg));    border-color: var(--bs-info-border-subtle); }
+.st-page .st-kpi--warning { background: color-mix(in srgb, var(--bs-warning-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-warning-border-subtle); }
+.st-page .st-kpi--danger  { background: color-mix(in srgb, var(--bs-danger-bg-subtle) 45%, var(--bs-body-bg));  border-color: var(--bs-danger-border-subtle); }
+.st-page .st-kpi--muted   { background: var(--bs-tertiary-bg); }
+
+/* 4. Подсветка проблемных строк таблицы */
+.st-page .st-row--bad > td,
+.st-page .st-sec__row--failed > td { background: color-mix(in srgb, var(--bs-danger-bg-subtle) 30%, transparent); }
+.st-page .st-row--bad,
+.st-page .st-sec__row--failed { box-shadow: inset 3px 0 0 var(--bs-danger); }
+
+
+/* ═════ Рейтинги и таблицы-топы (topten.php; годится для любых списков) ═════ */
+
+/* Сетка KPI-плиток: 4 в ряд, 2 на планшете/телефоне */
+.st-page .st-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 991.98px) { .st-page .st-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.st-page .st-kpi__val--sm { font-size: 1.1rem; }
+.st-page .st-kpi__sub { font-size: .75em; color: var(--bs-secondary-color); margin-top: .1rem; }
+.st-page .st-ico-sm { font-size: .8em; }
+.st-page .st-meta i { margin-right: .25rem; }
+
+/* Фиолетовый тон (30% Leech, активность) */
+.st-page { --st-purple: #8b5cf6; --st-purple-soft: rgba(139, 92, 246, .14); --st-purple-strong: #6d28d9; }
+[data-bs-theme="dark"] .st-page { --st-purple-strong: #c4b5fd; }
+.st-page .st-soft-purple { background: var(--st-purple-soft); color: var(--st-purple-strong); }
+
+/* Сплошные заливки (полоски прогресса) */
+.st-page .st-bg-primary { background-color: var(--bs-primary) !important; }
+.st-page .st-bg-success { background-color: var(--bs-success) !important; }
+.st-page .st-bg-danger  { background-color: var(--bs-danger) !important; }
+.st-page .st-bg-warning { background-color: var(--bs-warning) !important; }
+.st-page .st-bg-info    { background-color: var(--bs-info) !important; }
+.st-page .st-bg-purple  { background-color: var(--st-purple) !important; }
+
+/* Вкладки-«пилюли» в карточке */
+.st-page .st-pilltabs-card { padding: .5rem; }
+.st-page .st-pilltabs {
+  display: flex; gap: .35rem; margin: 0; padding: 0; list-style: none;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.st-page .st-pilltabs li { flex: 1 0 auto; }
+.st-page .st-pilltab {
+  display: flex; align-items: center; justify-content: center; gap: .5rem; height: 100%;
+  padding: .5rem .9rem; border-radius: 999px; font-size: .88em; font-weight: 600; white-space: nowrap;
+  color: var(--bs-secondary-color); text-decoration: none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.st-page .st-pilltab:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.st-page .st-pilltab.active { background: var(--bs-primary); color: #fff; box-shadow: 0 6px 14px -8px var(--bs-primary); }
+@media (max-width: 575.98px) {
+  .st-page .st-pilltab__label { display: none; }
+  .st-page .st-pilltab.active .st-pilltab__label { display: inline; }
+}
+
+/* Карточка с таблицей */
+.st-page .st-tblcard { overflow: hidden; }
+.st-page .st-table { margin: 0; color: var(--bs-body-color); }
+.st-page .st-table > :not(caption) > * > * {
+  padding: .7rem .75rem; background: transparent;
+  border-bottom-color: var(--bs-border-color-translucent, var(--bs-border-color));
+}
+.st-page .st-table > :not(caption) > * > *:first-child { padding-left: 1.1rem; }
+.st-page .st-table > :not(caption) > * > *:last-child  { padding-right: 1.1rem; }
+.st-page .st-table thead th {
+  font-size: .74em; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  white-space: nowrap; color: var(--bs-secondary-color);
+}
+.st-page .st-table thead th i { margin-right: .35rem; opacity: .7; }
+.st-page .st-table tbody td { vertical-align: middle; }
+.st-page .st-table tbody tr:last-child td { border-bottom: 0; }
+.st-page .st-table tbody tr > td { transition: background-color .12s ease; }
+.st-page .st-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
+.st-page .st-traffic { font-weight: 600; white-space: nowrap; }
+.st-page .st-num { white-space: nowrap; }
+
+/* Места 1–3: цветная полоска слева и рамка аватара */
+.st-page { --st-gold: #e0b021; --st-silver: #a7b0ba; --st-bronze: #c27a3e; }
+.st-page .st-medal--1 > td:first-child { box-shadow: inset 3px 0 0 var(--st-gold); }
+.st-page .st-medal--2 > td:first-child { box-shadow: inset 3px 0 0 var(--st-silver); }
+.st-page .st-medal--3 > td:first-child { box-shadow: inset 3px 0 0 var(--st-bronze); }
+.st-page .st-medal--1 .st-avatar { border-color: var(--st-gold); }
+.st-page .st-medal--2 .st-avatar { border-color: var(--st-silver); }
+.st-page .st-medal--3 .st-avatar { border-color: var(--st-bronze); }
+
+/* Номер места */
+.st-page .st-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  font-size: .82em; font-weight: 700; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg);
+}
+.st-page .st-rank--gold, .st-page .st-rank--silver, .st-page .st-rank--bronze { color: #fff; font-size: .8em; }
+.st-page .st-rank--gold   { background: linear-gradient(135deg, #f7d354, #c8901a); box-shadow: 0 3px 10px -4px rgba(200, 144, 26, .9); }
+.st-page .st-rank--silver { background: linear-gradient(135deg, #d9dee3, #8d97a1); box-shadow: 0 3px 10px -4px rgba(141, 151, 161, .9); }
+.st-page .st-rank--bronze { background: linear-gradient(135deg, #e3a06a, #9c5a26); box-shadow: 0 3px 10px -4px rgba(156, 90, 38, .9); }
+
+/* Пользователь, торрент, флаг */
+.st-page .st-avatar {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  object-fit: cover; border: 2px solid var(--bs-border-color);
+}
+.st-page .st-user a { text-decoration: none; font-weight: 600; }
+.st-page .st-poster {
+  width: 36px; height: 50px; flex-shrink: 0; display: block; object-fit: cover;
+  border-radius: .45rem; border: 1px solid var(--bs-border-color); transition: transform .2s ease;
+}
+.st-page a:hover > .st-poster { transform: scale(1.1); }
+.st-page .st-link { color: var(--bs-emphasis-color); font-weight: 600; text-decoration: none; }
+.st-page .st-link:hover { color: var(--bs-primary-text-emphasis); }
+.st-page .st-flag { width: 28px; height: auto; border-radius: 3px; box-shadow: 0 0 0 1px var(--bs-border-color); }
+
+/* Тонкая полоска «доля от лидера» */
+.st-page .st-progress { height: 6px; margin-top: .35rem; border-radius: 999px; background: var(--bs-tertiary-bg); }
+.st-page .st-progress .progress-bar { border-radius: 999px; }
+
+/* Чипы (ссылки «Топ-N», название форума) */
+.st-page .st-chip {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .65rem;
+  border-radius: 999px; border: 1px solid var(--bs-border-color);
+  font-size: .76em; font-weight: 500; white-space: nowrap;
+  color: var(--bs-secondary-color); background: var(--bs-body-bg); text-decoration: none;
+  transition: color .15s ease, border-color .15s ease;
+}
+.st-page a.st-chip:hover { color: var(--bs-primary-text-emphasis); border-color: var(--bs-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-page .st-pilltab, .st-page .st-poster, .st-page .st-chip, .st-page .st-table tbody tr > td { transition: none; }
+}

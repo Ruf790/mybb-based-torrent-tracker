@@ -213,7 +213,7 @@ flash_message();
  * Перед скриптом выводит AGS_LANG — все ключи js_* ланга без префикса.
  * Вызывать после stdhead().
  */
-function enqueue_staff_assets(): void
+function enqueue_staff_assets(bool $legacy_css = true): void
 {
     global $BASEURL, $lang;
     static $done = false;
@@ -227,7 +227,11 @@ function enqueue_staff_assets(): void
         }
     }
 
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staff.css">' . "\n";
+    // staff.css глобально переопределяет .card/.btn/.form-control — на страницах
+    // в новом стиле (st-ui.css + staffpanel.css) его не подключаем.
+    if ($legacy_css) {
+        echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staff.css">' . "\n";
+    }
     echo '<script>const AGS_LANG = '
        . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
        . ';</script>' . "\n";
@@ -354,14 +358,13 @@ function render_stafftools_page(): void
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
 
-	stdhead($lang->staffpanel['page_stafftools']);
-    enqueue_staff_assets();
+    stdhead($lang->staffpanel['page_stafftools']);
+    enqueue_staff_assets(false);
     menu('stafftools');
 
-    echo '<div class="container mt-3">';
-      get_list();
-    echo '</div>';
+    get_list();
 
+    echo '</div>';                  // .sp-root (раньше не закрывался)
     echo '</td></tr></table>';
     stdfoot();
 }
@@ -898,224 +901,167 @@ function render_dashboard(): void
 {
     global $db, $CURUSER, $SITENAME, $thispath, $BASEURL, $lang;
 
-	require_once $thispath . 'include/stafftoolsfunctions.php';
+    require_once $thispath . 'include/stafftoolsfunctions.php';
 
-    $cut  = TIMENOW - 86400;
+    $L   = $lang->staffpanel;
+    $e   = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $cut = TIMENOW - 86400;
 
-    $totalusers    = get_count('c', 'users',    "WHERE ustatus='confirmed'");
-    $newuserstoday = get_count('c', 'users',    'WHERE added > ?', [$cut]);
-    $pendingusers  = get_count('c', 'users',    "WHERE ustatus='pending'");
-    $todaycomments = get_count('c', 'comments', 'WHERE dateline > ?', [$cut]);
-    $todayvisits   = get_count('c', 'users',    'WHERE lastactive > ?', [$cut]);
-    $peers         = get_count('c', 'peers');
-    $seeders       = get_count('c', 'peers',    "WHERE seeder='yes'");
-    $leechers      = get_count('c', 'peers',    "WHERE seeder='no'");
+    // Пользователи — один запрос вместо пяти
+    $u = $db->fetch_array($db->sql_query_prepared(
+        "SELECT COALESCE(SUM(ustatus = 'confirmed'), 0) AS total,
+                COALESCE(SUM(added > ?), 0)             AS new_today,
+                COALESCE(SUM(ustatus = 'pending'), 0)   AS pending,
+                COALESCE(SUM(lastactive > ?), 0)        AS active_today,
+                COALESCE(SUM(uploaded), 0)              AS ul,
+                COALESCE(SUM(downloaded), 0)            AS dl
+         FROM users",
+        [$cut, $cut]
+    )) ?: [];
+
+    // Пиры — один запрос вместо трёх
+    $p = $db->fetch_array($db->sql_query_prepared(
+        "SELECT COUNT(*) AS peers, COALESCE(SUM(seeder = 'yes'), 0) AS seeders FROM peers"
+    )) ?: [];
+
+    $totalusers    = (int) ($u['total'] ?? 0);
+    $newuserstoday = (int) ($u['new_today'] ?? 0);
+    $pendingusers  = (int) ($u['pending'] ?? 0);
+    $todayvisits   = (int) ($u['active_today'] ?? 0);
+    $peers         = (int) ($p['peers'] ?? 0);
+    $seeders       = (int) ($p['seeders'] ?? 0);
+    $leechers      = max(0, $peers - $seeders);
     $totaltorrents = get_count('c', 'torrents');
+    $todaycomments = get_count('c', 'comments', 'WHERE dateline > ?', [$cut]);
 
-    $sum_q    = $db->sql_query_prepared('SELECT SUM(downloaded) AS dl, SUM(uploaded) AS ul FROM users');
-    $row      = $sum_q ? $db->fetch_array($sum_q) : ['dl' => 0, 'ul' => 0];
-    $dl       = (float) $row['dl'];
-    $ul       = (float) $row['ul'];
-    $dl_disp  = mksize($dl);
-    $ul_disp  = mksize($ul);
-    $ratio    = $dl > 0 ? round($ul / $dl, 2) : '∞';
-
-    $username = htmlspecialchars_uni($CURUSER['username']);
-    $date_str = date($lang->staffpanel['fmt_date_short']);
-    $time_str = date('H:i:s');
+    $ul    = (float) ($u['ul'] ?? 0);
+    $dl    = (float) ($u['dl'] ?? 0);
+    $ratio = $dl > 0 ? number_format($ul / $dl, 2) : '∞';
 
     // Системные метрики
-    $serverload     = function_exists('get_server_load')  ? get_server_load()  : 0;
+    $serverload     = function_exists('get_server_load')  ? (float) get_server_load() : 0.0;
     $memory_display = function_exists('get_memory_usage') ? mksize(get_memory_usage()) : '—';
-    $dbsize         = function_exists('getDbSize')        ? getDbSize()        : '—';
-    $diskfree       = function_exists('getDiskFree')      ? getDiskFree()      : '—';
-    $recentactivity = function_exists('getRecentActivity')? getRecentActivity(): '';
+    $dbsize         = getDbSize();
+    $diskfree       = getDiskFree();
+    $recentactivity = getRecentActivity(6);
 
-    $load_bar = $serverload > 80 ? 'bg-danger' : ($serverload > 60 ? 'bg-warning' : 'bg-success');
-    $load_pct = min($serverload, 100);
+    $load_pct  = (int) round(min(max($serverload, 0), 100));
+    $load_tone = $load_pct > 80 ? 'danger' : ($load_pct > 60 ? 'warning' : 'success');
 
-    $sc = fn($icon, $lbl, $val, $cls = 'text-dark') => <<<HTML
-<div class="col">
-  <div class="stat-card">
-    <i class="fas {$icon} fs-2 mb-1"></i>
-    <div class="small text-muted">{$lbl}</div>
-    <div class="fw-bold fs-5 {$cls}">{$val}</div>
-  </div>
-</div>
-HTML;
-
-    $col_total    = $sc('fa-user-plus text-primary',      htmlspecialchars($lang->staffpanel['stat_total_users']),  ts_nf($totalusers));
-    $col_new      = $sc('fa-user-clock text-success',     htmlspecialchars($lang->staffpanel['stat_new_today']),    ts_nf($newuserstoday),  'text-success');
-    $col_pending  = $sc('fa-user-times text-warning',     htmlspecialchars($lang->staffpanel['stat_unconfirmed']),  ts_nf($pendingusers),   'text-warning');
-    $col_active   = $sc('fa-eye text-info',               htmlspecialchars($lang->staffpanel['stat_active_users']), ts_nf($todayvisits),    'text-info');
-    $col_comments = $sc('fa-comment-dots text-secondary', htmlspecialchars($lang->staffpanel['stat_comments']),     ts_nf($todaycomments),  'text-secondary');
-    $col_peers    = $sc('fa-users text-danger',           htmlspecialchars($lang->staffpanel['stat_peers']),        ts_nf($peers),          'text-danger');
-    $col_seeders  = $sc('fa-arrow-up text-success',       htmlspecialchars($lang->staffpanel['stat_seeders']),      ts_nf($seeders),        'text-success');
-    $col_leechers = $sc('fa-arrow-down text-primary',     htmlspecialchars($lang->staffpanel['stat_leechers']),     ts_nf($leechers),       'text-primary');
-    $col_torrents = $sc('fa-file-alt text-info',          htmlspecialchars($lang->staffpanel['stat_torrents']),     ts_nf($totaltorrents),  'text-info');
-    $col_ul       = $sc('fa-upload text-success',         htmlspecialchars($lang->staffpanel['stat_uploaded']),     $ul_disp,               'text-success');
-    $col_dl       = $sc('fa-download text-danger',        htmlspecialchars($lang->staffpanel['stat_downloaded']),   $dl_disp,               'text-danger');
-    $col_ratio    = $sc('fa-balance-scale text-warning',  htmlspecialchars($lang->staffpanel['stat_ratio']),        $ratio,                 'text-warning');
-
-    $t_welcome    = ags_fmt(htmlspecialchars($lang->staffpanel['dash_welcome']), $SITENAME);
-    $t_tagline    = htmlspecialchars($lang->staffpanel['dash_tagline']);
-    $t_user_stats = htmlspecialchars($lang->staffpanel['card_user_stats']);
-    $t_activity   = htmlspecialchars($lang->staffpanel['card_activity']);
-    $t_peers      = $lang->staffpanel['card_peers']; // содержит &amp;
-    $t_traffic    = htmlspecialchars($lang->staffpanel['card_traffic']);
-    $t_health     = htmlspecialchars($lang->staffpanel['card_health']);
-    $t_recent     = htmlspecialchars($lang->staffpanel['card_recent']);
-    $t_load       = htmlspecialchars($lang->staffpanel['lbl_server_load']);
-    $t_db_size    = htmlspecialchars($lang->staffpanel['lbl_db_size']);
-    $t_disk_free  = htmlspecialchars($lang->staffpanel['lbl_disk_free']);
-    $t_memory     = htmlspecialchars($lang->staffpanel['lbl_memory']);
-    $t_view_logs  = htmlspecialchars($lang->staffpanel['btn_view_logs']);
-
-
-
-    stdhead($lang->staffpanel['page_dashboard']);
-    enqueue_staff_assets();
+    stdhead($L['page_dashboard']);
+    enqueue_staff_assets(false);
     menu('welcome');
 
+    // ── KPI-плитки ──
+    $tile = static function (string $icon, string $soft, string $val, string $lbl, string $sub = ''): string {
+        return '<div class="st-kpi st-kpi--muted">'
+             .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+             .   '<div class="min-w-0">'
+             .     '<div class="st-kpi__val">' . $val . '</div>'
+             .     '<div class="st-kpi__lbl">' . $lbl . '</div>'
+             .     ($sub !== '' ? '<div class="sp-kpi__sub">' . $sub . '</div>' : '')
+             .   '</div>'
+             .   '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+             . '</div>';
+    };
+
+    // ── Строка «метка — значение» (st-rows из st-ui.css) ──
+    $row = static fn(string $icon, string $lbl, string $val, string $cls = ''): string =>
+        '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid ' . $icon . '"></i>' . $lbl . '</span>'
+        . '<span class="st-row__val' . ($cls !== '' ? ' ' . $cls : '') . '">' . $val . '</span></div>';
+
+    $kpis = $tile('fa-users',      'st-soft-primary', ts_nf($totalusers),    $e($L['stat_total_users']),
+                  '<i class="fa-solid fa-plus text-success"></i> ' . ts_nf($newuserstoday) . ' ' . $e(mb_strtolower($L['stat_new_today'])))
+          . $tile('fa-eye',        'st-soft-info',    ts_nf($todayvisits),   $e($L['stat_active_users']),
+                  '<i class="fa-solid fa-comment-dots"></i> ' . ts_nf($todaycomments) . ' ' . $e(mb_strtolower($L['stat_comments'])))
+          . $tile('fa-users-line', 'st-soft-success', ts_nf($peers),         $e($L['stat_peers']),
+                  '<i class="fa-solid fa-arrow-up text-success"></i> ' . ts_nf($seeders)
+                  . ' <i class="fa-solid fa-arrow-down text-danger ms-1"></i> ' . ts_nf($leechers))
+          . $tile('fa-magnet',     'st-soft-danger',  ts_nf($totaltorrents), $e($L['stat_torrents']));
+
+    $users_rows = $row('fa-user-check',  $e($L['stat_total_users']),  ts_nf($totalusers))
+                . $row('fa-user-plus',   $e($L['stat_new_today']),    ts_nf($newuserstoday), 'text-success')
+                . $row('fa-user-clock',  $e($L['stat_unconfirmed']),  ts_nf($pendingusers),  $pendingusers > 0 ? 'text-warning' : '')
+                . $row('fa-eye',         $e($L['stat_active_users']), ts_nf($todayvisits))
+                . $row('fa-comment-dots',$e($L['stat_comments']),     ts_nf($todaycomments));
+
+    $traffic_rows = $row('fa-arrow-up',        $e($L['stat_uploaded']),   mksize($ul), 'text-success')
+                  . $row('fa-arrow-down',      $e($L['stat_downloaded']), mksize($dl), 'text-danger')
+                  . $row('fa-scale-balanced',  $e($L['stat_ratio']),      $ratio)
+                  . $row('fa-seedling',        $e($L['stat_seeders']),    ts_nf($seeders), 'text-success')
+                  . $row('fa-download',        $e($L['stat_leechers']),   ts_nf($leechers), 'text-danger');
+
+    $health_rows = $row('fa-database', $e($L['lbl_db_size']),   $e($dbsize))
+                 . $row('fa-hard-drive', $e($L['lbl_disk_free']), $e($diskfree))
+                 . $row('fa-memory',   $e($L['lbl_memory']),    $e($memory_display));
+
+    $t_welcome = ags_fmt($e($L['dash_welcome']), $e($SITENAME));
+    $username  = htmlspecialchars_uni($CURUSER['username']);
+    $date_str  = $e(date($L['fmt_date_short']));
+    $time_str  = date('H:i:s');
+
     echo <<<HTML
-<div class="container mt-3">
+<div class="container-md st-page sp-page">
 
-  <!-- Welcome Card -->
-  <div class="card bg-primary text-white rounded-4 mb-4">
-    <div class="card-body p-4">
-      <div class="row align-items-center">
-        <div class="col-md-8">
-          <h3 class="fw-bold mb-1"><i class="fas fa-user-shield me-2"></i>{$username}</h3>
-          <h5 class="mb-2">{$t_welcome}</h5>
-          <p class="mb-0 opacity-75">{$t_tagline}</p>
-        </div>
-        <div class="col-md-4 text-md-end mt-3 mt-md-0">
-          <div class="bg-white bg-opacity-25 rounded-3 p-3 d-inline-block text-center">
-            <i class="fas fa-clock fa-2x mb-1"></i>
-            <div class="fw-bold" id="live-clock">{$time_str}</div>
-            <small>{$date_str}</small>
-          </div>
-        </div>
+  <header class="st-card st-head mb-3">
+    <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-user-shield"></i></div>
+    <div class="flex-grow-1 min-w-0">
+      <h1 class="st-title">{$t_welcome}</h1>
+      <div class="st-head__meta">
+        <span><i class="fa-solid fa-user"></i>{$username}</span>
+        <span>{$e($L['dash_tagline'])}</span>
       </div>
     </div>
+    <div class="sp-clock" aria-live="off">
+      <i class="fa-solid fa-clock"></i>
+      <div>
+        <div class="sp-clock__time" id="live-clock">{$time_str}</div>
+        <div class="sp-clock__date">{$date_str}</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="sp-kpis mb-3">{$kpis}</div>
+
+  <div class="sp-grid mb-3">
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-users"></i></span>{$e($L['card_user_stats'])}</div>
+      <div class="st-card__body"><div class="st-rows">{$users_rows}</div></div>
+    </section>
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-info"><i class="fa-solid fa-right-left"></i></span>{$e($L['card_traffic'])}</div>
+      <div class="st-card__body"><div class="st-rows">{$traffic_rows}</div></div>
+    </section>
   </div>
 
-  <!-- User & Activity -->
-  <div class="row g-4 mb-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-primary text-white">
-          <h6 class="mb-0"><i class="fas fa-users me-2"></i>{$t_user_stats}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_total}{$col_new}{$col_pending}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-success text-white">
-          <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>{$t_activity}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_active}{$col_comments}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Peers & Traffic -->
-  <div class="row g-4 mb-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-warning text-dark">
-          <h6 class="mb-0"><i class="fas fa-download me-2"></i>{$t_peers}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_peers}{$col_seeders}{$col_leechers}{$col_torrents}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-info text-white">
-          <h6 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>{$t_traffic}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_ul}{$col_dl}{$col_ratio}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- System Health & Activity -->
-  <div class="row g-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-danger text-white">
-          <h6 class="mb-0"><i class="fas fa-heartbeat me-2"></i>{$t_health}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row align-items-center mb-3">
-            <div class="col-8">
-              <h6 class="mb-1">{$t_load}</h6>
-              <div class="progress" style="height:8px">
-                <div class="progress-bar {$load_bar}" style="width:{$load_pct}%"></div>
-              </div>
-            </div>
-            <div class="col-4 text-end"><span class="fw-bold">{$serverload}%</span></div>
-          </div>
-          <div class="row text-center">
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-database text-primary fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_db_size}</h6>
-              <small class="fw-bold">{$dbsize}</small>
-            </div>
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-hdd text-info fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_disk_free}</h6>
-              <small class="fw-bold">{$diskfree}</small>
-            </div>
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-memory text-success fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_memory}</h6>
-              <small class="fw-bold">{$memory_display}</small>
-            </div>
+  <div class="sp-grid mb-3">
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-danger"><i class="fa-solid fa-heart-pulse"></i></span>{$e($L['card_health'])}</div>
+      <div class="st-card__body">
+        <div class="sp-load">
+          <div class="sp-load__top"><span><i class="fa-solid fa-gauge-high"></i>{$e($L['lbl_server_load'])}</span><strong>{$load_pct}%</strong></div>
+          <div class="progress sp-load__bar" role="progressbar" aria-valuenow="{$load_pct}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar bg-{$load_tone}" style="width:{$load_pct}%"></div>
           </div>
         </div>
+        <div class="st-rows">{$health_rows}</div>
       </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-secondary text-white">
-          <h6 class="mb-0"><i class="fas fa-history me-2"></i>{$t_recent}</h6>
-        </div>
-        <div class="card-body d-flex flex-column">
-          <div class="flex-grow-1">{$recentactivity}</div>
-          <div class="text-center mt-3">
-            <a href="index.php?act=log" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-list me-1"></i>{$t_view_logs}
-            </a>
-          </div>
-        </div>
+    </section>
+    <section class="st-card sp-recent">
+      <div class="st-card__head">
+        <span class="st-ico st-soft-muted"><i class="fa-solid fa-clock-rotate-left"></i></span>{$e($L['card_recent'])}
+        <a href="index.php?act=log" class="ms-auto btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-list"></i> {$e($L['btn_view_logs'])}</a>
       </div>
-    </div>
+      <div class="st-card__body">{$recentactivity}</div>
+    </section>
   </div>
-
 
 </div>
 HTML;
 
-    echo '</div></td></tr></table>';
-
-	stdfoot();
+    echo '</div></td></tr></table>';   // .sp-root + layout
+    stdfoot();
 }
-
-
-
-
-
-
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1155,21 +1101,19 @@ function getRecentActivity(int $limit = 5): string
          ORDER BY l.id DESC LIMIT ?", [$limit]);
 
     if (!$r || $db->num_rows($r) === 0) {
-        return '<div class="text-center text-muted py-3">'
-             . '<i class="fas fa-history opacity-50 me-1"></i>'
+        return '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-solid fa-clock-rotate-left"></i></div>'
              . htmlspecialchars($lang->staffpanel['no_recent_activity']) . '</div>';
     }
 
-    $html = '<ul class="list-unstyled mb-0">';
-    while ($r && ($row = $db->fetch_array($r))) {
+    $html = '<ul class="sp-log">';
+    while ($row = $db->fetch_array($r)) {
         $user   = htmlspecialchars($row['username'] ?? $lang->staffpanel['user_system']);
         $action = htmlspecialchars($row['txt']      ?? '');
         $time   = date('d.m H:i', (int)($row['added'] ?? 0));
-        $html  .= "<li class='d-flex align-items-start gap-2 mb-2'>"
-                . "<i class='fas fa-circle text-secondary mt-1' style='font-size:.5em;flex-shrink:0'></i>"
-                . "<div><span class='fw-semibold'>{$user}</span> "
-                . "<span class='text-muted'>{$action}</span>"
-                . "<div><small class='text-muted'>{$time}</small></div></div></li>";
+        $html  .= '<li class="sp-log__item">'
+                . '<span class="sp-log__dot" aria-hidden="true"></span>'
+                . '<div class="min-w-0"><div class="sp-log__text"><strong>' . $user . '</strong> ' . $action . '</div>'
+                . '<div class="sp-log__time"><i class="fa-solid fa-clock"></i>' . $time . '</div></div></li>';
     }
     return $html . '</ul>';
 }

@@ -496,6 +496,29 @@ $language['edituser'] = array (
 	
 	
 	
+	// ── Restyle (Nov 2026): validation, action results, PMs to the user, charts ──
+	'hint_warn_reason'     => 'The reason is sent to the user in a PM.',
+	'err_email_invalid'    => 'Invalid email address — the email was not changed.',
+	'err_email_taken'      => 'This email is already used by another account — the email was not changed.',
+	'err_username_invalid' => 'Invalid username — the username was not changed.',
+	'err_username_taken'   => 'This username is already taken — the username was not changed.',
+	'msg_user_banned'      => 'The user has been banned.',
+	'msg_ban_updated'      => 'The ban has been updated.',
+	'msg_sessions_killed'  => 'All sessions of the user have been terminated.',
+	'msg_lockout_reset'    => 'The login lockout has been reset.',
+	'msg_audit_cleared'    => 'The audit history has been cleared.',
+	'msg_pm_sent'          => 'The private message has been sent.',
+	'msg_warn_pm_subject'  => 'You have received a warning',
+	'msg_warn_pm_body'     => "You have been warned by the staff.\n\nReason: {2}\nThe warning expires: {1}\n\nPlease follow the site rules — repeated warnings lead to an automatic ban.",
+	'msg_warn_pm_body_perm'=> "You have been warned by the staff.\n\nReason: {1}\nThe warning has no expiry date.\n\nPlease follow the site rules — repeated warnings lead to an automatic ban.",
+	'msg_ban_pm_subject'   => 'Your account has been banned',
+	'msg_ban_pm_body'      => "Your account has been banned by the staff.\n\nReason: {2}\nThe ban will be lifted: {1}",
+	'msg_ban_pm_body_perm' => "Your account has been banned permanently by the staff.\n\nReason: {1}",
+	'js_chart_downloaded'  => 'Downloaded',
+	'js_chart_uploaded'    => 'Uploaded',
+	'js_chart_snatches'    => 'Snatches',
+	'js_chart_gb'          => 'GB',
+
 	'passkeymsg' => "Your passkey has been reset by {1}.\n\nPlease Note: Any active torrents must be downloaded again to continue leeching/seeding.",
 	'passkeysubject' => 'Passkey has been reset.',
 

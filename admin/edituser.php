@@ -2,6 +2,20 @@
 
 declare(strict_types=1);
 
+/*
+ * admin/edituser.php — редактирование пользователя (staff).
+ * Новый стиль: общий st-ui.css + admin/templates/edituser.css, всё под .eu-page.
+ * JS страницы: admin/scripts/edituser.js (вкладки, действия, графики, аудит).
+ *
+ * Действия:
+ *   ?action=edituser&userid=N        — страница
+ *   POST action=updateuser           — сохранение формы и все кнопки-действия
+ *                                      (бан, сессии, блокировка входа, ЛС, аватар, аудит)
+ *   ?action=resetpasskey&userid=N    — подтверждение (без JS), POST sure=1 — сброс
+ *   ?action=deleteaccount&userid=N   — подтверждение (без JS), POST sure=1 — удаление
+ *   ?action=upload_avatar            — AJAX-загрузка аватара (avatar_upload.js)
+ */
+
 // ── i18n helper: подстановка {1}, {2}… (и %1$s… — $lang->load() переводит {N} в %N$s) ──
 if (!function_exists('ags_fmt')) {
     function ags_fmt(string $str, string|int|float ...$args): string
@@ -16,4683 +30,2597 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
-
-// Initialize session
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-flash_message();
+/* =============================================================================
+   Общие функции
+   ============================================================================= */
 
-
-
-
-
-
-function fetch_ban_times()
+/**
+ * Сроки бана: ключ "дни-месяцы-годы". Подписи на английском — они пишутся в modcomment;
+ * в селекте показываем перевод (opt_ban_*).
+ */
+function fetch_ban_times(): array
 {
-	global $plugins, $lang;
-	// Days-Months-Years
-	$ban_times = array(
-		"1-0-0" => "1 Day",
-		"2-0-0" => "2 Days",
-		"3-0-0" => "3 Days",
-		"4-0-0" => "4 Days",
-		"5-0-0" => "5 Days",
-		"6-0-0" => "6 Days",
-		"7-0-0" => "1 Week",
-		"14-0-0" => "2 Weeks",
-		"21-0-0" => "3 Weeks",
-		"0-1-0" => "1 Month",
-		"0-2-0" => "2 Months",
-		"0-3-0" => "3 Months",
-		"0-4-0" => "4 Months",
-		"0-5-0" => "5 Months",
-		"0-6-0" => "6 Months",
-		"0-0-1" => "1 Year",
-		"0-0-2" => "2 Years"
-	);
-	$ban_times = $plugins->run_hooks("functions_fetch_ban_times", $ban_times);
-	$ban_times['---'] = 'Permanent';
-	return $ban_times;
+    return [
+        '1-0-0'  => '1 Day',    '2-0-0'  => '2 Days',   '3-0-0'  => '3 Days',
+        '4-0-0'  => '4 Days',   '5-0-0'  => '5 Days',   '6-0-0'  => '6 Days',
+        '7-0-0'  => '1 Week',   '14-0-0' => '2 Weeks',  '21-0-0' => '3 Weeks',
+        '0-1-0'  => '1 Month',  '0-2-0'  => '2 Months', '0-3-0'  => '3 Months',
+        '0-4-0'  => '4 Months', '0-5-0'  => '5 Months', '0-6-0'  => '6 Months',
+        '0-0-1'  => '1 Year',   '0-0-2'  => '2 Years',
+        '---'    => 'Permanent',
+    ];
 }
-  
-  
-function ban_date2timestamp($date, $stamp = 0)
+
+function ban_date2timestamp(string $date, int $stamp = 0): int
 {
-    if ($stamp == 0) {
+    if ($stamp === 0) {
         $stamp = TIMENOW;
     }
-    
-    $d = explode('-', $date);
-    $nowdate = date("H-j-n-Y", $stamp);
-    $n = explode('-', $nowdate);
-    
-    // Явное преобразование в int
-    $n[1] = (int)$n[1] + (int)$d[0];  // дни
-    $n[2] = (int)$n[2] + (int)$d[1];  // месяцы
-    $n[3] = (int)$n[3] + (int)$d[2];  // годы
-    
-    return mktime(
-        (int)date("G", $stamp),  // час
-        (int)date("i", $stamp),  // минуты
-        0,                        // секунды
-        (int)$n[2],              // месяц
-        (int)$n[1],              // день
-        (int)$n[3]               // год
+    $d = array_map('intval', explode('-', $date)) + [0, 0, 0];
+
+    return (int)mktime(
+        (int)date('G', $stamp),
+        (int)date('i', $stamp),
+        0,
+        (int)date('n', $stamp) + $d[1],
+        (int)date('j', $stamp) + $d[0],
+        (int)date('Y', $stamp) + $d[2]
     );
 }
 
-
-
-
-/**
- * Calculate user ratio
- */
-function get_ratio(array $userdata): string
+/** Рейтинг как число (null — нет скачанного) */
+function eu_ratio_value(array $userdata): ?float
 {
-    $uploaded = (float)$userdata['uploaded'];
-    $downloaded = (float)$userdata['downloaded'];
-    
-    if ($downloaded == 0) {
-        return $uploaded > 0 ? '∞' : '---';
-    }
-    
-    $ratio = $uploaded / $downloaded;
-    
-    return ts_nf($ratio, 2);
+    $dl = (float)$userdata['downloaded'];
+    return $dl > 0 ? (float)$userdata['uploaded'] / $dl : null;
 }
 
-  function get_user_class_name ($class = '')
-  {
-    global $lang;
-    if ($class == 'all')
-    {
-      return $lang->edituser['all_usergroups'];
+function get_ratio(array $userdata): string
+{
+    $r = eu_ratio_value($userdata);
+    if ($r === null) {
+        return (float)$userdata['uploaded'] > 0 ? '∞' : '---';
     }
+    return ts_nf($r, 2);
+}
 
-    require TSDIR . '/cache/usergroups.php';
-    foreach ($usergroups as $arr)
+if (!function_exists('get_user_class_name')) {
+    function get_user_class_name($class = ''): string
     {
-      if ($arr['gid'] == $class)
-      {
-        return $arr['title'];
-      }
+        global $lang;
+        if ($class === 'all') {
+            return (string)$lang->edituser['all_usergroups'];
+        }
+        require TSDIR . '/cache/usergroups.php';
+        foreach ($usergroups as $arr) {
+            if ((string)$arr['gid'] === (string)$class) {
+                return (string)$arr['title'];
+            }
+        }
+        return (string)$lang->edituser['all_usergroups'];
     }
+}
 
-    return $lang->edituser['all_usergroups'];
-  }
-  
-  
-  
-
-
-
-
-
+/** Строка в начало modcomment: "Y-m-d H:i - <action> by <staff>" (формат читает вкладка аудита) */
 function modcomment(string $what = 'Unknown Action taken'): string
 {
     global $modcomment, $CURUSER;
 
-    $action     = str_replace("'", '`', $what);
+    $action     = str_replace(["'", "\r", "\n"], ['`', ' ', ' '], $what);
     $username   = $CURUSER['username'] ?? 'System';
     $modcomment = date('Y-m-d H:i') . " - {$action} by {$username}\n" . ($modcomment ?? '');
     return $modcomment;
 }
-  
-  
 
 /**
- * Enhanced flash message system with animations
+ * Flash-сообщения: с аргументами — кладём в сессию, без аргументов — выводим тосты.
+ * Вывод — только после stdhead().
  */
 function flash_message(?string $message = null, string $type = 'info'): void
 {
-    // Добавляем новое сообщение в сессию
     if ($message !== null) {
-        $_SESSION['flash'][] = [
-            'message' => $message,
-            'type'    => $type
-        ];
+        $_SESSION['flash'][] = ['message' => $message, 'type' => $type];
+        return;
+    }
+    if (empty($_SESSION['flash'])) {
         return;
     }
 
-    // Если есть сообщения — выводим
-    if (!empty($_SESSION['flash'])) {
-        $flashL     = $GLOBALS['lang']->edituser ?? [];
-        $toastTitle = htmlspecialchars($flashL['toast_title'] ?? 'Message');
-        $toastNow   = htmlspecialchars($flashL['toast_now'] ?? 'Now');
-        $toastClose = htmlspecialchars($flashL['toast_close'] ?? 'Close');
-        echo '
-        <div aria-live="polite" aria-atomic="true" class="position-relative">
-            <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">';
+    $L          = $GLOBALS['lang']->edituser ?? [];
+    $toastTitle = htmlspecialchars((string)($L['toast_title'] ?? 'Message'));
+    $toastClose = htmlspecialchars((string)($L['toast_close'] ?? 'Close'));
 
-        foreach ($_SESSION['flash'] as $flash) {
-            $typeClass = match ($flash['type']) {
-                'success' => 'bg-success text-white',
-                'error', 'danger' => 'bg-danger text-white',
-                'warning' => 'bg-warning text-dark',
-                default => 'bg-info text-white',
-            };
-
-            $msg = htmlspecialchars($flash['message']);
-            echo "
-            <div class='toast border-0 mb-2' role='alert' aria-live='assertive' aria-atomic='true'>
-                <div class='toast-header {$typeClass}'>
-                    <strong class='me-auto'>{$toastTitle}</strong>
-                    <small>{$toastNow}</small>
-                    <button type='button' class='btn-close' data-bs-dismiss='toast' aria-label='{$toastClose}'></button>
-                </div>
-                <div class='toast-body'>
-                    {$msg}
-                </div>
-            </div>";
-        }
-
-        echo '
-          </div>
-            </div> 
-       <script>
-          document.addEventListener("DOMContentLoaded", function() {
-          document.querySelectorAll(".toast").forEach(function(toastEl) {
-          let toast = new bootstrap.Toast(toastEl, { delay: 5000 });
-          toast.show();
-            });
-        });
-        </script>';
-
-        unset($_SESSION['flash']); // очищаем после показа
+    echo '<div class="toast-container position-fixed top-0 end-0 p-3 eu-toasts" aria-live="polite" aria-atomic="true">';
+    foreach ($_SESSION['flash'] as $flash) {
+        [$soft, $icon] = match ($flash['type']) {
+            'success'         => ['success', 'fa-circle-check'],
+            'error', 'danger' => ['danger',  'fa-circle-exclamation'],
+            'warning'         => ['warning', 'fa-triangle-exclamation'],
+            default           => ['info',    'fa-circle-info'],
+        };
+        echo '<div class="toast eu-toast eu-toast--' . $soft . '" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">'
+           .   '<div class="toast-header">'
+           .     '<i class="fa-solid ' . $icon . ' me-2"></i><strong class="me-auto">' . $toastTitle . '</strong>'
+           .     '<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="' . $toastClose . '"></button>'
+           .   '</div>'
+           .   '<div class="toast-body">' . htmlspecialchars((string)$flash['message']) . '</div>'
+           . '</div>';
     }
+    echo '</div>';
+    unset($_SESSION['flash']);
 }
 
-
-
-
-
-
-
-/**
- * Enhanced admin redirect with smooth transitions
- */
 function admin_redirect(string $url, ?string $message = null): void
 {
-    global $lang;
-
     if ($message) {
         flash_message($message, 'success');
     }
-    
+    $url = str_replace('&amp;', '&', $url);
     if (!headers_sent()) {
-        $url = str_replace("&amp;", "&", $url);
         header("Location: {$url}");
     } else {
-        $redirText = htmlspecialchars($lang->edituser['redirecting']);
-        echo "
-        <div class='redirect-overlay'>
-            <div class='redirect-spinner'></div>
-            <p>{$redirText}</p>
-        </div>
-        <script>
-        setTimeout(() => {
-            window.location.href = '{$url}';
-        }, 500);
-        </script>";
+        echo '<script>window.location.href=' . json_encode($url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';</script>';
     }
     exit;
 }
 
-/**
- * Generate enhanced months dropdown with icons
- */
-function months(): string
-{
-    global $lang;
-
-    $months = [
-        '0' => ['text' => $lang->edituser['opt_dur_select'], 'icon' => 'fa-clock'],
-        '1' => ['text' => $lang->edituser['opt_dur_w1'], 'icon' => 'fa-calendar-week'],
-        '2' => ['text' => $lang->edituser['opt_dur_w2'], 'icon' => 'fa-calendar-days'], 
-        '3' => ['text' => $lang->edituser['opt_dur_w3'], 'icon' => 'fa-calendar-plus'],
-        '4' => ['text' => $lang->edituser['opt_dur_m1'], 'icon' => 'fa-calendar'],
-        '5' => ['text' => $lang->edituser['opt_dur_w5'], 'icon' => 'fa-calendar-check'],
-        '6' => ['text' => $lang->edituser['opt_dur_w6'], 'icon' => 'fa-calendar-day'],
-        '7' => ['text' => $lang->edituser['opt_dur_w7'], 'icon' => 'fa-calendar-alt'], 
-        '8' => ['text' => $lang->edituser['opt_dur_m2'], 'icon' => 'fa-calendar-minus'],
-        '12' => ['text' => $lang->edituser['opt_dur_m3'], 'icon' => 'fa-calendar-xmark'],
-        '16' => ['text' => $lang->edituser['opt_dur_m4'], 'icon' => 'fa-calendar'],
-        '20' => ['text' => $lang->edituser['opt_dur_m5'], 'icon' => 'fa-calendar'],
-        '24' => ['text' => $lang->edituser['opt_dur_m6'], 'icon' => 'fa-calendar'],
-        '28' => ['text' => $lang->edituser['opt_dur_m7'], 'icon' => 'fa-calendar'],
-        '32' => ['text' => $lang->edituser['opt_dur_m8'], 'icon' => 'fa-calendar'], 
-        '36' => ['text' => $lang->edituser['opt_dur_m9'], 'icon' => 'fa-calendar'],
-        '40' => ['text' => $lang->edituser['opt_dur_m10'], 'icon' => 'fa-calendar'],
-        '44' => ['text' => $lang->edituser['opt_dur_m11'], 'icon' => 'fa-calendar'],
-        '48' => ['text' => $lang->edituser['opt_dur_m12'], 'icon' => 'fa-calendar-star'],
-        '255' => ['text' => $lang->edituser['opt_dur_unlimited'], 'icon' => 'fa-infinity']
-    ];
-    
-    return implode('', array_map(
-        fn($v, $data) => "<option value='{$v}' data-icon='{$data['icon']}'>{$data['text']}</option>",
-        array_keys($months),
-        $months
-    ));
-}
-
-/**
- * Generate enhanced weeks dropdown with icons
- */
+/** Срок предупреждения в неделях */
 function weeks(): string
 {
     global $lang;
-
-    $weeks = [
-        '0' => ['text' => $lang->edituser['opt_dur_select'], 'icon' => 'fa-clock'],
-        '1' => ['text' => $lang->edituser['opt_dur_w1'], 'icon' => 'fa-calendar-week'],
-        '2' => ['text' => $lang->edituser['opt_dur_w2'], 'icon' => 'fa-calendar-days'],
-        '3' => ['text' => $lang->edituser['opt_dur_w3'], 'icon' => 'fa-calendar-plus'],
-        '4' => ['text' => $lang->edituser['opt_dur_w4'], 'icon' => 'fa-calendar'],
-        '5' => ['text' => $lang->edituser['opt_dur_w5'], 'icon' => 'fa-calendar-check'],
-        '6' => ['text' => $lang->edituser['opt_dur_w6'], 'icon' => 'fa-calendar-day'],
-        '7' => ['text' => $lang->edituser['opt_dur_w7'], 'icon' => 'fa-calendar-alt'],
-        '8' => ['text' => $lang->edituser['opt_dur_w8'], 'icon' => 'fa-calendar-minus'],
-        '9' => ['text' => $lang->edituser['opt_dur_w9'], 'icon' => 'fa-calendar-week'],
-        '10' => ['text' => $lang->edituser['opt_dur_w10'], 'icon' => 'fa-calendar-days'],
-        '11' => ['text' => $lang->edituser['opt_dur_w11'], 'icon' => 'fa-calendar-plus'],
-        '12' => ['text' => $lang->edituser['opt_dur_w12'], 'icon' => 'fa-calendar-star'],
-        '255' => ['text' => $lang->edituser['opt_dur_unlimited'], 'icon' => 'fa-infinity']
-    ];
-    
-    return implode('', array_map(
-        fn($v, $data) => "<option value='{$v}' data-icon='{$data['icon']}'>{$data['text']}</option>", 
-        array_keys($weeks),
-        $weeks
-    ));
+    $L   = $lang->edituser;
+    $out = '<option value="0">' . $L['opt_dur_select'] . '</option>';
+    for ($w = 1; $w <= 12; $w++) {
+        $out .= '<option value="' . $w . '">' . $L['opt_dur_w' . $w] . '</option>';
+    }
+    return $out . '<option value="255">' . $L['opt_dur_unlimited'] . '</option>';
 }
 
-/**
- * Enhanced permission check with visual feedback
- */
+/** Нельзя редактировать себя и группы выше своей */
 function permission_check(): void
 {
     global $userdata, $usergroups, $CURUSER, $lang;
-    
-    if 
-	(
-        (($userdata['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
+
+    if (
+        ($userdata['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
         ($userdata['issupermod'] == '1' && $usergroups['issupermod'] != '1') ||
-        ($userdata['canstaffpanel'] == '1' && $usergroups['canstaffpanel'] != '1')) ||
-        $CURUSER['id'] == $userdata['id']
-    ) 
-	{
-        print_no_permission (false, true, $lang->edituser['err_protected_group']);
+        ($userdata['canstaffpanel'] == '1' && $usergroups['canstaffpanel'] != '1') ||
+        (int)$CURUSER['id'] === (int)$userdata['id']
+    ) {
+        print_no_permission(false, true, $lang->edituser['err_protected_group']);
     }
 }
 
-
-
-
-
-
-
-
-function inputbox(string $title, string $name, string $value = '', string $class = 'form-control', string $size = '35', string $extra = '', string $maxlength = '', bool $autocomplete = true, string $extra2 = '', bool $required = false): string
+/** Права на трафик/бонусы/инвайты */
+function eu_can_edit_stats(): bool
 {
-   
-    $value = htmlspecialchars_uni($value);
-    $autocompleteAttr = $autocomplete ? '' : 'autocomplete="off"';
-    $maxlengthAttr = $maxlength ? "maxlength='{$maxlength}'" : '';
-    $sizeAttr = $size ? "size='{$size}'" : '';
-    $inputId = uniqid('input_');
-    
-    $icon = match($name) {
-        'username' => 'fa-user',
-        'password' => 'fa-lock',
-        'email' => 'fa-envelope',
-        'usertitle' => 'fa-award',
-        'avatar' => 'fa-image',
-        'seedbonus' => 'fa-star',
-        'invites' => 'fa-envelope-open-text',
-        'uploaded' => 'fa-upload',
-        'downloaded' => 'fa-download',
-        default => 'fa-pen'
-    };
-   
-    $requiredAttr = $required ? 'required' : '';
-    $requiredStar = $required ? ' <span class="text-danger">*</span>' : '';
-    
-    return "
-    <div class='form-floating mb-4'>
-        <input type='text' class='{$class}' id='{$inputId}' name='{$name}' 
-               {$sizeAttr} {$maxlengthAttr} {$autocompleteAttr} value='{$value}' 
-               {$requiredAttr} {$extra2}
-               placeholder='{$title}'>
-        <label for='{$inputId}' class='form-label'>
-            <i class='fas {$icon} me-2 text-primary'></i>{$title}{$requiredStar}
-        </label>
-        {$extra}
-    </div>";
+    global $usergroups;
+    return $usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1';
 }
 
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Enhanced select box that returns HTML string
- */
-function selectbox(string $title, string $name, string $type, string $class = 'form-select'): string
+/** Права на ручную правку и очистку истории модерации */
+function eu_can_edit_modcomment(): bool
 {
-    global $userdata, $usergroups, $db, $lang;
-    
-    $selectId = uniqid('select_');
-    
-    $options = "<option value=''>" . $lang->edituser['opt_select_group'] . "</option>";
-    
-    if ($type === 'trackergroups') {
-        $query = $db->sql_query_prepared('SELECT gid, title, cansettingspanel, issupermod, canstaffpanel FROM usergroups ORDER BY title');
-        while ($query && ($tclass = $db->fetch_array($query))) {
-            if (
-                (($tclass['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
-                ($tclass['issupermod'] == '1' && $usergroups['issupermod'] != '1') ||
-                ($tclass['canstaffpanel'] == '1' && $usergroups['canstaffpanel'] != '1') ||
-                (($tclass['cansettingspanel'] == '1' || $tclass['issupermod'] == '1') && $usergroups['cansettingspanel'] != '1') ||
-                (($tclass['gid'] == UC_ADMINISTRATOR || $tclass['gid'] == UC_SYSOP) && $usergroups['cansettingspanel'] != '1'))
-            ) {
-                continue;
-            }
-            
-            $selected = $userdata['usergroup'] == $tclass['gid'] ? 'selected' : '';
-            $icon = $tclass['gid'] == UC_ADMINISTRATOR ? 'fa-crown text-warning' : 
-                   ($tclass['gid'] == UC_SYSOP ? 'fa-shield-alt text-primary' : 'fa-user text-secondary');
-            
-            $options .= "<option value='{$tclass['gid']}' {$selected} data-icon='{$icon}'>{$tclass['title']}</option>";
-        }
-    }
-    
-    return "
-    <div class='mb-4'>
-        <label for='{$selectId}' class='form-label fw-semibold mb-3'>
-            <i class='fas fa-users me-2 text-primary'></i>{$title}
-        </label>
-        <select name='{$name}' id='{$selectId}' class='{$class} select2-enable' data-search='true'>
-            {$options}
-        </select>
-    </div>";
+    global $usergroups;
+    return $usergroups['cansettingspanel'] == '1';
 }
 
-
-
-/**
- * Enhanced yes/no radio buttons
- */
-
-
-function yesno(string $title, string $name, string $value = '1'): string
+/** Права на удаление аккаунта */
+function eu_can_delete(): bool
 {
-    global $lang;
-    // Определяем какие поля используют числовые значения
-    $numericFields = [
-        'moderateposts', 'allownotices', 'hideemail', 'receivepms', 'receivefrombuddy',
-        'pmnotice', 'pmnotify', 'buddyrequestspm', 'buddyrequestsauto', 'invisible',
-        'showavatars', 'showsigs', 'commentpm', 'showredirect', 'dst', 'dstcorrection'
-    ];
-    
-    if (in_array($name, $numericFields)) {
-        // Для числовых полей
-        $yesChecked = ($value === '1' || $value === 1) ? 'checked' : '';
-        $noChecked = ($value === '0' || $value === 0) ? 'checked' : '';
-        $yesValue = '1';
-        $noValue = '0';
-    } else {
-        // Для старых текстовых полей (donor, warned, enabled и т.д.)
-        $yesChecked = $value === 'yes' ? 'checked' : '';
-        $noChecked = $value === 'no' ? 'checked' : '';
-        $yesValue = 'yes';
-        $noValue = 'no';
-    }
-    
-    $fieldId = uniqid('field_');
-    $yesText = $lang->edituser['yes'];
-    $noText  = $lang->edituser['no'];
-    
-    $icon = match($name) {
-        'donor' => 'fa-heart',
-        'warned' => 'fa-exclamation-triangle',
-        'enabled' => 'fa-user-check',
-        'cancomment' => 'fa-comment',
-        'canupload' => 'fa-upload',
-        'candownload' => 'fa-download',
-        'moderateposts' => 'fa-user-cog',
-        'allownotices' => 'fa-envelope',
-        'hideemail' => 'fa-eye-slash',
-        'receivepms' => 'fa-comments',
-        'receivefrombuddy' => 'fa-user-friends',
-        'pmnotice' => 'fa-bell',
-        'pmnotify' => 'fa-envelope',
-        'buddyrequestspm' => 'fa-user-plus',
-        'buddyrequestsauto' => 'fa-check-circle',
-        'invisible' => 'fa-eye-slash',
-        'showavatars' => 'fa-image',
-        'showsigs' => 'fa-signature',
-        'commentpm' => 'fa-comment-medical',
-        'showredirect' => 'fa-external-link-alt',
-        'dst' => 'fa-clock',
-        default => 'fa-toggle-on'
-    };
-    
-    return "
-    <div class='mb-4'>
-        <label class='form-label fw-semibold mb-3'>
-            <i class='fas {$icon} me-2 text-primary'></i>{$title}
-        </label>
-        <div class='btn-group w-100' role='group'>
-            <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_yes' value='{$yesValue}' {$yesChecked}>
-            <label class='btn btn-outline-success' for='{$fieldId}_yes'>
-                <i class='fas fa-check me-2'></i>{$yesText}
-            </label>
-            
-            <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_no' value='{$noValue}' {$noChecked}>
-            <label class='btn btn-outline-danger' for='{$fieldId}_no'>
-                <i class='fas fa-times me-2'></i>{$noText}
-            </label>
-        </div>
-    </div>";
+    return eu_can_edit_stats();
 }
 
-
-
-
-
-
-
-
-
-/**
- * Enhanced user data fetching with caching
- */
+/** Данные пользователя + агрегаты одним запросом */
 function get_user_data(): void
 {
     global $userid, $db, $lang;
 
-    // ► Кэш: если данные уже загружены для того же userid — ничего не делаем
     if (!empty($GLOBALS['userdata']['id']) && (int)$GLOBALS['userdata']['id'] === (int)$userid) {
         return;
     }
 
-    // LEFT JOIN с агрегатами вместо двух коррелированных subquery
     $res = $db->sql_query_prepared('
-    SELECT u.*,
-           g.cansettingspanel,
-           g.canstaffpanel,
-           g.issupermod,
-           COALESCE(pc.cnt, 0)  AS post_count,
-           COALESCE(tc.cnt, 0)  AS thread_count,
-           COALESCE(sn.total, 0)      AS snatch_total,
-           COALESCE(sn.done, 0)       AS snatch_done,
-           COALESCE(sn.seedtime, 0)   AS snatch_seedtime,
-           COALESCE(sn.leechtime, 0)  AS snatch_leechtime,
-           COALESCE(pr.peers_total, 0)   AS peers_total,
-           COALESCE(pr.peers_seeding, 0) AS peers_seeding,
-		   COALESCE(rc.cnt, 0)           AS report_count
-    FROM users u
-    LEFT JOIN usergroups g  ON g.gid = u.usergroup
-    LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM posts   GROUP BY uid) pc ON pc.uid = u.id
-    LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM threads GROUP BY uid) tc ON tc.uid = u.id
-    
-	LEFT JOIN (
-    SELECT addedby, COUNT(*) AS cnt
-    FROM reports GROUP BY addedby
-    ) rc ON rc.addedby = u.id
-	
-	LEFT JOIN (
-        SELECT userid,
-               COUNT(*)             AS total,
-               SUM(finished="yes")  AS done,
-               SUM(seedtime)        AS seedtime,
-               SUM(leechtime)       AS leechtime
-        FROM snatched GROUP BY userid
-    ) sn ON sn.userid = u.id
-    LEFT JOIN (
-        SELECT userid,
-               COUNT(*)              AS peers_total,
-               SUM(seeder = "yes")   AS peers_seeding
-        FROM peers GROUP BY userid
-    ) pr ON pr.userid = u.id
-    WHERE u.id = ?
-    ', [$userid]
-    );
+        SELECT u.*,
+               g.cansettingspanel, g.canstaffpanel, g.issupermod,
+               COALESCE(pc.cnt, 0)           AS post_count,
+               COALESCE(tc.cnt, 0)           AS thread_count,
+               COALESCE(sn.total, 0)         AS snatch_total,
+               COALESCE(sn.done, 0)          AS snatch_done,
+               COALESCE(sn.seedtime, 0)      AS snatch_seedtime,
+               COALESCE(sn.leechtime, 0)     AS snatch_leechtime,
+               COALESCE(pr.peers_total, 0)   AS peers_total,
+               COALESCE(pr.peers_seeding, 0) AS peers_seeding,
+               COALESCE(rc.cnt, 0)           AS report_count
+        FROM users u
+        LEFT JOIN usergroups g ON g.gid = u.usergroup
+        LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM posts   WHERE uid = ? GROUP BY uid) pc ON pc.uid = u.id
+        LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM threads WHERE uid = ? GROUP BY uid) tc ON tc.uid = u.id
+        LEFT JOIN (SELECT addedby, COUNT(*) AS cnt FROM reports WHERE addedby = ? GROUP BY addedby) rc ON rc.addedby = u.id
+        LEFT JOIN (
+            SELECT userid, COUNT(*) AS total, SUM(finished = "yes") AS done,
+                   SUM(seedtime) AS seedtime, SUM(leechtime) AS leechtime
+            FROM snatched WHERE userid = ? GROUP BY userid
+        ) sn ON sn.userid = u.id
+        LEFT JOIN (
+            SELECT userid, COUNT(*) AS peers_total, SUM(seeder = "yes") AS peers_seeding
+            FROM peers WHERE userid = ? GROUP BY userid
+        ) pr ON pr.userid = u.id
+        WHERE u.id = ?
+    ', [$userid, $userid, $userid, $userid, $userid, $userid]);
 
     $arr = $res ? $db->fetch_array($res) : null;
     if (!$arr) {
-        echo '
-        <div class="user-not-found">
-            <div class="error-container text-center py-5">
-                <i class="fas fa-user-slash fa-5x text-muted mb-4"></i>
-                <h3 class="text-danger mb-3">' . $lang->edituser['err_user_not_found_title'] . '</h3>
-                <p class="text-muted mb-4">' . $lang->edituser['err_user_not_found_text'] . '</p>
-                <a href="javascript:history.back()" class="btn btn-primary btn-lg">
-                    <i class="fas fa-arrow-left me-2"></i>' . $lang->edituser['btn_go_back'] . '
-                </a>
-            </div>
-        </div>';
+        stderr((string)$lang->edituser['err_user_not_found_text'], (string)$lang->edituser['err_user_not_found_title'], 404);
         exit;
     }
 
     $GLOBALS['userdata'] = $arr;
 }
 
-/**
- * Check if username exists
- */
-function username_exists222(string $username): bool
+/** Имя занято другим пользователем (без учёта регистра) */
+function eu_username_taken(string $username, int $exceptUid): bool
 {
     global $db;
-    
-    $tracker_query = $db->sql_query_prepared('SELECT username FROM users WHERE username = ? LIMIT 1', [$username]);
-    return $tracker_query ? $db->num_rows($tracker_query) <= 0 : true;
+    $q = $db->sql_query_prepared('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id <> ? LIMIT 1', [$username, $exceptUid]);
+    return $q && $db->num_rows($q) > 0;
 }
 
-/**
- * Validate username format
- */
-function validusername(string $username): bool
-{
-    return !preg_match('/[^a-zA-Z0-9]/', $username);
-}
-
-/**
- * Check if email exists
- */
-function email_exists(string $email): bool
+/** Email занят другим пользователем */
+function eu_email_taken(string $email, int $exceptUid): bool
 {
     global $db;
-
-    $q = $db->sql_query_prepared(
-        'SELECT 1 FROM users WHERE email = ? LIMIT 1', [$email]
-    );
-
-    return $q ? $db->num_rows($q) > 0 : false;
+    $q = $db->sql_query_prepared('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1', [$email, $exceptUid]);
+    return $q && $db->num_rows($q) > 0;
 }
 
-/**
- * Add moderation comment
- */
-
-
-/**
- * Send private message to user
- */
-function insert_message(int $userid, string $message, string $subject): void
+/** Группа бана: UC_BANNED, если это бан-группа, иначе первая группа с isbannedgroup = 1 */
+function eu_banned_gid(): int
 {
-    require_once INC_PATH . '/functions_pm.php';
-    
-    $pm = [
-        'subject' => $subject,
-        'message' => $message,
-        'touid' => $userid
-    ];
-                    
-    $pm['sender']['uid'] = -1;
-    send_pm($pm, -1, true);
+    global $db;
+    $pref = defined('UC_BANNED') ? (int)UC_BANNED : 9;
+    $q = $db->sql_query_prepared('SELECT gid FROM usergroups WHERE isbannedgroup = 1 ORDER BY (gid = ?) DESC, gid ASC LIMIT 1', [$pref]);
+    $row = $q ? $db->fetch_array($q) : null;
+    return $row ? (int)$row['gid'] : 0;
 }
 
-// Initialize application
+/* =============================================================================
+   Инициализация
+   ============================================================================= */
+
 $rootpath = './../';
 include $rootpath . '/global.php';
 
 $lang->load('edituser');
 
-define("IN_MYBB", 1);
-define("IN_ADMINCP", 1);
+define('IN_MYBB', 1);
+define('IN_ADMINCP', 1);
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
 require_once INC_PATH . '/functions_forum.php';
-
-
-
-// Include required files
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_additions.php';
 
-
-
 gzip();
 maxsysop();
 
+/* =============================================================================
+   AJAX: загрузка аватара (avatar_upload.js)
+   ============================================================================= */
 
-
-
-
-
-// ---- avatar upload action ----
-if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') 
-{
-    global $CURUSER, $userdata, $db, $mybb, $rootpath;
-
-    // JSON helper
-    $is_ajax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
-    $json = function($arr, $code = 200){
+if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
+    $is_ajax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+    $json = function (array $arr, int $code = 200): never {
         http_response_code($code);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode($arr, JSON_UNESCAPED_UNICODE);
         exit;
     };
+    $fail = function (string $msg, int $code) use ($is_ajax, $json, $lang): never {
+        if ($is_ajax) {
+            $json(['success' => false, 'error' => $msg], $code);
+        }
+        exit(htmlspecialchars(ags_fmt((string)$lang->edituser['err_prefix'], $msg)));
+    };
 
-    // Авторизация
     $user_uid = (int)($CURUSER['id'] ?? 0);
     if ($user_uid <= 0) {
-        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_not_authorized']], 401) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_not_authorized']));
+        $fail((string)$lang->edituser['ajax_not_authorized'], 401);
     }
 
-    // Целевой профиль
-    $uid = (int)($_POST['id'] ?? $_GET['id'] ?? ($userdata['id'] ?? 0));
+    $uid = (int)($_POST['id'] ?? $_GET['id'] ?? $_GET['userid'] ?? 0);
     if ($uid <= 0) {
-        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_profile']], 400) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_profile']));
+        $fail((string)$lang->edituser['ajax_no_profile'], 400);
     }
 
-    // Права: владелец или модератор
-    $is_own_profile = ($user_uid === $uid);
-    $is_mod = is_mod($usergroups ?? []);
-    if (!$is_own_profile && !$is_mod) {
-        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_permission']], 403) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_permission_long']));
+    // Права: свой профиль или модератор
+    if ($user_uid !== $uid && !is_mod($usergroups ?? [])) {
+        $fail((string)$lang->edituser['ajax_no_permission_long'], 403);
     }
 
-    // CSRF
-    if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== generate_post_check()) {
-        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_csrf']], 403) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_csrf']));
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        $fail((string)$lang->edituser['ajax_csrf'], 403);
     }
 
-    // Файл
     if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
-        $is_ajax ? $json(['success'=>false,'error'=>$lang->edituser['ajax_no_file']], 400) : exit(ags_fmt($lang->edituser['err_prefix'], $lang->edituser['ajax_no_file']));
+        $fail((string)$lang->edituser['ajax_no_file'], 400);
     }
 
-    // Вся валидация (расширение, реальный MIME через getimagesize(), размер
-    // по настройке avatarsize), сохранение, перекодирование через GD
-    // (защита от "полиглот"-файлов) и ресайз до $maxavatardims теперь
-    // делает upload_avatar() — та же функция, что использует usercp.php,
-    // member.php, usersearch.php и adduser.php. Раньше здесь была ещё одна
-    // отдельная копия той же логики без перекодирования и без ресайза,
-    // с захардкоженным лимитом 22MB.
+    // Валидация, перекодирование через GD и ресайз — в upload_avatar() (как в usercp/member)
     $avatarResult = upload_avatar($_FILES['avatar'], $uid);
-
     if (!empty($avatarResult['error'])) {
-        $is_ajax
-            ? $json(['success'=>false,'error'=>$avatarResult['error']], 415)
-            : exit(ags_fmt($lang->edituser['err_prefix'], (string)$avatarResult['error']));
+        $fail((string)$avatarResult['error'], 415);
     }
 
     $width  = (int)$avatarResult['width'];
     $height = (int)$avatarResult['height'];
-    $avatar_dimensions = ($width > 0 && $height > 0) ? "{$width}|{$height}" : '';
-    $avatar_url        = $avatarResult['avatar'];
+    $dims   = ($width > 0 && $height > 0) ? "{$width}|{$height}" : '';
+    $url    = (string)$avatarResult['avatar'];
 
-    // Обновляем базу
-    $updated_avatar = [
-        "avatar"           => $avatar_url,
-        "avatardimensions" => $avatar_dimensions,
-        "avatartype"       => "upload",
-    ];
-  
-  $current_modcomment = $userdata['modcomment'] 
-    ?? (function() use ($db, $uid) {
-        $q = $db->sql_query_prepared("SELECT modcomment FROM users WHERE id = ? LIMIT 1", [$uid]);
-        return $q ? $db->fetch_field($q, 'modcomment') : null;
-    })()
-    ?? '';
+    $q  = $db->sql_query_prepared('SELECT username, modcomment FROM users WHERE id = ? LIMIT 1', [$uid]);
+    $tu = $q ? $db->fetch_array($q) : null;
+    $mc = date('Y-m-d H:i') . ' - Avatar updated by ' . $CURUSER['username'] . "\n" . rtrim((string)($tu['modcomment'] ?? ''));
 
-$updated_avatar['modcomment'] = date('Y-m-d H:i') . " - Avatar updated by {$CURUSER['username']}\n" . rtrim($current_modcomment);
-$set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_avatar)));
-$params = array_values($updated_avatar);
-$params[] = $uid;
-$db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
-  
+    $db->sql_query_prepared(
+        "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = 'upload', modcomment = ? WHERE id = ?",
+        [$url, $dims, $mc, $uid]
+    );
+    if ($user_uid !== $uid) {
+        write_log('Avatar of user ' . ($tu['username'] ?? '#' . $uid) . " ({$uid}) uploaded by {$CURUSER['username']}");
+    }
 
     if ($is_ajax) {
-        $json([
-            'success' => true,
-            'url' => $avatar_url,
-            'width' => $width,
-            'height' => $height,
-            'message' => $lang->edituser['ajax_avatar_updated']
-        ]);
-    } else {
-        header("Location: edituser.php?action=edituser&userid={$uid}");
-        exit;
+        $json(['success' => true, 'url' => $url, 'width' => $width, 'height' => $height,
+               'message' => (string)$lang->edituser['ajax_avatar_updated']]);
     }
+    header("Location: edituser.php?action=edituser&userid={$uid}");
+    exit;
 }
 
+/* =============================================================================
+   Аватар по URL / локальный путь (поле в форме)
+   ============================================================================= */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Проверяет, является ли URL корректным изображением
- */
 function is_valid_avatar_url(string $url): bool
 {
-    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+    if (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $url)) {
         return false;
     }
-
-    $ext = get_extension($url);
-    $allowed_extensions = ['gif','jpg','jpeg','png','bmp','webp','svg','avif'];
-
-    if (in_array(strtolower($ext), $allowed_extensions, true)) {
+    $ext = strtolower(get_extension($url));
+    if (in_array($ext, ['gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp', 'avif'], true)) {
         return true;
     }
-
-    $image_indicators = [
-        '/avatar', '/avatars/', '/image/', '/images/', '/img/', '/imgs/',
-        '/profile/', '/user/', '/users/', '/photo/', '/picture/', '/pic/',
-        'gravatar.com/avatar/', 'i.imgur.com/'
-    ];
-
-    foreach ($image_indicators as $ind) {
-        if (stripos($url, $ind) !== false) return true;
+    foreach (['/avatar', '/avatars/', '/image/', '/images/', '/img/', '/imgs/', '/profile/',
+              '/user/', '/users/', '/photo/', '/picture/', '/pic/', 'gravatar.com/avatar/', 'i.imgur.com/'] as $ind) {
+        if (stripos($url, $ind) !== false) {
+            return true;
+        }
     }
-
     return false;
 }
 
-/**
- * Обновление аватара по URL
- */
+/** '' — успех, иначе английский текст ошибки (он же пишется в modcomment) */
 function process_avatar_url(string $avatar_url, int $user_id): string
 {
     global $db, $userdata;
 
-    if ($user_id <= 0) return "Invalid user ID";
+    if ($user_id <= 0) {
+        return 'Invalid user ID';
+    }
+    if (!is_valid_avatar_url($avatar_url)) {
+        return 'URL does not point to a valid image file';
+    }
+    if (strlen($avatar_url) > 200) {
+        return 'Avatar URL too long';
+    }
 
-    // Проверяем URL
-    if (!is_valid_avatar_url($avatar_url)) return "URL does not point to a valid image file";
-    if (strlen($avatar_url) > 200) return "Avatar URL too long";
-
-    // Удаляем старые аватары
     remove_avatars($user_id);
 
-    // Получаем размеры
     $dimensions = '';
     $temp_file  = tempnam(sys_get_temp_dir(), 'avatar_');
     require_once INC_PATH . '/functions_remote_connect.php';
-
     try {
-        $file_content = fetch_remote_file($avatar_url);
-        if ($file_content) {
-            file_put_contents($temp_file, $file_content);
-            $img_info = getimagesize($temp_file);
-            if ($img_info !== false) {
-                $dimensions = $img_info[0] . '|' . $img_info[1];
+        $content = fetch_remote_file($avatar_url);
+        if ($content && $temp_file !== false) {
+            file_put_contents($temp_file, $content);
+            $info = @getimagesize($temp_file);
+            if ($info !== false) {
+                $dimensions = $info[0] . '|' . $info[1];
             }
         }
-    } catch (Exception $e) {
-        // Игнорируем ошибки скачивания
+    } catch (Throwable) {
+        // размеры не обязательны
     }
-
-    @unlink($temp_file);
+    if ($temp_file !== false) {
+        @unlink($temp_file);
+    }
 
     $db->sql_query_prepared(
         "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = 'remote' WHERE id = ?",
         [$avatar_url, $dimensions, $user_id]
     );
-
     $userdata['avatar'] = $avatar_url;
-
-    return ''; // успех
+    return '';
 }
 
-/**
- * Проверка локального аватара
- */
 function is_valid_local_avatar(string $avatar): bool
 {
-    $avatar = trim($avatar);
-    if ($avatar === '') return false;
-    // FIX: нормализуем путь
-    $normalized = ltrim(str_replace('\\', '/', $avatar), './');
-    if (str_starts_with($normalized, 'uploads/avatars/')) {
-        return (bool)preg_match('#\.(gif|jpg|jpeg|png|bmp|webp|avif)$#i', $normalized);
-    }
-    return false;
+    $normalized = ltrim(str_replace('\\', '/', trim($avatar)), './');
+    return str_starts_with($normalized, 'uploads/avatars/')
+        && (bool)preg_match('#\.(gif|jpg|jpeg|png|bmp|webp|avif)$#i', $normalized);
 }
 
-
-/**
- * Главная обработка аватара
- */
+/** Поле «URL аватара» из основной формы. Вызывается из handleUpdateUser() (CSRF уже проверен). */
 function handle_avatar_update(): void
 {
-    global $userdata, $db, $modcomment, $mybb, $lang;
+    global $userdata, $db, $lang;
 
-    if (!isset($_POST['avatar'])) return;
-
-    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+    if (!isset($_POST['avatar']) || ($_POST['avatar_changed'] ?? '0') !== '1') {
         return;
     }
 
-    // Если аватар не менялся — пропускаем (проверяем ДО подгрузки данных, чтобы не тратить запрос впустую)
-    if (($_POST['avatar_changed'] ?? '0') !== '1') return;
-
-    // На этом этапе диспетчер действий ещё не отработал, get_user_data() могла
-    // не успеть заполнить $userdata — подгружаем актуальные данные явно,
-    // иначе $old_avatar всегда будет пустым и функция ошибочно решит,
-    // что аватар изменился, даже когда это не так.
-    if (empty($userdata['id'])) {
-        get_user_data();
-    }
-
-    $new_avatar = trim($_POST['avatar'] ?? '');
-
-    $current_user_id = (int)($userdata['id'] ?? $_POST['userid'] ?? 0);
-    if ($current_user_id <= 0) {
-        flash_message($lang->edituser['flash_avatar_no_uid'], "error");
-        return;
-    }
+    $new_avatar = trim((string)$_POST['avatar']);
+    $uid        = (int)$userdata['id'];
 
     $normalize = fn(string $s): string =>
-        preg_replace('/\?dateline=\d+$/', '', strtolower(ltrim(str_replace('\\', '/', trim($s)), './')));
+        (string)preg_replace('/\?dateline=\d+$/', '', strtolower(ltrim(str_replace('\\', '/', trim($s)), './')));
 
-    $old_avatar = $userdata['avatar'] ?? '';
-    $new_clean  = $normalize($new_avatar);
-    $old_clean  = $normalize($old_avatar);
-
-    if ($new_clean === $old_clean) return;
-
+    if ($normalize($new_avatar) === $normalize((string)$userdata['avatar'])) {
+        return;
+    }
 
     if ($new_avatar === '') {
-        remove_avatars($current_user_id);
-        $db->sql_query_prepared("UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?", [$current_user_id]);
+        remove_avatars($uid);
+        $db->sql_query_prepared("UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?", [$uid]);
         $userdata['avatar'] = '';
-        modcomment("Avatar removed");
-        flash_message($lang->edituser['flash_avatar_removed'], "success");
+        modcomment('Avatar removed');
+        flash_message((string)$lang->edituser['flash_avatar_removed'], 'success');
         return;
     }
 
     if (filter_var($new_avatar, FILTER_VALIDATE_URL)) {
-        $error = process_avatar_url($new_avatar, $current_user_id);
-        if ($error === "") {
-            modcomment("Avatar updated via URL");
-            flash_message($lang->edituser['flash_avatar_updated'], "success");
-        } elseif ($error !== "Avatar unchanged") {
-            modcomment("Avatar update error: $error");
-            // process_avatar_url() возвращает английский текст (он же пишется в modcomment) —
-            // для пользователя показываем перевод
+        $error = process_avatar_url($new_avatar, $uid);
+        if ($error === '') {
+            modcomment('Avatar updated via URL');
+            flash_message((string)$lang->edituser['flash_avatar_updated'], 'success');
+        } else {
+            modcomment("Avatar update error: {$error}");
             $errText = match ($error) {
                 'Invalid user ID'                          => $lang->edituser['avatar_err_invalid_uid'],
                 'URL does not point to a valid image file' => $lang->edituser['avatar_err_not_image'],
                 'Avatar URL too long'                      => $lang->edituser['avatar_err_too_long'],
                 default                                    => $error,
             };
-            flash_message(ags_fmt($lang->edituser['err_prefix'], $errText), "error");
+            flash_message(ags_fmt((string)$lang->edituser['err_prefix'], (string)$errText), 'error');
         }
         return;
     }
 
     if (is_valid_local_avatar($new_avatar)) {
-        modcomment("Avatar updated (local)");
-        flash_message($lang->edituser['flash_avatar_updated'], "success");
+        $db->sql_query_prepared("UPDATE users SET avatar = ?, avatardimensions = '', avatartype = 'upload' WHERE id = ?", [$new_avatar, $uid]);
+        modcomment('Avatar updated (local)');
+        flash_message((string)$lang->edituser['flash_avatar_updated'], 'success');
         return;
     }
 
-    modcomment("Attempt to update avatar: invalid format");
-    flash_message($lang->edituser['flash_avatar_invalid'], "error");
+    flash_message((string)$lang->edituser['flash_avatar_invalid'], 'error');
 }
 
+/* =============================================================================
+   Маршрутизация
+   ============================================================================= */
 
-
-
-
-
-
-
-
-
-
-
-
-
-// Get request parameters
-$action = $_POST['action'] ?? $_GET['action'] ?? '';
-$do = $_POST['do'] ?? $_GET['do'] ?? '';
+$action = (string)($_POST['action'] ?? $_GET['action'] ?? '');
 $userid = (int)($_POST['userid'] ?? $_GET['userid'] ?? 0);
 
-// Permission check
-if ($usergroups['canstaffpanel'] != 1) 
-{
+if ($usergroups['canstaffpanel'] != 1) {
     print_no_permission(true);
 }
-
-if (empty($action) || empty($userid) || !is_valid_id($userid))
-	{
+if ($action === '' || !is_valid_id($userid)) {
     print_no_permission(true);
 }
-
-int_check($userid, true);
 
 require_once INC_PATH . '/functions_mkprettytime.php';
 
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-     handle_avatar_update();
-}
-
-
-
-// Route actions
 match ($action) {
-    'edituser' => handleEditUser(),
-    'updateuser' => handleUpdateUser(),
+    'edituser'      => handleEditUser(),
+    'updateuser'    => handleUpdateUser(),
     'deleteaccount' => handleDeleteAccount(),
-    'resetpasskey' => handleResetPasskey(),
-    default => print_no_permission(true)
+    'resetpasskey'  => handleResetPasskey(),
+    default         => print_no_permission(true),
 };
 
+/* =============================================================================
+   Рендер: мелкие помощники (классы st-* из st-ui.css, eu-* из edituser.css)
+   ============================================================================= */
 
+function eu_card(string $icon, string $soft, string $title, string $body, string $extra = '', string $bodyClass = 'st-card__body', string $class = ''): string
+{
+    return '<section class="st-card eu-card' . ($class !== '' ? ' ' . $class : '') . '">'
+         .   '<div class="st-card__head">'
+         .     '<span class="st-ico st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+         .     '<span class="min-w-0">' . $title . '</span>'
+         .     ($extra !== '' ? '<div class="ms-auto d-flex flex-wrap align-items-center gap-2">' . $extra . '</div>' : '')
+         .   '</div>'
+         .   '<div class="' . $bodyClass . '">' . $body . '</div>'
+         . '</section>';
+}
 
-/**
- * Get user status badges
- */
+function eu_kpi(string $icon, string $val, string $lbl): string
+{
+    return '<div class="st-kpi st-kpi--muted">'
+         .   '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div>'
+         .   '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+         . '</div>';
+}
+
+function eu_badge(string $soft, string $icon, string $text): string
+{
+    return '<span class="st-badge st-soft-' . $soft . '">' . ($icon !== '' ? '<i class="fa-solid ' . $icon . '"></i>' : '') . $text . '</span>';
+}
+
+function eu_empty(string $icon, string $text, string $title = ''): string
+{
+    return '<div class="st-empty">'
+         .   '<div class="st-ico st-soft-muted"><i class="fa-solid ' . $icon . '"></i></div>'
+         .   ($title !== '' ? '<div class="eu-empty__title">' . $title . '</div>' : '')
+         .   '<div>' . $text . '</div>'
+         . '</div>';
+}
+
+/** Поле формы: подпись + контрол + подсказка */
+function eu_field(string $label, string $control, string $hint = '', string $icon = '', bool $required = false): string
+{
+    return '<div class="eu-field">'
+         .   '<label class="eu-lbl">' . ($icon !== '' ? '<i class="fa-solid ' . $icon . '"></i>' : '') . $label
+         .     ($required ? ' <span class="text-danger">*</span>' : '') . '</label>'
+         .   $control
+         .   ($hint !== '' ? '<div class="eu-hint">' . $hint . '</div>' : '')
+         . '</div>';
+}
+
+/** Переключатель: скрытое поле с «выкл» + чекбокс с «вкл» (PHP берёт последнее значение) */
+function eu_switch(string $label, string $name, bool $checked, string $icon, string $on = '1', string $off = '0', string $hint = ''): string
+{
+    $id = 'eu_sw_' . $name;
+    return '<label class="eu-switch" for="' . $id . '">'
+         .   '<span class="eu-switch__text min-w-0">'
+         .     '<span class="eu-switch__lbl"><i class="fa-solid ' . $icon . '"></i>' . $label . '</span>'
+         .     ($hint !== '' ? '<span class="eu-hint">' . $hint . '</span>' : '')
+         .   '</span>'
+         .   '<input type="hidden" name="' . $name . '" value="' . $off . '">'
+         .   '<span class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="' . $id . '" name="' . $name . '" value="' . $on . '"' . ($checked ? ' checked' : '') . '></span>'
+         . '</label>';
+}
+
+/** Строка «метка — значение» (st-rows) */
+function eu_row(string $icon, string $label, string $value): string
+{
+    return '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid ' . $icon . '"></i>' . $label . '</span><span class="st-row__val">' . $value . '</span></div>';
+}
+
+function eu_table(string $head, string $rows): string
+{
+    return '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0 eu-table">'
+         . '<thead><tr>' . $head . '</tr></thead><tbody>' . $rows . '</tbody></table></div>';
+}
+
+function eu_dt(int $ts, string $fmt = 'relative'): string
+{
+    return $ts > 0 ? my_datee($fmt, $ts) : '—';
+}
+
+/** Мини-вкладки внутри карточки: навигация (в шапку карточки). Панели — eu_subpanes(). */
+function eu_subtabs(string $id, array $tabs): string
+{
+    $nav   = '<ul class="nav eu-subtabs" id="' . $id . '" role="tablist">';
+    $first = true;
+    foreach ($tabs as $pane => [$icon, $label, $count]) {
+        $nav .= '<li class="nav-item" role="presentation">'
+              .   '<button class="eu-subtab' . ($first ? ' active' : '') . '" data-bs-toggle="pill" data-bs-target="#' . $pane . '" type="button" role="tab"'
+              .     ' aria-controls="' . $pane . '" aria-selected="' . ($first ? 'true' : 'false') . '">'
+              .     '<i class="fa-solid ' . $icon . '"></i><span>' . $label . '</span>'
+              .     ($count !== '' ? '<span class="eu-count">' . $count . '</span>' : '')
+              .   '</button>'
+              . '</li>';
+        $first = false;
+    }
+    return $nav . '</ul>';
+}
+
+function eu_subpanes(array $panes): string
+{
+    $out   = '<div class="tab-content">';
+    $first = true;
+    foreach ($panes as $id => $html) {
+        $out .= '<div class="tab-pane fade' . ($first ? ' show active' : '') . '" id="' . $id . '" role="tabpanel">' . $html . '</div>';
+        $first = false;
+    }
+    return $out . '</div>';
+}
+
+/** Статус-бейджи в шапке */
 function get_user_status_badges(array $userdata): string
 {
     global $lang;
-
-    $badges = [];
-    
-    if ($userdata['donor'] == 'yes') {
-        $badges[] = '<span class="user-badge badge-success"><i class="fas fa-heart me-1"></i>' . $lang->edituser['badge_donor'] . '</span>';
-    }
-    
-    if ($userdata['warned'] == 'yes') {
-        $badges[] = '<span class="user-badge badge-warning"><i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['badge_warned'] . '</span>';
-    }
-    
-    if ($userdata['enabled'] == 'no') {
-        $badges[] = '<span class="user-badge badge-danger"><i class="fas fa-ban me-1"></i>' . $lang->edituser['badge_banned'] . '</span>';
-    }
-    
-    if ($userdata['moderateposts'] == 1) {
-        $badges[] = '<span class="user-badge badge-info"><i class="fas fa-eye me-1"></i>' . $lang->edituser['badge_moderated'] . '</span>';
-    }
-    
-    return implode('', $badges);
+    $L = $lang->edituser;
+    $b = '';
+    if ($userdata['enabled'] === 'no')  $b .= eu_badge('danger',  'fa-ban',                  $L['badge_banned']);
+    if ($userdata['warned'] === 'yes')  $b .= eu_badge('warning', 'fa-triangle-exclamation', $L['badge_warned']);
+    if ($userdata['donor'] === 'yes')   $b .= eu_badge('success', 'fa-heart',                $L['badge_donor']);
+    if ((int)$userdata['moderateposts'] === 1) $b .= eu_badge('info', 'fa-eye',             $L['badge_moderated']);
+    return $b;
 }
 
-/**
- * Get user statistics cards
- */
-function get_user_stats(array $userdata): string
-{
-    global $lang;
+/* =============================================================================
+   Вкладки
+   ============================================================================= */
 
-    $ratio = get_ratio($userdata);
-    $ratioColor = $ratio == '∞' ? 'success' : ($ratio >= 1 ? 'success' : ($ratio >= 0.5 ? 'warning' : 'danger'));
-    
-    $stats = [
-        [
-            'icon' => 'fa-calendar',
-            'label' => $lang->edituser['stat_joined'],
-            'value' => my_datee('relative', $userdata['added']),
-            'color' => 'primary'
-        ],
-        [
-            'icon' => 'fa-chart-line',
-            'label' => $lang->edituser['stat_ratio'],
-            'value' => '<span class="text-' . $ratioColor . '">' . $ratio . '</span>',
-            'color' => $ratioColor
-        ],
-        [
-            'icon' => 'fa-upload',
-            'label' => $lang->edituser['stat_uploaded'],
-            'value' => mksize($userdata['uploaded']),
-            'color' => 'info'
-        ],
-        [
-            'icon' => 'fa-download',
-            'label' => $lang->edituser['stat_downloaded'],
-            'value' => mksize($userdata['downloaded']),
-            'color' => 'warning'
-        ],
-        [
-            'icon' => 'fa-star',
-            'label' => $lang->edituser['stat_bonus'],
-            'value' => ts_nf($userdata['seedbonus']),
-            'color' => 'success'
-        ],
-        [
-            'icon' => 'fa-envelope-open',
-            'label' => $lang->edituser['stat_invites'],
-            'value' => $userdata['invites'],
-            'color' => 'secondary'
-        ]
-    ];
-    
-    return implode('', array_map(fn($stat) => "
-        <div class='col-md-4'>
-            <div class='stat-card'>
-                <div class='d-flex align-items-center'>
-                    <i class='fas {$stat['icon']} fa-2x text-{$stat['color']} me-3'></i>
-                    <div>
-                        <div class='fw-bold fs-5'>{$stat['value']}</div>
-                        <small class='text-muted'>{$stat['label']}</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    ", $stats));
-}
-
-
-
-
-
-/**
- * Render basic info tab
- */
+/** Основное: аккаунт, аватар, подпись */
 function renderBasicInfoTab(): string
 {
-    global $userdata, $lang;
-    
-	
-   
-	
+    global $userdata, $usergroups, $db, $lang, $avatarsize, $CURUSER;
+    $L = $lang->edituser;
 
-
-
-$useravatar  = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
-                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
-
-                        $avatarHtml = '<div class="author_avatar">'
-                           . '<img class="' . $avatarClass . '" '
-                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($userdata['username']) . '" loading="lazy">'
-                           . '</div>';
-
-
-
-
-
-
-
-
-	
-		
-		
-		
-    
-    return '
-    <div class="row">
-        <div class="col-lg-8">
-            <div class="row">
-                <div class="col-md-6">
-                   
-				   ' . inputbox($lang->edituser['lbl_username'], 'username', $userdata['username'], 'form-control', '35', '', '255', true, '', true) . '
-				   
-                </div>
-                <div class="col-md-6">
-                    ' . inputbox($lang->edituser['lbl_email'], 'email', $userdata['email'], 'form-control', '35', '', '255', true, '', true) . '
-                </div>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-6">
-                    ' . inputbox($lang->edituser['lbl_new_password'], 'password', '', 'form-control', '35', '<small class="text-muted">' . $lang->edituser['hint_password_keep'] . '</small>', '255', false) . '
-                </div>
-                <div class="col-md-6">
-                    ' . inputbox($lang->edituser['lbl_usertitle'], 'usertitle', htmlspecialchars_uni($userdata['usertitle']), 'form-control', '35', '', '255', true) . '
-                </div>
-            </div>
-            
-             ' . selectbox($lang->edituser['lbl_usergroup'], 'usergroup', 'trackergroups', 'form-select') .'
-            
-            ' . inputbox($lang->edituser['lbl_avatar_url'], 'avatar', htmlspecialchars_uni($userdata['avatar']), 'form-control', '35', '<small class="text-muted">' . $lang->edituser['hint_avatar_url'] . '</small>', '500', false) . '
-			
-			
-			<input type="hidden" name="avatar_changed" id="avatar_changed" value="0">
-<script>
-(function () {
-    var avatarInput = document.querySelector(\'input[name="avatar"]\');
-    var changedFlag = document.getElementById(\'avatar_changed\');
-    if (!avatarInput || !changedFlag) return;
-
-    // Снимок исходного значения при загрузке страницы. Раньше флаг
-    // avatar_changed взводился по событию change на самом поле — но браузер
-    // может молча подставить в это поле автозаполнением значение из другого
-    // юзера (у него общее name="avatar" на все карточки редактирования),
-    // и change тогда стреляет без реального намерения админа менять аватар.
-    // Сверяем факт изменения прямо в момент отправки формы, по значению,
-    // а не по тому, сработало ли где-то браузерное событие.
-    var originalAvatar = avatarInput.value;
-    var form = avatarInput.closest(\'form\');
-    if (form) {
-        form.addEventListener(\'submit\', function () {
-            changedFlag.value = (avatarInput.value !== originalAvatar) ? \'1\' : \'0\';
-        });
+    // Группы: только те, что текущий сотрудник вправе назначить
+    $groupOpts = '';
+    $gq = $db->sql_query_prepared('SELECT gid, title, cansettingspanel, issupermod, canstaffpanel FROM usergroups ORDER BY title');
+    while ($gq && ($g = $db->fetch_array($gq))) {
+        $gid = (int)$g['gid'];
+        if (
+            ($g['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
+            ($g['issupermod'] == '1' && $usergroups['issupermod'] != '1') ||
+            ($g['canstaffpanel'] == '1' && $usergroups['canstaffpanel'] != '1') ||
+            (($gid === UC_ADMINISTRATOR || $gid === UC_SYSOP) && $usergroups['cansettingspanel'] != '1')
+        ) {
+            if ($gid !== (int)$userdata['usergroup']) {
+                continue;
+            }
+        }
+        $groupOpts .= '<option value="' . $gid . '"' . ($gid === (int)$userdata['usergroup'] ? ' selected' : '') . '>'
+                    . htmlspecialchars_uni((string)$g['title']) . '</option>';
     }
-})();
-</script>
-			
-			
-			
-			
-        </div>
-        
-        
-				
-				
-<div class="col-lg-4">
-            <div class="text-center">	
-				
-			<div class="col-auto">
-  <div class="avatar-ring position-relative hov-soft"
-       id="avatar-container"
-       title="' . $lang->edituser['hdr_avatar_title'] . '">
-    <div>
-      ' . $avatarHtml . '
-    </div>
 
-  </div>
-</div>
+    $account =
+        '<div class="row g-3">'
+      .   '<div class="col-md-6">' . eu_field($L['lbl_username'],
+              '<input type="text" class="form-control" name="username" maxlength="255" required value="' . htmlspecialchars_uni((string)$userdata['username']) . '">',
+              '', 'fa-user', true) . '</div>'
+      .   '<div class="col-md-6">' . eu_field($L['lbl_email'],
+              '<input type="email" class="form-control" name="email" maxlength="255" required value="' . htmlspecialchars_uni((string)$userdata['email']) . '">',
+              '', 'fa-envelope', true) . '</div>'
+      .   '<div class="col-md-6">' . eu_field($L['lbl_new_password'],
+              '<input type="password" class="form-control" name="password" maxlength="255" autocomplete="new-password">',
+              $L['hint_password_keep'], 'fa-lock') . '</div>'
+      .   '<div class="col-md-6">' . eu_field($L['lbl_usertitle'],
+              '<input type="text" class="form-control" name="usertitle" maxlength="255" value="' . htmlspecialchars_uni((string)$userdata['usertitle']) . '">',
+              '', 'fa-award') . '</div>'
+      .   '<div class="col-12">' . eu_field($L['lbl_usergroup'],
+              '<select name="usergroup" class="form-select">' . $groupOpts . '</select>',
+              '', 'fa-users') . '</div>'
+      . '</div>';
 
+    // Аватар (разметку avatar-container / avatar-input использует /scripts/avatar_upload.js)
+    $ua        = format_avatar((string)$userdata['avatar'], (string)$userdata['avatardimensions']);
+    $canChange = ((int)$CURUSER['id'] === (int)$userdata['id'] || is_mod($usergroups)) ? '1' : '0';
 
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-                <div class="avatar-actions">
+    $avatar =
+        '<div class="eu-ava-wrap">'
+      .   '<div class="eu-ava' . ($canChange === '1' ? ' eu-ava--edit' : '') . '" id="avatar-container" tabindex="0" role="button"'
+      .     ' data-uid="' . (int)$userdata['id'] . '" data-can-change="' . $canChange . '"'
+      .     ' data-max-mb="' . round((int)$avatarsize / 1024, 1) . '"'
+      .     ' data-upload-url="edituser.php?action=upload_avatar&amp;userid=' . (int)$userdata['id'] . '"'
+      .     ' title="' . htmlspecialchars((string)$L['hdr_avatar_title']) . '">'
+      .     '<div><img src="' . $ua['image'] . '" alt="' . htmlspecialchars_uni((string)$userdata['username']) . '" loading="lazy"></div>'
+      .     '<span class="avatar-overlay"><i class="fa-solid fa-camera me-1"></i>' . $L['hdr_avatar_change'] . '</span>'
+      .     '<div id="avatar-progress" class="eu-ava__progress"><div id="avatar-progress-bar"></div></div>'
+      .   '</div>'
+      .   '<input type="file" id="avatar-input" accept="image/*" hidden>'
+      . '</div>'
+      . eu_field($L['lbl_avatar_url'],
+            '<input type="text" class="form-control" name="avatar" id="euAvatarUrl" maxlength="500" autocomplete="off" value="' . htmlspecialchars_uni((string)$userdata['avatar']) . '">'
+          . '<input type="hidden" name="avatar_changed" id="avatar_changed" value="0">',
+            $L['hint_avatar_url'], 'fa-link')
+      . '<div class="d-flex flex-wrap gap-2">'
+      .   '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" id="euAvatarTest"><i class="fa-solid fa-rotate me-1"></i>' . $L['btn_avatar_test'] . '</button>'
+      .   ((string)$userdata['avatar'] !== ''
+            ? '<button type="button" class="btn btn-sm btn-outline-danger st-pill" data-eu-action="remove_avatar" data-eu-confirm="' . htmlspecialchars((string)$L['js_confirm']) . '"><i class="fa-solid fa-trash-can me-1"></i>' . $L['btn_avatar_remove'] . '</button>'
+            : '')
+      . '</div>';
 
-<button type="submit" class="btn btn-outline-danger btn-sm me-2" name="remove_avatar" value="1">
-    <i class="fas fa-trash me-1"></i>' . $lang->edituser['btn_avatar_remove'] . '
-</button>
-		
-					
-					
-					
-					
-					
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testAvatar()">
-                        <i class="fas fa-sync me-1"></i>' . $lang->edituser['btn_avatar_test'] . '
-                    </button>
-                </div>
-            </div>
-            
-            <div class="mt-4">
-                <label class="form-label fw-semibold">' . $lang->edituser['lbl_sig_preview'] . '</label>
-                <div class="signature-preview p-3 bg-light rounded">
-                    ' . ($userdata['signature'] ? htmlspecialchars_uni($userdata['signature']) : '<em class="text-muted">' . $lang->edituser['sig_none'] . '</em>') . '
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mt-3">
-        <div class="col-12">
-            <label class="form-label fw-semibold">' . $lang->edituser['lbl_signature'] . '</label>
-            <textarea name="signature" class="form-control" rows="4" placeholder="' . $lang->edituser['ph_signature'] . '">' . htmlspecialchars_uni($userdata['signature']) . '</textarea>
-        </div>
-    </div>';
+    // Подпись: редактор + превью через парсер (как на member.php)
+    $sigPreview = '<em class="text-body-secondary">' . $L['sig_none'] . '</em>';
+    if ((string)$userdata['signature'] !== '') {
+        require_once INC_PATH . '/class_parser.php';
+        $parser     = new postParser();
+        $sigPreview = $parser->parse_message((string)$userdata['signature'], [
+            'allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'filter_badwords' => 1,
+        ]);
+    }
+
+    $signature =
+        eu_field($L['lbl_signature'],
+            '<textarea name="signature" class="form-control" rows="4" placeholder="' . htmlspecialchars((string)$L['ph_signature']) . '">' . htmlspecialchars_uni((string)$userdata['signature']) . '</textarea>')
+      . '<div class="eu-lbl"><i class="fa-solid fa-eye"></i>' . $L['lbl_sig_preview'] . '</div>'
+      . '<div class="eu-sig">' . $sigPreview . '</div>';
+
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-8 d-flex flex-column gap-3">'
+         .     eu_card('fa-id-card', 'primary', $L['tab_basic'], $account)
+         .     eu_card('fa-signature', 'info', $L['lbl_signature'], $signature)
+         .   '</div>'
+         .   '<div class="col-lg-4">' . eu_card('fa-image', 'success', $L['hdr_avatar_title'], $avatar) . '</div>'
+         . '</div>';
 }
 
-/**
- * Render permissions tab
- */
+/** Права и статус */
 function renderPermissionsTab(): string
 {
-    global $userdata, $db, $userid, $lang;
-    
-    // Get current permissions
-   
-$cancomment  = ($userdata['cancomment']  ?? 1) == 1 ? 'yes' : 'no';
-$canupload   = ($userdata['canupload']   ?? 1) == 1 ? 'yes' : 'no';
-$candownload = ($userdata['candownload'] ?? 1) == 1 ? 'yes' : 'no';
+    global $userdata, $lang;
+    $L = $lang->edituser;
 
-    $banIpSelect = '
-    <div class="mb-4">
-        <label class="form-label fw-semibold mb-3">
-            <i class="fas fa-ban me-2 text-danger"></i>' . $lang->edituser['lbl_ipban'] . '
-        </label>
-        <select name="banip" class="form-select">
-            <option value="no">' . $lang->edituser['opt_ipban_no'] . '</option>
-            <option value="yes">' . $lang->edituser['opt_ipban_yes'] . '</option>
-        </select>
-        <small class="text-muted">' . $lang->edituser['hint_ipban'] . '</small>
-    </div>';
+    $perms = '<div class="eu-switches">'
+        . eu_switch($L['lbl_enabled'],       'enabled',       $userdata['enabled'] === 'yes',               'fa-user-check', 'yes', 'no')
+        . eu_switch($L['lbl_cancomment'],    'cancomment',    (int)($userdata['cancomment']  ?? 1) === 1,   'fa-comment',    'yes', 'no')
+        . eu_switch($L['lbl_canupload'],     'canupload',     (int)($userdata['canupload']   ?? 1) === 1,   'fa-upload',     'yes', 'no')
+        . eu_switch($L['lbl_candownload'],   'candownload',   (int)($userdata['candownload'] ?? 1) === 1,   'fa-download',   'yes', 'no')
+        . eu_switch($L['lbl_moderateposts'], 'moderateposts', (int)$userdata['moderateposts'] === 1,        'fa-user-gear')
+        . '</div>';
 
-    $disabledAlert = $userdata['enabled'] == 'no' ? '
-    <div class="alert alert-danger">
-        <h6><i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['alert_disabled_title'] . '</h6>
-        <p class="mb-0">' . htmlspecialchars_uni($userdata['notifs'] ?? $lang->edituser['alert_disabled_noreason']) . '</p>
-    </div>' : '';
+    $special = '<div class="eu-switches mb-3">'
+        . eu_switch($L['lbl_donor'], 'donor', $userdata['donor'] === 'yes', 'fa-heart', 'yes', 'no')
+        . '</div>'
+        . eu_field($L['lbl_ipban'],
+            '<select name="banip" class="form-select">'
+          .   '<option value="no">' . $L['opt_ipban_no'] . '</option>'
+          .   '<option value="yes">' . $L['opt_ipban_yes'] . '</option>'
+          . '</select>',
+            $L['hint_ipban'], 'fa-ban');
 
-    // Для moderateposts преобразуем числовое значение в строковое для отображения
-    $moderatepostsValue = $userdata['moderateposts'] ? '1' : '0';
+    if ($userdata['enabled'] === 'no') {
+        $special .= '<div class="eu-note eu-note--danger mt-3">'
+                  .   '<i class="fa-solid fa-triangle-exclamation"></i>'
+                  .   '<div><strong>' . $L['alert_disabled_title'] . '</strong><div>'
+                  .     htmlspecialchars_uni((string)(($userdata['notifs'] ?? '') !== '' ? $userdata['notifs'] : $L['alert_disabled_noreason'])) . '</div></div>'
+                  . '</div>';
+    }
 
-    return '
-    <div class="row">
-        <div class="col-md-6">
-            <div class="permission-section mb-5">
-                <h5 class="mb-4"><i class="fas fa-shield-alt me-2 text-primary"></i>' . $lang->edituser['sec_account_perms'] . '</h5>
-                
-                ' . yesno($lang->edituser['lbl_enabled'], 'enabled', $userdata['enabled']) . '
-                
-                ' . yesno($lang->edituser['lbl_cancomment'], 'cancomment', $cancomment) . '
-                
-                ' . yesno($lang->edituser['lbl_canupload'], 'canupload', $canupload) . '
-                
-                ' . yesno($lang->edituser['lbl_candownload'], 'candownload', $candownload) . '
-                
-                ' . yesno($lang->edituser['lbl_moderateposts'], 'moderateposts', $moderatepostsValue) . '
-            </div>
-        </div>
-        
-        <div class="col-md-6">
-            <div class="permission-section mb-5">
-                <h5 class="mb-4"><i class="fas fa-gem me-2 text-warning"></i>' . $lang->edituser['sec_special'] . '</h5>
-                
-                ' . yesno($lang->edituser['lbl_donor'], 'donor', $userdata['donor']) . '
-                
-                ' . $banIpSelect . '
-            </div>
-            
-            ' . $disabledAlert . '
-        </div>
-    </div>';
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-shield-halved', 'primary', $L['sec_account_perms'], $perms, '', 'eu-flush') . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-gem', 'warning', $L['sec_special'], $special) . '</div>'
+         . '</div>';
 }
 
-/**
- * Render warnings tab
- */
+/** Предупреждения */
 function renderWarningsTab(): string
 {
-    global $userdata, $db, $BASEURL, $ban_user_limit, $dateformat, $lang;
-    
-    $warned = $userdata['warned'] === 'yes';
-    $leechwarn = $userdata['leechwarn'] === 'yes';
-    
-    $warningInfo = '';
+    global $userdata, $ban_user_limit, $dateformat, $lang;
+    $L = $lang->edituser;
+
+    $warned    = $userdata['warned'] === 'yes';
+    $leechwarn = ($userdata['leechwarn'] ?? 'no') === 'yes';
+
+    $until = function (int $ts) use ($dateformat, $L): array {
+        if ($ts <= 0) {
+            return ['<strong>' . $L['never'] . '</strong>', ''];
+        }
+        $left = max(0, $ts - TIMENOW);
+        return [my_datee($dateformat, $ts), ags_fmt($L['warn_remaining'], mkprettytime($left))];
+    };
+
+    $notes = '';
     if ($warned) {
-        $warneduntil = mkprettytime($userdata['warneduntil'] - TIMENOW);
-        $warneduntilDate = my_datee($dateformat, $userdata['warneduntil']);
-        
-        $warningInfo = '
-        <div class="alert alert-warning">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
-                <div>
-                    <h6 class="alert-heading mb-1">' . $lang->edituser['warn_active_title'] . '</h6>
-                    <p class="mb-1">' . ags_fmt($lang->edituser['warn_expires'], ($warneduntil === '0' ? '<strong>' . $lang->edituser['never'] . '</strong>' : $warneduntilDate)) . '</p>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['warn_remaining'], $warneduntil) . '</small>
-                </div>
-            </div>
-        </div>';
+        [$exp, $left] = $until((int)$userdata['warneduntil']);
+        $notes .= '<div class="eu-note eu-note--warning mb-3"><i class="fa-solid fa-triangle-exclamation"></i><div>'
+                . '<strong>' . $L['warn_active_title'] . '</strong>'
+                . '<div>' . ags_fmt($L['warn_expires'], $exp) . '</div>'
+                . ($left !== '' ? '<div class="eu-hint">' . $left . '</div>' : '')
+                . '</div></div>';
     }
-    
-    $leechWarningInfo = '';
     if ($leechwarn) {
-        $leechuntil = mkprettytime($userdata['leechwarnuntil'] - TIMENOW);
-        $leechuntilDate = my_datee($dateformat, $userdata['leechwarnuntil']);
-        
-        $leechWarningInfo = '
-        <div class="alert alert-danger">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-skull-crossbones fa-2x me-3"></i>
-                <div>
-                    <h6 class="alert-heading mb-1">' . $lang->edituser['leechwarn_title'] . '</h6>
-                    <p class="mb-1">' . ags_fmt($lang->edituser['leechwarn_expires'], ($leechuntil === '0' ? '<strong>' . $lang->edituser['never'] . '</strong>' : $leechuntilDate)) . '</p>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['warn_remaining'], $leechuntil) . '</small>
-                </div>
-            </div>
-        </div>';
+        [$exp, $left] = $until((int)($userdata['leechwarnuntil'] ?? 0));
+        $notes .= '<div class="eu-note eu-note--danger mb-3"><i class="fa-solid fa-skull-crossbones"></i><div>'
+                . '<strong>' . $L['leechwarn_title'] . '</strong>'
+                . '<div>' . ags_fmt($L['leechwarn_expires'], $exp) . '</div>'
+                . ($left !== '' ? '<div class="eu-hint">' . $left . '</div>' : '')
+                . '</div></div>';
     }
 
-    return '
-    <div class="row">
-        <div class="col-md-6">
-            ' . $warningInfo . '
-            ' . $leechWarningInfo . '
-            
-            <div class="warning-controls">
-                <h5 class="mb-4"><i class="fas fa-exclamation-circle me-2 text-warning"></i>' . $lang->edituser['sec_warn_controls'] . '</h5>
-                
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_status'] . '</label>
-                    <div class="btn-group w-100" role="group">
-                        <input type="radio" class="btn-check" name="warned" id="warned_no" value="no" ' . (!$warned ? 'checked' : '') . '>
-                        <label class="btn btn-outline-success" for="warned_no">
-                            <i class="fas fa-check me-2"></i>' . $lang->edituser['opt_not_warned'] . '
-                        </label>
-                        
-                        <input type="radio" class="btn-check" name="warned" id="warned_yes" value="yes" ' . ($warned ? 'checked' : '') . '>
-                        <label class="btn btn-outline-warning" for="warned_yes">
-                            <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['opt_warned'] . '
-                        </label>
-                    </div>
-                </div>
-                
-                ' . (!$warned ? '
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_duration'] . '</label>
-                    <select name="warnlength" class="form-select">' . weeks() . '</select>
-                </div>
-                
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_warn_reason'] . '</label>
-                    <input type="text" class="form-control" name="warnpm" placeholder="' . $lang->edituser['ph_warn_reason'] . '">
-                </div>' : '') . '
-            </div>
-        </div>
-        
-        <div class="col-md-6">
-            <div class="warning-stats">
-                <h5 class="mb-4"><i class="fas fa-chart-bar me-2 text-info"></i>' . $lang->edituser['sec_warn_stats'] . '</h5>
-                
-                <div class="stat-card mb-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>' . $lang->edituser['lbl_times_warned'] . '</span>
-                        <span class="badge bg-' . ($userdata['timeswarned'] >= $ban_user_limit ? 'danger' : 'warning') . ' fs-6">
-                            ' . $userdata['timeswarned'] . '
-                        </span>
-                    </div>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_warn_max'], (string)($ban_user_limit ?? '')) . '</small>
-                </div>
-                
-                ' . ($userdata['timeswarned'] > 1 ? '
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" name="reset_timeswarned" value="yes" id="resetWarned">
-                    <label class="form-check-label" for="resetWarned">' . $lang->edituser['lbl_reset_warn_counter'] . '</label>
-                </div>' : '') . '
-                
-                ' . get_last_warning_info() . '
-            </div>
-        </div>
-    </div>';
+    if ($warned) {
+        // Снять предупреждение: выключить переключатель
+        $controls = '<div class="eu-switches">'
+                  . eu_switch($L['opt_warned'], 'warned', true, 'fa-triangle-exclamation', 'yes', 'no', $L['lbl_warn_status'])
+                  . '</div>';
+    } else {
+        $controls = eu_field($L['lbl_warn_duration'], '<select name="warnlength" class="form-select">' . weeks() . '</select>', '', 'fa-hourglass-half')
+                  . eu_field($L['lbl_warn_reason'],
+                        '<input type="text" class="form-control" name="warnpm" maxlength="255" placeholder="' . htmlspecialchars((string)$L['ph_warn_reason']) . '">',
+                        $L['hint_warn_reason'] ?? 'The reason is sent to the user in a PM.', 'fa-comment-dots');
+    }
+
+    $limit    = (int)($ban_user_limit ?? 0);
+    $times    = (int)$userdata['timeswarned'];
+    $timesSoft = ($limit > 0 && $times >= $limit) ? 'danger' : ($times > 0 ? 'warning' : 'success');
+
+    $stats = '<div class="st-rows mb-3">'
+           . eu_row('fa-hashtag', $L['lbl_times_warned'], eu_badge($timesSoft, '', (string)$times))
+           . ($limit > 0 ? eu_row('fa-gavel', ags_fmt($L['hint_warn_max'], $limit), '') : '')
+           . '</div>';
+
+    if ($times > 0) {
+        $stats .= '<div class="eu-switches mb-3">'
+                . eu_switch($L['lbl_reset_warn_counter'], 'reset_timeswarned', false, 'fa-rotate-left', 'yes', '')
+                . '</div>';
+    }
+    $stats .= get_last_warning_info();
+
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-circle-exclamation', 'warning', $L['sec_warn_controls'], $notes . $controls) . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-chart-column', 'info', $L['sec_warn_stats'], $stats) . '</div>'
+         . '</div>';
 }
 
-/**
- * Get last warning information
- */
 function get_last_warning_info(): string
 {
     global $userdata, $db, $BASEURL, $dateformat, $lang;
-    
-    if ($userdata['timeswarned'] == 0 || empty($userdata['warnedby'])) {
-        return '
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle me-2"></i>
-            ' . $lang->edituser['warn_never'] . '
-        </div>';
+    $L = $lang->edituser;
+
+    if ((int)$userdata['timeswarned'] === 0 || empty($userdata['warnedby'])) {
+        return '<div class="eu-note"><i class="fa-solid fa-circle-info"></i><div>' . $L['warn_never'] . '</div></div>';
     }
-    
-    $elapsedlw = mkprettytime(TIMENOW - $userdata['lastwarned']);
-    
-    if ($userdata['warnedby'] !== 'System' && !empty($userdata['warnedby'])) {
-        $res = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ?', [(int)$userdata['warnedby']]);
-        $arr = $res ? $db->fetch_array($res) : null;
-        $warnedby = ags_fmt($lang->edituser['last_warn_by_user'], $elapsedlw, '<a href="' . $BASEURL . '/userdetails.php?id=' . $arr['id'] . '" class="text-decoration-none">' . htmlspecialchars_uni($arr['username']) . '</a>');
-    } else {
-        $warnedby = ags_fmt($lang->edituser['last_warn_by_system'], $elapsedlw);
+
+    $elapsed = mkprettytime(max(0, TIMENOW - (int)$userdata['lastwarned']));
+    $by      = ags_fmt($L['last_warn_by_system'], $elapsed);
+
+    if ($userdata['warnedby'] !== 'System') {
+        $q   = $db->sql_query_prepared('SELECT id, username, usergroup FROM users WHERE id = ? LIMIT 1', [(int)$userdata['warnedby']]);
+        $arr = $q ? $db->fetch_array($q) : null;
+        if ($arr) {
+            $by = ags_fmt($L['last_warn_by_user'], $elapsed,
+                '<a href="' . $BASEURL . '/' . get_profile_link((int)$arr['id']) . '">'
+                . format_name(htmlspecialchars_uni((string)$arr['username']), (int)$arr['usergroup']) . '</a>');
+        }
     }
-    
-    return '
-    <div class="alert alert-secondary">
-        <h6><i class="fas fa-history me-2"></i>' . $lang->edituser['sec_last_warning'] . '</h6>
-        <p class="mb-1">' . $warnedby . '</p>
-        <small class="text-muted">' . ags_fmt($lang->edituser['last_warn_date'], my_datee($dateformat, $userdata['lastwarned'])) . '</small>
-    </div>';
+
+    return '<div class="eu-note"><i class="fa-solid fa-clock-rotate-left"></i><div>'
+         . '<strong>' . $L['sec_last_warning'] . '</strong><div>' . $by . '</div>'
+         . '<div class="eu-hint">' . ags_fmt($L['last_warn_date'], my_datee($dateformat, (int)$userdata['lastwarned'])) . '</div>'
+         . '</div></div>';
 }
 
-/**
- * Render statistics tab
- */
+/** Статистика: трафик, бонусы, графики */
 function renderStatisticsTab(): string
 {
-    global $userdata, $usergroups, $lang;
-    
-    $othervalue = ($usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1') ? '' : 'disabled';
-    $disabledAttr = $othervalue ? 'disabled' : '';
-    $disabledClass = $othervalue ? 'opacity-50' : '';
-    
-    return '
-    <div class="row">
-        <div class="col-md-6">
-            <div class="statistics-section">
-                <h5 class="mb-4"><i class="fas fa-chart-line me-2 text-success"></i>' . $lang->edituser['sec_traffic'] . '</h5>
-                
-                <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_uploaded_amount'] . '</label>
-                    <input type="text" class="form-control" name="uploaded" value="' . htmlspecialchars_uni((string)$userdata['uploaded']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current'], mksize($userdata['uploaded'])) . '</small>
-                </div>
-                
-                <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_downloaded_amount'] . '</label>
-                    <input type="text" class="form-control" name="downloaded" value="' . htmlspecialchars_uni((string)$userdata['downloaded']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current'], mksize($userdata['downloaded'])) . '</small>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-6">
-            <div class="bonus-section">
-                <h5 class="mb-4"><i class="fas fa-gift me-2 text-warning"></i>' . $lang->edituser['sec_bonus_invites'] . '</h5>
-                
-                <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">' . $lang->edituser['stat_bonus'] . '</label>
-                    <input type="text" class="form-control" name="seedbonus" value="' . htmlspecialchars_uni($userdata['seedbonus']) . '" ' . $disabledAttr . '>
-                    <small class="text-muted">' . ags_fmt($lang->edituser['hint_current_points'], ts_nf($userdata['seedbonus'])) . '</small>
-                </div>
-                
-                <div class="mb-4 ' . $disabledClass . '">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_invite_count'] . '</label>
-                    <input type="text" class="form-control" name="invites" value="' . (int)$userdata['invites'] . '" ' . $disabledAttr . '>
-                    <small class="text-muted">' . $lang->edituser['hint_invites_available'] . '</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    ' . ($othervalue ? '
-    <div class="alert alert-info mt-4">
-        <i class="fas fa-info-circle me-2"></i>
-        <strong>' . $lang->edituser['perm_notice_title'] . '</strong> ' . $lang->edituser['perm_notice_text'] . '
-    </div>' : '') . '
+    global $userdata, $lang;
+    $L = $lang->edituser;
 
-    <!-- Charts -->
-    <div class="row mt-5">
-        <div class="col-12 mb-3">
-            <h5 class="fw-bold"><i class="fas fa-chart-area me-2 text-primary"></i>' . $lang->edituser['chart_traffic'] . ' <small class="text-muted fs-6">' . $lang->edituser['chart_traffic_note'] . '</small></h5>
-            <canvas id="trafficChart" height="80"></canvas>
-        </div>
-        <div class="col-12 mt-4">
-            <h5 class="fw-bold"><i class="fas fa-chart-bar me-2 text-success"></i>' . $lang->edituser['chart_activity'] . ' <small class="text-muted fs-6">' . $lang->edituser['chart_activity_note'] . '</small></h5>
-            <canvas id="activityChart" height="60"></canvas>
-        </div>
-    </div>';
+    $can = eu_can_edit_stats();
+    $dis = $can ? '' : ' disabled';
+
+    $num = fn(string $name, string $val, string $label, string $hint, string $icon): string =>
+        eu_field($label, '<input type="number" class="form-control" name="' . $name . '" value="' . htmlspecialchars($val) . '" min="0" step="any"' . $dis . '>', $hint, $icon);
+
+    $traffic = $num('uploaded', (string)(int)$userdata['uploaded'], $L['lbl_uploaded_amount'], ags_fmt($L['hint_current'], mksize($userdata['uploaded'])), 'fa-arrow-up')
+             . $num('downloaded', (string)(int)$userdata['downloaded'], $L['lbl_downloaded_amount'], ags_fmt($L['hint_current'], mksize($userdata['downloaded'])), 'fa-arrow-down');
+
+    $bonus = $num('seedbonus', (string)(float)$userdata['seedbonus'], $L['stat_bonus'], ags_fmt($L['hint_current_points'], ts_nf((float)$userdata['seedbonus'])), 'fa-coins')
+           . $num('invites', (string)(int)$userdata['invites'], $L['lbl_invite_count'], $L['hint_invites_available'], 'fa-ticket');
+
+    $notice = $can ? '' :
+        '<div class="eu-note eu-note--info mb-3"><i class="fa-solid fa-lock"></i><div><strong>' . $L['perm_notice_title'] . '</strong> ' . $L['perm_notice_text'] . '</div></div>';
+
+    $charts = eu_card('fa-chart-column', 'primary',
+                $L['chart_traffic'] . ' <span class="eu-hint">' . $L['chart_traffic_note'] . '</span>',
+                '<div class="eu-chart"><canvas id="trafficChart"></canvas></div>')
+            . eu_card('fa-chart-simple', 'success',
+                $L['chart_activity'] . ' <span class="eu-hint">' . $L['chart_activity_note'] . '</span>',
+                '<div class="eu-chart eu-chart--sm"><canvas id="activityChart"></canvas></div>');
+
+    return $notice
+         . '<div class="row g-3 mb-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-arrow-right-arrow-left', 'success', $L['sec_traffic'], $traffic) . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-gift', 'warning', $L['sec_bonus_invites'], $bonus) . '</div>'
+         . '</div>'
+         . '<div class="d-flex flex-column gap-3">' . $charts . '</div>';
 }
 
-/**
- * Render advanced tab
- */
+/** Модерация: заметки, системная информация */
 function renderAdvancedTab(): string
 {
-    global $userdata, $usergroups, $lang;
-    
-    $modcomment = htmlspecialchars_uni($userdata['modcomment']);
-    $bonuscomment = htmlspecialchars_uni($userdata['bonuscomment']);
-    $readonly = $usergroups['cansettingspanel'] != '1' ? 'readonly' : '';
-    $readonlyAttr = $readonly ? 'readonly' : '';
-    
-    return '
-    <div class="row">
-        <div class="col-12">
-            <div class="advanced-section">
-                <h5 class="mb-4"><i class="fas fa-cogs me-2 text-primary"></i>' . $lang->edituser['sec_mod_comments'] . '</h5>
-                
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_modcomment'] . '</label>
-                    <textarea name="modcomment" class="form-control" rows="20" ' . $readonlyAttr . ' placeholder="' . $lang->edituser['ph_modcomment'] . '">' . $modcomment . '</textarea>
-                    ' . ($readonly ? '<small class="text-muted">' . $lang->edituser['hint_readonly'] . '</small>' : '') . '
-                </div>
-                
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_addcomment'] . '</label>
-                    <textarea name="addcomment" class="form-control" rows="3" placeholder="' . $lang->edituser['ph_addcomment'] . '"></textarea>
-                    <small class="text-muted">' . $lang->edituser['hint_addcomment'] . '</small>
-                </div>
-            </div>
-            
-            <div class="system-section mt-5">
-                <h5 class="mb-4"><i class="fas fa-database me-2 text-secondary"></i>' . $lang->edituser['sec_system'] . '</h5>
-                
-                <div class="mb-4">
-                    <a class="btn btn-outline-primary btn-sm" href="index.php?act=bonuspoints&amp;action=log&amp;user=%23' . (int)$userdata['id'] . '&amp;period=all">
-                        <i class="fas fa-clock-rotate-left me-1"></i>' . $lang->edituser['btn_bonus_history'] . '
-                    </a>
-                    <small class="text-muted ms-2">' . $lang->edituser['hint_bonus_history'] . '</small>
-                </div>
+    global $userdata, $lang;
+    $L = $lang->edituser;
 
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">' . $lang->edituser['lbl_karma_log'] . ' <small class="text-muted fw-normal">' . $lang->edituser['lbl_karma_log_note'] . '</small></label>
-                    <textarea class="form-control" rows="4" readonly>' . $bonuscomment . '</textarea>
-                    <small class="text-muted">' . $lang->edituser['hint_karma_log'] . '</small>
-                </div>
-                
-                <div class="system-info">
-                    
-				<div class="info-grid">
-                        <div class="info-card">
-                            <div class="info-icon">
-                                <i class="fas fa-calendar-alt fa-2x text-primary"></i>
-                            </div>
-                            <div class="info-label">' . $lang->edituser['info_registered'] . '</div>
-                            <div class="info-value">' . my_datee('relative', $userdata['added']) . '</div>
-                            <small class="text-muted">' . my_datee('d M Y', $userdata['added']) . '</small>
-                        </div>
-                        
-                        <div class="info-card">
-                            <div class="info-icon">
-                                <i class="fas fa-clock fa-2x text-info"></i>
-                            </div>
-                            <div class="info-label">' . $lang->edituser['info_last_active'] . '</div>
-                            <div class="info-value">' . my_datee('relative', $userdata['lastactive']) . '</div>
-                            <small class="text-muted">' . ($userdata['lastactive'] ? my_datee('d M Y H:i', $userdata['lastactive']) : $lang->edituser['never']) . '</small>
-                        </div>
-                        
-                        <div class="info-card">
-                            <div class="info-icon">
-                                <i class="fas fa-history fa-2x text-warning"></i>
-                            </div>
-                            <div class="info-label">' . $lang->edituser['info_last_visit'] . '</div>
-                            <div class="info-value">' . my_datee('relative', $userdata['lastvisit']) . '</div>
-                            <small class="text-muted">' . ($userdata['lastvisit'] ? my_datee('d M Y H:i', $userdata['lastvisit']) : $lang->edituser['never']) . '</small>
-                        </div>
-                        
-                        <div class="info-card">
-                            <div class="info-icon">
-                                <i class="fas fa-comments fa-2x text-success"></i>
-                            </div>
-                            <div class="info-label">' . $lang->edituser['info_forum_posts'] . '</div>
-                            <div class="info-value">' . ts_nf($userdata['post_count'] ?? 0) . '</div>
-                            <small class="text-muted">' . $lang->edituser['info_total_messages'] . '</small>
-                        </div>
-                    </div>		
-					
-					
-					
-                </div>
-            </div>
-        </div>
-    </div>';
+    $canEdit = eu_can_edit_modcomment();
+
+    $notes = eu_field($L['lbl_addcomment'],
+                '<textarea name="addcomment" class="form-control" rows="2" maxlength="500" placeholder="' . htmlspecialchars((string)$L['ph_addcomment']) . '"></textarea>',
+                $L['hint_addcomment'], 'fa-pen')
+           . eu_field($L['lbl_modcomment'],
+                '<textarea name="modcomment" class="form-control eu-mono" rows="14"' . ($canEdit ? '' : ' readonly') . ' placeholder="' . htmlspecialchars((string)$L['ph_modcomment']) . '">'
+              . htmlspecialchars_uni((string)$userdata['modcomment']) . '</textarea>',
+                $canEdit ? '' : $L['hint_readonly'], 'fa-clipboard-list');
+
+    $system = '<div class="st-rows mb-3">'
+            . eu_row('fa-calendar-days', $L['info_registered'],  eu_dt((int)$userdata['added'], 'd M Y'))
+            . eu_row('fa-clock',         $L['info_last_active'], eu_dt((int)$userdata['lastactive'], 'd M Y H:i'))
+            . eu_row('fa-clock-rotate-left', $L['info_last_visit'], eu_dt((int)$userdata['lastvisit'], 'd M Y H:i'))
+            . eu_row('fa-comments',      $L['info_forum_posts'], ts_nf((int)$userdata['post_count']))
+            . '</div>'
+            . eu_field($L['lbl_karma_log'] . ' <span class="eu-hint">' . $L['lbl_karma_log_note'] . '</span>',
+                '<textarea class="form-control eu-mono" rows="4" readonly>' . htmlspecialchars_uni((string)$userdata['bonuscomment']) . '</textarea>',
+                $L['hint_karma_log'], 'fa-seedling');
+
+    $bonusBtn = '<a class="btn btn-sm btn-outline-primary st-pill" title="' . htmlspecialchars((string)$L['hint_bonus_history']) . '"'
+              . ' href="index.php?act=bonuspoints&amp;action=log&amp;user=%23' . (int)$userdata['id'] . '&amp;period=all">'
+              . '<i class="fa-solid fa-clock-rotate-left me-1"></i>' . $L['btn_bonus_history'] . '</a>';
+
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-7">' . eu_card('fa-gears', 'primary', $L['sec_mod_comments'], $notes) . '</div>'
+         .   '<div class="col-lg-5">' . eu_card('fa-database', 'muted', $L['sec_system'], $system, $bonusBtn) . '</div>'
+         . '</div>';
 }
 
-
-
-
-
-
-
+/** Настройки аккаунта пользователя */
 function renderAccountSettingsTab(): string
 {
     global $userdata, $lang;
-    
-    return '
-    <div class="row">
-        <div class="col-md-6">
-            
-			
-			
-			<h5 class="mb-4"><i class="fas fa-user-shield me-2 text-success"></i>' . $lang->edituser['sec_login_privacy'] . '</h5>
-            
-            ' . yesno($lang->edituser['lbl_invisible'], 'invisible', $userdata['invisible'] ? '1' : '0') . '
-			
-			
-			
-			
-			
-			<h5 class="mb-4"><i class="fas fa-envelope me-2 text-primary"></i>' . $lang->edituser['sec_email_privacy'] . '</h5>
-            
-            ' . yesno($lang->edituser['lbl_allownotices'], 'allownotices', $userdata['allownotices'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_hideemail'], 'hideemail', $userdata['hideemail'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_receivepms'], 'receivepms', $userdata['receivepms'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_receivefrombuddy'], 'receivefrombuddy', $userdata['receivefrombuddy'] ? '1' : '0') . '
-        </div>
-        
-        <div class="col-md-6">
-            <h5 class="mb-4"><i class="fas fa-bell me-2 text-warning"></i>' . $lang->edituser['sec_notifications'] . '</h5>
-            
-            ' . yesno($lang->edituser['lbl_pmnotice'], 'pmnotice', $userdata['pmnotice'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_pmnotify'], 'pmnotify', $userdata['pmnotify'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_buddyrequestspm'], 'buddyrequestspm', $userdata['buddyrequestspm'] ? '1' : '0') . '
-            
-            ' . yesno($lang->edituser['lbl_buddyrequestsauto'], 'buddyrequestsauto', $userdata['buddyrequestsauto'] ? '1' : '0') . '
-            
-            <div class="mb-4">
-                <label class="form-label fw-semibold">' . $lang->edituser['lbl_subscription'] . '</label>
-                <select name="subscriptionmethod" class="form-select">
-                    <option value="0" ' . ($userdata['subscriptionmethod'] == 0 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_none'] . '</option>
-                    <option value="1" ' . ($userdata['subscriptionmethod'] == 1 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_nonotify'] . '</option>
-                    <option value="2" ' . ($userdata['subscriptionmethod'] == 2 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_email'] . '</option>
-					<option value="3" ' . ($userdata['subscriptionmethod'] == 3 ? 'selected' : '') . '>' . $lang->edituser['opt_sub_pm'] . '</option>
-                </select>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                <strong>' . $lang->edituser['note_title'] . '</strong> ' . $lang->edituser['note_buddy_text'] . '
-            </div>
-        </div>
-    </div>';
+    $L = $lang->edituser;
+    $on = fn(string $f): bool => (int)$userdata[$f] === 1;
+
+    $privacy = '<div class="eu-switches">'
+        . eu_switch($L['lbl_invisible'],        'invisible',        $on('invisible'),        'fa-user-secret')
+        . eu_switch($L['lbl_allownotices'],     'allownotices',     $on('allownotices'),     'fa-envelope')
+        . eu_switch($L['lbl_hideemail'],        'hideemail',        $on('hideemail'),        'fa-eye-slash')
+        . eu_switch($L['lbl_receivepms'],       'receivepms',       $on('receivepms'),       'fa-comments')
+        . eu_switch($L['lbl_receivefrombuddy'], 'receivefrombuddy', $on('receivefrombuddy'), 'fa-user-group')
+        . '</div>';
+
+    $sm = (int)$userdata['subscriptionmethod'];
+    $subOpts = '';
+    foreach ([0 => 'opt_sub_none', 1 => 'opt_sub_nonotify', 2 => 'opt_sub_email', 3 => 'opt_sub_pm'] as $v => $k) {
+        $subOpts .= '<option value="' . $v . '"' . ($sm === $v ? ' selected' : '') . '>' . $L[$k] . '</option>';
+    }
+
+    $notify = '<div class="eu-switches mb-3">'
+        . eu_switch($L['lbl_pmnotice'],          'pmnotice',          $on('pmnotice'),          'fa-bell')
+        . eu_switch($L['lbl_pmnotify'],          'pmnotify',          $on('pmnotify'),          'fa-envelope-open-text')
+        . eu_switch($L['lbl_buddyrequestspm'],   'buddyrequestspm',   $on('buddyrequestspm'),   'fa-user-plus')
+        . eu_switch($L['lbl_buddyrequestsauto'], 'buddyrequestsauto', $on('buddyrequestsauto'), 'fa-circle-check')
+        . '</div>'
+        . eu_field($L['lbl_subscription'], '<select name="subscriptionmethod" class="form-select">' . $subOpts . '</select>', '', 'fa-rss');
+
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-user-shield', 'success', $L['sec_email_privacy'], $privacy, '', 'eu-flush') . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-bell', 'warning', $L['sec_notifications'], $notify) . '</div>'
+         . '</div>'
+         . '<div class="eu-note eu-note--info mt-3"><i class="fa-solid fa-circle-info"></i><div><strong>' . $L['note_title'] . '</strong> ' . $L['note_buddy_text'] . '</div></div>';
 }
 
-
-
-
-
-
-/**
- * Handle user edit form with premium UI
- */
-
-
-/**
- * Render Activity / History tab
- */
+/** Активность: последние раздачи, скачивания, комментарии */
 function renderActivityTab(): string
 {
     global $userdata, $db, $BASEURL, $dateformat, $lang;
-
+    $L   = $lang->edituser;
     $uid = (int)$userdata['id'];
 
-    // Последние загруженные торренты
-    $q = $db->sql_query_prepared("SELECT id, name, added, seeders, leechers FROM torrents WHERE owner = ? ORDER BY added DESC LIMIT 10", [$uid]);
-    $uploads_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $badge = $row['seeders'] > 0
-            ? '<span class="badge bg-success">' . ags_fmt($lang->edituser['badge_seeders'], (int)$row['seeders']) . '</span>'
-            : '<span class="badge bg-danger">' . $lang->edituser['act_dead'] . '</span>';
-        $uploads_html .= '<li class="list-group-item d-flex justify-content-between align-items-center py-2">
-            <div>
-                <a href="' . $BASEURL . '/details.php?id=' . (int)$row['id'] . '" class="text-decoration-none small fw-semibold">' . htmlspecialchars_uni($row['name']) . '</a>
-                <div class="text-muted" style="font-size:.72rem">' . my_datee($dateformat, (int)$row['added']) . '</div>
-            </div>
-            ' . $badge . '
-        </li>';
+    $item = fn(string $main, string $sub, string $side): string =>
+        '<li class="eu-list__item"><div class="min-w-0"><div class="eu-list__main">' . $main . '</div><div class="eu-list__sub">' . $sub . '</div></div>'
+        . ($side !== '' ? '<div class="eu-list__side">' . $side . '</div>' : '') . '</li>';
+
+    $uploads = '';
+    $q = $db->sql_query_prepared('SELECT id, name, added, seeders FROM torrents WHERE owner = ? ORDER BY added DESC LIMIT 10', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $uploads .= $item(
+            '<a href="' . $BASEURL . '/details.php?id=' . (int)$r['id'] . '">' . htmlspecialchars_uni((string)$r['name']) . '</a>',
+            my_datee($dateformat, (int)$r['added']),
+            (int)$r['seeders'] > 0 ? eu_badge('success', 'fa-arrow-up', ags_fmt($L['badge_seeders'], (int)$r['seeders'])) : eu_badge('danger', 'fa-skull', $L['act_dead'])
+        );
     }
-    if (!$uploads_html) $uploads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_uploads'] . '</li>';
 
-    // Последние скачивания
-    $q = $db->sql_query_prepared("SELECT s.torrentid, t.name, s.completedat, s.finished FROM snatched s LEFT JOIN torrents t ON (s.torrentid = t.id) WHERE s.userid = ? ORDER BY s.completedat DESC LIMIT 10", [$uid]);
-    $downloads_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $fin  = $row['finished'] === 'yes'
-            ? '<span class="badge bg-success">' . $lang->edituser['act_finished'] . '</span>'
-            : '<span class="badge bg-warning text-dark">' . $lang->edituser['act_incomplete'] . '</span>';
-        $name = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">' . $lang->edituser['deleted_torrent'] . '</em>';
-        $downloads_html .= '<li class="list-group-item d-flex justify-content-between align-items-center py-2">
-            <div>
-                <span class="small fw-semibold">' . $name . '</span>
-                <div class="text-muted" style="font-size:.72rem">' . ($row['completedat'] ? my_datee($dateformat, (int)$row['completedat']) : '—') . '</div>
-            </div>
-            ' . $fin . '
-        </li>';
+    $downloads = '';
+    $q = $db->sql_query_prepared('SELECT s.torrentid, t.name, s.completedat, s.finished FROM snatched s LEFT JOIN torrents t ON t.id = s.torrentid WHERE s.userid = ? ORDER BY s.completedat DESC LIMIT 10', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $name = $r['name'] !== null
+            ? '<a href="' . $BASEURL . '/details.php?id=' . (int)$r['torrentid'] . '">' . htmlspecialchars_uni((string)$r['name']) . '</a>'
+            : '<em class="text-body-secondary">' . $L['deleted_torrent'] . '</em>';
+        $downloads .= $item(
+            $name,
+            eu_dt((int)$r['completedat'], (string)$dateformat),
+            $r['finished'] === 'yes' ? eu_badge('success', 'fa-check', $L['act_finished']) : eu_badge('warning', 'fa-hourglass-half', $L['act_incomplete'])
+        );
     }
-    if (!$downloads_html) $downloads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_downloads'] . '</li>';
 
-    // Последние комментарии
-    $q = $db->sql_query_prepared("SELECT c.id, c.torrent, c.dateline, c.text, t.name FROM comments c LEFT JOIN torrents t ON (c.torrent = t.id) WHERE c.user = ? ORDER BY c.dateline DESC LIMIT 5", [$uid]);
-    $comments_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $torr = $row['name'] ? htmlspecialchars_uni($row['name']) : '#' . (int)$row['torrent'];
-        $txt  = mb_substr(strip_tags($row['text'] ?? ''), 0, 80);
-        $comments_html .= '<li class="list-group-item py-2">
-            <div class="d-flex justify-content-between">
-                <small class="fw-semibold text-primary">' . $torr . '</small>
-                <small class="text-muted">' . my_datee($dateformat, (int)$row['dateline']) . '</small>
-            </div>
-            <div class="small text-muted mt-1">' . htmlspecialchars($txt, ENT_QUOTES, 'UTF-8') . (mb_strlen($row['text'] ?? '') > 80 ? '…' : '') . '</div>
-        </li>';
+    $comments = '';
+    $q = $db->sql_query_prepared('SELECT c.id, c.torrent, c.dateline, c.text, t.name FROM comments c LEFT JOIN torrents t ON t.id = c.torrent WHERE c.user = ? ORDER BY c.dateline DESC LIMIT 5', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $txt  = trim(strip_tags((string)$r['text']));
+        $cut  = mb_strimwidth($txt, 0, 120, '…');
+        $torr = $r['name'] !== null ? htmlspecialchars_uni((string)$r['name']) : '#' . (int)$r['torrent'];
+        $comments .= $item(
+            '<a href="' . $BASEURL . '/details.php?id=' . (int)$r['torrent'] . '#comments">' . $torr . '</a>',
+            htmlspecialchars($cut, ENT_QUOTES, 'UTF-8'),
+            '<span class="eu-hint">' . my_datee($dateformat, (int)$r['dateline']) . '</span>'
+        );
     }
-    if (!$comments_html) $comments_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['act_no_comments'] . '</li>';
 
-    // ► Статистика из $userdata — запросов нет
-    $seedtime_fmt  = $userdata['snatch_seedtime']  ? mkprettytime((int)$userdata['snatch_seedtime'])  : '—';
-    $leechtime_fmt = $userdata['snatch_leechtime'] ? mkprettytime((int)$userdata['snatch_leechtime']) : '—';
+    $list = fn(string $html, string $icon, string $empty): string =>
+        $html !== '' ? '<ul class="eu-list eu-list--scroll">' . $html . '</ul>' : eu_empty($icon, $empty);
 
-    return '
-    <div class="row g-4">
-        <div class="col-12">
-            <div class="d-flex flex-wrap gap-3">
-                <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
-                    <div class="fw-bold fs-5 text-primary">' . (int)($userdata['snatch_total'] ?? 0) . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_snatches'] . '</small>
-                </div>
-                <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
-                    <div class="fw-bold fs-5 text-success">' . (int)($userdata['snatch_done'] ?? 0) . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_completed'] . '</small>
-                </div>
-                <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
-                    <div class="fw-bold fs-5 text-info">' . $seedtime_fmt . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_seed_time'] . '</small>
-                </div>
-                <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
-                    <div class="fw-bold fs-5 text-warning">' . $leechtime_fmt . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_leech_time'] . '</small>
-                </div>
-                <div class="border rounded-3 px-3 py-2 text-center" style="min-width:110px">
-                    <div class="fw-bold fs-5 text-success">' . (int)($userdata['peers_seeding'] ?? 0) . ' / ' . (int)($userdata['peers_total'] ?? 0) . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_active_peers'] . '</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-upload me-2 text-primary"></i>' . $lang->edituser['act_last_uploads'] . '</h6>
-            <ul class="list-group list-group-flush border rounded-3" style="max-height:280px;overflow-y:auto">
-                ' . $uploads_html . '
-            </ul>
-        </div>
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-download me-2 text-success"></i>' . $lang->edituser['act_last_downloads'] . '</h6>
-            <ul class="list-group list-group-flush border rounded-3" style="max-height:280px;overflow-y:auto">
-                ' . $downloads_html . '
-            </ul>
-        </div>
-        <div class="col-12">
-            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-warning"></i>' . $lang->edituser['act_last_comments'] . '</h6>
-            <ul class="list-group list-group-flush border rounded-3">
-                ' . $comments_html . '
-            </ul>
-        </div>
-    </div>';
+    $seed  = (int)$userdata['snatch_seedtime']  > 0 ? mkprettytime((int)$userdata['snatch_seedtime'])  : '—';
+    $leech = (int)$userdata['snatch_leechtime'] > 0 ? mkprettytime((int)$userdata['snatch_leechtime']) : '—';
+
+    $summary = '<div class="eu-chips mb-3">'
+             . '<span class="eu-chip"><i class="fa-solid fa-download"></i><b>' . ts_nf((int)$userdata['snatch_total']) . '</b>' . $L['act_snatches'] . '</span>'
+             . '<span class="eu-chip"><i class="fa-solid fa-check"></i><b>' . ts_nf((int)$userdata['snatch_done']) . '</b>' . $L['act_completed'] . '</span>'
+             . '<span class="eu-chip"><i class="fa-solid fa-seedling"></i><b>' . $seed . '</b>' . $L['act_seed_time'] . '</span>'
+             . '<span class="eu-chip"><i class="fa-solid fa-hourglass-half"></i><b>' . $leech . '</b>' . $L['act_leech_time'] . '</span>'
+             . '<span class="eu-chip"><i class="fa-solid fa-satellite-dish"></i><b>' . (int)$userdata['peers_seeding'] . ' / ' . (int)$userdata['peers_total'] . '</b>' . $L['act_active_peers'] . '</span>'
+             . '</div>';
+
+    return $summary
+         . '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-upload', 'primary', $L['act_last_uploads'], $list($uploads, 'fa-upload', $L['act_no_uploads']), '', 'eu-flush') . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-download', 'success', $L['act_last_downloads'], $list($downloads, 'fa-download', $L['act_no_downloads']), '', 'eu-flush') . '</div>'
+         .   '<div class="col-12">' . eu_card('fa-comment', 'warning', $L['act_last_comments'], $list($comments, 'fa-comment-slash', $L['act_no_comments']), '', 'eu-flush') . '</div>'
+         . '</div>';
 }
 
-
-
-
-
-
-
-
-
-/**
- * Render Security tab
- */
+/** Безопасность: IP, вход, пасскей, сессии */
 function renderSecurityTab(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat, $timeformat, $mybb, $lang;
+    global $userdata, $db, $dateformat, $lang, $BASEURL;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
 
-    $uid      = (int)$userdata['id'];
-    $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
-    $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
+    $ip = function ($raw) use ($db): string {
+        if ($raw === null || $raw === '') {
+            return '—';
+        }
+        $s = my_inet_ntop($db->unescape_binary($raw));
+        return $s !== false && $s !== '' ? htmlspecialchars($s, ENT_QUOTES, 'UTF-8') : '—';
+    };
+    $regip  = $ip($userdata['regip'] ?? '');
+    $lastip = $ip($userdata['lastip'] ?? '');
 
-    // Активные сессии
-    $q = $db->sql_query_prepared("SELECT sid, ip, time, location, useragent FROM sessions WHERE uid = ? ORDER BY time DESC LIMIT 10", [$uid]);
-    $sessions_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $ip       = htmlspecialchars(my_inet_ntop($db->unescape_binary($row['ip'])), ENT_QUOTES, 'UTF-8');
-        $ua_short = mb_substr($row['useragent'], 0, 60);
-        $time_ago = my_datee('relative', (int)$row['time']);
-        $sessions_html .= '<li class="list-group-item py-2">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <code class="small">' . $ip . '</code>
-                    <div class="text-muted" style="font-size:.72rem">' . htmlspecialchars($ua_short, ENT_QUOTES, 'UTF-8') . '</div>
-                </div>
-                <small class="text-muted text-nowrap ms-2">' . $time_ago . '</small>
-            </div>
-        </li>';
-    }
-    if (!$sessions_html) $sessions_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['sec_no_sessions'] . '</li>';
+    $ipLink = fn(string $v): string => $v === '—' ? $v
+        : '<a href="' . $BASEURL . '/admin/index.php?act=ipsearch&amp;ip=' . rawurlencode(html_entity_decode($v)) . '"><code>' . $v . '</code></a>';
 
-    // IP история
-    $regip  = $userdata['regip']  ? htmlspecialchars(my_inet_ntop($db->unescape_binary($userdata['regip'])),  ENT_QUOTES, 'UTF-8') : '—';
-    $lastip = $userdata['lastip'] ? htmlspecialchars(my_inet_ntop($db->unescape_binary($userdata['lastip'])), ENT_QUOTES, 'UTF-8') : '—';
-    $ip_warn = ($regip !== $lastip && $regip !== '—' && $lastip !== '—')
-        ? '<div class="alert alert-warning py-2 mt-2 small"><i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['sec_ip_differs'] . '</div>'
-        : '';
+    $ipBody = '<div class="st-rows">'
+            . eu_row('fa-user-plus', $L['sec_reg_ip'], $ipLink($regip))
+            . eu_row('fa-location-dot', $L['sec_last_ip'], $ipLink($lastip))
+            . '</div>'
+            . (($regip !== $lastip && $regip !== '—' && $lastip !== '—')
+                ? '<div class="eu-note eu-note--warning mt-3"><i class="fa-solid fa-triangle-exclamation"></i><div>' . $L['sec_ip_differs'] . '</div></div>'
+                : '');
 
-    // Login attempts
     $attempts = (int)$userdata['loginattempts'];
     $lockout  = (int)$userdata['loginlockoutexpiry'];
-    $lockout_html = ($lockout > time())
-        ? '<span class="badge bg-danger">' . ags_fmt($lang->edituser['sec_locked_until'], my_datee($dateformat, $lockout)) . '</span>'
-        : ($attempts > 0 ? '<span class="badge bg-warning text-dark">' . ags_fmt($lang->edituser['sec_failed_attempts'], $attempts) . '</span>' : '<span class="badge bg-success">' . $lang->edituser['sec_ok'] . '</span>');
+    $status   = $lockout > TIMENOW
+        ? eu_badge('danger', 'fa-lock', ags_fmt($L['sec_locked_until'], my_datee($dateformat, $lockout)))
+        : ($attempts > 0 ? eu_badge('warning', 'fa-triangle-exclamation', ags_fmt($L['sec_failed_attempts'], $attempts)) : eu_badge('success', 'fa-check', $L['sec_ok']));
 
-    // Passkey
-    $passkey = htmlspecialchars($userdata['passkey'], ENT_QUOTES, 'UTF-8');
+    $loginBody = '<div class="st-rows">'
+               . eu_row('fa-shield-halved', $L['sec_login_status'], $status)
+               . eu_row('fa-right-to-bracket', $L['sec_last_login'], eu_dt((int)($userdata['last_login'] ?? 0), (string)$dateformat))
+               . eu_row('fa-calendar-days', $L['info_registered'], eu_dt((int)$userdata['added'], (string)$dateformat))
+               . '</div>';
+    $lockBtn = ($attempts > 0 || $lockout > 0)
+        ? '<button type="button" class="btn btn-sm btn-outline-warning st-pill" data-eu-action="reset_loginattempts" data-eu-confirm="' . htmlspecialchars((string)$L['js_confirm']) . '">'
+          . '<i class="fa-solid fa-unlock me-1"></i>' . $L['btn_reset_lockout'] . '</button>'
+        : '';
 
-    return '
-    <div class="row g-4">
+    $passkey = htmlspecialchars((string)$userdata['passkey'], ENT_QUOTES, 'UTF-8');
+    $pkBody  = '<div class="eu-passkey">'
+             . '<code id="passkeyText" class="eu-passkey__val is-hidden">' . $passkey . '</code>'
+             . '<button type="button" class="st-icon-btn border-0" id="passkeyToggle" title="' . htmlspecialchars((string)$L['sec_passkey']) . '"><i class="fa-solid fa-eye"></i></button>'
+             . '<button type="button" class="st-icon-btn border-0" id="passkeyCopy" data-copy="' . $passkey . '"><i class="fa-solid fa-copy"></i></button>'
+             . '</div>';
 
-        <!-- IP Info -->
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-network-wired me-2 text-primary"></i>' . $lang->edituser['sec_ip_info'] . '</h6>
-            <table class="table table-sm table-bordered">
-                <tr><th class="text-muted" style="width:40%">' . $lang->edituser['sec_reg_ip'] . '</th><td><code>' . $regip . '</code></td></tr>
-                <tr><th class="text-muted">' . $lang->edituser['sec_last_ip'] . '</th><td><code>' . $lastip . '</code></td></tr>
-            </table>
-            ' . $ip_warn . '
-        </div>
-
-        <!-- Login Security -->
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-lock me-2 text-warning"></i>' . $lang->edituser['sec_login_security'] . '</h6>
-            <table class="table table-sm table-bordered">
-                <tr><th class="text-muted" style="width:40%">' . $lang->edituser['sec_login_status'] . '</th><td>' . $lockout_html . '</td></tr>
-                <tr><th class="text-muted">' . $lang->edituser['sec_last_login'] . '</th><td>' . ($userdata['last_login'] ? my_datee($dateformat, (int)$userdata['last_login']) : '—') . '</td></tr>
-                <tr><th class="text-muted">' . $lang->edituser['info_registered'] . '</th><td>' . my_datee($dateformat, (int)$userdata['added']) . '</td></tr>
-            </table>
-            <!-- Reset lockout -->
-            <button type="button" class="btn btn-sm btn-outline-warning mt-2"
-        onclick="securityAction(\'reset_lockout\', ' . $uid . ', \'' . $postCode . '\', \'' . $h_script . '\')">
-    <i class="fas fa-unlock me-1"></i>' . $lang->edituser['btn_reset_lockout'] . '
-</button>
-        </div>
-
-        <!-- Passkey -->
-        <div class="col-12">
-            <h6 class="fw-bold mb-3"><i class="fas fa-key me-2 text-success"></i>' . $lang->edituser['sec_passkey'] . '</h6>
-            <div class="d-flex align-items-center gap-2">
-                <code class="passkey-text border rounded px-3 py-2 bg-body-secondary"
-                      id="passkeyText" style="filter:blur(4px);user-select:none;letter-spacing:.1em">
-                    ' . $passkey . '
-                </code>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="passkeyToggle">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="passkeyToggle" onclick="navigator.clipboard.writeText(\'' . $passkey . '\')">
-                    <i class="fas fa-copy"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- Active Sessions -->
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0"><i class="fas fa-desktop me-2 text-info"></i>' . $lang->edituser['sec_active_sessions'] . '</h6>
-                
-				<button type="button" class="btn btn-sm btn-outline-danger"
-        onclick="securityAction(\'kill_sessions\', ' . $uid . ', \'' . $postCode . '\', \'' . $h_script . '\')">
-    <i class="fas fa-sign-out-alt me-1"></i>' . $lang->edituser['btn_kill_sessions'] . '
-</button>
-				
-            </div>
-            <ul class="list-group list-group-flush border rounded-3" style="max-height:240px;overflow-y:auto">
-                ' . $sessions_html . '
-            </ul>
-        </div>
-
-    </div>
-
-    <script>
-    (function(){
-        var el  = document.getElementById("passkeyText");
-        var btn = document.getElementById("passkeyToggle");
-        if (!el || !btn) return;
-        btn.addEventListener("click", function(){
-            var hidden = el.style.filter !== "none";
-            el.style.filter      = hidden ? "none" : "blur(4px)";
-            el.style.userSelect  = hidden ? "text" : "none";
-            btn.querySelector("i").className = hidden ? "fas fa-eye-slash" : "fas fa-eye";
-        });
-    }());
-	
-	
-	
-	function quickBan(uid, bannedGid, postKey, script) {
-        var reason = document.getElementById("banReason").value.trim();
-        var errEl  = document.getElementById("banReasonError");
-        if (!reason) {
-            errEl.classList.remove("d-none");
-            return;
-        }
-        errEl.classList.add("d-none");
-
-        var duration = document.getElementById("banDuration").value;
-        var sendPm   = document.getElementById("banSendPM").checked ? "1" : "";
-        var btn      = document.getElementById("quickBanSubmit");
-        btn.disabled = true;
-        btn.textContent = "";
-        var spin = document.createElement("i");
-        spin.className = "fas fa-spinner fa-spin me-1";
-        btn.appendChild(spin);
-        btn.appendChild(document.createTextNode(t("ban_banning", "Banning…")));
-
-        var data = new FormData();
-        data.append("action",       "updateuser");
-        data.append("userid",       uid);
-        data.append("my_post_key",  postKey);
-        data.append("quick_ban",    "1");
-        data.append("ban_reason",   reason);
-        data.append("ban_duration", duration);
-        data.append("banned_gid",   bannedGid);
-        data.append("ban_send_pm",  sendPm);
-
-        fetch(script, { method: "POST", body: data })
-            .then(function() { location.reload(); })
-            .catch(function(e) {
-                btn.disabled = false;
-                btn.textContent = "";
-                var ico = document.createElement("i");
-                ico.className = "fas fa-ban me-2";
-                btn.appendChild(ico);
-                btn.appendChild(document.createTextNode(t("ban_user", "Ban User")));
-                var msg = t("error", "Error: {1}", e);
-                if (window.agsAlert) { window.agsAlert(msg, "error"); } else { alert(msg); }
-            });
+    $sessions = '';
+    $q = $db->sql_query_prepared('SELECT ip, time, useragent FROM sessions WHERE uid = ? ORDER BY time DESC LIMIT 10', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $sessions .= '<li class="eu-list__item"><div class="min-w-0">'
+                   . '<div class="eu-list__main"><code>' . $ip($r['ip']) . '</code></div>'
+                   . '<div class="eu-list__sub text-truncate">' . htmlspecialchars(mb_strimwidth((string)$r['useragent'], 0, 90, '…'), ENT_QUOTES, 'UTF-8') . '</div>'
+                   . '</div><div class="eu-list__side eu-hint">' . my_datee('relative', (int)$r['time']) . '</div></li>';
     }
-	
-	
-	
-	
-    </script>';
+    $killBtn = $sessions !== ''
+        ? '<button type="button" class="btn btn-sm btn-outline-danger st-pill" data-eu-action="kill_sessions" data-eu-danger="1" data-eu-confirm="' . htmlspecialchars((string)$L['js_confirm']) . '">'
+          . '<i class="fa-solid fa-right-from-bracket me-1"></i>' . $L['btn_kill_sessions'] . '</button>'
+        : '';
+
+    return '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-network-wired', 'primary', $L['sec_ip_info'], $ipBody) . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-lock', 'warning', $L['sec_login_security'], $loginBody, $lockBtn) . '</div>'
+         .   '<div class="col-12">' . eu_card('fa-key', 'success', $L['sec_passkey'], $pkBody) . '</div>'
+         .   '<div class="col-12">' . eu_card('fa-desktop', 'info', $L['sec_active_sessions'],
+                $sessions !== '' ? '<ul class="eu-list eu-list--scroll">' . $sessions . '</ul>' : eu_empty('fa-desktop', $L['sec_no_sessions']),
+                $killBtn, 'eu-flush') . '</div>'
+         . '</div>';
 }
 
-/**
- * Render Send PM modal trigger tab-section
- */
-function renderSendPMModal(): string
+/** Hit & Run (порог — настройка hr_min_seed_hours, как в cron weekly_cleanups) */
+function renderHitRunTab(): string
 {
-    global $userdata, $mybb, $BASEURL, $lang;
-    $uid      = (int)$userdata['id'];
-    $username = htmlspecialchars_uni($userdata['username']);
-    $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
-    $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
+    global $userdata, $db, $BASEURL, $dateformat, $lang, $hr_min_seed_hours;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
+    $min = max(1, (int)($hr_min_seed_hours ?? 24));
+
+    $finished = (int)$userdata['snatch_done'];
+
+    $rows = '';
+    $hnr  = 0;
+    $q = $db->sql_query_prepared("
+        SELECT s.torrentid, t.name, s.downloaded, s.seedtime, s.completedat
+        FROM snatched s
+        LEFT JOIN torrents t ON t.id = s.torrentid
+        WHERE s.userid = ? AND s.finished = 'yes' AND s.seedtime < ?
+        ORDER BY s.completedat DESC
+    ", [$uid, $min * 3600]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $hnr++;
+        if ($hnr > 50) {
+            continue; // считаем все, показываем 50
+        }
+        $seedH   = round((int)$r['seedtime'] / 3600, 1);
+        $missing = round($min - $seedH, 1);
+        $pct     = (int)min(100, round($seedH / $min * 100));
+        $soft    = $seedH <= 0 ? 'danger' : ($missing > $min / 2 ? 'warning' : 'info');
+        $name    = $r['name'] !== null
+            ? '<a href="' . $BASEURL . '/details.php?id=' . (int)$r['torrentid'] . '">' . htmlspecialchars_uni((string)$r['name']) . '</a>'
+            : '<em class="text-body-secondary">' . $L['deleted_torrent'] . '</em>';
+
+        $rows .= '<tr class="st-row--bad">'
+               . '<td class="eu-td-name">' . $name . '<div class="eu-hint"><i class="fa-solid fa-clock me-1"></i>' . ags_fmt($L['hnr_missing'], ags_fmt($L['unit_hours'], $missing)) . '</div></td>'
+               . '<td class="eu-td-progress"><progress class="eu-progress eu-progress--' . $soft . '" value="' . $pct . '" max="100"></progress>'
+               .   '<div class="eu-hint text-center">' . ags_fmt($L['unit_hours'], $seedH) . ' / ' . ags_fmt($L['unit_hours'], $min) . '</div></td>'
+               . '<td class="text-end text-nowrap">' . mksize((int)$r['downloaded']) . '</td>'
+               . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['completedat'], (string)$dateformat) . '</td>'
+               . '</tr>';
+    }
+
+    $ratio  = $finished > 0 ? round($hnr / $finished * 100, 1) : 0.0;
+    $soft   = $ratio < 10 ? 'success' : ($ratio < 30 ? 'warning' : 'danger');
+    $status = $ratio < 10 ? $L['hnr_good'] : ($ratio < 30 ? $L['hnr_warning'] : $L['hnr_critical']);
+
+    $kpis = '<div class="eu-kpis mb-3">'
+          . eu_kpi('fa-download',             ts_nf((int)$userdata['snatch_total']), $L['hnr_total'])
+          . eu_kpi('fa-circle-check',         ts_nf($finished), $L['act_completed'])
+          . eu_kpi('fa-person-running',       ts_nf($hnr), $L['hnr_count'] . ' <span class="eu-hint">&lt;' . ags_fmt($L['hnr_under'], ags_fmt($L['unit_hours'], $min)) . '</span>')
+          . eu_kpi('fa-percent',              $ratio . '% ' . eu_badge($soft, '', $status), $L['hnr_ratio'])
+          . '</div>';
+
+    if ($ratio >= 10) {
+        // Кнопки ведут на реальные инструменты страницы: вкладки «Предупреждения» и «Права»
+        $alert = '<div class="eu-note eu-note--' . $soft . ' mb-3"><i class="fa-solid fa-triangle-exclamation"></i>'
+               . '<div class="flex-grow-1"><strong>' . ($ratio >= 30 ? $L['hnr_alert_critical'] : $L['hnr_alert_moderate']) . '</strong>'
+               . '<div>' . ($ratio >= 30 ? $L['hnr_alert_critical_text'] : $L['hnr_alert_moderate_text']) . '</div></div>'
+               . '<div class="d-flex flex-wrap gap-2">'
+               .   '<button type="button" class="btn btn-sm btn-warning st-pill" data-eu-goto="#warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>' . $L['btn_issue_warning'] . '</button>'
+               .   '<button type="button" class="btn btn-sm btn-outline-danger st-pill" data-eu-goto="#permissions"><i class="fa-solid fa-ban me-1"></i>' . $L['btn_restrict_dl'] . '</button>'
+               . '</div></div>';
+    } else {
+        $alert = '<div class="eu-note eu-note--success mb-3"><i class="fa-solid fa-thumbs-up"></i><div><strong>' . $L['hnr_good_title'] . '</strong><div>'
+               . htmlspecialchars((string)$L['hnr_good_text']) . '</div></div></div>';
+    }
+
+    $table = $rows !== ''
+        ? eu_table(
+            '<th>' . $L['th_torrent_name'] . '</th><th class="text-center">' . $L['th_seed_required'] . '</th>'
+          . '<th class="text-end">' . $L['stat_downloaded'] . '</th><th class="text-end">' . $L['act_completed'] . '</th>',
+            $rows)
+        : eu_empty('fa-circle-check', $L['hnr_none']);
+
+    return $kpis . $alert
+         . eu_card('fa-list', 'danger', $L['hnr_details'], $table, eu_badge('muted', '', ags_fmt($L['hnr_records'], $hnr)), 'eu-flush');
+}
+
+/** Форум */
+function renderForumTab(): string
+{
+    global $userdata, $db, $BASEURL, $dateformat, $lang;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
+
+    $posts = '';
+    $q = $db->sql_query_prepared('
+        SELECT p.pid, p.subject, p.dateline, p.message, t.subject AS thread_subject, f.name AS forum_name
+        FROM posts p
+        LEFT JOIN threads t ON t.tid = p.tid
+        LEFT JOIN forums  f ON f.fid = p.fid
+        WHERE p.uid = ?
+        ORDER BY p.dateline DESC
+        LIMIT 10', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $txt = trim(strip_tags((string)$r['message']));
+        $posts .= '<li class="eu-list__item"><div class="min-w-0">'
+                . '<div class="eu-list__main"><a href="' . $BASEURL . '/' . get_post_link((int)$r['pid']) . '#pid' . (int)$r['pid'] . '">'
+                .   htmlspecialchars_uni((string)($r['thread_subject'] ?: $r['subject'])) . '</a></div>'
+                . '<div class="eu-list__sub"><i class="fa-solid fa-folder me-1"></i>' . htmlspecialchars_uni((string)$r['forum_name']) . '</div>'
+                . ($txt !== '' ? '<div class="eu-list__sub">' . htmlspecialchars(mb_strimwidth($txt, 0, 120, '…'), ENT_QUOTES, 'UTF-8') . '</div>' : '')
+                . '</div><div class="eu-list__side eu-hint">' . my_datee($dateformat, (int)$r['dateline']) . '</div></li>';
+    }
+
+    $threads = '';
+    $q = $db->sql_query_prepared('
+        SELECT t.tid, t.subject, t.dateline, t.replies, t.views, f.name AS forum_name
+        FROM threads t
+        LEFT JOIN forums f ON f.fid = t.fid
+        WHERE t.uid = ?
+        ORDER BY t.dateline DESC
+        LIMIT 10', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $threads .= '<li class="eu-list__item"><div class="min-w-0">'
+                  . '<div class="eu-list__main"><a href="' . $BASEURL . '/' . get_thread_link((int)$r['tid']) . '">' . htmlspecialchars_uni((string)$r['subject']) . '</a></div>'
+                  . '<div class="eu-list__sub"><i class="fa-solid fa-folder me-1"></i>' . htmlspecialchars_uni((string)$r['forum_name'])
+                  .   '<span class="ms-2"><i class="fa-solid fa-reply me-1"></i>' . ags_fmt($L['forum_replies'], (int)$r['replies']) . '</span>'
+                  .   '<span class="ms-2"><i class="fa-solid fa-eye me-1"></i>' . (int)$r['views'] . '</span></div>'
+                  . '</div><div class="eu-list__side eu-hint">' . my_datee($dateformat, (int)$r['dateline']) . '</div></li>';
+    }
+
+    $chips = '<div class="eu-chips mb-3">'
+           . '<span class="eu-chip"><i class="fa-solid fa-comment"></i><b>' . ts_nf((int)$userdata['post_count']) . '</b>' . $L['forum_posts'] . '</span>'
+           . '<span class="eu-chip"><i class="fa-solid fa-file-lines"></i><b>' . ts_nf((int)$userdata['thread_count']) . '</b>' . $L['forum_threads'] . '</span>'
+           . '<span class="eu-chip"><i class="fa-solid fa-flag"></i><b>' . ts_nf((int)$userdata['report_count']) . '</b>' . $L['forum_reports_filed'] . '</span>'
+           . '</div>';
+
+    $allPosts   = '<a href="' . $BASEURL . '/search.php?action=finduser&amp;uid=' . $uid . '" class="btn btn-sm btn-outline-primary st-pill"><i class="fa-solid fa-magnifying-glass me-1"></i>' . $L['btn_all_posts'] . '</a>';
+    $allThreads = '<a href="' . $BASEURL . '/search.php?action=finduserthreads&amp;uid=' . $uid . '" class="btn btn-sm btn-outline-success st-pill"><i class="fa-solid fa-list me-1"></i>' . $L['btn_all_threads'] . '</a>';
+
+    return $chips
+         . '<div class="row g-3">'
+         .   '<div class="col-lg-6">' . eu_card('fa-comment', 'primary', $L['forum_last_posts'],
+                $posts !== '' ? '<ul class="eu-list eu-list--scroll">' . $posts . '</ul>' : eu_empty('fa-comment-slash', $L['forum_no_posts']), $allPosts, 'eu-flush') . '</div>'
+         .   '<div class="col-lg-6">' . eu_card('fa-file-lines', 'success', $L['forum_last_threads'],
+                $threads !== '' ? '<ul class="eu-list eu-list--scroll">' . $threads . '</ul>' : eu_empty('fa-file-circle-xmark', $L['forum_no_threads']), $allThreads, 'eu-flush') . '</div>'
+         . '</div>';
+}
+
+/** Данные графиков вкладки «Статистика» (пропущенные месяцы/дни дополняются нулями) */
+function buildChartData(int $uid): array
+{
+    global $db;
+
+    $q = $db->sql_query_prepared("
+        SELECT DATE_FORMAT(FROM_UNIXTIME(completedat), '%Y-%m') AS m, SUM(downloaded) AS dl, SUM(uploaded) AS ul
+        FROM snatched
+        WHERE userid = ? AND finished = 'yes' AND completedat >= ?
+        GROUP BY m", [$uid, (int)strtotime('first day of -11 months midnight', TIMENOW)]);
+    $byMonth = [];
+    while ($q && ($r = $db->fetch_array($q))) {
+        $byMonth[(string)$r['m']] = [round((float)$r['dl'] / 1073741824, 2), round((float)$r['ul'] / 1073741824, 2)];
+    }
+    $months = $dl = $ul = [];
+    for ($i = 11; $i >= 0; $i--) {
+        $m = date('Y-m', (int)strtotime("first day of -{$i} months", TIMENOW));
+        $months[] = $m;
+        $dl[] = $byMonth[$m][0] ?? 0;
+        $ul[] = $byMonth[$m][1] ?? 0;
+    }
+
+    $q = $db->sql_query_prepared('
+        SELECT DATE(FROM_UNIXTIME(completedat)) AS d, COUNT(*) AS c
+        FROM snatched
+        WHERE userid = ? AND completedat >= ?
+        GROUP BY d', [$uid, TIMENOW - 30 * 86400]);
+    $byDay = [];
+    while ($q && ($r = $db->fetch_array($q))) {
+        $byDay[(string)$r['d']] = (int)$r['c'];
+    }
+    $days = $dayData = [];
+    for ($i = 29; $i >= 0; $i--) {
+        $d = date('Y-m-d', TIMENOW - $i * 86400);
+        $days[]    = $d;
+        $dayData[] = $byDay[$d] ?? 0;
+    }
+
+    return ['months' => $months, 'dl' => $dl, 'ul' => $ul, 'days' => $days, 'day' => $dayData];
+}
+
+/** Модальное окно бана (обычная POST-форма, вне основной формы) */
+function renderQuickBanModal(bool $is_banned): string
+{
+    global $userdata, $db, $lang;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
+
+    $current = null;
+    if ($is_banned) {
+        $q = $db->sql_query_prepared('SELECT bantime, reason FROM banned WHERE uid = ? LIMIT 1', [$uid]);
+        $current = ($q ? $db->fetch_array($q) : null) ?: null;
+    }
+
+    $keys = [
+        '1-0-0' => 'opt_ban_1d', '2-0-0' => 'opt_ban_2d', '3-0-0' => 'opt_ban_3d', '4-0-0' => 'opt_ban_4d',
+        '5-0-0' => 'opt_ban_5d', '6-0-0' => 'opt_ban_6d', '7-0-0' => 'opt_ban_1w', '14-0-0' => 'opt_ban_2w',
+        '21-0-0' => 'opt_ban_3w', '0-1-0' => 'opt_ban_1m', '0-2-0' => 'opt_ban_2m', '0-3-0' => 'opt_ban_3m',
+        '0-4-0' => 'opt_ban_4m', '0-5-0' => 'opt_ban_5m', '0-6-0' => 'opt_ban_6m', '0-0-1' => 'opt_ban_1y',
+        '0-0-2' => 'opt_ban_2y', '---' => 'opt_ban_perm',
+    ];
+    $options = '';
+    foreach (fetch_ban_times() as $val => $label) {
+        $val = (string)$val;
+        $sel = ($current && (string)$current['bantime'] === $val) || (!$current && $val === '---');
+        $options .= '<option value="' . htmlspecialchars($val) . '"' . ($sel ? ' selected' : '') . '>'
+                  . htmlspecialchars((string)(isset($keys[$val]) ? $L[$keys[$val]] : $label)) . '</option>';
+    }
+
+    $username = htmlspecialchars_uni((string)$userdata['username']);
+    $title    = $is_banned ? ags_fmt($L['ban_title_edit'], $username) : ags_fmt($L['ban_title_new'], $username);
 
     return '
-<script src="' . $BASEURL . '/scripts/edit_delete_comment.js"></script>
-<div class="modal fade" id="sendPMModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">' . ags_fmt($lang->edituser['pm_title'], $username) . '</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal fade eu-modal" id="quickBanModal" tabindex="-1" aria-labelledby="quickBanTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="edituser.php">
+      <input type="hidden" name="action" value="updateuser">
+      <input type="hidden" name="userid" value="' . $uid . '">
+      <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
+      <input type="hidden" name="quick_ban" value="1">
+      <div class="modal-header">
+        <span class="st-ico st-soft-danger me-2"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . '"></i></span>
+        <h5 class="modal-title" id="quickBanTitle">' . $title . '</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
       </div>
-	  <form method="post" action="' . $h_script . '">
-        <input type="hidden" name="action"      value="updateuser">
-        <input type="hidden" name="userid"      value="' . $uid . '">
-        <input type="hidden" name="my_post_key" value="' . $postCode . '">
-        <input type="hidden" name="send_pm"     value="1">
-        <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">' . $lang->edituser['pm_subject'] . '</label>
-            <input type="text" name="pm_subject" class="form-control" required placeholder="' . $lang->edituser['ph_pm_subject'] . '">
-          </div>
-          <div class="mb-2">
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[b]\',\'[/b]\')"><b>B</b></button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[i]\',\'[/i]\')"><i>I</i></button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[u]\',\'[/u]\')"><u>U</u></button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[s]\',\'[/s]\')"><s>S</s></button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[left]\',\'[/left]\')">' . $lang->edituser['bb_left'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[center]\',\'[/center]\')">' . $lang->edituser['bb_center'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[right]\',\'[/right]\')">' . $lang->edituser['bb_right'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[color=red]\',\'[/color]\')">' . $lang->edituser['bb_red'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[size=18]\',\'[/size]\')">' . $lang->edituser['bb_size'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[url]\',\'[/url]\')">URL</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[img]\',\'[/img]\')">IMG</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[video]\',\'[/video]\')">' . $lang->edituser['bb_video'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[youtube]\',\'[/youtube]\')">YouTube</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[quote]\',\'[/quote]\')">' . $lang->edituser['bb_quote'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[code]\',\'[/code]\')">' . $lang->edituser['bb_code'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list]\n[*]\',\'\n[/list]\')">' . $lang->edituser['bb_list'] . '</button>
-            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list=1]\n[*]\',\'\n[/list]\')">' . $lang->edituser['bb_olist'] . '</button>
-          </div>
-          <textarea name="pm_message" class="form-control mb-3" rows="6" required placeholder="' . $lang->edituser['ph_pm_message'] . '"></textarea>
-          <h6>' . $lang->edituser['pm_preview'] . '</h6>
-          <div data-bb-preview class="border p-2 bg-light rounded" style="min-height:100px;"></div>
+      <div class="modal-body">
+        ' . eu_field($L['ban_duration'], '<select name="ban_duration" class="form-select">' . $options . '</select>', '', 'fa-hourglass-half') . '
+        ' . eu_field($L['ban_reason'],
+              '<textarea name="ban_reason" class="form-control" rows="3" maxlength="500" required placeholder="' . htmlspecialchars((string)$L['ph_ban_reason']) . '">'
+              . htmlspecialchars_uni((string)($current['reason'] ?? '')) . '</textarea>', '', 'fa-comment', true) . '
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="ban_send_pm" value="1" id="banSendPM"' . ($is_banned ? '' : ' checked') . '>
+          <label class="form-check-label" for="banSendPM">' . $L['ban_send_pm'] . '</label>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">' . $lang->edituser['cancel'] . '</button>
-          <button type="submit" class="btn btn-primary">
-            <i class="fas fa-paper-plane me-1"></i>' . $lang->edituser['btn_send_pm'] . '
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>' . $L['cancel'] . '</button>
+        <button type="submit" class="btn btn-danger st-pill"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . ' me-1"></i>'
+          . ($is_banned ? $L['ban_btn_update'] : $L['ban_btn_ban']) . '</button>
+      </div>
+    </form>
   </div>
 </div>';
 }
 
-
-
-
-/**
- * Render Hit & Run tab
- */
-function renderHitRunTab(): string
+/** Модальное окно ЛС (BBCode-кнопки и превью — /scripts/edit_delete_comment.js) */
+function renderSendPMModal(): string
 {
-    global $userdata, $db, $BASEURL, $dateformat, $lang;
-
-    $uid       = (int)$userdata['id'];
-    $min_hours = 24; // H&R если сидировал меньше N часов после завершения
-
-    // Статистика
-    $total    = (int)($userdata['snatch_total'] ?? 0);
-    $finished = (int)($userdata['snatch_done']  ?? 0);
-
-    $q   = $db->sql_query_prepared("SELECT COUNT(*) AS hnr_count FROM snatched WHERE userid = ? AND finished = 'yes' AND seedtime < ? * 3600", [$uid, $min_hours]);
-    $hnr = $q ? (int)($db->fetch_array($q)['hnr_count'] ?? 0) : 0;
-    
-    $hnr_ratio = $finished > 0 ? round($hnr / $finished * 100, 1) : 0;
-    $hnr_color = $hnr_ratio < 10 ? 'success' : ($hnr_ratio < 30 ? 'warning' : 'danger');
-    $hnr_status = $hnr_ratio < 10 ? $lang->edituser['hnr_good'] : ($hnr_ratio < 30 ? $lang->edituser['hnr_warning'] : $lang->edituser['hnr_critical']);
-
-    // Список H&R торрентов
-    $q = $db->sql_query_prepared("
-        SELECT s.torrentid, t.name, s.downloaded, s.seedtime, s.leechtime,
-               s.completedat, s.last_action
-        FROM snatched s
-        LEFT JOIN torrents t ON (s.torrentid = t.id)
-        WHERE s.userid = ?
-          AND s.finished = 'yes'
-          AND s.seedtime < ? * 3600
-        ORDER BY s.completedat DESC
-        LIMIT 50
-    ", [$uid, $min_hours]);
-
-    $rows = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $name     = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">' . $lang->edituser['deleted_torrent'] . '</em>';
-        $seed_hours = $row['seedtime'] ? round($row['seedtime'] / 3600, 1) : 0;
-        $required_hours = $min_hours;
-        $missing_hours = round($required_hours - $seed_hours, 1);
-        
-        $seedh = ags_fmt($lang->edituser['unit_hours'], $seed_hours);
-        $dl    = mksize((int)$row['downloaded']);
-        $date  = $row['completedat'] ? my_datee($dateformat, (int)$row['completedat']) : '—';
-        
-        // Определяем цвет и прогресс
-        $badge_color = $seed_hours == 0 ? 'danger' : ($missing_hours > 12 ? 'warning' : 'info');
-        $progress_width = min(100, round($seed_hours / $required_hours * 100));
-        
-        $rows .= '
-        <tr class="hnr-row">
-            <td class="align-middle">
-                <div class="d-flex flex-column">
-                    <a href="' . $BASEURL . '/details.php?id=' . (int)$row['torrentid'] . '"
-                       class="text-decoration-none fw-semibold torrent-link">
-                        <i class="fas fa-skull-crossbones text-danger me-1"></i>
-                        ' . $name . '
-                    </a>
-                    <div class="text-muted small mt-1">
-                        <i class="fas fa-clock me-1"></i>' . ags_fmt($lang->edituser['hnr_missing'], ags_fmt($lang->edituser['unit_hours'], $missing_hours)) . '
-                    </div>
-                </div>
-            </td>
-            <td class="align-middle text-center" style="min-width: 120px">
-                <div class="d-flex flex-column">
-                    <div class="progress hnr-progress mb-1" style="height: 6px;">
-                        <div class="progress-bar bg-' . $badge_color . '" 
-                             style="width: ' . $progress_width . '%"
-                             role="progressbar"></div>
-                    </div>
-                    <div>
-                        <span class="badge bg-' . $badge_color . '">' . $seedh . ' / ' . ags_fmt($lang->edituser['unit_hours'], $required_hours) . '</span>
-                    </div>
-                </div>
-            </td>
-            <td class="align-middle text-center">
-                <span class="badge bg-secondary-subtle text-secondary border">
-                    <i class="fas fa-database me-1"></i>' . $dl . '
-                </span>
-            </td>
-            <td class="align-middle text-center">
-                <small class="text-muted">
-                    <i class="far fa-calendar-alt me-1"></i>' . $date . '
-                </small>
-            </td>
-        </tr>';
-    }
-    
-    if (!$rows) {
-        $rows = '<tr><td colspan="4" class="text-center py-5">
-            <i class="fas fa-check-circle fa-3x text-success mb-3 d-block"></i>
-            <p class="text-muted mb-0">' . $lang->edituser['hnr_none'] . '</p>
-        </td></tr>';
-    }
-
-    return '
-    
-	<style>
-    .hnr-stats-card {
-        background: white;
-        border: none;
-        transition: all 0.3s ease;
-        cursor: default;
-        border-radius: 16px;
-        overflow: hidden;
-    }
-	
-    
-    .hnr-stats-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.08);
-    }
-	
-	 .stat-circle {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 12px;
-    }
-	
-	.risk-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 50px;
-        font-weight: 600;
-        font-size: 0.85rem;
-    }
-	
-	 .table-hnr {
-        border-radius: 12px;
-        overflow: hidden;
-    }
-	
-	</style>
-
-    <!-- H&R Summary Cards -->
-    <div class="row g-3 mb-5">
-        <div class="col-md-3">
-            <div class="hnr-stats-card card shadow-sm text-center h-100">
-                <div class="card-body">
-                    <div class="stat-circle bg-primary bg-opacity-10 mx-auto">
-                        <i class="fas fa-chart-line fa-2x text-primary"></i>
-                    </div>
-                    <div class="fw-bold fs-2 text-primary">' . number_format($total) . '</div>
-                    <small class="text-muted">' . $lang->edituser['hnr_total'] . '</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="hnr-stats-card card shadow-sm text-center h-100">
-                <div class="card-body">
-                    <div class="stat-circle bg-success bg-opacity-10 mx-auto">
-                        <i class="fas fa-check-circle fa-2x text-success"></i>
-                    </div>
-                    <div class="fw-bold fs-2 text-success">' . number_format($finished) . '</div>
-                    <small class="text-muted">' . $lang->edituser['act_completed'] . '</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="hnr-stats-card card shadow-sm text-center h-100">
-                <div class="card-body">
-                    <div class="stat-circle bg-danger bg-opacity-10 mx-auto">
-                        <i class="fas fa-exclamation-triangle fa-2x text-danger"></i>
-                    </div>
-                    <div class="fw-bold fs-2 text-danger">' . number_format($hnr) . '</div>
-                    <small class="text-muted">' . $lang->edituser['hnr_count'] . '</small>
-                    <div class="text-muted small mt-1">
-                        <i class="fas fa-hourglass-half me-1"></i>&lt;' . ags_fmt($lang->edituser['hnr_under'], ags_fmt($lang->edituser['unit_hours'], $min_hours)) . '
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="hnr-stats-card card shadow-sm text-center h-100">
-                <div class="card-body">
-                    <div class="stat-circle bg-' . $hnr_color . ' bg-opacity-10 mx-auto">
-                        <i class="fas fa-percent fa-2x text-' . $hnr_color . '"></i>
-                    </div>
-                    <div class="fw-bold fs-2 text-' . $hnr_color . '">' . $hnr_ratio . '%</div>
-                    <small class="text-muted">' . $lang->edituser['hnr_ratio'] . '</small>
-                    <div class="text-muted small mt-1">
-                        <span class="risk-badge bg-' . $hnr_color . ' bg-opacity-10 text-' . $hnr_color . '">
-                            <i class="fas fa-chart-simple me-1"></i>' . $hnr_status . '
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Warning Alert -->
-    ' . ($hnr_ratio >= 10 ? '
-    <div class="alert alert-' . $hnr_color . ' border-0 shadow-sm mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
-        <div class="d-flex align-items-center gap-3">
-            <i class="fas fa-exclamation-triangle fa-2x"></i>
-            <div>
-                <strong class="d-block">' . ($hnr_ratio >= 30 ? $lang->edituser['hnr_alert_critical'] : $lang->edituser['hnr_alert_moderate']) . '</strong>
-                <small>' . ($hnr_ratio >= 30 ? $lang->edituser['hnr_alert_critical_text'] : $lang->edituser['hnr_alert_moderate_text']) . '</small>
-            </div>
-        </div>
-        ' . ($hnr_ratio >= 30 ? '
-        <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-warning" onclick="showToast(t(\'hnr_warn_issued\', \'Leech warning issued\'), \'warning\')">
-                <i class="fas fa-exclamation-triangle me-1"></i>' . $lang->edituser['btn_issue_warning'] . '
-            </button>
-            <button class="btn btn-sm btn-danger" onclick="showToast(t(\'hnr_dl_restricted\', \'Download rights restricted\'), \'error\')">
-                <i class="fas fa-ban me-1"></i>' . $lang->edituser['btn_restrict_dl'] . '
-            </button>
-        </div>' : '') . '
-    </div>' : '
-    <div class="alert alert-success border-0 shadow-sm mb-4 d-flex align-items-center gap-3">
-        <i class="fas fa-thumbs-up fa-2x"></i>
-        <div>
-            <strong>' . $lang->edituser['hnr_good_title'] . '</strong>
-            <small class="d-block">' . htmlspecialchars($lang->edituser['hnr_good_text']) . '</small>
-        </div>
-    </div>') . '
-
-    <!-- H&R List Table -->
-    <div class="card shadow-sm border-0 rounded-4 overflow-hidden">
-        <div class="card-header bg-white border-0 py-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="fw-bold mb-0">
-                    <i class="fas fa-list me-2 text-danger"></i>' . $lang->edituser['hnr_details'] . '
-                </h6>
-                <span class="badge bg-secondary">' . ags_fmt($lang->edituser['hnr_records'], $hnr) . '</span>
-            </div>
-        </div>
-        <div class="card-body p-0">
-    <div class="table-responsive">
-        <table class="table table-hover table-sm align-middle mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th><i class="fas fa-torrent me-2"></i>' . $lang->edituser['th_torrent_name'] . '</th>
-                    <th class="text-center" style="width: 180px"><i class="fas fa-clock me-2"></i>' . $lang->edituser['th_seed_required'] . '</th>
-                    <th class="text-center" style="width: 120px"><i class="fas fa-database me-2"></i>' . $lang->edituser['stat_downloaded'] . '</th>
-                    <th class="text-center" style="width: 140px"><i class="far fa-calendar-alt me-2"></i>' . $lang->edituser['act_completed'] . '</th>
-                </tr>
-            </thead>
-            <tbody>' . $rows . '</tbody>
-        </table>
-    </div>
-</div>
-    </div>';
-}
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Render Forum Activity tab
- */
-function renderForumTab(): string
-{
-    global $userdata, $db, $BASEURL, $dateformat, $lang;
-
+    global $userdata, $lang;
+    $L   = $lang->edituser;
     $uid = (int)$userdata['id'];
 
-    // Counts
-    $post_count   = (int)($userdata['post_count']   ?? 0);
-    $thread_count = (int)($userdata['thread_count'] ?? 0);
-
-    $report_count = (int)($userdata['report_count'] ?? 0);
-	
-    // Последние 10 постов
-    $q = $db->sql_query_prepared("
-        SELECT p.pid, p.tid, p.fid, p.subject, p.dateline, p.message,
-               t.subject AS thread_subject, f.name AS forum_name
-        FROM posts p
-        LEFT JOIN threads t ON (p.tid = t.tid)
-        LEFT JOIN forums  f ON (p.fid = f.fid)
-        WHERE p.uid = ?
-        ORDER BY p.dateline DESC
-        LIMIT 10
-    ", [$uid]);
-    $posts_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $thread = htmlspecialchars_uni($row['thread_subject'] ?: $row['subject']);
-        $forum  = htmlspecialchars_uni($row['forum_name'] ?? '');
-        $text   = mb_substr(strip_tags($row['message'] ?? ''), 0, 100);
-        $date   = my_datee($dateformat, (int)$row['dateline']);
-        $posts_html .= '
-        <li class="list-group-item py-2">
-            <div class="d-flex justify-content-between align-items-start">
-                <div class="me-2">
-                    <a href="' . $BASEURL . '/' . get_post_link((int)$row['pid']) . '#pid' . (int)$row['pid'] . '"
-                       class="text-decoration-none small fw-semibold">' . $thread . '</a>
-                    <div class="text-muted" style="font-size:.72rem">
-                        <i class="fas fa-folder me-1"></i>' . $forum . '
-                    </div>
-                    <div class="text-muted small mt-1">' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . ($text ? '…' : '') . '</div>
-                </div>
-                <small class="text-muted text-nowrap">' . $date . '</small>
-            </div>
-        </li>';
+    $bb = '';
+    foreach ([
+        ['[b]', '[/b]', '<b>B</b>'], ['[i]', '[/i]', '<i>I</i>'], ['[u]', '[/u]', '<u>U</u>'], ['[s]', '[/s]', '<s>S</s>'],
+        ['[left]', '[/left]', $L['bb_left']], ['[center]', '[/center]', $L['bb_center']], ['[right]', '[/right]', $L['bb_right']],
+        ['[color=red]', '[/color]', $L['bb_red']], ['[size=18]', '[/size]', $L['bb_size']],
+        ['[url]', '[/url]', 'URL'], ['[img]', '[/img]', 'IMG'], ['[video]', '[/video]', $L['bb_video']], ['[youtube]', '[/youtube]', 'YouTube'],
+        ['[quote]', '[/quote]', $L['bb_quote']], ['[code]', '[/code]', $L['bb_code']],
+        ["[list]\n[*]", "\n[/list]", $L['bb_list']], ["[list=1]\n[*]", "\n[/list]", $L['bb_olist']],
+    ] as [$open, $close, $label]) {
+        $bb .= '<button class="btn btn-sm btn-outline-secondary" type="button" data-bb-open="' . htmlspecialchars($open) . '" data-bb-close="' . htmlspecialchars($close) . '">' . $label . '</button>';
     }
-    if (!$posts_html) $posts_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['forum_no_posts'] . '</li>';
-
-    // Последние 10 тредов
-    $q = $db->sql_query_prepared("
-        SELECT t.tid, t.fid, t.subject, t.dateline, t.replies, t.views,
-               f.name AS forum_name
-        FROM threads t
-        LEFT JOIN forums f ON (t.fid = f.fid)
-        WHERE t.uid = ?
-        ORDER BY t.dateline DESC
-        LIMIT 10
-    ", [$uid]);
-    $threads_html = '';
-    while ($q && ($row = $db->fetch_array($q))) {
-        $subj  = htmlspecialchars_uni($row['subject']);
-        $forum = htmlspecialchars_uni($row['forum_name'] ?? '');
-        $date  = my_datee($dateformat, (int)$row['dateline']);
-        $threads_html .= '
-        <li class="list-group-item py-2">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <a href="' . $BASEURL . '/' . get_thread_link((int)$row['tid']) . '"
-                       class="text-decoration-none small fw-semibold">' . $subj . '</a>
-                    <div class="text-muted" style="font-size:.72rem">
-                        <i class="fas fa-folder me-1"></i>' . $forum . '
-                        <span class="ms-2"><i class="fas fa-reply me-1"></i>' . ags_fmt($lang->edituser['forum_replies'], (int)$row['replies']) . '</span>
-                        <span class="ms-2"><i class="fas fa-eye me-1"></i>' . (int)$row['views'] . '</span>
-                    </div>
-                </div>
-                <small class="text-muted text-nowrap">' . $date . '</small>
-            </div>
-        </li>';
-    }
-    if (!$threads_html) $threads_html = '<li class="list-group-item text-muted text-center py-3">' . $lang->edituser['forum_no_threads'] . '</li>';
 
     return '
-    <!-- Counts -->
-    <div class="d-flex flex-wrap gap-3 mb-4">
-        <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
-            <div class="fw-bold fs-4 text-primary">' . number_format($post_count) . '</div>
-            <small class="text-muted">' . $lang->edituser['forum_posts'] . '</small>
-        </div>
-        <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
-            <div class="fw-bold fs-4 text-success">' . number_format($thread_count) . '</div>
-            <small class="text-muted">' . $lang->edituser['forum_threads'] . '</small>
-        </div>
-        <div class="border rounded-3 px-4 py-3 text-center" style="min-width:120px">
-            <div class="fw-bold fs-4 text-warning">' . number_format($report_count) . '</div>
-            <small class="text-muted">' . $lang->edituser['forum_reports_filed'] . '</small>
-        </div>
-    </div>
-
-    <div class="row g-4">
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-comment me-2 text-primary"></i>' . $lang->edituser['forum_last_posts'] . '</h6>
-            <ul class="list-group list-group-flush border rounded-3" style="max-height:320px;overflow-y:auto">
-                ' . $posts_html . '
-            </ul>
-        </div>
-        <div class="col-md-6">
-            <h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2 text-success"></i>' . $lang->edituser['forum_last_threads'] . '</h6>
-            <ul class="list-group list-group-flush border rounded-3" style="max-height:320px;overflow-y:auto">
-                ' . $threads_html . '
-            </ul>
-        </div>
-    </div>
-	
-	
-	  <div class="text-center mt-4">
-        <a href="' . $BASEURL . '/search.php?action=finduser&uid=' . $uid . '" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-search me-1"></i>' . $lang->edituser['btn_all_posts'] . '
-        </a>
-        <a href="' . $BASEURL . '/search.php?action=finduserthreads&uid=' . $uid . '" class="btn btn-outline-success btn-sm ms-2">
-            <i class="fas fa-list me-1"></i>' . $lang->edituser['btn_all_threads'] . '
-        </a>
-    </div>
-	
-	
-	
-	';
+<div class="modal fade eu-modal" id="sendPMModal" tabindex="-1" aria-labelledby="sendPMTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form class="modal-content" method="post" action="edituser.php">
+      <input type="hidden" name="action" value="updateuser">
+      <input type="hidden" name="userid" value="' . $uid . '">
+      <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
+      <input type="hidden" name="send_pm" value="1">
+      <div class="modal-header">
+        <span class="st-ico st-soft-primary me-2"><i class="fa-solid fa-paper-plane"></i></span>
+        <h5 class="modal-title" id="sendPMTitle">' . ags_fmt($L['pm_title'], htmlspecialchars_uni((string)$userdata['username'])) . '</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
+      </div>
+      <div class="modal-body bb-editor">
+        ' . eu_field($L['pm_subject'], '<input type="text" name="pm_subject" class="form-control" maxlength="120" required placeholder="' . htmlspecialchars((string)$L['ph_pm_subject']) . '">', '', 'fa-heading', true) . '
+        <div class="eu-bbbar">' . $bb . '</div>
+        <textarea name="pm_message" class="form-control mb-3" rows="6" required placeholder="' . htmlspecialchars((string)$L['ph_pm_message']) . '"></textarea>
+        <div class="eu-lbl"><i class="fa-solid fa-eye"></i>' . $L['pm_preview'] . '</div>
+        <div data-bb-preview class="eu-sig eu-sig--preview"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal">' . $L['cancel'] . '</button>
+        <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-paper-plane me-1"></i>' . $L['btn_send_pm'] . '</button>
+      </div>
+    </form>
+  </div>
+</div>';
 }
 
-
-
-
-
-
-/**
- * Build chart data for Statistics tab
- */
-function buildChartData(int $uid, $db): array
-{
-    global $db;
-	
-	// Upload/Download по месяцам из snatched (последние 12 мес)
-    $q = $db->sql_query_prepared("
-        SELECT
-            DATE_FORMAT(FROM_UNIXTIME(completedat), '%Y-%m') AS month,
-            SUM(downloaded) AS dl,
-            SUM(uploaded)   AS ul
-        FROM snatched
-        WHERE userid = ?
-          AND completedat >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 12 MONTH))
-          AND finished = 'yes'
-        GROUP BY month
-        ORDER BY month ASC
-    ", [$uid]);
-
-    $months = $dl_data = $ul_data = [];
-    while ($q && ($row = $db->fetch_array($q))) {
-        $months[]  = $row['month'];
-        $dl_data[] = round((int)$row['dl'] / 1073741824, 2); // GB
-        $ul_data[] = round((int)$row['ul'] / 1073741824, 2);
-    }
-
-    // Активность по дням (последние 30 дней из sitelog)
-    $q2 = $db->sql_query_prepared("
-    SELECT
-        DATE(FROM_UNIXTIME(completedat)) AS day,
-        COUNT(*) AS events
-    FROM snatched
-    WHERE userid = ?
-      AND completedat >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 30 DAY))
-      AND completedat > 0
-    GROUP BY day
-    ORDER BY day ASC
-", [$uid]);
-
-    $days = $day_data = [];
-    while ($q2 && ($row = $db->fetch_array($q2))) {
-        $days[]     = $row['day'];
-        $day_data[] = (int)$row['events'];
-    }
-
-    return compact('months', 'dl_data', 'ul_data', 'days', 'day_data');
-}
-
-
-
-
-
-
-/**
- * Quick Ban modal
- */
-function renderQuickBanModal(bool $is_banned = false): string
-{
-    global $userdata, $mybb, $db, $memperms, $lang;
-    $uid       = (int)$userdata['id'];
-    $username  = htmlspecialchars_uni($userdata['username']);
-    $postCode  = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
-    $h_script  = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
-
-
-    // Загружаем текущий бан если забанен
-    $current_ban = null;
-    if ($is_banned) {
-        $q = $db->sql_query_prepared("SELECT * FROM banned WHERE uid = ? LIMIT 1", [$uid]);
-        $current_ban = ($q ? $db->fetch_array($q) : null) ?: null;
-    }
-
-    $ban_times = fetch_ban_times();
-    // fetch_ban_times() остаётся на английском — эти подписи пишутся в modcomment.
-    // Для селекта показываем перевод; срок, добавленный плагином, — как есть.
-    $ban_label_keys = [
-        '1-0-0'  => 'opt_ban_1d', '2-0-0'  => 'opt_ban_2d', '3-0-0'  => 'opt_ban_3d',
-        '4-0-0'  => 'opt_ban_4d', '5-0-0'  => 'opt_ban_5d', '6-0-0'  => 'opt_ban_6d',
-        '7-0-0'  => 'opt_ban_1w', '14-0-0' => 'opt_ban_2w', '21-0-0' => 'opt_ban_3w',
-        '0-1-0'  => 'opt_ban_1m', '0-2-0'  => 'opt_ban_2m', '0-3-0'  => 'opt_ban_3m',
-        '0-4-0'  => 'opt_ban_4m', '0-5-0'  => 'opt_ban_5m', '0-6-0'  => 'opt_ban_6m',
-        '0-0-1'  => 'opt_ban_1y', '0-0-2'  => 'opt_ban_2y', '---'    => 'opt_ban_perm',
-    ];
-    $options   = '';
-    foreach ($ban_times as $val => $label) {
-        $val   = (string)$val;
-        $label = isset($ban_label_keys[$val]) ? $lang->edituser[$ban_label_keys[$val]] : (string)$label;
-        $sel = ($current_ban && $current_ban['bantime'] === $val) || (!$current_ban && $val === '---')
-            ? ' selected' : '';
-        $options .= "<option value='" . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . "'{$sel}>"
-                  . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . "</option>";
-    }
-
-    $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE title LIKE ? OR title LIKE ? LIMIT 1", ['%banned%', '%Banned%']);
-    $banned_group = $q ? $db->fetch_array($q) : null;
-    $banned_gid   = $banned_group ? (int)$banned_group['gid'] : 0;
-
-    $username_e   = $username;
-    $modal_title  = $is_banned ? ags_fmt($lang->edituser['ban_title_edit'], $username_e) : ags_fmt($lang->edituser['ban_title_new'], $username_e);
-    $header_class = $is_banned ? 'bg-warning text-dark' : 'bg-danger text-white';
-    $btn_class    = $is_banned ? 'btn-warning' : 'btn-danger';
-    $btn_label    = $is_banned ? $lang->edituser['ban_btn_update'] : $lang->edituser['ban_btn_ban'];
-    $btn_icon     = $is_banned ? 'fa-edit' : 'fa-ban';
-    $current_reason = htmlspecialchars_uni($current_ban['reason'] ?? '');
-
-    return "
-    <div class='modal fade' id='quickBanModal' tabindex='-1' aria-hidden='true'>
-        <div class='modal-dialog modal-dialog-centered'>
-            <div class='modal-content border-0 shadow'>
-                <div class='modal-header {$header_class}'>
-                    <h5 class='modal-title'>
-                        <i class='fas {$btn_icon} me-2'></i>{$modal_title}
-                    </h5>
-                    <button type='button' class='btn-close' data-bs-dismiss='modal'></button>
-                </div>
-                <div class='modal-body'>
-                    <div class='mb-3'>
-                        <label class='form-label fw-semibold'>" . $lang->edituser['ban_duration'] . "</label>
-                        <select id='banDuration' class='form-select'>
-                            {$options}
-                        </select>
-                    </div>
-                    <div class='mb-3'>
-                        <label class='form-label fw-semibold'>" . $lang->edituser['ban_reason'] . " <span class='text-danger'>*</span></label>
-                        <textarea id='banReason' class='form-control' rows='3'
-                                  placeholder='" . $lang->edituser['ph_ban_reason'] . "' required>{$current_reason}</textarea>
-                        <div id='banReasonError' class='text-danger small mt-1 d-none'>
-                            " . $lang->edituser['ban_reason_required'] . "
-                        </div>
-                    </div>
-                    <div class='mb-3'>
-                        <div class='form-check'>
-                            <input class='form-check-input' type='checkbox' id='banSendPM' " . (!$is_banned ? 'checked' : '') . ">
-                            <label class='form-check-label' for='banSendPM'>
-                                " . $lang->edituser['ban_send_pm'] . "
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class='modal-footer'>
-                    <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>
-                        <i class='fas fa-times me-1'></i>" . $lang->edituser['cancel'] . "
-                    </button>
-                    <button type='button' class='btn {$btn_class}' id='quickBanSubmit'
-                            onclick=\"quickBan({$uid}, {$banned_gid}, '{$postCode}', '{$h_script}')\">
-                        <i class='fas {$btn_icon} me-2'></i>{$btn_label}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>";
-}
-
-
-
-
-
-
-
-
-/**
- * Render Audit Log tab — timeline из modcomment
- */
+/** Журнал аудита — таймлайн из modcomment */
 function renderAuditTab(): string
 {
-    global $userdata, $usergroups, $mybb, $lang;
+    global $userdata, $lang;
+    $L = $lang->edituser;
 
-    $raw = (string)($userdata['modcomment'] ?? '');
-    //$isSuperMod = ($usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1');
-    $postCode  = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
-    $h_script  = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
-    $uid       = (int)$userdata['id'];
-
-    // ── Парсим строки modcomment ──────────────────────────────────────────────
-    // Формат: "2026-05-08 19:52 - Action text by Username"
-    //      или "2026-05-08 - Action text by Username" (без времени)
-    $lines = array_filter(array_map('trim', explode("\n", (string)($raw ?? ''))));
     $events = [];
-
-    foreach ($lines as $line) {
-        // Пробуем с временем: 2026-05-08 19:52 - ...
-       if (preg_match('/^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)\s+-\s+(.+?)\s+by\s+(.+)$/u', $line, $m)) {
-    $events[] = [
-        'date'   => $m[1],
-        'action' => trim((string)($m[2] ?? '')),
-        'by'     => trim((string)($m[3] ?? '')),
-    'raw'    => $line,
-];
+    foreach (array_filter(array_map('trim', explode("\n", (string)$userdata['modcomment']))) as $line) {
+        if (preg_match('/^(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?)\s+-\s+(.+?)\s+(?:by|-)\s+(\S.*)$/u', $line, $m)) {
+            $events[] = ['date' => $m[1], 'action' => trim($m[2]), 'by' => trim($m[3])];
         } else {
-            // Нераспознанная строка — показываем как есть
-            $events[] = [
-    'date'   => '',
-    'action' => (string)($line ?? ''),
-    'by'     => '',
-    'raw'    => (string)($line ?? ''),
-];
+            $events[] = ['date' => '', 'action' => $line, 'by' => ''];
         }
     }
 
-    // ── Определяем тип события → цвет и иконка ───────────────────────────────
-    $classify = function(string $action): array {
-        global $lang;
+    $classify = function (string $action) use ($L): array {
         $a = mb_strtolower($action);
-        if (preg_match('/warn|ban|restrict|leechwarn|demot/u', $a))
-            return ['danger',  'fa-exclamation-triangle', $lang->edituser['audit_cat_ban']];
-        if (preg_match('/unlock|unbann|lift|unwarn|removed|reset/u', $a))
-            return ['success', 'fa-unlock',               $lang->edituser['audit_cat_resolved']];
-        if (preg_match('/promot|upgrad/u', $a))
-            return ['success', 'fa-level-up-alt',         $lang->edituser['audit_cat_promotion']];
-        if (preg_match('/usergroup|group/u', $a))
-            return ['primary', 'fa-users',                $lang->edituser['audit_cat_group']];
-        if (preg_match('/avatar/u', $a))
-            return ['info',    'fa-image',                $lang->edituser['audit_cat_avatar']];
-        if (preg_match('/password/u', $a))
-            return ['warning', 'fa-key',                  $lang->edituser['audit_cat_password']];
-        if (preg_match('/session|login|lockout/u', $a))
-            return ['warning', 'fa-desktop',              $lang->edituser['audit_cat_session']];
-        if (preg_match('/pm sent|message/u', $a))
-            return ['info',    'fa-envelope',             $lang->edituser['audit_cat_pm']];
-        if (preg_match('/can(upload|download|comment)/u', $a))
-            return ['secondary','fa-toggle-off',          $lang->edituser['audit_cat_permission']];
-        if (preg_match('/email|username/u', $a))
-            return ['primary', 'fa-edit',                 $lang->edituser['audit_cat_profile']];
-        return ['secondary', 'fa-circle',                 $lang->edituser['audit_cat_change']];
+        return match (true) {
+            (bool)preg_match('/unlock|unbann|lift|warning removed|removed|reset|cleared/u', $a) => ['success',  'fa-unlock',              $L['audit_cat_resolved']],
+            (bool)preg_match('/warn|ban|restrict|demot/u', $a)                                => ['danger',   'fa-triangle-exclamation', $L['audit_cat_ban']],
+            (bool)preg_match('/promot|upgrad/u', $a)                                          => ['success',  'fa-arrow-trend-up',       $L['audit_cat_promotion']],
+            (bool)preg_match('/usergroup|group/u', $a)                                        => ['primary',  'fa-users',                $L['audit_cat_group']],
+            (bool)preg_match('/avatar/u', $a)                                                 => ['info',     'fa-image',                $L['audit_cat_avatar']],
+            (bool)preg_match('/password|passkey/u', $a)                                       => ['warning',  'fa-key',                  $L['audit_cat_password']],
+            (bool)preg_match('/session|login|lockout/u', $a)                                  => ['warning',  'fa-desktop',              $L['audit_cat_session']],
+            (bool)preg_match('/pm sent|message/u', $a)                                        => ['info',     'fa-envelope',             $L['audit_cat_pm']],
+            (bool)preg_match('/can(upload|download|comment)|enabled|moderateposts/u', $a)     => ['muted',    'fa-toggle-off',           $L['audit_cat_permission']],
+            (bool)preg_match('/email|username|usertitle|signature/u', $a)                     => ['primary',  'fa-pen-to-square',        $L['audit_cat_profile']],
+            default                                                                           => ['muted',    'fa-circle',               $L['audit_cat_change']],
+        };
     };
 
-    // ── Рендер timeline ───────────────────────────────────────────────────────
-    if (empty($events)) {
-        $timeline = '
-        <div class="text-center text-muted py-5">
-            <i class="fas fa-inbox fa-3x mb-3 d-block opacity-25"></i>
-            ' . $lang->edituser['audit_empty'] . '
-        </div>';
+    if (!$events) {
+        $body = eu_empty('fa-inbox', $L['audit_empty']);
     } else {
-        $items = '';
+        $body = '<ol class="eu-timeline">';
         foreach ($events as $ev) {
-            [$color, $icon, $label] = $classify($ev['action']);
-            $date = htmlspecialchars($ev['date'], ENT_QUOTES, 'UTF-8');
-            $act  = htmlspecialchars($ev['action'], ENT_QUOTES, 'UTF-8');
-            $by   = htmlspecialchars($ev['by'],     ENT_QUOTES, 'UTF-8');
-
-            $items .= "
-            <div class='audit-item d-flex gap-3 mb-3'>
-                <div class='audit-icon flex-shrink-0 bg-{$color} bg-opacity-10 border border-{$color} rounded-circle d-flex align-items-center justify-content-center' style='width:36px;height:36px'>
-                    <i class='fas {$icon} text-{$color} small'></i>
-                </div>
-                <div class='flex-grow-1 border-bottom pb-3'>
-                    <div class='d-flex justify-content-between align-items-start flex-wrap gap-1'>
-                        <div>
-                            <span class='badge bg-{$color}-subtle text-{$color} border border-{$color} me-2'>{$label}</span>
-                            <span class='fw-semibold'>{$act}</span>
-                        </div>
-                        " . ($date ? "<small class='text-muted text-nowrap'><i class='fas fa-clock me-1'></i>{$date}</small>" : '') . "
-                    </div>
-                    " . ($by ? "<div class='text-muted small mt-1'><i class='fas fa-user me-1'></i>" . ags_fmt($lang->edituser['audit_by'], '<strong>' . $by . '</strong>') . "</div>" : '') . "
-                </div>
-            </div>";
+            [$soft, $icon, $label] = $classify($ev['action']);
+            $body .= '<li class="eu-timeline__item" data-cat="' . $soft . '">'
+                   . '<span class="st-ico st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+                   . '<div class="eu-timeline__body min-w-0">'
+                   .   '<div class="eu-timeline__top">'
+                   .     eu_badge($soft, '', $label)
+                   .     '<span class="eu-timeline__act">' . htmlspecialchars($ev['action'], ENT_QUOTES, 'UTF-8') . '</span>'
+                   .     ($ev['date'] !== '' ? '<span class="eu-hint ms-auto text-nowrap"><i class="fa-solid fa-clock me-1"></i>' . htmlspecialchars($ev['date']) . '</span>' : '')
+                   .   '</div>'
+                   .   ($ev['by'] !== '' ? '<div class="eu-hint"><i class="fa-solid fa-user me-1"></i>' . ags_fmt($L['audit_by'], '<strong>' . htmlspecialchars($ev['by'], ENT_QUOTES, 'UTF-8') . '</strong>') . '</div>' : '')
+                   . '</div></li>';
         }
-
-        $timeline = "
-        <div class='audit-timeline'>
-            {$items}
-        </div>";
+        $body .= '</ol>';
     }
 
-    // ── Clear History кнопка (только суперадмин) ──────────────────────────────
-    $clearBtn = '';
-    
-        $clearBtn = "
-        <form method='post' action='{$h_script}' class='d-inline'>
-            <input type='hidden' name='action'       value='updateuser'>
-            <input type='hidden' name='userid'       value='{$uid}'>
-            <input type='hidden' name='my_post_key'  value='{$postCode}'>
-            <input type='hidden' name='clear_modcomment' value='1'>
-            <button type='submit' class='btn btn-sm btn-outline-danger' data-ags-danger='1'
-                    data-ags-confirm='" . htmlspecialchars((string)($lang->edituser['js_audit_clear_confirm'] ?? 'Clear entire audit history? This cannot be undone.'), ENT_QUOTES, 'UTF-8') . "'>
-                <i class='fas fa-trash me-1'></i>" . $lang->edituser['audit_clear'] . "
-            </button>
-        </form>";
-    
-
-    $count = count($events);
-
-    return "
-    <div class='d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2'>
-        <div>
-            <h5 class='fw-bold mb-0'>
-                <i class='fas fa-history me-2 text-primary'></i>" . $lang->edituser['tab_audit'] . "
-            </h5>
-            <small class='text-muted'>" . ags_fmt($lang->edituser['audit_count'], $count) . "</small>
-        </div>
-        <div class='d-flex gap-2 align-items-center flex-wrap'>
-            <!-- Filter -->
-            <select id='auditFilter' class='form-select form-select-sm' style='width:auto'
-                    onchange='filterAudit(this.value)'>
-                <option value='all'>" . $lang->edituser['opt_audit_all'] . "</option>
-                <option value='danger'>" . $lang->edituser['audit_cat_ban'] . "</option>
-                <option value='success'>" . $lang->edituser['audit_cat_resolved'] . "</option>
-                <option value='primary'>" . $lang->edituser['opt_audit_profile_group'] . "</option>
-                <option value='warning'>" . $lang->edituser['opt_audit_password_session'] . "</option>
-                <option value='info'>" . $lang->edituser['opt_audit_avatar_pm'] . "</option>
-                <option value='secondary'>" . $lang->edituser['tab_permissions'] . "</option>
-            </select>
-            {$clearBtn}
-        </div>
-    </div>
-
-    {$timeline}
-
-    <script>
-    function filterAudit(type) {
-        document.querySelectorAll('.audit-item').forEach(function(item) {
-            if (type === 'all') {
-                item.style.display = '';
-                return;
-            }
-            var icon = item.querySelector('.audit-icon');
-            item.style.display = icon && icon.classList.contains('bg-' + type) ? '' : 'none';
-        });
+    $extra = '<select id="auditFilter" class="form-select form-select-sm eu-select-auto" aria-label="' . htmlspecialchars((string)$L['tab_audit']) . '">'
+           . '<option value="all">' . $L['opt_audit_all'] . '</option>'
+           . '<option value="danger">' . $L['audit_cat_ban'] . '</option>'
+           . '<option value="success">' . $L['audit_cat_resolved'] . '</option>'
+           . '<option value="primary">' . $L['opt_audit_profile_group'] . '</option>'
+           . '<option value="warning">' . $L['opt_audit_password_session'] . '</option>'
+           . '<option value="info">' . $L['opt_audit_avatar_pm'] . '</option>'
+           . '<option value="muted">' . $L['tab_permissions'] . '</option>'
+           . '</select>';
+    if ($events && eu_can_edit_modcomment()) {
+        $extra .= '<button type="button" class="btn btn-sm btn-outline-danger st-pill" data-eu-action="clear_modcomment" data-eu-danger="1"'
+                . ' data-eu-confirm="' . htmlspecialchars((string)$L['js_audit_clear_confirm']) . '">'
+                . '<i class="fa-solid fa-trash-can me-1"></i>' . $L['audit_clear'] . '</button>';
     }
-    </script>";
-	
-	
 
-
+    return eu_card('fa-clipboard-list', 'primary',
+        $L['tab_audit'] . ' <span class="eu-hint">' . ags_fmt($L['audit_count'], count($events)) . '</span>',
+        $body, $extra);
 }
 
-
-
-
-
-
-
-
-
-/**
- * Render Torrent Activity tab
- * Sections: Active Peers | Snatch History | Uploaded Torrents
- */
+/** Торрент-активность: пиры, история скачиваний, раздачи */
 function renderTorrentActivityTab(): string
 {
     global $userdata, $db, $BASEURL, $lang;
-
+    $L   = $lang->edituser;
     $uid = (int)$userdata['id'];
 
-    // ── 1. Active peers ───────────────────────────────────────────────────────
-    $q = $db->sql_query_prepared("
-        SELECT p.torrent, p.uploaded, p.downloaded, p.to_go,
-               p.seeder, p.last_action, p.agent, p.ip, p.connectable,
+    $tlink = function (int $tid, ?string $name, string $icon, string $sub = '') use ($BASEURL, $L): string {
+        $label = $name !== null ? htmlspecialchars_uni($name) : '<em>' . $L['deleted_torrent'] . '</em>';
+        return '<div class="eu-td-name"><i class="fa-solid ' . $icon . ' me-1 text-body-secondary"></i>'
+             . ($name !== null && $tid > 0 ? '<a href="' . $BASEURL . '/details.php?id=' . $tid . '" title="' . htmlspecialchars_uni($name) . '">' . $label . '</a>' : $label)
+             . ($sub !== '' ? '<div class="eu-hint text-truncate"><i class="fa-solid fa-microchip me-1"></i>' . $sub . '</div>' : '')
+             . '</div>';
+    };
+
+    // ── 1. Пиры
+    $peerRows = '';
+    $peerCount = 0;
+    $q = $db->sql_query_prepared('
+        SELECT p.uploaded, p.downloaded, p.to_go, p.seeder, p.last_action, p.agent, p.connectable,
                t.name, t.size, t.id AS tid
         FROM peers p
         LEFT JOIN torrents t ON t.id = p.torrent
         WHERE p.userid = ?
         ORDER BY p.last_action DESC
-        LIMIT 50
-    ", [$uid]);
-
-    $peer_rows = '';
-    $peer_count = 0;
-    while ($q && ($row = $db->fetch_array($q))) {
-        $peer_count++;
-        $name      = htmlspecialchars($row['name'] ?? $lang->edituser['unknown'], ENT_QUOTES, 'UTF-8');
-        $tid       = (int)$row['tid'];
-        $seeder    = $row['seeder'] === 'yes';
-        $statusBadge = $seeder
-            ? "<span class='badge bg-success'><i class='fas fa-arrow-up me-1'></i>" . $lang->edituser['ta_seeding'] . "</span>"
-            : "<span class='badge bg-warning text-dark'><i class='fas fa-arrow-down me-1'></i>" . $lang->edituser['ta_leeching'] . "</span>";
-
-        $ul        = mksize($row['uploaded']);
-        $dl        = mksize($row['downloaded']);
-        $to_go     = mksize($row['to_go']);
-        $progress  = $row['size'] > 0
-            ? round((1 - $row['to_go'] / max($row['size'], 1)) * 100)
-            : ($seeder ? 100 : 0);
-        $progress  = max(0, min(100, $progress));
-
-        $last      = $row['last_action'] ? my_datee('relative', $row['last_action']) : '—';
-        $agent     = htmlspecialchars($row['agent'] ?? '', ENT_QUOTES, 'UTF-8');
-        $conn      = $row['connectable'] === 'yes'
-            ? "<i class='fas fa-plug text-success' title='" . $lang->edituser['ta_connectable'] . "'></i>"
-            : "<i class='fas fa-plug text-danger' title='" . $lang->edituser['ta_not_connectable'] . "'></i>";
-
-        $progressColor = $progress >= 100 ? 'success' : ($progress >= 50 ? 'info' : 'warning');
-
-        $peer_rows .= "
-        <tr class='peer-row'>
-            <td class='align-middle'>
-                <div class='d-flex flex-column'>
-                    <a href='{$BASEURL}/torrents.php?id={$tid}' class='text-decoration-none fw-semibold torrent-link' title='{$name}'>
-                        <i class='fas fa-torrent text-primary me-1 fs-10'></i>
-                        <span class='text-truncate d-inline-block' style='max-width: 280px'>{$name}</span>
-                    </a>
-                    <small class='text-muted mt-1'>
-                        <i class='fas fa-microchip me-1'></i>{$agent}
-                    </small>
-                </div>
-            </td>
-            <td class='align-middle text-center'>{$statusBadge}</td>
-            <td class='align-middle' style='min-width: 120px'>
-                <div class='d-flex flex-column'>
-                    <div class='progress' style='height: 6px;'>
-                        <div class='progress-bar bg-{$progressColor}' style='width: {$progress}%'></div>
-                    </div>
-                    <small class='text-muted text-center mt-1'>{$progress}%</small>
-                </div>
-            </td>
-            <td class='align-middle text-end'><span class='text-success fw-semibold'>{$ul}</span></td>
-            <td class='align-middle text-end'><span class='text-danger fw-semibold'>{$dl}</span></td>
-            <td class='align-middle text-center'><span class='badge bg-secondary-subtle text-secondary'>{$to_go}</span></td>
-            <td class='align-middle text-center'><small class='text-muted'><i class='far fa-clock me-1'></i>{$last}</small></td>
-            <td class='align-middle text-center'>{$conn}</td>
-        </tr>";
+        LIMIT 50', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $peerCount++;
+        $seeder = $r['seeder'] === 'yes';
+        $size   = (float)($r['size'] ?? 0);
+        $pct    = $size > 0 ? (int)max(0, min(100, round((1 - (float)$r['to_go'] / $size) * 100))) : ($seeder ? 100 : 0);
+        $peerRows .= '<tr>'
+            . '<td>' . $tlink((int)$r['tid'], $r['name'], 'fa-magnet', htmlspecialchars((string)$r['agent'], ENT_QUOTES, 'UTF-8')) . '</td>'
+            . '<td class="text-center">' . ($seeder ? eu_badge('success', 'fa-arrow-up', $L['ta_seeding']) : eu_badge('warning', 'fa-arrow-down', $L['ta_leeching'])) . '</td>'
+            . '<td class="eu-td-progress"><progress class="eu-progress eu-progress--' . ($pct >= 100 ? 'success' : ($pct >= 50 ? 'info' : 'warning')) . '" value="' . $pct . '" max="100"></progress><div class="eu-hint text-center">' . $pct . '%</div></td>'
+            . '<td class="text-end text-nowrap text-success">' . mksize($r['uploaded']) . '</td>'
+            . '<td class="text-end text-nowrap text-danger">' . mksize($r['downloaded']) . '</td>'
+            . '<td class="text-end text-nowrap">' . mksize($r['to_go']) . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['last_action']) . '</td>'
+            . '<td class="text-center"><i class="fa-solid fa-plug ' . ($r['connectable'] === 'yes' ? 'text-success' : 'text-danger')
+            .   '" title="' . htmlspecialchars((string)($r['connectable'] === 'yes' ? $L['ta_connectable'] : $L['ta_not_connectable'])) . '"></i></td>'
+            . '</tr>';
     }
+    $peers = $peerCount
+        ? eu_table('<th>' . $L['th_torrent'] . '</th><th class="text-center">' . $L['th_status'] . '</th><th class="text-center">' . $L['th_progress'] . '</th>'
+                 . '<th class="text-end">' . $L['stat_uploaded'] . '</th><th class="text-end">' . $L['stat_downloaded'] . '</th>'
+                 . '<th class="text-end">' . $L['th_remaining'] . '</th><th class="text-end">' . $L['th_last_seen'] . '</th><th class="text-center">' . $L['th_conn'] . '</th>', $peerRows)
+        : eu_empty('fa-satellite-dish', $L['ta_no_conn_text'], $L['ta_no_conn_title']);
 
-    if ($peer_count === 0) {
-        $peers_html = "
-        <div class='empty-state text-center py-5'>
-            <div class='empty-state-icon mb-3'>
-                <i class='fas fa-satellite-dish fa-4x text-muted opacity-25'></i>
-            </div>
-            <h6 class='text-muted'>" . $lang->edituser['ta_no_conn_title'] . "</h6>
-            <p class='text-muted small'>" . $lang->edituser['ta_no_conn_text'] . "</p>
-        </div>";
-    } else {
-        $peers_html = "
-        <div class='table-responsive'>
-            <table class='table table-hover'>
-                <thead class='table-light'>
-                    <tr>
-                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
-                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>" . $lang->edituser['th_status'] . "</th>
-                        <th><i class='fas fa-chart-line me-2'></i>" . $lang->edituser['th_progress'] . "</th>
-                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>" . $lang->edituser['stat_uploaded'] . "</th>
-                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>" . $lang->edituser['stat_downloaded'] . "</th>
-                        <th class='text-center'><i class='fas fa-hourglass-half me-2'></i>" . $lang->edituser['th_remaining'] . "</th>
-                        <th class='text-center'><i class='far fa-clock me-2'></i>" . $lang->edituser['th_last_seen'] . "</th>
-                        <th class='text-center'><i class='fas fa-plug me-2'></i>" . $lang->edituser['th_conn'] . "</th>
-                    </tr>
-                </thead>
-                <tbody>{$peer_rows}</tbody>
-            </table>
-        </div>";
-    }
-
-    // ── 2. Snatch history ─────────────────────────────────────────────────────
-    $q2 = $db->sql_query_prepared("
-        SELECT s.torrentid, s.uploaded, s.downloaded, s.seeder,
-               s.last_action, s.startdat, s.completedat,
-               s.seedtime, s.leechtime, s.finished, s.agent,
-               s.downspeed, s.upspeed,
-               t.name, t.size, t.id AS tid
+    // ── 2. История скачиваний
+    $snRows = '';
+    $snCount = 0;
+    $totUl = $totDl = 0.0;
+    $q = $db->sql_query_prepared('
+        SELECT s.uploaded, s.downloaded, s.seeder, s.last_action, s.startdat, s.completedat,
+               s.seedtime, s.finished, s.agent, t.name, t.id AS tid
         FROM snatched s
         LEFT JOIN torrents t ON t.id = s.torrentid
         WHERE s.userid = ?
         ORDER BY s.last_action DESC
-        LIMIT 100
-    ", [$uid]);
-
-    $snatch_rows = '';
-    $snatch_count = 0;
-    $total_ul = 0;
-    $total_dl = 0;
-
-    while ($q2 && ($row = $db->fetch_array($q2))) {
-        $snatch_count++;
-        $total_ul += (int)$row['uploaded'];
-        $total_dl += (int)$row['downloaded'];
-
-        $name     = htmlspecialchars($row['name'] ?? $lang->edituser['deleted_torrent'], ENT_QUOTES, 'UTF-8');
-        $tid      = (int)$row['tid'];
-        $finished = $row['finished'] === 'yes';
-
-        $finishedBadge = $finished
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check-circle me-1'></i>" . $lang->edituser['ta_complete'] . "</span>"
-            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-hourglass-half me-1'></i>" . $lang->edituser['act_incomplete'] . "</span>";
-
-        $seederBadge = $row['seeder'] === 'yes'
-            ? "<span class='badge bg-primary-subtle text-primary border border-primary ms-1'><i class='fas fa-arrow-up me-1'></i>" . $lang->edituser['ta_seeding'] . "</span>"
-            : '';
-
-        $ul       = mksize($row['uploaded']);
-        $dl       = mksize($row['downloaded']);
-        $seedtime = $row['seedtime'] ? mkprettytime((int)$row['seedtime']) : '—';
-        $started  = $row['startdat']    ? my_datee('relative', $row['startdat'])    : '—';
-        $completed = $row['completedat'] ? my_datee('relative', $row['completedat']) : '—';
-        $last     = $row['last_action'] ? my_datee('relative', $row['last_action']) : '—';
-        $agent    = htmlspecialchars($row['agent'] ?? '', ENT_QUOTES, 'UTF-8');
-        
-        $ratio = $row['downloaded'] > 0 
-            ? round($row['uploaded'] / $row['downloaded'], 2) 
-            : ($row['uploaded'] > 0 ? '∞' : '—');
-
-        $snatch_rows .= "
-        <tr class='snatch-row'>
-            <td class='align-middle'>
-                <div class='d-flex flex-column'>
-                    <a href='{$BASEURL}/torrents.php?id={$tid}' class='text-decoration-none fw-semibold torrent-link' title='{$name}'>
-                        <i class='fas fa-download text-success me-1 fs-10'></i>
-                        <span class='text-truncate d-inline-block' style='max-width: 260px'>{$name}</span>
-                    </a>
-                    <small class='text-muted mt-1'>
-                        <i class='fas fa-microchip me-1'></i>{$agent}
-                    </small>
-                </div>
-            </td>
-            <td class='align-middle'>{$finishedBadge}{$seederBadge}</td>
-            <td class='align-middle text-end fw-semibold text-success'>{$ul}</td>
-            <td class='align-middle text-end fw-semibold text-danger'>{$dl}</td>
-            <td class='align-middle text-center'><span class='badge bg-info-subtle text-info border border-info'><i class='fas fa-chart-line me-1'></i>{$ratio}</span></td>
-            <td class='align-middle text-center'><small class='text-muted'><i class='fas fa-clock me-1'></i>{$seedtime}</small></td>
-            <td class='align-middle text-center'><small class='text-muted'>{$started}</small></td>
-            <td class='align-middle text-center'><small class='text-muted'>{$completed}</small></td>
-            <td class='align-middle text-center'><small class='text-muted'><i class='far fa-clock me-1'></i>{$last}</small></td>
-        </tr>";
+        LIMIT 100', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $snCount++;
+        $ul = (float)$r['uploaded'];
+        $dl = (float)$r['downloaded'];
+        $totUl += $ul;
+        $totDl += $dl;
+        $ratio = $dl > 0 ? ts_nf($ul / $dl, 2) : ($ul > 0 ? '∞' : '—');
+        $snRows .= '<tr>'
+            . '<td>' . $tlink((int)$r['tid'], $r['name'], 'fa-download', htmlspecialchars((string)$r['agent'], ENT_QUOTES, 'UTF-8')) . '</td>'
+            . '<td class="text-nowrap">' . ($r['finished'] === 'yes' ? eu_badge('success', 'fa-circle-check', $L['ta_complete']) : eu_badge('muted', 'fa-hourglass-half', $L['act_incomplete']))
+            .   ($r['seeder'] === 'yes' ? ' ' . eu_badge('primary', 'fa-arrow-up', $L['ta_seeding']) : '') . '</td>'
+            . '<td class="text-end text-nowrap text-success">' . mksize($ul) . '</td>'
+            . '<td class="text-end text-nowrap text-danger">' . mksize($dl) . '</td>'
+            . '<td class="text-center">' . eu_badge('info', '', $ratio) . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . ((int)$r['seedtime'] > 0 ? mkprettytime((int)$r['seedtime']) : '—') . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['startdat']) . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['completedat']) . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['last_action']) . '</td>'
+            . '</tr>';
     }
-
-    if ($snatch_count === 0) {
-        $snatch_html = "
-        <div class='empty-state text-center py-5'>
-            <div class='empty-state-icon mb-3'>
-                <i class='fas fa-history fa-4x text-muted opacity-25'></i>
-            </div>
-            <h6 class='text-muted'>" . $lang->edituser['ta_no_snatch_title'] . "</h6>
-            <p class='text-muted small'>" . $lang->edituser['ta_no_snatch_text'] . "</p>
-        </div>";
+    if ($snCount) {
+        $snatched = '<div class="eu-chips p-3 pb-0">'
+            . '<span class="eu-chip"><i class="fa-solid fa-list"></i>' . ags_fmt($L['ta_sum_snatches'], $snCount) . '</span>'
+            . '<span class="eu-chip"><i class="fa-solid fa-arrow-up"></i>' . ags_fmt($L['ta_sum_uploaded'], mksize($totUl)) . '</span>'
+            . '<span class="eu-chip"><i class="fa-solid fa-arrow-down"></i>' . ags_fmt($L['ta_sum_downloaded'], mksize($totDl)) . '</span>'
+            . '<span class="eu-chip"><i class="fa-solid fa-scale-balanced"></i>' . ags_fmt($L['ta_sum_ratio'], $totDl > 0 ? ts_nf($totUl / $totDl, 2) : '∞') . '</span>'
+            . '</div>'
+            . eu_table('<th>' . $L['th_torrent'] . '</th><th>' . $L['th_status'] . '</th><th class="text-end">' . $L['stat_uploaded'] . '</th>'
+                     . '<th class="text-end">' . $L['stat_downloaded'] . '</th><th class="text-center">' . $L['stat_ratio'] . '</th>'
+                     . '<th class="text-end">' . $L['act_seed_time'] . '</th><th class="text-end">' . $L['th_started'] . '</th>'
+                     . '<th class="text-end">' . $L['act_completed'] . '</th><th class="text-end">' . $L['info_last_active'] . '</th>', $snRows);
     } else {
-        $summary = "
-        <div class='stats-summary d-flex flex-wrap gap-3 mb-4 p-3 bg-light rounded-4'>
-            <div class='stat-item'>
-                <i class='fas fa-list text-primary me-2'></i>
-                " . ags_fmt($lang->edituser['ta_sum_snatches'], $snatch_count) . "
-            </div>
-            <div class='stat-item'>
-                <i class='fas fa-arrow-up text-success me-2'></i>
-                " . ags_fmt($lang->edituser['ta_sum_uploaded'], mksize($total_ul)) . "
-            </div>
-            <div class='stat-item'>
-                <i class='fas fa-arrow-down text-danger me-2'></i>
-                " . ags_fmt($lang->edituser['ta_sum_downloaded'], mksize($total_dl)) . "
-            </div>
-            <div class='stat-item'>
-                <i class='fas fa-chart-line text-info me-2'></i>
-                " . ags_fmt($lang->edituser['ta_sum_ratio'], ($total_dl > 0 ? round($total_ul / $total_dl, 2) : '∞')) . "
-            </div>
-        </div>";
-
-        $snatch_html = $summary . "
-        <div class='table-responsive'>
-            <table class='table table-hover'>
-                <thead class='table-light'>
-                    <tr>
-                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
-                        <th><i class='fas fa-flag-checkered me-2'></i>" . $lang->edituser['th_status'] . "</th>
-                        <th class='text-end'><i class='fas fa-arrow-up me-2'></i>" . $lang->edituser['stat_uploaded'] . "</th>
-                        <th class='text-end'><i class='fas fa-arrow-down me-2'></i>" . $lang->edituser['stat_downloaded'] . "</th>
-                        <th class='text-center'><i class='fas fa-chart-simple me-2'></i>" . $lang->edituser['stat_ratio'] . "</th>
-                        <th class='text-center'><i class='fas fa-clock me-2'></i>" . $lang->edituser['act_seed_time'] . "</th>
-                        <th class='text-center'><i class='fas fa-play me-2'></i>" . $lang->edituser['th_started'] . "</th>
-                        <th class='text-center'><i class='fas fa-check me-2'></i>" . $lang->edituser['act_completed'] . "</th>
-                        <th class='text-center'><i class='far fa-clock me-2'></i>" . $lang->edituser['info_last_active'] . "</th>
-                    </tr>
-                </thead>
-                <tbody>{$snatch_rows}</tbody>
-            </table>
-        </div>";
+        $snatched = eu_empty('fa-clock-rotate-left', $L['ta_no_snatch_text'], $L['ta_no_snatch_title']);
     }
 
-    // ── 3. Uploaded torrents ──────────────────────────────────────────────────
-    $q3 = $db->sql_query_prepared("
-        SELECT id, name, size, added, seeders, leechers,
-               times_completed, visible, banned, free, isnuked
-        FROM torrents
-        WHERE owner = ?
-        ORDER BY added DESC
-        LIMIT 100
-    ", [$uid]);
-
-    $upload_rows = '';
-    $upload_count = 0;
-
-    while ($q3 && ($row = $db->fetch_array($q3))) {
-        $upload_count++;
-        $name    = htmlspecialchars($row['name'] ?? $lang->edituser['unknown'], ENT_QUOTES, 'UTF-8');
-        $tid     = (int)$row['id'];
-        $size    = mksize($row['size']);
-        $added   = $row['added'] ? my_datee('relative', $row['added']) : '—';
-        $seeders  = (int)$row['seeders'];
-        $leechers = (int)$row['leechers'];
-        $grabs    = (int)$row['times_completed'];
-
-        $visibleBadge = $row['visible'] === 'yes'
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-eye me-1'></i>" . $lang->edituser['ta_visible'] . "</span>"
-            : "<span class='badge bg-secondary-subtle text-secondary border border-secondary'><i class='fas fa-eye-slash me-1'></i>" . $lang->edituser['ta_hidden'] . "</span>";
-
-        $nukedBadge = $row['isnuked'] === 'yes'
-            ? "<span class='badge bg-danger-subtle text-danger border border-danger ms-1'><i class='fas fa-skull me-1'></i>" . $lang->edituser['ta_nuked'] . "</span>"
-            : '';
-
-        $freeBadge = $row['free'] === 'yes'
-            ? "<span class='badge bg-info-subtle text-info border border-info ms-1'><i class='fas fa-gift me-1'></i>" . $lang->edituser['ta_free'] . "</span>"
-            : '';
-
-        $bannedBadge = $row['banned'] === 'yes'
-            ? "<span class='badge bg-dark-subtle text-dark border border-dark ms-1'><i class='fas fa-ban me-1'></i>" . $lang->edituser['ta_banned'] . "</span>"
-            : '';
-
-        $upload_rows .= "
-        <tr class='upload-row'>
-            <td class='align-middle'>
-                <a href='{$BASEURL}/torrents.php?id={$tid}' class='text-decoration-none fw-semibold torrent-link' title='{$name}'>
-                    <i class='fas fa-upload text-primary me-1 fs-10'></i>
-                    <span class='text-truncate d-inline-block' style='max-width: 280px'>{$name}</span>
-                </a>
-            </td>
-            <td class='align-middle text-center'><span class='badge bg-secondary-subtle text-secondary border border-secondary'>{$size}</span></td>
-            <td class='align-middle'>{$visibleBadge}{$nukedBadge}{$freeBadge}{$bannedBadge}</td>
-            <td class='align-middle text-center'>
-                <span class='text-success me-2'><i class='fas fa-arrow-up'></i> {$seeders}</span>
-                <span class='text-danger'><i class='fas fa-arrow-down'></i> {$leechers}</span>
-            </td>
-            <td class='align-middle text-center'><span class='badge bg-primary-subtle text-primary border border-primary'><i class='fas fa-download me-1'></i>{$grabs}</span></td>
-            <td class='align-middle text-center'><small class='text-muted'><i class='far fa-calendar-alt me-1'></i>{$added}</small></td>
-        </tr>";
+    // ── 3. Раздачи
+    $upRows = '';
+    $upCount = 0;
+    $q = $db->sql_query_prepared('
+        SELECT id, name, size, added, seeders, leechers, times_completed, visible, banned, free, isnuked
+        FROM torrents WHERE owner = ? ORDER BY added DESC LIMIT 100', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $upCount++;
+        $badges = ($r['visible'] === 'yes' ? eu_badge('success', 'fa-eye', $L['ta_visible']) : eu_badge('muted', 'fa-eye-slash', $L['ta_hidden']))
+                . ($r['isnuked'] === 'yes' ? ' ' . eu_badge('danger', 'fa-skull', $L['ta_nuked']) : '')
+                . ($r['free'] === 'yes' ? ' ' . eu_badge('info', 'fa-gift', $L['ta_free']) : '')
+                . ($r['banned'] === 'yes' ? ' ' . eu_badge('danger', 'fa-ban', $L['ta_banned']) : '');
+        $upRows .= '<tr>'
+            . '<td>' . $tlink((int)$r['id'], (string)$r['name'], 'fa-upload') . '</td>'
+            . '<td class="text-end text-nowrap">' . mksize($r['size']) . '</td>'
+            . '<td>' . $badges . '</td>'
+            . '<td class="text-center text-nowrap"><span class="text-success me-2"><i class="fa-solid fa-arrow-up"></i> ' . (int)$r['seeders'] . '</span>'
+            .   '<span class="text-danger"><i class="fa-solid fa-arrow-down"></i> ' . (int)$r['leechers'] . '</span></td>'
+            . '<td class="text-center">' . (int)$r['times_completed'] . '</td>'
+            . '<td class="text-end text-nowrap eu-hint">' . eu_dt((int)$r['added']) . '</td>'
+            . '</tr>';
     }
+    $uploads = $upCount
+        ? eu_table('<th>' . $L['th_torrent'] . '</th><th class="text-end">' . $L['th_size'] . '</th><th>' . $L['th_status'] . '</th>'
+                 . '<th class="text-center">' . $L['th_peers'] . '</th><th class="text-center">' . $L['th_grabs'] . '</th><th class="text-end">' . $L['th_added'] . '</th>', $upRows)
+        : eu_empty('fa-upload', $L['ta_no_uploads_text'], $L['ta_no_uploads_title']);
 
-    if ($upload_count === 0) {
-        $uploads_html = "
-        <div class='empty-state text-center py-5'>
-            <div class='empty-state-icon mb-3'>
-                <i class='fas fa-upload fa-4x text-muted opacity-25'></i>
-            </div>
-            <h6 class='text-muted'>" . $lang->edituser['ta_no_uploads_title'] . "</h6>
-            <p class='text-muted small'>" . $lang->edituser['ta_no_uploads_text'] . "</p>
-        </div>";
-    } else {
-        $uploads_html = "
-        <div class='table-responsive'>
-            <table class='table'>
-                <thead class='table-light'>
-                    <tr>
-                        <th><i class='fas fa-torrent me-2'></i>" . $lang->edituser['th_torrent'] . "</th>
-                        <th class='text-center'><i class='fas fa-database me-2'></i>" . $lang->edituser['th_size'] . "</th>
-                        <th><i class='fas fa-flag me-2'></i>" . $lang->edituser['th_status'] . "</th>
-                        <th class='text-center'><i class='fas fa-users me-2'></i>" . $lang->edituser['th_peers'] . "</th>
-                        <th class='text-center'><i class='fas fa-download me-2'></i>" . $lang->edituser['th_grabs'] . "</th>
-                        <th class='text-center'><i class='far fa-calendar-alt me-2'></i>" . $lang->edituser['th_added'] . "</th>
-                    </tr>
-                </thead>
-                <tbody>{$upload_rows}</tbody>
-            </table>
-        </div>";
-    }
-
-    // ── Styles ────────────────────────────────────────────────────────────────
-    return "
-
-    <div class='torrent-tabs'>
-        <ul class='nav nav-pills mb-4 gap-2' id='torrentActivityTabs' role='tablist'>
-            <li class='nav-item' role='presentation'>
-                <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#ta-peers' type='button'>
-                    <i class='fas fa-satellite-dish me-2'></i>" . $lang->edituser['ta_tab_active'] . "
-                    <span class='badge bg-white text-primary ms-2 rounded-pill'>{$peer_count}</span>
-                </button>
-            </li>
-            <li class='nav-item' role='presentation'>
-                <button class='nav-link' data-bs-toggle='pill' data-bs-target='#ta-snatched' type='button'>
-                    <i class='fas fa-history me-2'></i>" . $lang->edituser['ta_tab_snatched'] . "
-                    <span class='badge bg-white text-secondary ms-2 rounded-pill'>{$snatch_count}</span>
-                </button>
-            </li>
-            <li class='nav-item' role='presentation'>
-                <button class='nav-link' data-bs-toggle='pill' data-bs-target='#ta-uploads' type='button'>
-                    <i class='fas fa-upload me-2'></i>" . $lang->edituser['btn_uploads'] . "
-                    <span class='badge bg-white text-secondary ms-2 rounded-pill'>{$upload_count}</span>
-                </button>
-            </li>
-        </ul>
-
-        <div class='tab-content'>
-            <div class='tab-pane fade show active' id='ta-peers' role='tabpanel'>
-                {$peers_html}
-            </div>
-            <div class='tab-pane fade' id='ta-snatched' role='tabpanel'>
-                {$snatch_html}
-            </div>
-            <div class='tab-pane fade' id='ta-uploads' role='tabpanel'>
-                {$uploads_html}
-            </div>
-        </div>
-    </div>";
+    return '<section class="st-card eu-card"><div class="st-card__head">'
+         . eu_subtabs('torrentActivityTabs', [
+               'ta-peers'    => ['fa-satellite-dish',    $L['ta_tab_active'],   (string)$peerCount],
+               'ta-snatched' => ['fa-clock-rotate-left', $L['ta_tab_snatched'], (string)$snCount],
+               'ta-uploads'  => ['fa-upload',            $L['btn_uploads'],     (string)$upCount],
+           ])
+         . '</div>'
+         . eu_subpanes(['ta-peers' => $peers, 'ta-snatched' => $snatched, 'ta-uploads' => $uploads])
+         . '</section>';
 }
 
-
-
-
-
-
-
-
-
-
-/**
- * Render Reports tab
- * Shows: reports filed AGAINST this user | reports filed BY this user
- */
+/** Жалобы: на пользователя и от пользователя */
 function renderReportsTab(): string
 {
     global $userdata, $db, $BASEURL, $lang;
-
+    $L   = $lang->edituser;
     $uid = (int)$userdata['id'];
 
-    // ── Единый JOIN-запрос для отчётов ПРОТИВ пользователя ───────────────────
-    $q1 = $db->sql_query_prepared("
-        SELECT r.*,
-               u_by.username    AS reporter_username,
-               u_rep.username   AS reported_username,
-               u_dealt.username AS dealt_username,
-               t.name           AS torrent_name
+    $sql = "
+        SELECT r.*, u_by.username AS reporter_username, u_rep.username AS reported_username,
+               u_dealt.username AS dealt_username, t.name AS torrent_name
         FROM reports r
         LEFT JOIN users    u_by    ON u_by.id    = r.addedby
         LEFT JOIN users    u_rep   ON u_rep.id   = r.reported_user_id
         LEFT JOIN users    u_dealt ON u_dealt.id = r.dealtby
-        LEFT JOIN torrents t       ON t.id        = r.reported_id AND r.type = 'torrent'
-        WHERE r.reported_user_id = ?
+        LEFT JOIN torrents t       ON t.id       = r.reported_id AND r.type = 'torrent'
+        WHERE r.%s = ?
         ORDER BY r.added DESC
-        LIMIT 200
-    ", [$uid]);
+        LIMIT 200";
 
-    // ── Единый JOIN-запрос для отчётов ОТ пользователя ────────────────────────
-    $q2 = $db->sql_query_prepared("
-        SELECT r.*,
-               u_by.username    AS reporter_username,
-               u_rep.username   AS reported_username,
-               u_dealt.username AS dealt_username,
-               t.name           AS torrent_name
-        FROM reports r
-        LEFT JOIN users    u_by    ON u_by.id    = r.addedby
-        LEFT JOIN users    u_rep   ON u_rep.id   = r.reported_user_id
-        LEFT JOIN users    u_dealt ON u_dealt.id = r.dealtby
-        LEFT JOIN torrents t       ON t.id        = r.reported_id AND r.type = 'torrent'
-        WHERE r.addedby = ?
-        ORDER BY r.added DESC
-        LIMIT 200
-    ", [$uid]);
-
-    // ── Построение одной строки таблицы (все данные уже в $row из JOIN) ───────
-    $buildRow = function(array $row, bool $isIncoming) use ($BASEURL): string {
-        global $lang;
-
-        [$typeColor, $typeIcon] = match($row['type']) {
-            'torrent'   => ['primary',   'fa-magnet'],
-            'user'      => ['warning',   'fa-user'],
-            'comment'   => ['info',      'fa-comment'],
-            'forumpost' => ['secondary', 'fa-comments'],
-            default     => ['secondary', 'fa-flag'],
-        };
-        $typeBadge = "<span class='badge bg-{$typeColor}-subtle text-{$typeColor} border border-{$typeColor}'>
-            <i class='fas {$typeIcon} me-1'></i>" . match($row['type']) {
-            'torrent'   => $lang->edituser['rep_type_torrent'],
-            'user'      => $lang->edituser['rep_type_user'],
-            'comment'   => $lang->edituser['rep_type_comment'],
-            'forumpost' => $lang->edituser['rep_type_forumpost'],
-            default     => ucfirst((string)$row['type']),
-        } . "</span>";
-
-        $statusBadge = $row['dealtwith']
-            ? "<span class='badge bg-success-subtle text-success border border-success'><i class='fas fa-check me-1'></i>" . $lang->edituser['rep_resolved'] . "</span>"
-            : "<span class='badge bg-danger-subtle text-danger border border-danger'><i class='fas fa-clock me-1'></i>" . $lang->edituser['rep_open'] . "</span>";
-
-        // Subject — данные уже в JOIN, дополнительных запросов не нужно
-        $subject = '—';
-        if ($row['type'] === 'torrent' && $row['reported_id']) {
-            $tid    = (int)$row['reported_id'];
-            $tname  = htmlspecialchars($row['torrent_name'] ?? '', ENT_QUOTES, 'UTF-8');
-            $subject = $tname
-                ? "<a href='{$BASEURL}/torrents.php?id={$tid}' class='text-decoration-none'>{$tname}</a>"
-                : ags_fmt($lang->edituser['rep_torrent_n'], $tid);
-        } elseif (in_array($row['type'], ['user', 'comment']) && $row['reported_user_id']) {
-            $ruid  = (int)$row['reported_user_id'];
-            $rname = htmlspecialchars($row['reported_username'] ?? '', ENT_QUOTES, 'UTF-8');
-            if ($rname) {
-                $subject = "<a href='{$BASEURL}/profile.php?id={$ruid}' class='text-decoration-none'>{$rname}</a>";
-            }
-        } elseif ($row['type'] === 'forumpost' && $row['thread_id']) {
-            $tid2    = (int)$row['thread_id'];
-            $subject = "<a href='{$BASEURL}/showthread.php?tid={$tid2}' class='text-decoration-none'>" . ags_fmt($lang->edituser['rep_thread_n'], $tid2) . "</a>";
-        }
-
-        // Who column
-        if ($isIncoming) {
-            $byUid  = (int)$row['addedby'];
-            $byName = htmlspecialchars($row['reporter_username'] ?? '', ENT_QUOTES, 'UTF-8');
-            $whoCol = $byUid && $byName
-                ? "<a href='{$BASEURL}/profile.php?id={$byUid}' class='text-decoration-none'>{$byName}</a>"
-                : '—';
-        } else {
-            $targetUid  = (int)$row['reported_user_id'];
-            $targetName = htmlspecialchars($row['reported_username'] ?? '', ENT_QUOTES, 'UTF-8');
-            $whoCol = $targetUid && $targetName
-                ? "<a href='{$BASEURL}/profile.php?id={$targetUid}' class='text-decoration-none'>{$targetName}</a>"
-                : '—';
-        }
-
-        $dealtBy = $row['dealtwith'] && !empty($row['dealt_username'])
-            ? htmlspecialchars($row['dealt_username'], ENT_QUOTES, 'UTF-8')
+    $ulink = fn(int $id, ?string $name): string =>
+        $id > 0 && $name !== null && $name !== ''
+            ? '<a href="' . $BASEURL . '/' . get_profile_link($id) . '">' . htmlspecialchars_uni($name) . '</a>'
             : '—';
 
-        $reason      = htmlspecialchars($row['reason']        ?? '', ENT_QUOTES, 'UTF-8');
-        $rule        = htmlspecialchars($row['rule_violation'] ?? '', ENT_QUOTES, 'UTF-8');
-        $description = htmlspecialchars(mb_strimwidth((string)($row['description'] ?? ''), 0, 120, '…'), ENT_QUOTES, 'UTF-8');
-        $date        = $row['added']      ? my_datee('relative', $row['added'])      : '—';
-        $updated     = $row['updated_at'] ? my_datee('relative', $row['updated_at']) : '—';
+    $build = function (string $col, bool $incoming) use ($db, $sql, $uid, $L, $BASEURL, $ulink): array {
+        $q = $db->sql_query_prepared(sprintf($sql, $col), [$uid]);
+        $rows = '';
+        $total = $open = 0;
+        while ($q && ($r = $db->fetch_array($q))) {
+            $total++;
+            $dealt = (int)$r['dealtwith'] === 1;
+            if (!$dealt) {
+                $open++;
+            }
+            [$soft, $icon, $tlabel] = match ((string)$r['type']) {
+                'torrent'   => ['primary', 'fa-magnet',   $L['rep_type_torrent']],
+                'user'      => ['warning', 'fa-user',     $L['rep_type_user']],
+                'comment'   => ['info',    'fa-comment',  $L['rep_type_comment']],
+                'forumpost' => ['muted',   'fa-comments', $L['rep_type_forumpost']],
+                default     => ['muted',   'fa-flag',     htmlspecialchars(ucfirst((string)$r['type']))],
+            };
 
-        $ruleBadge = $rule
-            ? "<span class='badge bg-light text-dark border ms-1' title='" . $lang->edituser['rep_rule_violation'] . "'>{$rule}</span>"
-            : '';
+            $subject = '—';
+            if ($r['type'] === 'torrent' && (int)$r['reported_id'] > 0) {
+                $tid = (int)$r['reported_id'];
+                $subject = $r['torrent_name'] !== null
+                    ? '<a href="' . $BASEURL . '/details.php?id=' . $tid . '">' . htmlspecialchars_uni((string)$r['torrent_name']) . '</a>'
+                    : ags_fmt($L['rep_torrent_n'], $tid);
+            } elseif (in_array($r['type'], ['user', 'comment'], true)) {
+                $subject = $ulink((int)$r['reported_user_id'], $r['reported_username']);
+            } elseif ($r['type'] === 'forumpost' && (int)($r['thread_id'] ?? 0) > 0) {
+                $tid2 = (int)$r['thread_id'];
+                $subject = '<a href="' . $BASEURL . '/' . get_thread_link($tid2) . '">' . ags_fmt($L['rep_thread_n'], $tid2) . '</a>';
+            }
 
-        return "
-        <tr>
-            <td>{$typeBadge}{$ruleBadge}</td>
-            <td>{$subject}</td>
-            <td>
-                <div class='fw-semibold'>{$reason}</div>
-                " . ($description ? "<small class='text-muted'>{$description}</small>" : '') . "
-            </td>
-            <td>{$whoCol}</td>
-            <td>{$statusBadge}</td>
-            <td><small class='text-muted'>{$dealtBy}</small></td>
-            <td><small class='text-muted'>{$date}</small></td>
-            <td><small class='text-muted'>{$updated}</small></td>
-        </tr>";
-    };
+            $who  = $incoming ? $ulink((int)$r['addedby'], $r['reporter_username']) : $ulink((int)$r['reported_user_id'], $r['reported_username']);
+            $rule = trim((string)($r['rule_violation'] ?? ''));
+            $desc = trim((string)($r['description'] ?? ''));
 
-    $buildTable = function(string $rows, bool $isIncoming): string {
-        global $lang;
-        $whoHeader = $isIncoming ? $lang->edituser['rep_th_reported_by'] : $lang->edituser['rep_th_reported_user'];
-        if (!$rows) {
-            $icon = $isIncoming ? 'fa-shield-alt' : 'fa-flag';
-            $msg  = $isIncoming ? $lang->edituser['rep_none_against'] : $lang->edituser['rep_none_by'];
-            return "
-            <div class='text-center text-muted py-5'>
-                <i class='fas {$icon} fa-2x mb-2 d-block opacity-25'></i>
-                {$msg}
-            </div>";
+            $rows .= '<tr' . ($dealt ? '' : ' class="st-row--bad"') . '>'
+                . '<td class="text-nowrap">' . eu_badge($soft, $icon, $tlabel)
+                .   ($rule !== '' ? ' <span class="st-badge st-soft-muted" title="' . htmlspecialchars((string)$L['rep_rule_violation']) . '">' . htmlspecialchars($rule) . '</span>' : '') . '</td>'
+                . '<td>' . $subject . '</td>'
+                . '<td><div class="fw-semibold">' . htmlspecialchars((string)$r['reason'], ENT_QUOTES, 'UTF-8') . '</div>'
+                .   ($desc !== '' ? '<div class="eu-hint">' . htmlspecialchars(mb_strimwidth($desc, 0, 120, '…'), ENT_QUOTES, 'UTF-8') . '</div>' : '') . '</td>'
+                . '<td>' . $who . '</td>'
+                . '<td>' . ($dealt ? eu_badge('success', 'fa-check', $L['rep_resolved']) : eu_badge('danger', 'fa-clock', $L['rep_open'])) . '</td>'
+                . '<td class="eu-hint">' . ($dealt && !empty($r['dealt_username']) ? htmlspecialchars_uni((string)$r['dealt_username']) : '—') . '</td>'
+                . '<td class="text-nowrap eu-hint">' . eu_dt((int)$r['added']) . '</td>'
+                . '<td class="text-nowrap eu-hint">' . eu_dt((int)($r['updated_at'] ?? 0)) . '</td>'
+                . '</tr>';
         }
-        return "
-        <div class='table-responsive'>
-            <table class='table table-hover table-sm align-middle mb-0'>
-                <thead class='table-light'>
-                    <tr>
-                        <th>" . $lang->edituser['rep_th_type'] . "</th><th>" . $lang->edituser['rep_th_subject'] . "</th><th>" . $lang->edituser['rep_th_reason'] . "</th>
-                        <th>{$whoHeader}</th><th>" . $lang->edituser['th_status'] . "</th><th>" . $lang->edituser['rep_th_dealt_by'] . "</th>
-                        <th>" . $lang->edituser['rep_th_reported'] . "</th><th>" . $lang->edituser['rep_th_updated'] . "</th>
-                    </tr>
-                </thead>
-                <tbody>{$rows}</tbody>
-            </table>
-        </div>";
+
+        $html = $rows !== ''
+            ? eu_table('<th>' . $L['rep_th_type'] . '</th><th>' . $L['rep_th_subject'] . '</th><th>' . $L['rep_th_reason'] . '</th>'
+                     . '<th>' . ($incoming ? $L['rep_th_reported_by'] : $L['rep_th_reported_user']) . '</th><th>' . $L['th_status'] . '</th>'
+                     . '<th>' . $L['rep_th_dealt_by'] . '</th><th>' . $L['rep_th_reported'] . '</th><th>' . $L['rep_th_updated'] . '</th>', $rows)
+            : eu_empty($incoming ? 'fa-shield-halved' : 'fa-flag', $incoming ? $L['rep_none_against'] : $L['rep_none_by']);
+
+        return [$html, $total, $open];
     };
 
-    // ── Обход результатов ─────────────────────────────────────────────────────
-    $incoming_rows  = '';
-    $incoming_open  = 0;
-    $incoming_total = 0;
-    while ($q1 && ($row = $db->fetch_array($q1))) {
-        $incoming_total++;
-        if (!$row['dealtwith']) $incoming_open++;
-        $incoming_rows .= $buildRow($row, true);
-    }
+    [$inHtml, $inTotal, $inOpen]    = $build('reported_user_id', true);
+    [$outHtml, $outTotal, $outOpen] = $build('addedby', false);
 
-    $outgoing_rows  = '';
-    $outgoing_open  = 0;
-    $outgoing_total = 0;
-    while ($q2 && ($row = $db->fetch_array($q2))) {
-        $outgoing_total++;
-        if (!$row['dealtwith']) $outgoing_open++;
-        $outgoing_rows .= $buildRow($row, false);
-    }
+    $count = fn(int $t, int $o): string => $t . ($o > 0 ? ' · ' . ags_fmt($L['rep_open_count'], $o) : '');
 
-    $incomingOpenBadge = $incoming_open
-        ? "<span class='badge bg-danger ms-1'>" . ags_fmt($lang->edituser['rep_open_count'], $incoming_open) . "</span>" : '';
-    $outgoingOpenBadge = $outgoing_open
-        ? "<span class='badge bg-warning text-dark ms-1'>" . ags_fmt($lang->edituser['rep_open_count'], $outgoing_open) . "</span>" : '';
-
-    $incomingTab = $buildTable($incoming_rows, true);
-    $outgoingTab = $buildTable($outgoing_rows, false);
-
-    return "
-    <div class='d-flex align-items-center mb-4'>
-        <i class='fas fa-flag fa-lg text-danger me-2'></i>
-        <h5 class='fw-bold mb-0'>" . $lang->edituser['tab_reports'] . "</h5>
-    </div>
-
-    <ul class='nav nav-pills mb-4 gap-2' id='reportsSubTabs' role='tablist'>
-        <li class='nav-item' role='presentation'>
-            <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#rep-incoming' type='button'>
-                <i class='fas fa-shield-alt me-1'></i>" . $lang->edituser['rep_tab_against'] . "
-                <span class='badge bg-secondary ms-1'>{$incoming_total}</span>
-                {$incomingOpenBadge}
-            </button>
-        </li>
-        <li class='nav-item' role='presentation'>
-            <button class='nav-link' data-bs-toggle='pill' data-bs-target='#rep-outgoing' type='button'>
-                <i class='fas fa-flag me-1'></i>" . $lang->edituser['rep_tab_by'] . "
-                <span class='badge bg-secondary ms-1'>{$outgoing_total}</span>
-                {$outgoingOpenBadge}
-            </button>
-        </li>
-    </ul>
-
-    <div class='tab-content'>
-        <div class='tab-pane fade show active' id='rep-incoming' role='tabpanel'>{$incomingTab}</div>
-        <div class='tab-pane fade'            id='rep-outgoing' role='tabpanel'>{$outgoingTab}</div>
-    </div>";
+    return '<section class="st-card eu-card"><div class="st-card__head">'
+         . eu_subtabs('reportsSubTabs', [
+               'rep-incoming' => ['fa-shield-halved', $L['rep_tab_against'], $count($inTotal, $inOpen)],
+               'rep-outgoing' => ['fa-flag',          $L['rep_tab_by'],      $count($outTotal, $outOpen)],
+           ])
+         . '</div>'
+         . eu_subpanes(['rep-incoming' => $inHtml, 'rep-outgoing' => $outHtml])
+         . '</section>';
 }
 
-
-
-
-
-
-
-function buildInviteTree(int $rootUid, $db, string $BASEURL): string
+/** Дерево приглашённых (до 3 уровней, по запросу на уровень) */
+function buildInviteTree(int $rootUid): string
 {
-    // Максимальная глубина дерева
+    global $db, $BASEURL, $lang;
+    $L = $lang->edituser;
+
     $MAX_DEPTH  = 3;
-    // Максимум детей на уровень (защита от взрыва)
     $LIMIT_EACH = 50;
 
-    // Стартуем с корневого пользователя
-    $currentLevelIds = [$rootUid];
+    $level      = [$rootUid];
+    $childrenOf = [];
+    $seen       = [$rootUid => true];
 
-    // Сохраняем строки по parent_id → [children html]
-    // и все данные по uid → row  для рекурсивной сборки
-    $childrenOf = []; // [parent_uid => [row, ...]]
-
-    for ($depth = 0; $depth < $MAX_DEPTH; $depth++) {
-        if (empty($currentLevelIds)) break;
-
-        $ids = array_map('intval', $currentLevelIds);
-        $ids_ph = implode(',', array_fill(0, count($ids), '?'));
-
-        $q = $db->sql_query_prepared("
-            SELECT u.id, u.username, u.enabled, u.warned, u.donor,
-                   u.uploaded, u.downloaded, u.added,
-                   i.inviter_id,
-                   i.status AS invite_status
+    for ($depth = 0; $depth < $MAX_DEPTH && $level; $depth++) {
+        $ph = implode(',', array_fill(0, count($level), '?'));
+        $q  = $db->sql_query_prepared("
+            SELECT u.id, u.username, u.usergroup, u.enabled, u.warned, u.donor, u.uploaded, u.downloaded, u.added, i.inviter_id
             FROM invites i
             JOIN users u ON u.id = i.invitee_id
-            WHERE i.inviter_id IN ({$ids_ph})
-              AND i.status = 'used'
+            WHERE i.inviter_id IN ({$ph}) AND i.status = 'used'
             ORDER BY i.inviter_id, u.added ASC
-            LIMIT ?
-        ", [...$ids, $LIMIT_EACH * count($currentLevelIds)]);
+            LIMIT ?", [...$level, $LIMIT_EACH * count($level)]);
 
-        $nextLevelIds = [];
-        while ($q && ($row = $db->fetch_array($q))) {
-            $pid = (int)$row['inviter_id'];
-            $childrenOf[$pid][] = $row;
-            $nextLevelIds[] = (int)$row['id'];
+        $next = [];
+        while ($q && ($r = $db->fetch_array($q))) {
+            $id = (int)$r['id'];
+            if (isset($seen[$id])) {
+                continue; // защита от циклов
+            }
+            $seen[$id] = true;
+            $childrenOf[(int)$r['inviter_id']][] = $r;
+            $next[] = $id;
         }
-
-        $currentLevelIds = array_unique($nextLevelIds);
+        $level = $next;
     }
 
-    // Рекурсивная сборка HTML из уже загруженных данных (без запросов)
-    $renderNode = null;
-    $renderNode = function(int $parentUid, int $depth) use (&$renderNode, &$childrenOf, $BASEURL): string {
-        global $lang;
-        if ($depth > 3 || empty($childrenOf[$parentUid])) return '';
-
-        $html = '';
-        foreach ($childrenOf[$parentUid] as $row) {
-            $iid   = (int)$row['id'];
-            $iname = htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8');
-
-            $badges = '';
-            if ($row['enabled'] === 'no')  $badges .= "<span class='badge bg-danger ms-1'    style='font-size:0.7em'>" . $lang->edituser['badge_banned'] . "</span>";
-            if ($row['warned']  === 'yes') $badges .= "<span class='badge bg-warning text-dark ms-1' style='font-size:0.7em'>" . $lang->edituser['badge_warned'] . "</span>";
-            if ($row['donor']   === 'yes') $badges .= "<span class='badge bg-info ms-1'       style='font-size:0.7em'>" . $lang->edituser['badge_donor'] . "</span>";
-
-            $ul     = mksize($row['uploaded']  ?? 0);
-            $dl     = mksize($row['downloaded'] ?? 0);
-            $joined = $row['added'] ? my_datee('relative', $row['added']) : '—';
-
-            $children    = $renderNode($iid, $depth + 1);
-            $hasChildren = $children !== '';
-            $toggleId    = "tree-node-{$iid}";
-
-            $indent   = $depth * 24;
-            $connLine = $depth > 0
-                ? "<span style='display:inline-block;width:{$indent}px;border-left:2px solid #dee2e6;border-bottom:2px solid #dee2e6;height:16px;vertical-align:bottom;margin-right:4px;'></span>"
-                : '';
-
-            $toggle = $hasChildren
-                ? "<button class='btn btn-link btn-sm p-0 me-1 text-muted' onclick=\"var el=document.getElementById('{$toggleId}');el.style.display=el.style.display==='none'?'block':'none'\">
-                       <i class='fas fa-chevron-down' style='font-size:0.75em'></i>
-                   </button>"
-                : "<span style='display:inline-block;width:22px'></span>";
-
-            $html .= "
-            <div class='d-flex align-items-center py-1 border-bottom'>
-                <div style='padding-left:{$indent}px' class='d-flex align-items-center flex-grow-1'>
-                    {$toggle}
-                    <i class='fas fa-user-circle text-secondary me-2'></i>
-                    <a href='{$BASEURL}/profile.php?id={$iid}' class='text-decoration-none fw-semibold me-1'>{$iname}</a>
-                    {$badges}
-                    <small class='text-muted ms-3'>" . ags_fmt($lang->edituser['inv_joined'], $joined) . "</small>
-                    <small class='text-success ms-3'><i class='fas fa-upload'></i> {$ul}</small>
-                    <small class='text-danger ms-2'><i class='fas fa-download'></i> {$dl}</small>
-                </div>
-            </div>
-            " . ($hasChildren ? "<div id='{$toggleId}'>{$children}</div>" : '');
+    $render = function (int $parent, int $depth) use (&$render, &$childrenOf, $BASEURL, $L): string {
+        if (empty($childrenOf[$parent])) {
+            return '';
         }
-
-        return $html;
+        $html = '<ul class="eu-tree' . ($depth === 0 ? ' eu-tree--root' : '') . '">';
+        foreach ($childrenOf[$parent] as $r) {
+            $id   = (int)$r['id'];
+            $kids = $render($id, $depth + 1);
+            $html .= '<li class="eu-tree__node">'
+                   . '<div class="eu-tree__row">'
+                   .   ($kids !== ''
+                        ? '<button type="button" class="eu-tree__toggle" data-eu-tree aria-expanded="true"><i class="fa-solid fa-chevron-down"></i></button>'
+                        : '<span class="eu-tree__toggle eu-tree__toggle--leaf"><i class="fa-solid fa-circle"></i></span>')
+                   .   '<a href="' . $BASEURL . '/' . get_profile_link($id) . '" class="fw-semibold">'
+                   .     format_name(htmlspecialchars_uni((string)$r['username']), (int)$r['usergroup']) . '</a>'
+                   .   ($r['enabled'] === 'no' ? eu_badge('danger', '', $L['badge_banned']) : '')
+                   .   ($r['warned'] === 'yes' ? eu_badge('warning', '', $L['badge_warned']) : '')
+                   .   ($r['donor'] === 'yes' ? eu_badge('info', '', $L['badge_donor']) : '')
+                   .   '<span class="eu-hint ms-auto text-nowrap">' . ags_fmt($L['inv_joined'], eu_dt((int)$r['added']))
+                   .     ' · <span class="text-success"><i class="fa-solid fa-arrow-up"></i> ' . mksize($r['uploaded']) . '</span>'
+                   .     ' <span class="text-danger"><i class="fa-solid fa-arrow-down"></i> ' . mksize($r['downloaded']) . '</span></span>'
+                   . '</div>'
+                   . $kids
+                   . '</li>';
+        }
+        return $html . '</ul>';
     };
 
-    return $renderNode($rootUid, 0);
+    return $render($rootUid, 0);
 }
 
-
-
-/**
- * Render Invites tab
- * Sections: Summary stats | Sent invites | Invite tree | Who invited this user
- */
+/** Приглашения */
 function renderInvitesTab(): string
 {
     global $userdata, $db, $BASEURL, $lang;
-
+    $L   = $lang->edituser;
     $uid = (int)$userdata['id'];
 
-    // ── Stats ─────────────────────────────────────────────────────────────────
-    $q_stats = $db->sql_query_prepared("
-        SELECT
-            COUNT(*)                                          AS total,
-            SUM(status = 'used')                              AS used,
-            SUM(status = 'pending')                           AS pending,
-            SUM(status = 'expired')                           AS expired,
-            SUM(status = 'revoked')                           AS revoked
-        FROM invites
-        WHERE inviter_id = ?
-    ", [$uid]);
-    $stats = ($q_stats ? $db->fetch_array($q_stats) : null) ?: [];
-    $total   = (int)($stats['total']   ?? 0);
-    $used    = (int)($stats['used']    ?? 0);
-    $pending = (int)($stats['pending'] ?? 0);
-    $expired = (int)($stats['expired'] ?? 0);
-    $revoked = (int)($stats['revoked'] ?? 0);
+    $q = $db->sql_query_prepared("
+        SELECT COUNT(*) AS total, SUM(status = 'used') AS used, SUM(status = 'pending') AS pending,
+               SUM(status IN ('expired', 'revoked')) AS dead
+        FROM invites WHERE inviter_id = ?", [$uid]);
+    $s = ($q ? $db->fetch_array($q) : null) ?: [];
 
-    $statsBar = "
-    <div class='row g-3 mb-4'>
-        <div class='col-6 col-md-3'>
-            <div class='rounded-3 bg-light border text-center py-3 px-2'>
-                <div class='fs-4 fw-bold text-primary'>{$total}</div>
-                <small class='text-muted'>" . $lang->edituser['inv_total'] . "</small>
-            </div>
-        </div>
-        <div class='col-6 col-md-3'>
-            <div class='rounded-3 bg-success-subtle border border-success text-center py-3 px-2'>
-                <div class='fs-4 fw-bold text-success'>{$used}</div>
-                <small class='text-muted'>" . $lang->edituser['inv_used'] . "</small>
-            </div>
-        </div>
-        <div class='col-6 col-md-3'>
-            <div class='rounded-3 bg-warning-subtle border border-warning text-center py-3 px-2'>
-                <div class='fs-4 fw-bold text-warning'>{$pending}</div>
-                <small class='text-muted'>" . $lang->edituser['inv_pending'] . "</small>
-            </div>
-        </div>
-        <div class='col-6 col-md-3'>
-            <div class='rounded-3 bg-secondary-subtle border text-center py-3 px-2'>
-                <div class='fs-4 fw-bold text-secondary'>" . ($expired + $revoked) . "</div>
-                <small class='text-muted'>" . $lang->edituser['inv_expired_revoked'] . "</small>
-            </div>
-        </div>
-    </div>
-    <div class='mb-1 text-muted small'>
-        <i class='fas fa-ticket-alt me-1'></i>" . $lang->edituser['inv_balance'] . "
-        <strong class='text-dark'>" . (int)($userdata['invites'] ?? 0) . "</strong>
-    </div>";
+    $kpis = '<div class="eu-kpis mb-3">'
+          . eu_kpi('fa-paper-plane',    ts_nf((int)($s['total'] ?? 0)),   $L['inv_total'])
+          . eu_kpi('fa-user-check',     ts_nf((int)($s['used'] ?? 0)),    $L['inv_used'])
+          . eu_kpi('fa-clock',          ts_nf((int)($s['pending'] ?? 0)), $L['inv_pending'])
+          . eu_kpi('fa-hourglass-end',  ts_nf((int)($s['dead'] ?? 0)),    $L['inv_expired_revoked'])
+          . '</div>';
 
-    // ── Sent invites table ────────────────────────────────────────────────────
-    $q_sent = $db->sql_query_prepared("
-        SELECT i.*,
-               u.username   AS invitee_name,
-               u.enabled    AS invitee_enabled,
-               u.usergroup  AS invitee_group,
-               u.added      AS invitee_joined,
-               u.uploaded   AS invitee_ul,
-               u.downloaded AS invitee_dl,
-               u.warned     AS invitee_warned,
-               u.donor      AS invitee_donor
+    // Кто пригласил этого пользователя
+    $invitedBy = (int)($userdata['invited_by'] ?? 0);
+    $inviter   = '<div class="eu-note"><i class="fa-solid fa-user-plus"></i><div>' . $L['inv_no_inviter'] . '</div></div>';
+    if ($invitedBy > 0) {
+        $iq = $db->sql_query_prepared('SELECT id, username, usergroup, enabled, donor FROM users WHERE id = ? LIMIT 1', [$invitedBy]);
+        if ($iq && ($ir = $db->fetch_array($iq))) {
+            $inviter = '<div class="eu-note"><i class="fa-solid fa-user-plus"></i><div><strong>' . $L['inv_invited_by'] . '</strong> '
+                     . '<a href="' . $BASEURL . '/' . get_profile_link((int)$ir['id']) . '">' . format_name(htmlspecialchars_uni((string)$ir['username']), (int)$ir['usergroup']) . '</a> '
+                     . ($ir['enabled'] === 'no' ? eu_badge('danger', '', $L['badge_banned']) : '')
+                     . ($ir['donor'] === 'yes' ? eu_badge('info', '', $L['badge_donor']) : '')
+                     . '</div></div>';
+        }
+    }
+
+    // Отправленные приглашения
+    $rows = '';
+    $sent = 0;
+    $q = $db->sql_query_prepared('
+        SELECT i.*, u.username AS invitee_name, u.usergroup AS invitee_group, u.enabled AS invitee_enabled,
+               u.added AS invitee_joined, u.uploaded AS invitee_ul, u.downloaded AS invitee_dl,
+               u.warned AS invitee_warned, u.donor AS invitee_donor
         FROM invites i
         LEFT JOIN users u ON u.id = i.invitee_id
         WHERE i.inviter_id = ?
         ORDER BY i.created_at DESC
-        LIMIT 200
-    ", [$uid]);
-
-    $sent_rows = '';
-    $sent_count = 0;
-    while ($q_sent && ($row = $db->fetch_array($q_sent))) {
-        $sent_count++;
-
-        // Status badge
-        [$sc, $si, $sl] = match($row['status']) {
-            'used'    => ['success', 'fa-check',      $lang->edituser['inv_st_used']],
-            'pending' => ['warning', 'fa-clock',      $lang->edituser['inv_st_pending']],
-            'expired' => ['secondary','fa-hourglass-end',$lang->edituser['inv_st_expired']],
-            'revoked' => ['danger',  'fa-ban',        $lang->edituser['inv_st_revoked']],
-            default   => ['secondary','fa-question',  (string)$row['status']],
+        LIMIT 200', [$uid]);
+    while ($q && ($r = $db->fetch_array($q))) {
+        $sent++;
+        [$soft, $icon, $label] = match ((string)$r['status']) {
+            'used'    => ['success', 'fa-check',         $L['inv_st_used']],
+            'pending' => ['warning', 'fa-clock',         $L['inv_st_pending']],
+            'expired' => ['muted',   'fa-hourglass-end', $L['inv_st_expired']],
+            'revoked' => ['danger',  'fa-ban',           $L['inv_st_revoked']],
+            default   => ['muted',   'fa-question',      htmlspecialchars((string)$r['status'])],
         };
-        $statusBadge = "<span class='badge bg-{$sc}-subtle text-{$sc} border border-{$sc}'>
-            <i class='fas {$si} me-1'></i>{$sl}</span>";
 
-        // Invitee info
-        if ($row['invitee_id'] && $row['invitee_name']) {
-            $iname  = htmlspecialchars($row['invitee_name'], ENT_QUOTES, 'UTF-8');
-            $iid    = (int)$row['invitee_id'];
-            $ilink  = "<a href='{$BASEURL}/profile.php?id={$iid}' class='text-decoration-none fw-semibold'>{$iname}</a>";
-
-            $iBadges = '';
-            if ($row['invitee_warned']  === 'yes') $iBadges .= "<span class='badge bg-warning text-dark ms-1'>" . $lang->edituser['badge_warned'] . "</span>";
-            if ($row['invitee_donor']   === 'yes') $iBadges .= "<span class='badge bg-info ms-1'>" . $lang->edituser['badge_donor'] . "</span>";
-            if ($row['invitee_enabled'] === 'no')  $iBadges .= "<span class='badge bg-danger ms-1'>" . $lang->edituser['badge_banned'] . "</span>";
-
-            $iJoined = $row['invitee_joined'] ? my_datee('relative', $row['invitee_joined']) : '—';
-            $iUl     = mksize($row['invitee_ul']  ?? 0);
-            $iDl     = mksize($row['invitee_dl']  ?? 0);
-
-            $inviteeCol = "
-                {$ilink}{$iBadges}
-                <div class='text-muted small mt-1'>
-                    " . ags_fmt($lang->edituser['inv_joined'], $iJoined) . " &nbsp;·&nbsp;
-                    <span class='text-success'><i class='fas fa-upload'></i> {$iUl}</span> &nbsp;
-                    <span class='text-danger'><i class='fas fa-download'></i> {$iDl}</span>
-                </div>";
-        } elseif ($row['email']) {
-            $email = htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8');
-            $inviteeCol = "<span class='text-muted'><i class='fas fa-envelope me-1'></i>{$email}</span>
-                <div class='text-muted small'>" . $lang->edituser['inv_not_registered'] . "</div>";
+        if ((int)$r['invitee_id'] > 0 && $r['invitee_name'] !== null) {
+            $invitee = '<a href="' . $BASEURL . '/' . get_profile_link((int)$r['invitee_id']) . '" class="fw-semibold">'
+                     . format_name(htmlspecialchars_uni((string)$r['invitee_name']), (int)$r['invitee_group']) . '</a> '
+                     . ($r['invitee_warned'] === 'yes' ? eu_badge('warning', '', $L['badge_warned']) : '')
+                     . ($r['invitee_donor'] === 'yes' ? eu_badge('info', '', $L['badge_donor']) : '')
+                     . ($r['invitee_enabled'] === 'no' ? eu_badge('danger', '', $L['badge_banned']) : '')
+                     . '<div class="eu-hint">' . ags_fmt($L['inv_joined'], eu_dt((int)$r['invitee_joined']))
+                     . ' · <span class="text-success"><i class="fa-solid fa-arrow-up"></i> ' . mksize($r['invitee_ul'] ?? 0) . '</span>'
+                     . ' <span class="text-danger"><i class="fa-solid fa-arrow-down"></i> ' . mksize($r['invitee_dl'] ?? 0) . '</span></div>';
+        } elseif (!empty($r['email'])) {
+            $invitee = '<span class="text-body-secondary"><i class="fa-solid fa-envelope me-1"></i>' . htmlspecialchars((string)$r['email'], ENT_QUOTES, 'UTF-8') . '</span>'
+                     . '<div class="eu-hint">' . $L['inv_not_registered'] . '</div>';
         } else {
-            $inviteeCol = "<span class='text-muted'>—</span>";
+            $invitee = '—';
         }
 
-        $note       = htmlspecialchars($row['note'] ?? '', ENT_QUOTES, 'UTF-8');
-        $created    = $row['created_at'] ? my_datee('relative', $row['created_at']) : '—';
-        $used_at    = $row['used_at']    ? my_datee('relative', $row['used_at'])    : '—';
-        $expires_at = $row['expires_at'] ? my_datee('relative', $row['expires_at']) : '—';
-        $ip_created = htmlspecialchars($row['ip_created'] ?? '', ENT_QUOTES, 'UTF-8');
-        $ip_used    = htmlspecialchars($row['ip_used']    ?? '', ENT_QUOTES, 'UTF-8');
-
-        $ipCol = '';
-        if ($ip_created) $ipCol .= "<small class='text-muted d-block'><i class='fas fa-paper-plane me-1'></i>{$ip_created}</small>";
-        if ($ip_used)    $ipCol .= "<small class='text-muted d-block'><i class='fas fa-sign-in-alt me-1'></i>{$ip_used}</small>";
-        if (!$ipCol)     $ipCol  = '<small class="text-muted">—</small>';
-
-        $sent_rows .= "
-        <tr>
-            <td>{$inviteeCol}</td>
-            <td>{$statusBadge}</td>
-            <td><small class='text-muted'>{$created}</small></td>
-            <td><small class='text-muted'>{$used_at}</small></td>
-            <td><small class='text-muted'>{$expires_at}</small></td>
-            <td>{$ipCol}</td>
-            " . ($note ? "<td><small class='text-muted'>{$note}</small></td>" : "<td>—</td>") . "
-        </tr>";
-    }
-
-    if (!$sent_rows) {
-        $sentTable = "
-        <div class='text-center text-muted py-5'>
-            <i class='fas fa-ticket-alt fa-2x mb-2 d-block opacity-25'></i>
-            " . $lang->edituser['inv_none_sent'] . "
-        </div>";
-    } else {
-        $sentTable = "
-        <div class='table-responsive'>
-            <table class='table table-hover table-sm align-middle mb-0'>
-                <thead class='table-light'>
-                    <tr>
-                        <th>" . $lang->edituser['inv_th_invitee'] . "</th>
-                        <th>" . $lang->edituser['th_status'] . "</th>
-                        <th>" . $lang->edituser['inv_th_sent'] . "</th>
-                        <th>" . $lang->edituser['inv_th_used_at'] . "</th>
-                        <th>" . $lang->edituser['inv_th_expires'] . "</th>
-                        <th>" . $lang->edituser['inv_th_ip'] . "</th>
-                        <th>" . $lang->edituser['inv_th_note'] . "</th>
-                    </tr>
-                </thead>
-                <tbody>{$sent_rows}</tbody>
-            </table>
-        </div>";
-    }
-
-    // ── Invite tree (recursive, max depth 3) ──────────────────────────────────
-    $treeHtml = buildInviteTree($uid, $db, $BASEURL);
-
-    
-    if (!$treeHtml) {
-        $treeSection = "
-        <div class='text-center text-muted py-5'>
-            <i class='fas fa-sitemap fa-2x mb-2 d-block opacity-25'></i>
-            " . $lang->edituser['inv_no_tree'] . "
-        </div>";
-    } else {
-        $treeSection = "
-        <div class='border rounded-3 p-3 bg-light'>
-            {$treeHtml}
-        </div>";
-    }
-
-    // ── Who invited THIS user ─────────────────────────────────────────────────
-    $inviterSection = '';
-    $invitedBy = (int)($userdata['invited_by'] ?? 0);
-    if ($invitedBy) {
-        $iq = $db->sql_query_prepared("SELECT id, username, enabled, donor FROM users WHERE id = ? LIMIT 1", [$invitedBy]);
-        if ($iq && ($ir = $db->fetch_array($iq))) {
-            $iname   = htmlspecialchars($ir['username'], ENT_QUOTES, 'UTF-8');
-            $ibanned = $ir['enabled'] === 'no' ? "<span class='badge bg-danger ms-1'>" . $lang->edituser['badge_banned'] . "</span>" : '';
-            $idonor  = $ir['donor']  === 'yes' ? "<span class='badge bg-info ms-1'>" . $lang->edituser['badge_donor'] . "</span>"   : '';
-            $inviterSection = "
-            <div class='alert alert-light border d-flex align-items-center gap-3 mb-0'>
-                <i class='fas fa-user-plus fa-lg text-primary'></i>
-                <div>
-                    <div class='fw-semibold'>" . $lang->edituser['inv_invited_by'] . "</div>
-                    <a href='{$BASEURL}/profile.php?id={$invitedBy}' class='text-decoration-none'>{$iname}</a>
-                    {$ibanned}{$idonor}
-                </div>
-            </div>";
+        $ips = '';
+        foreach (['ip_created' => 'fa-paper-plane', 'ip_used' => 'fa-right-to-bracket'] as $col => $ico) {
+            if (!empty($r[$col])) {
+                $ips .= '<div class="eu-hint text-nowrap"><i class="fa-solid ' . $ico . ' me-1"></i>' . htmlspecialchars((string)$r[$col], ENT_QUOTES, 'UTF-8') . '</div>';
+            }
         }
-    } else {
-        $inviterSection = "
-        <div class='alert alert-light border text-muted mb-0'>
-            <i class='fas fa-user-plus me-2'></i>" . $lang->edituser['inv_no_inviter'] . "
-        </div>";
+
+        $rows .= '<tr>'
+            . '<td>' . $invitee . '</td>'
+            . '<td>' . eu_badge($soft, $icon, $label) . '</td>'
+            . '<td class="text-nowrap eu-hint">' . eu_dt((int)$r['created_at']) . '</td>'
+            . '<td class="text-nowrap eu-hint">' . eu_dt((int)($r['used_at'] ?? 0)) . '</td>'
+            . '<td class="text-nowrap eu-hint">' . eu_dt((int)($r['expires_at'] ?? 0)) . '</td>'
+            . '<td>' . ($ips !== '' ? $ips : '—') . '</td>'
+            . '<td class="eu-hint">' . (!empty($r['note']) ? htmlspecialchars((string)$r['note'], ENT_QUOTES, 'UTF-8') : '—') . '</td>'
+            . '</tr>';
     }
 
-    // ── Assemble ──────────────────────────────────────────────────────────────
-    return "
-    <div class='d-flex align-items-center mb-4'>
-        <i class='fas fa-ticket-alt fa-lg text-primary me-2'></i>
-        <h5 class='fw-bold mb-0'>" . $lang->edituser['tab_invites'] . "</h5>
-    </div>
+    $sentHtml = $rows !== ''
+        ? eu_table('<th>' . $L['inv_th_invitee'] . '</th><th>' . $L['th_status'] . '</th><th>' . $L['inv_th_sent'] . '</th>'
+                 . '<th>' . $L['inv_th_used_at'] . '</th><th>' . $L['inv_th_expires'] . '</th><th>' . $L['inv_th_ip'] . '</th><th>' . $L['inv_th_note'] . '</th>', $rows)
+        : eu_empty('fa-ticket', $L['inv_none_sent']);
 
-    {$statsBar}
+    $tree     = buildInviteTree($uid);
+    $treeHtml = $tree !== '' ? '<div class="p-3">' . $tree . '</div>' : eu_empty('fa-sitemap', $L['inv_no_tree']);
 
-    <div class='mb-4'>{$inviterSection}</div>
-
-    <ul class='nav nav-pills mb-4 gap-2' id='inviteSubTabs' role='tablist'>
-        <li class='nav-item' role='presentation'>
-            <button class='nav-link active' data-bs-toggle='pill' data-bs-target='#inv-sent' type='button'>
-                <i class='fas fa-paper-plane me-1'></i>" . $lang->edituser['inv_tab_sent'] . "
-                <span class='badge bg-secondary ms-1'>{$sent_count}</span>
-            </button>
-        </li>
-        <li class='nav-item' role='presentation'>
-            <button class='nav-link' data-bs-toggle='pill' data-bs-target='#inv-tree' type='button'>
-                <i class='fas fa-sitemap me-1'></i>" . $lang->edituser['inv_tab_tree'] . "
-            </button>
-        </li>
-    </ul>
-
-    <div class='tab-content'>
-        <div class='tab-pane fade show active' id='inv-sent' role='tabpanel'>
-            {$sentTable}
-        </div>
-        <div class='tab-pane fade' id='inv-tree' role='tabpanel'>
-            {$treeSection}
-        </div>
-    </div>";
+    return $kpis
+         . '<div class="d-flex flex-wrap align-items-center gap-2 mb-3">'
+         .   $inviter
+         .   '<span class="eu-chip"><i class="fa-solid fa-ticket"></i>' . $L['inv_balance'] . ' <b>' . (int)$userdata['invites'] . '</b></span>'
+         . '</div>'
+         . '<section class="st-card eu-card"><div class="st-card__head">'
+         . eu_subtabs('inviteSubTabs', [
+               'inv-sent' => ['fa-paper-plane', $L['inv_tab_sent'], (string)$sent],
+               'inv-tree' => ['fa-sitemap',     $L['inv_tab_tree'], ''],
+           ])
+         . '</div>'
+         . eu_subpanes(['inv-sent' => $sentHtml, 'inv-tree' => $treeHtml])
+         . '</section>';
 }
 
-
-
+/* =============================================================================
+   Страница
+   ============================================================================= */
 
 function handleEditUser(): void
 {
-    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb, $avatarsize, $lang;
-    
+    global $userdata, $BASEURL, $usergroups, $db, $lang, $dateformat;
+    $L = $lang->edituser;
+
     get_user_data();
     permission_check();
-    stdhead(ags_fmt($lang->edituser['page_title_edit'], htmlspecialchars_uni($userdata['username']), $userdata['id']));
-	
 
-	
-	
-	$useravatar  = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
-                        $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+    $uid      = (int)$userdata['id'];
+    $username = htmlspecialchars_uni((string)$userdata['username']);
 
-                        $user_avatar = '<div class="author_avatar">'
-                           . '<img class="' . $avatarClass . '" '
-                           . ' src="' . $useravatar['image'] . '" alt="' . htmlspecialchars_uni($userdata['username']) . '" loading="lazy">'
-                           . '</div>';
-	
-	
-	
-	
-	
-	
-	$is_own_profile = ((int)$CURUSER['id'] === (int)$userdata['id']);
-    $is_mod = is_mod($usergroups); // твоя функция
-    $can_change_avatar = ($is_own_profile || $is_mod) ? 1 : 0;
-	
-	
-    // SweetAlert2 + ags-dialog.js (кнопки ОК/Да/Отмена — из global.lang.php)
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
-    . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
-    . ags_js_lang('global', ['dlg_ok' => 'js_dlg_ok', 'dlg_yes' => 'js_dlg_yes', 'dlg_cancel' => 'js_dlg_cancel'])
-    . '<script src="' . $BASEURL . '/scripts/ags-dialog.js?ver=1"></script>';
-    echo avatar_js_lang();
-    echo '<script src="'.$BASEURL.'/scripts/avatar_upload.js?ver=5"></script>';
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css">';
+    stdhead(ags_fmt($L['page_title_edit'], $username, $uid));
 
-    
-   
-   
-   
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=2">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
 
-    // Enhanced action buttons
-    echo '
-    <div class="container mt-4">
-        <div class="d-flex flex-wrap gap-3 mb-4">
-            <a href="' . $BASEURL . '/' . get_profile_link($userdata['id']) . '" class="btn btn-premium">
-                <i class="fas fa-arrow-left me-2"></i>' . $lang->edituser['btn_back_profile'] . '
-            </a>
-            <a href="' . $BASEURL . '/search.php?action=finduserthreads&uid=' . $userdata['id'] . '" class="btn btn-outline-primary">
-                <i class="fas fa-file-alt me-2"></i>' . $lang->edituser['btn_user_threads'] . '
-            </a>
-            <a href="' . $BASEURL . '/search.php?action=finduser&uid=' . $userdata['id'] . '" class="btn btn-outline-primary">
-                <i class="fas fa-comments me-2"></i>' . $lang->edituser['btn_user_posts'] . '
-            </a>
-            <a href="' . $BASEURL . '/admin/index.php?act=ip_info&userid=' . $userdata['id'] . '" class="btn btn-outline-warning">
-                <i class="fas fa-network-wired me-2"></i>' . $lang->edituser['btn_ip_info'] . '
-            </a>
-            <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=resetpasskey&userid=' . $userdata['id'] . '" class="btn btn-outline-info">
-                <i class="fas fa-key me-2"></i>' . $lang->edituser['btn_reset_passkey'] . '
-            </a>
-            <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userdata['id'] . '" class="btn btn-outline-danger">
-                <i class="fas fa-trash-alt me-2"></i>' . $lang->edituser['btn_delete_account'] . '
-            </a>
-			
-			<button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#quickBanModal">
-                <i class="fas fa-ban me-2"></i>' . $lang->edituser['btn_quick_ban'] . '
-            </button>
-			
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#sendPMModal">
-                <i class="fas fa-paper-plane me-2"></i>' . $lang->edituser['btn_send_pm'] . '
-            </button>
-            <a href="' . $BASEURL . '/admin/index.php?act=usersearch&uploader=' . $userdata['id'] . '" class="btn btn-outline-secondary">
-                <i class="fas fa-upload me-2"></i>' . $lang->edituser['btn_uploads'] . '
-            </a>
-            <a href="' . $BASEURL . '/userhistory.php?id=' . $userdata['id'] . '" class="btn btn-outline-secondary">
-                <i class="fas fa-comments me-2"></i>' . $lang->edituser['btn_comments'] . '
-            </a>
-        </div>
-    </div>
-';
-    
-	echo renderSendPMModal();
-	
-	$uid_check = (int)$userdata['id'];
-    $q = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ? LIMIT 1", [$uid_check]);
-    $is_user_banned = $q && $db->num_rows($q) > 0;
-    echo renderQuickBanModal($is_user_banned);
-	
+    flash_message();
 
+    $q = $db->sql_query_prepared('SELECT uid FROM banned WHERE uid = ? LIMIT 1', [$uid]);
+    $is_banned = $q && $db->num_rows($q) > 0;
 
-    // User header with stats
-    echo '
-    <div class="container mb-5">
-        <div class="glass-card p-4 mb-4">
-            <div class="row align-items-center">
-                
-				
-			
-				
-				
-				<div class="col-auto">
-				<div class="avatar-ring position-relative hov-soft"
-     id="avatar-container"
-     data-uid="'.$userdata['id'].'"
-     data-can-change="'.$can_change_avatar.'"
-     data-max-mb="'.round($avatarsize / 1024).'"
-     data-upload-url="edituser.php?action=upload_avatar&amp;userid='.$userdata['id'].'"
-     title="' . $lang->edituser['hdr_avatar_title'] . '">
-    <div>
-     ' . $user_avatar . '
-      <span class="avatar-overlay">' . $lang->edituser['hdr_avatar_change'] . '</span>
-    </div>
+    $profile = $BASEURL . '/' . get_profile_link($uid);
+    $postKey = generate_post_check();
 
-    <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
-  </div>
-</div>
-<input type="file" id="avatar-input" accept="image/*" style="display:none;">				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-                <div class="col">
-                    <div class="d-flex align-items-center mb-2">
-                        <h2 class="mb-0 me-3">' . htmlspecialchars_uni($userdata['username']) . '</h2>
-                        <span class="user-badge badge-premium">
-                            <i class="fas fa-id-card me-1"></i>' . ags_fmt($lang->edituser['hdr_uid'], $userdata['id']) . '
-                        </span>
-                        ' . get_user_status_badges($userdata) . '
-                    </div>
-                    <p class="text-muted mb-3">
-                        <i class="fas fa-envelope me-2"></i>' . htmlspecialchars_uni($userdata['email']) . '
-                        <span class="mx-3">•</span>
-                        <i class="fas fa-user-group me-2"></i>' . get_user_class_name($userdata['usergroup']) . '
-                    </p>
-                    <div class="row">
-                        ' . get_user_stats($userdata) . '
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
+    // ── Плитки: из get_user_data() (один запрос)
+    $ratio      = eu_ratio_value($userdata);
+    $ratioClass = $ratio === null ? '' : ($ratio >= 1 ? 'text-success' : ($ratio >= 0.5 ? 'text-warning' : 'text-danger'));
 
+    echo '<div class="container-md st-page eu-page">';
 
+    // ── Шапка
+    echo '<section class="st-card st-head mb-3">'
+       .   '<span class="st-head__icon st-soft-primary"><i class="fa-solid fa-user-pen"></i></span>'
+       .   '<div class="min-w-0 flex-grow-1">'
+       .     '<div class="d-flex flex-wrap align-items-center gap-2">'
+       .       '<h1 class="st-title">' . format_name($username, (int)$userdata['usergroup']) . '</h1>'
+       .       get_user_status_badges($userdata)
+       .     '</div>'
+       .     '<div class="st-head__meta">'
+       .       '<span><i class="fa-solid fa-id-card"></i>' . ags_fmt($L['hdr_uid'], $uid) . '</span>'
+       .       '<span><i class="fa-solid fa-user-group"></i>' . htmlspecialchars_uni(get_user_class_name((string)$userdata['usergroup'])) . '</span>'
+       .       '<span class="text-truncate"><i class="fa-solid fa-envelope"></i>' . htmlspecialchars_uni((string)$userdata['email']) . '</span>'
+       .       '<span><i class="fa-solid fa-calendar-plus"></i>' . $L['stat_joined'] . ': ' . eu_dt((int)$userdata['added']) . '</span>'
+       .       '<span><i class="fa-solid fa-clock"></i>' . $L['info_last_active'] . ': ' . eu_dt((int)$userdata['lastactive']) . '</span>'
+       .     '</div>'
+       .   '</div>'
+       .   '<div class="eu-head__actions">'
+       .     '<a href="' . $profile . '" class="btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left me-1"></i>' . $L['btn_back_profile'] . '</a>'
+       .     '<button type="button" class="btn btn-sm btn-outline-primary st-pill" data-bs-toggle="modal" data-bs-target="#sendPMModal"><i class="fa-solid fa-paper-plane me-1"></i>' . $L['btn_send_pm'] . '</button>'
+       .     '<button type="button" class="btn btn-sm btn-danger st-pill" data-bs-toggle="modal" data-bs-target="#quickBanModal"><i class="fa-solid fa-ban me-1"></i>'
+       .       ($is_banned ? $L['ban_btn_update'] : $L['btn_quick_ban']) . '</button>'
+       .   '</div>'
+       . '</section>';
 
+    // ── KPI
+    echo '<div class="eu-kpis mb-3">'
+       . eu_kpi('fa-scale-balanced', '<span class="' . $ratioClass . '">' . get_ratio($userdata) . '</span>', $L['stat_ratio'])
+       . eu_kpi('fa-arrow-up',       mksize($userdata['uploaded']),   $L['stat_uploaded'])
+       . eu_kpi('fa-arrow-down',     mksize($userdata['downloaded']), $L['stat_downloaded'])
+       . eu_kpi('fa-coins',          ts_nf((float)$userdata['seedbonus']), $L['stat_bonus'])
+       . '</div>';
 
-
-
-   
-// Main form with tabs
-echo '
-<form method="post" action="' . $_SERVER['SCRIPT_NAME'] . '" name="updateuser" id="userEditForm">
-    <input type="hidden" name="userid" value="' . $userdata['id'] . '">
-    <input type="hidden" name="action" value="updateuser">
-    <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
-    
-    <div class="container">
-        <div class="glass-card">
-            <!-- Navigation Tabs -->
-            <ul class="nav nav-tabs-premium nav-fill p-3" id="userTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button" role="tab">
-                        <i class="fas fa-user me-2"></i>' . $lang->edituser['tab_basic'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab">
-                        <i class="fas fa-shield-alt me-2"></i>' . $lang->edituser['tab_permissions'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="warning-tab" data-bs-toggle="tab" data-bs-target="#warning" type="button" role="tab">
-                        <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->edituser['tab_warnings'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab">
-                        <i class="fas fa-chart-bar me-2"></i>' . $lang->edituser['tab_stats'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="account-tab" data-bs-toggle="tab" data-bs-target="#account" type="button" role="tab">
-                        <i class="fas fa-cog me-2"></i>' . $lang->edituser['tab_account'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab">
-                        <i class="fas fa-cogs me-2"></i>' . $lang->edituser['tab_advanced'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button" role="tab">
-                        <i class="fas fa-history me-2"></i>' . $lang->edituser['tab_activity'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security" type="button" role="tab">
-                        <i class="fas fa-shield-halved me-2"></i>' . $lang->edituser['tab_security'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="hnr-tab" data-bs-toggle="tab" data-bs-target="#hnr" type="button" role="tab">
-                        <i class="fas fa-exclamation-circle me-2"></i>' . $lang->edituser['tab_hnr'] . '
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="forum-tab" data-bs-toggle="tab" data-bs-target="#forum" type="button" role="tab">
-                        <i class="fas fa-comments me-2"></i>' . $lang->edituser['tab_forum'] . '
-                    </button>
-                </li>
-                <!-- ДОБАВЛЕНО: Audit Log Tab Button -->
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button" role="tab">
-                        <i class="fas fa-clipboard-list me-2"></i>' . $lang->edituser['tab_audit'] . '
-                    </button>
-                </li>
-				
-				<li class="nav-item" role="presentation">
-                   <button class="nav-link" id="torrents-tab" data-bs-toggle="tab" data-bs-target="#torrents" type="button" role="tab">
-                        <i class="fas fa-exchange-alt me-2"></i>' . $lang->edituser['tab_torrents'] . '
-                   </button>
-                </li>
-				
-				<li class="nav-item" role="presentation">
-                   <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports" type="button" role="tab">
-                        <i class="fas fa-flag me-2"></i>' . $lang->edituser['tab_reports'] . '
-                   </button>
-                </li>
-				
-				
-				<li class="nav-item" role="presentation">
-                   <button class="nav-link" id="invites-tab" data-bs-toggle="tab" data-bs-target="#invites" type="button" role="tab">
-                         <i class="fas fa-ticket-alt me-2"></i>' . $lang->edituser['tab_invites'] . '
-                   </button>
-                </li>
-				
-				
-				
-            </ul>
-            
-            <div class="tab-content p-4" id="userTabsContent">
-                <!-- Basic Info Tab -->
-                <div class="tab-pane fade show active" id="basic" role="tabpanel">
-                    ' . renderBasicInfoTab() . '
-                </div>
-                
-                <!-- Permissions Tab -->
-                <div class="tab-pane fade" id="permissions" role="tabpanel">
-                    ' . renderPermissionsTab() . '
-                </div>
-                
-                <!-- Warnings Tab -->
-                <div class="tab-pane fade" id="warning" role="tabpanel">
-                    ' . renderWarningsTab() . '
-                </div>
-                
-                <!-- Statistics Tab -->
-                <div class="tab-pane fade" id="stats" role="tabpanel">
-                    ' . renderStatisticsTab() . '
-                </div>
-                
-                <!-- Account Settings Tab -->
-                <div class="tab-pane fade" id="account" role="tabpanel">
-                    ' . renderAccountSettingsTab() . '
-                </div>
-                
-                <!-- Advanced Tab -->
-                <div class="tab-pane fade" id="advanced" role="tabpanel">
-                    ' . renderAdvancedTab() . '
-                </div>
-
-                <!-- Activity Tab -->
-                <div class="tab-pane fade" id="activity" role="tabpanel">
-                    ' . renderActivityTab() . '
-                </div>
-
-                <!-- Security Tab -->
-                <div class="tab-pane fade" id="security" role="tabpanel">
-                    ' . renderSecurityTab() . '
-                </div>
-
-                <!-- Hit & Run Tab -->
-                <div class="tab-pane fade" id="hnr" role="tabpanel">
-                    ' . renderHitRunTab() . '
-                </div>
-
-                <!-- Forum Tab -->
-                <div class="tab-pane fade" id="forum" role="tabpanel">
-                    ' . renderForumTab() . '
-                </div>
-                
-                <!-- Audit Log Tab Content -->
-                <div class="tab-pane fade" id="audit" role="tabpanel">
-                    ' . renderAuditTab() . '
-                </div>
-				
-				<div class="tab-pane fade" id="torrents" role="tabpanel">
-                   '.renderTorrentActivityTab().'
-                </div>
-				
-				<div class="tab-pane fade" id="reports" role="tabpanel">
-                   '.renderReportsTab().'
-                </div>
-				
-				<div class="tab-pane fade" id="invites" role="tabpanel">
-                   '.renderInvitesTab().'
-                </div>
-				
-				
-				
-				
-            </div>
-            
-            <!-- Form Footer -->
-            <div class="card-footer bg-transparent border-top-0 py-4">
-                <div class="text-center">
-                    <button type="submit" class="btn btn-success btn-lg px-5 me-3" name="updateuser">
-                        <i class="fas fa-save me-2"></i>' . $lang->edituser['btn_save'] . '
-                    </button>
-                    <button type="reset" class="btn btn-outline-secondary btn-lg px-5">
-                        <i class="fas fa-undo me-2"></i>' . $lang->edituser['btn_reset'] . '
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</form>';
-
-
-
-
-
-
-	
-	
-   
-	    // Enhanced JavaScript
-	echo '
-	
-	<style>
-	@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
+    // ── Инструменты (ссылки + опасные действия через POST)
+    $lastip = '';
+    if (!empty($userdata['lastip'])) {
+        $s = my_inet_ntop($db->unescape_binary($userdata['lastip']));
+        $lastip = $s !== false ? $s : '';
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-</style>';
+    echo '<section class="st-card st-toolbar mb-3 eu-tools">'
+       .   '<div class="d-flex flex-wrap gap-2">'
+       .     '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $BASEURL . '/search.php?action=finduserthreads&amp;uid=' . $uid . '"><i class="fa-solid fa-file-lines me-1"></i>' . $L['btn_user_threads'] . '</a>'
+       .     '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $BASEURL . '/search.php?action=finduser&amp;uid=' . $uid . '"><i class="fa-solid fa-comments me-1"></i>' . $L['btn_user_posts'] . '</a>'
+       .     '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $BASEURL . '/userhistory.php?id=' . $uid . '"><i class="fa-solid fa-comment-dots me-1"></i>' . $L['btn_comments'] . '</a>'
+       .     '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $BASEURL . '/browse.php?search_type=t_uploader&amp;include_dead_torrents=yes&amp;keywords=' . rawurlencode((string)$userdata['username']) . '"><i class="fa-solid fa-upload me-1"></i>' . $L['btn_uploads'] . '</a>'
+       .     ($lastip !== '' ? '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $BASEURL . '/admin/index.php?act=ipsearch&amp;ip=' . rawurlencode($lastip) . '"><i class="fa-solid fa-network-wired me-1"></i>' . $L['btn_ip_info'] . '</a>' : '')
+       .   '</div>'
+       .   '<div class="d-flex flex-wrap gap-2">'
+       .     '<form method="post" action="edituser.php?action=resetpasskey&amp;userid=' . $uid . '" class="d-inline">'
+       .       '<input type="hidden" name="userid" value="' . $uid . '"><input type="hidden" name="sure" value="1"><input type="hidden" name="my_post_key" value="' . $postKey . '">'
+       .       '<button type="submit" class="btn btn-sm btn-outline-warning st-pill" data-ags-confirm="' . htmlspecialchars((string)$L['pk_question']) . '"><i class="fa-solid fa-key me-1"></i>' . $L['btn_reset_passkey'] . '</button>'
+       .     '</form>'
+       .     (eu_can_delete()
+            ? '<form method="post" action="edituser.php?action=deleteaccount&amp;userid=' . $uid . '" class="d-inline">'
+            .   '<input type="hidden" name="userid" value="' . $uid . '"><input type="hidden" name="sure" value="1"><input type="hidden" name="my_post_key" value="' . $postKey . '">'
+            .   '<button type="submit" class="btn btn-sm btn-outline-danger st-pill" data-ags-danger="1" data-ags-confirm="' . htmlspecialchars($L['del_question'] . ' ' . $L['del_warning']) . '"><i class="fa-solid fa-trash-can me-1"></i>' . $L['btn_delete_account'] . '</button>'
+            . '</form>'
+            : '')
+       .   '</div>'
+       . '</section>';
 
-    // ── JS lang: ключи js_* → AGS_LANG без префикса ─────────────────────────
+    // ── Вкладки
+    $tabs = [
+        'basic'       => ['fa-user',                  $L['tab_basic'],       true],
+        'permissions' => ['fa-shield-halved',         $L['tab_permissions'], true],
+        'warning'     => ['fa-triangle-exclamation',  $L['tab_warnings'],    true],
+        'stats'       => ['fa-chart-column',          $L['tab_stats'],       true],
+        'account'     => ['fa-gear',                  $L['tab_account'],     true],
+        'advanced'    => ['fa-gears',                 $L['tab_advanced'],    true],
+        'activity'    => ['fa-clock-rotate-left',     $L['tab_activity'],    false],
+        'security'    => ['fa-lock',                  $L['tab_security'],    false],
+        'hnr'         => ['fa-person-running',        $L['tab_hnr'],         false],
+        'forum'       => ['fa-comments',              $L['tab_forum'],       false],
+        'audit'       => ['fa-clipboard-list',        $L['tab_audit'],       false],
+        'torrents'    => ['fa-right-left',            $L['tab_torrents'],    false],
+        'reports'     => ['fa-flag',                  $L['tab_reports'],     false],
+        'invites'     => ['fa-ticket',                $L['tab_invites'],     false],
+    ];
+
+    echo '<nav class="st-card eu-tabs-card mb-3"><ul class="nav eu-tabs" id="userTabs" role="tablist">';
+    $first = true;
+    foreach ($tabs as $id => [$icon, $label, $editable]) {
+        echo '<li class="nav-item" role="presentation">'
+           . '<button class="eu-tab' . ($first ? ' active' : '') . '" id="' . $id . '-tab" data-bs-toggle="tab" data-bs-target="#' . $id . '"'
+           .   ' type="button" role="tab" aria-controls="' . $id . '" aria-selected="' . ($first ? 'true' : 'false') . '"'
+           .   ' data-eu-editable="' . ($editable ? '1' : '0') . '" title="' . htmlspecialchars((string)$label) . '">'
+           .   '<i class="fa-solid ' . $icon . '"></i><span>' . $label . '</span>'
+           . '</button></li>';
+        $first = false;
+    }
+    echo '</ul></nav>';
+
+    // ── Основная форма (вкладки-просмотры тоже внутри — вложенных форм нет)
+    echo '<form method="post" action="edituser.php" name="updateuser" id="userEditForm">'
+       . '<input type="hidden" name="userid" value="' . $uid . '">'
+       . '<input type="hidden" name="action" value="updateuser">'
+       . '<input type="hidden" name="my_post_key" value="' . $postKey . '">'
+       . '<div class="tab-content" id="userTabsContent">';
+
+    $render = [
+        'basic' => 'renderBasicInfoTab', 'permissions' => 'renderPermissionsTab', 'warning' => 'renderWarningsTab',
+        'stats' => 'renderStatisticsTab', 'account' => 'renderAccountSettingsTab', 'advanced' => 'renderAdvancedTab',
+        'activity' => 'renderActivityTab', 'security' => 'renderSecurityTab', 'hnr' => 'renderHitRunTab',
+        'forum' => 'renderForumTab', 'audit' => 'renderAuditTab', 'torrents' => 'renderTorrentActivityTab',
+        'reports' => 'renderReportsTab', 'invites' => 'renderInvitesTab',
+    ];
+    $first = true;
+    foreach ($render as $id => $fn) {
+        echo '<div class="tab-pane fade' . ($first ? ' show active' : '') . '" id="' . $id . '" role="tabpanel" aria-labelledby="' . $id . '-tab">' . $fn() . '</div>';
+        $first = false;
+    }
+
+    echo '</div>'
+       . '<div class="st-submitbar" id="euSaveBar">'
+       .   '<span class="eu-hint d-none d-sm-inline"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($L['page_title_edit'], $username, $uid) . '</span>'
+       .   '<div class="d-flex flex-wrap gap-2">'
+       .     '<button type="reset" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-rotate-left me-1"></i>' . $L['btn_reset'] . '</button>'
+       .     '<button type="submit" class="btn btn-success st-pill" name="updateuser" value="1"><i class="fa-solid fa-floppy-disk me-1"></i>' . $L['btn_save'] . '</button>'
+       .   '</div>'
+       . '</div>'
+       . '</form>';
+
+    // ── Форма кнопок-действий (сессии, блокировка, аватар, аудит) — заполняет edituser.js
+    echo '<form method="post" action="edituser.php" id="euActionForm" class="d-none">'
+       . '<input type="hidden" name="action" value="updateuser">'
+       . '<input type="hidden" name="userid" value="' . $uid . '">'
+       . '<input type="hidden" name="my_post_key" value="' . $postKey . '">'
+       . '<input type="hidden" name="" value="1" id="euActionField">'
+       . '</form>';
+
+    echo renderSendPMModal();
+    echo renderQuickBanModal($is_banned);
+
+    echo '</div>'; // .eu-page
+
+    // ── JS: язык, диалоги, аватар, BBCode-превью, графики, страница
     $ags_js_lang = [];
-    foreach ($lang->edituser as $k => $v) {
+    foreach ($L as $k => $v) {
         if (str_starts_with((string)$k, 'js_')) {
             $ags_js_lang[substr((string)$k, 3)] = (string)$v;
         }
     }
-    // Object.assign, not const: avatar_js_lang() and the SweetAlert button labels add their keys to the same object
-    echo '<script>window.AGS_LANG = Object.assign(window.AGS_LANG || {}, ' . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ');</script>';
-    echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>
-<script src="'.$BASEURL.'/admin/scripts/edituser.js?ver=23"></script>';
-	
+    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
-
-
-$chartData   = buildChartData((int)$userdata['id'], $db);
-$js_months   = json_encode($chartData['months'],   JSON_UNESCAPED_UNICODE);
-$js_dl       = json_encode($chartData['dl_data'],  JSON_UNESCAPED_UNICODE);
-$js_ul       = json_encode($chartData['ul_data'],  JSON_UNESCAPED_UNICODE);
-$js_days     = json_encode($chartData['days'],     JSON_UNESCAPED_UNICODE);
-$js_day_data = json_encode($chartData['day_data'], JSON_UNESCAPED_UNICODE);
-
-echo '<script src="' . $BASEURL . '/admin/scripts/chart.umd.min.js"></script>';
-echo '<script>
-window.CHART_MONTHS   = ' . ($js_months   ?? '[]') . ';
-window.CHART_DL       = ' . ($js_dl       ?? '[]') . ';
-window.CHART_UL       = ' . ($js_ul       ?? '[]') . ';
-window.CHART_DAYS     = ' . ($js_days     ?? '[]') . ';
-window.CHART_DAY_DATA = ' . ($js_day_data ?? '[]') . ';
-</script>';
-echo '<script src="' . $BASEURL . '/admin/scripts/charts.js"></script>';
-    
+    echo ags_js_lang('global', ['dlg_ok' => 'js_dlg_ok', 'dlg_yes' => 'js_dlg_yes', 'dlg_cancel' => 'js_dlg_cancel'])
+       . avatar_js_lang()
+       . '<script>window.AGS_LANG = Object.assign(window.AGS_LANG || {}, ' . json_encode($ags_js_lang, $jsonFlags) . ');'
+       . 'window.EU_CHART = ' . json_encode(buildChartData($uid), $jsonFlags) . ';</script>'
+       . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+       . '<script src="' . $BASEURL . '/scripts/ags-dialog.js?ver=1"></script>'
+       . '<script src="' . $BASEURL . '/scripts/toast.js"></script>'
+       . '<script src="' . $BASEURL . '/scripts/avatar_upload.js?ver=5"></script>'
+       . '<script src="' . $BASEURL . '/scripts/edit_delete_comment.js"></script>'
+       . '<script src="' . $BASEURL . '/admin/scripts/chart.umd.min.js"></script>'
+       . '<script src="' . $BASEURL . '/admin/scripts/edituser.js?ver=24"></script>';
 
     stdfoot();
 }
 
-/**
- * Handle user update
- */
-/**
- * Handle user update
- */
+/* =============================================================================
+   Сохранение
+   ============================================================================= */
+
 function handleUpdateUser(): void
 {
     global $userdata, $db, $CURUSER, $lang, $update_array, $modcomment, $mybb;
 
-    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+    if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
         print_no_permission(true);
     }
 
     get_user_data();
     permission_check();
-	
-	$modcomment = rtrim($userdata['modcomment'] ?? '');
 
-    // Initialize update array
-    $updateData = [];
-    
-    // Process avatar separately with validation
+    $uid      = (int)$userdata['id'];
+    $origNote = (string)$userdata['modcomment'];
+
+    // Ручная правка истории (только cansettingspanel): берём текст из формы как основу
+    $modcomment = rtrim($origNote);
+    if (eu_can_edit_modcomment() && isset($_POST['modcomment']) && is_string($_POST['modcomment'])) {
+        $posted = rtrim(str_replace("\r\n", "\n", $_POST['modcomment']));
+        if ($posted !== rtrim(str_replace("\r\n", "\n", $origNote))) {
+            $modcomment = $posted;
+            write_log("Moderation notes of user {$userdata['username']} ({$uid}) edited manually by {$CURUSER['username']}");
+        }
+    }
+
+    $update_array = [];
+    handle_avatar_update();
     processAvatarUpdate();
-    
-    // Process other form data
+
     $updateData = processUserUpdateData();
-    
-    // Merge avatar updates if any (from local avatars)
     if (!empty($update_array)) {
         $updateData = array_merge($updateData, $update_array);
     }
-    
-    if (!empty($updateData)) {
+    unset($updateData['modcomment']); // пишется одним запросом в конце
+
+    if ($updateData) {
         $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updateData)));
         $params = array_values($updateData);
-        $params[] = (int)$userdata['id'];
+        $params[] = $uid;
         $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
-        write_log("User {$userdata['username']} ({$userdata['id']}) has been edited by {$CURUSER['username']}");
 
-        // Bonus log: staff set the balance by hand (difference, after the UPDATE)
+        $fields = array_diff(array_keys($updateData), ['password', 'salt', 'loginkey']);
+        if (array_intersect(['password'], array_keys($updateData))) {
+            $fields[] = 'password';
+        }
+        write_log("User {$userdata['username']} ({$uid}) has been edited by {$CURUSER['username']}: " . implode(', ', array_unique($fields)));
+
         if (array_key_exists('seedbonus', $updateData)) {
             require_once INC_PATH . '/functions_bonuslog.php';
             $old = (float)$userdata['seedbonus'];
             $new = (float)$updateData['seedbonus'];
-            bonus_log((int)$userdata['id'], $new - $old, 'staff',
-                'Balance set by staff: ' . ts_nf($old) . ' → ' . ts_nf($new), null, (int)$CURUSER['id']);
+            bonus_log($uid, $new - $old, 'staff', 'Balance set by staff: ' . ts_nf($old) . ' → ' . ts_nf($new), null, (int)$CURUSER['id']);
         }
     }
 
-    // Update permissions
     updateUserPermissions();
-	
-	// Сохраняем финальный modcomment отдельным запросом
-    if (!empty($modcomment)) {
-        $db->sql_query_prepared("UPDATE users SET modcomment = ? WHERE id = ?", [$modcomment, (int)$userdata['id']]);
-    }
-	
 
-    flash_message(ags_fmt($lang->edituser['flash_user_updated'], $userdata['id']), "success");
-    admin_redirect("edituser.php?action=edituser&userid={$userdata['id']}");
+    $modcomment = rtrim((string)$modcomment);
+    if ($modcomment !== rtrim($origNote)) {
+        $db->sql_query_prepared('UPDATE users SET modcomment = ? WHERE id = ?', [$modcomment, $uid]);
+    }
+
+    // Общее «сохранено», если для этого изменения ещё нет своего сообщения об успехе
+    $hasSuccess = false;
+    foreach ($_SESSION['flash'] ?? [] as $f) {
+        $hasSuccess = $hasSuccess || $f['type'] === 'success';
+    }
+    if (!$hasSuccess && ($updateData || $modcomment !== rtrim($origNote) || empty($_SESSION['flash']))) {
+        flash_message(ags_fmt((string)$lang->edituser['flash_user_updated'], (string)$userdata['username']), 'success');
+    }
+    admin_redirect("edituser.php?action=edituser&userid={$uid}");
 }
 
-/**
- * Process avatar update with validation
- */
+/** Кнопка «Удалить аватар» (euActionForm) */
 function processAvatarUpdate(): void
 {
-    global $userdata, $update_array, $mybb;
-    
-    // Process remove avatar
-    if($mybb->get_input('remove_avatar'))
-    {
-        $update_array['avatar'] = "";
-        $update_array['avatardimensions'] = "";
-        $update_array['avatartype'] = "";
-        remove_avatars((int)$userdata['id']);
-        $modcomment = modcomment("Avatar removed");
+    global $userdata, $update_array, $mybb, $CURUSER, $lang;
+
+    if (!$mybb->get_input('remove_avatar')) {
         return;
     }
-    
-    // Avatar processing is already handled in the main avatar block above
-    // This function just ensures remove_avatar works correctly
+    $update_array['avatar']           = '';
+    $update_array['avatardimensions'] = '';
+    $update_array['avatartype']       = '';
+    remove_avatars((int)$userdata['id']);
+    modcomment('Avatar removed');
+    write_log("Avatar of user {$userdata['username']} ({$userdata['id']}) removed by {$CURUSER['username']}");
+    flash_message((string)$lang->edituser['flash_avatar_removed'], 'success');
 }
 
-/**
- * Process user update data from form
- */
+/** Данные из формы и кнопок-действий → поля для UPDATE users */
 function processUserUpdateData(): array
 {
-    global $userdata, $CURUSER, $db, $mybb, $modcomment;
-	
-	$updateData = [];
+    global $userdata, $CURUSER, $db, $modcomment, $cache, $lang, $dateformat;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
 
-    $fields = [
-        'usertitle', 'signature',
-        'donor', 'moderateposts', 'enabled',
-        'allownotices', 'hideemail', 'receivepms',
-        'receivefrombuddy', 'pmnotice', 'pmnotify', 'buddyrequestspm',
-        'buddyrequestsauto', 'subscriptionmethod', 'invisible'
-    ];
+    $updateData = [];
+    $post = fn(string $k): ?string => isset($_POST[$k]) && is_string($_POST[$k]) ? $_POST[$k] : null;
 
-    foreach ($fields as $field) {
-        if (isset($_POST[$field]) && $_POST[$field] != $userdata[$field]) {
-            $updateData[$field] = $_POST[$field];
-            $modcomment = modcomment(ucfirst($field) . " changed from '{$userdata[$field]}' to '{$_POST[$field]}'");
+    // ── Текстовые поля
+    $title = $post('usertitle');
+    if ($title !== null) {
+        $title = mb_substr(trim($title), 0, 255);
+        if ($title !== (string)$userdata['usertitle']) {
+            $updateData['usertitle'] = $title;
+            modcomment("Usertitle changed from '{$userdata['usertitle']}' to '{$title}'");
+        }
+    }
+    $sig = $post('signature');
+    if ($sig !== null) {
+        $sig = str_replace("\r\n", "\n", $sig);
+        if ($sig !== str_replace("\r\n", "\n", (string)$userdata['signature'])) {
+            $updateData['signature'] = $sig;
+            modcomment('Signature changed');
         }
     }
 
-    // Числовые поля — обязательный каст типа перед записью в БД
-    $numericFields = ['seedbonus' => 'float', 'invites' => 'int', 'uploaded' => 'int', 'downloaded' => 'int'];
-    foreach ($numericFields as $field => $type) {
-        if (isset($_POST[$field])) {
-            $newVal = $type === 'float' ? (float)$_POST[$field] : (int)$_POST[$field];
-            $oldVal = $type === 'float' ? (float)$userdata[$field] : (int)$userdata[$field];
-            if ($newVal !== $oldVal) {
-                $updateData[$field] = $newVal;
-                $modcomment = modcomment(ucfirst($field) . " changed from '{$oldVal}' to '{$newVal}'");
+    // ── yes/no
+    foreach (['donor', 'enabled'] as $f) {
+        $v = $post($f);
+        if (($v === 'yes' || $v === 'no') && $v !== (string)$userdata[$f]) {
+            $updateData[$f] = $v;
+            modcomment(ucfirst($f) . " changed from '{$userdata[$f]}' to '{$v}'");
+        }
+    }
+
+    // ── 0/1
+    foreach (['moderateposts', 'allownotices', 'hideemail', 'receivepms', 'receivefrombuddy',
+              'pmnotice', 'pmnotify', 'buddyrequestspm', 'buddyrequestsauto', 'invisible'] as $f) {
+        $v = $post($f);
+        if ($v === null) {
+            continue;
+        }
+        $v = $v === '1' ? 1 : 0;
+        if ($v !== (int)$userdata[$f]) {
+            $updateData[$f] = $v;
+            modcomment(ucfirst($f) . " changed from '" . (int)$userdata[$f] . "' to '{$v}'");
+        }
+    }
+    $sm = $post('subscriptionmethod');
+    if ($sm !== null) {
+        $sm = max(0, min(3, (int)$sm));
+        if ($sm !== (int)$userdata['subscriptionmethod']) {
+            $updateData['subscriptionmethod'] = $sm;
+            modcomment("Subscriptionmethod changed from '" . (int)$userdata['subscriptionmethod'] . "' to '{$sm}'");
+        }
+    }
+
+    // ── Трафик/бонусы/инвайты — только с правами (проверка и на сервере, не только disabled в форме)
+    if (eu_can_edit_stats()) {
+        foreach (['seedbonus' => 'float', 'invites' => 'int', 'uploaded' => 'int', 'downloaded' => 'int'] as $f => $type) {
+            $v = $post($f);
+            if ($v === null || trim($v) === '' || !is_numeric($v)) {
+                continue;
+            }
+            $new = $type === 'float' ? max(0.0, round((float)$v, 2)) : max(0, (int)$v);
+            $old = $type === 'float' ? round((float)$userdata[$f], 2) : (int)$userdata[$f];
+            if ($new !== $old) {
+                $updateData[$f] = $new;
+                modcomment(ucfirst($f) . " changed from '{$old}' to '{$new}'");
             }
         }
     }
 
-    // Email — валидация формата перед записью
-    if (isset($_POST['email']) && $_POST['email'] !== $userdata['email']) {
-        $newEmail = trim($_POST['email']);
-        if (validate_email_format($newEmail)) {
-            $updateData['email'] = $newEmail;
-            $modcomment = modcomment("Email changed from '{$userdata['email']}' to '{$newEmail}'");
-        }
-    }
-
-    // Username — через ту же валидацию, что использует UserDataHandler
-    if (isset($_POST['username']) && $_POST['username'] !== $userdata['username']) {
-        require_once INC_PATH . '/functions_user.php';
-        $newUsername = trim_blank_chrs($_POST['username']);
-        $hasBadChars = str_contains($newUsername, '<') || str_contains($newUsername, '>')
-            || str_contains($newUsername, '&') || str_contains($newUsername, '\\')
-            || str_contains($newUsername, ';') || str_contains($newUsername, ',');
-        if (!$hasBadChars && $newUsername !== '' && !is_banned_username($newUsername, true)) {
-            $updateData['username'] = $newUsername;
-            $modcomment = modcomment("Username changed from '{$userdata['username']}' to '{$newUsername}'");
-        }
-    }
-
-    // Usergroup — требует отдельного, более высокого уровня прав, чем обычное редактирование юзера
-    if (isset($_POST['usergroup']) && (int)$_POST['usergroup'] !== (int)$userdata['usergroup']) {
-        $newGid = (int)$_POST['usergroup'];
-        $gq = $db->sql_query_prepared("SELECT gid, cansettingspanel, canstaffpanel, issupermod FROM usergroups WHERE gid = ? LIMIT 1", [$newGid]);
-        $existingGroup = $gq ? $db->fetch_array($gq) : null;
-
-        $isElevatedTarget = $existingGroup && (
-            $existingGroup['cansettingspanel'] == '1' ||
-            $existingGroup['canstaffpanel'] == '1' ||
-            $existingGroup['issupermod'] == '1'
-        );
-
-        if (!$existingGroup) {
-            // Несуществующая группа — игнорируем молча
-        } elseif ($isElevatedTarget && !is_super_admin((int)$CURUSER['id'])) {
-            // Назначение staff-группы разрешено только супер-админам
-            write_log("SECURITY: {$CURUSER['username']} attempted to assign elevated group {$newGid} to user {$userdata['id']} without super admin rights", 'security', 2);
+    // ── Email: формат + уникальность
+    $email = $post('email');
+    if ($email !== null && ($email = trim($email)) !== (string)$userdata['email']) {
+        if (!validate_email_format($email)) {
+            flash_message($L['err_email_invalid'] ?? 'Invalid email address — not saved.', 'error');
+        } elseif (eu_email_taken($email, $uid)) {
+            flash_message($L['err_email_taken'] ?? 'This email is already used by another account — not saved.', 'error');
         } else {
-            $updateData['usergroup'] = $newGid;
-            $modcomment = modcomment("Usergroup changed from '{$userdata['usergroup']}' to '{$newGid}'");
+            $updateData['email'] = $email;
+            modcomment("Email changed from '{$userdata['email']}' to '{$email}'");
         }
     }
 
-
-    // Process password
-    if (!empty($_POST['password'])) {
-        $user['loginkey'] = generate_loginkey();
-        $password_fields = create_password($_POST['password'], $user);
-        $updateData = array_merge($updateData, $password_fields);
-        $modcomment = modcomment("Password updated");
-    }
-
-    // Process warnings
-    if (($_POST['warned'] ?? '') == 'no' && $userdata['warned'] == 'yes') {
-        $updateData['warned'] = 'no';
-        $updateData['warneduntil'] = '0';
-        $modcomment = modcomment("Warning removed");
-    } elseif (isset($_POST['warnlength']) && is_valid_id($_POST['warnlength']) && $userdata['warned'] == 'no') {
-        $warnlength = (int)$_POST['warnlength'];
-        $warnpm = trim((string)($_POST['warnpm'] ?? '')) ?: 'No Reason Given.';
-        if ($warnlength == 255) {
-            $updateData['warneduntil'] = '0000-00-00 00:00:00';
+    // ── Имя: валидация как в UserDataHandler + уникальность
+    $name = $post('username');
+    if ($name !== null && ($name = trim_blank_chrs($name)) !== (string)$userdata['username']) {
+        $bad = $name === '' || mb_strlen($name) > 255 || preg_match('/[<>&\\\\;,"\']/', $name) || is_banned_username($name, true);
+        if ($bad) {
+            flash_message($L['err_username_invalid'] ?? 'Invalid username — not saved.', 'error');
+        } elseif (eu_username_taken($name, $uid)) {
+            flash_message($L['err_username_taken'] ?? 'This username is already taken — not saved.', 'error');
         } else {
-            $updateData['warneduntil'] = TIMENOW + $warnlength * 604800;
+            $updateData['username'] = $name;
+            modcomment("Username changed from '{$userdata['username']}' to '{$name}'");
         }
-        $updateData['warned'] = 'yes';
-        $updateData['timeswarned'] = $userdata['timeswarned'] + 1;
-        $updateData['lastwarned'] = TIMENOW;
-        $updateData['warnedby'] = $CURUSER['id'];
-        $modcomment = modcomment("User warned for {$warnlength} weeks. Reason: {$warnpm}");
     }
 
-    // Process additional comment
-    if (!empty($_POST['addcomment'])) {
-        $addComment = str_replace(["\r", "\n"], ' ', trim((string)$_POST['addcomment']));
-        $addComment = mb_substr($addComment, 0, 500);
-        //$modcomment = date('Y-m-d') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
-		
-		$modcomment = date('Y-m-d H:i') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
-    }
-
-    // Process reset times warned
-    if (!empty($_POST['reset_timeswarned'])) {
-        $updateData['timeswarned'] = 0;
-        $modcomment = modcomment('Warning count reset');
-    }
-
-    // Update modcomment if changed
-    if ($modcomment != $userdata['modcomment']) {
-        $updateData['modcomment'] = $modcomment;
-    }
-	
-	
-
-
-
-
-
-
-// ── Quick Ban ─────────────────────────────────────────────────────────────
-if (!empty($_POST['quick_ban'])) {
-    $ban_reason   = str_replace(["\r", "\n"], ' ', trim($_POST['ban_reason'] ?? 'No reason given.'));
-    $ban_reason   = mb_substr($ban_reason, 0, 500);
-    $ban_duration = trim($_POST['ban_duration'] ?? '');
-    $banned_gid   = (int)($_POST['banned_gid']  ?? 0);
-    $send_pm_ban  = !empty($_POST['ban_send_pm']);
-
-    // Группа бана должна быть именно бан-группой, а не любой gid из формы
-    $ug_cache = $cache->read('usergroups') ?: [];
-    if (empty($ug_cache[$banned_gid]['isbannedgroup'])) {
-        $banned_gid = 0;
-    }
-
-    if ($banned_gid > 0) {
-        $lifted = ($ban_duration !== '---' && $ban_duration !== '')
-            ? ban_date2timestamp($ban_duration)
-            : 0;
-
-        $ban_times_map = fetch_ban_times();
-        $dur_label = ($ban_duration === '---' || $ban_duration === '')
-            ? 'Permanently'
-            : ($ban_times_map[$ban_duration] ?? $ban_duration);
-
-        $eq = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ? LIMIT 1", [(int)$userdata['id']]);
-        $existing_banned = $eq && $db->num_rows($eq) > 0;
-
-        if ($existing_banned) {
-            // UPDATE — обновляем бан
-            $db->sql_query_prepared(
-                "UPDATE banned SET bantime = ?, lifted = ?, reason = ?, admin = ?, dateline = ? WHERE uid = ?",
-                [
-                    $ban_duration === '---' ? '---' : $ban_duration,
-                    (string)$lifted,
-                    $ban_reason,
-                    (int)$CURUSER['id'],
-                    TIMENOW,
-                    (int)$userdata['id'],
-                ]
-            );
-            modcomment("Ban updated ({$dur_label}). Reason: {$ban_reason}");
-        } else {
-            // Юзер уже в бан-группе без записи в banned — прежней группой ставим Registered
-            $oldgroup = (int)$userdata['usergroup'];
-            if ($oldgroup <= 0 || !empty($ug_cache[$oldgroup]['isbannedgroup'])) {
-                $oldgroup = 2;
+    // ── Группа: staff-группы назначает только супер-админ
+    $gid = $post('usergroup');
+    if ($gid !== null && (int)$gid > 0 && (int)$gid !== (int)$userdata['usergroup']) {
+        $newGid = (int)$gid;
+        $gq = $db->sql_query_prepared('SELECT gid, cansettingspanel, canstaffpanel, issupermod FROM usergroups WHERE gid = ? LIMIT 1', [$newGid]);
+        $g  = $gq ? $db->fetch_array($gq) : null;
+        if ($g) {
+            $elevated = $g['cansettingspanel'] == '1' || $g['canstaffpanel'] == '1' || $g['issupermod'] == '1';
+            if ($elevated && !is_super_admin((int)$CURUSER['id'])) {
+                write_log("SECURITY: {$CURUSER['username']} attempted to assign elevated group {$newGid} to user {$uid} without super admin rights", 'security', 2);
+            } else {
+                $updateData['usergroup'] = $newGid;
+                modcomment("Usergroup changed from '{$userdata['usergroup']}' to '{$newGid}'");
             }
-
-            // INSERT — новый бан
-            $db->sql_query_prepared(
-                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)",
-                [
-                    (int)$userdata['id'],
-                    $banned_gid,
-                    $oldgroup,
-                    (int)$CURUSER['id'],
-                    TIMENOW,
-                    $ban_duration === '---' ? '---' : $ban_duration,
-                    (string)$lifted,
-                    $ban_reason,
-                ]
-            );
-            $updateData['usergroup'] = $banned_gid;
-            modcomment("Banned ({$dur_label}). Reason: {$ban_reason}");
         }
-
-        $updateData['modcomment'] = $modcomment;
-    }
-}
-
-
-	
-	
-	
-
-    // FIX: Kill all sessions
-    if (!empty($_POST['kill_sessions'])) {
-        $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [(int)$userdata['id']]);
-        $modcomment = modcomment('All sessions killed');
-        $updateData['modcomment'] = $modcomment;
-        write_log("All sessions for user {$userdata['username']} ({$userdata['id']}) killed by {$CURUSER['username']}");
     }
 
-    // FIX: Reset login lockout
-    if (!empty($_POST['reset_loginattempts'])) {
-        $updateData['loginattempts']       = 0;
-        $updateData['loginlockoutexpiry']  = 0;
-        $modcomment = modcomment('Login lockout reset');
-        $updateData['modcomment'] = $modcomment;
+    // ── Пароль
+    $pw = $post('password');
+    if ($pw !== null && $pw !== '') {
+        $user = ['loginkey' => generate_loginkey()];
+        $updateData = array_merge($updateData, create_password($pw, $user));
+        modcomment('Password updated');
     }
 
-    // Send PM from edit form
-    $pmSubject = is_string($_POST['pm_subject'] ?? null) ? trim($_POST['pm_subject']) : '';
-    $pmMessage = is_string($_POST['pm_message'] ?? null) ? trim($_POST['pm_message']) : '';
+    // ── Отключение аккаунта + бан IP (поле banip)
+    if (($updateData['enabled'] ?? '') === 'no' && $post('banip') === 'yes') {
+        $ipRaw = $userdata['lastip'] ?? '';
+        $ip    = $ipRaw !== '' && $ipRaw !== null ? my_inet_ntop($db->unescape_binary($ipRaw)) : false;
+        if ($ip !== false && $ip !== '') {
+            $dq = $db->sql_query_prepared('SELECT fid FROM banfilters WHERE filter = ? AND type = 1 LIMIT 1', [$ip]);
+            if (!($dq && $db->num_rows($dq) > 0)) {
+                $db->sql_query_prepared('INSERT INTO banfilters (`filter`,`type`,`dateline`,`lastuse`) VALUES (?,?,?,?)', [$ip, 1, TIMENOW, 0]);
+                $cache->update_bannedips();
+            }
+            modcomment("IP {$ip} banned");
+            write_log("IP {$ip} of user {$userdata['username']} ({$uid}) banned by {$CURUSER['username']}");
+        }
+    }
 
-    if (!empty($_POST['send_pm']) && $pmSubject !== '' && $pmMessage !== '') {
+    // ── Предупреждение
+    if ($post('warned') === 'no' && $userdata['warned'] === 'yes') {
+        $updateData['warned']      = 'no';
+        $updateData['warneduntil'] = 0;
+        modcomment('Warning removed');
+    } elseif ($userdata['warned'] !== 'yes' && (int)($post('warnlength') ?? 0) > 0) {
+        $weeks  = (int)$post('warnlength');
+        $weeks  = ($weeks === 255 || ($weeks >= 1 && $weeks <= 12)) ? $weeks : 1;
+        $reason = mb_substr(trim((string)$post('warnpm')), 0, 255);
+        $until  = $weeks === 255 ? 0 : TIMENOW + $weeks * 604800;
+
+        $updateData['warned']      = 'yes';
+        $updateData['warneduntil'] = $until;
+        $updateData['timeswarned'] = (int)$userdata['timeswarned'] + 1;
+        $updateData['lastwarned']  = TIMENOW;
+        $updateData['warnedby']    = (int)$CURUSER['id'];
+        modcomment('User warned ' . ($weeks === 255 ? 'permanently' : "for {$weeks} weeks") . '. Reason: ' . ($reason !== '' ? $reason : 'No reason given.'));
+        write_log("User {$userdata['username']} ({$uid}) warned by {$CURUSER['username']}");
+
         require_once INC_PATH . '/functions_pm.php';
-        send_pm(
-            ['touid' => (int)$userdata['id'], 'message' => $pmMessage, 'subject' => $pmSubject],
-            (int)$CURUSER['id'],
-            true
-        );
-        $modcomment = modcomment('PM sent: ' . mb_substr($pmSubject, 0, 60));
-        $updateData['modcomment'] = $modcomment;
+        $reasonPm = $reason !== '' ? str_replace(['[', ']'], ['(', ')'], $reason) : '—';
+        send_pm([
+            'subject'       => ['msg_warn_pm_subject'],
+            'message'       => $until > 0 ? ['msg_warn_pm_body', my_datee((string)$dateformat, $until), $reasonPm] : ['msg_warn_pm_body_perm', $reasonPm],
+            'touid'         => $uid,
+            'language'      => $userdata['language'] ?? null,
+            'language_file' => 'edituser',
+            'sender'        => ['uid' => -1],
+        ], -1, true);
+    }
+    if ($post('reset_timeswarned') === 'yes' && (int)$userdata['timeswarned'] > 0) {
+        $updateData['timeswarned'] = 0;
+        modcomment('Warning count reset');
+    }
+
+    // ── Заметка модератора
+    $note = $post('addcomment');
+    if ($note !== null && ($note = trim(str_replace(["\r", "\n"], ' ', $note))) !== '') {
+        modcomment('Note: ' . mb_substr($note, 0, 500));
+    }
+
+    // ── Бан (модальное окно)
+    if ($post('quick_ban') === '1') {
+        $times    = fetch_ban_times();
+        $duration = (string)$post('ban_duration');
+        if (!isset($times[$duration])) {
+            $duration = '---';
+        }
+        $reason = mb_substr(trim(str_replace(["\r", "\n"], ' ', (string)$post('ban_reason'))), 0, 500);
+        if ($reason === '') {
+            $reason = 'No reason given.';
+        }
+        $bannedGid = eu_banned_gid();
+
+        if ($bannedGid > 0) {
+            $lifted = $duration === '---' ? 0 : ban_date2timestamp($duration);
+            $label  = $duration === '---' ? 'Permanently' : $times[$duration];
+
+            $eq = $db->sql_query_prepared('SELECT uid FROM banned WHERE uid = ? LIMIT 1', [$uid]);
+            if ($eq && $db->num_rows($eq) > 0) {
+                $db->sql_query_prepared('UPDATE banned SET bantime = ?, lifted = ?, reason = ?, admin = ?, dateline = ? WHERE uid = ?',
+                    [$duration, (string)$lifted, $reason, (int)$CURUSER['id'], TIMENOW, $uid]);
+                modcomment("Ban updated ({$label}). Reason: {$reason}");
+                write_log("Ban of user {$userdata['username']} ({$uid}) updated by {$CURUSER['username']} ({$label})");
+                flash_message($L['msg_ban_updated'] ?? 'Ban updated.', 'success');
+            } else {
+                $ug = $cache->read('usergroups') ?: [];
+                $oldgroup = (int)$userdata['usergroup'];
+                if ($oldgroup <= 0 || !empty($ug[$oldgroup]['isbannedgroup'])) {
+                    $oldgroup = defined('UC_USER') ? (int)UC_USER : 2;
+                }
+                $db->sql_query_prepared(
+                    'INSERT INTO banned (`uid`,`gid`,`oldgroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?)',
+                    [$uid, $bannedGid, $oldgroup, (int)$CURUSER['id'], TIMENOW, $duration, (string)$lifted, $reason]);
+                $updateData['usergroup'] = $bannedGid;
+                modcomment("Banned ({$label}). Reason: {$reason}");
+                write_log("User {$userdata['username']} ({$uid}) banned by {$CURUSER['username']} ({$label})");
+                flash_message($L['msg_user_banned'] ?? 'User banned.', 'success');
+            }
+
+            if ($post('ban_send_pm') === '1') {
+                require_once INC_PATH . '/functions_pm.php';
+                $reasonPm = str_replace(['[', ']'], ['(', ')'], $reason);
+                send_pm([
+                    'subject'       => ['msg_ban_pm_subject'],
+                    'message'       => $lifted > 0 ? ['msg_ban_pm_body', my_datee((string)$dateformat, $lifted), $reasonPm] : ['msg_ban_pm_body_perm', $reasonPm],
+                    'touid'         => $uid,
+                    'language'      => $userdata['language'] ?? null,
+                    'language_file' => 'edituser',
+                    'sender'        => ['uid' => -1],
+                ], -1, true);
+            }
+        }
+    }
+
+    // ── Сессии
+    if ($post('kill_sessions') === '1') {
+        $db->sql_query_prepared('DELETE FROM sessions WHERE uid = ?', [$uid]);
+        modcomment('All sessions killed');
+        write_log("All sessions for user {$userdata['username']} ({$uid}) killed by {$CURUSER['username']}");
+        flash_message($L['msg_sessions_killed'] ?? 'All sessions have been terminated.', 'success');
+    }
+
+    // ── Блокировка входа
+    if ($post('reset_loginattempts') === '1') {
+        $updateData['loginattempts']      = 0;
+        $updateData['loginlockoutexpiry'] = 0;
+        modcomment('Login lockout reset');
+        write_log("Login lockout of user {$userdata['username']} ({$uid}) reset by {$CURUSER['username']}");
+        flash_message($L['msg_lockout_reset'] ?? 'Login lockout has been reset.', 'success');
+    }
+
+    // ── Очистка истории модерации
+    if ($post('clear_modcomment') === '1' && eu_can_edit_modcomment()) {
+        $modcomment = '';
+        modcomment('Audit history cleared');
+        write_log("Moderation history of user {$userdata['username']} ({$uid}) cleared by {$CURUSER['username']}");
+        flash_message($L['msg_audit_cleared'] ?? 'Audit history cleared.', 'success');
+    }
+
+    // ── ЛС от сотрудника
+    $pmSubject = trim((string)$post('pm_subject'));
+    $pmMessage = trim((string)$post('pm_message'));
+    if ($post('send_pm') === '1' && $pmSubject !== '' && $pmMessage !== '') {
+        require_once INC_PATH . '/functions_pm.php';
+        if (send_pm(['touid' => $uid, 'subject' => mb_substr($pmSubject, 0, 120), 'message' => $pmMessage], (int)$CURUSER['id'], true)) {
+            modcomment('PM sent: ' . mb_substr($pmSubject, 0, 60));
+            write_log("PM sent to user {$userdata['username']} ({$uid}) by {$CURUSER['username']}");
+            flash_message($L['msg_pm_sent'] ?? 'Private message sent.', 'success');
+        }
     }
 
     return $updateData;
 }
 
-/**
- * Update user permissions
- */
-
+/** cancomment / canupload / candownload */
 function updateUserPermissions(): void
 {
-    global $db, $userid, $userdata, $modcomment, $CURUSER;
+    global $db, $userdata, $CURUSER;
 
-    // Не обновляем если поля не переданы (например при отправке ЛС)
     if (!isset($_POST['cancomment']) && !isset($_POST['canupload']) && !isset($_POST['candownload'])) {
         return;
     }
 
-    $fields = [
-        'cancomment'  => (int)(($_POST['cancomment']  ?? '') === 'yes'),
-        'canupload'   => (int)(($_POST['canupload']   ?? '') === 'yes'),
-        'candownload' => (int)(($_POST['candownload'] ?? '') === 'yes'),
-    ];
-
-    foreach ($fields as $field => $newVal) {
-        $oldVal = (int)($userdata[$field] ?? 1);
-        if ($newVal !== $oldVal) {
-            modcomment(ucfirst($field) . " changed from '{$oldVal}' to '{$newVal}'");
+    $changed = [];
+    foreach (['cancomment', 'canupload', 'candownload'] as $f) {
+        if (!isset($_POST[$f])) {
+            continue;
+        }
+        $new = ($_POST[$f] === 'yes') ? 1 : 0;
+        $old = (int)($userdata[$f] ?? 1);
+        if ($new !== $old) {
+            $changed[$f] = $new;
+            modcomment(ucfirst($f) . " changed from '{$old}' to '{$new}'");
         }
     }
-    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($fields)));
-    $params = array_values($fields);
-    $params[] = (int)$userid;
+    if (!$changed) {
+        return;
+    }
+
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($changed)));
+    $params = array_values($changed);
+    $params[] = (int)$userdata['id'];
     $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
+    write_log("Permissions of user {$userdata['username']} ({$userdata['id']}) changed by {$CURUSER['username']}: " . implode(', ', array_keys($changed)));
 }
 
+/* =============================================================================
+   Удаление аккаунта / сброс пасскея (страницы подтверждения — запасной вариант без JS)
+   ============================================================================= */
 
+function eu_confirm_page(string $title, string $icon, string $soft, string $question, string $note, string $action, string $btnClass, string $btnLabel): void
+{
+    global $userdata, $lang, $BASEURL;
+    $L   = $lang->edituser;
+    $uid = (int)$userdata['id'];
 
+    stdhead($title);
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=2">'
+       . '<div class="container-md st-page eu-page eu-page--narrow">'
+       . '<section class="st-card st-head mb-3">'
+       .   '<span class="st-head__icon st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+       .   '<div class="min-w-0"><h1 class="st-title">' . $title . '</h1>'
+       .   '<div class="st-head__meta"><span><i class="fa-solid fa-user"></i>' . htmlspecialchars_uni((string)$userdata['username']) . '</span>'
+       .   '<span><i class="fa-solid fa-id-card"></i>' . ags_fmt($L['hdr_uid'], $uid) . '</span></div></div>'
+       . '</section>'
+       . '<section class="st-card"><div class="st-card__body">'
+       .   '<p class="fw-semibold mb-2">' . $question . '</p>'
+       .   '<p class="eu-hint mb-0">' . $note . '</p>'
+       . '</div>'
+       . '<form method="post" action="edituser.php?action=' . $action . '&amp;userid=' . $uid . '" class="st-toolbar st-toolbar--bottom">'
+       .   '<input type="hidden" name="userid" value="' . $uid . '"><input type="hidden" name="sure" value="1">'
+       .   '<input type="hidden" name="my_post_key" value="' . generate_post_check() . '">'
+       .   '<a href="edituser.php?action=edituser&amp;userid=' . $uid . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-xmark me-1"></i>' . $L['cancel'] . '</a>'
+       .   '<button type="submit" class="btn ' . $btnClass . ' st-pill"><i class="fa-solid ' . $icon . ' me-1"></i>' . $btnLabel . '</button>'
+       . '</form></section>'
+       . '</div>';
+    stdfoot();
+}
 
-
-/**
- * Handle account deletion
- */
 function handleDeleteAccount(): void
 {
-    global $userdata, $usergroups, $mybb, $db, $CURUSER, $lang;
-    
-    if (($usergroups['issupermod'] != '1' && $usergroups['cansettingspanel'] != '1')) {
+    global $userdata, $CURUSER, $lang;
+    $L = $lang->edituser;
+
+    if (!eu_can_delete()) {
         print_no_permission();
     }
 
     get_user_data();
     permission_check();
 
-    $userid = (int)$userdata['id'];
-    $username = htmlspecialchars_uni($userdata['username']);
-
-    if (!isset($_GET['sure'])) {
-        stdhead();
-        echo '
-        <div class="container mt-5">
-            <div class="glass-card">
-                <div class="card-header bg-danger text-white text-center py-4">
-                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                    <h3 class="mb-0">' . $lang->edituser['del_title'] . '</h3>
-                </div>
-                <div class="card-body text-center py-5">
-                    <h5 class="text-danger mb-3">' . $lang->edituser['del_question'] . '</h5>
-                    <div class="user-info bg-light rounded p-4 mb-4">
-                        <h4 class="text-danger">' . $username . '</h4>
-                        <p class="text-muted mb-0">' . ags_fmt($lang->edituser['hdr_uid'], $userid) . '</p>
-                    </div>
-                    <p class="text-muted mb-4">' . $lang->edituser['del_warning'] . '</p>
-                    <div class="d-flex justify-content-center gap-3">
-                        <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userid . '&sure=1&my_post_key=' . generate_post_check() . '" class="btn btn-danger btn-lg">
-                            <i class="fas fa-trash me-2"></i>' . $lang->edituser['del_btn_yes'] . '
-                        </a>
-                        <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=edituser&userid=' . $userid . '" class="btn btn-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>' . $lang->edituser['cancel'] . '
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>';
-        stdfoot();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || ($_POST['sure'] ?? '') !== '1') {
+        eu_confirm_page($L['del_title'], 'fa-trash-can', 'danger', $L['del_question'], $L['del_warning'], 'deleteaccount', 'btn-danger', $L['del_btn_yes']);
         return;
     }
 
-    // Get user data
-    $user = get_user((int)$userdata['id']);
-
-    if (!verify_post_check($_GET['my_post_key'] ?? '', true)) {
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
         print_no_permission(true);
     }
 
-    require_once INC_PATH . "/datahandlers/user.php";
+    require_once INC_PATH . '/datahandlers/user.php';
     $userhandler = new UserDataHandler('delete');
-
-    if (!$userhandler->delete_user([$user['id']])) 
-    {
-       stderr($lang->edituser['err_title'], $lang->edituser['err_delete_failed']);
-       redirect($_SERVER['SCRIPT_NAME']);
-    }
-
-    write_log('Account: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been deleted by ' . $CURUSER['username']);
-    
-	
-	stdok(
-    message:  ags_fmt($lang->edituser['del_done_msg'], '<strong>' . htmlspecialchars_uni($userdata['username']) . '</strong>'),
-    title:    $lang->edituser['del_done_title'],
-    subtitle: $lang->edituser['del_done_subtitle']
-);
-	
-	
-	
-	
-	
-	
-}
-
-/**
- * Handle passkey reset
- */
-function handleResetPasskey(): void
-{
-    global $userdata, $db, $CURUSER, $lang, $userid, $mybb;
-    
-    get_user_data();
-    permission_check();
-
-    if (isset($_POST['sure']) && $_POST['sure'] == 1) 
-	{
-        if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
-            print_no_permission(true);
-        }
-
-        $modcomment = $userdata['modcomment'];
-        $old_passkey = $userdata['passkey'];
-        $passkey = generate_passkey($userdata['username'], $userdata['loginkey']);
-
-        //$modcomment = date('Y-m-d') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $modcomment;
-		
-	    $modcomment = date('Y-m-d H:i') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $userdata['modcomment'];
-
-        $msg = sprintf($lang->edituser['passkeymsg'], $CURUSER['username']);
-        $subject = $lang->edituser['passkeysubject'];
-
-        $db->sql_query_prepared(
-            "UPDATE users SET passkey = ?, modcomment = ? WHERE id = ?",
-            [$passkey, $modcomment, (int)$userdata['id']]
-        );
-        
-		require_once INC_PATH . '/functions_pm.php';
-	    send_pm([
-          'subject'       => ['passkeysubject'],
-          'message'       => ['passkeymsg', (string)$CURUSER['username']],
-          'touid'         => (int)$userdata['id'],
-          'language'      => $userdata['language'] ?? null,
-          'language_file' => 'edituser',
-          'sender'        => ['uid' => -1],
-             ], -1, true);
-		
-		
-		
-		
-		
-		
-
-        write_log('Passkey for user: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been reset by ' . $CURUSER['username']);
-
-        flash_message($lang->edituser['flash_passkey_reset'], "success");
-        admin_redirect('edituser.php?action=edituser&userid=' . $userdata['id']);
+    if (!$userhandler->delete_user([(int)$userdata['id']])) {
+        stderr((string)$L['err_delete_failed'], (string)$L['err_title']);
         return;
     }
 
-    stdhead(ags_fmt($lang->edituser['pk_page_title'], htmlspecialchars_uni($userdata['username'])));
+    write_log('Account: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been deleted by ' . $CURUSER['username']);
 
-    echo '
-    <div class="container mt-5">
-        <div class="glass-card">
-            <div class="card-header bg-warning text-dark text-center py-4">
-                <i class="fas fa-key fa-3x mb-3"></i>
-                <h3 class="mb-0">' . $lang->edituser['btn_reset_passkey'] . '</h3>
-            </div>
-            <div class="card-body text-center py-5">
-                <h5 class="mb-4">' . $lang->edituser['pk_question'] . '</h5>
-                <div class="user-info bg-light rounded p-4 mb-4">
-                    <h4>' . htmlspecialchars_uni($userdata['username']) . '</h4>
-                    <p class="text-muted mb-0">' . ags_fmt($lang->edituser['hdr_uid'], $userdata['id']) . '</p>
-                </div>
-                <p class="text-muted mb-4">' . $lang->edituser['pk_note'] . '</p>
-                <form method="post" action="' . $_SERVER['PHP_SELF'] . '?action=resetpasskey&userid=' . $userdata['id'] . '">
-                    <input type="hidden" name="userid" value="' . $userdata['id'] . '" />
-                    <input type="hidden" name="sure" value="1" />
-                    <input type="hidden" name="my_post_key" value="' . generate_post_check() . '" />
-                    <div class="d-flex justify-content-center gap-3">
-                        <button type="submit" class="btn btn-warning btn-lg">
-                            <i class="fas fa-key me-2"></i>' . $lang->edituser['pk_btn_yes'] . '
-                        </button>
-                        <a href="edituser.php?action=edituser&userid=' . $userdata['id'] . '" class="btn btn-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>' . $lang->edituser['cancel'] . '
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>';
-
-	
-	
-
-    stdfoot();
+    stdok(
+        message:  ags_fmt($L['del_done_msg'], '<strong>' . htmlspecialchars_uni((string)$userdata['username']) . '</strong>'),
+        title:    $L['del_done_title'],
+        subtitle: $L['del_done_subtitle']
+    );
 }
 
-?>
+function handleResetPasskey(): void
+{
+    global $userdata, $db, $CURUSER, $lang;
+    $L = $lang->edituser;
+
+    get_user_data();
+    permission_check();
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || ($_POST['sure'] ?? '') !== '1') {
+        eu_confirm_page(ags_fmt($L['pk_page_title'], htmlspecialchars_uni((string)$userdata['username'])), 'fa-key', 'warning',
+            $L['pk_question'], $L['pk_note'], 'resetpasskey', 'btn-warning', $L['pk_btn_yes']);
+        return;
+    }
+
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        print_no_permission(true);
+    }
+
+    $passkey    = (string)generate_passkey((string)$userdata['username'], (string)$userdata['loginkey']);
+    $modcomment = date('Y-m-d H:i') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . rtrim((string)$userdata['modcomment']);
+
+    $db->sql_query_prepared('UPDATE users SET passkey = ?, modcomment = ? WHERE id = ?', [$passkey, $modcomment, (int)$userdata['id']]);
+
+    require_once INC_PATH . '/functions_pm.php';
+    send_pm([
+        'subject'       => ['passkeysubject'],
+        'message'       => ['passkeymsg', (string)$CURUSER['username']],
+        'touid'         => (int)$userdata['id'],
+        'language'      => $userdata['language'] ?? null,
+        'language_file' => 'edituser',
+        'sender'        => ['uid' => -1],
+    ], -1, true);
+
+    write_log('Passkey for user: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been reset by ' . $CURUSER['username']);
+
+    flash_message((string)$L['flash_passkey_reset'], 'success');
+    admin_redirect('edituser.php?action=edituser&userid=' . (int)$userdata['id']);
+}

@@ -64,7 +64,7 @@ $language['requests'] = array
 
     // ── Fill modal ───────────────────────────────────────────────────────────
     'pane_fill'             => 'Fill Request',
-    'hint_fill'             => 'Enter the torrent ID that fulfills this request.',
+    'hint_fill'             => 'Enter the ID of your torrent that fulfills this request. The bounty goes to the uploader.',
     'lbl_torrent_id'        => 'Torrent ID',
     'ph_torrent_id'         => 'e.g. 12345',
     'btn_modal_cancel'      => 'Cancel',
@@ -77,6 +77,8 @@ $language['requests'] = array
     'ph_title'              => 'Movie / TV Show / Game title...',
     'lbl_category'          => 'Category',
     'lbl_year'              => 'Year',
+    'lbl_imdb'              => 'IMDb link',
+    'hint_imdb'             => 'Optional. With an IMDb link the tracker will offer this request to the uploader of a matching torrent automatically.',
     'lbl_bounty'            => 'Bounty (BP)',
     'hint_balance'          => 'Your balance: {1} BP',
     'lbl_description'       => 'Description',
@@ -97,6 +99,8 @@ $language['requests'] = array
     'err_already_voted'     => 'You have already voted.',
     'err_empty_message'     => 'The comment cannot be empty.',
     'err_invalid_request'   => 'This request does not exist or is no longer open.',
+    'err_imdb_invalid'      => 'Invalid IMDb link. Example: https://www.imdb.com/title/tt1234567/',
+    'err_fill_not_owner'    => 'You can only fill a request with your own torrent.',
     'err_no_permission'     => 'You do not have permission to do this.',
 
     // ── Flash messages ───────────────────────────────────────────────────────

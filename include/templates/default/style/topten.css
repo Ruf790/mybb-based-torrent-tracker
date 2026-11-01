@@ -44,7 +44,10 @@
 }
 .tt-page .tt-tabs::-webkit-scrollbar { display: none; }
 @media (min-width: 992px) {
-  .tt-page .tt-tabs { flex-wrap: wrap; overflow: visible; }   /* на десктопе — перенос, а не прокрутка */
+  /* на десктопе — всё в одну линию: плотнее и с правом сжиматься */
+  .tt-page .tt-tabs { gap: .15rem; }
+  .tt-page .tt-tabs li { flex: 1 1 auto; min-width: 0; }
+  .tt-page .tt-tab { padding: .5rem .6rem; gap: .4rem; font-size: .84em; }
 }
 .tt-page .tt-tabs li { flex: 1 0 auto; }
 .tt-page .tt-tab {

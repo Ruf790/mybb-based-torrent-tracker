@@ -448,7 +448,7 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=22">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/imdb_card.css?ver=1">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/imdb_card.css?ver=2">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';

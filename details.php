@@ -86,7 +86,7 @@ maxsysop();
 define("IN_ARCHIVE", true);
 
 const DT_CSS_VER = 6;
-const DT_JS_VER  = 3;
+const DT_JS_VER  = 4;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function get_comment($pid)

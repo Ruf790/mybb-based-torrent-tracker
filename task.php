@@ -187,6 +187,9 @@ stdhead($lang->task['pg_title']);
 
 <div class="container-md st-page tq-page py-3">
 
+  <?php // Current task with its progress (same card as under the site header), first on the page ?>
+  <?= exam_render_header_notice($uid) ?>
+
   <!-- Header -->
   <header class="st-card st-head mb-3">
     <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-list-check"></i></div>
@@ -241,9 +244,6 @@ stdhead($lang->task['pg_title']);
       <span><?= $e((string)$flash['m']) ?></span>
     </div>
   <?php endif; ?>
-
-  <?php // Current task with its progress (same card as under the site header) ?>
-  <?= exam_render_header_notice($uid) ?>
 
   <!-- Tasks -->
   <div class="tq-sec mb-2">

@@ -1,6 +1,12 @@
 /* task.php — new style on st-ui.css. Everything scoped under .tq-page (prefix tq-). */
 
-.tq-page { font-size: 1.055rem; }
+.tq-page {
+    font-size: 1.055rem;
+    /* Own stacking context below the fixed site header (header.php, z-index 1020):
+       nothing on this page may be painted over the menu while scrolling */
+    position: relative;
+    z-index: 0;
+}
 
 /* ── KPI tiles ───────────────────────────────────────────────────── */
 .tq-page .tq-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
@@ -21,8 +27,10 @@
 .tq-page .tq-alert--success { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .tq-page .tq-alert--danger  { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
 
-/* The current-task card from functions_exam_header.php sits inside the page */
-.tq-page .exam-card { margin: 0 0 1rem; max-width: none; }
+/* The current-task card from functions_exam_header.php sits inside the page.
+   errorss.css gives it a pulsing scale(1.05) animation: here it grew wider than the
+   page and over the fixed menu, so it stays still on this page. */
+.tq-page .exam-card { margin: 0 0 1rem; max-width: none; animation: none; transform: none; }
 
 /* ── Section title ───────────────────────────────────────────────── */
 .tq-page .tq-sec { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; }

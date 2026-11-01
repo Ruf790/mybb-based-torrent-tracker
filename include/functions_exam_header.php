@@ -80,24 +80,25 @@ function exam_render_header_notice(int $uid): string
     $sub   = sprintf($L['sub_progress'], $done, $total) . ' &middot; '
            . date('d.m.Y H:i', $begin) . ' - ' . date('d.m.Y H:i', $end);
 
-    $reward = (int)$exam['success_reward_bonus'];
+    // Every reward (bonus, upload, VIP, invites) as one line: «500 бонусов, 10 ГБ отдачи»
+    $reward = $e(exam_rewards_text(exam_rewards_of($exam)));
     $deduct = (int)$exam['fail_deduct_bonus'];
 
     if ($allMet) {
         $alertTone = 'success';
-        $key       = 'alert_done_' . ($isTask ? 'task' : 'exam') . ($reward > 0 ? '_bonus' : '');
-        $alert     = sprintf($L[$key], exam_num($reward));
+        $key       = 'alert_done_' . ($isTask ? 'task' : 'exam') . ($reward !== '' ? '_bonus' : '');
+        $alert     = sprintf($L[$key], $reward);
     } elseif ($left === 0) {
         $alertTone = 'secondary';
         $alert     = $L['alert_timeup'];
     } elseif ($isTask) {
         $alertTone = $soon ? 'danger' : 'info';
-        $alert     = sprintf($L['alert_task'], $soon ? $L['head_hurry'] : $L['head_task'], $e($leftText), exam_num($reward))
+        $alert     = sprintf($reward !== '' ? $L['alert_task'] : $L['alert_task_noreward'], $soon ? $L['head_hurry'] : $L['head_task'], $e($leftText), $reward)
                    . ($deduct > 0 ? sprintf($L['alert_task_penalty'], exam_num($deduct)) : '');
     } else {
         $alertTone = $soon ? 'danger' : 'primary';
         $alert     = sprintf($L['alert_exam'], $soon ? $L['head_danger'] : $L['head_exam'], $e($leftText))
-                   . ($reward > 0 ? sprintf($L['alert_exam_reward'], exam_num($reward)) : '')
+                   . ($reward !== '' ? sprintf($L['alert_exam_reward'], $reward) : '')
                    . $L['alert_exam_disabled'];
     }
 

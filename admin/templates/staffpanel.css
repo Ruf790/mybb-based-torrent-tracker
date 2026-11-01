@@ -59,6 +59,13 @@
 }
 .sp-page .sp-nav__link:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
 .sp-page .sp-nav__link.active { background: var(--bs-primary); color: #fff; box-shadow: 0 6px 14px -8px var(--bs-primary); }
+@media (min-width: 992px) {
+    /* на десктопе пункты в одну линию: плотнее и с правом сжиматься */
+    .sp-page .sp-nav__list { flex: 1 1 auto; min-width: 0; gap: .1rem; justify-content: flex-end; }
+    .sp-page .sp-nav__list li { flex: 0 1 auto; min-width: 0; }
+    .sp-page .sp-nav__link { padding: .45rem .6rem; gap: .4rem; font-size: .84em; }
+    .sp-page .sp-nav__label { overflow: hidden; text-overflow: ellipsis; }
+}
 
 /* ── Дашборд ───────────────────────────────────────────────────────────── */
 .sp-page .sp-clock {
@@ -158,10 +165,76 @@
 .sp-page .sp-tool:hover .sp-tool__go { opacity: 1; color: var(--bs-primary); transform: translateX(3px); }
 .sp-page .sp-empty__title { font-weight: 600; color: var(--bs-emphasis-color); margin-bottom: .2rem; }
 
+/* ── Управление инструментами ──────────────────────────────────────── */
+.sp-page .sp-kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sp-page .sp-mlist { overflow: hidden; }
+.sp-page .sp-mtool {
+    display: flex; align-items: flex-start; gap: .85rem;
+    padding: .85rem 1.1rem; border-top: 1px solid var(--bs-border-color-translucent);
+    transition: background-color .15s ease;
+}
+.sp-page .sp-mlist > .st-card__head + .sp-mtool { border-top: 0; }
+.sp-page .sp-mtool:hover { background: var(--bs-tertiary-bg); }
+.sp-page .sp-mtool--missing { box-shadow: inset 3px 0 0 var(--bs-danger); }
+.sp-page .sp-mtool__main { flex: 1 1 auto; min-width: 0; }
+.sp-page .sp-mtool__top { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.sp-page .sp-mtool__name {
+    font-weight: 700; color: var(--bs-emphasis-color); text-decoration: none;
+    font-family: var(--bs-font-monospace); font-size: .95em;
+}
+.sp-page a.sp-mtool__name:hover { color: var(--bs-primary-text-emphasis); }
+.sp-page .sp-mtool__desc { font-size: .88em; color: var(--bs-secondary-color); margin-top: .15rem; overflow-wrap: anywhere; }
+.sp-page .sp-mtool__groups { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .45rem; }
+.sp-page .sp-mtool__lbl {
+    display: inline-flex; align-items: center; gap: .3rem; margin-right: .15rem;
+    font-size: .74em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.sp-page .sp-gbadge {
+    display: inline-flex; align-items: center; padding: .12rem .55rem; border-radius: 999px;
+    font-size: .78em; font-weight: 600; background: var(--bs-tertiary-bg);
+}
+.sp-page .sp-mtool__actions { display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
+.sp-page .sp-mtool__actions form { margin: 0; }
+.sp-page .sp-mtool__actions .btn { display: inline-flex; align-items: center; gap: .35rem; }
+.sp-page .sp-dot { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
+
+/* ── Форма инструмента ─────────────────────────────────────────────── */
+.sp-page .sp-form { overflow: hidden; }
+.sp-page .sp-form__sec { border-top: 1px solid var(--bs-border-color); }
+.sp-page .sp-lbl {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .88em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.sp-page .sp-form .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-family: var(--bs-font-monospace); font-size: .88em; }
+.sp-page .sp-mono { font-family: var(--bs-font-monospace); font-size: .92em; background: var(--bs-tertiary-bg); }
+.sp-page .sp-perms {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem;
+}
+.sp-page .sp-perm {
+    display: flex; align-items: center; gap: .6rem; margin: 0;
+    padding: .6rem .8rem; border-radius: .7rem; cursor: pointer;
+    background: var(--bs-tertiary-bg); border: 1px solid transparent;
+    transition: background-color .15s ease, border-color .15s ease;
+}
+.sp-page .sp-perm .form-check-input { flex: 0 0 auto; margin: 0; float: none; cursor: pointer; }
+.sp-page .sp-perm__name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-page .sp-perm:hover { border-color: var(--bs-border-color); }
+.sp-page .sp-perm:has(.form-check-input:checked) { background: var(--bs-primary-bg-subtle); border-color: var(--bs-primary-border-subtle); }
+.sp-page .sp-form.was-validated .form-control:invalid { border-color: var(--bs-danger); }
+
+/* ── Подтверждение удаления ────────────────────────────────────────── */
+.sp-page .sp-confirm { max-width: 34rem; margin: 0 auto; text-align: center; }
+.sp-page .sp-confirm .st-card__body { padding: 1.75rem 1.5rem; }
+.sp-page .sp-confirm__ico { width: 3.2rem; height: 3.2rem; font-size: 1.35rem; border-radius: .9rem; margin: 0 auto .8rem; }
+.sp-page .sp-confirm__title { font-weight: 700; font-size: 1.1em; color: var(--bs-emphasis-color); }
+.sp-page .sp-confirm__tool { margin-top: .35rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.sp-page .sp-confirm__actions { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem; margin-top: 1.2rem; }
+
 /* ── Адаптив ───────────────────────────────────────────────────────────── */
 @media (max-width: 991.98px) {
     .sp-page .sp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .sp-page .sp-grid { grid-template-columns: 1fr; }
+    .sp-page .sp-kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .sp-page .sp-nav__list { margin-left: 0; width: 100%; }
 }
 @media (max-width: 575.98px) {
@@ -169,6 +242,10 @@
     .sp-page .sp-nav__label { display: none; }
     .sp-page .sp-nav__link.active .sp-nav__label { display: inline; }
     .sp-page .sp-tools { grid-template-columns: 1fr; }
+    .sp-page .sp-kpis--3 { grid-template-columns: 1fr; }
+    .sp-page .sp-hide-sm { display: none; }
+    .sp-page .sp-mtool { flex-wrap: wrap; }
+    .sp-page .sp-mtool__actions { width: 100%; justify-content: flex-end; }
 }
 @media (prefers-reduced-motion: reduce) {
     .sp-page .sp-tool, .sp-page .sp-tool__go, .sp-page .sp-nav__link { transition: none; }

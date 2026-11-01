@@ -405,26 +405,16 @@ function handle_managestafftools(): void
 
 
 
-   // Список инструментов
+    // Список инструментов
     stdhead($lang->staffpanel['page_manage']);
-    enqueue_staff_assets();
+    enqueue_staff_assets(false);
     menu('managestafftools');
-    $add_btn = '<p align="right"><input type="button" class="hoptobutton" value="'
-             . htmlspecialchars($lang->staffpanel['btn_add_tool'], ENT_QUOTES) . '"'
-             . ' onClick="jumpto(\'' . $_this_script_no_act . '?act=managestafftools&do=newtool\')"></p>';
-    echo $add_btn;
-
-	echo '
-
-	<div class="container mt-3">
-	<table align="center" border="0" class="tborder" cellpadding="0" cellspacing="0" width="100%">
-    <tbody><tr><td><table class="tback" border="0" cellpadding="6" cellspacing="0" width="100%"><tbody><tr><td class="thead" colspan="6" align="center">' . htmlspecialchars($lang->staffpanel['thead_manage']) . '</td></tr>';
-
+    sp_swal_assets();
 
     get_list2();
-    echo '</table></tbody></td></tr></table></tbody></div></td></tr></table>';
-    echo '</div>';
-    echo $add_btn;
+
+    echo '</div>';                  // .sp-root
+    echo '</td></tr></table>';
     stdfoot();
 }
 
@@ -442,21 +432,33 @@ function save_tool(string $mode, int $id = 0): void
 {
     global $db, $thispath, $lang;
 
-    $name        = htmlspecialchars_uni($_POST['name']        ?? '');
-    $description = htmlspecialchars_uni($_POST['description'] ?? '');
+    // Имя инструмента = ?act=<name> и файл admin/<name>.php, поэтому только [a-z0-9_].
+    // Раньше имя проходило через htmlspecialchars_uni() и могло содержать «../».
+    $name        = strtolower(trim((string) ($_POST['name'] ?? '')));
+    $description = trim((string) ($_POST['description'] ?? ''));
     $filename    = $name . '.php';
-    $groups      = !empty($_POST['gid']) ? implode(',', $_POST['gid']) : '';
 
-    if (empty($name) || empty($description) || empty($groups)) {
+    // Группы: только [число], а не произвольные строки из POST
+    $groups = [];
+    foreach ((array) ($_POST['gid'] ?? []) as $g) {
+        $g = (int) trim((string) $g, '[] ');
+        if ($g > 0) $groups['[' . $g . ']'] = true;
+    }
+    $groups = implode(',', array_keys($groups));
+
+    if ($name === '' || $description === '' || $groups === '') {
         stderr($lang->staffpanel['err_fields_blank']); return;
     }
+    if (!preg_match('/^[a-z0-9_]{1,64}$/', $name)) {
+        stderr($lang->staffpanel['err_tool_name_invalid'] ?? 'Tool name may contain only latin letters, digits and _.'); return;
+    }
     if (!file_exists($thispath . $filename)) {
-        stderr(ags_fmt($lang->staffpanel['err_file_missing'], htmlspecialchars($thispath . 'admin/' . $filename)), false); return;
+        stderr(ags_fmt($lang->staffpanel['err_file_missing'], htmlspecialchars('admin/' . $filename)), false); return;
     }
 
     $data = [
         'name'        => $name,
-        'description' => $description,
+        'description' => htmlspecialchars_uni($description),
         'filename'    => $filename,
         'usergroups'  => $groups,
     ];
@@ -468,37 +470,69 @@ function save_tool(string $mode, int $id = 0): void
             "INSERT INTO staffpanel (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
             array_values($data)
         );
+        write_log('Staff tool added: ' . $name, 'staff');
         redirect('admin/index.php?act=' . $name, $lang->staffpanel['flash_tool_added']);
     } else {
         $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($data)));
         $params = array_values($data);
         $params[] = $id;
         $db->sql_query_prepared("UPDATE staffpanel SET {$set} WHERE id = ?", $params);
+        write_log('Staff tool updated: ' . $name . ' (ID ' . $id . ')', 'staff');
         redirect('index.php?act=managestafftools', $lang->staffpanel['flash_tool_updated']);
     }
+}
+
+/** SweetAlert2 для подтверждений (с confirm() как запасным вариантом в JS). */
+function sp_swal_assets(): void
+{
+    global $BASEURL;
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">' . "\n";
+    echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js" defer></script>' . "\n";
+    echo '<script src="' . $BASEURL . '/admin/scripts/stafftools-manage.js?ver=1" defer></script>' . "\n";
 }
 
 function render_delete_confirm(int $id): void
 {
     global $_this_script_, $mybb, $lang;
 
-    stdhead($lang->staffpanel['page_confirm_delete']);
-    echo '<div class="container mt-4"><div class="alert alert-warning">
-        <p>' . htmlspecialchars($lang->staffpanel['del_question']) . '</p>
-        <form method="post" action="' . $_this_script_ . '&do=delete&id=' . $id . '">
-            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-            <button type="submit" class="btn btn-danger">' . htmlspecialchars($lang->staffpanel['btn_del_yes']) . '</button>
-            <a href="' . $_this_script_ . '" class="btn btn-secondary">' . htmlspecialchars($lang->staffpanel['btn_del_no']) . '</a>
-        </form>
-    </div></div>';
+    $tool = fetch_tool($id);
+    $L    = $lang->staffpanel;
+    $e    = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+
+    stdhead($L['page_confirm_delete']);
+    enqueue_staff_assets(false);
+    menu('managestafftools');
+
+    echo '<div class="container-md st-page sp-page">'
+       .   '<div class="st-card sp-confirm">'
+       .     '<div class="st-card__body">'
+       .       '<div class="st-ico st-soft-danger sp-confirm__ico"><i class="fa-solid fa-trash-can"></i></div>'
+       .       '<div class="sp-confirm__title">' . $e($L['del_question']) . '</div>'
+       .       '<div class="sp-confirm__tool"><code>' . $e($tool['name']) . '</code> — ' . $tool['description'] . '</div>'
+       .       '<form method="post" action="' . $_this_script_ . '&amp;do=delete&amp;id=' . $id . '" class="sp-confirm__actions">'
+       .         '<input type="hidden" name="my_post_key" value="' . $e($mybb->post_code ?? '') . '">'
+       .         '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left"></i> ' . $e($L['btn_del_no']) . '</a>'
+       .         '<button type="submit" class="btn btn-danger st-pill"><i class="fa-solid fa-trash-can"></i> ' . $e($L['btn_del_yes']) . '</button>'
+       .       '</form>'
+       .     '</div>'
+       .   '</div>'
+       . '</div>';
+
+    echo '</div>';                  // .sp-root
+    echo '</td></tr></table>';
     stdfoot();
 }
 
 function delete_tool(int $id): void
 {
-    global $db, $_this_script_, $lang;
+    global $db, $lang;
 
+    $tool = fetch_tool($id);
     $db->sql_query_prepared('DELETE FROM staffpanel WHERE id = ?', [$id]);
+    write_log('Staff tool deleted: ' . $tool['name'] . ' (ID ' . $id . ')', 'staff');
     redirect('admin/index.php?act=managestafftools', $lang->staffpanel['flash_tool_deleted']);
 }
 
@@ -506,154 +540,110 @@ function render_tool_form(string $mode, ?array $tool = null): void
 {
     global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb, $lang;
 
-	require_once $thispath . 'include/stafftoolsfunctions.php';
+    require_once $thispath . 'include/stafftoolsfunctions.php';
 
-    $is_edit     = $mode === 'edit';
-    $title       = $is_edit ? $lang->staffpanel['form_title_edit'] : $lang->staffpanel['form_title_create'];
-    $accent      = $is_edit ? '#f59e0b'     : '#3b82f6';
-    $accent_hov  = $is_edit ? '#d97706'     : '#1d4ed8';
-    $icon        = $is_edit ? 'fa-edit'     : 'fa-plus-circle';
-    $btn_class   = $is_edit ? 'btn-warning' : 'btn-primary';
-    $btn_label   = htmlspecialchars($is_edit ? $lang->staffpanel['btn_update'] : $lang->staffpanel['btn_create']);
+    $L       = $lang->staffpanel;
+    $e       = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $is_edit = $mode === 'edit';
+
     $form_action = $is_edit
-        ? $_this_script_ . '&do=savetool&id=' . $tool['id']
-        : $_this_script_ . '&do=savenewtool';
+        ? $_this_script_ . '&amp;do=savetool&amp;id=' . (int) $tool['id']
+        : $_this_script_ . '&amp;do=savenewtool';
 
-    $val_name    = $is_edit ? htmlspecialchars($tool['name'])        : '';
-    $val_desc    = $is_edit ? htmlspecialchars($tool['description'])  : '';
-    $val_file    = $is_edit ? htmlspecialchars($tool['filename'])     : '';
-    $tool_groups = $is_edit ? explode(',', $tool['usergroups'])       : [];
-    $post_key    = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
+    $val_name    = $is_edit ? $e($tool['name']) : '';
+    // description хранится уже экранированным (htmlspecialchars_uni при сохранении)
+    $val_desc    = $is_edit ? (string) $tool['description'] : '';
+    $tool_groups = $is_edit ? explode(',', (string) $tool['usergroups']) : [];
 
-    // Тексты формы (чистый текст из ланга → экранируем)
-    $t_title        = htmlspecialchars($title);
-    $t_subtitle     = htmlspecialchars($lang->staffpanel['form_subtitle']);
-    $t_lbl_name     = htmlspecialchars($lang->staffpanel['lbl_tool_name']);
-    $t_ph_name      = htmlspecialchars($lang->staffpanel['ph_tool_name'], ENT_QUOTES);
-    $t_lbl_desc     = htmlspecialchars($lang->staffpanel['lbl_description']);
-    $t_ph_desc      = htmlspecialchars($lang->staffpanel['ph_description'], ENT_QUOTES);
-    $t_lbl_file     = htmlspecialchars($lang->staffpanel['lbl_filename']);
-    $t_hint_file    = htmlspecialchars($lang->staffpanel['hint_filename']);
-    $t_lbl_perms    = htmlspecialchars($lang->staffpanel['lbl_permissions']);
-    $t_badge_def    = htmlspecialchars($lang->staffpanel['badge_default']);
-    $t_check_all    = htmlspecialchars($lang->staffpanel['btn_check_all']);
-    $t_uncheck_all  = htmlspecialchars($lang->staffpanel['btn_uncheck_all']);
-    $t_lbl_id       = htmlspecialchars($lang->staffpanel['lbl_id']);
-    $t_lbl_created  = htmlspecialchars($lang->staffpanel['lbl_created']);
-    $t_back         = htmlspecialchars($lang->staffpanel['btn_back']);
-    $t_reset        = htmlspecialchars($lang->staffpanel['btn_reset']);
+    // Группы с доступом к панели
+    $perms = '';
+    $sql = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel = '1' ORDER BY disporder");
+    while ($sql && ($g = $db->fetch_array($sql))) {
+        $gid     = (int) $g['gid'];
+        $checked = $is_edit ? in_array('[' . $gid . ']', $tool_groups, true) : $gid === UC_SYSOP;
+        $label   = str_replace('{username}', htmlspecialchars_uni((string) $g['title']), (string) $g['namestyle']);
+        $default = (!$is_edit && $gid === UC_SYSOP)
+            ? ' <span class="st-badge st-soft-primary">' . $e($L['badge_default']) . '</span>' : '';
+        $perms .= '<label class="sp-perm" for="group_' . $gid . '">'
+                . '<input class="form-check-input perm-cb" type="checkbox" name="gid[]" value="[' . $gid . ']" id="group_' . $gid . '"' . ($checked ? ' checked' : '') . '>'
+                . '<span class="sp-perm__name">' . $label . '</span>' . $default
+                . '</label>';
+    }
+
+    $title = $is_edit ? $L['form_title_edit'] : $L['form_title_create'];
 
     stdhead($title);
-    enqueue_staff_assets();
+    enqueue_staff_assets(false);
+    menu($is_edit ? 'managestafftools' : 'newtool');
 
-
-
-    echo "<style>:root{--staff-accent:{$accent};--staff-accent-hover:{$accent_hov};}</style>\n";
-    menu('managestafftools');
-
-    echo <<<HTML
-<div class="container-fluid py-4">
-  <div class="row justify-content-center">
-    <div class="col-lg-8 col-xl-6">
-      <div class="staff-card">
-        <div class="staff-card-header d-flex align-items-center gap-3"
-             style="background:linear-gradient(135deg,var(--staff-accent),var(--staff-accent-hover))">
-          <div class="staff-header-icon"><i class="fas {$icon}"></i></div>
-          <div>
-            <h4 class="mb-1 fw-bold">{$t_title}</h4>
-            <p class="mb-0" style="opacity:.8;font-size:.9em">{$t_subtitle}</p>
-          </div>
-        </div>
-        <div class="p-4">
-          <form method="post" action="{$form_action}" class="needs-validation" novalidate>
-            <input type="hidden" name="my_post_key" value="{$post_key}">
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_name}</label>
-              <input type="text" class="form-control staff-form-control" id="toolName" name="name"
-                     value="{$val_name}" placeholder="{$t_ph_name}" required>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_desc}</label>
-              <input type="text" class="form-control staff-form-control" name="description"
-                     value="{$val_desc}" placeholder="{$t_ph_desc}" required>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_file}</label>
-              <input type="text" class="form-control staff-form-control" id="toolFilename"
-                     name="filename" value="{$val_file}" placeholder="tool.php" required>
-              <div class="form-text text-muted">{$t_hint_file}</div>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-2">{$t_lbl_perms}</label>
-              <div class="staff-permissions">
-HTML;
-
-    $sql = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel='1' ORDER BY disporder");
-    while ($sql && ($g = $db->fetch_array($sql))) {
-        $checked = ($is_edit
-            ? in_array('[' . $g['gid'] . ']', $tool_groups)
-            : $g['gid'] == UC_SYSOP) ? 'checked' : '';
-        //$label   = get_user_color($g['title'], $g['namestyle']);
-
-		$label = str_replace('{username}', $g['title'], $g['namestyle']);
-
-        $default = (!$is_edit && $g['gid'] == UC_SYSOP)
-            ? ' <span class="badge bg-primary ms-1" style="font-size:.7em">' . $t_badge_def . '</span>' : '';
-        echo <<<HTML
-                <div class="form-check">
-                  <input class="form-check-input perm-cb" type="checkbox"
-                         name="gid[]" value="[{$g['gid']}]" id="group_{$g['gid']}" {$checked}>
-                  <label class="form-check-label" for="group_{$g['gid']}">{$label}{$default}</label>
-                </div>
-HTML;
-    }
-
-    echo <<<HTML
-              </div>
-              <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="setPerms(true)">
-                  <i class="fas fa-check-double me-1"></i>{$t_check_all}
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPerms(false)">
-                  <i class="fas fa-times me-1"></i>{$t_uncheck_all}
-                </button>
-              </div>
-            </div>
-HTML;
-
+    $info = '';
     if ($is_edit) {
-        $created = date('Y-m-d H:i', $tool['added']);
-        echo <<<HTML
-            <div class="alert alert-info border-0 rounded-3 mb-4">
-              <i class="fas fa-info-circle me-2"></i>
-              <strong>{$t_lbl_id}</strong> {$tool['id']} &nbsp;|&nbsp; <strong>{$t_lbl_created}</strong> {$created}
-            </div>
-HTML;
+        $added = (int) ($tool['added'] ?? 0);
+        $info  = '<div class="st-head__meta">'
+               . '<span><i class="fa-solid fa-hashtag"></i>' . $e($L['lbl_id']) . ' ' . (int) $tool['id'] . '</span>'
+               . ($added > 0 ? '<span><i class="fa-solid fa-calendar-plus"></i>' . $e($L['lbl_created']) . ' ' . date('Y-m-d H:i', $added) . '</span>' : '')
+               . '</div>';
+    } else {
+        $info = '<div class="st-head__meta"><span>' . $e($L['form_subtitle']) . '</span></div>';
     }
 
-    echo <<<HTML
-            <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-              <a href="{$_this_script_no_act}?act=managestafftools" class="btn btn-outline-secondary staff-btn">
-                <i class="fas fa-arrow-left me-1"></i> {$t_back}
-              </a>
-              <div class="d-flex gap-2">
-                <button type="reset" class="btn btn-outline-danger staff-btn">
-                  <i class="fas fa-undo me-1"></i> {$t_reset}
-                </button>
-                <button type="submit" class="btn {$btn_class} staff-btn px-4">
-                  <i class="fas fa-save me-1"></i> {$btn_label}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-HTML;
+    $ph_file = $is_edit ? $e($tool['filename']) : 'tool_name.php';
 
-    echo '</div>';
+    echo '<div class="container-md st-page sp-page">'
+       . '<header class="st-card st-head mb-3">'
+       .   '<div class="st-head__icon ' . ($is_edit ? 'st-soft-warning' : 'st-soft-primary') . '"><i class="fa-solid ' . ($is_edit ? 'fa-pen-to-square' : 'fa-square-plus') . '"></i></div>'
+       .   '<div class="flex-grow-1 min-w-0"><h1 class="st-title">' . $e($title) . '</h1>' . $info . '</div>'
+       . '</header>'
+
+       . '<form method="post" action="' . $form_action . '" class="st-card sp-form needs-validation" novalidate>'
+       .   '<input type="hidden" name="my_post_key" value="' . $e($mybb->post_code ?? '') . '">'
+
+       .   '<div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-toolbox"></i></span>' . $e($L['form_subtitle']) . '</div>'
+       .   '<div class="st-card__body">'
+       .     '<div class="row g-3">'
+       .       '<div class="col-md-6">'
+       .         '<label class="form-label sp-lbl" for="toolName"><i class="fa-solid fa-tag"></i>' . $e($L['lbl_tool_name']) . '</label>'
+       .         '<input type="text" class="form-control" id="toolName" name="name" value="' . $val_name . '"'
+       .           ' placeholder="' . $e($L['ph_tool_name']) . '" pattern="[A-Za-z0-9_]{1,64}" maxlength="64" required autocomplete="off">'
+       .       '</div>'
+       .       '<div class="col-md-6">'
+       .         '<label class="form-label sp-lbl" for="toolFilename"><i class="fa-solid fa-file-code"></i>' . $e($L['lbl_filename']) . '</label>'
+       .         '<div class="input-group">'
+       .           '<span class="input-group-text">admin/</span>'
+       .           '<input type="text" class="form-control sp-mono" id="toolFilename" value="' . ($is_edit ? $e($tool['filename']) : '') . '" placeholder="' . $ph_file . '" readonly tabindex="-1">'
+       .         '</div>'
+       .         '<div class="form-text">' . $e($L['hint_filename_auto'] ?? 'Generated from the tool name — the file must already exist.') . '</div>'
+       .       '</div>'
+       .       '<div class="col-12">'
+       .         '<label class="form-label sp-lbl" for="toolDesc"><i class="fa-solid fa-align-left"></i>' . $e($L['lbl_description']) . '</label>'
+       .         '<input type="text" class="form-control" id="toolDesc" name="description" value="' . $val_desc . '"'
+       .           ' placeholder="' . $e($L['ph_description']) . '" required>'
+       .       '</div>'
+       .     '</div>'
+       .   '</div>'
+
+       .   '<div class="st-card__head sp-form__sec">'
+       .     '<span class="st-ico st-soft-success"><i class="fa-solid fa-user-shield"></i></span>' . $e($L['lbl_permissions'])
+       .     '<div class="ms-auto d-flex gap-2">'
+       .       '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-sp-perms="1"><i class="fa-solid fa-check-double"></i> ' . $e($L['btn_check_all']) . '</button>'
+       .       '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-sp-perms="0"><i class="fa-solid fa-xmark"></i> ' . $e($L['btn_uncheck_all']) . '</button>'
+       .     '</div>'
+       .   '</div>'
+       .   '<div class="st-card__body"><div class="sp-perms">' . $perms . '</div></div>'
+
+       .   '<div class="st-toolbar st-toolbar--bottom">'
+       .     '<a href="' . $_this_script_no_act . '?act=managestafftools" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left"></i> ' . $e($L['btn_back']) . '</a>'
+       .     '<div class="d-flex gap-2">'
+       .       '<button type="reset" class="btn btn-outline-danger st-pill"><i class="fa-solid fa-rotate-left"></i> ' . $e($L['btn_reset']) . '</button>'
+       .       '<button type="submit" class="btn ' . ($is_edit ? 'btn-warning' : 'btn-primary') . ' st-pill"><i class="fa-solid fa-floppy-disk"></i> ' . $e($is_edit ? $L['btn_update'] : $L['btn_create']) . '</button>'
+       .     '</div>'
+       .   '</div>'
+       . '</form>'
+       . '</div>';
+
+    sp_swal_assets();               // stafftools-manage.js: «отметить все», имя файла из названия
+
+    echo '</div>';                  // .sp-root
     echo '</td></tr></table>';
     stdfoot();
 }

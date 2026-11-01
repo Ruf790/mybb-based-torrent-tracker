@@ -25,7 +25,7 @@ function sp_assets(): void
     if ($done) return;
     $done = true;
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">' . "\n";
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staffpanel.css?ver=1">' . "\n";
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staffpanel.css?ver=2">' . "\n";
 }
 
 function menu($selected = '') {
@@ -254,118 +254,128 @@ function get_list()
 
 function get_list2()
 {
-    global $thispath;
-    global $_this_script_;
-    global $_this_script_no_act;
-    global $eol;
-    global $db;
-	global $BASEURL;
-    global $lang;
+    global $thispath, $_this_script_, $_this_script_no_act, $db, $mybb, $lang;
 
-    $query = $db->sql_query_prepared('SELECT * FROM staffpanel ORDER BY name');
+    $L = $lang->staffpanel;
+    $e = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 
-    $str = '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/get-list2.css">' . $eol;
-
-    $count = 0;
-    $tools_html = '';
-
-    $t_access  = htmlspecialchars($lang->staffpanel['lbl_access']);
-    $t_active  = htmlspecialchars($lang->staffpanel['lbl_status_active']);
-    $t_edit    = htmlspecialchars($lang->staffpanel['tip_edit_tool'], ENT_QUOTES);
-    $t_delete  = htmlspecialchars($lang->staffpanel['tip_delete_tool'], ENT_QUOTES);
-
-    while ($query && ($tools = $db->fetch_array($query)))
-    {
-        if (@file_exists($thispath . $tools['filename']))
-        {
-            $usergroups = str_replace(array('[', ']'), '', $tools['usergroups']);
-            $icon = get_tool_icon_admin($tools['name']);
-
-            $tools_html .= '
-            <div class="tool-row">
-                <div class="tool-item">
-                    <div>
-                        <div class="tool-header-info">
-                            <div class="tool-icon">
-                                <i class="' . $icon . '"></i>
-                            </div>
-                            <div class="tool-info">
-                                <h3 class="tool-name" title="' . htmlspecialchars($tools['name']) . '">' . htmlspecialchars(strtoupper($tools['name'])) . '</h3>
-                                <p class="tool-description" title="' . htmlspecialchars($tools['description']) . '">' . htmlspecialchars($tools['description']) . '</p>
-                            </div>
-                        </div>
-
-                        <div class="tool-groups">
-                            <div class="groups-label">' . $t_access . '</div>
-                            <div class="groups-list" title="' . htmlspecialchars($usergroups) . '">' . htmlspecialchars($usergroups) . '</div>
-                        </div>
-                    </div>
-
-                    <div class="tool-meta">
-                        <div class="tool-status">
-                            <span class="status-dot"></span>
-                            <span>' . $t_active . '</span>
-                        </div>
-                        <div class="tool-actions">
-                            <a class="tool-btn edit" href="' . $_this_script_ . '&do=edit&id=' . $tools['id'] . '" title="' . $t_edit . '" aria-label="' . $t_edit . '">
-                                <i class="fas fa-edit"></i>
-                            </a>
-                            <a class="tool-btn delete" href="' . $_this_script_ . '&do=delete&id=' . $tools['id'] . '" onclick="return confirm(window.staffT ? staffT(\'confirm_delete_tool\', \'Delete this tool?\') : \'Delete this tool?\')" title="' . $t_delete . '" aria-label="' . $t_delete . '">
-                                <i class="fas fa-trash"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>' . $eol;
-
-            ++$count;
-        }
+    // Группы с доступом к панели: gid => [title, namestyle]
+    $groups = [];
+    $gq = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel = '1' ORDER BY disporder");
+    while ($gq && ($g = $db->fetch_array($gq))) {
+        $groups[(int) $g['gid']] = str_replace('{username}', htmlspecialchars_uni((string) $g['title']), (string) $g['namestyle']);
     }
 
-    $str .= '
-    <div class="admin-tools-table">
-        <div class="tools-header">
-            <h2 class="tools-title">
-                <i class="fas fa-cogs"></i>
-                ' . htmlspecialchars($lang->staffpanel['list_title']) . '
-            </h2>
-        </div>
+    $post_key = $e($mybb->post_code ?? '');
+    $rows     = '';
+    $count    = 0;
+    $missing  = 0;
 
-        <div class="tools-grid">' . $tools_html . '</div>
+    $query = $db->sql_query_prepared('SELECT * FROM staffpanel ORDER BY name');
+    while ($query && ($tool = $db->fetch_array($query))) {
+        ++$count;
+        $id      = (int) $tool['id'];
+        $exists  = @file_exists($thispath . $tool['filename']);
+        if (!$exists) ++$missing;
 
-        <div class="tools-footer">
-            <div class="tools-count">
-                ' . ags_fmt(htmlspecialchars($lang->staffpanel['tools_count']), '<span class="count-number">' . $count . '</span>') . '
-            </div>
-        </div>
-    </div>' . $eol;
+        // Бейджи групп
+        $badges = '';
+        foreach (explode(',', (string) $tool['usergroups']) as $raw) {
+            $gid = (int) trim($raw, '[] ');
+            if ($gid <= 0) continue;
+            $badges .= '<span class="sp-gbadge">' . ($groups[$gid] ?? ('#' . $gid)) . '</span>';
+        }
 
-    echo $str;
+        $status = $exists
+            ? '<span class="st-badge st-soft-success"><span class="sp-dot"></span>' . $e($L['lbl_status_active']) . '</span>'
+            : '<span class="st-badge st-soft-danger" title="admin/' . $e($tool['filename']) . '"><i class="fa-solid fa-file-circle-xmark"></i>' . $e($L['badge_file_missing'] ?? 'File missing') . '</span>';
+
+        $name_html = $exists
+            ? '<a href="' . $_this_script_no_act . '?act=' . rawurlencode((string) $tool['name']) . '" class="sp-mtool__name">' . $e($tool['name']) . '</a>'
+            : '<span class="sp-mtool__name">' . $e($tool['name']) . '</span>';
+
+        $rows .= '<div class="sp-mtool' . ($exists ? '' : ' sp-mtool--missing') . '">'
+            . '<span class="st-ico st-soft-primary"><i class="fa-solid ' . get_tool_icon_admin((string) $tool['name']) . '"></i></span>'
+            . '<div class="sp-mtool__main">'
+            .   '<div class="sp-mtool__top">' . $name_html . $status . '</div>'
+            .   '<div class="sp-mtool__desc">' . $tool['description'] . '</div>'   // хранится экранированным
+            .   '<div class="sp-mtool__groups"><span class="sp-mtool__lbl"><i class="fa-solid fa-key"></i>' . $e($L['lbl_access']) . '</span>' . $badges . '</div>'
+            . '</div>'
+            . '<div class="sp-mtool__actions">'
+            .   '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $_this_script_ . '&amp;do=edit&amp;id=' . $id . '" title="' . $e($L['tip_edit_tool']) . '">'
+            .     '<i class="fa-solid fa-pen"></i><span class="sp-hide-sm">' . $e($L['tip_edit_tool']) . '</span></a>'
+            .   '<form method="post" action="' . $_this_script_ . '&amp;do=delete&amp;id=' . $id . '" data-sp-confirm="' . $e($L['js_confirm_delete_tool'] ?? $L['del_question']) . '"'
+            .     ' data-sp-confirm-detail="' . $e($tool['name']) . '" data-sp-yes="' . $e($L['btn_del_yes']) . '" data-sp-no="' . $e($L['btn_del_no']) . '">'
+            .     '<input type="hidden" name="my_post_key" value="' . $post_key . '">'
+            .     '<button type="submit" class="btn btn-sm btn-outline-danger st-pill" title="' . $e($L['tip_delete_tool']) . '" aria-label="' . $e($L['tip_delete_tool']) . '"><i class="fa-solid fa-trash-can"></i></button>'
+            .   '</form>'
+            . '</div>'
+            . '</div>';
+    }
+
+    $tile = static fn(string $icon, string $soft, string $val, string $lbl): string =>
+        '<div class="st-kpi st-kpi--muted">'
+        . '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div>'
+        . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+        . '</div>';
+
+    echo '<div class="container-md st-page sp-page">'
+       . '<header class="st-card st-head mb-3">'
+       .   '<div class="st-head__icon st-soft-primary"><i class="fa-solid fa-wrench"></i></div>'
+       .   '<div class="flex-grow-1 min-w-0">'
+       .     '<h1 class="st-title">' . $e($L['thead_manage']) . '</h1>'
+       .     '<div class="st-head__meta"><span>' . ags_fmt($e($L['tools_count']), (string) $count) . '</span></div>'
+       .   '</div>'
+       .   '<a href="' . $_this_script_no_act . '?act=managestafftools&amp;do=newtool" class="btn btn-primary st-pill"><i class="fa-solid fa-plus"></i> ' . $e($L['btn_add_tool']) . '</a>'
+       . '</header>'
+
+       . '<div class="sp-kpis sp-kpis--3 mb-3">'
+       .   $tile('fa-screwdriver-wrench', 'st-soft-primary', (string) $count,          $e($L['list_title']))
+       .   $tile('fa-user-shield',        'st-soft-success', (string) count($groups),  $e($L['lbl_kpi_staff_groups'] ?? 'Staff groups'))
+       .   $tile('fa-file-circle-xmark',  $missing > 0 ? 'st-soft-danger' : 'st-soft-muted', (string) $missing, $e($L['lbl_kpi_missing'] ?? 'Missing files'))
+       . '</div>';
+
+    if ($count === 0) {
+        echo '<div class="st-card"><div class="st-empty">'
+           . '<div class="st-ico st-soft-muted"><i class="fa-solid fa-toolbox"></i></div>'
+           . '<div class="sp-empty__title">' . ags_fmt($e($L['tools_count']), '0') . '</div>'
+           . '</div></div>';
+    } else {
+        echo '<section class="st-card sp-mlist">'
+           .   '<div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-list"></i></span>' . $e($L['list_title'])
+           .     '<span class="ms-auto st-badge st-soft-muted">' . $count . '</span></div>'
+           .   $rows
+           . '</section>';
+    }
+
+    echo '</div>';
 }
 
 // Функция для получения иконок инструментов (остается без изменений)
 function get_tool_icon_admin($tool_name) {
-    $tool_lower = strtolower($tool_name);
+    // Возвращает имя иконки без префикса стиля (fa-solid ставит вызывающий код)
+    $tool_lower = strtolower((string) $tool_name);
 
     $icon_map = [
-        'user' => 'fas fa-users',
-        'search' => 'fas fa-search',
-        'stats' => 'fas fa-chart-bar',
-        'log' => 'fas fa-clipboard-list',
-        'settings' => 'fas fa-cogs',
-        'security' => 'fas fa-shield-alt',
-        'backup' => 'fas fa-database',
-        'mail' => 'fas fa-envelope',
-        'report' => 'fas fa-flag',
-        'moderate' => 'fas fa-gavel',
-        'torrent' => 'fas fa-download',
-        'forum' => 'fas fa-comments',
-        'system' => 'fas fa-server',
-        'debug' => 'fas fa-bug',
-        'test' => 'fas fa-vial',
-        'money' => 'fas fa-coins',
-        'news' => 'fas fa-newspaper',
-        'announce' => 'fas fa-bullhorn'
+        'user' => 'fa-users',
+        'search' => 'fa-magnifying-glass',
+        'stats' => 'fa-chart-column',
+        'log' => 'fa-clipboard-list',
+        'settings' => 'fa-gears',
+        'security' => 'fa-shield-halved',
+        'backup' => 'fa-database',
+        'mail' => 'fa-envelope',
+        'report' => 'fa-flag',
+        'moderate' => 'fa-gavel',
+        'torrent' => 'fa-download',
+        'forum' => 'fa-comments',
+        'system' => 'fa-server',
+        'debug' => 'fa-bug',
+        'test' => 'fa-vial',
+        'money' => 'fa-coins',
+        'news' => 'fa-newspaper',
+        'announce' => 'fa-bullhorn'
     ];
 
     foreach ($icon_map as $key => $icon) {
@@ -374,5 +384,5 @@ function get_tool_icon_admin($tool_name) {
         }
     }
 
-    return 'fas fa-toolbox';
+    return 'fa-toolbox';
 }

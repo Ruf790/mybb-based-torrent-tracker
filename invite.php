@@ -280,7 +280,7 @@ foreach ($L as $k => $v) {
 stdhead($L['page_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/invite.css?ver=1">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/invite.css?ver=2">
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 
 <div class="container-md st-page iv-page"<?php if ($flashMsg !== ''): ?> data-flash-type="<?= $h($flashType) ?>" data-flash-msg="<?= $h($flashMsg) ?>"<?php endif; ?>>

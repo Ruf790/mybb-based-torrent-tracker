@@ -280,7 +280,7 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
         if ($new_thread['savedraft'] == 1) {
             $redirect_newthread = $lang->newthread['draft_saved'];
             $url = 'usercp.php?action=drafts';
-        } elseif ($mybb->get_input('postpoll', MyBB::INPUT_INT) && $forumpermissions['canpostpolls']) {
+        } elseif ($mybb->get_input('postpoll', MyBB::INPUT_INT)) {
             $url = "polls.php?action=newpoll&tid=$tid&polloptions=" . $mybb->get_input('numpolloptions', MyBB::INPUT_INT);
             $redirect_newthread .= $lang->newthread['redirect_newthread'] . $lang->newthread['redirect_newthread_poll'];
         } elseif (!$visible) {
@@ -536,7 +536,7 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
 
     // ── Attachments box ───────────────────────────────────────────────────────
     $attachbox = '';
-    if ($enableattachments != 0 && $forumpermissions['canpostattachments'] != 0) {
+    if ($enableattachments != 0) {
         $attachcount = 0;
         if ($mybb->input['action'] === 'editdraft' || ($mybb->input['tid'] && $mybb->input['pid'])) {
             $attachwhere_sql    = "pid = ?";
@@ -581,7 +581,7 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
             $lang->post3['btn_add_attachment'],
             $lang->post3['btn_update_attachment'],
             $maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach),
-            ($usergroups['caneditattachments'] || $forumpermissions['caneditattachments']) && $attachcount > 0
+            $attachcount > 0
         );
 
         $attachbox = compose_attachbox($attach_quota, $link_viewattachments, $lang->post3['lbl_new_attachment'], $attach_buttons, $attachments);

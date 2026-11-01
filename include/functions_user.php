@@ -328,7 +328,7 @@ function usercp_menu(): void
     $usercpmenu = '';
 
     // Add the default items as plugins with separated priorities of 10
-    if ($enablepms != 0 && $usergroups['canusepms'] == 1) {
+    if ($enablepms != 0) {
         $plugins->add_hook("usercp_menu", "usercp_menu_messenger", 10);
     }
 

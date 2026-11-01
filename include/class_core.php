@@ -227,10 +227,7 @@ $groupxgreater = [
 ];
 
 $grouppermbyswitch = [
-    'attachquota'     => 'canpostattachments',
     'edittimelimit'   => 'caneditposts',
-    'pmquota'         => 'canusepms',
-    'maxpmrecipients' => 'canusepms',
     'maxemails'       => 'cansendemail',
     'emailfloodtime'  => 'cansendemail',
 ];
@@ -240,19 +237,13 @@ $displaygroupfields = ["title", "description", "namestyle"];
 $fpermfields = [
     'canview',
     'canviewthreads',
-    'candlattachments',
     'canpostthreads',
     'canpostreplys',
-    'canpostattachments',
     'caneditposts',
     'candeleteposts',
     'candeletethreads',
-    'caneditattachments',
     'modposts',
     'modthreads',
     'modattachments',
     'mod_edit_posts',
-    'canpostpolls',
-    'canvotepolls',
-    'cansearch'
 ];

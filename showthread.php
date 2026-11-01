@@ -454,7 +454,7 @@ if ($shouldCount) {
 // ─── Search thread ────────────────────────────────────────────────────────────
 
 $search_thread = '';
-if ($forumpermissions['cansearch'] != 0) {
+if (!empty($CURUSER['id'])) {
     $search_thread = <<<HTML
     <form action="search.php" method="post" class="th-search" role="search">
         <input type="hidden" name="action" value="thread" />

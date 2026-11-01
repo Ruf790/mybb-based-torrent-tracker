@@ -499,7 +499,7 @@ if ($action === 'vote' && $is_post) {
     $forumpermissions = forum_permissions($fid);
     $forum            = get_forum($fid);
 
-    if ($forumpermissions['canvotepolls'] == 0) {
+    if (empty($CURUSER['id']) || ($forumpermissions['canview'] ?? 0) == 0) {
         print_no_permission();
     }
     if (!$forum || $forum['open'] == 0) {

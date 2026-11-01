@@ -63,7 +63,7 @@ function make_searchable_forums(int|string $pid = 0, int|string $selitem = 0, in
             foreach ($main as $forum) {
                 $perms = $permissioncache[$forum['fid']] ?? [];
 
-                if ((($perms['canview'] ?? 0) == 1 || $hideprivateforums == 0) && ($perms['cansearch'] ?? 0) != 0) {
+                if ((($perms['canview'] ?? 0) == 1 || $hideprivateforums == 0)) {
                     $sel  = $selitem === (int)$forum['fid'] ? ' selected' : '';
                     $name = htmlspecialchars_uni(strip_tags((string)$forum['name']));
                     $forumlistbits .= '<option value="' . (int)$forum['fid'] . '"' . $sel . '>' . $depth . $name . '</option>';
@@ -110,7 +110,7 @@ function get_unsearchable_forums(int $pid = 0, int $first = 1): string
             }
         }
 
-        if ($perms['canview'] != 1 || $perms['cansearch'] != 1
+        if ($perms['canview'] != 1
             || !forum_password_validated($forum, true) || $forum['active'] == 0)
         {
             if ($unsearchableforums) $unsearchableforums .= ',';

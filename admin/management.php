@@ -136,7 +136,7 @@ function generate_hidden_field(string $name, int|string $value, array $options =
 // ── save_quick_perms ──────────────────────────────────────────────────────────
 function save_quick_perms(int $fid): void
 {
-    global $db, $inherit, $canview, $canpostthreads, $canpostreplies, $canpostpolls, $cache;
+    global $db, $inherit, $canview, $canpostthreads, $canpostreplies, $cache;
 
     $permission_fields = [];
     foreach ($db->show_fields_from('forumpermissions') as $field) {
@@ -169,7 +169,6 @@ function save_quick_perms(int $fid): void
             $pview    = !empty($canview[$gid])        ? 1 : 0;
             $pthreads = !empty($canpostthreads[$gid]) ? 1 : 0;
             $preplies = !empty($canpostreplies[$gid]) ? 1 : 0;
-            $ppolls   = !empty($canpostpolls[$gid])   ? 1 : 0;
 
             $insert = [
                 'fid'            => $fid,
@@ -177,7 +176,6 @@ function save_quick_perms(int $fid): void
                 'canview'        => $pview,
                 'canpostthreads' => $pthreads,
                 'canpostreplys'  => $preplies,
-                'canpostpolls'   => $ppolls,
             ];
 
             foreach ($permission_fields as $field => $_) {
@@ -1094,7 +1092,7 @@ function fm_perm_row(array $usergroup, int $fid, array $perms, bool $default_che
     global $mybb, $lang;
     $t = array_map('htmlspecialchars_uni', $lang->forum_management);
 
-    $field_list = ['canview' => $t['perm_canview'], 'canpostthreads' => $t['perm_canpostthreads'], 'canpostreplys' => $t['perm_canpostreplys'], 'canpostpolls' => $t['perm_canpostpolls']];
+    $field_list = ['canview' => $t['perm_canview'], 'canpostthreads' => $t['perm_canpostthreads'], 'canpostreplys' => $t['perm_canpostreplys']];
     $gid    = (int)$usergroup['gid'];
     $utitle = htmlspecialchars_uni((string)$usergroup['title']);
 
@@ -1713,48 +1711,40 @@ if ($action === 'permissions') {
             'canviewthreads'         => 'viewing',
             'canview'                => 'viewing',
             'canonlyviewownthreads'  => 'viewing',
-            'candlattachments'       => 'viewing',
             'canpostthreads'         => 'posting_rating',
             'canpostreplys'          => 'posting_rating',
             'canonlyreplyownthreads' => 'posting_rating',
-            'canpostattachments'     => 'posting_rating',
             'caneditposts'           => 'editing',
             'candeleteposts'         => 'editing',
             'candeletethreads'       => 'editing',
-            'caneditattachments'     => 'editing',
             'modposts'               => 'moderate',
             'modthreads'             => 'moderate',
             'modattachments'         => 'moderate',
             'mod_edit_posts'         => 'moderate',
-            'canpostpolls'           => 'polls',
-            'canvotepolls'           => 'polls',
-            'cansearch'              => 'misc',
         ];
 
         $hidefields = ($usergroup['gid'] == 222)
             ? ['canonlyviewownthreads','canonlyreplyownthreads','caneditposts',
-               'candeleteposts','candeletethreads','caneditattachments']
+               'candeleteposts','candeletethreads']
             : [];
 
         $groups = $plugins->run_hooks('admin_forum_management_permission_groups', $groups);
         foreach ($hidefields as $hf) { unset($groups[$hf]); }
 
-        $tab_colors  = ['viewing'=>'bg-primary','posting_rating'=>'bg-success','editing'=>'bg-info','moderate'=>'bg-warning','polls'=>'bg-purple','misc'=>'bg-secondary'];
-        $tab_icons   = ['viewing'=>'fa-eye','posting_rating'=>'fa-comment','editing'=>'fa-edit','moderate'=>'fa-gavel','polls'=>'fa-chart-bar','misc'=>'fa-cog'];
+        $tab_colors  = ['viewing'=>'bg-primary','posting_rating'=>'bg-success','editing'=>'bg-info','moderate'=>'bg-warning'];
+        $tab_icons   = ['viewing'=>'fa-eye','posting_rating'=>'fa-comment','editing'=>'fa-edit','moderate'=>'fa-gavel'];
         $tab_titles  = [];
-        foreach (['viewing', 'posting_rating', 'editing', 'moderate', 'polls', 'misc'] as $tg) {
+        foreach (['viewing', 'posting_rating', 'editing', 'moderate'] as $tg) {
             $tab_titles[$tg] = htmlspecialchars_uni($L['tab_' . $tg]);
         }
 
         // Подписи полей: ключ ланга perm_<группа>_<поле>
         $l = [];
         foreach ([
-            'viewing'        => ['canview', 'canviewthreads', 'canonlyviewownthreads', 'candlattachments'],
-            'posting_rating' => ['canpostthreads', 'canpostreplys', 'canonlyreplyownthreads', 'canpostattachments'],
-            'editing'        => ['caneditposts', 'candeleteposts', 'candeletethreads', 'caneditattachments'],
+            'viewing'        => ['canview', 'canviewthreads', 'canonlyviewownthreads'],
+            'posting_rating' => ['canpostthreads', 'canpostreplys', 'canonlyreplyownthreads'],
+            'editing'        => ['caneditposts', 'candeleteposts', 'candeletethreads'],
             'moderate'       => ['modposts', 'modthreads', 'modattachments', 'mod_edit_posts'],
-            'polls'          => ['canpostpolls', 'canvotepolls'],
-            'misc'           => ['cansearch'],
         ] as $lg => $lfields) {
             foreach ($lfields as $lf) {
                 $l[$lg . '_field_' . $lf] = htmlspecialchars_uni($L['perm_' . $lg . '_' . $lf]);
@@ -1910,14 +1900,12 @@ if ($action === 'add') {
                 if (!is_array($permission)) {
                     $permission = array_fill_keys(explode(',', $permission), 1);
                 }
-                foreach (['canview','canpostthreads','canpostreplys','canpostpolls','canpostattachments'] as $n) {
+                foreach (['canview','canpostthreads','canpostreplys'] as $n) {
                     $permissions[$n][$gid] = !empty($permission[$n]) ? 1 : 0;
                 }
             }
             $canview            = $permissions['canview']            ?? [];
             $canpostthreads     = $permissions['canpostthreads']     ?? [];
-            $canpostpolls       = $permissions['canpostpolls']       ?? [];
-            $canpostattachments = $permissions['canpostattachments'] ?? [];
             $canpostreplies     = $permissions['canpostreplys']      ?? [];
             save_quick_perms($fid);
 
@@ -2022,7 +2010,6 @@ if ($action === 'add') {
         'canview'       => htmlspecialchars_uni($L['perm_canview']),
         'canpostthreads'=> htmlspecialchars_uni($L['perm_canpostthreads']),
         'canpostreplys' => htmlspecialchars_uni($L['perm_canpostreplys']),
-        'canpostpolls'  => htmlspecialchars_uni($L['perm_canpostpolls']),
     ];
 
     $q = $db->sql_query_prepared("SELECT * FROM usergroups");
@@ -2199,14 +2186,12 @@ if ($action === 'edit') {
                 if ($mybb->input['fields_default_'.$gid] == $permission && $mybb->input['fields_inherit_'.$gid] == 1) { $inherit[$gid]=1; continue; }
                 $inherit[$gid] = 0;
                 if (!is_array($permission)) $permission = array_fill_keys(explode(',', $permission), 1);
-                foreach (['canview','canpostthreads','canpostreplys','canpostpolls'] as $n) {
+                foreach (['canview','canpostthreads','canpostreplys'] as $n) {
                     $permissions[$n][$gid] = !empty($permission[$n]) ? 1 : 0;
                 }
             }
             $canview = $permissions['canview'] ?? [];
             $canpostthreads = $permissions['canpostthreads'] ?? [];
-            $canpostpolls   = $permissions['canpostpolls']   ?? [];
-            $canpostattachments = $permissions['canpostattachments'] ?? [];
             $canpostreplies = $permissions['canpostreplys']  ?? [];
             save_quick_perms($fid);
             $cache->update_forums();
@@ -2289,7 +2274,6 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
         'canview'        => htmlspecialchars_uni($L['perm_canview']),
         'canpostthreads' => htmlspecialchars_uni($L['perm_canpostthreads']),
         'canpostreplys'  => htmlspecialchars_uni($L['perm_canpostreplys']),
-        'canpostpolls'   => htmlspecialchars_uni($L['perm_canpostpolls']),
     ];
     $existing_permissions = [];
 
@@ -2576,15 +2560,13 @@ if (!$action) {
                     $permission = array_fill_keys(explode(',', $permission), 1);
                 }
 
-                foreach (['canview', 'canpostthreads', 'canpostreplys', 'canpostpolls'] as $name) {
+                foreach (['canview', 'canpostthreads', 'canpostreplys'] as $name) {
                     $permissions[$name][$gid] = !empty($permission[$name]) ? 1 : 0;
                 }
             }
 
             $canview            = $permissions['canview']            ?? [];
             $canpostthreads     = $permissions['canpostthreads']     ?? [];
-            $canpostpolls       = $permissions['canpostpolls']       ?? [];
-            $canpostattachments = $permissions['canpostattachments'] ?? [];
             $canpostreplies     = $permissions['canpostreplys']      ?? [];
 
             save_quick_perms($fid);

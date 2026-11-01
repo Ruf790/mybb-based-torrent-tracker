@@ -29,135 +29,44 @@ if (isset($CURUSER) && is_array($CURUSER) && isset($CURUSER['id']))
 
 
 $magnetModal = '
-
-<div class="modal fade" id="magnetModal" tabindex="-1" aria-labelledby="magnetModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="magnetModal" tabindex="-1" aria-labelledby="magnetModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-0 shadow-lg overflow-hidden">
-      
-      
-      <div class="modal-header border-0 bg-primary text-white position-relative" 
-           style="background: linear-gradient(145deg, #0d6efd 0%, #0b5ed7 100%) !important;">
-        
-        <!-- Декоративные элементы -->
-        <div class="position-absolute top-0 end-0 opacity-10">
-          <i class="fas fa-magnet fa-8x" style="transform: rotate(15deg);"></i>
-        </div>
-        <div class="position-absolute bottom-0 start-0 opacity-10">
-          <i class="fas fa-download fa-6x" style="transform: rotate(-15deg);"></i>
-        </div>
-        
-        <!-- Верхний блик -->
-        <div class="position-absolute top-0 start-0 w-100 h-25" 
-             style="background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);"></div>
-        
-        <!-- Содержимое заголовка -->
-        <div class="position-relative z-index-1">
-          <h5 class="modal-title text-white fw-bold" id="magnetModalLabel">
-            <i class="fas fa-magnet me-2 fa-spin-slow"></i>' . htmlspecialchars($lang->details['menu_magnet'], ENT_QUOTES) . '
-          </h5>
-          <p class="text-white-75 small mb-0 mt-1">' . htmlspecialchars($lang->details['mdl_magnet_sub'], ENT_QUOTES) . '</p>
-        </div>
-        
-        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 mt-3 me-3" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '"></button>
-        
-        <!-- Прогресс-бар в шапке (анимированный) -->
-        <div class="position-absolute bottom-0 start-0 w-100" style="height: 3px;">
-          <div class="h-100 bg-white" style="width: 100%; animation: shrinkWidth 5s linear forwards;"></div>
-        </div>
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="magnetModalLabel">
+          <i class="fa-solid fa-magnet me-2 text-primary"></i>' . htmlspecialchars($lang->details['menu_magnet'], ENT_QUOTES) . '
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '"></button>
       </div>
-      
-      <!-- Body с иконкой и контентом -->
-      <div class="modal-body text-center py-5 position-relative">
-        
-        <!-- Декоративные точки -->
-        <div class="particles">
-          <div class="particle" style="top: 20%; left: 10%; background: #0d6efd;"></div>
-          <div class="particle" style="top: 70%; left: 85%; background: #0b5ed7;"></div>
-          <div class="particle" style="top: 40%; left: 90%; background: #0d6efd;"></div>
-          <div class="particle" style="top: 80%; left: 15%; background: #0b5ed7;"></div>
+      <div class="modal-body text-center">
+        <div class="dt-magnet__icon"><i class="fa-solid fa-magnet"></i></div>
+        <p class="text-body-secondary small mb-3">' . htmlspecialchars($lang->details['mdl_magnet_sub'], ENT_QUOTES) . '</p>
+        <div class="dt-magnet__steps">
+          <span><span class="dt-magnet__num">1</span>' . htmlspecialchars($lang->details['mdl_magnet_step_copy'], ENT_QUOTES) . '</span>
+          <i class="fa-solid fa-arrow-right text-primary"></i>
+          <span><span class="dt-magnet__num">2</span>' . htmlspecialchars($lang->details['mdl_magnet_step_launch'], ENT_QUOTES) . '</span>
         </div>
-        
-        <!-- Анимированная иконка магнита -->
-        <div class="magnet-icon mb-4 position-relative">
-          <div class="icon-circle mx-auto position-relative" 
-               style="background: linear-gradient(145deg, #e6f0ff 0%, #cfe2ff 100%); box-shadow: 0 10px 30px rgba(13,110,253,0.2);">
-            <div class="glow-effect" style="background: radial-gradient(circle, rgba(13,110,253,0.2) 0%, transparent 70%);"></div>
-            <i class="fas fa-magnet fa-4x text-primary"></i>
-          </div>
-          
-          <!-- Пульсирующие кольца -->
-          <div class="pulse-ring" style="border-color: rgba(13,110,253,0.2);"></div>
-          <div class="pulse-ring" style="border-color: rgba(13,110,253,0.1); animation-delay: 0.5s;"></div>
-        </div>
-        
-        <!-- Инструкция в стиле Bootstrap -->
-        <div class="d-flex align-items-center justify-content-center gap-3 mb-4">
-          <div class="d-flex align-items-center">
-            <span class="badge bg-primary rounded-circle p-2 me-2">1</span>
-            <span class="text-muted small">' . htmlspecialchars($lang->details['mdl_magnet_step_copy'], ENT_QUOTES) . '</span>
-          </div>
-          <i class="fas fa-arrow-right text-primary"></i>
-          <div class="d-flex align-items-center">
-            <span class="badge bg-primary rounded-circle p-2 me-2">2</span>
-            <span class="text-muted small">' . htmlspecialchars($lang->details['mdl_magnet_step_launch'], ENT_QUOTES) . '</span>
-          </div>
-        </div>
-        
-        <!-- Input group с кнопкой копирования -->
-        <div class="input-group mb-3 shadow-sm">
-          <span class="input-group-text bg-light border-end-0" id="basic-addon1">
-            <i class="fas fa-link text-primary"></i>
-          </span>
-          <input type="text" id="magnetInput" class="form-control form-control-lg border-start-0 border-end-0" 
-                 readonly value="magnet:?xt=urn:btih:..." 
-                 style="font-family: "Fira Code", monospace; font-size: 0.9rem; background: #fff;">
-          <button class="btn2 btn-primary2" type="button" id="copyMagnetBtn">
-            <i class="fas fa-copy me-1"></i>' . htmlspecialchars($lang->details['btn_copy'], ENT_QUOTES) . '
+        <div class="input-group">
+          <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
+          <input type="text" id="magnetInput" class="form-control dt-magnet__input" readonly value="" aria-label="' . htmlspecialchars($lang->details['menu_magnet'], ENT_QUOTES) . '">
+          <button class="btn btn-primary" type="button" id="copyMagnetBtn">
+            <i class="fa-solid fa-copy me-1"></i>' . htmlspecialchars($lang->details['btn_copy'], ENT_QUOTES) . '
           </button>
         </div>
-        
-        <!-- Success message -->
-        <div class="copy-success alert alert-primary mt-2 py-2 small d-none fade-in-up" id="copySuccess" 
-             style="border-left: 4px solid #0d6efd; background: #e6f0ff;">
-          <i class="fas fa-check-circle me-1 text-primary"></i> 
-          <span class="fw-medium">' . htmlspecialchars($lang->details['mdl_magnet_copied'], ENT_QUOTES) . '</span>
+        <div class="alert alert-success mt-2 mb-0 py-2 small d-none" id="copySuccess">
+          <i class="fa-solid fa-circle-check me-1"></i>' . htmlspecialchars($lang->details['mdl_magnet_copied'], ENT_QUOTES) . '
         </div>
-        
-        <!-- Быстрые подсказки -->
-        <div class="d-flex align-items-center justify-content-center gap-3 mt-3">
-          <div class="d-flex align-items-center gap-1">
-            <i class="fas fa-clock text-primary small"></i>
-            <span class="small text-muted">' . htmlspecialchars(ags_fmt($lang->details['mdl_magnet_autoclose'], 5)) . '</span>
-          </div>
-          <span class="text-primary small">•</span>
-          <div class="d-flex align-items-center gap-1">
-            <i class="fas fa-shield-alt text-primary small"></i>
-            <span class="small text-muted">' . htmlspecialchars($lang->details['mdl_magnet_secure'], ENT_QUOTES) . '</span>
-          </div>
-        </div>
-        
-        <!-- External torrent badge -->
-        <div class="external-badge mt-3">
-          <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill border border-primary border-opacity-25">
-            <i class="fas fa-globe me-2"></i>
-            <span class="fw-semibold">' . htmlspecialchars($lang->details['mdl_magnet_external'], ENT_QUOTES) . '</span>
-          </span>
+        <div class="dt-magnet__notes">
+          <span><i class="fa-solid fa-shield-halved me-1"></i>' . htmlspecialchars($lang->details['mdl_magnet_secure'], ENT_QUOTES) . '</span>
+          <span><i class="fa-solid fa-globe me-1"></i>' . htmlspecialchars($lang->details['mdl_magnet_external'], ENT_QUOTES) . '</span>
         </div>
       </div>
-      
-      <!-- Footer с кнопками -->
-      <div class="modal-footer border-0 justify-content-center pb-4 gap-3 bg-light bg-opacity-50">
-        <button type="button" class="btn2 btn-outline-primary2 px-5 py-2 rounded-pill" data-bs-dismiss="modal">
-          <i class="fas fa-times me-2"></i>' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '
+      <div class="modal-footer justify-content-center">
+        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+          <i class="fa-solid fa-xmark me-1"></i>' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '
         </button>
-        
-        <button type="button" class="btn2 btn-primary2 px-5 py-2 rounded-pill position-relative" id="openMagnetBtn"
-                style="box-shadow: 0 8px 20px rgba(13,110,253,0.3);">
-          <span class="position-relative z-index-1">
-            <i class="fas fa-play me-2"></i>' . htmlspecialchars($lang->details['btn_launch_client'], ENT_QUOTES) . '
-          </span>
-          <span class="position-absolute top-0 start-0 w-100 h-100 rounded-pill" 
-                style="background: inherit; filter: blur(10px); opacity: 0.5; z-index: 0;"></span>
+        <button type="button" class="btn btn-primary rounded-pill px-4" id="openMagnetBtn">
+          <i class="fa-solid fa-play me-1"></i>' . htmlspecialchars($lang->details['btn_launch_client'], ENT_QUOTES) . '
         </button>
       </div>
     </div>
@@ -505,76 +414,13 @@ $magnetModal = '
 
 <!-- ========== TORRENT MODALS ========== -->
 
-<!-- Modal for Delete Confirmation -->
-<div class="modal fade" id="deleteTorrentModal" tabindex="-1" aria-labelledby="deleteTorrentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <!-- Header -->
-            <div class="modal-header bg-danger text-white">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
-                    <h5 class="modal-title fw-bold" id="deleteTorrentModalLabel"><?= htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES) ?></h5>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
-            </div>
-            
-            <!-- Body -->
-            <div class="modal-body py-4">
-                <div class="text-center mb-3">
-                    <div class="bg-danger bg-opacity-10 rounded-circle d-inline-flex p-3 mb-3">
-                        <i class="bi bi-trash3-fill text-danger fs-2"></i>
-                    </div>
-                    <h6 class="fw-bold text-danger mb-2"><?= htmlspecialchars($lang->details['mdl_deltorrent_question'], ENT_QUOTES) ?></h6>
-                    <p class="text-muted mb-3" id="torrentNamePreview"><?= htmlspecialchars($lang->details['mdl_torrent_name_placeholder'], ENT_QUOTES) ?></p>
-                    
-                    <!-- Warning Box -->
-                    <div class="alert alert-warning border-0 bg-warning bg-opacity-10 small">
-                        <div class="d-flex align-items-start">
-                            <i class="bi bi-exclamation-circle me-2 mt-1 text-warning"></i>
-                            <div>
-                                <?= $lang->details['mdl_deltorrent_warning'] ?>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Confirmation Checkbox -->
-                    <div class="form-check text-start mt-3">
-                        <input class="form-check-input" type="checkbox" id="confirmDelete">
-                        <label class="form-check-label small text-muted" for="confirmDelete">
-                            <?= htmlspecialchars($lang->details['mdl_deltorrent_confirm'], ENT_QUOTES) ?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Footer -->
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">
-                    <i class="bi bi-x-circle me-1"></i>Cancel
-                </button>
-                <button type="button" class="btn btn-danger btn-sm px-4" id="confirmDeleteBtn" disabled>
-                    <i class="bi bi-trash3 me-1"></i><?= htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES) ?>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
 <!-- Universal Image Preview Modal -->
 <div class="modal fade" id="universalImageModal" tabindex="-1">
     <div class="modal-dialog modal-fullscreen m-0">
         <div class="modal-content bg-transparent border-0 shadow-none">
             
             <div class="modal-body p-0 d-flex align-items-center justify-content-center">
-                <img id="universalImagePreview"
-     class="rounded"
-     src=""
-     style="max-width: 1000px; max-height: 1000px; width: auto; height: auto; object-fit: contain; cursor: pointer;">
+                <img id="universalImagePreview" class="rounded" src="" alt="">
             </div>
 
         </div>

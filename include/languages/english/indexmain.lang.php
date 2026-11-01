@@ -46,6 +46,12 @@ $language['indexmain'] = array (
 	'lbl_guests'          => 'Guests: {1}',
 	'lbl_total_users'     => 'Total Users: {1}',
 
+	// ── Restyle (new style) ──
+	'lbl_kpi_torrents'    => 'Torrents',
+	'lbl_thirty'          => '30% Leech',
+	'tip_thirty'          => 'Only 30% of the download is counted',
+	'btn_show_all'        => 'Show all',
+
 	// ── JS: torrent preview ──
 	'js_preview_loading'  => 'Loading torrent details...',
 	'js_preview_failed'   => 'Failed to load torrent preview.',

@@ -25,611 +25,460 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
-
-
-
-if (empty($CURUSER['id'])) 
-{
+if (empty($CURUSER['id'])) {
     header('Location: member.php?action=login');
     exit;
 }
-
-
 
 require_once INC_PATH . '/class_parser.php';
 $parser = new postParser();
 
 $parser_options = [
-    "allow_html" => 0,
-    "allow_mycode" => 1,
-    "allow_smilies" => 1,
-    "allow_imgcode" => 1,
+    "allow_html"      => 0,
+    "allow_mycode"    => 1,
+    "allow_smilies"   => 1,
+    "allow_imgcode"   => 1,
     "allow_videocode" => 1,
-    "filter_badwords" => 1
+    "filter_badwords" => 1,
 ];
 
-stdhead($lang->indexmain['page_title']);
-
+$L      = $lang->indexmain;
+$G      = $lang->global;
 $is_mod = is_mod($usergroups);
+$myId   = (int)$CURUSER['id'];
 
-////////// ONLINE USERS
-$_dt2 = TIMENOW - $wolcutoffmins * 60;
+/** Text from the page lang, escaped for HTML output. */
+$e = static fn(?string $s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 
-$_wgo_query = $db->sql_query_prepared("
-    SELECT s.uid as id, u.username, u.avatar, u.usergroup, u.enabled, u.invisible, 
-           u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment, u.lastactive
-    FROM sessions s
-    LEFT JOIN users u ON (s.uid = u.id)
-    WHERE s.uid != '0' AND s.time > ?
-    ORDER BY u.username, u.lastactive
-", [$_dt2]);
+/** One user chip (online / last 24 h lists). */
+$userChip = static function (array $u, bool $hidden): string {
+    $icons = get_user_icons($u);
+    return '<span class="ix-uchip' . ($hidden ? ' ix-uchip--hidden' : '') . '">'
+         . ($hidden ? '<i class="fa-solid fa-eye-slash ix-uchip__hid" aria-hidden="true"></i>' : '')
+         . '<a href="' . get_profile_link((int)$u['id']) . '">'
+         . format_name(htmlspecialchars_uni((string)$u['username']), (int)$u['usergroup'])
+         . '</a>'
+         . ($icons !== '' ? '<span class="ix-uchip__icons">' . $icons . '</span>' : '')
+         . '</span>';
+};
 
-$_usernames = [];
-$_hidden_members = 0;
-$_active_members = 0;
-$_done_online_users = [];
-
-while ($_active_users = $db->fetch_array($_wgo_query)) {
-  
-    if (isset($_done_online_users[$_active_users['id']])) {
-        continue;
+// ───────────────────────────── KPI (one query) ──────────────────────────────
+$kpi = ['total' => 0, 'seeders' => 0, 'leechers' => 0, 'dead' => 0];
+$kq = $db->sql_query_prepared(
+    "SELECT COUNT(*) AS total,
+            COALESCE(SUM(seeders), 0)  AS seeders,
+            COALESCE(SUM(leechers), 0) AS leechers,
+            COALESCE(SUM(seeders = 0 AND leechers > 0), 0) AS dead
+       FROM torrents
+      WHERE visible = 'yes' AND banned = 'no'"
+);
+if ($kq && ($row = $db->fetch_array($kq))) {
+    foreach ($kpi as $k => $_) {
+        $kpi[$k] = (int)($row[$k] ?? 0);
     }
-    $_done_online_users[$_active_users['id']] = true;
-
-    $is_hidden = ($_active_users['invisible'] == 1);
-    
-    if ($is_hidden && $_active_users['id'] != $CURUSER['id'] && !$is_mod) {
-        $_hidden_members++;
-        continue;
-    }
-    
-    if ($is_hidden) {
-        $_hidden_members++;
-    } else {
-        $_active_members++;
-    }
-
-    $username_html = '<a href="' . get_profile_link((int)$_active_users['id']) . '">' .
-        format_name($_active_users['username'], $_active_users['usergroup']) . '</a>' .
-        ($is_hidden ? ' <small class="text-muted">(+)</small>' : '') .
-        ' ' . get_user_icons($_active_users);
-
-    $_usernames[] = $username_html;
 }
 
+// ───────────────────────────── Online users ─────────────────────────────────
+$_wgo_query = $db->sql_query_prepared("
+    SELECT s.uid AS id, u.username, u.usergroup, u.enabled, u.invisible,
+           u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment
+      FROM sessions s
+      INNER JOIN users u ON (u.id = s.uid)
+     WHERE s.uid != 0 AND s.time > ?
+     ORDER BY u.username
+", [TIMENOW - (int)$wolcutoffmins * 60]);
 
+$onlineChips  = [];
+$onlineHidden = 0;
+$onlineShown  = 0;
+$seen         = [];
 
+while ($u = $db->fetch_array($_wgo_query)) {
+    $uid = (int)$u['id'];
+    if (isset($seen[$uid])) {
+        continue;
+    }
+    $seen[$uid] = true;
 
+    $hidden = ((int)$u['invisible'] === 1);
+    if ($hidden) {
+        $onlineHidden++;
+        if ($uid !== $myId && !$is_mod) {
+            continue;
+        }
+    } else {
+        $onlineShown++;
+    }
+    $onlineChips[] = $userChip($u, $hidden);
+}
+$onlineTotal = $onlineShown + $onlineHidden;
 
-$timeLimit = TIMENOW - (24 * 60 * 60);
-
-// Users who logged in during the last 24 hours
-$_wgo_query2 = $db->sql_query_prepared(
-    'SELECT u.id, u.username, u.avatar, u.usergroup, u.enabled, u.invisible, 
-            u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment
-     FROM users u 
-     WHERE u.last_login > ?
-     ORDER BY u.username, u.last_login',
-    [$timeLimit]
-);
-
-
-$_most_ever = $_active_members + $_hidden_members;
-
-
+// Record "most users ever online"
 $onlinestats = $cache->read('onlinestats');
 if (!is_array($onlinestats)) {
     $onlinestats = [];
 }
 $onlinestats['most_ever'] ??= 0;
-
-
-if ($_most_ever > $onlinestats['most_ever']) {
-    $onlinestats['most_ever']      = $_most_ever;
+if ($onlineTotal > (int)$onlinestats['most_ever']) {
+    $onlinestats['most_ever']      = $onlineTotal;
     $onlinestats['most_ever_time'] = TIMENOW;
-
     $cache->update('onlinestats', $onlinestats);
 }
 
-$_hidden_members2 = $_active_members2 = 0;
-$_usernames2 = [];
-
-while ($_user = $db->fetch_array($_wgo_query2)) {
-    if (!is_array($_user)) {
-        continue;
-    }
-    
-    $is_hidden2 = ($_user['invisible'] == 1);
-    
-    if ($is_hidden2 && isset($_user['id']) && $_user['id'] != $CURUSER['id'] && !$is_mod) {
-        $_hidden_members2++;
-        continue;
-    }
-
-    if ($is_hidden2) {
-        $_hidden_members2++;
-    } else {
-        $_active_members2++;
-    }
-
-    $_usernames2[] = '<span style="white-space: nowrap;"><a href="' . get_profile_link((int)$_user['id']) . '">' . 
-        format_name($_user['username'], $_user['usergroup']) . '</a>' . 
-        ($is_hidden2 ? '+' : '') . get_user_icons($_user) . '</span>';
-}
-
-// Fetch the latest news article — раньше шло через $cache->read('news'),
-$newsArticles = [];
-$newsQuery = $db->sql_query_prepared(
-    "SELECT n.id, n.userid, n.added, n.body, n.title, u.username
-     FROM news n LEFT JOIN users u ON u.id = n.userid
-     ORDER BY n.added DESC LIMIT ?",
-    [1]
+// ───────────────────────────── Last 24 hours ────────────────────────────────
+$q24 = $db->sql_query_prepared(
+    "SELECT u.id, u.username, u.usergroup, u.enabled, u.invisible,
+            u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment
+       FROM users u
+      WHERE u.last_login > ?
+      ORDER BY u.username",
+    [TIMENOW - 86400]
 );
-while ($newsQuery && ($row = $db->fetch_array($newsQuery))) {
-    $newsArticles[$row['id']] = $row;
+
+$dayChips  = [];
+$dayHidden = 0;
+$dayShown  = 0;
+
+while ($u = $db->fetch_array($q24)) {
+    $hidden = ((int)$u['invisible'] === 1);
+    if ($hidden) {
+        $dayHidden++;
+        if ((int)$u['id'] !== $myId && !$is_mod) {
+            continue;
+        }
+    } else {
+        $dayShown++;
+    }
+    $dayChips[] = $userChip($u, $hidden);
 }
 
-// Query to get most popular torrents by hits
-$sqlPopularTorrents = "SELECT name, hits FROM torrents WHERE visible = 'yes' AND banned = 'no' ORDER BY hits DESC LIMIT ?";
-$resultPopularTorrents = $db->sql_query_prepared($sqlPopularTorrents, [10]);
-
-$popularTorrentNames = [];
-$popularTorrentHits = [];
-
-while ($row = $db->fetch_array($resultPopularTorrents)) {
-    $popularTorrentNames[] = $row['name'];
-    $popularTorrentHits[] = (int)$row['hits'];
+// ───────────────────────────── News ─────────────────────────────────────────
+$news = null;
+$nq = $db->sql_query_prepared(
+    "SELECT n.id, n.userid, n.added, n.body, n.title, u.username, u.usergroup
+       FROM news n
+       LEFT JOIN users u ON u.id = n.userid
+      ORDER BY n.added DESC
+      LIMIT 1"
+);
+if ($nq && ($row = $db->fetch_array($nq))) {
+    $news = $row;
 }
 
-// Query to get most active torrents by completed times
-$sqlActiveTorrents = "SELECT name, times_completed FROM torrents WHERE visible = 'yes' AND banned = 'no' ORDER BY times_completed DESC LIMIT ?";
-$resultActiveTorrents = $db->sql_query_prepared($sqlActiveTorrents, [10]);
-
-$activeTorrentNames = [];
-$activeTorrentCompletions = [];
-
-while ($row = $db->fetch_array($resultActiveTorrents)) {
-    $activeTorrentNames[] = $row['name'];
-    $activeTorrentCompletions[] = (int)$row['times_completed'];
+// ───────────────────────────── Charts data ──────────────────────────────────
+$chartPopular = ['names' => [], 'values' => []];
+$cq = $db->sql_query_prepared(
+    "SELECT name, hits FROM torrents
+      WHERE visible = 'yes' AND banned = 'no' AND hits > 0
+      ORDER BY hits DESC LIMIT 10"
+);
+while ($row = $db->fetch_array($cq)) {
+    $chartPopular['names'][]  = (string)$row['name'];
+    $chartPopular['values'][] = (int)$row['hits'];
 }
 
-// Query last 6 torrents visible and not banned
-$sql = "SELECT id, name, descr, t_image, added FROM torrents WHERE visible = 'yes' AND banned = 'no' AND t_image != '' ORDER BY added DESC LIMIT ?";
-$result = $db->sql_query_prepared($sql, [6]);
+$chartActive = ['names' => [], 'values' => []];
+$cq = $db->sql_query_prepared(
+    "SELECT name, times_completed FROM torrents
+      WHERE visible = 'yes' AND banned = 'no' AND times_completed > 0
+      ORDER BY times_completed DESC LIMIT 10"
+);
+while ($row = $db->fetch_array($cq)) {
+    $chartActive['names'][]  = (string)$row['name'];
+    $chartActive['values'][] = (int)$row['times_completed'];
+}
 
+// ───────────────────────────── Latest torrents ──────────────────────────────
 $torrents = [];
-while ($row = $db->fetch_array($result)) {
+$tq = $db->sql_query_prepared(
+    "SELECT id, name, t_image, added, size, seeders, leechers,
+            free, silver, doubleupload, thirtypercent
+       FROM torrents
+      WHERE visible = 'yes' AND banned = 'no' AND t_image != ''
+      ORDER BY added DESC
+      LIMIT 6"
+);
+while ($row = $db->fetch_array($tq)) {
     $torrents[] = $row;
 }
 
-// BEGIN Plugin: seedersneeded
-$seedersneeded = '';
-
-$Query = $db->sql_query_prepared("
-    SELECT t.id, t.name, t.seeders, t.leechers, t.size, t.t_image, c.name AS category_name 
-    FROM torrents t 
-    LEFT JOIN categories c ON t.category = c.id 
-    WHERE t.leechers > 0 AND t.seeders = 0 
-    ORDER BY t.added DESC 
-    LIMIT ?", [200]);
-
-if ($db->num_rows($Query) > 0) {
-    $seedersneeded .= '
-    <style>
-      .torrent-thumb { transition: transform 0.3s ease; }
-      .torrent-thumb:hover { transform: scale(1.5); z-index: 10; position: relative; }
-      .card.seedersneeded-card { border: 1px solid #dc3545; background-color: #fff5f5; }
-      .card.seedersneeded-card .card-header { background-color: #dc3545; color: #fff; font-weight: 600; }
-      .seedersneeded-card table thead { background-color: #f8d7da; color: #721c24; }
-      .badge.seeders-badge { background-color: #dc3545; color: #fff; }
-      .badge.seeders-badge-light { background-color: #f5c6cb; color: #721c24; border: 1px solid #dc3545; }
-      .modal.seedersneeded-modal .modal-header { background-color: #dc3545; color: white; border-bottom: none; }
-      .modal.seedersneeded-modal .modal-content { border-radius: 0.375rem; box-shadow: 0 0.5rem 1rem rgba(220, 53, 69, 0.25); }
-      a.torrent-preview { color: #b02a37; }
-      a.torrent-preview:hover { color: #dc3545; text-decoration: underline; }
-    </style>
-
-    <div class="card mt-3 shadow-sm seedersneeded-card">
-      <div class="card-header d-flex align-items-center">
-        <i class="fa-solid fa-circle-exclamation me-2 fs-5"></i>
-        <span class="fs-6 fw-semibold">' . htmlspecialchars($lang->indexmain['sec_seeders_needed']) . '</span>
-      </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0">
-            <thead>
-              <tr>
-                <th scope="col"><i class="fa-solid fa-film me-1"></i> ' . htmlspecialchars($lang->indexmain['col_torrent']) . '</th>
-                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-up"></i> ' . htmlspecialchars($lang->indexmain['col_seeders']) . '</th>
-                <th scope="col" class="text-center"><i class="fa-solid fa-arrow-down"></i> ' . htmlspecialchars($lang->indexmain['col_leechers']) . '</th>
-              </tr>
-            </thead>
-            <tbody>';
-
-    while ($Torrent = $db->fetch_array($Query)) {
-        $torrentId = (int)$Torrent['id'];
-        $torrentName = cutename($Torrent['name']);
-        $torrentSize = mksize($Torrent['size']);
-        $category = htmlspecialchars($Torrent['category_name'] ?? '');
-        $poster = $Torrent['t_image'] && file_exists($Torrent['t_image']) ? $Torrent['t_image'] : 'assets/img/no-poster.png';
-
-        $seedersneeded .= '
-              <tr>
-                <td>
-                  <div class="d-flex align-items-center">
-                    <img src="' . htmlspecialchars($Torrent['t_image']) . '" alt="' . htmlspecialchars($lang->indexmain['alt_poster']) . '" class="me-2 rounded torrent-thumb" style="width: 40px; height: 60px; object-fit: cover;">
-                    <div>
-                      <a href="#" class="torrent-preview text-decoration-none fw-semibold" data-id="' . $torrentId . '" data-bs-toggle="modal" data-bs-target="#torrentModal">
-                        ' . $torrentName . '
-                      </a>
-                      <div class="mt-1">
-                        <span class="badge seeders-badge-light me-1">
-                          <i class="fa-solid fa-database me-1"></i>' . $torrentSize . '
-                        </span>
-                        <span class="badge seeders-badge-light">
-                          <i class="fa-solid fa-tag me-1"></i>' . $category . '
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td class="text-center">
-                  <span class="badge seeders-badge">
-                    <i class="fa-solid fa-arrow-up me-1"></i> ' . $Torrent['seeders'] . '
-                  </span>
-                </td>
-                <td class="text-center">
-                  <span class="badge bg-danger text-white">
-                    <i class="fa-solid fa-arrow-down me-1"></i> ' . ts_nf($Torrent['leechers']) . '
-                  </span>
-                </td>
-              </tr>';
-    }
-
-    $seedersneeded .= '
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal fade seedersneeded-modal" id="torrentModal" tabindex="-1" aria-labelledby="torrentModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow-sm">
-          <div class="modal-header">
-            <h5 class="modal-title" id="torrentModalLabel"><i class="fa-solid fa-circle-info me-1"></i> ' . htmlspecialchars($lang->indexmain['pane_torrent_details']) . '</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->indexmain['aria_close']) . '"></button>
-          </div>
-          <div class="modal-body" id="torrentModalContent">
-            <div class="text-center text-muted">
-              <div class="spinner-border text-danger" role="status"></div>
-              <p class="mt-2">' . htmlspecialchars($lang->indexmain['msg_loading_details']) . '</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>';
-} else {
-    $seedersneeded .= '
-    <div class="card mt-4 border-success">
-            <div class="card-header bg-success text-white">
-                <i class="fas fa-check-circle me-2"></i>' . htmlspecialchars($lang->indexmain['sec_all_seeded']) . '
-            </div>
-            <div class="card-body text-center text-success">
-                <i class="fas fa-smile-beam fa-2x mb-2"></i>
-                <p class="mb-0">' . htmlspecialchars($lang->indexmain['msg_all_seeded']) . '</p>
-            </div>
-        </div>';
+// ───────────────────────────── Seeders needed ───────────────────────────────
+$needSeed = [];
+$sq = $db->sql_query_prepared(
+    "SELECT t.id, t.name, t.seeders, t.leechers, t.size, t.t_image, c.name AS category_name
+       FROM torrents t
+       LEFT JOIN categories c ON c.id = t.category
+      WHERE t.visible = 'yes' AND t.banned = 'no'
+        AND t.seeders = 0 AND t.leechers > 0
+      ORDER BY t.added DESC
+      LIMIT 10"
+);
+while ($row = $db->fetch_array($sq)) {
+    $needSeed[] = $row;
 }
-// END Plugin: seedersneeded
-?>
-<!-- Highcharts.js -->
-<script type="text/javascript" src="<?= $BASEURL ?>/scripts/highcharts.js"></script>
-<script type="text/javascript" src="<?= $BASEURL ?>/scripts/exporting.js"></script>
-<script type="text/javascript" src="<?= $BASEURL ?>/scripts/accessibility.js"></script>
 
-<?php
+// ───────────────────────────── JS lang ──────────────────────────────────────
 $agsJsLang = [];
-foreach ($lang->indexmain as $agsKey => $agsVal) {
+foreach ($L as $agsKey => $agsVal) {
     if (str_starts_with((string)$agsKey, 'js_')) {
         $agsJsLang[substr((string)$agsKey, 3)] = $agsVal;
     }
 }
+$jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+
+/** Promotion badges for a torrent row. */
+$promoBadges = static function (array $t) use ($L, $e): string {
+    $map = [
+        'free'          => ['st-soft-success', 'fa-gift',          'lbl_free',          'tip_free',          'Free',      'Free Torrent'],
+        'silver'        => ['st-soft-muted',   'fa-medal',         'lbl_silver',        'tip_silver',        'Silver',    'Silver Torrent'],
+        'thirtypercent' => ['st-soft-info',    'fa-percent',       'lbl_thirty',        'tip_thirty',        '30% Leech', '30% Leech Torrent'],
+        'doubleupload'  => ['st-soft-warning', 'fa-angles-up',     'lbl_double_upload', 'tip_double_upload', '2x Upload', 'Double Upload'],
+    ];
+    $out = '';
+    foreach ($map as $col => [$soft, $icon, $lk, $tk, $lf, $tf]) {
+        if (($t[$col] ?? 'no') === 'yes') {
+            $out .= '<span class="st-badge ' . $soft . '" title="' . $e($L[$tk] ?? $tf) . '">'
+                  . '<i class="fa-solid ' . $icon . '" aria-hidden="true"></i>' . $e($L[$lk] ?? $lf) . '</span>';
+        }
+    }
+    return $out;
+};
+
+// ═════════════════════════════ OUTPUT ═══════════════════════════════════════
+stdhead($L['page_title'] ?? 'Home');
 ?>
-<script>
-const AGS_LANG = <?= json_encode($agsJsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-function t(key, fallback, ...args) {
-  let s = (AGS_LANG && typeof AGS_LANG[key] === "string") ? AGS_LANG[key] : fallback;
-  args.forEach((a, i) => {
-    const n = i + 1;
-    s = s.split("{" + n + "}").join(String(a)).split("%" + n + "$s").join(String(a));
-  });
-  return s;
-}
-</script>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/index.css?ver=1">
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll(".torrent-preview").forEach(el => {
-    el.addEventListener("click", function (e) {
-      e.preventDefault();
-      const torrentId = this.dataset.id;
-      const modalContent = document.getElementById("torrentModalContent");
-      const loadingWrap = document.createElement("div");
-      loadingWrap.className = "text-center text-muted";
-      const spinner = document.createElement("div");
-      spinner.className = "spinner-border text-primary";
-      spinner.setAttribute("role", "status");
-      const loadingText = document.createElement("p");
-      loadingText.className = "mt-2";
-      loadingText.textContent = t("preview_loading", "Loading torrent details...");
-      loadingWrap.append(spinner, loadingText);
-      modalContent.replaceChildren(loadingWrap);
-      fetch("torrent_preview.php?id=" + torrentId)
-        .then(response => response.text())
-        .then(html => {
-          modalContent.innerHTML = html;
-        })
-        .catch(err => {
-          const errText = document.createElement("p");
-          errText.className = "text-danger";
-          errText.textContent = t("preview_failed", "Failed to load torrent preview.");
-          modalContent.replaceChildren(errText);
-        });
-    });
-  });
-});
-</script>
+<div class="container-md st-page ix-page">
 
-<style>
-  .card { transition: transform 0.3s ease-in-out; }
-  .card:hover { transform: translateY(-5px); box-shadow: 0 0 15px rgba(0, 0, 0, 0.1); }
-  .card-body { text-align: center; }
-  .table th, .table td { vertical-align: middle; }
-  .table-striped tbody tr:nth-child(odd) { background-color: #f9f9f9; }
-  .table-striped tbody tr:hover { background-color: #f1f1f1; }
-  body { font-family: Arial; }
-  h2 { text-align: center; }
-  .chart-container { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
-  .chart-box { width: 45%; min-width: 400px; height: 400px; }
-  .user-list .user-card { background: #fff; border-radius: 0.5rem; padding: 0.75rem 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: 0.2s; white-space: nowrap; }
-  .user-list .user-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
-  .torrent-card { transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; background: #fff; }
-  .torrent-card:hover { transform: translateY(-8px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
-  .img-container { max-width: 100%; max-height: 300px; overflow: auto; }
-  .torrent-img { transition: transform 0.4s ease; object-fit: cover; height: 100%; width: 100%; }
-  .img-container:hover .torrent-img { transform: scale(1.1); }
-  .overlay { background: rgba(0,0,0,0.55); opacity: 0; transition: opacity 0.3s ease; font-size: 0.9rem; }
-  .img-container:hover .overlay { opacity: 1; }
-  .torrent-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .torrent-desc { height: 3.6em; overflow: hidden; }
-  .badge { margin-right: 6px; font-size: 0.75rem; cursor: help; }
-  .user-card { transition: transform 0.2s ease, box-shadow 0.2s ease; cursor: default; }
-  .user-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
-</style>
-
-<div class="container py-4">
-  <!-- News Block -->
-  <div class="row mb-5">
-    <div class="col-md-12">
-      <div class="card shadow-sm">
-        <div class="card-header">
-          <h4 class="mb-0"><i class="fa-solid fa-newspaper me-2"></i><?= htmlspecialchars($lang->indexmain['sec_news']) ?></h4>
-        </div>
-        <div class="card-body p-3">
-          <?php if (!empty($newsArticles)): ?>
-            <ul class="list-unstyled mb-0">
-              <?php foreach ($newsArticles as $news): ?>
-                <li class="news-item border-bottom pb-3 mb-3">
-                  <h5 class="mb-1"><?= htmlspecialchars($news['title'] ?? '') ?></h5>
-                  <small class="text-muted d-block mb-2">
-                    <?= ags_fmt(
-                        htmlspecialchars($lang->indexmain['lbl_posted_by']),
-                        '<strong>' . htmlspecialchars($news['username'] ?? $lang->indexmain['lbl_system']) . '</strong>',
-                        my_datee($dateformat, $news['added'] ?? 0) . my_datee($timeformat, $news['added'] ?? 0)
-                    ) ?>
-                  </small>
-                  <div class="news-body" style="line-height: 1.5;">
-                    <?= $parser->parse_message($news['body'] ?? '', $parser_options) ?>
-                  </div>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          <?php else: ?>
-            <p class="text-center text-muted"><?= htmlspecialchars($lang->indexmain['msg_no_news']) ?></p>
-          <?php endif; ?>
-        </div>
+  <!-- Header -->
+  <header class="st-card st-head mb-3">
+    <span class="st-head__icon st-soft-primary"><i class="fa-solid fa-house"></i></span>
+    <div class="min-w-0 flex-grow-1">
+      <h1 class="st-title"><?= htmlspecialchars_uni(strip_tags((string)$SITENAME)) ?></h1>
+      <div class="st-head__meta">
+        <span><i class="fa-solid fa-signal"></i><?= $e(ags_fmt($L['lbl_total_online'] ?? 'Total Online: {1}', ts_nf($onlineTotal))) ?></span>
+        <span><i class="fa-solid fa-clock-rotate-left"></i><?= $e(($L['sec_last24'] ?? 'Last 24 Hours Active Users') . ': ' . ts_nf($dayShown + $dayHidden)) ?></span>
       </div>
     </div>
+    <div class="ix-head__actions">
+      <a href="browse.php" class="btn btn-sm btn-outline-secondary st-pill ix-btn"><i class="fa-solid fa-list"></i><span><?= $e($G['browse'] ?? 'Browse') ?></span></a>
+      <a href="upload.php" class="btn btn-sm btn-primary st-pill ix-btn"><i class="fa-solid fa-upload"></i><span><?= $e($G['upload'] ?? 'Upload') ?></span></a>
+    </div>
+  </header>
+
+  <!-- KPI -->
+  <?php
+  $tiles = [
+      ['fa-box-archive',  'st-soft-primary', ts_nf($kpi['total']),    $L['lbl_kpi_torrents'] ?? 'Torrents',     'browse.php'],
+      ['fa-arrow-up',     'st-soft-success', ts_nf($kpi['seeders']),  $G['seeders']  ?? 'Seeders',           ''],
+      ['fa-arrow-down',   'st-soft-danger',  ts_nf($kpi['leechers']), $G['leechers'] ?? 'Leechers',          ''],
+      ['fa-user-check',   'st-soft-info',    ts_nf($onlineTotal),     $L['sec_online'] ?? 'Online Users',    'online.php'],
+  ];
+  ?>
+  <div class="ix-kpis mb-3">
+    <?php foreach ($tiles as [$icon, $soft, $val, $lbl, $href]):
+        $tag = $href !== '' ? 'a' : 'div'; ?>
+      <<?= $tag ?><?= $href !== '' ? ' href="' . $href . '"' : '' ?> class="st-kpi st-kpi--muted">
+        <span class="st-ico <?= $soft ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+        <div class="min-w-0"><div class="st-kpi__val"><?= $val ?></div><div class="st-kpi__lbl"><?= $e($lbl) ?></div></div>
+        <i class="fa-solid <?= $icon ?> st-kpi__bg" aria-hidden="true"></i>
+      </<?= $tag ?>>
+    <?php endforeach; ?>
   </div>
 
-  <?= $seedersneeded ?>
-  <br>
-
-
-
-
-
-<!-- Latest Torrents Section -->
-<div class="row mb-5">
-  <div class="col-md-12">
-   <h3 class="mb-4"><i class="fa-solid fa-cloud-download-alt me-2"></i><?= htmlspecialchars($lang->indexmain['sec_latest_torrents']) ?></h3>
-    <div class="d-flex flex-wrap gap-4 justify-content-start">
-
-      <?php foreach ($torrents as $torrent): ?>
-        <div class="torrent-card position-relative border rounded shadow-sm" style="width: 18rem; overflow: hidden;">
-		
-		
-		
-
-          <!-- Torrent Image -->
-          <?php 
-		  $seolink = get_torrent_link($torrent['id']);
-		  $descrr = $parser->parse_message($torrent['descr'],$parser_options);
-		  
-         
+  <!-- News -->
+  <section class="st-card mb-3">
+    <div class="st-card__head">
+      <span class="st-ico st-soft-info"><i class="fa-solid fa-newspaper"></i></span>
+      <span><?= $e($L['sec_news'] ?? 'Latest News') ?></span>
+    </div>
+    <?php if ($news !== null): ?>
+      <article class="st-card__body ix-news">
+        <?php if (trim((string)$news['title']) !== ''): ?>
+          <h2 class="ix-news__title"><?= htmlspecialchars_uni((string)$news['title']) ?></h2>
+        <?php endif; ?>
+        <div class="st-meta mb-2">
+          <i class="fa-regular fa-clock me-1" aria-hidden="true"></i>
+          <?php
+          $author = !empty($news['username'])
+              ? '<a href="' . get_profile_link((int)$news['userid']) . '">'
+                  . format_name(htmlspecialchars_uni((string)$news['username']), (int)$news['usergroup']) . '</a>'
+              : '<strong>' . $e($L['lbl_system'] ?? 'System') . '</strong>';
+          echo ags_fmt($e($L['lbl_posted_by'] ?? 'Posted by {1} on {2}'), $author, my_datee('relative', (int)$news['added']));
           ?>
-          <div>
-            <img src="<?= htmlspecialchars_uni($torrent['t_image']) ?>" class="img-fluid w-100 torrent-img" />
-            <div class="overlay position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center text-white p-3">
-              <div>
-               
-				
-				<i class="bi bi-hdd me-1"></i> <?= mksize($torrent['size'] ?? 0) ?>
-				
-              </div>
-              <div>
-                
-				
-				
-				
-			   <i class="bi bi-arrow-up-circle-fill text-success me-1"></i> <?= (int)($torrent['seeders'] ?? 0) ?>
-               <i class="bi bi-arrow-down-circle-fill text-danger ms-3 me-1"></i> <?= (int)($torrent['leechers'] ?? 0) ?>
+        </div>
+        <div class="ix-news__body"><?= $parser->parse_message((string)$news['body'], $parser_options) ?></div>
+      </article>
+    <?php else: ?>
+      <div class="st-empty">
+        <span class="st-ico st-soft-muted"><i class="fa-solid fa-newspaper"></i></span>
+        <div><?= $e($L['msg_no_news'] ?? 'No news found.') ?></div>
+      </div>
+    <?php endif; ?>
+  </section>
 
-				
-				
-				
-				
+  <!-- Latest torrents -->
+  <?php if ($torrents): ?>
+  <section class="st-card mb-3">
+    <div class="st-card__head">
+      <span class="st-ico st-soft-primary"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+      <span><?= $e($L['sec_latest_torrents'] ?? 'Latest Torrents') ?></span>
+      <a href="browse.php" class="ms-auto btn btn-sm btn-outline-secondary st-pill ix-btn"><i class="fa-solid fa-arrow-right"></i><span><?= $e($L['btn_show_all'] ?? 'Show all') ?></span></a>
+    </div>
+    <div class="st-card__body">
+      <div class="ix-tgrid">
+        <?php foreach ($torrents as $t):
+            $name = htmlspecialchars_uni((string)$t['name']); ?>
+          <article class="ix-tcard">
+            <div class="ix-tcard__poster">
+              <img src="<?= htmlspecialchars_uni((string)$t['t_image']) ?>" alt="<?= $name ?>" loading="lazy">
+              <div class="ix-tcard__stats">
+                <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i><?= mksize($t['size'] ?? 0) ?></span>
+                <span class="ix-up"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i><?= ts_nf((int)$t['seeders']) ?></span>
+                <span class="ix-down"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i><?= ts_nf((int)$t['leechers']) ?></span>
               </div>
             </div>
-          </div>
-
-          <!-- Torrent Body -->
-          <div class="p-3">
-            <h5 class="torrent-title text-truncate" title="<?= htmlspecialchars_uni($torrent['name']) ?>">
-              <a href="<?= $seolink ?>" class="text-decoration-none stretched-link">
-                <?= htmlspecialchars_uni($torrent['name']) ?>
-              </a>
-            </h5>	
-			
-
-            
-
-            <!-- Badges -->
-           <?php if (($torrent['free'] ?? '') === 'yes'): ?>
-  <span class="badge bg-success" title="<?= htmlspecialchars($lang->indexmain['tip_free']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_free']) ?></span>
-<?php endif; ?>
-<?php if (($torrent['silver'] ?? '') === 'yes'): ?>
-  <span class="badge bg-secondary" title="<?= htmlspecialchars($lang->indexmain['tip_silver']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_silver']) ?></span>
-<?php endif; ?>
-<?php if (($torrent['doubleupload'] ?? '') === 'yes'): ?>
-  <span class="badge bg-warning text-dark" title="<?= htmlspecialchars($lang->indexmain['tip_double_upload']) ?>"><?= htmlspecialchars($lang->indexmain['lbl_double_upload']) ?></span>
-<?php endif; ?>
-			
-		
-			
-			
-
-            
-			
-			<small class="text-muted d-block"><?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_added']), date('Y-m-d', (int)$torrent['added'] ?? time())) ?></small>
-
-			
-          </div>
-        </div>
-      <?php endforeach; ?>
-
+            <div class="ix-tcard__body">
+              <a href="<?= get_torrent_link((int)$t['id']) ?>" class="ix-tcard__name stretched-link" title="<?= $name ?>"><?= $name ?></a>
+              <?php $badges = $promoBadges($t); if ($badges !== ''): ?>
+                <div class="ix-tcard__badges"><?= $badges ?></div>
+              <?php endif; ?>
+              <div class="st-meta"><?= $e(ags_fmt($L['lbl_added'] ?? 'Added: {1}', my_datee($dateformat, (int)$t['added']))) ?></div>
+            </div>
+          </article>
+        <?php endforeach; ?>
+      </div>
     </div>
+  </section>
+  <?php endif; ?>
+
+  <!-- Seeders needed -->
+  <section class="st-card mb-3 ix-need">
+    <div class="st-card__head">
+      <?php if ($needSeed): ?>
+        <span class="st-ico st-soft-danger"><i class="fa-solid fa-circle-exclamation"></i></span>
+        <span><?= $e($L['sec_seeders_needed'] ?? 'Recently Uploaded Torrents Needing Seeders') ?></span>
+        <span class="st-badge st-soft-danger"><?= ts_nf($kpi['dead']) ?></span>
+        <?php if ($kpi['dead'] > count($needSeed)): ?>
+          <a href="browse.php?no_seeders=1" class="ms-auto btn btn-sm btn-outline-secondary st-pill ix-btn"><i class="fa-solid fa-arrow-right"></i><span><?= $e($L['btn_show_all'] ?? 'Show all') ?></span></a>
+        <?php endif; ?>
+      <?php else: ?>
+        <span class="st-ico st-soft-success"><i class="fa-solid fa-circle-check"></i></span>
+        <span><?= $e($L['sec_all_seeded'] ?? 'All Torrents Have Seeders') ?></span>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($needSeed): ?>
+      <ul class="ix-need__list">
+        <?php foreach ($needSeed as $t):
+            $tid = (int)$t['id'];
+            $img = (string)$t['t_image']; ?>
+          <li class="ix-need__row">
+            <?php if ($img !== ''): ?>
+              <img class="ix-need__thumb" src="<?= htmlspecialchars_uni($img) ?>" alt="<?= $e($L['alt_poster'] ?? 'Poster') ?>" loading="lazy">
+            <?php else: ?>
+              <span class="ix-need__thumb ix-need__thumb--none"><i class="fa-solid fa-film" aria-hidden="true"></i></span>
+            <?php endif; ?>
+            <div class="min-w-0 flex-grow-1">
+              <a href="<?= get_torrent_link($tid) ?>" class="torrent-preview ix-need__name" data-id="<?= $tid ?>" data-bs-toggle="modal" data-bs-target="#torrentModal"><?= htmlspecialchars_uni((string)$t['name']) ?></a>
+              <div class="ix-need__meta">
+                <span><i class="fa-solid fa-database" aria-hidden="true"></i><?= mksize($t['size'] ?? 0) ?></span>
+                <?php if (!empty($t['category_name'])): ?>
+                  <span><i class="fa-solid fa-tag" aria-hidden="true"></i><?= htmlspecialchars_uni((string)$t['category_name']) ?></span>
+                <?php endif; ?>
+              </div>
+            </div>
+            <div class="ix-need__peers">
+              <span class="st-badge st-soft-muted" title="<?= $e($L['col_seeders'] ?? 'Seeders') ?>"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i>0</span>
+              <span class="st-badge st-soft-danger" title="<?= $e($L['col_leechers'] ?? 'Leechers') ?>"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i><?= ts_nf((int)$t['leechers']) ?></span>
+            </div>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php else: ?>
+      <div class="st-empty">
+        <span class="st-ico st-soft-success"><i class="fa-solid fa-face-smile-beam"></i></span>
+        <div><?= $e($L['msg_all_seeded'] ?? 'Great job! All torrents are currently seeded.') ?></div>
+      </div>
+    <?php endif; ?>
+  </section>
+
+  <!-- Charts -->
+  <div class="ix-charts mb-3">
+    <?php foreach ([
+        ['popularTorrentsChart', 'fa-fire',          'st-soft-warning', $L['sec_popular'] ?? 'Most Popular Torrents', $chartPopular],
+        ['activeTorrentsChart',  'fa-arrow-trend-up', 'st-soft-info',   $L['sec_active']  ?? 'Most Active Torrents',  $chartActive],
+    ] as [$cid, $icon, $soft, $title, $data]): ?>
+      <section class="st-card">
+        <div class="st-card__head">
+          <span class="st-ico <?= $soft ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+          <span><?= $e($title) ?></span>
+        </div>
+        <?php if ($data['values']): ?>
+          <div class="st-card__body"><div id="<?= $cid ?>" class="ix-chart"></div></div>
+        <?php else: ?>
+          <div class="st-empty">
+            <span class="st-ico st-soft-muted"><i class="fa-solid fa-chart-column"></i></span>
+          </div>
+        <?php endif; ?>
+      </section>
+    <?php endforeach; ?>
   </div>
+
+  <!-- Online now -->
+  <?php foreach ([
+      ['fa-users',             'st-soft-success', $L['sec_online'] ?? 'Online Users',               $onlineShown, $onlineHidden, $onlineChips],
+      ['fa-clock-rotate-left', 'st-soft-primary', $L['sec_last24'] ?? 'Last 24 Hours Active Users', $dayShown,    $dayHidden,    $dayChips],
+  ] as [$icon, $soft, $title, $shown, $hidden, $chips]): ?>
+    <section class="st-card mb-3">
+      <div class="st-card__head">
+        <span class="st-ico <?= $soft ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+        <span><?= $e($title) ?></span>
+        <div class="ms-auto ix-counts">
+          <span class="st-badge st-soft-success"><i class="fa-solid fa-user-check" aria-hidden="true"></i><?= $e(ags_fmt($L['lbl_visible'] ?? 'Visible Members: {1}', ts_nf($shown))) ?></span>
+          <span class="st-badge st-soft-muted"><i class="fa-solid fa-user-secret" aria-hidden="true"></i><?= $e(ags_fmt($L['lbl_hidden'] ?? 'Hidden Members: {1}', ts_nf($hidden))) ?></span>
+        </div>
+      </div>
+      <div class="st-card__body">
+        <?php if ($chips): ?>
+          <div class="ix-users"><?= implode('', $chips) ?></div>
+        <?php else: ?>
+          <div class="st-empty py-2"><span class="st-ico st-soft-muted"><i class="fa-solid fa-user-slash"></i></span></div>
+        <?php endif; ?>
+      </div>
+    </section>
+  <?php endforeach; ?>
+
 </div>
 
-
-
-
-  
-  
-
-  <!-- Charts Section -->
-  <div class="row mb-5">
-    <div class="col-md-6">
-      <div class="card">
-        <div class="card-header"><?= htmlspecialchars($lang->indexmain['sec_popular']) ?></div>
-        <div class="card-body">
-          <div id="popularTorrentsChart" style="height: 400px;"></div>
+<?php if ($needSeed): ?>
+<div class="modal fade ix-modal" id="torrentModal" tabindex="-1" aria-labelledby="torrentModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="torrentModalLabel"><i class="fa-solid fa-circle-info me-2"></i><?= $e($L['pane_torrent_details'] ?? 'Torrent Details') ?></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $e($L['aria_close'] ?? 'Close') ?>"></button>
+      </div>
+      <div class="modal-body" id="torrentModalContent">
+        <div class="text-center text-body-secondary py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <p class="mt-2 mb-0"><?= $e($L['msg_loading_details'] ?? 'Loading torrent details...') ?></p>
         </div>
       </div>
     </div>
-    <div class="col-md-6">
-      <div class="card">
-        <div class="card-header"><?= htmlspecialchars($lang->indexmain['sec_active']) ?></div>
-        <div class="card-body">
-          <div id="activeTorrentsChart" style="height: 400px;"></div>
-        </div>
-      </div>
-    </div>
   </div>
-
-  <!-- Online Users Section -->
-  <section class="mb-5">
-    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-users me-2"></i><?= htmlspecialchars($lang->indexmain['sec_online']) ?></h2>
-    <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
-      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_visible']), $_active_members) ?></span>
-      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_hidden']), $_hidden_members) ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_online']), $_active_members + $_hidden_members) ?></span>
-    </div>
-    <div class="user-list d-flex flex-wrap gap-3">
-      <?php foreach ($_usernames as $user_html): ?>
-        <div class="user-card border rounded p-3 shadow-sm" style="min-width: 120px; max-width: 180px;"><?= $user_html ?></div>
-      <?php endforeach; ?>
-    </div>
-  </section>
-
-  <!-- Last 24 Hours Active Users Section -->
-  <section>
-    <h2 class="mb-4 text-primary fw-bold"><i class="fa-solid fa-clock-rotate-left me-2"></i><?= htmlspecialchars($lang->indexmain['sec_last24']) ?></h2>
-    <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
-      <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_visible']), $_active_members2) ?></span>
-      <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_hidden']), $_hidden_members2) ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> <?= ags_fmt(htmlspecialchars($lang->indexmain['lbl_total_users']), (int)$_active_members2 + (int)$_hidden_members2) ?></span>
-	</div>
-    <div class="user-list d-flex flex-wrap gap-3">
-      <?php foreach ($_usernames2 as $user_html2): ?>
-        <div class="user-card border rounded p-3 shadow-sm" style="min-width: 120px; max-width: 180px;"><?= $user_html2 ?></div>
-      <?php endforeach; ?>
-    </div>
-  </section>
 </div>
+<?php endif; ?>
 
-<script>
-Highcharts.chart('popularTorrentsChart', {
-  chart: { type: 'column' },
-  title: { text: t('chart_popular', 'Most Popular Torrents') },
-  xAxis: { 
-    categories: <?= json_encode($popularTorrentNames) ?>,
-    crosshair: true,
-    title: { text: t('axis_torrent', 'Torrent') }
-  },
-  yAxis: {
-    min: 0,
-    title: { text: t('axis_hits', 'Hits') }
-  },
-  series: [{
-    name: t('series_hits', 'Hits'),
-    data: <?= json_encode($popularTorrentHits) ?>,
-    color: 'rgba(220, 53, 69, 0.7)'
-  }],
-  tooltip: { valueSuffix: ' ' + t('suffix_hits', 'hits') }
-});
-
-Highcharts.chart('activeTorrentsChart', {
-  chart: { type: 'column' },
-  title: { text: t('chart_active', 'Most Active Torrents') },
-  xAxis: { 
-    categories: <?= json_encode($activeTorrentNames) ?>,
-    crosshair: true,
-    title: { text: t('axis_torrent', 'Torrent') }
-  },
-  yAxis: {
-    min: 0,
-    title: { text: t('axis_completed', 'Completed Times') }
-  },
-  series: [{
-    name: t('series_completed', 'Completed'),
-    data: <?= json_encode($activeTorrentCompletions) ?>,
-    color: 'rgba(23, 162, 184, 0.7)'
-  }],
-  tooltip: { valueSuffix: ' ' + t('suffix_completed', 'completions') }
-});
-</script>
-
-<?php stdfoot(); ?>
+<script>const AGS_LANG = <?= json_encode($agsJsLang, $jsonFlags) ?>;</script>
+<script type="application/json" id="ix-chart-data"><?= json_encode(['popular' => $chartPopular, 'active' => $chartActive], $jsonFlags) ?></script>
+<?php if ($chartPopular['values'] || $chartActive['values']): ?>
+<script src="<?= $BASEURL ?>/scripts/highcharts.js"></script>
+<script src="<?= $BASEURL ?>/scripts/exporting.js"></script>
+<script src="<?= $BASEURL ?>/scripts/accessibility.js"></script>
+<?php endif; ?>
+<script src="<?= $BASEURL ?>/scripts/index.js?ver=1"></script>
+<?php
+stdfoot();

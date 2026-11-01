@@ -46,6 +46,12 @@ $language['indexmain'] = array (
 	'lbl_guests'          => 'Гости: {1}',
 	'lbl_total_users'     => 'Всего посетителей: {1}',
 
+	// ── Restyle (new style) ──
+	'lbl_kpi_torrents'    => 'Раздачи',
+	'lbl_thirty'          => '30% лич',
+	'tip_thirty'          => 'Учитывается только 30% скачанного',
+	'btn_show_all'        => 'Показать все',
+
 	// ── JS: torrent preview ──
 	'js_preview_loading'  => 'Загружаем информацию о раздаче...',
 	'js_preview_failed'   => 'Не удалось загрузить информацию о раздаче.',

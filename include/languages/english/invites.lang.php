@@ -54,6 +54,8 @@ $language['invites'] = array
 'err_no_invites'      => "You have no invites left.",
 'err_create_failed'   => "Failed to create the invite. You may have no invites remaining.",
 'err_revoke_failed'   => "Failed to revoke the invite.",
+'err_token'           => "Security token expired. Reload the page and try again.",
+'msg_mail_failed'     => "Invite created, but the e-mail could not be sent. Copy the link and send it yourself.",
 
 // ── E-mail to the invited person ──
 'email_subject'       => "You've been invited to {1}",
@@ -72,5 +74,8 @@ This invite expires in {4} days.
 'js_revoke_confirm'   => "Revoke this invite?",
 'js_copied'           => "Copied!",
 'js_copied_toast'     => "Invite link copied to clipboard!",
+'js_btn_revoke'       => "Revoke",
+'js_cancel'           => "Cancel",
+'js_copy_manual'      => "Copy the invite link:",
 
 );

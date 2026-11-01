@@ -8,563 +8,464 @@ define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
 require_once 'global.php';
-
-
-
 require_once INC_PATH . '/functions_multipage.php';
 
 $lang->load('memberlist');
 $plugins->run_hooks('memberlist_start');
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  Helpers
+ * ═══════════════════════════════════════════════════════════════════ */
+
 /**
  * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
- * Кавычки экранировать не нужно, это делает сам биндинг (в отличие
- * от $db->escape_string_like(), который экранирует и их тоже).
+ * Кавычки экранирует сам биндинг.
  */
 function ml_escape_like(string $value): string
 {
     return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
 }
 
+/** Первая буква заглавная (мультибайтово) — для старых ключей вида «begins with». */
+function ml_ucfirst(string $s): string
+{
+    return mb_strtoupper(mb_substr($s, 0, 1)) . mb_substr($s, 1);
+}
+
+/** Шапка страницы: stdhead + стили + открытие обёртки. */
+function ml_open(string $title): void
+{
+    global $BASEURL;
+    stdhead($title);
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/memberlist.css?ver=1">';
+    echo '<div class="container-md st-page ml-page">';
+}
+
+function ml_close(): void
+{
+    echo '</div>';
+    stdfoot();
+}
+
+$L = $lang->memberlist;
+$e = static fn($v): string => htmlspecialchars_uni((string)$v);
 
 /* ═══════════════════════════════════════════════════════════════════
- *  HELPER FUNCTIONS
+ *  Входные параметры (сырые значения — для SQL, $e() — для вывода)
  * ═══════════════════════════════════════════════════════════════════ */
 
-function render_header(string $title): void {
-    global $SITENAME;
-    
-    stdhead('5555555555');
-    
-    echo '<!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>' . htmlspecialchars($SITENAME) . ' - ' . htmlspecialchars($title) . '</title>
-       
-        <style>
-            :root {
-                --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                --ring: #dfe7ff;
-            }
+$sort_options = [
+    'username'  => 'u.username',
+    'added'     => 'u.added',
+    'lastvisit' => 'u.lastactive',
+    'postnum'   => 'u.postnum',
+    'threadnum' => 'u.threadnum',
+];
 
-            .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
-              conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
-            .avatar-ring>*{display:block; border-radius:50%}
-            
-            .user-card {
-                border: none;
-                border-radius: 16px;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                background: white;
-                border: 1px solid #e9ecef;
-            }
-            
-            .user-card:hover {
-                transform: translateY(-5px);
-                border-color: #667eea;
-            }
-            
-            .alphabet-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
-    gap: 8px;
-    max-width: 800px;
-    margin: 0 auto;
+$sort_input = strtolower((string)($mybb->get_input('sort') ?: 'username'));
+if (!isset($sort_options[$sort_input])) {
+    $sort_input = 'username';
+}
+$sort_field = $sort_options[$sort_input];
+
+$order_input = strtolower((string)($mybb->get_input('order') ?: ($sort_input === 'username' ? 'ascending' : 'descending')));
+if ($order_input !== 'descending') {
+    $order_input = 'ascending';
+}
+$sort_order = $order_input === 'descending' ? 'DESC' : 'ASC';
+
+$per_page = $mybb->get_input('perpage', MyBB::INPUT_INT);
+if ($per_page < 5 || $per_page > 500) {
+    $per_page = 20;
 }
 
-.alphabet-letter {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 44px;
-    border-radius: 12px;
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: white;
-    text-decoration: none;
-    background: var(--bs-primary);
-    transition: all 0.2s ease;
-    text-transform: uppercase;
+$search_username = trim((string)$mybb->get_input('username'));
+$search_website  = trim((string)$mybb->get_input('website'));
+$match_input     = (string)$mybb->get_input('username_match');
+if (!in_array($match_input, ['exact', 'begins', 'contains'], true)) {
+    $match_input = 'exact';
 }
 
-.alphabet-letter:hover {
-    transform: translateY(-2px);
-    background: var(--bs-primary-dark, #0b5ed7);
-    color: white;
-}
-            
-            .stat-badge {
-                background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-                padding: 4px 12px;
-                border-radius: 20px;
-                font-size: 0.85rem;
-            }
-            
-            .card {
-                border: 1px solid #e9ecef;
-                border-radius: 16px;
-            }
-            
-            .card-header {
-                background: transparent;
-            }
-            
-            @media (max-width: 768px) {
-                .alphabet-grid { grid-template-columns: repeat(7, 1fr); gap: 5px; }
-                .alphabet-letter { height: 38px; font-size: 0.9rem; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container py-4">';
+$letter_input = '';
+if (isset($mybb->input['letter'])) {
+    $l = (string)$mybb->get_input('letter');
+    if ($l === '-1' || preg_match('/^[a-z]$/i', $l)) {
+        $letter_input = strtolower($l);
+    }
 }
 
-function render_footer(): void {
-    echo '</div>
-    </body>
-    </html>
-    ' . stdfoot() . '
-    ';
-}
+$match_opts = [
+    'exact'    => ml_ucfirst($L['username_exact'] ?? 'exactly'),
+    'begins'   => ml_ucfirst($L['begins_with'] ?? 'begins with'),
+    'contains' => ml_ucfirst($L['username_contains'] ?? 'contains'),
+];
 
 /* ═══════════════════════════════════════════════════════════════════
- *  ACTION: search page
+ *  ACTION: расширенный поиск
  * ═══════════════════════════════════════════════════════════════════ */
 
 if ($mybb->get_input('action') === 'search') {
     $plugins->run_hooks('memberlist_search');
-    
-    render_header($lang->memberlist['member_list']);
-    
+
+    ml_open($L['search_member_list'] ?? 'Search Member List');
     ?>
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card border rounded-4">
-                <div class="card-header bg-transparent border-0 pt-4">
-                    <h3 class="text-center mb-0">
-                        <i class="fas fa-search text-primary me-2"></i>
-                        <?= $lang->memberlist['search_members'] ?>
-                    </h3>
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-magnifying-glass"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $e($L['search_member_list'] ?? 'Search Member List') ?></h1>
+            <div class="st-meta mt-1"><?= $e($L['search_criteria'] ?? 'Search Criteria') ?></div>
+        </div>
+        <a href="memberlist.php" class="btn btn-outline-secondary st-pill ml-btn">
+            <i class="fa-solid fa-users"></i><span class="ml-hide-sm"><?= $e($L['member_list'] ?? 'Member List') ?></span>
+        </a>
+    </header>
+
+    <form method="get" action="memberlist.php" class="st-card ml-search">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-user"></i></span>
+            <span><?= $e($L['search_criteria'] ?? 'Search Criteria') ?></span>
+        </div>
+        <div class="st-card__body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label ml-lbl" for="ml_s_user"><i class="fa-solid fa-user"></i><?= $e($L['username'] ?? 'Username') ?></label>
+                    <input type="text" class="form-control" id="ml_s_user" name="username" placeholder="<?= $e($L['ph_username'] ?? 'Enter username...') ?>" autofocus>
                 </div>
-                <div class="card-body p-4">
-                    <form method="post" action="memberlist.php">
-                        <div class="mb-4">
-                            <label class="form-label fw-semibold"><?= $lang->memberlist['username'] ?></label>
-                            <input type="text" class="form-control form-control-lg rounded-3" 
-                                   name="username" placeholder="Enter username...">
-                        </div>
-                        
-                        <div class="mb-4">
-                            <label class="form-label fw-semibold">Match type</label>
-                            <div class="d-flex gap-3 flex-wrap">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="username_match" 
-                                           id="m_exact" value="exact" checked>
-                                    <label class="form-check-label" for="m_exact">
-                                        <i class="fas fa-equals me-1"></i>Exact match
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="username_match" 
-                                           id="m_begins" value="begins">
-                                    <label class="form-check-label" for="m_begins">
-                                        <i class="fas fa-arrow-right me-1"></i>Begins with
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="username_match" 
-                                           id="m_contains" value="contains">
-                                    <label class="form-check-label" for="m_contains">
-                                        <i class="fas fa-asterisk me-1"></i>Contains
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <label class="form-label fw-semibold"><?= $lang->memberlist['website'] ?></label>
-                            <input type="text" class="form-control form-control-lg rounded-3" 
-                                   name="website" placeholder="Enter website...">
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary btn-lg w-100 rounded-3">
-                            <i class="fas fa-search me-2"></i><?= $lang->memberlist['search'] ?>
-                        </button>
-                    </form>
+                <div class="col-md-6">
+                    <label class="form-label ml-lbl" for="ml_s_web"><i class="fa-solid fa-globe"></i><?= $e($L['search_website'] ?? 'Website URL') ?></label>
+                    <input type="text" class="form-control" id="ml_s_web" name="website" placeholder="<?= $e($L['ph_website'] ?? 'Website...') ?>">
+                </div>
+                <div class="col-12">
+                    <div class="ml-lbl mb-2"><i class="fa-solid fa-filter"></i><?= $e($L['lbl_match'] ?? 'Match') ?></div>
+                    <div class="ml-seg">
+                        <?php foreach ($match_opts as $k => $label): ?>
+                            <input type="radio" class="btn-check" name="username_match" id="ml_s_m_<?= $k ?>" value="<?= $k ?>"<?= $k === 'exact' ? ' checked' : '' ?>>
+                            <label class="btn btn-sm btn-outline-secondary st-pill" for="ml_s_m_<?= $k ?>"><?= $e($label) ?></label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+        <div class="st-card__head ml-search__opts">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-sliders"></i></span>
+            <span><?= $e($L['search_options'] ?? 'Search Options') ?></span>
+        </div>
+        <div class="st-card__body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label ml-lbl" for="ml_s_sort"><i class="fa-solid fa-arrow-down-wide-short"></i><?= $e($L['sort_by'] ?? 'Sort by') ?></label>
+                    <select name="sort" id="ml_s_sort" class="form-select">
+                        <option value="username"><?= $e($L['sort_by_username'] ?? 'Sort by: Username') ?></option>
+                        <option value="added"><?= $e($L['sort_by_regdate'] ?? 'Sort by: Registration date') ?></option>
+                        <option value="lastvisit"><?= $e($L['sort_by_lastvisit'] ?? 'Sort by: Last visit') ?></option>
+                        <option value="postnum"><?= $e($L['sort_by_posts'] ?? 'Sort by: Post count') ?></option>
+                        <option value="threadnum"><?= $e($L['sort_by_threads'] ?? 'Sort by: Thread count') ?></option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <div class="ml-lbl mb-2"><i class="fa-solid fa-arrow-up-short-wide"></i><?= $e($L['lbl_order'] ?? 'Order') ?></div>
+                    <div class="ml-seg">
+                        <input type="radio" class="btn-check" name="order" id="ml_s_asc" value="ascending" checked>
+                        <label class="btn btn-sm btn-outline-secondary st-pill" for="ml_s_asc"><i class="fa-solid fa-arrow-up"></i> <?= $e(ml_ucfirst($L['order_asc'] ?? 'ascending order')) ?></label>
+                        <input type="radio" class="btn-check" name="order" id="ml_s_desc" value="descending">
+                        <label class="btn btn-sm btn-outline-secondary st-pill" for="ml_s_desc"><i class="fa-solid fa-arrow-down"></i> <?= $e(ml_ucfirst($L['order_desc'] ?? 'descending order')) ?></label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label ml-lbl" for="ml_s_pp"><i class="fa-solid fa-list-ol"></i><?= $e($L['per_page'] ?? 'Results Per Page') ?></label>
+                    <input type="number" class="form-control" id="ml_s_pp" name="perpage" value="20" min="5" max="500">
+                </div>
+            </div>
+        </div>
+        <div class="st-toolbar st-toolbar--bottom">
+            <a href="memberlist.php" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-xmark"></i> <?= $e($L['btn_reset'] ?? 'Reset') ?></a>
+            <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-magnifying-glass"></i> <?= $e($L['search'] ?? 'Search') ?></button>
+        </div>
+    </form>
     <?php
-    render_footer();
+    ml_close();
     exit;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
- *  MAIN LIST
+ *  Условия поиска
  * ═══════════════════════════════════════════════════════════════════ */
 
-// Sort handling
-$sort_options = [
-    'username' => 'u.username',
-    'added' => 'u.added',
-    'lastvisit' => 'u.lastactive',
-    'postnum' => 'u.postnum',
-    'threadnum' => 'u.threadnum'
-];
-
-$sort_input = strtolower($mybb->get_input('sort') ?: 'username');
-$sort_field = $sort_options[$sort_input] ?? 'u.username';
-$sort_display = $sort_input === 'added' ? 'regdate' : $sort_input;
-
-$order_input = strtolower($mybb->get_input('order') ?: 'ascending');
-$sort_order = $order_input === 'descending' ? 'DESC' : 'ASC';
-
-$per_page = $mybb->get_input('perpage', MyBB::INPUT_INT);
-if ($per_page <= 0 || $per_page > 500) $per_page = 20;
-
-// Search query building
 $search_conditions = ['1=1'];
-$search_params = [];
-$search_url_params = [];
+$search_params     = [];
+$url_params        = [];   // сырые значения, кодируются http_build_query()
 
-// Letter filter
-if (isset($mybb->input['letter'])) {
-    $letter = $mybb->get_input('letter');
-    if ($letter == -1) {
-        $search_conditions[] = "u.username NOT REGEXP('[a-zA-Z]')";
-        $search_url_params['letter'] = -1;
-    } elseif (strlen($letter) == 1) {
-        $search_conditions[] = "u.username LIKE ?";
-        $search_params[] = ml_escape_like($letter) . '%';
-        $search_url_params['letter'] = $letter;
-    }
+if ($letter_input === '-1') {
+    $search_conditions[] = "u.username NOT REGEXP '^[a-zA-Z]'";
+    $url_params['letter'] = '-1';
+} elseif ($letter_input !== '') {
+    $search_conditions[] = 'u.username LIKE ?';
+    $search_params[]     = ml_escape_like($letter_input) . '%';
+    $url_params['letter'] = $letter_input;
 }
 
-// Username filter
-$search_username = htmlspecialchars_uni(trim($mybb->get_input('username')));
 if ($search_username !== '') {
-    $match = $mybb->get_input('username_match');
-    $search_url_params['username'] = $search_username;
-    
-    if ($match === 'begins') {
-        $search_conditions[] = "u.username LIKE ?";
-        $search_params[] = ml_escape_like($search_username) . '%';
-        $search_url_params['username_match'] = 'begins';
-    } elseif ($match === 'contains') {
-        $search_conditions[] = "u.username LIKE ?";
-        $search_params[] = '%' . ml_escape_like($search_username) . '%';
-        $search_url_params['username_match'] = 'contains';
+    $url_params['username'] = $search_username;
+    if ($match_input === 'begins') {
+        $search_conditions[] = 'u.username LIKE ?';
+        $search_params[]     = ml_escape_like($search_username) . '%';
+    } elseif ($match_input === 'contains') {
+        $search_conditions[] = 'u.username LIKE ?';
+        $search_params[]     = '%' . ml_escape_like($search_username) . '%';
     } else {
-        $search_conditions[] = "LOWER(u.username)=?";
-        $search_params[] = my_strtolower($search_username);
+        $search_conditions[] = 'LOWER(u.username) = ?';
+        $search_params[]     = my_strtolower($search_username);
+    }
+    if ($match_input !== 'exact') {
+        $url_params['username_match'] = $match_input;
     }
 }
 
-// Website filter
-$search_website = htmlspecialchars_uni(trim($mybb->get_input('website')));
 if ($search_website !== '') {
-    $search_conditions[] = "u.website LIKE ?";
-    $search_params[] = '%' . ml_escape_like($search_website) . '%';
-    $search_url_params['website'] = $search_website;
+    $search_conditions[] = 'u.website LIKE ?';
+    $search_params[]     = '%' . ml_escape_like($search_website) . '%';
+    $url_params['website'] = $search_website;
 }
 
+$is_filtered  = $url_params !== [];
 $search_query = implode(' AND ', $search_conditions);
 
-// Pagination
-$count_query = $db->sql_query_prepared("SELECT COUNT(*) AS users FROM users u WHERE {$search_query}", $search_params);
-$num_users = $count_query ? (int)$db->fetch_field($count_query, 'users') : 0;
+/* ═══════════════════════════════════════════════════════════════════
+ *  KPI (один запрос)
+ * ═══════════════════════════════════════════════════════════════════ */
 
-$page = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
-$pages = (int)ceil($num_users / $per_page);
-if ($page > $pages) $page = 1;
+$online_cut = TIMENOW - max(1, (int)($wolcutoffmins ?? 15)) * 60;
+$week_cut   = TIMENOW - 7 * 86400;
+
+$kpi = $db->fetch_array($db->sql_query_prepared(
+    "SELECT COUNT(*)                                                 AS total,
+            COALESCE(SUM(added >= ?), 0)                             AS new_week,
+            COALESCE(SUM(lastactive >= ? AND invisible = 0), 0)      AS online
+     FROM users",
+    [$week_cut, $online_cut]
+)) ?: [];
+$kpi_total  = (int)($kpi['total'] ?? 0);
+$kpi_week   = (int)($kpi['new_week'] ?? 0);
+$kpi_online = (int)($kpi['online'] ?? 0);
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Пагинация
+ * ═══════════════════════════════════════════════════════════════════ */
+
+if ($is_filtered) {
+    $count_query = $db->sql_query_prepared("SELECT COUNT(*) AS users FROM users u WHERE {$search_query}", $search_params);
+    $num_users   = $count_query ? (int)$db->fetch_field($count_query, 'users') : 0;
+} else {
+    $num_users = $kpi_total;   // без фильтра счёт уже есть
+}
+
+$page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
+$pages = max(1, (int)ceil($num_users / $per_page));
+if ($page > $pages) {
+    $page = 1;
+}
 $start = ($page - 1) * $per_page;
 
-$base_url = "memberlist.php?sort={$sort_input}&order={$order_input}&perpage={$per_page}";
-foreach ($search_url_params as $key => $value) {
-    $base_url .= "&{$key}=" . urlencode($value);
-}
-$multipage = multipage($num_users, $per_page, $page, htmlspecialchars_uni($base_url));
+/** URL списка с текущими параметрами; $over — что заменить. */
+$ml_url = static function (array $over = []) use ($url_params, $sort_input, $order_input, $per_page): string {
+    $q = array_merge(['sort' => $sort_input, 'order' => $order_input], $per_page !== 20 ? ['perpage' => $per_page] : [], $url_params, $over);
+    $q = array_filter($q, static fn($v) => $v !== null && $v !== '');
+    return 'memberlist.php' . ($q ? '?' . http_build_query($q) : '');
+};
 
+$multipage = multipage($num_users, $per_page, $page, htmlspecialchars_uni($ml_url()));
 
+/* ═══════════════════════════════════════════════════════════════════
+ *  Список
+ * ═══════════════════════════════════════════════════════════════════ */
+
+$can_see_invis = (int)($usergroups['canviewwolinvis'] ?? 0) === 1;
+$my_id         = (int)($CURUSER['id'] ?? 0);
 
 $users_html = '';
 $query = $db->sql_query_prepared("
     SELECT u.*
     FROM users u
     WHERE {$search_query}
-    ORDER BY {$sort_field} {$sort_order}
+    ORDER BY {$sort_field} {$sort_order}, u.id ASC
     LIMIT ?, ?
 ", [...$search_params, $start, $per_page]);
 
 while ($query && ($user = $db->fetch_array($query))) {
     $user = $plugins->run_hooks('memberlist_user', $user);
-    
-    // Format user data
-$user_gid           = (int)($user['usergroup'] ?? 1) ?: 1;
-$username_plain     = htmlspecialchars_uni($user['username']);
-$username_formatted = format_name($username_plain, $user_gid);
-$profile_link       = build_profile_link($username_formatted, $user['id']);
 
-// Usergroup and usertitle
-$usergroup = usergroup_permissions($user_gid);
-    
-    $usertitle = htmlspecialchars_uni($usergroup['title'] ?? $lang->memberlist['member']);
-    
-    // Avatar
-    $useravatar = format_avatar($user['avatar'], $user['avatardimensions']);
-    $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
-    $avatar_profile_url = get_profile_link($user['id']);
+    $uid            = (int)$user['id'];
+    $user_gid       = (int)($user['usergroup'] ?? 1) ?: 1;
+    $username_plain = htmlspecialchars_uni((string)$user['username']);
+    $profile_url    = get_profile_link($uid);
+    $profile_link   = build_profile_link(format_name($username_plain, $user_gid), $uid);
 
-    $avatar_html = '
-        <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
-            <div class="author_avatar"><a href="'.$avatar_profile_url.'"><img class="'.$avatarClass.'" style="width: 80px; height: 80px; object-fit: cover;" src="'.$useravatar['image'].'" alt="'.$username_plain.'" /></a></div>
-        </div>
-        <div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
-            <div class="author_avatar"><a href="'.$avatar_profile_url.'"><img class="'.$avatarClass.'" style="width: 30px; height: 30px; object-fit: cover;" src="'.$useravatar['image'].'" alt="'.$username_plain.'" /></a></div>
-        </div>';
-    
-    // Last visit
-    $last_seen = max($user['lastactive'], $user['lastvisit']);
-    if (!$last_seen) {
-        $lastvisit = '<span class="text-muted"><i class="far fa-clock me-1"></i>' . $lang->memberlist['lastvisit_never'] . '</span>';
-    } elseif ($user['invisible'] == 1 && $usergroups['canviewwolinvis'] != 1 && $user['id'] != $CURUSER['id']) {
-        $lastvisit = '<span class="text-muted"><i class="fas fa-eye-slash me-1"></i>' . $lang->memberlist['lastvisit_hidden'] . '</span>';
+    $group     = usergroup_permissions($user_gid);
+    $usertitle = htmlspecialchars_uni((string)($group['title'] ?? ($L['member'] ?? 'Member')));
+
+    $av  = format_avatar((string)($user['avatar'] ?? ''), (string)($user['avatardimensions'] ?? ''));
+
+    // Последний визит и статус «в сети»
+    $hidden    = (int)$user['invisible'] === 1 && !$can_see_invis && $uid !== $my_id;
+    $last_seen = max((int)$user['lastactive'], (int)$user['lastvisit']);
+    $is_online = !$hidden && (int)$user['lastactive'] >= $online_cut;
+
+    if ($hidden) {
+        $lastvisit = '<i class="fa-solid fa-eye-slash"></i>' . $e($L['lastvisit_hidden'] ?? '(Hidden)');
+    } elseif (!$last_seen) {
+        $lastvisit = '<i class="fa-solid fa-clock"></i>' . $e($L['lastvisit_never'] ?? 'Never');
     } else {
-        $lastvisit = '<span><i class="fas fa-circle text-success me-1" style="font-size: 0.7rem;"></i>' . my_datee('relative', $last_seen) . '</span>';
+        $lastvisit = '<i class="fa-solid fa-clock"></i>' . my_datee('relative', $last_seen);
     }
-    
-    $added = my_datee('relative', $user['added']);
-    $postnum = ts_nf($user['postnum']);
-    $threadnum = ts_nf($user['threadnum']);
-    
-    $users_html .= <<<HTML
-    <div class="col-lg-6 col-md-6 col-12">
-        <div class="user-card p-3">
-            <div class="d-flex gap-3">
-                <div class="flex-shrink-0">
-                    {$avatar_html}
-                </div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-1">{$profile_link}</h5>
-                    <div class="text-muted small mb-2">{$usertitle}</div>
-                    <div class="d-flex gap-2 mb-2 flex-wrap">
-                        <span class="stat-badge">
-                            <i class="fas fa-comment me-1"></i>{$postnum} {$lang->memberlist['posts']}
-                        </span>
-                        <span class="stat-badge">
-                            <i class="fas fa-file-alt me-1"></i>{$threadnum} {$lang->memberlist['threads']}
-                        </span>
-                    </div>
-                    <div class="small text-muted">
-                        <div><i class="fas fa-calendar-alt me-1"></i>{$lang->memberlist['joined']}: {$added}</div>
-                        <div class="mt-1">{$lastvisit}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-HTML;
-}
 
-if (!$users_html) {
-    $users_html = '<div class="col-12">
-		<div class="text-center py-5">
-                <i class="fa-solid fa-users fa-4x text-muted mb-3"></i>
-                <h5 class="text-muted">' . ($lang->memberlist['no_members'] ?? 'No members found.') . '</h5>
-              </div>
-    </div>';
+    $joined = (int)$user['added'] > 0
+        ? my_datee('relative', (int)$user['added'])
+        : $e($L['lastvisit_never'] ?? 'Never');
+
+    $users_html .= '<article class="st-card ml-user' . ($is_online ? ' ml-user--online' : '') . '">'
+        . '<a href="' . $profile_url . '" class="ml-user__ava" tabindex="-1" aria-hidden="true">'
+        .   '<img src="' . $av['image'] . '" alt="" loading="lazy">'
+        .   ($is_online ? '<span class="ml-user__dot" title="' . $e($L['lbl_online'] ?? 'Online') . '"></span>' : '')
+        . '</a>'
+        . '<div class="ml-user__body">'
+        .   '<div class="ml-user__name">' . $profile_link . '</div>'
+        .   '<div class="ml-user__title">' . $usertitle . '</div>'
+        .   '<div class="ml-user__stats">'
+        .     '<span class="st-badge st-soft-primary" title="' . $e($L['posts'] ?? 'Post Count') . '"><i class="fa-solid fa-comment"></i>' . ts_nf((int)$user['postnum']) . '</span>'
+        .     '<span class="st-badge st-soft-info" title="' . $e($L['threads'] ?? 'Thread Count') . '"><i class="fa-solid fa-file-lines"></i>' . ts_nf((int)$user['threadnum']) . '</span>'
+        .   '</div>'
+        .   '<div class="ml-user__meta">'
+        .     '<span title="' . $e($L['joined'] ?? 'Joined') . '"><i class="fa-solid fa-calendar-plus"></i>' . $joined . '</span>'
+        .     '<span title="' . $e($L['lastvisit'] ?? 'Last Visit') . '">' . $lastvisit . '</span>'
+        .   '</div>'
+        . '</div>'
+        . '</article>';
 }
 
 $plugins->run_hooks('memberlist_end');
 
 /* ═══════════════════════════════════════════════════════════════════
- *  OUTPUT
+ *  Вывод
  * ═══════════════════════════════════════════════════════════════════ */
 
-render_header($lang->memberlist['member_list']);
+ml_open($L['member_list'] ?? 'Member List');
 
+// ── Шапка ──
 ?>
-
-<div class="row">
-    <div class="col-12">
-        
-        <!-- Stats summary -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3 col-6">
-                <div class="card border rounded-4 text-center">
-                    <div class="card-body">
-                        <i class="fas fa-users fa-2x text-primary mb-2"></i>
-                        <h3 class="mb-0"><?= ts_nf($num_users) ?></h3>
-                        <small class="text-muted">Total Members</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-6">
-                <div class="card border rounded-4 text-center">
-                    <div class="card-body">
-                        <i class="fas fa-calendar-week fa-2x text-success mb-2"></i>
-                        <h3 class="mb-0"><?= ts_nf($pages) ?></h3>
-                        <small class="text-muted">Total Pages</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-6">
-                <div class="card border rounded-4 text-center">
-                    <div class="card-body">
-                        <i class="fas fa-eye fa-2x text-info mb-2"></i>
-                        <h3 class="mb-0"><?= $per_page ?></h3>
-                        <small class="text-muted">Per Page</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-6">
-                <div class="card border rounded-4 text-center">
-                    <div class="card-body">
-                        <i class="fas fa-sort-amount-down fa-2x text-warning mb-2"></i>
-                        <h6 class="mb-0 mt-2"><?= ucfirst($sort_input) ?></h6>
-                        <small class="text-muted">Sorted by</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Pagination top -->
-        <?php if ($multipage): ?>
-            <div class="mb-4"><?= $multipage ?></div>
-        <?php endif; ?>
-        
-        <!-- Alphabet navigation -->
-        <div class="card border rounded-4 mb-4 overflow-hidden">
-            <div class="card-header bg-transparent border-0 pt-3">
-                <h6 class="mb-0 text-center">
-                    <i class="fas fa-filter me-2"></i>Browse by letter
-                </h6>
-            </div>
-            <div class="card-body pt-0 pb-3">
-                <div class="alphabet-grid">
-                    <a href="memberlist.php?letter=-1" class="alphabet-letter" title="Special characters">
-                        <i class="fas fa-hashtag"></i>
-                    </a>
-                    <?php foreach (range('a', 'z') as $letter): ?>
-                        <a href="memberlist.php?username_match=begins&username=<?= $letter ?>" 
-                           class="alphabet-letter"><?= strtoupper($letter) ?></a>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Users grid -->
-        <div class="row g-3 mb-4">
-            <?= $users_html ?>
-        </div>
-        
-        <!-- Pagination bottom -->
-        <?php if ($multipage): ?>
-            <div class="mb-4"><?= $multipage ?></div>
-        <?php endif; ?>
-        
-        <!-- Search/Sort panel -->
-        <div class="card border rounded-4">
-            <div class="card-header bg-transparent border-0 pt-3">
-                <h6 class="mb-0">
-                    <i class="fas fa-search me-2 text-primary"></i>
-                    <?= $lang->memberlist['search_members'] ?>
-                </h6>
-            </div>
-            <div class="card-body">
-                <form method="post" action="memberlist.php" class="needs-validation">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-user me-1"></i><?= $lang->memberlist['username'] ?>
-                            </label>
-                            <input type="text" class="form-control rounded-3" name="username" 
-                                   value="<?= htmlspecialchars($search_username) ?>"
-                                   placeholder="Enter username...">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-filter me-1"></i>Match
-                            </label>
-                            <select name="username_match" class="form-select rounded-3">
-                                <option value="exact">Exact match</option>
-                                <option value="begins">Begins with</option>
-                                <option value="contains">Contains</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-globe me-1"></i><?= $lang->memberlist['website'] ?>
-                            </label>
-                            <input type="text" class="form-control rounded-3" name="website"
-                                   value="<?= htmlspecialchars($search_website) ?>"
-                                   placeholder="Website...">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-eye me-1"></i>Per page
-                            </label>
-                            <input type="number" class="form-control rounded-3" name="perpage"
-                                   value="<?= (int)$per_page ?>" min="5" max="500">
-                        </div>
-                    </div>
-                    
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-sort me-1"></i><?= $lang->memberlist['sort_by'] ?>
-                            </label>
-                            <select name="sort" class="form-select rounded-3">
-                                <option value="username"<?= $sort_display === 'username' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_username'] ?></option>
-                                <option value="added"<?= $sort_display === 'regdate' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_regdate'] ?></option>
-                                <option value="lastvisit"<?= $sort_display === 'lastvisit' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_lastvisit'] ?></option>
-                                <option value="postnum"<?= $sort_display === 'postnum' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_posts'] ?></option>
-                                <option value="threadnum"<?= $sort_display === 'threadnum' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_threads'] ?></option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label small fw-semibold">
-                                <i class="fas fa-arrow-up me-1"></i>Order
-                            </label>
-                            <div class="d-flex gap-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="order" 
-                                           id="o_asc" value="ascending"<?= $order_input === 'ascending' ? ' checked' : '' ?>>
-                                    <label class="form-check-label" for="o_asc">
-                                        <i class="fas fa-arrow-up me-1"></i>Ascending
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="order" 
-                                           id="o_desc" value="descending"<?= $order_input === 'descending' ? ' checked' : '' ?>>
-                                    <label class="form-check-label" for="o_desc">
-                                        <i class="fas fa-arrow-down me-1"></i>Descending
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-5 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary w-100 rounded-3">
-                                <i class="fas fa-search me-2"></i><?= $lang->memberlist['search'] ?>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="text-end mt-3">
-                        <a href="memberlist.php?action=search" class="text-decoration-none small">
-                            <i class="fas fa-sliders-h me-1"></i><?= $lang->memberlist['advanced_search'] ?>
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-        
+<header class="st-card st-head mb-3">
+    <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-users"></i></div>
+    <div class="flex-grow-1 min-w-0">
+        <h1 class="st-title"><?= $e($L['member_list'] ?? 'Member List') ?></h1>
+        <div class="st-meta mt-1"><?= $e($L['page_subtitle'] ?? 'All registered members of the tracker') ?></div>
     </div>
-</div>
+    <a href="memberlist.php?action=search" class="btn btn-outline-secondary st-pill ml-btn">
+        <i class="fa-solid fa-sliders"></i><span class="ml-hide-sm"><?= $e($L['advanced_search'] ?? 'Advanced Search') ?></span>
+    </a>
+</header>
 
 <?php
-render_footer();
+// ── KPI-плитки ──
+$tiles = [
+    ['fa-users',       'st-soft-primary', ts_nf($kpi_total),  $L['lbl_kpi_total'] ?? 'Members',       'memberlist.php'],
+    ['fa-user-plus',   'st-soft-success', ts_nf($kpi_week),   $L['lbl_kpi_new_week'] ?? 'New this week', 'memberlist.php?sort=added&amp;order=descending'],
+    ['fa-signal',      'st-soft-info',    ts_nf($kpi_online), $L['lbl_kpi_online'] ?? 'Online now',    'memberlist.php?sort=lastvisit&amp;order=descending'],
+    ['fa-filter',      'st-soft-warning', ts_nf($num_users),  $L['lbl_kpi_found'] ?? 'Found',          ''],
+];
+echo '<div class="ml-kpis mb-3">';
+foreach ($tiles as [$icon, $soft, $val, $lbl, $href]) {
+    $tag = $href !== '' ? 'a' : 'div';
+    echo '<' . $tag . ($href !== '' ? ' href="' . $href . '"' : '') . ' class="st-kpi st-kpi--muted">'
+       .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+       .   '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $e($lbl) . '</div></div>'
+       .   '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+       . '</' . $tag . '>';
+}
+echo '</div>';
+
+// ── Фильтр: буквы + быстрый поиск ──
 ?>
+<section class="st-card ml-filter mb-3">
+    <div class="st-card__head">
+        <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <span><?= $e($L['search_members'] ?? 'Search Member List') ?></span>
+        <?php if ($is_filtered): ?>
+            <a href="memberlist.php" class="ms-auto btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-xmark"></i> <?= $e($L['btn_reset'] ?? 'Reset') ?></a>
+        <?php endif; ?>
+    </div>
+    <div class="st-card__body">
+        <div class="ml-letters" aria-label="<?= $e($L['lbl_browse_letter'] ?? 'Browse by letter') ?>">
+            <a href="<?= $e($ml_url(['letter' => '-1', 'username' => null, 'username_match' => null, 'page' => null])) ?>"
+               class="ml-letter<?= $letter_input === '-1' ? ' active' : '' ?>" title="<?= $e($L['tip_letter_other'] ?? 'Other characters') ?>"><i class="fa-solid fa-hashtag"></i></a>
+            <?php foreach (range('a', 'z') as $ch): ?>
+                <a href="<?= $e($ml_url(['letter' => $ch, 'username' => null, 'username_match' => null, 'page' => null])) ?>"
+                   class="ml-letter<?= $letter_input === $ch ? ' active' : '' ?>"<?= $letter_input === $ch ? ' aria-current="true"' : '' ?>><?= strtoupper($ch) ?></a>
+            <?php endforeach; ?>
+        </div>
+
+        <form method="get" action="memberlist.php" class="ml-quick">
+            <input type="hidden" name="sort" value="<?= $e($sort_input) ?>">
+            <input type="hidden" name="order" value="<?= $e($order_input) ?>">
+            <div class="input-group ml-quick__user">
+                <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                <input type="text" class="form-control" name="username" value="<?= $e($search_username) ?>"
+                       placeholder="<?= $e($L['ph_username'] ?? 'Enter username...') ?>" aria-label="<?= $e($L['username'] ?? 'Username') ?>">
+            </div>
+            <select name="username_match" class="form-select ml-quick__match" aria-label="<?= $e($L['lbl_match'] ?? 'Match') ?>">
+                <?php foreach ($match_opts as $k => $label): ?>
+                    <option value="<?= $k ?>"<?= $match_input === $k ? ' selected' : '' ?>><?= $e($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select name="perpage" class="form-select ml-quick__pp" aria-label="<?= $e($L['per_page'] ?? 'Results Per Page') ?>">
+                <?php foreach (array_unique([20, 50, 100, $per_page]) as $pp): ?>
+                    <option value="<?= (int)$pp ?>"<?= $pp === $per_page ? ' selected' : '' ?>><?= (int)$pp ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-magnifying-glass"></i> <?= $e($L['search'] ?? 'Search') ?></button>
+        </form>
+    </div>
+</section>
+
+<?php
+// ── Сортировка (пилюли) ──
+$sort_pills = [
+    'username'  => $L['username'] ?? 'Username',
+    'added'     => $L['joined'] ?? 'Joined',
+    'lastvisit' => $L['lastvisit'] ?? 'Last Visit',
+    'postnum'   => $L['posts'] ?? 'Post Count',
+    'threadnum' => $L['threads'] ?? 'Thread Count',
+];
+echo '<div class="st-card ml-sortbar mb-3"><div class="st-toolbar">'
+   . '<span class="ml-sortbar__lbl"><i class="fa-solid fa-arrow-down-wide-short"></i>' . $e($L['sort_by'] ?? 'Sort by') . '</span>'
+   . '<div class="ml-sortbar__pills">';
+foreach ($sort_pills as $key => $label) {
+    $active = $sort_input === $key;
+    $next   = $active
+        ? ($order_input === 'ascending' ? 'descending' : 'ascending')
+        : ($key === 'username' ? 'ascending' : 'descending');
+    $arrow  = $active ? ' <i class="fa-solid ' . ($order_input === 'ascending' ? 'fa-arrow-up' : 'fa-arrow-down') . '"></i>' : '';
+    echo '<a href="' . $e($ml_url(['sort' => $key, 'order' => $next, 'page' => null])) . '" class="btn btn-sm st-pill '
+       . ($active ? 'btn-primary' : 'btn-outline-secondary') . '"' . ($active ? ' aria-current="true"' : '') . '>' . $e($label) . $arrow . '</a>';
+}
+echo '</div></div></div>';
+
+// ── Пагинация + сетка ──
+if ($multipage) {
+    echo '<div class="st-pager mb-3">' . $multipage . '</div>';
+}
+
+if ($users_html !== '') {
+    echo '<div class="ml-grid mb-3">' . $users_html . '</div>';
+} else {
+    echo '<div class="st-card mb-3"><div class="st-empty">'
+       .   '<div class="st-ico st-soft-muted"><i class="fa-solid fa-user-slash"></i></div>'
+       .   '<div class="ml-empty__title">' . $e($L['msg_no_members_title'] ?? 'No members found') . '</div>'
+       .   '<div class="ml-empty__hint">' . ($L['error_no_members'] ?? '') . '</div>'
+       . '</div></div>';
+}
+
+if ($multipage) {
+    echo '<div class="st-pager mb-3">' . $multipage . '</div>';
+}
+
+ml_close();

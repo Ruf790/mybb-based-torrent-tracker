@@ -111,4 +111,21 @@ $language['memberlist'] = array
 'y' => 'Y',
 'z' => 'Z',
 
+
+// ── memberlist (new style) ──
+'page_subtitle' => "Все зарегистрированные участники трекера",
+'lbl_kpi_total' => "Участники",
+'lbl_kpi_new_week' => "Новые за неделю",
+'lbl_kpi_online' => "Сейчас на сайте",
+'lbl_kpi_found' => "Найдено",
+'lbl_browse_letter' => "По первой букве",
+'tip_letter_other' => "Другие символы",
+'ph_username' => "Введите ник...",
+'ph_website' => "Сайт...",
+'lbl_match' => "Совпадение",
+'lbl_order' => "Порядок",
+'btn_reset' => "Сбросить",
+'lbl_online' => "В сети",
+'msg_no_members_title' => "Пользователи не найдены",
+
 );

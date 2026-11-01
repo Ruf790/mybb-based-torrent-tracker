@@ -185,13 +185,16 @@
   border: 1px solid var(--bs-border-color); border-radius: .8rem;
 }
 
-/* ── Aside: posters, rating, manage ──────────────────────────────────────── */
-.dt-page .dt-posters { display: grid; gap: .6rem; padding: .6rem; }
-.dt-page .dt-poster { display: block; border-radius: .7rem; overflow: hidden; line-height: 0; cursor: zoom-in; }
-.dt-page .dt-poster img { width: 100%; height: auto; max-height: 34rem; object-fit: cover; transition: transform .25s ease; }
-.dt-page .dt-poster:hover img { transform: scale(1.02); }
-@media (max-width: 991.98px) {
-  .dt-page .dt-posters { grid-template-columns: repeat(auto-fit, minmax(10rem, 16rem)); justify-content: center; }
+/* ── Posters (download card) + aside: rating, manage ──────────────────────────────────────── */
+.dt-page .dt-posters { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 1rem; }
+.dt-page .dt-poster {
+  display: block; max-width: 400px; line-height: 0; border-radius: .8rem; overflow: hidden; cursor: zoom-in;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .08); transition: transform .25s ease, box-shadow .25s ease;
+}
+.dt-page .dt-poster:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(0, 0, 0, .15); }
+.dt-page .dt-poster img { display: block; width: 100%; height: auto; max-height: 720px; object-fit: cover; }
+@media (max-width: 575.98px) {
+  .dt-page .dt-poster { max-width: 100%; }
 }
 
 .dt-page .dt-rating__top { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }

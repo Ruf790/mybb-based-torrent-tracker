@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 1;
+const DT_CSS_VER = 2;
 const DT_JS_VER  = 3;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -981,6 +981,7 @@ $download_html = '
                 </div>
             </div>
             ' . $claim_html . '
+            ' . ($posters_html !== '' ? '<div class="dt-posters">' . $posters_html . '</div>' : '') . '
         </div>
     </div>';
 
@@ -1101,8 +1102,7 @@ $comments_block = '
         ' . $quick_comment . '
     </section>';
 
-$aside_html = ($posters_html !== '' ? '<div class="st-card dt-posters">' . $posters_html . '</div>' : '')
-            . $rating_html
+$aside_html = $rating_html
             . $manage_html;
 
 // ── Output ──────────────────────────────────────────────────────────────────

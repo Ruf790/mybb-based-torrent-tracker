@@ -1,0 +1,193 @@
+/* task.php — new style on st-ui.css. Everything scoped under .tq-page (prefix tq-). */
+
+.tq-page { font-size: 1.055rem; }
+
+/* ── KPI tiles ───────────────────────────────────────────────────── */
+.tq-page .tq-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 991.98px) { .tq-page .tq-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Gray tiles with a big icon in the corner (same as memberlist / browse) */
+.tq-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
+.tq-page .st-kpi { position: relative; overflow: hidden; }
+.tq-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.tq-page .st-kpi__bg {
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+
+/* ── Flash ───────────────────────────────────────────────────────── */
+.tq-page .tq-alert { display: flex; gap: .7rem; align-items: center; padding: .8rem 1.1rem; border-radius: .9rem; }
+.tq-page .tq-alert--success { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.tq-page .tq-alert--danger  { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+
+/* The current-task card from functions_exam_header.php sits inside the page */
+.tq-page .exam-card { margin: 0 0 1rem; max-width: none; }
+
+/* ── Section title ───────────────────────────────────────────────── */
+.tq-page .tq-sec { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; }
+.tq-page .tq-sec h2 { margin: 0; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+.tq-page .tq-sec h2 i { color: var(--bs-primary); }
+.tq-page .tq-sec__note { font-size: .85em; color: var(--bs-secondary-color); display: inline-flex; align-items: center; gap: .4rem; }
+
+/* ── Task cards ──────────────────────────────────────────────────── */
+.tq-page .tq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 767.98px) { .tq-page .tq-grid { grid-template-columns: 1fr; } }
+
+.tq-page .tq-card {
+    --tq-c: var(--bs-primary);
+    --tq-bg: var(--bs-primary-bg-subtle);
+    --tq-tx: var(--bs-primary-text-emphasis);
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    padding: 1.1rem 1.2rem;
+    position: relative;
+    overflow: hidden;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.tq-page .tq-card::before {          /* colour strip on the left, the task's own colour */
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--tq-c);
+}
+.tq-page .tq-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1.25rem rgba(0, 0, 0, .08); }
+.tq-page .tq-card.is-claimed { border-color: var(--bs-success); box-shadow: 0 0 0 1px var(--bs-success) inset; }
+.tq-page .tq-card.is-full { opacity: .75; }
+
+.tq-page .tq-tone-success   { --tq-c: var(--bs-success);   --tq-bg: var(--bs-success-bg-subtle);   --tq-tx: var(--bs-success-text-emphasis); }
+.tq-page .tq-tone-danger    { --tq-c: var(--bs-danger);    --tq-bg: var(--bs-danger-bg-subtle);    --tq-tx: var(--bs-danger-text-emphasis); }
+.tq-page .tq-tone-warning   { --tq-c: var(--bs-warning);   --tq-bg: var(--bs-warning-bg-subtle);   --tq-tx: var(--bs-warning-text-emphasis); }
+.tq-page .tq-tone-info      { --tq-c: var(--bs-info);      --tq-bg: var(--bs-info-bg-subtle);      --tq-tx: var(--bs-info-text-emphasis); }
+.tq-page .tq-tone-secondary { --tq-c: var(--bs-secondary); --tq-bg: var(--bs-secondary-bg-subtle); --tq-tx: var(--bs-secondary-text-emphasis); }
+
+.tq-page .tq-card__head { display: flex; align-items: flex-start; gap: .8rem; }
+.tq-page .tq-card__ico {
+    flex: 0 0 auto;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: .8rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    color: var(--tq-tx);
+    background: var(--tq-bg);
+}
+.tq-page .tq-card__title { margin: 0; font-size: 1.12rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.tq-page .tq-card__meta { display: flex; flex-wrap: wrap; gap: .2rem .9rem; margin-top: .25rem; font-size: .82em; color: var(--bs-secondary-color); }
+.tq-page .tq-card__meta i { margin-right: .3rem; }
+
+.tq-page .tq-status {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .2rem .7rem;
+    border-radius: 50rem;
+    font-size: .78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.tq-page .tq-status--mine { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+.tq-page .tq-status--full { color: var(--bs-secondary-text-emphasis); background: var(--bs-secondary-bg-subtle); }
+
+.tq-page .tq-desc { margin: 0; color: var(--bs-secondary-color); font-size: .92em; }
+
+.tq-page .tq-label {
+    margin-bottom: -.35rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+/* Requirements */
+.tq-page .tq-reqs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
+.tq-page .tq-reqs li {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .45rem .7rem;
+    border-radius: .65rem;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+    font-size: .92em;
+}
+.tq-page .tq-reqs li i { width: 1.1rem; text-align: center; color: var(--tq-c); }
+.tq-page .tq-reqs li span { flex: 1 1 auto; min-width: 0; }
+.tq-page .tq-reqs li strong { white-space: nowrap; }
+
+/* Reward / penalty chips */
+.tq-page .tq-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.tq-page .tq-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .25rem .7rem;
+    border-radius: 50rem;
+    font-size: .85rem;
+    font-weight: 600;
+}
+.tq-page .tq-chip--plus  { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+.tq-page .tq-chip--minus { color: var(--bs-danger-text-emphasis);  background: var(--bs-danger-bg-subtle); }
+.tq-page .tq-chip--muted { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); font-weight: 500; }
+
+/* Footer: participants + action */
+.tq-page .tq-card__foot {
+    margin-top: auto;
+    padding-top: .75rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+.tq-page .tq-who { flex: 1 1 auto; min-width: 0; font-size: .82em; color: var(--bs-secondary-color); }
+.tq-page .tq-who__line { display: flex; flex-wrap: wrap; gap: .2rem .9rem; }
+.tq-page .tq-who__line i { margin-right: .3rem; }
+.tq-page .tq-who__groups { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tq-page .tq-fill { height: 5px; margin-top: .35rem; border-radius: 50rem; background: var(--bs-tertiary-bg); overflow: hidden; max-width: 14rem; }
+.tq-page .tq-fill > div { height: 100%; border-radius: 50rem; background: var(--tq-c); }
+.tq-page .tq-actions { flex: 0 0 auto; }
+.tq-page .tq-actions form { margin: 0; }
+
+@media (max-width: 575.98px) {
+    .tq-page .tq-card__foot { flex-direction: column; align-items: stretch; }
+    .tq-page .tq-actions .btn { width: 100%; }
+}
+
+/* ── Pages ───────────────────────────────────────────────────────── */
+.tq-page .tq-pages { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
+.tq-page .tq-pages a { min-width: 2.2rem; text-align: center; padding: .3rem .8rem; border-radius: 50rem; border: 1px solid var(--bs-border-color); text-decoration: none; color: var(--bs-body-color); }
+.tq-page .tq-pages a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+/* ── Leaderboard ─────────────────────────────────────────────────── */
+.tq-page .tq-lb { padding: 1rem 1.2rem; }
+.tq-page .tq-lb__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
+.tq-page .tq-lb__head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+.tq-page .tq-lb__head h2 i { color: var(--bs-warning); }
+.tq-page .tq-lb__note { margin-top: .6rem; }
+
+.tq-page .tq-pills { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; }
+.tq-page .tq-pills::-webkit-scrollbar { display: none; }
+.tq-page .tq-pills a { flex: 0 0 auto; padding: .3rem .95rem; border-radius: 50rem; border: 1px solid var(--bs-border-color); color: var(--bs-body-color); text-decoration: none; font-size: .9em; font-weight: 600; }
+.tq-page .tq-pills a:hover { border-color: var(--bs-primary); color: var(--bs-primary); }
+.tq-page .tq-pills a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+.tq-page .tq-table { width: 100%; border-collapse: collapse; }
+.tq-page .tq-table th, .tq-page .tq-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--bs-border-color-translucent); text-align: left; }
+.tq-page .tq-table th { font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+.tq-page .tq-table tbody tr:last-child td { border-bottom: 0; }
+.tq-page .tq-table tbody tr:hover td { background: rgba(var(--bs-primary-rgb), .04); }
+.tq-page .tq-table tr.is-me td { background: var(--bs-primary-bg-subtle); }
+.tq-page .tq-table tr.tq-gap td { text-align: center; color: var(--bs-secondary-color); padding: .2rem; }
+.tq-page .tq-num { text-align: right !important; white-space: nowrap; }
+.tq-page .tq-rank { width: 4.5rem; font-weight: 700; color: var(--bs-secondary-color); }
+.tq-page .tq-table a { text-decoration: none; }
+
+.tq-page .tq-medal { display: inline-flex; align-items: center; gap: .35rem; padding: .1rem .6rem; border-radius: 50rem; font-size: .9em; }
+.tq-page .tq-medal--gold   { background: var(--bs-warning-bg-subtle);   color: var(--bs-warning-text-emphasis); }
+.tq-page .tq-medal--silver { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text-emphasis); }
+.tq-page .tq-medal--bronze { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }

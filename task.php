@@ -124,10 +124,20 @@ $lbMine  = null;
 foreach ($lbAll as $row) {
     if ($row['uid'] === $uid) { $lbMine = $row; break; }
 }
+// KPI tiles: always this month, whichever leaderboard tab is open
+$kpiRows = $lbLast
+    ? exam_task_leaderboard((int)strtotime('first day of this month 00:00', TIMENOW), (int)strtotime('first day of next month 00:00', TIMENOW))
+    : $lbAll;
+$kpiMine = null;
+foreach ($kpiRows as $row) {
+    if ($row['uid'] === $uid) { $kpiMine = $row; break; }
+}
+$kpiOngoing = count($mine);
+
 $lbUser = static function (array $r) use ($BASEURL, $e): string {
     $name = $e($r['username']);
     if (function_exists('format_name')) {
-        $name = format_name($name, $r['usergroup'], $r['displaygroup']);
+        $name = format_name($name, (int)$r['usergroup']);
     }
     $url = function_exists('get_profile_link') ? (string)get_profile_link($r['uid']) : $BASEURL . '/member.php?action=profile&uid=' . $r['uid'];
     return '<a href="' . $e($url) . '">' . $name . '</a>';
@@ -150,46 +160,121 @@ foreach ($lang->task as $k => $v) {
 }
 
 // ── Output ───────────────────────────────────────────────
+
+// Icon for each requirement (exam index)
+$tqIcons = [
+    EXAM_INDEX_UPLOADED             => 'fa-cloud-arrow-up',
+    EXAM_INDEX_DOWNLOADED           => 'fa-cloud-arrow-down',
+    EXAM_INDEX_SEED_TIME_AVERAGE    => 'fa-clock',
+    EXAM_INDEX_SEED_BONUS           => 'fa-coins',
+    EXAM_INDEX_SEED_POINTS          => 'fa-seedling',
+    EXAM_INDEX_UPLOAD_TORRENT_COUNT => 'fa-upload',
+    EXAM_INDEX_SEEDING_COUNT        => 'fa-arrow-up-from-bracket',
+    EXAM_INDEX_RATIO                => 'fa-scale-balanced',
+    EXAM_INDEX_REQUESTS_FILLED      => 'fa-hand-holding-heart',
+    EXAM_INDEX_CLAIMS_TAKEN         => 'fa-shield-heart',
+    EXAM_INDEX_COMMENTS             => 'fa-comment',
+    EXAM_INDEX_FORUM_POSTS          => 'fa-comments',
+];
+$tqL = static fn(string $k, string $fb): string => (string)($lang->task[$k] ?? $fb);
+
 stdhead($lang->task['pg_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/exam.css?ver=122">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task_leaders.css?ver=2">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task.css?ver=1">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 
-<div class="tk">
-  <div class="tk-head">
-    <i class="fa-solid fa-list-check"></i>
-    <div>
-      <h1><?= $e($lang->task['pane_tasks']) ?></h1>
-      <p><?= $e(EXAM_TASK_ABANDON_PENALTY_PERCENT >= 100
+<div class="container-md st-page tq-page py-3">
+
+  <!-- Header -->
+  <header class="st-card st-head mb-3">
+    <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-list-check"></i></div>
+    <div class="flex-grow-1 min-w-0">
+      <h1 class="st-title"><?= $e($lang->task['pane_tasks']) ?></h1>
+      <div class="st-meta mt-1"><?= $e(EXAM_TASK_ABANDON_PENALTY_PERCENT >= 100
           ? $lang->task['hint_intro_full']
-          : ags_fmt($lang->task['hint_intro_pct'], EXAM_TASK_ABANDON_PENALTY_PERCENT)) ?></p>
+          : ags_fmt($lang->task['hint_intro_pct'], EXAM_TASK_ABANDON_PENALTY_PERCENT)) ?></div>
+    </div>
+    <a class="st-badge st-soft-warning d-none d-md-inline-flex text-decoration-none" href="#tq-leaders"><i class="fa-solid fa-ranking-star"></i><?= $e($lang->task['sec_leaderboard']) ?></a>
+  </header>
+
+  <!-- KPI tiles -->
+  <div class="tq-kpis mb-3">
+    <div class="st-kpi st-kpi--muted">
+      <span class="st-ico st-soft-primary"><i class="fa-solid fa-list-check"></i></span>
+      <div class="min-w-0">
+        <div class="st-kpi__val"><?= exam_num($total) ?></div>
+        <div class="st-kpi__lbl"><?= $e($tqL('kpi_available', 'Available tasks')) ?></div>
+      </div>
+      <i class="fa-solid fa-list-check st-kpi__bg" aria-hidden="true"></i>
+    </div>
+    <div class="st-kpi st-kpi--muted">
+      <span class="st-ico st-soft-success"><i class="fa-solid fa-circle-check"></i></span>
+      <div class="min-w-0">
+        <div class="st-kpi__val"><?= exam_num((int)($kpiMine['n'] ?? 0)) ?></div>
+        <div class="st-kpi__lbl"><?= $e($tqL('kpi_done', 'Completed this month')) ?></div>
+      </div>
+      <i class="fa-solid fa-circle-check st-kpi__bg" aria-hidden="true"></i>
+    </div>
+    <div class="st-kpi st-kpi--muted">
+      <span class="st-ico st-soft-warning"><i class="fa-solid fa-coins"></i></span>
+      <div class="min-w-0">
+        <div class="st-kpi__val">+<?= exam_num((int)($kpiMine['bp'] ?? 0)) ?></div>
+        <div class="st-kpi__lbl"><?= $e($tqL('kpi_bonus', 'Bonus this month')) ?></div>
+      </div>
+      <i class="fa-solid fa-coins st-kpi__bg" aria-hidden="true"></i>
+    </div>
+    <div class="st-kpi st-kpi--muted">
+      <span class="st-ico st-soft-danger"><i class="fa-solid fa-trophy"></i></span>
+      <div class="min-w-0">
+        <div class="st-kpi__val"><?= $kpiMine ? '#' . (int)$kpiMine['rank'] : '—' ?></div>
+        <div class="st-kpi__lbl"><?= $e($tqL('kpi_rank', 'My place this month')) ?></div>
+      </div>
+      <i class="fa-solid fa-trophy st-kpi__bg" aria-hidden="true"></i>
     </div>
   </div>
 
-  <?= exam_render_header_notice($uid) ?>
-
   <?php if (is_array($flash) && isset($flash['t'], $flash['m'])): ?>
-    <div class="tk-alert tk-alert--<?= $flash['t'] === 'success' ? 'success' : 'danger' ?>" role="alert">
+    <div class="tq-alert tq-alert--<?= $flash['t'] === 'success' ? 'success' : 'danger' ?> mb-3" role="alert">
       <i class="fa-solid <?= $flash['t'] === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation' ?>"></i>
       <span><?= $e((string)$flash['m']) ?></span>
     </div>
   <?php endif; ?>
 
+  <?php // Current task with its progress (same card as under the site header) ?>
+  <?= exam_render_header_notice($uid) ?>
+
+  <!-- Tasks -->
+  <div class="tq-sec mb-2">
+    <h2><i class="fa-solid fa-layer-group"></i><?= $e($tqL('sec_available', 'Available tasks')) ?></h2>
+    <?php if ($kpiOngoing > 0): ?>
+      <span class="tq-sec__note"><i class="fa-solid fa-circle-info"></i><?= $e($tqL('hint_one_at_time', 'One task at a time: finish or abandon the current one to take another.')) ?></span>
+    <?php endif; ?>
+  </div>
+
   <?php if (!$tasks): ?>
-    <div class="tk-empty"><i class="fa-solid fa-mug-hot"></i><p><?= $e($lang->task['msg_no_tasks']) ?></p></div>
+    <div class="st-card st-empty mb-3">
+      <span class="st-ico st-soft-muted"><i class="fa-solid fa-mug-hot"></i></span>
+      <div><?= $e($lang->task['msg_no_tasks']) ?></div>
+    </div>
   <?php else: ?>
-    <div class="tk-list">
+    <div class="tq-grid mb-3">
     <?php foreach ($tasks as $t):
         $id      = (int)$t['id'];
         $claimed = isset($mine[$id]);
         $max     = (int)$t['max_user_count'];
-        $full    = $max > 0 && (int)$t['ongoing'] >= $max;
+        $ongoingN = (int)$t['ongoing'];
+        $full    = $max > 0 && $ongoingN >= $max;
+        $tone    = EXAM_BG[(string)($t['background_color'] ?? 'blue')] ?? 'primary';
         try {
-            $range = date('d.m.Y H:i', exam_begin_for_user($t)) . ' ~ ' . date('d.m.Y H:i', exam_end_for_user($t));
+            $tb    = exam_begin_for_user($t);
+            $te    = exam_end_for_user($t);
+            $range = date('d.m.Y H:i', $tb) . ' ~ ' . date('d.m.Y H:i', $te);
+            $days  = max(1, (int)round(($te - $tb) / 86400));
         } catch (ExamException) {
             $range = '-';
+            $days  = 0;
         }
         $who = [];
         if (!empty($t['filters'][EXAM_FILTER_USER_CLASS])) {
@@ -198,121 +283,160 @@ stdhead($lang->task['pg_title']);
         $d = $t['filters'][EXAM_FILTER_USER_REGISTER_DAYS_RANGE] ?? [];
         if (isset($d[0]) && $d[0] !== null) $who[] = ags_fmt($lang->task['lbl_reg_min'], (string)$d[0]);
         if (isset($d[1]) && $d[1] !== null) $who[] = ags_fmt($lang->task['lbl_reg_max'], (string)$d[1]);
+
+        $rewards = [];
+        foreach ([
+            ['success_reward_bonus', 'fa-coins',              'rw_bonus'],
+            ['reward_upload_gb',     'fa-cloud-arrow-up',     'rw_upload'],
+            ['reward_vip_days',      'fa-crown',              'rw_vip'],
+            ['reward_invites',       'fa-envelope-open-text', 'rw_invites'],
+        ] as [$col, $icon, $key]) {
+            if ((int)($t[$col] ?? 0) > 0) $rewards[] = [$icon, exam_t($key, exam_num((int)$t[$col]))];
+        }
+        $penalty = (int)$t['fail_deduct_bonus'];
+        $fillPct = $max > 0 ? (int)min(100, round($ongoingN / $max * 100)) : 0;
     ?>
-      <article class="tk-card<?= $claimed ? ' is-claimed' : '' ?>">
-        <div class="tk-card__main">
-          <h2><?= $e((string)$t['name']) ?></h2>
-          <?php if (trim((string)$t['description']) !== ''): ?>
-            <p class="tk-desc"><?= nl2br($e((string)$t['description'])) ?></p>
-          <?php endif; ?>
-          <ul class="tk-reqs">
-            <?php foreach (exam_checked_indexes($t) as $i): $ik = (int)$i['index']; ?>
-              <li><?= $e(exam_index_name($ik)) ?>: <strong><?= $e(exam_require_text($ik, (int)$i['require_value'])) ?></strong></li>
-            <?php endforeach; ?>
-          </ul>
-          <div class="tk-meta">
-            <span><i class="fa-regular fa-clock"></i><?= $e($range) ?></span>
-            <?php if ($who): ?><span><i class="fa-solid fa-user-check"></i><?= $e(implode(', ', $who)) ?></span><?php endif; ?>
-            <span><i class="fa-solid fa-users"></i><?= $e(ags_fmt($lang->task['lbl_claimed_count'], exam_num((int)$t['ongoing']), $max ? exam_num($max) : '∞')) ?></span>
+      <article class="st-card tq-card tq-tone-<?= $tone ?><?= $claimed ? ' is-claimed' : '' ?><?= $full && !$claimed ? ' is-full' : '' ?>">
+        <div class="tq-card__head">
+          <span class="tq-card__ico"><i class="fa-solid fa-flag-checkered"></i></span>
+          <div class="min-w-0 flex-grow-1">
+            <h3 class="tq-card__title"><?= $e((string)$t['name']) ?></h3>
+            <div class="tq-card__meta">
+              <span><i class="fa-regular fa-clock"></i><?= $days > 0 ? $e(ags_fmt($tqL('lbl_days', '{1} day(s)'), $days)) : '-' ?></span>
+              <span title="<?= $e($range) ?>"><i class="fa-regular fa-calendar"></i><?= $e($range) ?></span>
+            </div>
           </div>
+          <?php if ($claimed): ?>
+            <span class="tq-status tq-status--mine"><i class="fa-solid fa-check"></i><?= $e($lang->task['btn_claimed']) ?></span>
+          <?php elseif ($full): ?>
+            <span class="tq-status tq-status--full"><i class="fa-solid fa-lock"></i><?= $e($lang->task['btn_full']) ?></span>
+          <?php endif; ?>
         </div>
-        <div class="tk-card__side">
-          <div class="tk-bonus tk-bonus--plus"><i class="fa-solid fa-gift"></i>+<?= exam_num((int)$t['success_reward_bonus']) ?></div>
-          <?php // Our addition: rewards besides bonus
-          foreach ([
-              ['reward_upload_gb', 'fa-cloud-arrow-up', 'rw_upload'],
-              ['reward_vip_days',  'fa-crown',          'rw_vip'],
-              ['reward_invites',   'fa-envelope-open-text', 'rw_invites'],
-          ] as [$col, $icon, $key]):
-              if ((int)($t[$col] ?? 0) <= 0) continue; ?>
-            <div class="tk-bonus tk-bonus--plus tk-bonus--extra"><i class="fa-solid <?= $icon ?>"></i>+<?= $e(exam_t($key, exam_num((int)$t[$col]))) ?></div>
+
+        <?php if (trim((string)$t['description']) !== ''): ?>
+          <p class="tq-desc"><?= nl2br($e((string)$t['description'])) ?></p>
+        <?php endif; ?>
+
+        <div class="tq-label"><?= $e($tqL('lbl_requirements', 'Requirements')) ?></div>
+        <ul class="tq-reqs">
+          <?php foreach (exam_checked_indexes($t) as $i): $ik = (int)$i['index']; ?>
+            <li><i class="fa-solid <?= $tqIcons[$ik] ?? 'fa-circle' ?>"></i><span><?= $e(exam_index_name($ik)) ?></span><strong><?= $e(exam_require_text($ik, (int)$i['require_value'])) ?></strong></li>
           <?php endforeach; ?>
-          <div class="tk-bonus tk-bonus--minus"><i class="fa-solid fa-circle-minus"></i>−<?= exam_num((int)$t['fail_deduct_bonus']) ?></div>
+        </ul>
+
+        <div class="tq-label"><?= $e($tqL('lbl_reward', 'Reward')) ?></div>
+        <div class="tq-chips">
+          <?php if ($rewards): foreach ($rewards as [$icon, $text]): ?>
+            <span class="tq-chip tq-chip--plus"><i class="fa-solid <?= $icon ?>"></i>+<?= $e($text) ?></span>
+          <?php endforeach; else: ?>
+            <span class="tq-chip tq-chip--muted"><?= $e($tqL('lbl_no_reward', 'No reward — just for the leaderboard')) ?></span>
+          <?php endif; ?>
+          <?php if ($penalty > 0): ?>
+            <span class="tq-chip tq-chip--minus" title="<?= $e($tqL('tip_penalty', 'Deducted if the task is failed')) ?>"><i class="fa-solid fa-circle-minus"></i>−<?= $e(exam_t('rw_bonus', exam_num($penalty))) ?></span>
+          <?php endif; ?>
+        </div>
+
+        <div class="tq-card__foot">
+          <div class="tq-who">
+            <div class="tq-who__line">
+              <span><i class="fa-solid fa-users"></i><?= $e(ags_fmt($lang->task['lbl_claimed_count'], exam_num($ongoingN), $max ? exam_num($max) : '∞')) ?></span>
+              <?php if ($who): ?><span class="tq-who__groups" title="<?= $e(implode(', ', $who)) ?>"><i class="fa-solid fa-user-check"></i><?= $e(implode(', ', $who)) ?></span><?php endif; ?>
+            </div>
+            <?php if ($max > 0): ?>
+              <div class="tq-fill"><div style="width:<?= $fillPct ?>%"></div></div>
+            <?php endif; ?>
+          </div>
+
+          <div class="tq-actions">
           <?php if ($claimed):
               $abPenalty = exam_task_abandon_penalty($t, (int)$mine[$id]['is_done'] === 1); ?>
-            <button class="tk-btn" disabled><i class="fa-solid fa-check"></i><?= $e($lang->task['btn_claimed']) ?></button>
             <form method="post" action="<?= $BASEURL ?>/task.php" data-tk-abandon="<?= $e((string)$t['name']) ?>"
-                  data-tk-abandon-penalty="<?= $e(exam_num($abPenalty)) ?>" data-tk-abandon-done="<?= (int)$mine[$id]['is_done'] ?>">
+                  data-tk-abandon-penalty="<?= $e(exam_num($abPenalty)) ?>" data-tk-abandon-done="<?= (int)$mine[$id]['is_done'] ?>"
+                  title="<?= $e($abPenalty > 0 ? ags_fmt($lang->task['lbl_abandon_penalty'], exam_num($abPenalty)) : $lang->task['lbl_abandon_free']) ?>">
               <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
               <input type="hidden" name="action" value="abandon">
               <input type="hidden" name="euid" value="<?= (int)$mine[$id]['id'] ?>">
-              <button class="tk-btn tk-btn--abandon"><i class="fa-solid fa-person-walking-arrow-right"></i><?= $e($lang->task['btn_abandon']) ?></button>
+              <button class="btn btn-sm btn-outline-danger st-pill"><i class="fa-solid fa-person-walking-arrow-right me-1"></i><?= $e($lang->task['btn_abandon']) ?></button>
             </form>
-            <small class="tk-abandon-note"><?= $e($abPenalty > 0 ? ags_fmt($lang->task['lbl_abandon_penalty'], exam_num($abPenalty)) : $lang->task['lbl_abandon_free']) ?></small>
           <?php elseif ($full): ?>
-            <button class="tk-btn" disabled><?= $e($lang->task['btn_full']) ?></button>
+            <button class="btn btn-sm btn-outline-secondary st-pill" disabled><i class="fa-solid fa-lock me-1"></i><?= $e($lang->task['btn_full']) ?></button>
           <?php else: ?>
             <form method="post" action="<?= $BASEURL ?>/task.php" data-tk-claim="<?= $e((string)$t['name']) ?>"
-                  data-tk-penalty="<?= (int)$t['fail_deduct_bonus'] ?>">
+                  data-tk-penalty="<?= $penalty ?>">
               <input type="hidden" name="my_post_key" value="<?= $e($postKey) ?>">
               <input type="hidden" name="exam_id" value="<?= $id ?>">
-              <button class="tk-btn tk-btn--primary"><i class="fa-solid fa-hand"></i><?= $e($lang->task['btn_claim']) ?></button>
+              <button class="btn btn-sm btn-primary st-pill"<?= $kpiOngoing > 0 ? ' disabled title="' . $e($tqL('hint_one_at_time', '')) . '"' : '' ?>><i class="fa-solid fa-hand me-1"></i><?= $e($lang->task['btn_claim']) ?></button>
             </form>
           <?php endif; ?>
+          </div>
         </div>
       </article>
     <?php endforeach; ?>
     </div>
 
     <?php $pages = (int)ceil($total / $perPage); if ($pages > 1): ?>
-      <nav class="tk-pages">
+      <nav class="tq-pages mb-3">
         <?php for ($i = 1; $i <= $pages; $i++): ?>
           <a class="<?= $i === $page ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/task.php?page=<?= $i ?>"><?= $i ?></a>
         <?php endfor; ?>
       </nav>
     <?php endif; ?>
   <?php endif; ?>
-</div>
 
 <?php
   $lbRow = static function (array $r, bool $me) use ($lbUser): string {
       $medal = [1 => 'gold', 2 => 'silver', 3 => 'bronze'][$r['rank']] ?? '';
       return '<tr' . ($me ? ' class="is-me"' : '') . '>'
-          . '<td class="tl-rank">' . ($medal !== ''
-                ? '<span class="tl-medal tl-medal--' . $medal . '"><i class="fa-solid fa-trophy"></i>' . $r['rank'] . '</span>'
+          . '<td class="tq-rank">' . ($medal !== ''
+                ? '<span class="tq-medal tq-medal--' . $medal . '"><i class="fa-solid fa-trophy"></i>' . $r['rank'] . '</span>'
                 : $r['rank']) . '</td>'
           . '<td>' . $lbUser($r) . '</td>'
-          . '<td class="tl-num"><strong>' . exam_num($r['n']) . '</strong></td>'
-          . '<td class="tl-num">+' . exam_num($r['bp']) . '</td></tr>';
+          . '<td class="tq-num"><strong>' . exam_num($r['n']) . '</strong></td>'
+          . '<td class="tq-num">+' . exam_num($r['bp']) . '</td></tr>';
   };
   $lbInTop = $lbMine !== null && $lbMine['rank'] <= count($lbTop);
 ?>
-<div class="tl">
-  <div class="tl-card">
-    <div class="tl-head">
-      <h2><i class="fa-solid fa-ranking-star"></i><?= $e($lang->task['sec_leaderboard']) ?></h2>
-      <nav class="tl-tabs">
-        <a class="<?= $lbLast ? '' : 'is-active' ?>" href="<?= $BASEURL ?>/task.php"><?= $e($lang->task['tab_this_month']) ?></a>
-        <a class="<?= $lbLast ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/task.php?lb=last"><?= $e($lang->task['tab_last_month']) ?></a>
+  <!-- Leaderboard -->
+  <section class="st-card tq-lb" id="tq-leaders">
+    <div class="tq-lb__head">
+      <div class="min-w-0">
+        <h2><i class="fa-solid fa-ranking-star"></i><?= $e($lang->task['sec_leaderboard']) ?></h2>
+        <div class="st-meta"><?= $e(ags_fmt($lang->task['lbl_lb_sub'], $lang->task['mon_' . (int)date('n', $lbFrom)], date('Y', $lbFrom))) ?></div>
+      </div>
+      <nav class="tq-pills">
+        <a class="<?= $lbLast ? '' : 'is-active' ?>" href="<?= $BASEURL ?>/task.php#tq-leaders"><?= $e($lang->task['tab_this_month']) ?></a>
+        <a class="<?= $lbLast ? 'is-active' : '' ?>" href="<?= $BASEURL ?>/task.php?lb=last#tq-leaders"><?= $e($lang->task['tab_last_month']) ?></a>
       </nav>
     </div>
-    <p class="tl-sub"><?= $e(ags_fmt($lang->task['lbl_lb_sub'], $lang->task['mon_' . (int)date('n', $lbFrom)], date('Y', $lbFrom))) ?></p>
 
     <?php if (!$lbTop): ?>
-      <div class="tl-empty"><i class="fa-solid fa-flag-checkered"></i><?= $e($lbLast ? $lang->task['msg_lb_empty_last'] : $lang->task['msg_lb_empty_this']) ?></div>
+      <div class="st-empty">
+        <span class="st-ico st-soft-muted"><i class="fa-solid fa-flag-checkered"></i></span>
+        <div><?= $e($lbLast ? $lang->task['msg_lb_empty_last'] : $lang->task['msg_lb_empty_this']) ?></div>
+      </div>
     <?php else: ?>
-      <div class="tl-wrap">
-        <table class="tl-table">
-          <thead><tr><th><?= $e($lang->task['th_rank']) ?></th><th><?= $e($lang->task['th_user']) ?></th><th class="tl-num"><?= $e($lang->task['th_tasks']) ?></th><th class="tl-num"><?= $e($lang->task['th_bonus']) ?></th></tr></thead>
+      <div class="table-responsive">
+        <table class="tq-table">
+          <thead><tr><th><?= $e($lang->task['th_rank']) ?></th><th><?= $e($lang->task['th_user']) ?></th><th class="tq-num"><?= $e($lang->task['th_tasks']) ?></th><th class="tq-num"><?= $e($lang->task['th_bonus']) ?></th></tr></thead>
           <tbody>
             <?php foreach ($lbTop as $r) echo $lbRow($r, $r['uid'] === $uid); ?>
             <?php if ($lbMine !== null && !$lbInTop): ?>
-              <tr class="tl-gap"><td colspan="4">&hellip;</td></tr>
+              <tr class="tq-gap"><td colspan="4">&hellip;</td></tr>
               <?= $lbRow($lbMine, true) ?>
             <?php endif; ?>
           </tbody>
         </table>
       </div>
       <?php if ($lbMine === null && !$lbLast): ?>
-        <p class="tl-sub"><?= $e($lang->task['msg_lb_you_none']) ?></p>
+        <div class="st-meta tq-lb__note"><?= $e($lang->task['msg_lb_you_none']) ?></div>
       <?php endif; ?>
     <?php endif; ?>
-  </div>
+  </section>
 </div>
 
 <script>
 const AGS_LANG = <?= json_encode($agsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
-<script src="<?= $BASEURL ?>/scripts/task.js?ver=23"></script>
+<script src="<?= $BASEURL ?>/scripts/task.js?ver=24"></script>
 <?php
 stdfoot();

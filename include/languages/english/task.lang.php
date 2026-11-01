@@ -66,5 +66,18 @@ $language['task'] = array (
     'js_abandon_done'       => 'All requirements are already met - you will lose the reward.',
     'js_abandon_after'      => 'You can claim another task right after.',
     'js_abandon_btn'        => 'Abandon',
+
+    // ── New page layout ──
+    'kpi_available'        => 'Available tasks',
+    'kpi_done'             => 'Completed this month',
+    'kpi_bonus'            => 'Bonus this month',
+    'kpi_rank'             => 'My place this month',
+    'sec_available'        => 'Available tasks',
+    'hint_one_at_time'     => 'One task at a time: finish or abandon the current one to take another.',
+    'lbl_days'             => '{1} day(s)',
+    'lbl_requirements'     => 'Requirements',
+    'lbl_reward'           => 'Reward',
+    'lbl_no_reward'        => 'No reward — just for the leaderboard',
+    'tip_penalty'          => 'Deducted if the task is failed',
 );
 ?>

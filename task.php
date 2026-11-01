@@ -127,7 +127,7 @@ foreach ($lbAll as $row) {
 $lbUser = static function (array $r) use ($BASEURL, $e): string {
     $name = $e($r['username']);
     if (function_exists('format_name')) {
-        $name = format_name($name, $r['usergroup'], $r['displaygroup']);
+        $name = format_name($name, (int)$r['usergroup']);
     }
     $url = function_exists('get_profile_link') ? (string)get_profile_link($r['uid']) : $BASEURL . '/member.php?action=profile&uid=' . $r['uid'];
     return '<a href="' . $e($url) . '">' . $name . '</a>';

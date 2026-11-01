@@ -1499,52 +1499,13 @@ $page_head = '<header class="st-card st-head fd-head">'
     . $head_actions
     . '</header>';
 
-// ─── Серые KPI-плитки (только для форума, не для категории) ──────────────────
-$kpi_tiles = '';
-if ($foruminfo['type'] !== 'c') {
-    $kpi = static function (string $icon, string $soft, string $val, string $lbl, string $href = '', string $mod = ''): string {
-        $tag   = $href !== '' ? 'a' : 'div';
-        $hattr = $href !== '' ? ' href="' . $href . '"' : '';
-        return '<' . $tag . $hattr . ' class="st-kpi fd-kpi' . ($mod !== '' ? ' ' . $mod : '') . '">'
-             .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
-             .   '<div class="min-w-0">'
-             .     '<div class="st-kpi__val">' . $val . '</div>'
-             .     '<div class="st-kpi__lbl">' . $lbl . '</div>'
-             .   '</div>'
-             .   '<i class="fa-solid ' . $icon . ' fd-kpi__bg" aria-hidden="true"></i>'
-             . '</' . $tag . '>';
-    };
-
-    $kpi_threads = (int)($foruminfo['threads'] ?? 0);
-    $kpi_posts   = (int)($foruminfo['posts'] ?? 0);
-    $kpi_online  = (int)($membercount ?? 0) + (int)($guestcount ?? 0);
-    $kpi_last    = (int)($foruminfo['lastpost'] ?? 0);
-    $last_lbl    = htmlspecialchars_uni(strip_tags($lang->forumdisplay['lbl_last_post']));
-
-    if ($kpi_last > 0 && (int)($foruminfo['lastposttid'] ?? 0) > 0) {
-        $last_who  = trim((string)($foruminfo['lastposter'] ?? ''));
-        $last_tile = $kpi('fa-clock', 'st-soft-warning', my_datee('relative', $kpi_last),
-                          $last_lbl . ($last_who !== '' ? ' · ' . htmlspecialchars_uni($last_who) : ''),
-                          get_thread_link((int)$foruminfo['lastposttid'], 0, 'lastpost'), 'fd-kpi--date');
-    } else {
-        $last_tile = $kpi('fa-clock', 'st-soft-warning', '—', $last_lbl, '', 'fd-kpi--date');
-    }
-
-    $kpi_tiles = '<div class="fd-kpis">'
-        . $kpi('fa-comments',   'st-soft-primary', ts_nf($kpi_threads), htmlspecialchars_uni(fd_l('lbl_kpi_threads', 'Threads')))
-        . $kpi('fa-message',    'st-soft-info',    ts_nf($kpi_posts),   htmlspecialchars_uni(fd_l('lbl_kpi_posts', 'Posts')))
-        . $kpi('fa-user-group', 'st-soft-success', ts_nf($kpi_online),  htmlspecialchars_uni(fd_l('lbl_kpi_online', 'Browsing now')))
-        . $last_tile
-        . '</div>';
-}
-
 // Раньше: stdhead('title') - заголовок вкладки был буквально «title»,
 // а страница собиралась во вложенный <html><head><body> внутри body.
 stdhead(htmlspecialchars_decode($foruminfo['name']));
 build_breadcrumb();
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=5">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/forumdisplay.css?ver=2">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/forumdisplay.css?ver=1">';
 echo $rssdiscovery;
 echo '<script>'
    . 'if (typeof lang === "object" && lang) {'
@@ -1562,7 +1523,6 @@ echo '<script src="' . $BASEURL . '/scripts/whoposted_js.js?ver=1" defer></scrip
 echo '<div class="container-md st-page fd-page">'
    . $rules
    . $page_head
-   . $kpi_tiles
    . $subforums
    . $threadslist
    . $usersbrowsing

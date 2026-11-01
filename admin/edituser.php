@@ -136,16 +136,17 @@ function flash_message(?string $message = null, string $type = 'info'): void
 
     echo '<div class="toast-container position-fixed top-0 end-0 p-3 eu-toasts" aria-live="polite" aria-atomic="true">';
     foreach ($_SESSION['flash'] as $flash) {
-        [$soft, $icon] = match ($flash['type']) {
-            'success'         => ['success', 'fa-circle-check'],
-            'error', 'danger' => ['danger',  'fa-circle-exclamation'],
-            'warning'         => ['warning', 'fa-triangle-exclamation'],
-            default           => ['info',    'fa-circle-info'],
+        // Цвета как раньше: залитая шапка (bg-* text-white / text-dark для warning)
+        [$bg, $icon, $close] = match ($flash['type']) {
+            'success'         => ['bg-success text-white', 'fa-circle-check',         ' btn-close-white'],
+            'error', 'danger' => ['bg-danger text-white',  'fa-circle-exclamation',   ' btn-close-white'],
+            'warning'         => ['bg-warning text-dark',  'fa-triangle-exclamation', ''],
+            default           => ['bg-info text-white',    'fa-circle-info',          ' btn-close-white'],
         };
-        echo '<div class="toast eu-toast eu-toast--' . $soft . '" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">'
-           .   '<div class="toast-header">'
+        echo '<div class="toast eu-toast border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">'
+           .   '<div class="toast-header ' . $bg . '">'
            .     '<i class="fa-solid ' . $icon . ' me-2"></i><strong class="me-auto">' . $toastTitle . '</strong>'
-           .     '<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="' . $toastClose . '"></button>'
+           .     '<button type="button" class="btn-close' . $close . '" data-bs-dismiss="toast" aria-label="' . $toastClose . '"></button>'
            .   '</div>'
            .   '<div class="toast-body">' . htmlspecialchars((string)$flash['message']) . '</div>'
            . '</div>';
@@ -1364,10 +1365,9 @@ function renderQuickBanModal(bool $is_banned): string
       <input type="hidden" name="userid" value="' . $uid . '">
       <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
       <input type="hidden" name="quick_ban" value="1">
-      <div class="modal-header">
-        <span class="st-ico st-soft-danger me-2"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . '"></i></span>
-        <h5 class="modal-title" id="quickBanTitle">' . $title . '</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
+      <div class="modal-header ' . ($is_banned ? 'bg-warning text-dark' : 'bg-danger text-white') . '">
+        <h5 class="modal-title" id="quickBanTitle"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . ' me-2"></i>' . $title . '</h5>
+        <button type="button" class="btn-close' . ($is_banned ? '' : ' btn-close-white') . '" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
       </div>
       <div class="modal-body">
         ' . eu_field($L['ban_duration'], '<select name="ban_duration" class="form-select">' . $options . '</select>', '', 'fa-hourglass-half') . '
@@ -1381,7 +1381,7 @@ function renderQuickBanModal(bool $is_banned): string
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>' . $L['cancel'] . '</button>
-        <button type="submit" class="btn btn-danger st-pill"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . ' me-1"></i>'
+        <button type="submit" class="btn ' . ($is_banned ? 'btn-warning' : 'btn-danger') . ' st-pill"><i class="fa-solid ' . ($is_banned ? 'fa-pen-to-square' : 'fa-ban') . ' me-1"></i>'
           . ($is_banned ? $L['ban_btn_update'] : $L['ban_btn_ban']) . '</button>
       </div>
     </form>
@@ -1416,10 +1416,9 @@ function renderSendPMModal(): string
       <input type="hidden" name="userid" value="' . $uid . '">
       <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
       <input type="hidden" name="send_pm" value="1">
-      <div class="modal-header">
-        <span class="st-ico st-soft-primary me-2"><i class="fa-solid fa-paper-plane"></i></span>
-        <h5 class="modal-title" id="sendPMTitle">' . ags_fmt($L['pm_title'], htmlspecialchars_uni((string)$userdata['username'])) . '</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="sendPMTitle"><i class="fa-solid fa-paper-plane me-2"></i>' . ags_fmt($L['pm_title'], htmlspecialchars_uni((string)$userdata['username'])) . '</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars((string)$L['cancel']) . '"></button>
       </div>
       <div class="modal-body bb-editor">
         ' . eu_field($L['pm_subject'], '<input type="text" name="pm_subject" class="form-control" maxlength="120" required placeholder="' . htmlspecialchars((string)$L['ph_pm_subject']) . '">', '', 'fa-heading', true) . '
@@ -1938,7 +1937,7 @@ function handleEditUser(): void
     stdhead(ags_fmt($L['page_title_edit'], $username, $uid));
 
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
-       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=2">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=3">'
        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
 
     flash_message();
@@ -2527,7 +2526,7 @@ function eu_confirm_page(string $title, string $icon, string $soft, string $ques
 
     stdhead($title);
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
-       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=2">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css?ver=3">'
        . '<div class="container-md st-page eu-page eu-page--narrow">'
        . '<section class="st-card st-head mb-3">'
        .   '<span class="st-head__icon st-soft-' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'

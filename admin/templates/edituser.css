@@ -265,15 +265,10 @@
 /* ── Модальные окна (ЛС, бан) — внутри .eu-page, st-* работают ───────── */
 .eu-page .eu-bbbar { display: flex; flex-wrap: wrap; gap: .25rem; margin-bottom: .5rem; }
 .eu-page .eu-modal .modal-content { border-radius: 1rem; }
-.eu-page .eu-modal .modal-header { background: var(--bs-tertiary-bg); }
 
 /* ── Тосты ─────────────────────────────────────────────────────────────── */
 .eu-toasts { z-index: 1100; }
 .eu-toast .toast-header { border-bottom: 0; }
-.eu-toast--success .toast-header { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
-.eu-toast--danger  .toast-header { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
-.eu-toast--warning .toast-header { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
-.eu-toast--info    .toast-header { background: var(--bs-info-bg-subtle);    color: var(--bs-info-text-emphasis); }
 
 /* ── Пусто ─────────────────────────────────────────────────────────────── */
 .eu-page .eu-empty__title { font-weight: 600; color: var(--bs-emphasis-color); margin-bottom: .2rem; }

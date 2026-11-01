@@ -990,10 +990,9 @@ function handleGetTorrentsByIds(): void
 
 /**
  * Handle select_all_filtered action - возвращает ID ВСЕХ торрентов,
- * подходящих под текущие фильтры browse.php (категория, поиск, размер,
- * include_dead_torrents), не только видимых на текущей странице.
- * Логика построения WHERE намеренно продублирована из browse.php 1:1 -
- * это должно давать точно те же результаты, что видны на экране.
+ * подходящих под текущие фильтры browse.php, не только видимых на текущей
+ * странице. WHERE строится общей функцией browse_build_where()
+ * (include/functions_browse.php) - те же результаты, что видны на экране.
  * Доступно только модераторам - массовый выбор по всем страницам имеет
  * смысл именно для модерации.
  */
@@ -1009,115 +1008,15 @@ function handleSelectAllFiltered(): void
         exit;
     }
 
-    $category = (int)($_GET['category'] ?? 0);
-    $keywords = $_GET['keywords'] ?? '';
-    $search_type = trim($_GET['search_type'] ?? '');
-    $special_search = trim($_GET['special_search'] ?? '');
-    $include_dead_torrents = trim($_GET['include_dead_torrents'] ?? '');
-    $size_min = $_GET['size_min'] ?? '';
-    $size_max = $_GET['size_max'] ?? '';
-
-    $WHERE = " WHERE" . ($include_dead_torrents === 'yes' ? '' : " t.visible = 'yes' AND") . " t.banned = 'no'";
-    $innerjoin = '';
-    $params = [];
-
-    if ($special_search === 'myreseeds') {
-        $WHERE .= ' AND t.seeders = 0 AND t.leechers > 0 AND t.owner = ?';
-        $params[] = $CURUSER['id'];
-    } elseif ($special_search === 'mybookmarks') {
-        $innerjoin = ' INNER JOIN bookmarks b ON (b.torrentid = t.id)';
-        $WHERE .= ' AND b.userid = ?';
-        $params[] = $CURUSER['id'];
-    } elseif ($special_search === 'mytorrents') {
-        $WHERE .= ' AND t.owner = ?';
-        $params[] = $CURUSER['id'];
-    } elseif ($special_search === 'weaktorrents') {
-        $WHERE .= " AND t.visible = 'no' OR (t.leechers > 0 AND t.seeders = 0) OR (t.leechers = 0 AND t.seeders = 0)";
-    }
-
-    $extraquery = [];
-    $extra_params = [];
-
-    if ($keywords && $search_type) {
-        $OrjKeywords = $keywords;
-
-        if ($keywords) {
-            switch ($search_type) {
-                case 't_name':
-                    $extraquery[] = "(t.name LIKE ?)";
-                    $extra_params[] = "%" . $keywords . "%";
-                    break;
-                case 't_description':
-                    $extraquery[] = "(t.descr LIKE ?)";
-                    $extra_params[] = "%" . $keywords . "%";
-                    break;
-                case 't_tags':
-                    $extraquery[] = "(t.tags LIKE ?)";
-                    $extra_params[] = "%" . $keywords . "%";
-                    break;
-                case 't_both':
-                    $extraquery[] = "(t.name LIKE ? OR t.descr LIKE ?)";
-                    $extra_params[] = "%" . $keywords . "%";
-                    $extra_params[] = "%" . $keywords . "%";
-                    break;
-                case 't_uploader':
-                    $user_query = $db->sql_query_prepared(
-                        "SELECT id FROM users WHERE UPPER(username) = ? LIMIT 1",
-                        [strtoupper($OrjKeywords)]
-                    );
-                    if ($db->num_rows($user_query) > 0) {
-                        $user = $db->fetch_array($user_query);
-                        $extraquery[] = "t.owner = ?";
-                        $extra_params[] = $user['id'];
-                        if (!$is_mod) {
-                            $extraquery[] = "t.anonymous != 'yes'";
-                        }
-                    } else {
-                        $extraquery[] = "t.owner = ?";
-                        $extra_params[] = $OrjKeywords;
-                    }
-                    break;
-                case 't_genre':
-                    $extraquery[] = "(t.t_link LIKE ?)";
-                    $extra_params[] = "%" . $keywords . "%";
-                    break;
-            }
-        }
-    }
-
-    if ($category) {
-        $cat_query = $db->sql_query_prepared(
-            "SELECT id FROM categories WHERE type='s' AND pid = ?",
-            [$category]
-        );
-        if ($db->num_rows($cat_query) > 0) {
-            $squerycats = [];
-            while ($squery = $db->fetch_array($cat_query)) {
-                $squerycats[] = (int)$squery['id'];
-            }
-            $extraquery[] = 't.category IN (' . $category . ', ' . implode(', ', $squerycats) . ')';
-        } else {
-            $extraquery[] = "t.category = ?";
-            $extra_params[] = $category;
-        }
-    }
-
-    $size_min_val = ($size_min !== '') ? (int)$size_min : null;
-    $size_max_val = ($size_max !== '') ? (int)$size_max : null;
-
-    if ($size_min_val !== null && $size_min_val > 0) {
-        $extraquery[] = 't.size >= ?';
-        $extra_params[] = $size_min_val;
-    }
-    if ($size_max_val !== null && $size_max_val > 0) {
-        $extraquery[] = 't.size <= ?';
-        $extra_params[] = $size_max_val;
-    }
-
-    if (count($extraquery) > 0) {
-        $WHERE .= ' AND ' . implode(' AND ', $extraquery);
-        $params = array_merge($params, $extra_params);
-    }
+    // Тот же разбор фильтров и тот же WHERE, что в browse.php (include/functions_browse.php).
+    // Раньше логика была скопирована вручную и отстала: не учитывались «без сидов»,
+    // фрилич, даты, IMDb, «скрыть скачанные» и т.д. - «выбрать всё по фильтру»
+    // захватывало раздачи, которых в списке не было.
+    require_once INC_PATH . '/functions_browse.php';
+    $flt       = browse_build_where(browse_filter_input($_GET), (int)$CURUSER['id'], true);
+    $innerjoin = $flt['join'];
+    $WHERE     = $flt['where'];
+    $params    = $flt['params'];
 
     // Safety cap - защита от случайного выбора вообще всего трекера разом
     $MAX_SELECT = 2000;

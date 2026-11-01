@@ -322,7 +322,7 @@ function showRestoreNotification(count) {
         if (allItems.length === 0) return '';
 
         const items = allItems.slice(0, maxShown).map(item => {
-            return '<li>' + item.title.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</li>';
+            return '<li>' + esc(item.title) + '</li>';
         }).join('');
 
         const more = allItems.length > maxShown
@@ -874,11 +874,11 @@ function updateProgress() {
         const badge = document.getElementById('totalSelectedBadge');
         if (badge) {
             if (count > 0) {
-                badge.className = 'badge bg-success rounded-pill px-3 py-2';
-                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', count));
+                badge.className = 'st-badge st-soft-success';
+                setIconText(badge, '<i class="fa-solid fa-circle-check"></i> ', t('selected_count', '{1} selected', count));
             } else {
-                badge.className = 'badge bg-primary rounded-pill px-3 py-2';
-                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', 0));
+                badge.className = 'st-badge st-soft-primary';
+                setIconText(badge, '<i class="fa-solid fa-circle-check"></i> ', t('selected_count', '{1} selected', 0));
             }
         }
 
@@ -942,6 +942,28 @@ function updateProgress() {
         const modal = document.getElementById(settings.confirmModalId);
         const msgEl = document.getElementById(settings.confirmMessageId);
         const acceptBtn = document.getElementById(settings.confirmAcceptBtnId);
+
+        // Основной путь - SweetAlert2. Окно рисуется внутри открытого модального
+        // окна модерации (target), иначе focus trap Bootstrap забирает фокус.
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            const listHtml = buildSelectedListHtml(10);
+            const modModal = document.getElementById(settings.modalId);
+            const cancelBtn = document.getElementById('modConfirmCancelBtn');
+            const btnText = (el, fallback) => ((el && el.textContent) || '').trim() || fallback;
+            return window.Swal.fire({
+                target: (modModal && modModal.classList.contains('show')) ? modModal : 'body',
+                icon: 'warning',
+                title: t('warning', '⚠️ WARNING!'),
+                html: '<p class="mb-0">' + esc(message) + '</p>' +
+                      (listHtml ? '<div class="mod-selected-list">' + listHtml + '</div>' : ''),
+                showCancelButton: true,
+                focusCancel: true,
+                reverseButtons: true,
+                confirmButtonText: btnText(acceptBtn, 'Confirm'),
+                cancelButtonText: btnText(cancelBtn, 'Cancel'),
+                confirmButtonColor: getComputedStyle(document.documentElement).getPropertyValue('--bs-danger').trim() || '#dc3545'
+            }).then(res => !!(res && res.isConfirmed));
+        }
 
         if (!modal || !msgEl || !acceptBtn || typeof bootstrap === 'undefined') {
             return Promise.resolve(window.confirm(t('warning', '⚠️ WARNING!') + '\n\n' + message));

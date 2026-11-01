@@ -1308,3 +1308,95 @@
 [data-bs-theme="dark"] .block-titled a {
     color: #6ea8ff !important;
 }
+/* ── Подходящие открытые запросы (rm-) ───────────────────────────── */
+.rm-panel {
+    border: 1px solid var(--bs-success-border-subtle);
+    border-radius: 14px;
+    background: var(--bs-success-bg-subtle);
+    padding: 1rem 1.25rem;
+}
+.rm-panel__head {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    margin-bottom: .85rem;
+}
+.rm-panel__icon {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 1.15rem;
+    color: var(--bs-success);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-success-border-subtle);
+}
+.rm-panel__title {
+    font-weight: 700;
+    color: var(--bs-success-text-emphasis);
+}
+.rm-panel__hint {
+    font-size: .85rem;
+    color: var(--bs-secondary-color);
+}
+.rm-panel__list {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+.rm-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .65rem .85rem;
+    border-radius: 10px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.rm-item__main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.rm-item__title {
+    display: block;
+    font-weight: 600;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.rm-item__title:hover { text-decoration: underline; }
+.rm-item__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem .9rem;
+    margin-top: .25rem;
+    font-size: .82rem;
+    color: var(--bs-secondary-color);
+}
+.rm-item__meta i { margin-right: .3rem; opacity: .8; }
+.rm-bounty { color: var(--bs-warning-text-emphasis); font-weight: 600; }
+.rm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .1rem .55rem;
+    border-radius: 50rem;
+    font-weight: 600;
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-primary-bg-subtle);
+}
+.rm-badge--imdb {
+    color: #000;
+    background: #f5c518;
+}
+.rm-badge--imdb i { opacity: 1; }
+.rm-item__form { flex: 0 0 auto; margin: 0; }
+
+@media (max-width: 575.98px) {
+    .rm-item { flex-direction: column; align-items: stretch; }
+    .rm-item__title { white-space: normal; }
+    .rm-item__form .btn { width: 100%; }
+}

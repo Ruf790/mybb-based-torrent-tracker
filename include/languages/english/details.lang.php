@@ -535,5 +535,14 @@ $language['details'] = array
 	
 	
 	
+	// ── Matching requests ──
+	'sec_req_match'				=> 'This torrent may fill open requests',
+	'hint_req_match'			=> 'Only you and staff see this. Filling a request closes it and gives you its bounty.',
+	'btn_req_fill'				=> 'Fill',
+	'lbl_req_match_imdb'		=> 'IMDb match',
+	'lbl_req_match_title'		=> 'Title match {1}%',
+	'lbl_req_votes'				=> 'Votes: {1}',
+	'lbl_req_bounty'			=> '{1} BP',
+	'conf_req_fill'				=> 'Fill this request with the current torrent?',
 );
 ?>

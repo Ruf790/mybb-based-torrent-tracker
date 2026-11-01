@@ -21,7 +21,19 @@ $language['exam_functions'] = array(
     'idx_seed_bonus'        => 'Bonus gained',
     'idx_seed_points'       => 'Seed points',
     'idx_upload_count'      => 'Torrents uploaded',
+    'idx_seeding_count'     => 'Torrents seeding',
+    'idx_ratio'             => 'Share ratio',
+    'idx_requests_filled'   => 'Requests filled',
+    'idx_claims_taken'      => 'Torrents claimed',
+    'idx_comments'          => 'Torrent comments',
+    'idx_forum_posts'       => 'Forum posts',
     'unit_hours'            => 'h',
+
+    // ── Rewards (list in PMs, task.php, exam card) ──
+    'rw_bonus'              => '{1} bonus points',
+    'rw_upload'             => '{1} GB of upload',
+    'rw_vip'                => '{1} days of VIP',
+    'rw_invites'            => '{1} invite(s)',
 
     // ── Progress box (exam_render_current) ──
     'unit_d'        => 'd',
@@ -57,11 +69,11 @@ $language['exam_functions'] = array(
 
     // ── PM: results ──
     'pm_task_done_subj'          => 'Task completed: {1}',
-    'pm_task_done_msg'           => 'Congratulations! You completed the task [b]{1}[/b] in time ({2}) and received [b]{3}[/b] bonus points.',
+    'pm_task_done_msg'           => 'Congratulations! You completed the task [b]{1}[/b] in time ({2}) and received: [b]{3}[/b].',
     'pm_task_done_msg_noreward'  => 'Congratulations! You completed the task [b]{1}[/b] in time ({2}).',
     'pm_exam_passed_subj'        => 'Exam passed: {1}',
     'pm_exam_passed_msg'         => 'Congratulations! You passed the exam [b]{1}[/b] in time ({2}).',
-    'pm_exam_passed_msg_bonus'   => 'Congratulations! You passed the exam [b]{1}[/b] in time ({2}). You received [b]{3}[/b] bonus points.',
+    'pm_exam_passed_msg_bonus'   => 'Congratulations! You passed the exam [b]{1}[/b] in time ({2}). You received: [b]{3}[/b].',
     'pm_task_failed_subj'        => 'Task not completed: {1}',
     'pm_task_failed_msg'         => 'You did not complete the task [b]{1}[/b] in time ({2}). [b]{3}[/b] bonus points have been deducted.',
     'pm_task_failed_msg_free'    => 'You did not complete the task [b]{1}[/b] in time ({2}). No bonus points were deducted.',

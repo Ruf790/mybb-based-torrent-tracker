@@ -72,16 +72,18 @@
       var ongoing = parseInt(form.dataset.exOngoing, 10) || 0;
       var orig = JSON.parse(form.dataset.exOrigIdx || '{}');
       var meta = JSON.parse(form.dataset.exIdxMeta || '{}');
+      // meta[k] = [name, unit, scale]: ratio is stored ×100 (1.5 -> 150)
+      var scaleOf = function (k) { return (meta[k] && meta[k][2]) || 1; };
       var fmtN = function (k, v) {
-        var u = (meta[k] && meta[k][1]) || '';
-        return Number(v).toLocaleString('en-US') + (u ? ' ' + u : '');
+        var u = (meta[k] && meta[k][1]) || '', sc = scaleOf(k);
+        return Number(v / sc).toLocaleString('en-US', { maximumFractionDigits: sc > 1 ? 2 : 0 }) + (u ? ' ' + u : '');
       };
       var current = function () {
         var m = {};
         Object.keys(meta).forEach(function (k) {
           var cb = form.querySelector('input[name="idx_checked[' + k + ']"]');
           var val = form.querySelector('input[name="idx_value[' + k + ']"]');
-          if (cb && cb.checked) m[k] = parseInt(val && val.value, 10) || 0;
+          if (cb && cb.checked) m[k] = Math.round((parseFloat(String(val && val.value).replace(',', '.')) || 0) * scaleOf(k));
         });
         return m;
       };

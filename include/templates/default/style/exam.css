@@ -59,6 +59,7 @@
 .tk-bonus { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1.05rem; }
 .tk-bonus--plus  { color: var(--bs-success); }
 .tk-bonus--minus { color: var(--bs-danger); font-size: .92rem; font-weight: 500; }
+.tk-bonus--extra { font-size: .92rem; }
 
 .tk-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .45rem; width: 100%;

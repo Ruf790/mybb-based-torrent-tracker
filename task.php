@@ -206,8 +206,8 @@ stdhead($lang->task['pg_title']);
             <p class="tk-desc"><?= nl2br($e((string)$t['description'])) ?></p>
           <?php endif; ?>
           <ul class="tk-reqs">
-            <?php foreach (exam_checked_indexes($t) as $i): $m = EXAM_INDEXES[(int)$i['index']]; ?>
-              <li><?= $e($m['name']) ?>: <strong><?= exam_num((int)$i['require_value']) ?> <?= $e($m['unit']) ?></strong></li>
+            <?php foreach (exam_checked_indexes($t) as $i): $ik = (int)$i['index']; ?>
+              <li><?= $e(exam_index_name($ik)) ?>: <strong><?= $e(exam_require_text($ik, (int)$i['require_value'])) ?></strong></li>
             <?php endforeach; ?>
           </ul>
           <div class="tk-meta">
@@ -218,6 +218,15 @@ stdhead($lang->task['pg_title']);
         </div>
         <div class="tk-card__side">
           <div class="tk-bonus tk-bonus--plus"><i class="fa-solid fa-gift"></i>+<?= exam_num((int)$t['success_reward_bonus']) ?></div>
+          <?php // Our addition: rewards besides bonus
+          foreach ([
+              ['reward_upload_gb', 'fa-cloud-arrow-up', 'rw_upload'],
+              ['reward_vip_days',  'fa-crown',          'rw_vip'],
+              ['reward_invites',   'fa-envelope-open-text', 'rw_invites'],
+          ] as [$col, $icon, $key]):
+              if ((int)($t[$col] ?? 0) <= 0) continue; ?>
+            <div class="tk-bonus tk-bonus--plus tk-bonus--extra"><i class="fa-solid <?= $icon ?>"></i>+<?= $e(exam_t($key, exam_num((int)$t[$col]))) ?></div>
+          <?php endforeach; ?>
           <div class="tk-bonus tk-bonus--minus"><i class="fa-solid fa-circle-minus"></i>−<?= exam_num((int)$t['fail_deduct_bonus']) ?></div>
           <?php if ($claimed):
               $abPenalty = exam_task_abandon_penalty($t, (int)$mine[$id]['is_done'] === 1); ?>

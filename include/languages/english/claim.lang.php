@@ -54,6 +54,19 @@ $language['claim'] = array
 	'cancel' => 'Cancel',
 	
 	
+	// ── Tabs / Needs a keeper ──
+	'tabs_aria' => 'Claims sections',
+	'tab_mine' => 'My claims',
+	'tab_keeper' => 'Needs a keeper',
+	'keeper_desc' => 'Torrents you downloaded that have {1} seeder(s) or fewer and are at least {2} days old. Claim one to keep it alive and earn bonus for seeding.',
+	'keeper_empty' => 'Nothing to rescue right now: every torrent you downloaded is seeded well enough.',
+	'th_seeders' => 'Seeders',
+	'th_claimers' => 'Claimers',
+	'th_added' => 'Uploaded',
+	'leechers_count' => '{1} leecher(s)',
+	'btn_claim' => 'Claim',
+	'confirm_claim' => 'Claim this torrent? Norm: {1} hours of seeding per month, otherwise the claim is removed and {2} bonus points are deducted.',
+
 // ── PM: monthly settlement (functions_claim.php, sent by cron) ──
 'pm_settle_subject' => "📊 Claim results for {1}",
 'pm_settle_total'   => "Your claimed torrents for [b]{1}[/b]: [b]{2}[/b].",

@@ -662,6 +662,41 @@ match(true) {
         admin_redirect(AGS_SELF . "#announce-settings");
     })(),
 
+    isset($_POST['save_claims']) => (function(): void {
+        global $lang;
+        // include/functions_claim.php reads these through claim_cfg() / claim_enabled()
+        $bounds = [
+            'claim_min_age_days'       => [0, 3650],
+            'claim_max_per_user'       => [1, 100000],
+            'claim_max_per_torrent'    => [1, 1000],
+            'claim_seed_hours'         => [1, 744],
+            'claim_upload_times'       => [0, 100],
+            'claim_remove_deduct'      => [0, 1000000],
+            'claim_give_up_deduct'     => [0, 1000000],
+            'claim_warn_days'          => [0, 27],
+            'claim_keeper_max_seeders' => [0, 100],
+        ];
+        $keys = array_merge(['claim_enabled', 'claim_bonus_per_hour'], array_keys($bounds));
+        $raw  = $_POST['configoption'] ?? [];
+
+        if (array_key_exists('claim_enabled', $raw)) {
+            $raw['claim_enabled'] = $raw['claim_enabled'] === 'yes' ? 'yes' : 'no';
+        }
+        foreach ($bounds as $k => [$min, $max]) {
+            if (array_key_exists($k, $raw)) {
+                $raw[$k] = (string)max($min, min($max, (int)$raw[$k]));
+            }
+        }
+        if (array_key_exists('claim_bonus_per_hour', $raw)) {
+            $v = max(0.0, min(1000.0, (float)str_replace(',', '.', (string)$raw['claim_bonus_per_hour'])));
+            $raw['claim_bonus_per_hour'] = rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.') ?: '0';
+        }
+
+        save_and_log(array_intersect_key($raw, array_flip($keys)), get_settings_values($keys));
+        flash_message($lang->managesettings['flash_claims_saved'], "success");
+        admin_redirect(AGS_SELF . "#claim-settings");
+    })(),
+
     isset($_POST['save_freeleech']) => (function(): void {
         global $lang;
         global $CURUSER, $__FLSTYPE, $__F_START, $__F_END;
@@ -853,6 +888,18 @@ $leechwarn_gig_limit    = $settings['leechwarn_gig_limit']    ?? '10';
 $leechwarn_length       = $settings['leechwarn_length']       ?? '2';
 $leechwarn_remove_ratio = $settings['leechwarn_remove_ratio'] ?? '0.5';
 $ban_user_limit         = $settings['ban_user_limit']         ?? '5';
+// CLAIMS (defaults = CLAIM_DEFAULTS in include/functions_claim.php)
+$claim_enabled            = $settings['claim_enabled']            ?? 'yes';
+$claim_min_age_days       = $settings['claim_min_age_days']       ?? '30';
+$claim_max_per_user       = $settings['claim_max_per_user']       ?? '1000';
+$claim_max_per_torrent    = $settings['claim_max_per_torrent']    ?? '10';
+$claim_seed_hours         = $settings['claim_seed_hours']         ?? '300';
+$claim_upload_times       = $settings['claim_upload_times']       ?? '2';
+$claim_bonus_per_hour     = $settings['claim_bonus_per_hour']     ?? '0.5';
+$claim_remove_deduct      = $settings['claim_remove_deduct']      ?? '600';
+$claim_give_up_deduct     = $settings['claim_give_up_deduct']     ?? '400';
+$claim_warn_days          = $settings['claim_warn_days']          ?? '5';
+$claim_keeper_max_seeders = $settings['claim_keeper_max_seeders'] ?? '2';
 // HIT & RUN (defaults = the values that used to be hard-coded in weekly_cleanups.php)
 $hr_enabled             = $settings['hr_enabled']             ?? 'yes';
 $hr_min_seed_hours      = $settings['hr_min_seed_hours']      ?? '24';
@@ -1052,6 +1099,7 @@ stdhead();
                     <?php nav_item('#tracker-settings', 'fa-server', 't-purple', $lang->managesettings['nav_tracker']); ?>
                     <?php nav_item('#announce-settings', 'fa-tower-broadcast', 't-cyan', $lang->managesettings['nav_announce'], '<span class="ag-count">' . $lang->managesettings['nav_badge_core'] . '</span>'); ?>
                     <?php nav_item('#freeleech-settings', 'fa-gift', 't-red', $lang->managesettings['nav_freeleech']); ?>
+                    <?php nav_item('#claim-settings', 'fa-hand-holding-heart', 't-green', $lang->managesettings['nav_claims']); ?>
                     <?php nav_item('index.php?act=torrents_promo', 'fa-shuffle', 't-cyan', $lang->managesettings['nav_promo'], '', false); ?>
                 </ul>
             </div>
@@ -1766,6 +1814,47 @@ stdhead();
                             </div>
                         </div>
                         <?php savebar($lang->managesettings['save_promotion']); ?>
+                    </form>
+                </div>
+
+                <!-- ── CLAIMS ───────────────────────────────────────────────────── -->
+                <div class="tab-pane fade t-green" id="claim-settings">
+                    <form method="post" class="settings-form ag-pane">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="save_claims" value="1">
+                        <?php pane_head('fa-hand-holding-heart', $lang->managesettings['pane_claims_title'], $lang->managesettings['pane_claims_sub'], $lang->managesettings['pane_claims_tag'], 'fa-seedling'); ?>
+                        <div class="ag-pane-body">
+                            <div class="ag-grid ag-grid-2">
+                                <?php fswitch('claim_enabled', $claim_enabled === 'yes', $lang->managesettings['lbl_claim_enabled'], '', 'fa-power-off'); ?>
+                            </div>
+
+                            <?php fsec('fa-list-check', $lang->managesettings['sec_claim_limits'], $lang->managesettings['sec_claim_limits_hint']); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('claim_min_age_days', (string)$claim_min_age_days, $lang->managesettings['lbl_claim_min_age_days'], '', 'number', 'fa-calendar-days'); ?>
+                                <?php ftxt('claim_max_per_user', (string)$claim_max_per_user, $lang->managesettings['lbl_claim_max_per_user'], '', 'number', 'fa-user'); ?>
+                                <?php ftxt('claim_max_per_torrent', (string)$claim_max_per_torrent, $lang->managesettings['lbl_claim_max_per_torrent'], '', 'number', 'fa-users'); ?>
+                            </div>
+
+                            <?php fsec('fa-seedling', $lang->managesettings['sec_claim_norm'], $lang->managesettings['sec_claim_norm_hint']); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('claim_seed_hours', (string)$claim_seed_hours, $lang->managesettings['lbl_claim_seed_hours'], '', 'number', 'fa-clock'); ?>
+                                <?php ftxt('claim_upload_times', (string)$claim_upload_times, $lang->managesettings['lbl_claim_upload_times'], '', 'number', 'fa-cloud-arrow-up'); ?>
+                            </div>
+
+                            <?php fsec('fa-coins', $lang->managesettings['sec_claim_bonus'], $lang->managesettings['sec_claim_bonus_hint']); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('claim_bonus_per_hour', (string)$claim_bonus_per_hour, $lang->managesettings['lbl_claim_bonus_per_hour'], '', 'text', 'fa-coins'); ?>
+                                <?php ftxt('claim_remove_deduct', (string)$claim_remove_deduct, $lang->managesettings['lbl_claim_remove_deduct'], '', 'number', 'fa-circle-minus'); ?>
+                                <?php ftxt('claim_give_up_deduct', (string)$claim_give_up_deduct, $lang->managesettings['lbl_claim_give_up_deduct'], '', 'number', 'fa-hand'); ?>
+                            </div>
+
+                            <?php fsec('fa-bell', $lang->managesettings['sec_claim_extra'], $lang->managesettings['sec_claim_extra_hint']); ?>
+                            <div class="ag-grid">
+                                <?php ftxt('claim_warn_days', (string)$claim_warn_days, $lang->managesettings['lbl_claim_warn_days'], '', 'number', 'fa-bell'); ?>
+                                <?php ftxt('claim_keeper_max_seeders', (string)$claim_keeper_max_seeders, $lang->managesettings['lbl_claim_keeper_max_seeders'], '', 'number', 'fa-life-ring'); ?>
+                            </div>
+                        </div>
+                        <?php savebar(); ?>
                     </form>
                 </div>
 

@@ -2541,6 +2541,7 @@ CREATE TABLE IF NOT EXISTS `claims` (
   `seed_time_begin` bigint unsigned NOT NULL DEFAULT '0',
   `uploaded_begin` bigint unsigned NOT NULL DEFAULT '0',
   `last_settle_at` int unsigned DEFAULT NULL,
+  `warned_at` int unsigned DEFAULT NULL,
   `added` int unsigned NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `claims_uid_torrent` (`uid`,`torrent_id`),

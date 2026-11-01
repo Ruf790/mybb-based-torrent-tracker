@@ -1131,7 +1131,7 @@ $magnetButton = ($TorrentObj !== null && !$TorrentObj->isPrivate())
 require_once INC_PATH . '/functions_claim.php';
 $claimBox = '';
 $ags_json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
-if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
+if (claim_enabled() && claim_torrent_old_enough($Torrent)) {
     $myClaim     = claim_get((int)$CURUSER['id'], (int)$id);
     $claimCount  = claim_count_torrent((int)$id);
     $claimersUrl = $BASEURL . '/claim.php?torrent_id=' . (int)$id;
@@ -1145,16 +1145,16 @@ if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
     };
 
     if ($myClaim) {
-        $text = ags_fmt($lang->details['claim_mine'], date('d.m.Y', (int)$myClaim['added']), CLAIM_SEED_HOURS, CLAIM_UPLOAD_TIMES);
+        $text = ags_fmt($lang->details['claim_mine'], date('d.m.Y', (int)$myClaim['added']), claim_cfg('seed_hours'), claim_cfg('upload_times'));
         $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-list-check me-1"></i>' . htmlspecialchars($lang->details['claim_btn_my']) . '</a>'
               . $claimForm('remove', 'btn-outline-danger', 'bi-x-lg', $lang->details['claim_btn_give_up'],
-                    ags_fmt($lang->details['claim_confirm_give_up'], number_format(CLAIM_GIVE_UP_DEDUCT)));
+                    ags_fmt($lang->details['claim_confirm_give_up'], number_format(claim_cfg('give_up_deduct'))));
     } else {
         try {
             claim_check_can((int)$CURUSER['id'], (int)$id);
-            $text = ags_fmt($lang->details['claim_offer'], CLAIM_SEED_HOURS);
+            $text = ags_fmt($lang->details['claim_offer'], claim_cfg('seed_hours'));
             $btn  = $claimForm('add', 'btn-success', 'bi-hand-thumbs-up', $lang->details['claim_btn_claim'],
-                    ags_fmt($lang->details['claim_confirm_add'], CLAIM_SEED_HOURS, number_format(CLAIM_REMOVE_DEDUCT)));
+                    ags_fmt($lang->details['claim_confirm_add'], claim_cfg('seed_hours'), number_format(claim_cfg('remove_deduct'))));
         } catch (ClaimException $ex) {
             $text = '<span class="text-muted">' . htmlspecialchars($ex->getMessage(), ENT_QUOTES) . '</span>';
             $btn  = '';
@@ -1165,7 +1165,7 @@ if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
             <div class="claim-box mt-4">
                 <i class="bi bi-heart-pulse fs-4 text-success"></i>
                 <div class="claim-box__text">' . $text . '
-                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">' . htmlspecialchars(ags_fmt($lang->details['claim_by'], (int)$claimCount, CLAIM_MAX_PER_TORRENT)) . '</a></div>
+                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">' . htmlspecialchars(ags_fmt($lang->details['claim_by'], (int)$claimCount, claim_cfg('max_per_torrent'))) . '</a></div>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">' . $btn . '</div>
             </div>

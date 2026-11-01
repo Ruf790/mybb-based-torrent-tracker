@@ -15,7 +15,11 @@ if (!function_exists('claim_settle_cron')) {
     require_once (defined('INC_PATH') ? INC_PATH : dirname(__DIR__)) . '/functions_claim.php';
 }
 
-if (CLAIM_ENABLED) {
+if (claim_enabled()) {
     claim_settle_cron();
+    // Early warning: once a day (the cron is hourly), in the last claim_warn_days of the month
+    if ((int)date('G') === 12) {
+        claim_warn_cron();
+    }
 	++$CQueryCount;
 }

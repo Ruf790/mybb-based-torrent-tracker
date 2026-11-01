@@ -72,6 +72,7 @@ function notify_types(): array
         'reaction'        => ['icon' => 'fa-face-smile',   'color' => 'warning', 'group' => true],
         'claim'           => ['icon' => 'fa-hand-holding-heart', 'color' => 'success', 'group' => true],
         'claim_settled'   => ['icon' => 'fa-calendar-check', 'color' => 'info',  'group' => false],
+        'claim_warning'   => ['icon' => 'fa-triangle-exclamation', 'color' => 'warning', 'group' => false],
         'request_filled'  => ['icon' => 'fa-circle-check', 'color' => 'success', 'group' => false],
         'request_vote_filled' => ['icon' => 'fa-check-to-slot', 'color' => 'success', 'group' => false],
         'request_comment' => ['icon' => 'fa-comment-dots', 'color' => 'primary', 'group' => true],

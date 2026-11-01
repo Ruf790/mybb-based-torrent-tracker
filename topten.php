@@ -111,16 +111,16 @@ function tt_l(string $key, string $fallback = ''): string
 function tt_rank(int $n): string
 {
     return match ($n) {
-        1       => '<span class="st-rank st-rank--gold"><i class="fa-solid fa-trophy"></i></span>',
-        2       => '<span class="st-rank st-rank--silver"><i class="fa-solid fa-trophy"></i></span>',
-        3       => '<span class="st-rank st-rank--bronze"><i class="fa-solid fa-trophy"></i></span>',
-        default => '<span class="st-rank">' . $n . '</span>',
+        1       => '<span class="tt-rank tt-rank--gold"><i class="fa-solid fa-trophy"></i></span>',
+        2       => '<span class="tt-rank tt-rank--silver"><i class="fa-solid fa-trophy"></i></span>',
+        3       => '<span class="tt-rank tt-rank--bronze"><i class="fa-solid fa-trophy"></i></span>',
+        default => '<span class="tt-rank">' . $n . '</span>',
     };
 }
 
 function tt_row(int $n): string
 {
-    return $n <= 3 ? '<tr class="st-medal--' . $n . '">' : '<tr>';
+    return $n <= 3 ? '<tr class="tt-row--' . $n . '">' : '<tr>';
 }
 
 function tt_th(string $label, string $icon = '', string $class = '', string $width = ''): string
@@ -140,7 +140,7 @@ function tt_more(int $type, string $sub, array $lims): string
     $html = '';
     foreach ($lims as $l) {
         $href  = 'topten.php?type=' . $type . '&amp;lim=' . (int)$l . ($sub !== '' ? '&amp;subtype=' . $sub : '');
-        $html .= '<a class="st-chip" href="' . $href . '"><i class="fa-solid fa-list-ol"></i>' . $lang->topten['lnk_top' . (int)$l] . '</a>';
+        $html .= '<a class="tt-chip" href="' . $href . '"><i class="fa-solid fa-list-ol"></i>' . $lang->topten['lnk_top' . (int)$l] . '</a>';
     }
     return $html;
 }
@@ -149,7 +149,7 @@ function tt_card_open(string $icon, string $tone, string $title, string $more, s
 {
     global $lang;
     echo '
-    <section class="st-card st-tblcard mb-3">
+    <section class="st-card tt-section mb-3">
         <div class="st-card__head">
             <span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>
             <span class="min-w-0">' . $title . '</span>
@@ -159,7 +159,7 @@ function tt_card_open(string $icon, string $tone, string $title, string $more, s
             </div>
         </div>
         <div class="table-responsive">
-            <table class="table st-table">
+            <table class="table tt-table">
                 <thead><tr>' . $thead . '</tr></thead>
                 <tbody>';
 }
@@ -181,7 +181,7 @@ function tt_card_close(int $rows, int $cols): void
 function tt_bar(float $value, float $max, string $tone): string
 {
     $pct = $max > 0 ? max(2, min(100, (int)round($value / $max * 100))) : 0;
-    return '<div class="progress st-progress"><div class="progress-bar st-bg-' . $tone . '" style="width:' . $pct . '%"></div></div>';
+    return '<div class="progress tt-progress"><div class="progress-bar tt-bg-' . $tone . '" style="width:' . $pct . '%"></div></div>';
 }
 
 /** Пользователь: аватар + ник + значки + ID. */
@@ -189,8 +189,8 @@ function tt_user_cell(array $a): string
 {
     $av    = format_avatar((string)($a['avatar'] ?? ''), (string)($a['avatardimensions'] ?? ''));
     $icons = array_key_exists('warned', $a) ? get_user_icons($a) : '';
-    return '<div class="d-flex align-items-center gap-2 st-user">
-                <img class="st-avatar" src="' . $av['image'] . '" alt="" loading="lazy">
+    return '<div class="d-flex align-items-center gap-2 tt-user">
+                <img class="tt-avatar" src="' . $av['image'] . '" alt="" loading="lazy">
                 <div class="lh-sm">
                     <a href="' . get_profile_link((int)$a['userid']) . '">'
                         . format_name(htmlspecialchars_uni((string)$a['username']), (int)$a['usergroup']) .
@@ -206,13 +206,13 @@ function tt_torrent_cell(array $a, string $meta = ''): string
     $link   = get_torrent_link($a['id']);
     $poster = trim((string)($a['t_image'] ?? ''));
     $thumb  = $poster !== ''
-        ? '<a href="' . $link . '" tabindex="-1"><img src="' . htmlspecialchars($poster, ENT_QUOTES, 'UTF-8') . '" alt="" class="st-poster" loading="lazy"'
+        ? '<a href="' . $link . '" tabindex="-1"><img src="' . htmlspecialchars($poster, ENT_QUOTES, 'UTF-8') . '" alt="" class="tt-poster" loading="lazy"'
           . ' onerror="this.parentNode.outerHTML=\'<span class=&quot;st-ico st-soft-danger&quot;><i class=&quot;fa-solid fa-magnet&quot;></i></span>\'"></a>'
         : '<span class="st-ico st-soft-danger"><i class="fa-solid fa-magnet"></i></span>';
 
     return '<div class="d-flex align-items-center gap-2">' . $thumb . '
                 <div class="lh-sm">
-                    <a href="' . $link . '" class="st-link">' . cutename($a['name'], 55) . '</a>
+                    <a href="' . $link . '" class="tt-link">' . cutename($a['name'], 55) . '</a>
                     <div class="st-meta"><i class="fa-solid fa-hashtag"></i>' . (int)$a['id']
                         . '<span class="ms-2"><i class="fa-solid fa-hard-drive"></i>' . mksize((float)($a['size'] ?? 0)) . '</span>'
                         . $meta . '</div>
@@ -240,6 +240,7 @@ function tt_ratio(int|float $up, int|float $down): string
 stdhead($lang->topten["page_title"]);
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/topten.css?ver=3">';
 ?>
 
 <div class="container-md st-page tt-page py-3">
@@ -255,7 +256,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
     </header>
 
     <!-- KPI tiles -->
-    <div class="st-kpis mb-3">
+    <div class="tt-kpis mb-3">
         <div class="st-kpi st-kpi--muted">
             <span class="st-ico st-soft-primary"><i class="fa-solid fa-users"></i></span>
             <div class="min-w-0">
@@ -277,7 +278,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
             <div class="min-w-0">
                 <div class="st-kpi__val"><?php echo number_format($kpi_peers); ?></div>
                 <div class="st-kpi__lbl"><?php echo tt_l('kpi_peers', 'Peers'); ?></div>
-                <div class="st-kpi__sub">
+                <div class="tt-kpi__sub">
                     <i class="fa-solid fa-arrow-up text-success"></i> <?php echo number_format($kpi_seeders); ?>
                     <i class="fa-solid fa-arrow-down text-danger ms-2"></i> <?php echo number_format($kpi_leechers); ?>
                 </div>
@@ -287,10 +288,10 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
         <div class="st-kpi st-kpi--muted">
             <span class="st-ico st-soft-warning"><i class="fa-solid fa-right-left"></i></span>
             <div class="min-w-0">
-                <div class="st-kpi__val st-kpi__val--sm">
-                    <i class="fa-solid fa-arrow-up text-success st-ico-sm"></i> <?php echo mksize($kpi_up); ?>
+                <div class="st-kpi__val tt-kpi__val--sm">
+                    <i class="fa-solid fa-arrow-up text-success tt-ico-sm"></i> <?php echo mksize($kpi_up); ?>
                 </div>
-                <div class="st-kpi__sub">
+                <div class="tt-kpi__sub">
                     <i class="fa-solid fa-arrow-down text-danger"></i> <?php echo ags_fmt(tt_l('kpi_downloaded', '{1} downloaded'), mksize($kpi_down)); ?>
                 </div>
             </div>
@@ -299,12 +300,12 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
     </div>
 
     <!-- Tabs -->
-    <nav class="st-card st-pilltabs-card mb-3">
-        <ul class="st-pilltabs">
+    <nav class="st-card tt-tabs-card mb-3">
+        <ul class="tt-tabs">
         <?php foreach ($tt_tabs as [$tid, $ticon, $tkey]): $active = $type === $tid; ?>
             <li>
-                <a class="st-pilltab<?php echo $active ? ' active' : ''; ?>" href="topten.php?type=<?php echo $tid; ?>"<?php echo $active ? ' aria-current="page"' : ''; ?>>
-                    <i class="fa-solid <?php echo $ticon; ?>"></i><span class="st-pilltab__label"><?php echo $lang->topten[$tkey]; ?></span>
+                <a class="tt-tab<?php echo $active ? ' active' : ''; ?>" href="topten.php?type=<?php echo $tid; ?>"<?php echo $active ? ' aria-current="page"' : ''; ?>>
+                    <i class="fa-solid <?php echo $ticon; ?>"></i><span class="tt-tab__label"><?php echo $lang->topten[$tkey]; ?></span>
                 </a>
             </li>
         <?php endforeach; ?>
@@ -624,12 +625,12 @@ function usertable($res, string $title, string $more, string $icon, string $tone
         echo tt_row($num) . "
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_user_cell($a) . "</td>
-                <td class='text-end st-traffic text-success'><i class='fa-solid fa-arrow-up me-1 st-ico-sm'></i>" . mksize($a["uploaded"]) . "</td>
-                <td class='text-end st-num'><span class='st-badge st-soft-info'><i class='fa-solid fa-gauge-high'></i>" . mksize($a["upspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
-                <td class='text-end st-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 st-ico-sm'></i>" . mksize($a["downloaded"]) . "</td>
-                <td class='text-end st-num'><span class='st-badge st-soft-warning'><i class='fa-solid fa-gauge'></i>" . mksize($a["downspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . mksize($a["uploaded"]) . "</td>
+                <td class='text-end tt-num'><span class='st-badge st-soft-info'><i class='fa-solid fa-gauge-high'></i>" . mksize($a["upspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . mksize($a["downloaded"]) . "</td>
+                <td class='text-end tt-num'><span class='st-badge st-soft-warning'><i class='fa-solid fa-gauge'></i>" . mksize($a["downspeed"]) . $lang->topten["lbl_per_sec"] . "</span></td>
                 <td class='text-center'>" . tt_ratio($a["uploaded"], $a["downloaded"]) . "</td>
-                <td class='st-num'>" . $joined . "</td>
+                <td class='tt-num'>" . $joined . "</td>
               </tr>";
     }
     tt_card_close($num, 8);
@@ -693,8 +694,8 @@ function hottorrentstable($res, string $title, string $more): void
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_torrent_cell($a) . "</td>
                 <td class='text-center'>" . $promo . "</td>
-                <td class='text-end st-traffic text-success'><i class='fa-solid fa-arrow-up me-1 st-ico-sm'></i>" . number_format((int)$a["seeders"]) . "</td>
-                <td class='text-end st-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 st-ico-sm'></i>" . number_format((int)$a["leechers"]) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format((int)$a["seeders"]) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format((int)$a["leechers"]) . "</td>
               </tr>";
     }
     tt_card_close($num, 5);
@@ -724,8 +725,8 @@ function activitytable($res, string $title, string $more): void
         echo tt_row($num) . "
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_user_cell($a) . "</td>
-                <td class='text-end st-num'><i class='fa-solid fa-comment-dots me-1 text-body-secondary'></i>" . number_format((int)$a["comment_count"]) . "</td>
-                <td class='text-end st-num'><i class='fa-solid fa-star me-1 text-warning'></i>" . number_format((int)$a["rating_count"]) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-comment-dots me-1 text-body-secondary'></i>" . number_format((int)$a["comment_count"]) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-star me-1 text-warning'></i>" . number_format((int)$a["rating_count"]) . "</td>
                 <td class='text-end'>
                     <span class='st-badge st-soft-purple'><i class='fa-solid fa-bolt'></i>" . number_format($total) . "</span>
                     " . tt_bar((float)$total, $max, 'purple') . "
@@ -760,11 +761,11 @@ function _torrenttable($res, string $title, string $more, string $icon, string $
         echo tt_row($num) . "
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_torrent_cell($a) . "</td>
-                <td class='text-end st-num'><span class='st-badge st-soft-info'><i class='fa-solid fa-flag-checkered'></i>" . number_format((int)$a["times_completed"]) . "</span></td>
-                <td class='text-end st-traffic'><i class='fa-solid fa-hard-drive me-1 text-body-secondary st-ico-sm'></i>" . mksize((float)$a["data"]) . "</td>
-                <td class='text-end st-traffic text-success'><i class='fa-solid fa-arrow-up me-1 st-ico-sm'></i>" . number_format($seeders) . "</td>
-                <td class='text-end st-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 st-ico-sm'></i>" . number_format($leechers) . "</td>
-                <td class='text-end st-traffic'>" . number_format($seeders + $leechers) . "</td>
+                <td class='text-end tt-num'><span class='st-badge st-soft-info'><i class='fa-solid fa-flag-checkered'></i>" . number_format((int)$a["times_completed"]) . "</span></td>
+                <td class='text-end tt-traffic'><i class='fa-solid fa-hard-drive me-1 text-body-secondary tt-ico-sm'></i>" . mksize((float)$a["data"]) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format($seeders) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format($leechers) . "</td>
+                <td class='text-end tt-traffic'>" . number_format($seeders + $leechers) . "</td>
                 <td class='text-center'>" . tt_ratio($seeders, $leechers) . "</td>
               </tr>";
     }
@@ -808,7 +809,7 @@ function countriestable($res, string $title, string $more, string $what): void
             $name = $lang->topten["lbl_na"];
         }
         $flag = !empty($a["flagpic"])
-            ? '<img src="' . $pic_base_url . 'flag/' . htmlspecialchars_uni((string)$a["flagpic"]) . '" class="st-flag" alt="" loading="lazy">'
+            ? '<img src="' . $pic_base_url . 'flag/' . htmlspecialchars_uni((string)$a["flagpic"]) . '" class="tt-flag" alt="" loading="lazy">'
             : '<span class="st-ico st-soft-muted"><i class="fa-solid fa-earth-europe"></i></span>';
 
         echo tt_row($num) . "
@@ -841,8 +842,8 @@ function peerstable($res, string $title, string $more, string $icon, string $ton
         echo tt_row($num) . "
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_user_cell($a) . "</td>
-                <td class='text-end st-traffic text-success'><i class='fa-solid fa-arrow-up me-1 st-ico-sm'></i>" . mksize($a["uprate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
-                <td class='text-end st-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 st-ico-sm'></i>" . mksize($a["downrate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . mksize($a["uprate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . mksize($a["downrate"] ?? 0) . $lang->topten["lbl_per_sec"] . "</td>
               </tr>";
     }
     tt_card_close($num, 4);
@@ -867,7 +868,7 @@ function mostcommentedtable($res, string $title, string $more): void
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>" . tt_torrent_cell($a) . "</td>
                 <td class='text-center'><span class='st-badge st-soft-info'><i class='fa-solid fa-comment-dots'></i>" . number_format((int)$a["comment_count"]) . "</span></td>
-                <td class='text-center st-num'><i class='fa-solid fa-flag-checkered me-1 text-body-secondary'></i>" . number_format((int)$a["times_completed"]) . "</td>
+                <td class='text-center tt-num'><i class='fa-solid fa-flag-checkered me-1 text-body-secondary'></i>" . number_format((int)$a["times_completed"]) . "</td>
               </tr>";
     }
     tt_card_close($num, 4);
@@ -903,17 +904,17 @@ function categoriestable($res, string $title, string $more): void
                 <td>
                     <div class='d-flex align-items-center gap-2'>
                         <span class='st-ico st-soft-primary'><i class='" . $icon_classes . "'></i></span>
-                        <a href='browse.php?cat=" . (int)$a["id"] . "' class='st-link'>" . htmlspecialchars((string)$a["name"]) . "</a>
+                        <a href='browse.php?cat=" . (int)$a["id"] . "' class='tt-link'>" . htmlspecialchars((string)$a["name"]) . "</a>
                     </div>
                 </td>
                 <td class='text-center'>
                     <span class='st-badge st-soft-primary'>" . number_format($count) . "</span>
                     " . tt_bar((float)$count, $max, 'primary') . "
                 </td>
-                <td class='text-end st-traffic text-success'><i class='fa-solid fa-arrow-up me-1 st-ico-sm'></i>" . number_format((int)($a["total_seeders"] ?? 0)) . "</td>
-                <td class='text-end st-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 st-ico-sm'></i>" . number_format((int)($a["total_leechers"] ?? 0)) . "</td>
-                <td class='text-end st-num'>" . number_format((int)($a["total_snatches"] ?? 0)) . "</td>
-                <td class='text-end st-num'><i class='fa-solid fa-hard-drive me-1 text-body-secondary'></i>" . mksize((float)($a["total_size"] ?? 0)) . "</td>
+                <td class='text-end tt-traffic text-success'><i class='fa-solid fa-arrow-up me-1 tt-ico-sm'></i>" . number_format((int)($a["total_seeders"] ?? 0)) . "</td>
+                <td class='text-end tt-traffic text-danger'><i class='fa-solid fa-arrow-down me-1 tt-ico-sm'></i>" . number_format((int)($a["total_leechers"] ?? 0)) . "</td>
+                <td class='text-end tt-num'>" . number_format((int)($a["total_snatches"] ?? 0)) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-hard-drive me-1 text-body-secondary'></i>" . mksize((float)($a["total_size"] ?? 0)) . "</td>
               </tr>";
     }
     tt_card_close($num, 7);
@@ -942,16 +943,16 @@ function activethreadstable($res, string $title): void
                 <td class='text-center'>" . tt_rank($num) . "</td>
                 <td>
                     <div class='d-flex align-items-center gap-2'>
-                        <img class='st-avatar' src='" . $av['image'] . "' alt='' loading='lazy'>
+                        <img class='tt-avatar' src='" . $av['image'] . "' alt='' loading='lazy'>
                         <div class='lh-sm'>
-                            <a href='" . get_thread_link($a['tid']) . "' class='st-link'>" . htmlspecialchars((string)$a["subject"]) . "</a>
+                            <a href='" . get_thread_link($a['tid']) . "' class='tt-link'>" . htmlspecialchars((string)$a["subject"]) . "</a>
                             <div class='st-meta'><i class='fa-solid fa-user'></i>" . ags_fmt($lang->topten["lbl_by"], htmlspecialchars((string)$a["username"])) . "</div>
                         </div>
                     </div>
                 </td>
-                <td><span class='st-chip'><i class='fa-solid fa-folder-open'></i>" . htmlspecialchars((string)$a["forum_name"]) . "</span></td>
-                <td class='text-end st-num'><i class='fa-solid fa-eye me-1 text-body-secondary'></i>" . number_format((int)$a["views"]) . "</td>
-                <td class='text-end st-num'><i class='fa-solid fa-reply me-1 text-body-secondary'></i>" . number_format((int)$a["replies"]) . "</td>
+                <td><span class='tt-chip'><i class='fa-solid fa-folder-open'></i>" . htmlspecialchars((string)$a["forum_name"]) . "</span></td>
+                <td class='text-end tt-num'><i class='fa-solid fa-eye me-1 text-body-secondary'></i>" . number_format((int)$a["views"]) . "</td>
+                <td class='text-end tt-num'><i class='fa-solid fa-reply me-1 text-body-secondary'></i>" . number_format((int)$a["replies"]) . "</td>
                 <td class='text-center'><span class='st-badge st-soft-info'><i class='fa-solid fa-bolt'></i>" . number_format((int)$a["activity_score"]) . "</span></td>
               </tr>";
     }

@@ -186,6 +186,8 @@ class trackerlanguage
 	
 	public $announcements2;
 	
+	public $attachment_types;
+	
 	
 	
 	

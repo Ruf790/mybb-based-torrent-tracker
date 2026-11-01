@@ -22,7 +22,7 @@ function postbit_css_link(): string
     }
     $done = true;
 
-    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=241">';
+    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=300">';
 }
 
 /** Аватар автора: ссылка + картинка (заглушка-иконка для гостей и запрещённых удалённых аватаров) */

@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 2;
+const DT_CSS_VER = 3;
 const DT_JS_VER  = 3;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -970,6 +970,9 @@ $download_html = '
                 </div>
             </div>
 
+            ' . $claim_html . '
+            ' . ($posters_html !== '' ? '<div class="dt-posters">' . $posters_html . '</div>' : '') . '
+
             <div class="dt-health">
                 <div class="dt-health__lbl">
                     <span><i class="fa-solid fa-heart-pulse me-1"></i>' . htmlspecialchars($lang->details['lbl_torrent_health']) . '</span>
@@ -980,8 +983,6 @@ $download_html = '
                     <div class="progress-bar bg-' . $health_c . '" style="width: ' . $health . '%"></div>
                 </div>
             </div>
-            ' . $claim_html . '
-            ' . ($posters_html !== '' ? '<div class="dt-posters">' . $posters_html . '</div>' : '') . '
         </div>
     </div>';
 
@@ -1137,10 +1138,10 @@ echo '
     ' . $cnf_html . '
     ' . $head_html . '
     ' . $kpis_html . '
+    ' . $download_html . '
 
     <div class="dt-layout">
         <div class="dt-main min-w-0">
-            ' . $download_html . '
             ' . $tabs_html . '
         </div>
         ' . ($aside_html !== '' ? '<aside class="dt-aside min-w-0">' . $aside_html . '</aside>' : '') . '

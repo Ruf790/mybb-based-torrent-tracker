@@ -1,0 +1,72 @@
+/* ============================================================================
+   invite.css — мои инвайты (invite.php)
+   Базовые компоненты (.st-card, .st-head, .st-ico, .st-badge, .st-kpi, .st-empty,
+   .st-toolbar, .st-pager) берутся из общего st-ui.css. Здесь только то, чего там нет.
+   Всё под .iv-page — без глобальных переопределений.
+   ============================================================================ */
+
+/* KPI: содержимое над иконкой в углу, цвет иконки под тему */
+.iv-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.iv-page .st-kpi__bg { color: var(--bs-emphasis-color); }
+
+/* Сетка KPI-плиток: 4 в ряд, 2 на планшете/телефоне */
+.iv-page .iv-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 991.98px) { .iv-page .iv-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Якорь формы — не прятать под шапкой сайта */
+.iv-page #iv-create { scroll-margin-top: 5rem; }
+.iv-page .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+
+/* Таблица истории */
+.iv-page .iv-section { overflow: hidden; }
+.iv-page .iv-table { margin: 0; color: var(--bs-body-color); }
+.iv-page .iv-table > :not(caption) > * > * {
+  padding: .7rem .75rem; background: transparent;
+  border-bottom-color: var(--bs-border-color-translucent, var(--bs-border-color));
+}
+.iv-page .iv-table > :not(caption) > * > *:first-child { padding-left: 1.1rem; }
+.iv-page .iv-table > :not(caption) > * > *:last-child  { padding-right: 1.1rem; }
+.iv-page .iv-table thead th {
+  font-size: .74em; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  white-space: nowrap; color: var(--bs-secondary-color);
+}
+.iv-page .iv-table thead th i { margin-right: .35rem; opacity: .7; }
+.iv-page .iv-table tbody tr:last-child td { border-bottom: 0; }
+.iv-page .iv-table tbody tr > td { transition: background-color .12s ease; }
+.iv-page .iv-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
+
+.iv-page .iv-row--pending > td:first-child { box-shadow: inset 3px 0 0 var(--bs-warning); }
+.iv-page .iv-row--dim > td { opacity: .7; }
+.iv-page .iv-row--dim:hover > td { opacity: 1; }
+
+.iv-page .iv-muted { font-size: .88em; color: var(--bs-secondary-color); }
+.iv-page .iv-wrap { max-width: 16rem; overflow-wrap: anywhere; }
+.iv-page .iv-nowrap { white-space: nowrap; }
+.iv-page .iv-ico-sm { font-size: .8em; margin-right: .3rem; color: var(--bs-success); }
+.iv-page .iv-user { text-decoration: none; font-weight: 600; }
+
+/* Код инвайта (кнопка «скопировать ссылку») */
+.iv-page .iv-code {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .3rem .7rem; border-radius: .55rem;
+  font-family: var(--bs-font-monospace); font-size: .82em; white-space: nowrap;
+  color: var(--bs-body-color); background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.iv-page button.iv-code { cursor: pointer; }
+.iv-page button.iv-code i { font-size: .9em; opacity: .7; }
+.iv-page button.iv-code:hover,
+.iv-page button.iv-code:focus-visible {
+  background: var(--bs-primary-bg-subtle); border-color: var(--bs-primary-border-subtle);
+  color: var(--bs-primary-text-emphasis);
+}
+.iv-page .iv-code.is-copied {
+  background: var(--bs-success-bg-subtle); border-color: var(--bs-success-border-subtle);
+  color: var(--bs-success-text-emphasis);
+}
+.iv-page .iv-code--off { color: var(--bs-secondary-color); background: transparent; border-style: dashed; }
+
+@media (max-width: 575.98px) {
+  .iv-page .st-head .btn { width: 100%; }
+}

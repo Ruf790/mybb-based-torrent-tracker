@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 3;
+const DT_CSS_VER = 4;
 const DT_JS_VER  = 3;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -431,7 +431,7 @@ $rating_html = '
             ' . htmlspecialchars($lang->details['sec_user_rating']) . '
             <span class="ms-auto st-badge st-soft-muted">' . $votes_label . '</span>
         </div>
-        <div class="st-card__body">
+        <div class="st-card__body dt-rating__body">
             <div class="dt-rating__top">
                 <div class="dt-rating__score"><span class="rating-score">' . ($rating_count > 0 ? number_format($rating_avg, 1) : '—') . '</span><small>/10</small></div>
                 <div class="rating-stars dt-rating__stars" id="rating-display">' . $avg_stars_html . '</div>
@@ -1029,6 +1029,7 @@ $info_pane = '
             <span class="dt-tags__lbl"><i class="fa-solid fa-tags me-1"></i>' . htmlspecialchars($lang->details['sec_tags']) . '</span>
             ' . $tags_html . '
         </div>' : '') . '
+        ' . $rating_html . '
     </div>';
 
 $files_pane = '
@@ -1103,8 +1104,7 @@ $comments_block = '
         ' . $quick_comment . '
     </section>';
 
-$aside_html = $rating_html
-            . $manage_html;
+$aside_html = $manage_html;
 
 // ── Output ──────────────────────────────────────────────────────────────────
 stdhead(ags_fmt($lang->details['detailsfor'], (string)$Torrent['name']));
@@ -1140,7 +1140,7 @@ echo '
     ' . $kpis_html . '
     ' . $download_html . '
 
-    <div class="dt-layout">
+    <div class="dt-layout' . ($aside_html === '' ? ' dt-layout--solo' : '') . '">
         <div class="dt-main min-w-0">
             ' . $tabs_html . '
         </div>

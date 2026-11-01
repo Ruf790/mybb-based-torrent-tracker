@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 6;
+const DT_CSS_VER = 7;
 const DT_JS_VER  = 4;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

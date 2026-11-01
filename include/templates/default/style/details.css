@@ -15,13 +15,20 @@
 
 /* ── Vertical rhythm ─────────────────────────────────────────────────────── */
 .dt-page > .st-card,
-.dt-page > .dt-kpis,
 .dt-page > .dt-comments,
 .dt-page > .dt-tabs-card { margin-bottom: 1rem; }
 
-/* KPI tiles: icon + content above the corner icon (st-ui visual layer) */
+/* KPI tiles: grey tile + semi-transparent icon in the corner.
+   Same as the st-ui.css visual layer — repeated here so the page looks right
+   even where st-ui.css is an older copy without that layer. */
+.dt-page .st-kpi { position: relative; overflow: hidden; }
+.dt-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
 .dt-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
-.dt-page .st-kpi__bg { color: var(--bs-emphasis-color); }
+.dt-page .st-kpi__bg {
+  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+  opacity: .07; transform: rotate(-12deg); pointer-events: none;
+  color: var(--bs-emphasis-color);
+}
 
 /* ── Alerts (H&R warning, comment not found) ─────────────────────────────── */
 .dt-page .dt-alert {
@@ -58,7 +65,7 @@
 @keyframes dt-pulse { 50% { opacity: .55; } }
 
 /* ── KPI grid ────────────────────────────────────────────────────────────── */
-.dt-page .dt-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.dt-page .dt-kpis { margin-top: 1rem; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 @media (max-width: 991.98px) {
   .dt-page .dt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 }

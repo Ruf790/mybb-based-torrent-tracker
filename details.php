@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 5;
+const DT_CSS_VER = 6;
 const DT_JS_VER  = 3;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -972,6 +972,7 @@ $download_html = '
 
             ' . $claim_html . '
             ' . ($posters_html !== '' ? '<div class="dt-posters">' . $posters_html . '</div>' : '') . '
+            ' . $kpis_html . '
 
             <div class="dt-health">
                 <div class="dt-health__lbl">
@@ -1137,7 +1138,6 @@ echo '
     ' . $hitrun_html . '
     ' . $cnf_html . '
     ' . $head_html . '
-    ' . $kpis_html . '
     ' . $download_html . '
 
     ' . $tabs_html . '

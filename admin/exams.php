@@ -80,11 +80,24 @@ function ex_redirect(array $params, string $type, string $msg): never
     exit;
 }
 
-function ex_flash_html(): string
+/**
+ * Flash message after a redirect. The cookie is read and cleared once, BEFORE stdhead()
+ * (ex_flash_html(true) in the router): clearing it after the page header was sent
+ * raised "headers already sent" and the message showed again on the next page.
+ */
+function ex_flash_html(bool $prime = false): string
 {
-    if (empty($_COOKIE['ex_flash'])) return '';
-    $f = json_decode((string)$_COOKIE['ex_flash'], true);
-    setcookie('ex_flash', '', ['expires' => 1, 'path' => '/']);
+    static $f = false;
+    if ($f === false) {
+        $f = null;
+        if (!empty($_COOKIE['ex_flash'])) {
+            $f = json_decode((string)$_COOKIE['ex_flash'], true);
+            if (!headers_sent()) {
+                setcookie('ex_flash', '', ['expires' => 1, 'path' => '/']);
+            }
+        }
+    }
+    if ($prime) return '';
     if (!is_array($f) || !isset($f['t'], $f['m'])) return '';
     $tone = in_array($f['t'], ['success', 'danger', 'warning'], true) ? $f['t'] : 'primary';
     $icon = ['success' => 'fa-circle-check', 'danger' => 'fa-triangle-exclamation', 'warning' => 'fa-circle-exclamation'][$tone] ?? 'fa-circle-info';
@@ -1290,6 +1303,7 @@ function main(): void
         if (!$exam) ex_redirect([], 'danger', ex_t('not_found'));
     }
 
+    ex_flash_html(true);   // read + clear the flash cookie while headers can still be sent
     stdhead(ex_t('list_title'));
     ?>
     <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">

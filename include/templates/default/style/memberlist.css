@@ -1,0 +1,137 @@
+/* ============================================================================
+   memberlist.css — список пользователей (memberlist.php)
+   Базовые компоненты (.st-card, .st-head, .st-ico, .st-badge, .st-kpi,
+   .st-toolbar, .st-empty, .st-pager) — из общего st-ui.css.
+   Здесь только своё. Всё под .ml-page, только переменные Bootstrap.
+   ============================================================================ */
+
+.ml-page { padding-top: .75rem; padding-bottom: 2rem; }
+.ml-page .ml-btn { display: inline-flex; align-items: center; gap: .45rem; }
+
+/* ── Серые KPI-плитки с иконкой в углу ─────────────────────────────────────
+   (если визуальный слой уже есть в st-ui.css, первые 4 правила можно удалить) */
+.ml-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
+.ml-page .st-kpi { position: relative; overflow: hidden; }
+.ml-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.ml-page .st-kpi__bg {
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+.ml-page a.st-kpi { color: inherit; }
+.ml-page a.st-kpi:hover { background: var(--bs-secondary-bg); }
+
+.ml-page .ml-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .75rem;
+}
+
+/* ── Фильтр: буквы + быстрый поиск ─────────────────────────────────────── */
+.ml-page .ml-letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    margin-bottom: .9rem;
+}
+.ml-page .ml-letter {
+    display: grid; place-items: center;
+    min-width: 2.1rem; height: 2.1rem; padding: 0 .4rem;
+    border-radius: .55rem;
+    font-weight: 700; font-size: .88em;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+.ml-page .ml-letter:hover { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+.ml-page .ml-letter.active { background: var(--bs-primary); color: #fff; }
+
+.ml-page .ml-quick {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+}
+.ml-page .ml-quick__user { flex: 1 1 16rem; width: auto; }
+.ml-page .ml-quick__user .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.ml-page .ml-quick__match { flex: 0 1 11rem; width: auto; }
+.ml-page .ml-quick__pp { flex: 0 0 5.5rem; width: auto; }
+
+/* ── Сортировка ────────────────────────────────────────────────────────── */
+.ml-page .ml-sortbar .st-toolbar { justify-content: flex-start; }
+.ml-page .ml-sortbar__lbl {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-size: .88em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.ml-page .ml-sortbar__pills { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ml-page .ml-sortbar__pills .btn { display: inline-flex; align-items: center; gap: .35rem; }
+
+/* ── Карточки пользователей ────────────────────────────────────────────── */
+.ml-page .ml-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: .75rem;
+}
+.ml-page .ml-user {
+    display: flex; gap: .9rem; align-items: flex-start;
+    padding: .9rem 1rem;
+    transition: border-color .15s ease, transform .15s ease;
+}
+.ml-page .ml-user:hover { border-color: var(--bs-primary-border-subtle); transform: translateY(-1px); }
+.ml-page .ml-user--online { box-shadow: inset 3px 0 0 var(--bs-success); }
+
+.ml-page .ml-user__ava { position: relative; flex: 0 0 auto; display: block; }
+.ml-page .ml-user__ava img {
+    display: block; width: 4rem; height: 4rem;
+    border-radius: .85rem; object-fit: cover;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
+.ml-page .ml-user__dot {
+    position: absolute; right: -.2rem; bottom: -.2rem;
+    width: .85rem; height: .85rem; border-radius: 50%;
+    background: var(--bs-success);
+    border: 2px solid var(--bs-body-bg);
+}
+
+.ml-page .ml-user__body { flex: 1 1 auto; min-width: 0; }
+.ml-page .ml-user__name {
+    font-weight: 700; font-size: 1.05em; line-height: 1.2;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ml-page .ml-user__name a { text-decoration: none; }
+.ml-page .ml-user__title { font-size: .82em; color: var(--bs-secondary-color); margin-top: .1rem; }
+.ml-page .ml-user__stats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+.ml-page .ml-user__meta {
+    display: flex; flex-wrap: wrap; gap: .15rem 1rem; margin-top: .5rem;
+    font-size: .8em; color: var(--bs-secondary-color);
+}
+.ml-page .ml-user__meta span { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.ml-page .ml-user__meta i { opacity: .75; }
+
+/* ── Пусто ─────────────────────────────────────────────────────────────── */
+.ml-page .ml-empty__title { font-weight: 600; color: var(--bs-emphasis-color); }
+.ml-page .ml-empty__hint { font-size: .9em; margin-top: .25rem; }
+.ml-page .ml-empty__hint p { margin: 0; }
+
+/* ── Расширенный поиск ─────────────────────────────────────────────────── */
+.ml-page .ml-search { overflow: hidden; }
+.ml-page .ml-search__opts { border-top: 1px solid var(--bs-border-color); }
+.ml-page .ml-lbl {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .88em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.ml-page .ml-seg { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+/* ── Адаптив ───────────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .ml-page .ml-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+    .ml-page .ml-hide-sm { display: none; }
+    .ml-page .ml-grid { grid-template-columns: 1fr; }
+    .ml-page .ml-user__ava img { width: 3.2rem; height: 3.2rem; }
+    .ml-page .ml-quick > * { flex: 1 1 100%; }
+    .ml-page .ml-letter { min-width: 1.9rem; height: 1.9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ml-page .ml-user, .ml-page .ml-letter { transition: none; }
+}

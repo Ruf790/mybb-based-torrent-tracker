@@ -125,4 +125,21 @@ If you would not like to receive any more notifications of replies to this threa
 'y' => 'Y',
 'z' => 'Z',
 
+
+// ── memberlist (new style) ──
+'page_subtitle' => "All registered members of the tracker",
+'lbl_kpi_total' => "Members",
+'lbl_kpi_new_week' => "New this week",
+'lbl_kpi_online' => "Online now",
+'lbl_kpi_found' => "Found",
+'lbl_browse_letter' => "Browse by letter",
+'tip_letter_other' => "Other characters",
+'ph_username' => "Enter username...",
+'ph_website' => "Website...",
+'lbl_match' => "Match",
+'lbl_order' => "Order",
+'btn_reset' => "Reset",
+'lbl_online' => "Online",
+'msg_no_members_title' => "No members found",
+
 );

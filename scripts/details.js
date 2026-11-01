@@ -1,7 +1,9 @@
-/* ── i18n ─────────────────────────────────────────────────────────────────
-   AGS_LANG is printed by the page (details.php) before the scripts.
-   Missing dictionary/key -> English fallback. {1} and %1$s are both substituted
-   ($lang->load() turns {1} into %1$s). Insert results as text, not HTML. */
+/* =============================================================================
+   details.js — torrent page (details.php)
+   AGS_LANG is printed by the page before the scripts (js_* keys without the
+   prefix). Missing dictionary/key -> English fallback. {1} and %1$s are both
+   substituted. Translations are inserted as text, not HTML.
+   ============================================================================= */
 function t(key, fallback, ...args) {
     const dict = (typeof AGS_LANG !== 'undefined' && AGS_LANG) ? AGS_LANG : null;
     const str  = (dict && typeof dict[key] === 'string') ? dict[key] : fallback;
@@ -20,521 +22,383 @@ function agsIconText(el, iconClass, text, tag) {
     el.appendChild(document.createTextNode(text));
 }
 
-// HTML-escape for the few places where a translation has to go into an HTML template.
+// HTML-escape for the few places where a string has to go into an HTML template.
 function agsEsc(str) {
     return String(str ?? '').replace(/[&<>"']/g, function (ch) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
     });
 }
 
-// ===== Peers tab switching (?tab=peers в URL) =====
-document.addEventListener("DOMContentLoaded", function () {
-    var params = new URLSearchParams(window.location.search);
-    if (params.get("tab") !== "peers") {
-        return;
+function dtToast(msg, type) {
+    if (typeof showToast === 'function') {
+        showToast(msg, type);
+    } else {
+        window.alert(msg);
     }
-    var peersTabButton = document.getElementById("peers-tab");
-    if (!peersTabButton || typeof bootstrap === "undefined") {
-        return;
-    }
-    var tab = new bootstrap.Tab(peersTabButton);
-    tab.show();
-    var hash = window.location.hash.replace("#", "");
-    if (hash) {
-        peersTabButton.addEventListener("shown.bs.tab", function () {
-            var target = document.getElementById(hash);
-            if (target) {
-                target.scrollIntoView({ behavior: "smooth", block: "start" });
-            }
-        }, { once: true });
-    }
-});
-
-// ===== NFO copy to clipboard =====
-function copyNfo() {
-    var text = document.getElementById("nfoText").textContent;
-    navigator.clipboard.writeText(text).then(function() {
-        showToast(t("dt_nfo_copied", "NFO copied to clipboard!"), "success");
-    }).catch(function() {
-        showToast(t("dt_copy_failed", "Copy failed"), "danger");
-    });
 }
 
-// ===== Torrent page init: progress bar animation, fade-in on scroll =====
-document.addEventListener('DOMContentLoaded', function() {
-    initTorrentPage();
-    initAnimations();
-});
+/* Confirm via SweetAlert2, plain confirm() if it is not loaded.
+   opts: { title, text, html, yes, no, danger } -> Promise<boolean> */
+function dtConfirm(opts) {
+    if (window.Swal) {
+        return window.Swal.fire({
+            icon: opts.danger ? 'warning' : 'question',
+            title: opts.title || '',
+            text: opts.html ? undefined : (opts.text || ''),
+            html: opts.html || undefined,
+            showCancelButton: true,
+            confirmButtonText: opts.yes || 'OK',
+            cancelButtonText: opts.no || 'Cancel',
+            confirmButtonColor: opts.danger ? '#dc3545' : undefined,
+            reverseButtons: true,
+            focusCancel: !!opts.danger
+        }).then(function (r) { return r.isConfirmed; });
+    }
+    const plain = [opts.title, opts.text].filter(Boolean).join('\n\n');
+    return Promise.resolve(window.confirm(plain));
+}
 
-function initTorrentPage() {
-    // Initialize progress animations
-    const progressBars = document.querySelectorAll('.progress-bar');
-    progressBars.forEach(bar => {
+function dtPostKey() {
+    const page = document.getElementById('torrent_details');
+    return (page && page.dataset.postKey)
+        || document.querySelector('input[name="my_post_key"]')?.value
+        || '';
+}
+
+/* ── Tabs: open a tab by pane id (links like #peers, ?tab=peers) ────────── */
+function dtShowTab(key, scroll) {
+    const btn = document.getElementById(key + '-tab');
+    if (!btn || typeof bootstrap === 'undefined') {
+        return false;
+    }
+    bootstrap.Tab.getOrCreateInstance(btn).show();
+    if (scroll) {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return true;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const params = new URLSearchParams(window.location.search);
+    const tab    = params.get('tab');
+    if (tab && tab !== 'comments' && document.getElementById(tab + '-tab')) {
+        dtShowTab(tab, false);
+        const hash = window.location.hash.replace('#', '');
+        if (hash) {
+            document.getElementById(tab + '-tab').addEventListener('shown.bs.tab', function () {
+                document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, { once: true });
+        }
+    }
+
+    // In-page links to a tab pane (KPI tiles, .scroll-to-tab)
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('a[href^="#"], .scroll-to-tab');
+        if (!link) {
+            return;
+        }
+        const key = link.dataset.scrollTab || (link.getAttribute('href') || '').slice(1);
+        if (!key) {
+            return;
+        }
+        const pane = document.getElementById(key);
+        if (pane && pane.classList.contains('tab-pane')) {
+            e.preventDefault();
+            dtShowTab(key, true);
+        }
+    });
+
+    // Health bar: grow from 0 on load (only this page's bar)
+    document.querySelectorAll('.dt-health__bar .progress-bar').forEach(function (bar) {
         const width = bar.style.width;
         bar.style.width = '0%';
-        setTimeout(() => {
-            bar.style.transition = 'width 1s ease-in-out';
-            bar.style.width = width;
-        }, 500);
-    });
-
-    // Add intersection observer for animations
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('animate__animated', 'animate__fadeInUp');
-            }
-        });
-    }, { threshold: 0.1 });
-
-    document.querySelectorAll('.card, .stat-card').forEach(el => {
-        observer.observe(el);
-    });
-}
-
-function initAnimations() {
-    // Add staggered animations to elements
-    const elements = document.querySelectorAll('.stat-card, .info-item, .nav-item');
-    elements.forEach((el, index) => {
-        el.style.animationDelay = (index * 0.1) + 's';
-    });
-}
-
-// ===== File tree expand/collapse all =====
-function expandAllFiles() {
-    const collapses = document.querySelectorAll('.file-tree .collapse');
-    collapses.forEach((el, index) => {
-        setTimeout(() => {
-            if (!el.classList.contains('show')) {
-                new bootstrap.Collapse(el, { show: true });
-            }
-        }, index * 50);
-    });
-}
-
-function collapseAllFiles() {
-    const collapses = document.querySelectorAll('.file-tree .collapse');
-    collapses.forEach((el, index) => {
-        setTimeout(() => {
-            if (el.classList.contains('show')) {
-                new bootstrap.Collapse(el, { hide: true });
-            }
-        }, index * 50);
-    });
-}
-
-// ===== Smooth scrolling for anchor links =====
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            const href = this.getAttribute('href');
-            // Голый "#" (модалки, кнопки-плейсхолдеры, magnet-кнопка) -
-            // не валидный CSS-селектор, querySelector('#') бросает
-            // SyntaxError. Пропускаем такие ссылки, пусть работают как
-            // обычно (или их обрабатывает другой скрипт).
-            if (!href || href.length < 2) {
-                return;
-            }
-
-            e.preventDefault();
-            const target = document.querySelector(href);
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
+        requestAnimationFrame(function () {
+            setTimeout(function () { bar.style.width = width; }, 150);
         });
     });
+
+    // Broken similar-torrent posters -> placeholder
+    document.querySelectorAll('.dt-sim__poster img[data-fallback]').forEach(function (img) {
+        img.addEventListener('error', function onErr() {
+            img.removeEventListener('error', onErr);
+            img.src = img.dataset.fallback;
+        });
+    });
+
+    // Rating widget (rating.js)
+    const rating = document.getElementById('dt-rating');
+    if (rating && typeof ratingInit === 'function') {
+        ratingInit(parseInt(rating.dataset.rating, 10) || 0, parseInt(rating.dataset.torrent, 10) || 0,
+            typeof baseurl !== 'undefined' ? baseurl : '', dtPostKey());
+    }
 });
 
-// ===== Edit torrent: image previews (URL / file) + form validation =====
-function previewURLImage(url) {
-    const img = document.getElementById('urlImagePreview');
-    if (url) {
-        img.src = url;
-        img.style.display = 'block';
-    } else {
-        img.src = '#';
-        img.style.display = 'none';
+/* ── Dismiss buttons (comment not found) ────────────────────────────────── */
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-dt-dismiss]');
+    if (btn) {
+        document.querySelector(btn.dataset.dtDismiss)?.remove();
     }
-}
-
-function readFileImage(input) {
-    const preview = document.getElementById('fileImagePreview');
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            preview.src = e.target.result;
-            preview.style.display = 'block';
-        };
-        reader.readAsDataURL(input.files[0]);
-    } else {
-        preview.src = '#';
-        preview.style.display = 'none';
-    }
-}
-
-function previewURLImage2(url) {
-    const img = document.getElementById('urlImagePreview2');
-    if (url) {
-        img.src = url;
-        img.style.display = 'block';
-    } else {
-        img.src = '#';
-        img.style.display = 'none';
-    }
-}
-
-function readFileImage2(input) {
-    const preview = document.getElementById('fileImagePreview2');
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            preview.src = e.target.result;
-            preview.style.display = 'block';
-        };
-        reader.readAsDataURL(input.files[0]);
-    } else {
-        preview.src = '#';
-        preview.style.display = 'none';
-    }
-}
+});
 
 document.addEventListener('DOMContentLoaded', function () {
-    const insertForm = document.getElementById("insert_form");
-    if (!insertForm) return;
+    document.getElementById('comment-not-found')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
 
-    insertForm.addEventListener("submit", function (e) {
-        const name = document.getElementById("name").value.trim();
-        const descr = document.getElementById("descr").value.trim();
-
-        // Validate required fields
-        if (!name || !descr) {
-            alert(t("dt_fill_required", "Please fill out all required fields."));
-            e.preventDefault();
-            return;
-        }
+/* ── Copy (NFO) ─────────────────────────────────────────────────────────── */
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-dt-copy]');
+    if (!btn) {
+        return;
+    }
+    const src = document.querySelector(btn.dataset.dtCopy);
+    if (!src || !navigator.clipboard) {
+        dtToast(t('dt_copy_failed', 'Copy failed'), 'danger');
+        return;
+    }
+    navigator.clipboard.writeText(src.textContent).then(function () {
+        dtToast(t('dt_nfo_copied', 'NFO copied to clipboard!'), 'success');
+    }).catch(function () {
+        dtToast(t('dt_copy_failed', 'Copy failed'), 'danger');
     });
 });
 
-// ===== Delete torrent modal =====
-document.addEventListener("DOMContentLoaded", function() {
-    const deleteModal = document.getElementById("deleteTorrentModal");
-    const confirmCheckbox = document.getElementById("confirmDelete");
-    const confirmBtn = document.getElementById("confirmDeleteBtn");
-    const torrentNamePreview = document.getElementById("torrentNamePreview");
-
-    let currentTorrentId = null;
-
-    // Обработчик для всех кнопок удаления
-    document.addEventListener("click", function(e) {
-        if (e.target.closest('[data-bs-target="#deleteTorrentModal"]')) {
-            const button = e.target.closest('[data-bs-target="#deleteTorrentModal"]');
-            currentTorrentId = button.getAttribute("data-torrent-id");
-            const torrentName = button.getAttribute("data-torrent-name");
-
-            // Обновляем содержимое модалки
-            if (torrentNamePreview) {
-                torrentNamePreview.innerHTML = `<strong>"${torrentName}"</strong>`;
-            }
-
-            // Сбрасываем подтверждение
-            if (confirmCheckbox) {
-                confirmCheckbox.checked = false;
-            }
-            if (confirmBtn) {
-                confirmBtn.disabled = true;
-            }
-        }
-    });
-
-    // Переключение кнопки удаления в зависимости от подтверждения
-    if (confirmCheckbox) {
-        confirmCheckbox.addEventListener("change", function() {
-            if (confirmBtn) {
-                confirmBtn.disabled = !this.checked;
-            }
-        });
-    }
-
-    // Обработка подтверждения удаления
-    if (confirmBtn) {
-        confirmBtn.addEventListener("click", function() {
-            if (currentTorrentId && confirmCheckbox && confirmCheckbox.checked) {
-                // Показываем состояние загрузки
-                agsIconText(confirmBtn, 'bi bi-hourglass-split me-1', t('dt_deleting', 'Deleting...'));
-                confirmBtn.disabled = true;
-
-                // Создаем и отправляем форму POST
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = 'delete.php';
-
-                // Добавляем необходимые поля
-                const idInput = document.createElement('input');
-                idInput.name = 'id';
-                idInput.value = currentTorrentId;
-
-                const reasonTypeInput = document.createElement('input');
-                reasonTypeInput.name = 'reasontype';
-                reasonTypeInput.value = '5'; // Причина: "Другое"
-
-                const reasonInput = document.createElement('input');
-                reasonInput.name = 'reason[3]';
-                reasonInput.value = 'Deleted via quick delete modal';
-
-                // CSRF-токен - без него сервер теперь отклоняет удаление
-                const myPostKeyInput = document.createElement('input');
-                myPostKeyInput.name = 'my_post_key';
-                myPostKeyInput.value = document.getElementById('myPostKey')?.value
-                    || document.querySelector('input[name="my_post_key"]')?.value
-                    || '';
-
-                form.appendChild(idInput);
-                form.appendChild(reasonTypeInput);
-                form.appendChild(reasonInput);
-                form.appendChild(myPostKeyInput);
-                document.body.appendChild(form);
-                form.submit();
-            }
-        });
-    }
-
-    // Сброс состояния модалки при закрытии
-    if (deleteModal) {
-        deleteModal.addEventListener("hidden.bs.modal", function() {
-            currentTorrentId = null;
-            if (confirmCheckbox) {
-                confirmCheckbox.checked = false;
-            }
-            if (confirmBtn) {
-                confirmBtn.disabled = true;
-                agsIconText(confirmBtn, 'bi bi-trash3 me-1', t('dt_delete_torrent', 'Delete Torrent'));
-            }
-        });
-    }
-});
-
-// ===== Magnet link modal (copy / open in client / from dropdown buttons) =====
-document.addEventListener("DOMContentLoaded", function() {
-  const magnetInput = document.getElementById("magnetInput");
-  const copyBtn = document.getElementById("copyMagnetBtn");
-  const copySuccess = document.getElementById("copySuccess");
-  const openMagnetBtn = document.getElementById("openMagnetBtn");
-  let modalInstance = null;
-
-  if (!magnetInput || !copyBtn || !openMagnetBtn) {
-    return;
-  }
-
-  // Функция обновления магнет ссылки
-  window.updateMagnetLink = function(url) {
-    magnetInput.value = url;
-  };
-
-  // Открытие магнета в клиенте
-  openMagnetBtn.addEventListener("click", function() {
-    const magnetUrl = magnetInput.value;
-
-    if (!magnetUrl || !magnetUrl.startsWith("magnet:?")) {
-      showToast(t("dt_magnet_invalid", "Invalid magnet link"), "error");
-      return;
-    }
-
-    // Пробуем открыть магнет ссылку
-    try {
-      window.location.href = magnetUrl;
-
-      // Показываем уведомление с тоастом
-      showToast(t("dt_magnet_opening", "Opening torrent client..."), "info");
-
-      // Закрываем модалку и убираем оверлей
-      if (modalInstance) {
-        modalInstance.hide();
-        // Принудительно убираем оверлей
-        setTimeout(() => {
-          document.querySelectorAll(".modal-backdrop").forEach(el => el.remove());
-          document.body.classList.remove("modal-open");
-          document.body.style.overflow = "";
-          document.body.style.paddingRight = "";
-        }, 100);
-      }
-
-    } catch (e) {
-      console.error(e);
-      showToast(t("dt_magnet_open_failed", "Could not open torrent client. Please copy the magnet link manually."), "error");
-    }
-  });
-
-  // Копирование в буфер обмена
-  copyBtn.addEventListener("click", function() {
-    const magnetUrl = magnetInput.value;
-
-    navigator.clipboard.writeText(magnetUrl).then(() => {
-      // Показываем success
-      if (copySuccess) copySuccess.classList.remove("d-none");
-
-      const originalHtml = copyBtn.innerHTML;
-      agsIconText(copyBtn, 'fas fa-check me-1', t('dt_copied', 'Copied!'));
-      copyBtn.classList.remove("btn-primary");
-      copyBtn.classList.add("btn-success");
-
-      setTimeout(() => {
-        if (copySuccess) copySuccess.classList.add("d-none");
-        copyBtn.innerHTML = originalHtml;
-        copyBtn.classList.remove("btn-success");
-        copyBtn.classList.add("btn-primary");
-      }, 2000);
-
-    }).catch(err => {
-      console.error(err);
-      showToast(t("dt_clipboard_failed", "Could not copy to clipboard"), "error");
-    });
-  });
-
-  // Клик по Magnet в dropdown
-  document.querySelectorAll(".magnet-btn").forEach(btn => {
-    btn.addEventListener("click", function(e) {
-      e.preventDefault();
-
-      const torrentId = this.dataset.magnetId;
-
-      fetch("download.php?type=magnet&id=" + torrentId)
-        .then(res => res.text())
-        .then(magnet => {
-          magnet = magnet.trim();
-
-          if (!magnet.startsWith("magnet:?")) {
-            showToast(t("dt_magnet_error", "Magnet link error"), "error");
-            return;
-          }
-
-          // Обновляем ссылку
-          magnetInput.value = magnet;
-
-          // Создаем и показываем модалку
-          const modalEl = document.getElementById("magnetModal");
-          if (!modalEl) return;
-          modalInstance = new bootstrap.Modal(modalEl, {
-            backdrop: "static",
-            keyboard: false
-          });
-
-          modalInstance.show();
-        })
-        .catch(err => {
-          console.error(err);
-          showToast(t("dt_magnet_load_failed", "Failed to load magnet link"), "error");
-        });
-    });
-  });
-
-  // Очистка при скрытии модалки
-  const modalEl = document.getElementById("magnetModal");
-  if (modalEl) {
-    modalEl.addEventListener("hidden.bs.modal", function() {
-      // Убираем все оверлеи
-      document.querySelectorAll(".modal-backdrop").forEach(el => el.remove());
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-      modalInstance = null;
-    });
-  }
-});
-
-// ===== Quick IMDb refresh (обновление IMDb-данных торрента без перезагрузки страницы) =====
-// baseurl - глобальная JS-переменная, задаётся в header.php на каждой странице
-function parseInteger(value, radix) {
-    if (typeof value === "string") {
-        const parsedNumber = parseInt(value * 1);
-        if (isNaN(parsedNumber) || !isFinite(parsedNumber)) {
-            return 0;
-        } else {
-            return parsedNumber.toString(radix || 10);
-        }
-    } else {
-        if (typeof value === "number" && isFinite(value)) {
-            return Math.floor(value);
-        } else {
-            return 0;
-        }
-    }
+// Kept for old markup / other callers
+function copyNfo() {
+    document.querySelector('[data-dt-copy="#nfoText"]')?.click();
 }
 
+/* ── File tree: expand / collapse all ───────────────────────────────────── */
+function dtTreeAll(show) {
+    if (typeof bootstrap === 'undefined') {
+        return;
+    }
+    document.querySelectorAll('.file-tree .collapse').forEach(function (el) {
+        const inst = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+        if (show) {
+            inst.show();
+        } else {
+            inst.hide();
+        }
+    });
+}
+function expandAllFiles()   { dtTreeAll(true); }
+function collapseAllFiles() { dtTreeAll(false); }
+
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-dt-tree]');
+    if (btn) {
+        dtTreeAll(btn.dataset.dtTree === 'expand');
+    }
+});
+
+/* ── Confirmed forms (claim, reseed): data-dt-confirm ───────────────────── */
+document.addEventListener('submit', function (e) {
+    const f = e.target;
+    if (!f.matches || !f.matches('form[data-dt-confirm]') || f.dataset.ok === '1') {
+        return;
+    }
+    e.preventDefault();
+    dtConfirm({ text: f.dataset.dtConfirm, yes: f.dataset.dtYes, no: f.dataset.dtNo }).then(function (ok) {
+        if (!ok) {
+            return;
+        }
+        f.dataset.ok = '1';
+        const b = f.querySelector('button[type="submit"], button:not([type])');
+        if (b) {
+            b.disabled = true;
+        }
+        f.submit();
+    });
+});
+
+/* ── Delete torrent (owner / staff) ─────────────────────────────────────── */
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.dt-delete-torrent');
+    if (!btn) {
+        return;
+    }
+    e.preventDefault();
+
+    const name = btn.dataset.name || '';
+    dtConfirm({
+        danger: true,
+        title: btn.dataset.title,
+        text: name + '\n\n' + (btn.dataset.warn || ''),
+        html: '<p class="fw-semibold mb-2">' + agsEsc(name) + '</p>'
+            + '<p class="small text-body-secondary mb-0">' + agsEsc(btn.dataset.warn || '') + '</p>',
+        yes: btn.dataset.yes,
+        no: btn.dataset.no
+    }).then(function (ok) {
+        if (!ok) {
+            return;
+        }
+        btn.disabled = true;
+        agsIconText(btn, 'fa-solid fa-hourglass-half me-2', t('dt_deleting', 'Deleting...'));
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'delete.php';
+        const fields = {
+            id: btn.dataset.torrentId,
+            reasontype: '5',              // "Other"
+            'reason[3]': 'Deleted from the torrent page',
+            my_post_key: dtPostKey()
+        };
+        Object.keys(fields).forEach(function (k) {
+            const inp = document.createElement('input');
+            inp.type  = 'hidden';
+            inp.name  = k;
+            inp.value = fields[k];
+            form.appendChild(inp);
+        });
+        document.body.appendChild(form);
+        form.submit();
+    });
+});
+
+/* ── Magnet link modal ──────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function () {
+    const modalEl     = document.getElementById('magnetModal');
+    const magnetInput = document.getElementById('magnetInput');
+    const copyBtn     = document.getElementById('copyMagnetBtn');
+    const copySuccess = document.getElementById('copySuccess');
+    const openBtn     = document.getElementById('openMagnetBtn');
+
+    if (!modalEl || !magnetInput || !copyBtn || !openBtn || typeof bootstrap === 'undefined') {
+        return;
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+    window.updateMagnetLink = function (url) {
+        magnetInput.value = url;
+    };
+
+    openBtn.addEventListener('click', function () {
+        const url = magnetInput.value;
+        if (!url.startsWith('magnet:?')) {
+            dtToast(t('dt_magnet_invalid', 'Invalid magnet link'), 'error');
+            return;
+        }
+        window.location.href = url;
+        dtToast(t('dt_magnet_opening', 'Opening torrent client...'), 'info');
+        modal.hide();
+    });
+
+    copyBtn.addEventListener('click', function () {
+        if (!navigator.clipboard) {
+            magnetInput.select();
+            dtToast(t('dt_clipboard_failed', 'Could not copy to clipboard'), 'error');
+            return;
+        }
+        navigator.clipboard.writeText(magnetInput.value).then(function () {
+            copySuccess?.classList.remove('d-none');
+            const original = copyBtn.innerHTML;
+            agsIconText(copyBtn, 'fa-solid fa-check me-1', t('dt_copied', 'Copied!'));
+            copyBtn.classList.replace('btn-primary', 'btn-success');
+            setTimeout(function () {
+                copySuccess?.classList.add('d-none');
+                copyBtn.innerHTML = original;
+                copyBtn.classList.replace('btn-success', 'btn-primary');
+            }, 2000);
+        }).catch(function () {
+            dtToast(t('dt_clipboard_failed', 'Could not copy to clipboard'), 'error');
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.magnet-btn');
+        if (!btn) {
+            return;
+        }
+        e.preventDefault();
+        btn.disabled = true;
+
+        fetch('download.php?type=magnet&id=' + encodeURIComponent(btn.dataset.magnetId), { credentials: 'same-origin' })
+            .then(function (r) { return r.text(); })
+            .then(function (magnet) {
+                magnet = magnet.trim();
+                if (!magnet.startsWith('magnet:?')) {
+                    dtToast(t('dt_magnet_error', 'Magnet link error'), 'error');
+                    return;
+                }
+                magnetInput.value = magnet;
+                modal.show();
+            })
+            .catch(function () {
+                dtToast(t('dt_magnet_load_failed', 'Failed to load magnet link'), 'error');
+            })
+            .finally(function () {
+                btn.disabled = false;
+            });
+    });
+});
+
+/* ── IMDb refresh (staff) ───────────────────────────────────────────────── */
 function TS_IMDB(torrentId) {
-    const updateButton = document.getElementById('imdbupdatebutton');
-    const imdbDetails = document.getElementById('imdbdetails');
-
-    if (!updateButton || !imdbDetails) {
-        console.error('Required elements not found');
+    const btn  = document.getElementById('imdbupdatebutton');
+    const body = document.getElementById('imdbdetails');
+    if (!btn || !body) {
         return;
     }
 
-    const postData = "tid=" + parseInteger(torrentId);
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    agsIconText(btn, 'fa-solid fa-circle-notch fa-spin me-1', t('dt_please_wait', 'Please Wait...'));
 
-    // Update button state
-    updateButton.textContent = t('dt_please_wait', 'Please Wait...');
-    updateButton.disabled = true;
-
-    fetch(baseurl + "/ajax_imdb.php", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: postData
+    fetch(baseurl + '/ajax_imdb.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'tid=' + encodeURIComponent(String(parseInt(torrentId, 10) || 0))
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.text();
-    })
-    .then(response => {
-        if (response.match(/<error>(.*)<\/error>/)) {
-            const errorMatch = response.match(/<error>(.*)<\/error>/);
-            const errorMessage = errorMatch[1] || t('dt_error_generic', 'An error occurred');
-
-            alert(t('dt_update_error', 'Update error: {1}', errorMessage));
-            updateButton.textContent = t('dt_refresh', 'Refresh');
-            updateButton.disabled = false;
-        } else {
-            imdbDetails.innerHTML = response;
-            updateButton.textContent = t('dt_updated', 'Updated');
-            updateButton.disabled = false;
-
-            // Visual feedback
-            const parentContainer = imdbDetails.parentElement;
-            parentContainer.classList.add('bg-warning');
-            parentContainer.classList.remove('bg-light');
-
-            // Simple fade effect
-            parentContainer.style.opacity = '0';
-            setTimeout(() => {
-                parentContainer.style.opacity = '1';
-            }, 200);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert(t('dt_ajax_error', 'AJAX error occurred'));
-        updateButton.textContent = t('dt_refresh', 'Refresh');
-        updateButton.disabled = false;
-    });
-}
-// ===== Scroll to tab (клик по .scroll-to-tab открывает нужный таб и прокручивает к нему) =====
-// (объединено из details-extras.js)
-document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll(".scroll-to-tab").forEach(function (link) {
-        link.addEventListener("click", function (e) {
-            e.preventDefault();
-            var tabKey = this.getAttribute("data-scroll-tab");
-            var tabBtn = document.getElementById(tabKey + "-tab");
-            if (!tabBtn || typeof bootstrap === "undefined") return;
-
-            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
-            tabBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+        .then(function (r) {
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status);
+            }
+            return r.text();
+        })
+        .then(function (response) {
+            const err = response.match(/<error>([\s\S]*?)<\/error>/);
+            if (err) {
+                dtToast(t('dt_update_error', 'Update error: {1}', err[1] || t('dt_error_generic', 'An error occurred')), 'error');
+                btn.innerHTML = original;
+                return;
+            }
+            body.innerHTML = response;
+            body.classList.remove('dt-imdb__flash');
+            void body.offsetWidth;
+            body.classList.add('dt-imdb__flash');
+            agsIconText(btn, 'fa-solid fa-check me-1', t('dt_updated', 'Updated'));
+        })
+        .catch(function () {
+            dtToast(t('dt_ajax_error', 'AJAX error occurred'), 'error');
+            btn.innerHTML = original;
+        })
+        .finally(function () {
+            btn.disabled = false;
         });
+}
+
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-imdb-refresh]');
+    if (btn) {
+        TS_IMDB(btn.dataset.imdbRefresh);
+    }
+});
+
+/* ── First AJAX comment: drop the "no comments yet" card ────────────────── */
+document.addEventListener('DOMContentLoaded', function () {
+    const empty = document.getElementById('dt-comments-empty');
+    const box   = document.getElementById('ajax_comment_preview');
+    if (!empty || !box || typeof MutationObserver === 'undefined') {
+        return;
+    }
+    const mo = new MutationObserver(function () {
+        if (box.children.length) {
+            empty.remove();
+            mo.disconnect();
+        }
     });
+    mo.observe(box, { childList: true });
 });

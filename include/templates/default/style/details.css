@@ -1,1310 +1,316 @@
-/* ===============================================
-   MAIN STYLESHEET
-   =============================================== */
-
-/* -----------------------------------------------
-   1. CSS Variables & Root
-   ----------------------------------------------- */
-:root {
-    /* Gradients */
-    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --primary-gradient-alt: linear-gradient(135deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%);
-    --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-    --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-    --info-gradient: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-    --danger-gradient: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-    --btn-primary-gradient: linear-gradient(145deg, #0d6efd, #0b5ed7);
-    
-    /* Glass Effects */
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    
-    /* Shadows */
-    --shadow-premium: 0 20px 60px rgba(0, 0, 0, 0.15);
-    --shadow-primary: 0 15px 30px rgba(13,110,253,0.4);
-    --shadow-danger: 0 4px 12px rgba(220, 53, 69, 0.3);
-    
-    /* Colors */
-    --primary-color: #0d6efd;
-    --primary-dark: #0b5ed7;
-    --danger-color: #dc3545;
-    --danger-dark: #c82333;
-    
-    /* Transitions */
-    --transition-default: all 0.3s ease;
-	
-	/* Avatar ring */
-	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
-}
-
-
-	
-
- /* ---------- AVATAR RING + STATUS DOT ---------- */
-    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
-      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
-    .avatar-ring>*{display:block; border-radius:50%}
-
-/* -----------------------------------------------
-   2. Global Keyframes Animations
-   ----------------------------------------------- */
-@keyframes spin-slow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-@keyframes shrinkWidth {
-    from { width: 100%; }
-    to { width: 0%; }
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); opacity: 0.5; }
-    50% { transform: scale(1.5); opacity: 0; }
-    100% { transform: scale(1); opacity: 0; }
-}
-
-@keyframes float {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-20px); }
-    100% { transform: translateY(0px); }
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes fadeInDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50px) scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes wave {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* -----------------------------------------------
-   3. Background Elements
-   ----------------------------------------------- */
-.background-elements {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: -1;
-}
-
-.floating-shape {
-    position: absolute;
-    border-radius: 50%;
-    background: var(--primary-gradient);
-    opacity: 0.1;
-    animation: float 6s ease-in-out infinite;
-}
-
-.shape-1 { width: 200px; height: 200px; top: 10%; left: 5%; animation-delay: 0s; }
-.shape-2 { width: 150px; height: 150px; top: 60%; right: 10%; animation-delay: 2s; }
-.shape-3 { width: 100px; height: 100px; bottom: 20%; left: 15%; animation-delay: 4s; }
-
-/* -----------------------------------------------
-   4. Particles Animation
-   ----------------------------------------------- */
-.particles {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    pointer-events: none;
-}
-
-.particle {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    opacity: 0.2;
-    animation: float 4s ease-in-out infinite;
-}
-
-/* -----------------------------------------------
-   5. Hero Section
-   ----------------------------------------------- */
-.hero-card {
-    background: var(--primary-gradient);
-    color: white;
-}
-
-.hero-background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><polygon fill="rgba(255,255,255,0.1)" points="0,1000 1000,0 1000,1000"/></svg>');
-    background-size: cover;
-}
-
-.hero-title {
-    font-size: 2.5rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-}
-
-/* -----------------------------------------------
-   6. Breadcrumb Improvements
-   ----------------------------------------------- */
-.breadcrumb-container {
-    position: relative;
-}
-
-.breadcrumb-progress {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 3px;
-    background: var(--primary-gradient);
-    border-radius: 4px 4px 0 0;
-    width: 66%;
-    transition: width 0.3s ease;
-}
-
-.breadcrumb-icon {
-    width: 40px;
-    height: 40px;
-    background: var(--primary-gradient);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-}
-
-/* -----------------------------------------------
-   7. Hover Effects
-   ----------------------------------------------- */
-.hover-lift {
-    transition: var(--transition-default);
-}
-
-.hover-lift:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-}
-
-.btn-hover-glow:hover {
-    box-shadow: 0 0 20px rgba(255,255,255,0.5);
-}
-
-.transition-scale {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.transition-scale:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(0,0,0,0.3);
-}
-
-/* -----------------------------------------------
-   8. Advanced Stat Cards
-   ----------------------------------------------- */
-.stat-card.advanced {
-    border-left: 4px solid;
-    transition: var(--transition-default);
-}
-
-.stat-card.advanced:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-premium);
-}
-
-.stat-card.advanced:nth-child(1) { border-left-color: #28a745; }
-.stat-card.advanced:nth-child(2) { border-left-color: #ffc107; }
-.stat-card.advanced:nth-child(3) { border-left-color: #17a2b8; }
-
-.mega-progress {
-    height: 12px;
-    background: rgba(0,0,0,0.1);
-}
-
-/* -----------------------------------------------
-   9. Smart Tabs
-   ----------------------------------------------- */
-.smart-tab {
-    transition: var(--transition-default);
-    border: 2px solid transparent;
-}
-
-.smart-tab.active {
-    background: var(--primary-gradient) !important;
-    border-color: rgba(255,255,255,0.3);
-    color: white !important;
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-}
-
-.smart-tab:not(.active):hover {
-    background: rgba(0,0,0,0.05);
-    border-color: rgba(0,0,0,0.1);
-}
-
-.tab-icon {
-    width: 48px;
-    height: 48px;
-    background: rgba(0,0,0,0.1);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-}
-
-.smart-tab.active .tab-icon {
-    background: rgba(255,255,255,0.2);
-}
-
-/* -----------------------------------------------
-   10. Download Icon Animation
-   ----------------------------------------------- */
-.download-main-icon {
-    width: 70px;
-    height: 70px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    backdrop-filter: blur(10px);
-    animation: pulse 2s infinite;
-}
-
-/* -----------------------------------------------
-   11. Animated Wave
-   ----------------------------------------------- */
-.animated-wave {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, 
-        transparent 0%, 
-        rgba(255,255,255,0.8) 50%, 
-        transparent 100%);
-    animation: wave 2s linear infinite;
-}
-
-/* -----------------------------------------------
-   12. Section Titles
-   ----------------------------------------------- */
-.section-title {
-    color: #2c3e50;
-    font-weight: 600;
-}
-
-/* -----------------------------------------------
-   13. Image Modal Enhancements
-   ----------------------------------------------- */
-.zoomable-image {
-    cursor: zoom-in;
-}
-
-.image-viewport {
-    transition: transform 0.3s ease;
-}
-
-.screenshot-wrapper:hover img {
-    opacity: 0.9;
-}
-
-/* -----------------------------------------------
-   14. Icon & Dropdown Enhancements
-   ----------------------------------------------- */
-.btn-icon {
-    transition: var(--transition-default);
-    border: 1px solid #e9ecef;
-}
-
-.btn-icon:hover {
-    transform: scale(1.1);
-    border-color: #007bff;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.dropdown-item {
-    transition: var(--transition-default);
-}
-
-.dropdown-item:hover {
-    background: #007bff;
-    color: white;
-    margin-left: 5px;
-    margin-right: -5px;
-    border-radius: 6px;
-}
-
-/* -----------------------------------------------
-   15. Magnet Modal Specific Styles
-   ----------------------------------------------- */
-.icon-circle {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: float 3s ease-in-out infinite;
-}
-
-.glow-effect {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    animation: pulse 3s infinite;
-}
-
-.pulse-ring {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 120px;
-    height: 120px;
-    border: 2px solid;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-}
-
-.fa-spin-slow {
-    animation: spin-slow 3s linear infinite;
-}
-
-.fade-in-up {
-    animation: fadeInUp 0.5s ease;
-}
-
-/* -----------------------------------------------
-   16. Delete Torrent Modal Styles
-   ----------------------------------------------- */
-#deleteTorrentModal .modal-content {
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-#deleteTorrentModal .modal-header {
-    border-bottom: none;
-    padding: 1.5rem 1.5rem 1rem;
-}
-
-#deleteTorrentModal .modal-body {
-    padding: 0 1.5rem;
-}
-
-#deleteTorrentModal .modal-footer {
-    padding: 1rem 1.5rem 1.5rem;
-    background: rgba(0,0,0,0.02);
-}
-
-#deleteTorrentModal .btn {
-    border-radius: 8px;
-    font-weight: 500;
-}
-
-#confirmDeleteBtn:not(:disabled):hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-danger);
-}
-
-#deleteTorrentModal .form-check-input:focus {
-    border-color: var(--danger-color);
-    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
-}
-
-/* -----------------------------------------------
-   17. General Modal Styles
-   ----------------------------------------------- */
-.modal-content {
-    animation: modalSlideIn 0.3s ease-out;
-}
-
-  
-
-/* -----------------------------------------------
-   18. Form Styles
-   ----------------------------------------------- */
-.form-select, .form-control {
-    border-radius: 0.5rem;
-    border: 1px solid #dee2e6;
-    transition: var(--transition-default);
-}
-
-.form-select:focus, .form-control:focus {
-    border-color: var(--danger-color);
-    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
-}
-
-.form-control {
-    border-radius: 0 !important;
-    border: 1px solid #dee2e6;
-}
-
-.form-control:focus {
-    box-shadow: none;
-    border-color: var(--primary-color);
-}
-
-.input-group-text {
-    border-radius: 10px 0 0 10px !important;
-}
-
-.input-group .btn-primary {
-    border-radius: 0 10px 10px 0 !important;
-}
-
-/* -----------------------------------------------
-   19. Button Styles
-   ----------------------------------------------- */
-.btn-primary2 {
-    background: var(--btn-primary-gradient);
-    border: none;
-    transition: var(--transition-default);
-}
-
-.btn-primary2:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-primary) !important;
-}
-
-.btn-outline-primary2 {
-    border: 1px solid var(--primary-color);
-    color: var(--primary-color);
-    transition: var(--transition-default);
-}
-
-.btn-outline-primary2:hover {
-    background: var(--btn-primary-gradient);
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 15px rgba(13,110,253,0.3);
-}
-
-.btn2 {
-    transition: var(--transition-default);
-}
-
-/* Submit Report Button */
-#submitReport {
-    transition: var(--transition-default);
-}
-
-#submitReport:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-danger);
-}
-
-/* -----------------------------------------------
-   20. Text Utilities
-   ----------------------------------------------- */
-.text-white-75 {
-    color: rgba(255, 255, 255, 0.75);
-}
-
-.bg-gradient {
-    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-}
-
-/* -----------------------------------------------
-   21. Magnet Loading Animation
-   ----------------------------------------------- */
-.magnet-loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(5px);
-    z-index: 99999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.3s ease;
-}
-
-.magnet-loading-content {
-    background: white;
-    padding: 2rem;
-    border-radius: 24px;
-    box-shadow: var(--shadow-premium);
-    text-align: center;
-    max-width: 320px;
-    width: 90%;
-    animation: slideInRight 0.3s ease;
-    border: 1px solid rgba(13, 110, 253, 0.1);
-}
-
-.magnet-spinner {
-    width: 60px;
-    height: 60px;
-    border: 4px solid #e2e8f0;
-    border-top-color: var(--primary-color);
-    border-radius: 50%;
-    margin: 0 auto 1.5rem;
-    animation: spin 1s linear infinite;
-}
-
-.magnet-spinner.success {
-    border-top-color: #10b981;
-}
-
-.magnet-spinner.error {
-    border-top-color: #ef4444;
-}
-
-.magnet-loading-text {
-    color: #1e293b;
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 1rem;
-}
-
-.magnet-loading-progress {
-    width: 100%;
-    height: 6px;
-    background: #e2e8f0;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: 0.5rem;
-}
-
-.magnet-progress-bar {
-    width: 0%;
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--primary-dark));
-    border-radius: 3px;
-    transition: width 0.3s ease;
-}
-
-/* -----------------------------------------------
-   22. Responsive Design
-   ----------------------------------------------- */
-@media (max-width: 768px) {
-    .hero-title {
-        font-size: 1.8rem;
-    }
-    
-    .display-6 {
-        font-size: 2rem;
-    }
-    
-    .smart-tab {
-        padding: 1rem !important;
-    }
-    
-    .tab-icon {
-        width: 36px;
-        height: 36px;
-        font-size: 1rem;
-    }
-}
-
-@media (max-width: 576px) {
-    .icon-circle {
-        width: 70px;
-        height: 70px;
-    }
-    
-    .icon-circle i {
-        font-size: 2rem;
-    }
-    
-    .modal-footer {
-        flex-direction: column;
-        gap: 10px !important;
-    }
-    
-    .modal-footer .btn {
-        width: 100%;
-    }
-    
-    .d-flex.gap-3 {
-        flex-wrap: wrap;
-    }
-    
-    .magnet-loading-content {
-        padding: 1.5rem;
-    }
-    
-    .magnet-spinner {
-        width: 50px;
-        height: 50px;
-        border-width: 3px;
-    }
-    
-    .magnet-loading-text {
-        font-size: 0.9rem;
-    }
-}
-
-/* -----------------------------------------------
-   23. Dark Mode Enhancements
-   ----------------------------------------------- */
-/* Реагирует на реальный переключатель темы сайта ([data-bs-theme="dark"]
-   на <html>), не на настройку ОС/браузера - раньше был
-   @media (prefers-color-scheme: dark), никак не связанный с самим
-   переключателем на сайте. */
-[data-bs-theme="dark"] .bg-light {
-    background-color: #2d3748 !important;
-    color: #e2e8f0;
-}
-
-[data-bs-theme="dark"] .text-dark {
-    color: #e2e8f0 !important;
-}
-
-[data-bs-theme="dark"] .text-muted {
-    color: #a0aec0 !important;
-}
-
-[data-bs-theme="dark"] .card {
-    background-color: #2d3748;
-    border-color: #4a5568;
-}
-
-[data-bs-theme="dark"] .magnet-loading-overlay {
-    background: rgba(26, 32, 44, 0.95);
-}
-
-[data-bs-theme="dark"] .magnet-loading-content {
-    background: #2d3748;
-    border-color: #4a5568;
-}
-
-[data-bs-theme="dark"] .magnet-loading-text {
-    color: #e2e8f0;
-}
-
-[data-bs-theme="dark"] .magnet-spinner {
-    border-color: #4a5568;
-}
-
-/* -----------------------------------------------
-   24. Utility Classes
-   ----------------------------------------------- */
-.magnet-btn {
-    transition: var(--transition-default);
-}
-
-.magnet-btn:active {
-    transform: scale(0.95);
-}
-
-.magnet-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-/* ===== Rating widget ===== */
-.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
-.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
-.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
-.rating-stars { display:flex; gap:4px; font-size:1rem; }
-.rating-star-filled { color:#f59e0b; }
-.rating-star-empty { color:#e9ecef; }
-.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
-.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
-.user-star.active { color:#f59e0b; }
-@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
-
-/* ===== Similar Torrents Cards ===== */
-.similar-torrent-card {
-    border-radius: 10px;
-    overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.similar-torrent-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
-}
-
-.similar-overlay {
-    background: rgba(0,0,0,0.3);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.similar-torrent-card:hover .similar-overlay {
-    opacity: 1;
-}
-
-.similar-torrent-card:hover img {
-    transform: scale(1.05);
-}
-
-
-/* ══════════════════════════════════════════════════════════════════
-   details-extras.css - вынесенные позже дополнения (вынос из инлайна,
-   hero-блок, тёмная тема)
-   ══════════════════════════════════════════════════════════════════ */
-
-/* details-extras.css — вынесено из details.php */
-
-/* ══════════════════════════════════════════════════════════════════
-   DETAILS PAGE — CLEANED STYLES
-   ══════════════════════════════════════════════════════════════════ */
-
-/* ── Breadcrumb ─────────────────────────────────────────────────── */
-.torrent-breadcrumb {
-    background: linear-gradient(90deg, #f8f9ff 0%, #ffffff 100%) !important;
-    border: 1px solid #eef0f5;
-}
-.torrent-breadcrumb .breadcrumb-item a {
-    color: #5a6b85;
-    font-weight: 500;
-    transition: color .16s ease;
-}
-.torrent-breadcrumb .breadcrumb-item a:hover {
-    color: #0d6efd;
-}
-.torrent-breadcrumb .breadcrumb-item.active {
-    color: #18233b;
-    font-weight: 600;
-}
-.breadcrumb-item + .breadcrumb-item::before {
-    content: "›";
-    color: #adb5bd;
-    font-size: 1.1rem;
-    line-height: 1;
-}
-
-/* ── Header / Hero icon ─────────────────────────────────────────── */
-.torrent-hero-icon {
-    flex: 0 0 72px;
-    width: 72px; height: 72px;
-    display: grid; place-items: center;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #eef4ff, #dbe7ff);
-    color: #0d6efd;
-    font-size: 2rem;
-    box-shadow: 0 8px 20px rgba(13, 110, 253, .15);
-    transition: transform .25s ease;
-}
-.torrent-hero-icon:hover {
-    transform: scale(1.05) rotate(-4deg);
-    color: #6657e8;
-}
-
-/* ── Meta badges ────────────────────────────────────────────────── */
-.torrent-meta-badges .meta-badge {
-    padding: .5em .85em;
-    font-weight: 600;
-    font-size: .78rem;
-    border-radius: 9px;
-    letter-spacing: .01em;
-    transition: transform .16s ease, box-shadow .16s ease;
-}
-.torrent-meta-badges .meta-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,.1);
-}
-.torrent-meta-badges .meta-badge i {
-    filter: grayscale(100%);
-    opacity: .85;
-    transition: opacity .18s ease;
-}
-.torrent-meta-badges .meta-badge:hover i { opacity: 1; }
-
-.meta-badge-id      { background: #f1f3f5; color: #495057; border: 1px solid #dee2e6; }
-.meta-badge-size    { background: rgba(102,87,232,.1); color: #6657e8; border: 1px solid rgba(102,87,232,.25); }
-.meta-badge-files   { background: rgba(255,193,7,.15); color: #997404; border: 1px solid rgba(255,193,7,.3); }
-.meta-badge-date    { background: rgba(108,117,125,.12); color: #495057; border: 1px solid rgba(108,117,125,.25); }
-.meta-badge-snatched{ background: rgba(13,202,240,.15); color: #0aa2c0; border: 1px solid rgba(13,202,240,.3); }
-
-/* ── Action card ────────────────────────────────────────────────── */
-.action-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
-    border: 1px solid #eef0f5;
-}
-.action-icon {
-    width: 56px; height: 56px;
-    border-radius: 14px;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, #0d6efd 0%, #4f8eff 100%);
-    color: #fff;
-    font-size: 1.75rem;
-    box-shadow: 0 8px 20px rgba(13,110,253,.25);
-    flex-shrink: 0;
-}
-.btn-download-pulse {
-    background: linear-gradient(135deg, #0d6efd, #4d94ff) !important;
-    border: none !important;
-    box-shadow: 0 8px 20px rgba(13,110,253,.3);
-    transition: transform .18s ease, box-shadow .18s ease;
-}
-.btn-download-pulse:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 26px rgba(13,110,253,.45);
-}
-
-/* ── Health progress ────────────────────────────────────────────── */
-.health-progress-wrap { padding: 0 .25rem; }
-.health-progress {
-    height: 10px;
-    border-radius: 6px;
-    background: #f1f3f5;
-    overflow: hidden;
-}
-.health-progress .progress-bar {
-    border-radius: 6px;
-    transition: width .4s ease;
-}
-
-/* ── Stat tiles ─────────────────────────────────────────────────── */
-.stat-tile {
-    display: flex; align-items: center; gap: 12px;
-    padding: 1rem 1.1rem;
-    border-radius: 12px;
-    background: #fff;
-    border: 1px solid #eef0f5;
-    transition: transform .2s, box-shadow .2s;
-    height: 100%;
-}
-.stat-tile:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 24px rgba(0,0,0,.06);
-}
-.stat-tile-icon {
-    width: 44px; height: 44px;
-    border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-    transition: transform .2s ease;
-}
-.stat-tile:hover .stat-tile-icon { transform: scale(1.08) rotate(-4deg); }
-.stat-tile-success   .stat-tile-icon { background: linear-gradient(135deg, #d1e7dd, #a3d9b8); color: #0f5132; }
-.stat-tile-warning   .stat-tile-icon { background: linear-gradient(135deg, #fff3cd, #ffe69c); color: #997404; }
-.stat-tile-info      .stat-tile-icon { background: linear-gradient(135deg, #cff4fc, #9eeaf9); color: #055160; }
-.stat-tile-secondary .stat-tile-icon { background: linear-gradient(135deg, #e2e3e5, #cfd2d5); color: #41464b; }
-.stat-tile-value { font-size: 1.25rem; font-weight: 700; line-height: 1.1; color: #18233b; }
-.stat-tile-label { font-size: .78rem; color: #8a8f98; margin-top: 2px; }
-.stat-tile-label i { opacity: .8; }
-
-/* ── Tabs ───────────────────────────────────────────────────────── */
-.nav-tabs-scrollable {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    border-bottom: 1px solid #eef0f5;
-}
-.nav-tabs-scrollable::-webkit-scrollbar { display: none; }
-.nav-tabs-scrollable .nav-link {
-    white-space: nowrap;
-    border: none;
-    border-bottom: 3px solid transparent;
-    color: #6c757d;
-    font-weight: 500;
-    padding: .85rem 1.25rem;
-    transition: all .2s;
-}
-.nav-tabs-scrollable .nav-link i { transition: transform .18s ease; }
-.nav-tabs-scrollable .nav-link:hover {
-    color: #0d6efd;
-    background: #f8f9ff;
-    border-bottom-color: #e0e9ff;
-}
-.nav-tabs-scrollable .nav-link:hover i { transform: scale(1.15); }
-.nav-tabs-scrollable .nav-link.active {
-    color: #0d6efd;
-    background: transparent;
-    border-bottom-color: #0d6efd;
-}
-
-/* ── Info tab (2-col layout) ────────────────────────────────────── */
-.info-grid {
-    background: #ffffff;
-    border: 1px solid #eef0f5;
-    border-radius: 14px;
-    padding: .25rem 1rem;
-    height: 100%;
-    transition: box-shadow .2s ease;
-}
-.info-grid:hover { box-shadow: 0 6px 20px rgba(0,0,0,.04); }
-
-.info-item { transition: background .16s ease; }
-.info-item:hover { background: #fafbff; border-radius: 8px; }
-.info-item:last-child { border-bottom: none !important; }
-
-.info-item > span:first-child {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: .88rem;
-    font-weight: 500;
-    flex-shrink: 0;
-}
-.info-item > span:last-child {
-    max-width: 65%;
-    word-break: break-word;
-    text-align: right;
-    font-size: .9rem;
-}
-
-/* Чёрно-белые иконки */
-.info-item > span:first-child i,
-.tag-section h6 i {
-    color: #1a1a1a !important;
-    opacity: .65;
-    filter: grayscale(100%);
-    transition: color .18s ease, opacity .18s ease, transform .18s ease;
-    font-size: 1rem;
-    vertical-align: -1px;
-}
-.info-item:hover > span:first-child i {
-    color: #000 !important;
-    opacity: 1;
-    transform: scale(1.15);
-}
-
-/* Бейджи в правой колонке */
-.info-item .badge.bg-light {
-    background: #f1f3f5 !important;
-    border: 1px solid #e6e8eb;
-    color: #1a1a1a !important;
-    font-weight: 600;
-    font-size: .82rem;
-    padding: .35em .8em;
-    border-radius: 7px;
-    transition: background .16s ease, transform .16s ease;
-}
-.info-item .badge.bg-light:hover {
-    background: #e9ecef !important;
-    transform: translateY(-1px);
-}
-.info-item .badge.bg-light a { color: #1a1a1a !important; font-weight: 700; }
-
-.info-item .font-monospace {
-    font-size: .78rem;
-    background: #f8f9fa;
-    padding: 2px 6px;
-    border-radius: 5px;
-    word-break: break-all;
-}
-
-/* ── Tags section ───────────────────────────────────────────────── */
-.tag-section { padding-top: .5rem; }
-.tag-section .tag-badge {
-    background: linear-gradient(135deg, #0d6efd, #4d94ff) !important;
-    border-radius: 8px;
-    padding: .5em .85em;
-    font-weight: 600;
-    font-size: .78rem;
-    color: #fff !important;
-    text-decoration: none;
-    transition: transform .16s ease, box-shadow .16s ease;
-}
-.tag-section .tag-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13,110,253,.3);
-}
-
-/* ── Rating ─────────────────────────────────────────────────────── */
-.rating-panel {
-    padding: 1.25rem 1.5rem;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
-    border: 1px solid #e5e7f0;
-}
-.rating-panel-header {
-    display: flex; align-items: center; gap: 8px;
-    padding-bottom: .85rem;
-    border-bottom: 1px solid #eef0f5;
-    font-weight: 600;
-    color: #18233b;
-}
-.rating-score-wrap {
-    text-align: center;
-    padding: 0 1rem;
-    border-right: 1px solid #e5e7f0;
-}
-/* .rating-score, .rating-star-filled, .rating-star-empty, .user-star -
-   убраны отсюда, конфликтовали с details.css (тот побеждал по порядку
-   загрузки, но эти правила были мёртвым дублем, путающим при правке).
-   Актуальные версии теперь только в details.css. */
-.rating-score-max {
-    font-size: .9rem;
-    color: #495057;
-    opacity: .7;
-    margin-top: .1rem;
-}
-.rating-votes { font-size: .75rem; }
-.rating-stars-wrap { padding-left: .5rem; }
-.rating-stars i { font-size: 1.25rem; }
-
-/* ── Similar torrents ───────────────────────────────────────────── */
-.similar-wrapper { border-radius: 14px; overflow: hidden; }
-.similar-header {
-    background: linear-gradient(90deg, #f8f9ff, #ffffff);
-    border-bottom: 1px solid #eef0f5;
-}
-/* .similar-torrent-card, .similar-overlay - тоже убраны, та же причина -
-   актуальные версии в details.css. */
-
-/* ── File tree ──────────────────────────────────────────────────── */
-.file-tree .accordion-item {
-    border: 1px solid #eef0f5;
-    margin-bottom: .35rem;
-    border-radius: 10px;
-    overflow: hidden;
-}
-.file-tree .accordion-button {
-    padding: .65rem 1rem;
-    font-size: .9rem;
-    background: #fafbfc;
-    box-shadow: none;
-}
-.file-tree .accordion-button:not(.collapsed) {
-    background: #f0f6ff;
-    color: #0d6efd;
-}
-.file-tree .accordion-body { padding: .65rem 1rem; }
-
-/* ── Poster strip ───────────────────────────────────────────────── */
-.poster-strip {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    justify-content: center;
-    padding: .5rem 0;
-}
-.poster-strip > a {
-    display: block;
-    line-height: 0;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 14px rgba(0,0,0,.08);
-    transition: transform .25s ease, box-shadow .25s ease;
-    max-width: 400px;
-}
-.poster-strip > a:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 10px 26px rgba(0,0,0,.15);
-}
-.poster-strip img {
-    display: block; width: 100%; height: auto;
-    max-height: 720px;
-    object-fit: cover;
-    border-radius: 12px;
-}
-
-/* ── Manage icons ───────────────────────────────────────────────── */
-.manage-btn { transition: transform .18s ease; }
-.manage-btn:hover { transform: rotate(90deg); }
-.manage-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px; height: 36px;
-    border-radius: 9px;
-    background: #f8f9fa;
-    border: 1px solid #eef0f5;
-    margin: 0 2px;
-    transition: background .18s ease, transform .18s ease;
-    text-decoration: none;
-    cursor: pointer;
-    vertical-align: middle;
-}
-.manage-icon-btn:hover { background: #eef4ff; transform: translateY(-2px); }
-.manage-icon-btn i { font-size: 1.1rem; }
-.manage-icon-btn button { background: none; border: none; padding: 0; }
-
-/* ── Hit & Run warning ──────────────────────────────────────────── */
-.hitrun-alert {
-    background: linear-gradient(135deg, #fff5f5, #ffe0e0);
-    border: 1px solid #f5c2c7;
-    border-left: 4px solid #dc3545;
-    color: #842029;
-    padding: 1rem 1.25rem;
-    border-radius: 12px;
-    font-size: .9rem;
-}
-
-/* ── Comments empty ─────────────────────────────────────────────── */
-.comments-empty-card {
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 4px 14px rgba(0,0,0,.05);
-}
-
-/* ── IMDb card ──────────────────────────────────────────────────── */
-.imdb-card {
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid #eef0f5;
-}
-.imdb-header {
-    background: linear-gradient(90deg, #fff8e6, #fff1c8);
-    border-bottom: 1px solid #ffe69c;
-}
-
-/* ── Animations ─────────────────────────────────────────────────── */
-@keyframes tilePop {
-    from { opacity: 0; transform: scale(.92); }
-    to   { opacity: 1; transform: scale(1); }
-}
-.stat-tile { animation: tilePop .3s ease backwards; }
-.row > .col-6:nth-child(1) .stat-tile { animation-delay: .05s; }
-.row > .col-6:nth-child(2) .stat-tile { animation-delay: .12s; }
-.row > .col-6:nth-child(3) .stat-tile { animation-delay: .19s; }
-.row > .col-6:nth-child(4) .stat-tile { animation-delay: .26s; }
-
-/* ── Responsive ─────────────────────────────────────────────────── */
-@media (max-width: 576px) {
-    .torrent-hero-icon { width: 56px; height: 56px; font-size: 1.5rem; flex: 0 0 56px; }
-    .stat-tile-value { font-size: 1.05rem; }
-    .info-item > span:last-child { max-width: 60%; }
-    .poster-strip > a { max-width: 100%; }
-}
-
-/* ── Dark mode ──────────────────────────────────────────────────── */
-/* Реагирует на реальный переключатель темы сайта ([data-bs-theme="dark"]
-   на <html>, ставится JS в шапке + сохраняется в localStorage), а не на
-   настройку ОС/браузера - раньше было @media (prefers-color-scheme: dark),
-   что было полностью не связано с самим переключателем на сайте. */
-[data-bs-theme="dark"] body {
-    background: #0f1420;
-    color: #d6dced;
-}
-[data-bs-theme="dark"] .action-card,
-[data-bs-theme="dark"] .card,
-[data-bs-theme="dark"] .stat-tile,
-[data-bs-theme="dark"] .rating-panel,
-[data-bs-theme="dark"] .info-grid {
-    background: #1a2030 !important;
-    border-color: #2a3448 !important;
-    color: #d6dced;
-}
-[data-bs-theme="dark"] .card-header.bg-light {
-    background: #232b3e !important;
-    border-bottom: 1px solid #2a3448;
-    color: #b9c8e4;
-}
-[data-bs-theme="dark"] .info-item:hover { background: #232b3e; }
-[data-bs-theme="dark"] .info-item > span:first-child { color: #8fa0bd; }
-[data-bs-theme="dark"] .info-item > span:first-child i,
-[data-bs-theme="dark"] .tag-section h6 i {
-    color: #f0f3fa !important;
-    opacity: .7;
-}
-[data-bs-theme="dark"] .info-item:hover > span:first-child i,
-[data-bs-theme="dark"] .tag-section h6:hover i {
-    color: #ffffff !important;
-    opacity: 1;
-}
-[data-bs-theme="dark"] .info-item > span:last-child { color: #d6dced; }
-[data-bs-theme="dark"] .info-item .badge.bg-light {
-    background: #232b3e !important;
-    border-color: #2a3448;
-    color: #d6dced !important;
-}
-[data-bs-theme="dark"] .info-item .badge.bg-light a { color: #6ea8ff !important; }
-[data-bs-theme="dark"] .info-item .font-monospace {
-    background: #232b3e;
-    color: #b9c8e4;
-}
-[data-bs-theme="dark"] .breadcrumb,
-[data-bs-theme="dark"] .torrent-breadcrumb {
-    background: #1a2030 !important;
-    border-color: #2a3448;
-}
-[data-bs-theme="dark"] .breadcrumb-item a { color: #8fa8d4; }
-[data-bs-theme="dark"] .torrent-header h1 { color: #f0f3fa !important; }
-[data-bs-theme="dark"] .stat-tile-value { color: #f0f3fa; }
-[data-bs-theme="dark"] .nav-tabs-scrollable { border-bottom-color: #2a3448; }
-[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link { color: #8fa0bd; }
-[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link.active,
-[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link:hover {
-    color: #6ea8ff;
-}
-[data-bs-theme="dark"] .torrent-meta-badges .meta-badge i {
-    filter: grayscale(100%) brightness(1.8);
-}
-
-/* ── IMDb-блок (грузится через AJAX, TS_IMDB()) ──────────────────── */
-/* .block-titled и соседние классы приходят со своим встроенным <style>
-   (background:#fff и т.д.) в самом AJAX-ответе - не в наших файлах, и
-   мы не видим источник. !important нужен, чтобы гарантированно перебить
-   встроенный <style>, независимо от того, в каком порядке он попадёт в
-   DOM относительно наших стилей. */
-[data-bs-theme="dark"] .block-titled {
-    background: #1a2030 !important;
-    border-color: #2a3448 !important;
-    color: #d6dced !important;
-}
-[data-bs-theme="dark"] .movie-title {
-    color: #6ea8ff !important;
-}
-[data-bs-theme="dark"] .movie-plot {
-    color: #a8b3c9 !important;
-}
-[data-bs-theme="dark"] .badge-extra {
-    background: #232b3e !important;
-    color: #d6dced !important;
-}
-[data-bs-theme="dark"] .movie-info div {
-    color: #d6dced !important;
-}
-[data-bs-theme="dark"] .section-title {
-    color: #b9c8e4 !important;
-    border-bottom-color: #2a3448 !important;
-}
-[data-bs-theme="dark"] .block-titled a {
-    color: #6ea8ff !important;
-}
+/* =============================================================================
+   details.css — torrent page (details.php), new style on top of st-ui.css
+   Everything is scoped under .dt-page (the page) or .dt-modals (its modals).
+   Bootstrap CSS variables only — light and dark themes.
+   ============================================================================= */
+
+.dt-page {
+  --dt-purple: #8b5cf6;
+  --dt-purple-soft: rgba(139, 92, 246, .14);
+  --dt-purple-strong: #6d28d9;
+}
+[data-bs-theme="dark"] .dt-page { --dt-purple-strong: #c4b5fd; }
+
+.dt-page .dt-soft-purple { background: var(--dt-purple-soft); color: var(--dt-purple-strong); }
+
+/* ── Vertical rhythm ─────────────────────────────────────────────────────── */
+.dt-page > .st-card,
+.dt-page > .dt-comments,
+.dt-page > .dt-tabs-card { margin-bottom: 1rem; }
+
+/* KPI tiles: grey tile + semi-transparent icon in the corner.
+   Same as the st-ui.css visual layer — repeated here so the page looks right
+   even where st-ui.css is an older copy without that layer. */
+.dt-page .st-kpi { position: relative; overflow: hidden; }
+.dt-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
+.dt-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.dt-page .st-kpi__bg {
+  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+  opacity: .07; transform: rotate(-12deg); pointer-events: none;
+  color: var(--bs-emphasis-color);
+}
+
+/* ── Alerts (H&R warning, comment not found) ─────────────────────────────── */
+.dt-page .dt-alert {
+  display: flex; align-items: flex-start; gap: .85rem;
+  padding: .9rem 1.1rem; font-size: .92em;
+}
+.dt-page .dt-alert p:last-child { margin-bottom: 0; }
+.dt-page .dt-alert--danger  { box-shadow: inset 3px 0 0 var(--bs-danger); }
+.dt-page .dt-alert--warning { box-shadow: inset 3px 0 0 var(--bs-warning); align-items: center; }
+@media (max-width: 575.98px) {
+  .dt-page .dt-alert--warning { flex-wrap: wrap; }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.dt-page .dt-head__top { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+.dt-page .dt-head__tags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.dt-page .dt-head__tags:empty { display: none; }
+.dt-page .dt-head__side { flex: 0 0 auto; align-self: flex-start; }
+.dt-page .st-head__meta .dt-crumb-sep { margin: 0 .4rem; font-size: .75em; opacity: .5; }
+.dt-page .dt-bookmark .bookmark-toggle {
+  width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+  text-decoration: none; transition: border-color .15s ease, transform .15s ease;
+}
+.dt-page .dt-bookmark .bookmark-toggle:hover { border-color: var(--bs-warning); transform: translateY(-1px); }
+
+/* Tag badges from GetTorrentTags() */
+.dt-page .badge-silver {
+  display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--bs-secondary-bg); color: var(--bs-secondary-color); font-size: .8rem;
+}
+.dt-page .pulse-badge { animation: dt-pulse 2s ease-in-out infinite; }
+@keyframes dt-pulse { 50% { opacity: .55; } }
+
+/* ── KPI grid ────────────────────────────────────────────────────────────── */
+.dt-page .dt-kpis { margin-top: 1rem; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 991.98px) {
+  .dt-page .dt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+}
+.dt-page a.st-kpi { color: inherit; }
+
+
+/* ── Download card ───────────────────────────────────────────────────────── */
+.dt-page .dt-dl__row { display: flex; flex-wrap: wrap; align-items: center; gap: .85rem 1rem; }
+.dt-page .dt-dl__ico { width: 3rem; height: 3rem; font-size: 1.25rem; border-radius: .8rem; }
+.dt-page .dt-dl__btns { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dt-page .dt-dl__btns form { margin: 0; }
+@media (max-width: 575.98px) {
+  .dt-page .dt-dl__btns { width: 100%; }
+  .dt-page .dt-dl__btns > .btn-primary { flex: 1 1 auto; }
+}
+
+.dt-page .dt-health { margin-top: 1rem; }
+.dt-page .dt-health__lbl {
+  display: flex; justify-content: space-between; margin-bottom: .35rem;
+  font-size: .85em; color: var(--bs-secondary-color);
+}
+.dt-page .dt-health__bar { height: .5rem; border-radius: 999px; background: var(--bs-tertiary-bg); }
+.dt-page .dt-health__bar .progress-bar { border-radius: 999px; transition: width .8s ease; }
+
+.dt-page .dt-claim {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .75rem;
+  margin-top: 1rem; padding: .75rem 1rem; border-radius: .8rem;
+  border: 1px dashed var(--bs-success-border-subtle);
+  background: color-mix(in srgb, var(--bs-success-bg-subtle) 35%, transparent);
+  font-size: .92em;
+}
+.dt-page .dt-claim__text { flex: 1 1 14rem; min-width: 0; }
+.dt-page .dt-claim__btns { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+/* ── Tabs (pills in one line; swipe on phones, no scrollbar) ─────────────── */
+.dt-page .dt-tabs-wrap { padding: .55rem; border-bottom: 1px solid var(--bs-border-color); background: var(--bs-tertiary-bg); border-radius: var(--st-radius) var(--st-radius) 0 0; }
+.dt-page .dt-tabs {
+  display: flex; flex-wrap: nowrap; gap: .3rem; margin: 0;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.dt-page .dt-tabs::-webkit-scrollbar { display: none; }
+.dt-page .dt-tabs .nav-item { flex: 1 1 auto; min-width: 0; }
+.dt-page .dt-tabs .nav-link {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: .45rem;
+  padding: .45rem .85rem; border: 0; border-radius: 999px; white-space: nowrap;
+  font-weight: 600; font-size: .88em; color: var(--bs-secondary-color); background: none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.dt-page .dt-tabs .nav-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dt-page .dt-tabs .nav-link:hover { color: var(--bs-emphasis-color); background: var(--bs-body-bg); }
+.dt-page .dt-tabs .nav-link.active { color: #fff; background: var(--bs-primary); box-shadow: 0 6px 14px -8px var(--bs-primary); }
+.dt-page .dt-tabs__cnt {
+  display: inline-block; min-width: 1.4em; padding: 0 .35em; border-radius: 999px;
+  font-size: .8em; background: rgba(var(--bs-emphasis-color-rgb), .08);
+}
+@media (max-width: 767.98px) {
+  .dt-page .dt-tabs .nav-item { flex: 0 0 auto; }
+  .dt-page .dt-tabs .nav-link span { overflow: visible; }
+}
+
+.dt-page .dt-pane-bar { padding: 0 0 .75rem; justify-content: space-between; }
+
+/* Info tab */
+.dt-page .dt-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 767.98px) {
+  .dt-page .dt-info { grid-template-columns: minmax(0, 1fr); }
+}
+.dt-page .dt-hash {
+  font-size: .78em; color: var(--bs-body-color); background: var(--bs-tertiary-bg);
+  padding: .1rem .4rem; border-radius: .35rem; word-break: break-all;
+}
+
+.dt-page .dt-tags { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: 1rem; }
+.dt-page .dt-tags__lbl { font-size: .85em; font-weight: 600; color: var(--bs-secondary-color); margin-right: .25rem; }
+.dt-page .dt-tag {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .2rem .7rem; border-radius: 999px; font-size: .82em; font-weight: 600;
+  background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); text-decoration: none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.dt-page .dt-tag i { font-size: .85em; opacity: .7; }
+.dt-page .dt-tag:hover { background: var(--bs-primary); color: #fff; }
+
+/* Files tab: tree */
+.dt-page .dt-tree { border: 1px solid var(--bs-border-color); border-radius: .8rem; overflow: hidden; font-size: .92em; }
+.dt-page .dt-tree__row {
+  display: flex; align-items: center; gap: .55rem; width: 100%;
+  padding: .45rem .8rem; border: 0; background: none; text-align: start; color: var(--bs-body-color);
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.dt-page .dt-tree__row:hover { background: var(--bs-tertiary-bg); }
+.dt-page .dt-tree__toggle { font-weight: 600; }
+.dt-page .dt-tree__chev { width: .8rem; font-size: .7em; color: var(--bs-secondary-color); transition: transform .15s ease; }
+.dt-page .dt-tree__toggle:not(.collapsed) .dt-tree__chev { transform: rotate(90deg); }
+.dt-page .dt-tree__folder { color: var(--bs-warning); }
+.dt-page .dt-tree__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-page .dt-tree__size { flex: 0 0 auto; font-size: .85em; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+.dt-page .dt-tree__ext { min-width: 4.2rem; justify-content: center; font-size: .7em; }
+.dt-page .dt-tree__kids { padding-left: 1.1rem; border-left: 2px solid var(--bs-border-color-translucent); margin-left: 1.1rem; }
+.dt-page .dt-tree > :last-child > .dt-tree__row:last-child,
+.dt-page .dt-tree > .dt-tree__row:last-child { border-bottom: 0; }
+
+/* Screens tab */
+.dt-page .dt-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .75rem; }
+.dt-page .dt-shot {
+  display: block; aspect-ratio: 16 / 10; border-radius: .7rem; overflow: hidden;
+  border: 1px solid var(--bs-border-color); background: var(--bs-tertiary-bg);
+}
+.dt-page .dt-shot img { width: 100%; height: 100%; object-fit: cover; transition: transform .25s ease; }
+.dt-page .dt-shot:hover img { transform: scale(1.04); }
+
+/* NFO tab */
+.dt-page .dt-nfo {
+  margin: 0; max-height: 32rem; overflow: auto; padding: 1rem;
+  font-family: Consolas, "Courier New", monospace; font-size: .74rem; line-height: 1.2; white-space: pre;
+  color: var(--bs-body-color); background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color); border-radius: .8rem;
+}
+
+/* ── Posters (download card); rating + manage (Info tab) ──────────────────────────────────────── */
+.dt-page .dt-posters { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 1rem; }
+.dt-page .dt-poster {
+  display: block; max-width: 400px; line-height: 0; border-radius: .8rem; overflow: hidden; cursor: zoom-in;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .08); transition: transform .25s ease, box-shadow .25s ease;
+}
+.dt-page .dt-poster:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(0, 0, 0, .15); }
+.dt-page .dt-poster img { display: block; width: 100%; height: auto; max-height: 720px; object-fit: cover; }
+@media (max-width: 575.98px) {
+  .dt-page .dt-poster { max-width: 100%; }
+}
+
+.dt-page .dt-rating { margin-top: 1rem; }
+.dt-page .dt-rating__body { display: flex; flex-wrap: wrap; align-items: center; gap: .85rem 2rem; }
+.dt-page .dt-rating__body .dt-rating__mine { margin-top: 0; padding-top: 0; border-top: 0; padding-left: 2rem; border-left: 1px solid var(--bs-border-color-translucent); }
+@media (max-width: 767.98px) {
+  .dt-page .dt-rating__body .dt-rating__mine { padding-left: 0; border-left: 0; padding-top: .85rem; border-top: 1px solid var(--bs-border-color-translucent); width: 100%; }
+}
+.dt-page .dt-rating__top { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+.dt-page .dt-rating__score { line-height: 1; white-space: nowrap; }
+.dt-page .dt-rating__score .rating-score { font-size: 2rem; font-weight: 800; color: var(--bs-emphasis-color); }
+.dt-page .dt-rating__score small { margin-left: .15rem; color: var(--bs-secondary-color); }
+.dt-page .dt-rating__stars { display: flex; gap: 2px; font-size: .9rem; }
+.dt-page .rating-star-filled { color: var(--bs-warning); }
+.dt-page .rating-star-empty { color: var(--bs-border-color); }
+.dt-page .dt-rating__mine {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--bs-border-color-translucent);
+}
+.dt-page .user-stars { display: flex; gap: 3px; }
+.dt-page .user-star { font-size: 1.15rem; cursor: pointer; color: var(--bs-border-color); transition: transform .12s ease; }
+.dt-page .user-star:hover { transform: scale(1.15); }
+.dt-page .user-star.active { color: var(--bs-warning); }
+
+.dt-page .dt-manage { margin-top: 1rem; }
+.dt-page .dt-tools { display: flex; flex-wrap: wrap; gap: .25rem; padding: .5rem; }
+.dt-page .dt-tool {
+  display: flex; align-items: center; gap: .65rem; width: auto;
+  padding: .45rem .75rem .45rem .5rem; border: 0; border-radius: .6rem; background: none;
+  font-size: .92em; font-weight: 600; text-align: start; text-decoration: none; color: var(--bs-body-color);
+  transition: background-color .15s ease;
+}
+.dt-page .dt-tool .st-ico { width: 1.9rem; height: 1.9rem; font-size: .85rem; }
+.dt-page .dt-tool:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.dt-page .dt-tool--danger { color: var(--bs-danger-text-emphasis); }
+.dt-page .dt-tool--danger:hover { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+
+/* ── Description ─────────────────────────────────────────────────────────── */
+.dt-page .dt-descr__body { overflow-wrap: anywhere; }
+.dt-page .dt-descr__body img { max-width: 100%; height: auto; }
+
+/* ── IMDb block (stored HTML from imdb_parser.php brings its own light-only <style>) ── */
+.dt-page .dt-imdb .block-titled {
+  background: var(--bs-body-bg); border-color: var(--bs-border-color); color: var(--bs-body-color);
+  font-family: inherit; margin-bottom: 0; border-radius: .7rem;
+}
+.dt-page .dt-imdb .movie-title { color: var(--bs-emphasis-color); }
+.dt-page .dt-imdb .movie-plot { color: var(--bs-secondary-color); }
+.dt-page .dt-imdb .badge-extra { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.dt-page .dt-imdb .section-title { color: var(--bs-emphasis-color); border-bottom-color: var(--bs-border-color); }
+.dt-page .dt-imdb .movie-info div { color: var(--bs-body-color); }
+.dt-page .dt-imdb .block-titled a { color: var(--bs-link-color); }
+.dt-page .dt-imdb__flash { animation: dt-flash 1.2s ease; }
+@keyframes dt-flash { 0% { background: var(--bs-warning-bg-subtle); } 100% { background: transparent; } }
+
+/* ── Similar torrents ────────────────────────────────────────────────────── */
+.dt-page .dt-sims { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .9rem; }
+.dt-page .dt-sim {
+  display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--bs-border-color); border-radius: .8rem; overflow: hidden; background: var(--bs-body-bg);
+  transition: transform .15s ease, border-color .15s ease;
+}
+.dt-page .dt-sim:hover { transform: translateY(-2px); border-color: var(--bs-primary-border-subtle); }
+.dt-page .dt-sim__poster { position: relative; display: block; aspect-ratio: 3 / 4; background: var(--bs-tertiary-bg); }
+.dt-page .dt-sim__poster img { width: 100%; height: 100%; object-fit: cover; }
+.dt-page .dt-sim__peers {
+  position: absolute; left: .4rem; bottom: .4rem; display: flex; gap: .5rem;
+  padding: .15rem .55rem; border-radius: 999px; font-size: .75em; font-weight: 700;
+  background: var(--bs-body-bg); box-shadow: 0 2px 6px rgba(0, 0, 0, .15);
+}
+.dt-page .dt-sim__peers i { margin-right: .2rem; font-size: .85em; }
+.dt-page .dt-sim__body { padding: .55rem .65rem .6rem; min-width: 0; }
+.dt-page .dt-sim__name {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: .86em; font-weight: 600; line-height: 1.3; color: var(--bs-emphasis-color); text-decoration: none;
+  min-height: 2.6em;
+}
+.dt-page .dt-sim__name:hover { color: var(--bs-primary-text-emphasis); }
+.dt-page .dt-sim__meta {
+  display: flex; align-items: center; gap: .4rem; margin-top: .35rem;
+  font-size: .76em; color: var(--bs-secondary-color);
+}
+.dt-page .dt-sim__meta a { color: inherit; text-decoration: none; }
+@media (max-width: 575.98px) {
+  .dt-page .dt-sims { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+}
+
+/* ── Comments ────────────────────────────────────────────────────────────── */
+.dt-page .dt-comments__head { margin-bottom: 1rem; border-bottom: 1px solid var(--bs-border-color); }
+.dt-page .dt-comments .container,
+.dt-page .dt-comments .container-md { max-width: none; padding-left: 0; padding-right: 0; overflow-x: clip; }
+.dt-page .dt-comments .avatar-ring {
+  padding: 4px; border-radius: 50%;
+  background: conic-gradient(from 140deg, var(--bs-body-bg) 0 20%, var(--bs-primary-border-subtle) 20% 70%, var(--bs-body-bg) 70% 100%);
+}
+.dt-page .dt-comments-empty { margin-bottom: 1rem; }
+.dt-page .dt-pager { display: flex; justify-content: center; margin: .5rem 0 1rem; }
+.dt-page .dt-qc { margin-top: 1rem; }
+.dt-page .dt-qc__text { border-radius: .65rem; resize: vertical; }
+.dt-page .dt-qc__bar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .5rem; margin-top: .9rem; }
+.dt-page .dt-qc__spin { display: none; color: var(--bs-primary); font-size: 1.2rem; }
+
+/* ── Modals of this page (include/modals.php), wrapped in .dt-modals ─────── */
+.dt-modals .dt-magnet__icon {
+  width: 4.5rem; height: 4.5rem; margin: 0 auto 1rem; border-radius: 1.2rem;
+  display: grid; place-items: center; font-size: 1.9rem;
+  background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis);
+}
+.dt-modals .dt-magnet__steps {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: .5rem 1rem;
+  margin-bottom: 1rem; font-size: .88em; color: var(--bs-secondary-color);
+}
+.dt-modals .dt-magnet__num {
+  display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; margin-right: .35rem;
+  border-radius: 50%; font-size: .8em; font-weight: 700; background: var(--bs-primary); color: #fff;
+}
+.dt-modals .dt-magnet__input { font-family: Consolas, "Courier New", monospace; font-size: .85rem; }
+.dt-modals .dt-magnet__notes { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem 1rem; margin-top: .9rem; font-size: .8em; color: var(--bs-secondary-color); }
+.dt-modals #universalImagePreview { max-width: min(1000px, 96vw); max-height: 92vh; width: auto; height: auto; object-fit: contain; cursor: zoom-out; }

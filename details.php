@@ -85,7 +85,7 @@ maxsysop();
 // class_parser.php: [quote] links point to comments, not forum posts
 define("IN_ARCHIVE", true);
 
-const DT_CSS_VER = 4;
+const DT_CSS_VER = 5;
 const DT_JS_VER  = 3;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -1030,6 +1030,7 @@ $info_pane = '
             ' . $tags_html . '
         </div>' : '') . '
         ' . $rating_html . '
+        ' . $manage_html . '
     </div>';
 
 $files_pane = '
@@ -1104,7 +1105,6 @@ $comments_block = '
         ' . $quick_comment . '
     </section>';
 
-$aside_html = $manage_html;
 
 // ── Output ──────────────────────────────────────────────────────────────────
 stdhead(ags_fmt($lang->details['detailsfor'], (string)$Torrent['name']));
@@ -1140,12 +1140,7 @@ echo '
     ' . $kpis_html . '
     ' . $download_html . '
 
-    <div class="dt-layout' . ($aside_html === '' ? ' dt-layout--solo' : '') . '">
-        <div class="dt-main min-w-0">
-            ' . $tabs_html . '
-        </div>
-        ' . ($aside_html !== '' ? '<aside class="dt-aside min-w-0">' . $aside_html . '</aside>' : '') . '
-    </div>
+    ' . $tabs_html . '
 
     ' . $descr_html . '
     ' . $imdb_html . '

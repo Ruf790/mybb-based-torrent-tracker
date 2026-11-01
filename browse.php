@@ -247,9 +247,26 @@ foreach ($_categoriesS ?? [] as $sc) {
     $subByPid[(int)$sc['pid']][] = $sc;
 }
 
+// Число живых раздач по категориям (подкатегории суммируются в родителя) - один запрос
+$catCount = [];
+$ccq = $db->sql_query_prepared("SELECT category, COUNT(*) AS cnt FROM torrents WHERE visible = ? AND banned = ? GROUP BY category", ['yes', 'no']);
+while ($ccq && ($ccr = $db->fetch_array($ccq))) {
+    $catCount[(int)$ccr['category']] = (int)$ccr['cnt'];
+}
+$subParent = [];
+foreach ($_categoriesS ?? [] as $sc) {
+    $subParent[(int)$sc['id']] = (int)$sc['pid'];
+}
+foreach ($subParent as $sid => $pid) {
+    $catCount[$pid] = ($catCount[$pid] ?? 0) + ($catCount[$sid] ?? 0);
+}
+
+$catTones = ['primary', 'success', 'info', 'warning', 'danger', 'purple'];
 $catTiles = '';
+$catIndex = 0;
 foreach ($_categoriesC ?? [] as $c) {
-    $cid = (int)$c['id'];
+    $cid  = (int)$c['id'];
+    $tone = $catTones[$catIndex++ % count($catTones)];
     $catIconMap[$cid] = (string)$c['icon'];
     $catNameMap[$cid] = (string)$c['name'];
 
@@ -269,14 +286,16 @@ foreach ($_categoriesC ?? [] as $c) {
     }
 
     $catTiles .= '
-        <div class="br-cat' . ($isActive ? ' br-cat--active' : ($isNotif ? ' br-cat--notif' : '')) . '" data-category-id="' . $cid . '">
-            <a href="' . get_category_link($cid) . '" class="br-cat__ico st-ico st-soft-' . ($isActive ? 'primary' : 'muted') . '" tabindex="-1" aria-hidden="true">
+        <div class="br-cat br-cat--' . $tone . ($isActive ? ' br-cat--active' : ($isNotif ? ' br-cat--notif' : '')) . '" data-category-id="' . $cid . '">
+            <a href="' . get_category_link($cid) . '" class="br-cat__ico st-ico ' . ($tone === 'purple' ? 'br-soft-purple' : 'st-soft-' . $tone) . '" tabindex="-1" aria-hidden="true">
                 <i class="' . htmlspecialchars_uni((string)$c['icon']) . '"></i>
             </a>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-grow-1">
                 <a href="' . get_category_link($cid) . '" id="category' . $cid . '" class="br-cat__name">' . $cname . '</a>'
                 . ($subs !== '' ? '<div class="br-cat__subs">' . $subs . '</div>' : '') . '
             </div>
+            <span class="br-cat__cnt">' . ts_nf($catCount[$cid] ?? 0) . '</span>
+            <i class="' . htmlspecialchars_uni((string)$c['icon']) . ' br-cat__bg" aria-hidden="true"></i>
         </div>';
 }
 
@@ -656,7 +675,7 @@ $toastErr = is_string($_GET['mod_error'] ?? null) ? (string)$_GET['mod_error'] :
 stdhead($lang->browse['btitle']);
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css?ver=10">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css?ver=11">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/airbnb.css">';
 if ($is_mod) {
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
@@ -696,39 +715,39 @@ $e = static fn($v): string => htmlspecialchars_uni((string)$v);
     <div id="brRestoreSlot"></div>
 
     <!-- Плитки -->
+    <?php
+    $pct = static fn(int $n): int => $threadcount > 0 ? (int)round($n * 100 / $threadcount) : 0;
+    $kpis = [
+        ['tone' => 'primary', 'icon' => 'fa-layer-group',     'bg' => 'fa-magnet',       'href' => null,
+         'val' => $threadcount,     'lbl' => $e($lang->browse['lbl_kpi_found'] ?? 'Found'),
+         'sub' => $e($lang->browse['opt_days_30']) . ' · <b>' . ts_nf($stats['d30']) . '</b>', 'bar' => null],
+        ['tone' => 'success', 'icon' => 'fa-heart-pulse',     'bg' => 'fa-seedling',     'href' => br_url(['health' => 'seeded', 'no_seeders' => null]),
+         'val' => $stats['active'], 'lbl' => $lang->browse['qf_active'],
+         'sub' => '<b>' . $pct($stats['active']) . '%</b>', 'bar' => $pct($stats['active'])],
+        ['tone' => 'danger',  'icon' => 'fa-skull-crossbones', 'bg' => 'fa-ghost',       'href' => br_url(['no_seeders' => '1', 'health' => null]),
+         'val' => $stats['dead'],   'lbl' => $lang->browse['flt_no_seeders'],
+         'sub' => '<b>' . $pct($stats['dead']) . '%</b>', 'bar' => $pct($stats['dead'])],
+        ['tone' => 'info',    'icon' => 'fa-clock',           'bg' => 'fa-calendar-day', 'href' => br_url(['daysprune' => '1']),
+         'val' => $stats['d1'],     'lbl' => $e($lang->browse['opt_days_1']),
+         'sub' => $e($lang->browse['opt_days_7']) . ' · <b>' . ts_nf($stats['d7']) . '</b>', 'bar' => null],
+    ];
+    ?>
     <div class="br-kpis mb-3">
-        <div class="st-kpi st-kpi--muted">
-            <div class="st-ico st-soft-primary"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($threadcount) ?></div>
-                <div class="st-kpi__lbl"><?= $e($lang->browse['lbl_kpi_found'] ?? 'Found') ?></div>
+        <?php foreach ($kpis as $k):
+            $tag = $k['href'] !== null ? 'a' : 'div'; ?>
+        <<?= $tag ?> class="st-kpi st-kpi--muted br-kpi br-kpi--<?= $k['tone'] ?>"<?= $k['href'] !== null ? ' href="' . $e($k['href']) . '"' : '' ?>>
+            <div class="st-ico st-soft-<?= $k['tone'] ?>"><i class="fa-solid <?= $k['icon'] ?>" aria-hidden="true"></i></div>
+            <div class="min-w-0 flex-grow-1">
+                <div class="st-kpi__val"><?= ts_nf($k['val']) ?></div>
+                <div class="st-kpi__lbl"><?= $k['lbl'] ?></div>
+                <div class="br-kpi__sub"><?= $k['sub'] ?></div>
+                <?php if ($k['bar'] !== null): ?>
+                    <div class="br-kpi__bar" role="presentation"><span style="width: <?= $k['bar'] ?>%"></span></div>
+                <?php endif; ?>
             </div>
-            <i class="fa-solid fa-magnet st-kpi__bg" aria-hidden="true"></i>
-        </div>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['health' => 'seeded', 'no_seeders' => null])) ?>">
-            <div class="st-ico st-soft-success"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['active']) ?></div>
-                <div class="st-kpi__lbl"><?= $lang->browse['qf_active'] ?></div>
-            </div>
-            <i class="fa-solid fa-seedling st-kpi__bg" aria-hidden="true"></i>
-        </a>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['no_seeders' => '1', 'health' => null])) ?>">
-            <div class="st-ico st-soft-danger"><i class="fa-solid fa-skull-crossbones" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['dead']) ?></div>
-                <div class="st-kpi__lbl"><?= $lang->browse['flt_no_seeders'] ?></div>
-            </div>
-            <i class="fa-solid fa-ghost st-kpi__bg" aria-hidden="true"></i>
-        </a>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['daysprune' => '1'])) ?>">
-            <div class="st-ico st-soft-info"><i class="fa-solid fa-clock" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['d1']) ?></div>
-                <div class="st-kpi__lbl"><?= $e($lang->browse['opt_days_1']) ?></div>
-            </div>
-            <i class="fa-solid fa-calendar-day st-kpi__bg" aria-hidden="true"></i>
-        </a>
+            <i class="fa-solid <?= $k['bg'] ?> st-kpi__bg" aria-hidden="true"></i>
+        </<?= $tag ?>>
+        <?php endforeach; ?>
     </div>
 
     <?php if ($recentItems): ?>
@@ -741,7 +760,7 @@ $e = static fn($v): string => htmlspecialchars_uni((string)$v);
         <div class="br-recent__strip">
             <?php foreach ($recentItems as $r): ?>
                 <a href="<?= get_torrent_link((int)$r['id']) ?>" class="br-recent__item" title="<?= $e($r['name']) ?>">
-                    <img src="<?= $e($r['t_image']) ?>" alt="<?= $e($r['name']) ?>" loading="lazy" onerror="this.parentNode.hidden=true">
+                    <img src="<?= $e($r['t_image']) ?>" alt="" loading="lazy" onerror="this.parentNode.hidden=true">
                     <span class="br-recent__name"><?= $e($r['name']) ?></span>
                 </a>
             <?php endforeach; ?>
@@ -887,9 +906,14 @@ $e = static fn($v): string => htmlspecialchars_uni((string)$v);
         </div>
         <div class="collapse show" id="brQfBody" data-br-remember="brQf">
             <div class="st-card__body br-qf__body">
-                <?php foreach ($groups as $label => $buttons): ?>
+                <?php
+                $groupIcons = [['fa-bolt', 'primary'], ['fa-fire', 'warning'], ['fa-heart-pulse', 'success'],
+                               ['fa-calendar-plus', 'info'], ['fa-user', 'purple'], ['fa-star', 'warning']];
+                $gi = 0;
+                foreach ($groups as $label => $buttons):
+                    [$gIcon, $gTone] = $groupIcons[$gi++] ?? ['fa-filter', 'muted']; ?>
                     <div class="br-qf__group">
-                        <div class="br-qf__label"><?= $label ?></div>
+                        <div class="br-qf__label"><span class="br-qf__gico <?= $gTone === 'purple' ? 'br-soft-purple' : 'st-soft-' . $gTone ?>"><i class="fa-solid <?= $gIcon ?>" aria-hidden="true"></i></span><?= $label ?></div>
                         <div class="br-qf__btns"><?= implode('', $buttons) ?></div>
                     </div>
                 <?php endforeach; ?>

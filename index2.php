@@ -14,7 +14,7 @@ $lang->load('usercp');
 
 $plugins->run_hooks('index_start');
 
-// ─── Хелперы вёрстки (всё под .fx-page) ──────────────────────────────────────
+// ─── Хелперы вёрстки (всё под .st-page) ──────────────────────────────────────
 function fx_l(string $key, string $fallback): string
 {
     global $lang;
@@ -31,11 +31,22 @@ function fx_fmt(string $key, string $fallback, string|int|float ...$args): strin
     return $s;
 }
 
-function fx_kpi(string $icon, string $soft, string $value, string $label, string $href = ''): string
-{
+/**
+ * KPI-плитка с фоновой иконкой в углу (эффект из st-ui.css).
+ * $tone: primary|success|info|warning|danger|muted
+ */
+function fx_kpi(
+    string $icon,
+    string $soft,
+    string $value,
+    string $label,
+    string $href = '',
+    string $tone = 'primary'
+): string {
     $tag = $href !== '' ? 'a href="' . $href . '"' : 'div';
     $end = $href !== '' ? 'a' : 'div';
-    return '<' . $tag . ' class="st-kpi">'
+    return '<' . $tag . ' class="st-kpi st-kpi--' . $tone . '">'
+         . '<div class="st-kpi__bg"><i class="fa-solid ' . $icon . '"></i></div>'
          . '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
          . '<div><div class="st-kpi__val">' . $value . '</div><div class="st-kpi__lbl">' . $label . '</div></div>'
          . '</' . $end . '>';
@@ -65,8 +76,7 @@ $timesearch  = TIMENOW - (int)$wolcutoffmins;
 $membercount = $guestcount = $anoncount = 0;
 $forum_viewers = $doneusers = $onlinemembers = [];
 
-// Forum viewer counts (guests per forum) — гостей в sessions больше нет,
-// но запрос оставлен на случай, если появятся.
+// Forum viewer counts (guests per forum)
 $q = $db->sql_query_prepared("
     SELECT location1, COUNT(DISTINCT ip) AS guestcount
     FROM sessions
@@ -84,7 +94,7 @@ $q = $db->sql_query_prepared(
 );
 $guestcount = $q ? (int)$db->fetch_field($q, 'guestcount') : 0;
 
-// Members (гостей и ботов в sessions нет)
+// Members
 $q = $db->sql_query_prepared("
     SELECT s.sid, s.ip, s.uid, s.time, s.location, s.location1,
            u.username, u.invisible, u.usergroup
@@ -273,12 +283,12 @@ $links = fx_pill(htmlspecialchars_uni($contactlink), 'fa-envelope', $lang->index
        . fx_pill('#top', 'fa-circle-arrow-up', $lang->global['bottomlinks_returntop']);
 
 /* ── Блоки страницы ──────────────────────────────────────────────────── */
-$page_head = '<header class="st-card fx-head">'
+$page_head = '<header class="st-card st-head fx-head">'
     . '<div class="fx-head__top">'
-    .   '<div class="st-head__icon fx-head__icon"><i class="fa-solid fa-comments"></i></div>'
-    .   '<div class="fx-head__text">'
+    .   '<div class="st-head__icon st-soft-primary"><i class="fa-solid fa-comments"></i></div>'
+    .   '<div class="fx-head__text min-w-0 flex-grow-1">'
     .     '<h1 class="st-title">' . htmlspecialchars_uni(fx_l('sec_forums', 'Forums')) . '</h1>'
-    .     '<div class="fx-head__sub">' . htmlspecialchars_uni(strip_tags((string)$SITENAME)) . '</div>'
+    .     '<div class="st-head__meta">' . htmlspecialchars_uni(strip_tags((string)$SITENAME)) . '</div>'
     .   '</div>'
     .   '<div class="fx-head__actions">'
     .     fx_pill('search.php?action=getnew', 'fa-bolt', fx_l('lnk_new_posts', 'New posts'), 'btn-primary')
@@ -301,9 +311,9 @@ $whosonline = '<section class="st-card fx-online">'
     . '</div>'
     . '<div class="st-card__body">'
     .   '<div class="fx-kpis">'
-    .     fx_kpi('fa-user', 'st-soft-primary', ts_nf($membercount), fx_l('lbl_members', 'Members'))
-    .     fx_kpi('fa-user-secret', 'st-soft-muted', ts_nf($guestcount), fx_l('lbl_guests', 'Guests'))
-    .     fx_kpi('fa-eye-slash', 'st-soft-info', ts_nf($anoncount), fx_l('lbl_invisible', 'Invisible'))
+    .     fx_kpi('fa-user', 'st-soft-primary', ts_nf($membercount), fx_l('lbl_members', 'Members'), '', 'primary')
+    .     fx_kpi('fa-user-secret', 'st-soft-muted', ts_nf($guestcount), fx_l('lbl_guests', 'Guests'), '', 'muted')
+    .     fx_kpi('fa-eye-slash', 'st-soft-info', ts_nf($anoncount), fx_l('lbl_invisible', 'Invisible'), '', 'info')
     .   '</div>'
     .   ($onlinelist
             ? '<div class="fx-chips">' . implode('', $onlinelist) . '</div>'
@@ -320,8 +330,8 @@ $boardstats = '<section class="st-card fx-stats">'
     . '</div>'
     . '<div class="st-card__body">'
     .   '<div class="fx-kpis fx-kpis--2">'
-    .     fx_kpi('fa-user-plus', 'st-soft-success', ts_nf($new_members_today), fx_l('lbl_new_today', 'New today'))
-    .     fx_kpi('fa-trophy', 'st-soft-warning', ts_nf($most_ever), fx_l('lbl_peak_online', 'Peak online'))
+    .     fx_kpi('fa-user-plus', 'st-soft-success', ts_nf($new_members_today), fx_l('lbl_new_today', 'New today'), '', 'success')
+    .     fx_kpi('fa-trophy', 'st-soft-warning', ts_nf($most_ever), fx_l('lbl_peak_online', 'Peak online'), '', 'warning')
     .   '</div>'
     .   ($most_ever > 0 ? '<div class="fx-peak"><i class="fa-regular fa-calendar"></i>' . my_datee($dateformat, $most_ever_time) . ', ' . my_datee($timeformat, $most_ever_time) . '</div>' : '')
     .   '<div class="fx-newest"><span class="fx-newest__lbl"><i class="fa-solid fa-star"></i>' . fx_l('lbl_newest_member', 'Newest member') . '</span>'
@@ -332,9 +342,54 @@ $boardstats = '<section class="st-card fx-stats">'
 /* ── Output ──────────────────────────────────────────────────────────── */
 stdhead($SITENAME . ' FORUMS');
 
+
+
+
+echo '
+<style>
+/* ═════ Визуальный слой: градиентная шапка, тонированные заголовки,
+        фоновая иконка KPI, подсветка проблемных строк ═════ */
+
+/* 1. Градиентная шапка */
+.st-page .st-head {
+  background: linear-gradient(120deg, var(--bs-primary-bg-subtle) 0%, var(--bs-body-bg) 65%);
+}
+
+/* 2. Подкрашенные заголовки карточек */
+.st-page .st-card > .st-card__head { background: var(--bs-tertiary-bg); }
+
+/* 3. KPI с полупрозрачной иконкой в углу */
+.st-page .st-kpi { position: relative; overflow: hidden; }
+.st-page .st-kpi__bg {
+  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+  opacity: .07; transform: rotate(-12deg); pointer-events: none;
+}
+.st-page .st-kpi--primary { background: color-mix(in srgb, var(--bs-primary-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-primary-border-subtle); }
+.st-page .st-kpi--success { background: color-mix(in srgb, var(--bs-success-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-success-border-subtle); }
+.st-page .st-kpi--info    { background: color-mix(in srgb, var(--bs-info-bg-subtle) 45%, var(--bs-body-bg));    border-color: var(--bs-info-border-subtle); }
+.st-page .st-kpi--warning { background: color-mix(in srgb, var(--bs-warning-bg-subtle) 45%, var(--bs-body-bg)); border-color: var(--bs-warning-border-subtle); }
+.st-page .st-kpi--danger  { background: color-mix(in srgb, var(--bs-danger-bg-subtle) 45%, var(--bs-body-bg));  border-color: var(--bs-danger-border-subtle); }
+.st-page .st-kpi--muted   { background: var(--bs-tertiary-bg); }
+
+/* 4. Подсветка проблемных строк таблицы */
+.st-page .st-row--bad > td,
+.st-page .st-sec__row--failed > td { background: color-mix(in srgb, var(--bs-danger-bg-subtle) 30%, transparent); }
+.st-page .st-row--bad,
+.st-page .st-sec__row--failed { box-shadow: inset 3px 0 0 var(--bs-danger); }
+</style>
+
+';
+
+
+
+
+
+
+
+
 $json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=61">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/index2.css?ver=12">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=62">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/index2.css?ver=13">';
 echo '<script>'
    . 'if (typeof lang === "object" && lang) {'
    .   'lang.no_new_posts = ' . json_encode($lang->index['no_new_posts'] ?? '', $json_flags) . ';'

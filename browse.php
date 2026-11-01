@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'browse.php');
-define('B_VERSION', '6.7.0');
+define('B_VERSION', '6.6.3');
 define("SCRIPTNAME", "browse.php");
 
 
@@ -12,303 +12,392 @@ require './global.php';
 
 $lang->load('browse');
 
+
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_bookmark.php';
-require_once INC_PATH . '/functions_mkprettytime.php';
-require_once INC_PATH . '/functions_category.php';
-require_once INC_PATH . '/functions_browse.php';
 
 // Флаги для безопасного вывода строк в <script>
 $agsJsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
 maxsysop();
 
+
 if (empty($CURUSER['id'])) {
     print_no_permission();
 }
 
-// Страницы с query-параметрами - дубли одного и того же browse.php,
-// поисковики их индексировать не должны.
+
+// Страницы с query-параметрами (?search_type=...&keywords=...&page=...) -
+// это дубли одного и того же browse.php, поисковики их индексировать не должны.
 if (!empty($_SERVER['QUERY_STRING'])) {
     header('X-Robots-Tag: noindex, follow');
 }
 
 $is_mod = is_mod($usergroups);
-$myId   = (int)$CURUSER['id'];
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Хелперы страницы
-   ═══════════════════════════════════════════════════════════════════════════ */
+$category = (int)($_POST['category'] ?? $_GET['category'] ?? 0);
+$keywords = $_POST['keywords'] ?? $_GET['keywords'] ?? '';
 
-/** {1}, {2}… и %1$s… в уже экранированной строке ланга */
-if (!function_exists('ags_fmt_safe')) {
-    function ags_fmt_safe(string $str, string|int ...$args): string
-    {
-        $map = [];
-        foreach ($args as $i => $arg) {
-            $map['{' . ($i + 1) . '}']  = (string)$arg;
-            $map['%' . ($i + 1) . '$s'] = (string)$arg;
-        }
-        return strtr($str, $map);
-    }
-}
-
-/** Текущий $_GET с изменениями (null - убрать параметр). Номер страницы сбрасывается. */
-function br_url(array $changes = []): string
-{
-    $q = $_GET;
-    unset($q['page'], $q['mod_success'], $q['mod_error']);
-    foreach ($changes as $k => $v) {
-        if ($v === null) {
-            unset($q[$k]);
-        } else {
-            $q[$k] = $v;
-        }
-    }
-    $qs = http_build_query($q);
-    return 'browse.php' . ($qs !== '' ? '?' . $qs : '');
-}
-
-/** Подходит ли текущий $_GET под пресет (null - параметра быть не должно) */
-function br_preset_active(array $changes): bool
-{
-    foreach ($changes as $k => $v) {
-        $cur = $_GET[$k] ?? null;
-        if ($v === null ? $cur !== null : (string)$cur !== (string)$v) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
- * Ссылка-заголовок колонки со стрелкой направления. Первый клик - по
- * возрастанию, повторный по той же колонке - переключает направление.
- */
-function br_sort_link(string $label, string $col, string $baseUrl, ?string $curSort, string $curDir): string
-{
-    $active  = ($curSort === $col);
-    $nextDir = ($active && $curDir === 'asc') ? 'desc' : 'asc';
-    $arrow   = $active
-        ? ' <i class="fa-solid fa-caret-' . ($curDir === 'asc' ? 'up' : 'down') . '" aria-hidden="true"></i>'
-        : '';
-    $sep = str_contains($baseUrl, '?') ? '&amp;' : '?';
-
-    return '<a href="' . $baseUrl . $sep . 'sort=' . $col . '&amp;dir=' . $nextDir . '" class="br-sort'
-        . ($active ? ' br-sort--active' : '') . '">' . $label . $arrow . '</a>';
-}
-
-/** Подсветка ключевых слов в названии (всё экранируется здесь) */
-function br_highlight(string $name, string $keywords): string
-{
-    $safe = htmlspecialchars_uni($name);
-    $kw   = trim($keywords);
-    if ($kw === '') {
-        return $safe;
-    }
-    $pattern = '/(' . preg_quote(htmlspecialchars_uni($kw), '/') . ')/iu';
-    return preg_replace($pattern, '<mark class="br-hl">$1</mark>', $safe) ?? $safe;
-}
-
-/** Плашка акции (глобальная или ко дню рождения) */
-function br_promo(string $tone, string $icon, string $title, string $text): string
-{
-    return '<div class="st-card br-promo br-promo--' . $tone . ' mb-3" role="status">'
-        . '<div class="st-ico ' . ($tone === 'purple' ? 'br-soft-purple' : 'st-soft-' . $tone) . '"><i class="fa-solid ' . $icon . '" aria-hidden="true"></i></div>'
-        . '<div class="min-w-0"><div class="br-promo__title">' . $title . '</div>'
-        . '<div class="br-promo__text">' . $text . '</div></div></div>';
-}
-
-/** Плашка бонуса ко дню рождения (до конца сегодняшнего дня по времени сервера) */
-function browse_bday_notice(string $type, string $username): string
-{
-    global $lang;
-
-    $types = [
-        'freeleech'    => ['fa-gift',          'bday_fl_badge', 'Freeleech',     'bday_fl_text', 'Downloads today do not count toward your ratio — grab what you have been saving for.'],
-        'silverleech'  => ['fa-coins',         'bday_sl_badge', 'Silverleech',   'bday_sl_text', 'Only half of what you download today counts toward your ratio.'],
-        'doubleupload' => ['fa-angles-up',     'bday_du_badge', 'Double upload', 'bday_du_text', 'Everything you upload today counts twice.'],
-    ];
-    if (!isset($types[$type])) {
-        return '';
-    }
-    [$icon, $badgeKey, $badgeFb, $textKey, $textFb] = $types[$type];
-
-    $left  = max(0, (strtotime('tomorrow') - 1) - TIMENOW);
-    $badge = htmlspecialchars_uni((string)($lang->browse[$badgeKey] ?? $badgeFb));
-    $text  = htmlspecialchars_uni((string)($lang->browse[$textKey] ?? $textFb));
-    $hnr   = htmlspecialchars_uni((string)($lang->browse['bday_hnr'] ?? "Please no hit'n'run — keep seeding after you finish!"));
-    $until = htmlspecialchars_uni((string)($lang->browse['bday_until'] ?? 'Today until 23:59'));
-    $lft   = ags_fmt_safe(htmlspecialchars_uni((string)($lang->browse['bday_left'] ?? 'Ends in {1} h {2} min')), intdiv($left, 3600), intdiv($left % 3600, 60));
-    $title = ags_fmt_safe(htmlspecialchars_uni((string)($lang->browse['bday_title'] ?? 'Happy birthday, {1}!')), htmlspecialchars_uni($username));
-
-    return br_promo(
-        'purple',
-        'fa-cake-candles',
-        $title . ' 🎉',
-        '<span class="st-badge st-soft-success me-1"><i class="fa-solid ' . $icon . '" aria-hidden="true"></i>' . $badge . '</span>'
-        . '<span class="br-promo__when">' . $until . ' · ' . $lft . '</span><br>' . $text . ' ' . $hnr
-    );
+if (!is_string($keywords)) {
+    $keywords = '';
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Входные параметры
-   ═══════════════════════════════════════════════════════════════════════════ */
+$search_type = trim($_POST['search_type'] ?? $_GET['search_type'] ?? '');
 
-// Разбор и проверка фильтров - общий с xmlhttp.php (include/functions_browse.php)
-$F = browse_filter_input($_GET + $_POST);
-
-$category              = $F['category'];
-$keywords              = $F['keywords'];
-$search_type           = $F['search_type'];
-$special_search        = $F['special_search'];
-$include_dead_torrents = $F['include_dead'] ? 'yes' : '';
-$health_filter         = $F['health'];
-$freeleech_only        = $F['freeleech_only'];
-$no_seeders_only       = $F['no_seeders'];
-$seeders_gt_leechers   = $F['seeders_gt_leechers'];
-$hide_downloaded       = $F['hide_downloaded'];
-$imdb_min              = $F['imdb_min'];
-$daysprune             = $F['daysprune'];
-$smartBrowse           = $F['smart_browse'];
-$size_min_val          = $F['size_min'];
-$size_max_val          = $F['size_max'];
-$min_seeders_val       = $F['min_seeders'];
-$added_from_raw        = $F['added_from_raw'];
-$added_from            = $F['added_from'];
-$added_to_raw          = $F['added_to_raw'];
-$added_to              = $F['added_to'];
-
-// Сортировка (whitelist - $_GET['sort'] никогда не идёт в SQL напрямую)
-$sortColumns = [
-    'name'     => 't.name',
-    'size'     => 't.size',
-    'snatched' => 't.times_completed',
-    'seeders'  => 't.seeders',
-    'leechers' => 't.leechers',
-    'added'    => 't.added',
-];
-$sortBy  = (isset($_GET['sort']) && is_string($_GET['sort']) && isset($sortColumns[$_GET['sort']])) ? $_GET['sort'] : null;
-$sortDir = (($_GET['dir'] ?? '') === 'asc') ? 'asc' : 'desc';
-$orderby = 't.sticky, ' . ($sortBy !== null ? $sortColumns[$sortBy] . ' ' . strtoupper($sortDir) : 't.added DESC');
+$special_search        = trim($_GET['special_search']        ?? $_POST['special_search']        ?? '');
+$sort      = trim($_GET['sort']      ?? $_POST['sort']      ?? '');
+$order     = trim($_GET['order']     ?? $_POST['order']     ?? '');
+//$daysprune = (int)($_GET['daysprune'] ?? $_POST['daysprune'] ?? 0);
+$include_dead_torrents = trim($_GET['include_dead_torrents'] ?? $_POST['include_dead_torrents'] ?? '');
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Глобальные акции / бонус ко дню рождения
-   ═══════════════════════════════════════════════════════════════════════════ */
+$Links = [];
+require_once INC_PATH . '/functions_mkprettytime.php';
+
+
+
 
 $_freelechmod = $_silverleechmod = $_x2mod = false;
-$promoNotice  = '';
+$___notice = '';
 include TSDIR . '/cache/freeleech.php';
 
-if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
-    $fStart = htmlspecialchars_uni((string)$__F_START);
-    $fEnd   = htmlspecialchars_uni((string)$__F_END);
 
-    switch ($__FLSTYPE) {
+if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
+    
+    switch($__FLSTYPE) {
         case 'freeleech':
-            $promoNotice  = br_promo('success', 'fa-gift', $lang->browse['pane_global_freeleech'], sprintf($lang->browse['f_leech'], $fStart, $fEnd));
+            $___notice = '
+            <br><br>
+            <div class="container md">
+            <div class="card error-card4 fade show">
+              <div class="card-header4">
+                <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_freeleech'] . '</h2></div>
+              </div>
+              <div class="card-body">
+                <div class="alert4 alert-info" role="alert">
+                 ' . sprintf($lang->browse['f_leech'], $__F_START, $__F_END) . '
+                </div>
+              </div>
+            </div>
+            </div>';
+
             $_freelechmod = true;
+            echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
+
         case 'silverleech':
-            $promoNotice     = br_promo('info', 'fa-coins', $lang->browse['pane_global_silverleech'], sprintf($lang->browse['s_leech'], $fStart, $fEnd));
+            $___notice = '
+            <br><br>
+            <div class="container md">
+            <div class="card error-card4 fade show">
+              <div class="card-header4">
+                <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_silverleech'] . '</h2></div>
+              </div>
+              <div class="card-body">
+                <div class="alert4 alert-info" role="alert">
+                ' . sprintf($lang->browse['s_leech'], $__F_START, $__F_END) . '
+                </div>
+              </div>
+            </div>
+            </div>';
+
             $_silverleechmod = true;
+            
+            echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
+
         case 'doubleupload':
-            $promoNotice = br_promo('warning', 'fa-angles-up', $lang->browse['pane_global_doubleupload'], sprintf($lang->browse['d_leech'], $fStart, $fEnd));
-            $_x2mod      = true;
+            $___notice = '
+            <br><br>
+            <div class="container md">
+            <div class="card error-card4 fade show">
+              <div class="card-header4">
+                <i class="bi bi-exclamation-triangle-fill error-icon4"></i>
+                <div><h2 class="mb-0">' . $lang->browse['pane_global_doubleupload'] . '</h2></div>
+              </div>
+              <div class="card-body">
+                <div class="alert4 alert-info" role="alert">
+                 ' . sprintf($lang->browse['d_leech'], $__F_START, $__F_END) . '
+                </div>
+              </div>
+            </div>
+            </div>';
+
+            $_x2mod = true;
+            
+            echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
     }
 } elseif ($bdayreward === 'yes' && $bdayrewardtype) {
     // birthday хранится как «день-месяц-год» (j-n-Y)
     $curuserbday = !empty($CURUSER['birthday']) ? explode('-', (string)$CURUSER['birthday']) : [];
     if (isset($curuserbday[0], $curuserbday[1]) && date('j-n') === (int)$curuserbday[0] . '-' . (int)$curuserbday[1]) {
-        $promoNotice = browse_bday_notice((string)$bdayrewardtype, (string)($CURUSER['username'] ?? ''));
+        $___notice = browse_bday_notice((string)$bdayrewardtype, (string)($CURUSER['username'] ?? ''));
     }
 }
 
+/**
+ * Плашка бонуса ко дню рождения (фрилич / сильверлич / x2 аплоад).
+ * Бонус действует до конца сегодняшнего дня по времени сервера.
+ */
+function browse_bday_notice(string $type, string $username): string
+{
+    global $lang;
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Категории
-   ═══════════════════════════════════════════════════════════════════════════ */
+    $L = static fn(string $key, string $fallback): string =>
+        htmlspecialchars_uni((string)($lang->browse[$key] ?? $fallback));
 
-require TSDIR . '/cache/categories.php';
+    $types = [
+        'freeleech'    => ['fa-gift',          $L('bday_fl_badge', 'Freeleech'),     $L('bday_fl_text', 'Downloads today do not count toward your ratio — grab what you have been saving for.')],
+        'silverleech'  => ['fa-coins',         $L('bday_sl_badge', 'Silverleech'),   $L('bday_sl_text', 'Only half of what you download today counts toward your ratio.')],
+        'doubleupload' => ['fa-arrow-up-wide-short', $L('bday_du_badge', 'Double upload'), $L('bday_du_text', 'Everything you upload today counts twice.')],
+    ];
+    if (!isset($types[$type])) {
+        return '';
+    }
+    [$icon, $badge, $text] = $types[$type];
 
-$notifs     = (string)($CURUSER['notifs'] ?? '');
-$catIconMap = [];
-$catNameMap = [];
-$subByPid   = [];
+    $end      = strtotime('tomorrow') - 1;
+    $left     = max(0, $end - TIMENOW);
+    $lefttext = ags_fmt_safe($L('bday_left', 'Ends in {1} h {2} min'), intdiv($left, 3600), intdiv($left % 3600, 60));
 
-foreach ($_categoriesS ?? [] as $sc) {
-    $sid = (int)$sc['id'];
-    $catNameMap[$sid] = (string)$sc['name'];
-    $subByPid[(int)$sc['pid']][] = $sc;
+    $title = ags_fmt_safe($L('bday_title', 'Happy birthday, {1}!'), htmlspecialchars_uni($username));
+    $until = ags_fmt_safe($L('bday_until', 'Today until 23:59'));
+    $hnr   = $L('bday_hnr', 'Please no hit\'n\'run — keep seeding after you finish!');
+
+    global $BASEURL;
+
+    // Та же карточка, что у глобальных акций (error-card4 из messagess.css)
+    return '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">'
+        . <<<HTML
+<br><br>
+<div class="container md">
+<div class="card error-card4 fade show">
+  <div class="card-header4">
+    <i class="fa-solid fa-cake-candles error-icon4" aria-hidden="true"></i>
+    <div><h2 class="mb-0">{$title} 🎉</h2></div>
+  </div>
+  <div class="card-body">
+    <div class="alert4 alert-info" role="alert">
+      <i class="fa-solid {$icon} me-1" aria-hidden="true"></i><b>{$badge}</b> · {$until} · {$lefttext}<br>
+      {$text} {$hnr}
+    </div>
+  </div>
+</div>
+</div>
+HTML;
 }
 
-$catTiles = '';
-foreach ($_categoriesC ?? [] as $c) {
-    $cid = (int)$c['id'];
-    $catIconMap[$cid] = (string)$c['icon'];
-    $catNameMap[$cid] = (string)$c['name'];
+/** {1}, {2}… и %1$s… в уже экранированной строке ланга */
+function ags_fmt_safe(string $str, string|int ...$args): string
+{
+    $map = [];
+    foreach ($args as $i => $arg) {
+        $map['{' . ($i + 1) . '}']   = (string)$arg;
+        $map['%' . ($i + 1) . '$s'] = (string)$arg;
+    }
+    return strtr($str, $map);
+}
 
-    $isActive = ($category === $cid);
-    $isNotif  = (!$category && str_contains($notifs, '[cat' . $cid . ']'));
-    $cname    = htmlspecialchars_uni((string)$c['name']);
 
-    $subs = '';
-    foreach ($subByPid[$cid] ?? [] as $sc) {
-        $sid   = (int)$sc['id'];
-        $sname = htmlspecialchars_uni((string)$sc['name']);
-        $subs .= '<a href="' . get_category_link($sid) . '" id="category' . $sid . '" class="br-cat__sub'
-            . ($category === $sid ? ' br-cat__sub--active' : '') . '">' . $sname . '</a>';
-        if ($category === $sid) {
-            $isActive = true;   // подкатегория выбрана - подсвечиваем и родителя
+
+
+
+
+
+require TSDIR . '/cache/categories.php';
+$subcategories = [];
+$searcincategories = [];
+
+if (count($_categoriesS) > 0) {
+    foreach ($_categoriesS as $sc) {
+
+        $sc['name'] = htmlspecialchars_uni($sc['name']);
+        $searcincategories[] = $sc['id'];
+
+        $SEOLinkC = get_category_link($sc['id']);
+
+        $subcategories[$sc['pid']][] = '
+        <span id="category' . $sc['id'] . '"' . (
+            (isset($category) && $category === $sc['id']) ||
+            (!$category && str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $sc['id'] . ']'))
+            ? ' class="highlight"'
+            : ''
+        ) . '>
+            <a href="' . $SEOLinkC . '" title="' . $sc['name'] . '">' . $sc['name'] . '</a>
+        </span>';
+    }
+
+    unset($_categoriesS);
+}
+
+$count = 0;
+
+$categories = '
+
+<div class="container mt-3">
+ 
+  <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+  
+<table>
+<tbody>
+	<tr>
+	<div class="card-header bg-gradient bg-primary text-white py-2 px-3">
+            
+        <i class="fas fa-th-large me-2"></i>'.$lang->browse['tcategory'].'
+            
+        </div>			
+	</tr>
+	
+	<tr>
+		<td align="center">
+			<table border="0" cellspacing="0" cellpadding="0" align="left">
+				<tr class="none">';
+
+
+
+
+
+
+$catIconMap = [];
+if (($rows = count($_categoriesC)) > 0) {
+    foreach ($_categoriesC as $c) {
+        $catIconMap[$c['id']] = $c['icon'];
+		$tracker_cats_per_row = '5';
+        $table_cat_width = '';
+        $table_cat_height = '';
+
+        $searcincategories[] = $c['id'];
+        if ($count && $count % $tracker_cats_per_row === 0) {
+            $categories .= '</tr><tr class="none">';
+        }
+
+        $tracker_cats_width = '';
+        $cname = htmlspecialchars_uni($c['name']);
+        $SEOLinkC = get_category_link($c['id']);
+
+$categories .= '
+<td class="p-2">
+    <div class="d-flex border rounded p-2 category-container" data-category-id="' . $c['id'] . '">
+        <div class="text-center">
+            <a href="' . $SEOLinkC . '" class="d-block">
+                <i class="' . $c['icon'] . ' fa-2x category-icon" title="' . $cname . '"></i>
+            </a>
+        </div>
+
+        <div class="ms-2" style="width: ' . $tracker_cats_width . 'px;">
+
+            <span id="category' . $c['id'] . '"' . (
+                (isset($category) && $category === $c['id']) ||
+                (
+                    !$category &&
+                    str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $c['id'] . ']')
+                )
+                ? ' class="fw-bold text-primary"'
+                : ''
+            ) . '>
+
+                <a href="' . $SEOLinkC . '" title="' . $cname . '" class="text-decoration-none category-link" data-cat-id="' . $c['id'] . '">
+                    <h6 class="mb-1">' . $cname . '</h6>
+                </a>
+
+            </span>
+
+            <div class="small text-muted">
+                ' . (isset($subcategories[$c['id']]) ? implode(', ', $subcategories[$c['id']]) : '') . '
+            </div>
+
+        </div>
+    </div>
+</td>';
+
+        $count++;
+    }
+
+    // Имя выбранной категории для хлебных крошек - ищем, пока массив
+    // ещё не очищен ниже.
+    $catName = $lang->browse['lbl_crumb_all'];
+    if ($category) {
+        foreach ($_categoriesC as $c) {
+            if ((int)$c['id'] === $category) {
+                $catName = $c['name'];
+                break;
+            }
         }
     }
 
-    $catTiles .= '
-        <div class="br-cat' . ($isActive ? ' br-cat--active' : ($isNotif ? ' br-cat--notif' : '')) . '" data-category-id="' . $cid . '">
-            <a href="' . get_category_link($cid) . '" class="br-cat__ico st-ico st-soft-' . ($isActive ? 'primary' : 'muted') . '" tabindex="-1" aria-hidden="true">
-                <i class="' . htmlspecialchars_uni((string)$c['icon']) . '"></i>
-            </a>
-            <div class="min-w-0">
-                <a href="' . get_category_link($cid) . '" id="category' . $cid . '" class="br-cat__name">' . $cname . '</a>'
-                . ($subs !== '' ? '<div class="br-cat__subs">' . $subs . '</div>' : '') . '
-            </div>
-        </div>';
+    unset($_categoriesC);
 }
 
-// Имя выбранной категории (для шапки и бейджа активного фильтра)
-$catName = ($category && isset($catNameMap[$category])) ? $catNameMap[$category] : '';
+$categories .= '
+</tr>
+			</table>
+		</td>
+	</tr>
+</tbody>
+</table>
+ </div>
+</div>
 
-// Выпадающие списки категорий: для поиска и для переноса (у каждого свой id)
-$cleanCatSelect = static function (string $html, string $class): string {
-    return str_replace(
-        ['<label>', '</label>', 'form-select form-select-sm border pe-5 w-auto'],
-        ['', '', $class],
-        $html
-    );
+';
+
+
+
+
+
+
+
+require_once INC_PATH . '/functions_category.php';
+$catdropdown = ts_category_list('category', ($category ?? ''), '<option value="0" style="color: gray;">' . $lang->browse['alltypes'] . '</option>', 'categories');
+
+
+
+
+
+
+
+
+
+
+
+
+$size_min = $_GET['size_min'] ?? '';
+$size_max = $_GET['size_max'] ?? '';
+$min_seeders = $_GET['min_seeders'] ?? '';
+$health_filter = (($_GET['health'] ?? '') === 'seeded') ? 'seeded' : ''; 
+$freeleech_only = (($_GET['freeleech_only'] ?? '') === '1');
+$no_seeders_only = (($_GET['no_seeders'] ?? '') === '1');
+$seeders_gt_leechers = (($_GET['seeders_gt_leechers'] ?? '') === '1');
+$hide_downloaded = (($_GET['hide_downloaded'] ?? '') === '1');
+$imdb_min = in_array($_GET['imdb_min'] ?? '', ['7', '8', '9'], true) ? (int)$_GET['imdb_min'] : 0;
+
+$seeders_options = [
+    ''    => $lang->browse['opt_any_seeders'],
+    '1'   => '1+',
+    '5'   => '5+',
+    '10'  => '10+',
+    '25'  => '25+',
+    '50'  => '50+',
+    '100' => '100+',
+];
+
+$seeders_select = '<select class="form-select" name="min_seeders">';
+foreach ($seeders_options as $val => $label) {
+    $selected = ($min_seeders == $val) ? ' selected' : '';
+    $seeders_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
+}
+$seeders_select .= '</select>';
+
+// "0.5 GB" -> "0,5 ГБ" и т.п. по языку
+$fmtGb = static function (string $n): string {
+    global $lang;
+    return sprintf($lang->browse['opt_size_gb'], str_replace('.', $lang->browse['lbl_num_dec_point'], $n));
 };
-$catdropdown  = $cleanCatSelect(
-    ts_category_list('category', $category, '<option value="0">' . $lang->browse['alltypes'] . '</option>', 'br_category'),
-    'form-select'
-);
-$movedropdown = $is_mod
-    ? $cleanCatSelect(ts_category_list('category', 0, '<option value="0">—</option>', 'br_move_category'), 'form-select form-select-sm mod-select')
-    : '';
-unset($_categoriesC, $_categoriesS);
 
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Опции фильтров
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-$fmtGb = static fn(string $n): string =>
-    sprintf($lang->browse['opt_size_gb'], str_replace('.', $lang->browse['lbl_num_dec_point'], $n));
-
-$seeders_options = ['' => $lang->browse['opt_any_seeders'], '1' => '1+', '5' => '5+', '10' => '10+', '25' => '25+', '50' => '50+', '100' => '100+'];
 $size_options_min = [
     ''            => $lang->browse['opt_min_size'],
     '536870912'   => $fmtGb('0.5'),
@@ -319,7 +408,50 @@ $size_options_min = [
     '21474836480' => $fmtGb('20'),
     '53687091200' => $fmtGb('50'),
 ];
-$size_options_max = ['' => $lang->browse['opt_max_size']] + array_slice($size_options_min, 1, null, true) + ['107374182400' => $fmtGb('100')];
+
+$size_options_max = [
+    ''             => $lang->browse['opt_max_size'],
+    '536870912'    => $fmtGb('0.5'),
+    '1073741824'   => $fmtGb('1'),
+    '2147483648'   => $fmtGb('2'),
+    '5368709120'   => $fmtGb('5'),
+    '10737418240'  => $fmtGb('10'),
+    '21474836480'  => $fmtGb('20'),
+    '53687091200'  => $fmtGb('50'),
+    '107374182400' => $fmtGb('100'),
+];
+
+$size_min_select = '<select class="form-select" name="size_min">';
+foreach ($size_options_min as $val => $label) {
+    $selected = ($size_min == $val) ? ' selected' : '';
+    $size_min_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
+}
+$size_min_select .= '</select>';
+
+$size_max_select = '<select class="form-select" name="size_max">';
+foreach ($size_options_max as $val => $label) {
+    $selected = ($size_max == $val) ? ' selected' : '';
+    $size_max_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
+}
+$size_max_select .= '</select>';
+
+
+
+
+
+
+$daysprune = isset($_GET['daysprune']) ? (int)$_GET['daysprune'] : (int)($_POST['daysprune'] ?? 0);
+
+// Диапазон дат добавления (от/до конкретной даты) - отдельно от daysprune
+// ("последние N дней"). Та же строгая проверка формата, что в usersearch.php.
+$to_ts_browse = function (?string $d, bool $end = false): int {
+    if (!$d) return 0;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) return 0;
+    return (int)strtotime($d . ($end ? ' 23:59:59' : ' 00:00:00'));
+};
+$added_from = $to_ts_browse($_GET['added_from'] ?? null, false);
+$added_to   = $to_ts_browse($_GET['added_to'] ?? null, true);
+
 $daysprune_options = [
     0   => $lang->browse['opt_days_any'],
     1   => $lang->browse['opt_days_1'],
@@ -329,830 +461,1957 @@ $daysprune_options = [
     180 => $lang->browse['opt_days_180'],
     365 => $lang->browse['opt_days_365'],
 ];
-$searchTypeLabels = [
-    't_both'        => $lang->browse['t_both'],
-    't_name'        => $lang->browse['t_name'],
-    't_description' => $lang->browse['t_description'],
-    't_tags'        => $lang->browse['opt_tags'],
-    't_uploader'    => $lang->browse['t_uploader'],
-    't_genre'       => $lang->browse['t_genre'],
-];
-$specialLabels = [
-    'mytorrents'   => $lang->browse['qf_my_uploads'],
-    'mybookmarks'  => $lang->browse['qf_my_bookmarks'],
-    'myreseeds'    => $lang->browse['qf_need_reseed'],
-    'weaktorrents' => 'weaktorrents',
-];
 
-/** <select> из массива значение => подпись (подписи - текст, экранируются) */
-$mkSelect = static function (string $name, array $opts, string $current, string $id = '', string $aria = ''): string {
-    $h = '<select class="form-select" name="' . $name . '"' . ($id !== '' ? ' id="' . $id . '"' : '')
-        . ($aria !== '' ? ' aria-label="' . htmlspecialchars_uni($aria) . '"' : '') . '>';
-    foreach ($opts as $val => $label) {
-        $h .= '<option value="' . htmlspecialchars_uni((string)$val) . '"' . ((string)$val === $current ? ' selected' : '') . '>'
-            . htmlspecialchars_uni(html_entity_decode((string)$label, ENT_QUOTES, 'UTF-8')) . '</option>';
+$daysprune_select = '<select class="form-select" name="daysprune" id="daysprune">';
+foreach ($daysprune_options as $val => $label) {
+    $selected = ((int)$daysprune === $val) ? ' selected' : '';
+    $daysprune_select .= '<option value="' . $val . '"' . $selected . '>' . htmlspecialchars_uni((string)$label) . '</option>';
+}
+$daysprune_select .= '</select>';
+
+
+
+
+
+// Хелпер: собрать URL без одного параметра из текущего $_GET
+if (!function_exists('browse_url_without')) {
+    function browse_url_without(string $script, array $get, string $param): string {
+        $q = $get;
+        unset($q[$param]);
+        $qs = http_build_query($q);
+        return $script . ($qs !== '' ? '?' . $qs : '');
     }
-    return $h . '</select>';
-};
+}
 
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Активные фильтры (чипы с ×)
-   ═══════════════════════════════════════════════════════════════════════════ */
+// Активные фильтры (для бейджей с ×)
+// $size_min_val/$size_max_val/$min_seeders_val нужны уже здесь - раньше
+// вычислялись значительно позже (перед построением WHERE), из-за чего тут
+// использовались как неопределённые переменные (PHP warning на каждый
+// запрос). Считаем один раз здесь, дальше просто переиспользуем.
+$size_min_val    = ($size_min !== '') ? (int)$size_min : null;
+$size_max_val    = ($size_max !== '') ? (int)$size_max : null;
+$min_seeders_val = ($min_seeders !== '') ? (int)$min_seeders : null;
 
 $activeFilters = [];
-$addFilter = static function (string $param, string $icon, string $tone, string $label) use (&$activeFilters): void {
-    $activeFilters[] = ['param' => $param, 'icon' => $icon, 'tone' => $tone, 'label' => $label];
-};
-
-if ($keywords !== '') {
-    $addFilter('keywords', 'fa-magnifying-glass', 'primary', sprintf($lang->browse['flt_search'], htmlspecialchars_uni($keywords)));
-}
-if ($search_type !== '' && $search_type !== 't_both') {
-    $addFilter('search_type', 'fa-magnifying-glass', 'primary', sprintf($lang->browse['flt_type'], $searchTypeLabels[$search_type]));
-}
 if ($category) {
-    $addFilter('category', 'fa-folder', 'info', $catName !== '' ? htmlspecialchars_uni($catName) : sprintf($lang->browse['flt_category'], $category));
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_category'], $category), 'param' => 'category'];
 }
 if ($size_min_val) {
-    $addFilter('size_min', 'fa-hard-drive', 'warning', sprintf($lang->browse['flt_size_min'], mksize($size_min_val)));
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_size_min'], mksize($size_min_val)), 'param' => 'size_min'];
 }
 if ($size_max_val) {
-    $addFilter('size_max', 'fa-hard-drive', 'warning', sprintf($lang->browse['flt_size_max'], mksize($size_max_val)));
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_size_max'], mksize($size_max_val)), 'param' => 'size_max'];
 }
 if ($min_seeders_val) {
-    $addFilter('min_seeders', 'fa-heart-pulse', 'success', sprintf($lang->browse['flt_seeders_min'], $min_seeders_val));
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_seeders_min'], $min_seeders_val), 'param' => 'min_seeders'];
 }
-if ($health_filter === 'seeded') {
-    $addFilter('health', 'fa-heart-pulse', 'success', $lang->browse['qf_has_seeders']);
+if ($keywords !== '') {
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_search'], htmlspecialchars_uni($keywords)), 'param' => 'keywords'];
 }
-if ($no_seeders_only) {
-    $addFilter('no_seeders', 'fa-heart-pulse', 'success', $lang->browse['flt_no_seeders']);
-}
-if ($seeders_gt_leechers) {
-    $addFilter('seeders_gt_leechers', 'fa-heart-pulse', 'success', $lang->browse['flt_seeders_gt_leechers']);
-}
-if ($freeleech_only) {
-    $addFilter('freeleech_only', 'fa-gift', 'danger', $lang->browse['flt_freeleech_only']);
-}
-if ($imdb_min > 0) {
-    $addFilter('imdb_min', 'fa-star', 'warning', sprintf($lang->browse['flt_imdb_min'], $imdb_min));
-}
-if ($daysprune > 0) {
-    $addFilter('daysprune', 'fa-calendar', 'muted', htmlspecialchars_uni($daysprune_options[$daysprune] ?? sprintf($lang->browse['flt_last_n_days'], $daysprune)));
-}
-if ($added_from) {
-    $addFilter('added_from', 'fa-calendar', 'muted', sprintf($lang->browse['flt_added_from'], htmlspecialchars_uni($added_from_raw)));
-}
-if ($added_to) {
-    $addFilter('added_to', 'fa-calendar', 'muted', sprintf($lang->browse['flt_added_to'], htmlspecialchars_uni($added_to_raw)));
+if ($search_type !== '' && $search_type !== 't_both') {
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_type'], htmlspecialchars_uni($search_type)), 'param' => 'search_type'];
 }
 if ($special_search !== '') {
-    $addFilter('special_search', 'fa-user', 'muted', $specialLabels[$special_search]);
-}
-if ($hide_downloaded) {
-    $addFilter('hide_downloaded', 'fa-eye-slash', 'muted', $lang->browse['flt_hide_downloaded']);
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_special'], htmlspecialchars_uni($special_search)), 'param' => 'special_search'];
 }
 if ($include_dead_torrents === 'yes') {
-    $addFilter('include_dead_torrents', 'fa-ghost', 'muted', $lang->browse['flt_include_dead']);
+    $activeFilters[] = ['label' => $lang->browse['flt_include_dead'], 'param' => 'include_dead_torrents'];
+}
+if ($freeleech_only) {
+    $activeFilters[] = ['label' => $lang->browse['flt_freeleech_only'], 'param' => 'freeleech_only'];
+}
+if ($no_seeders_only) {
+    $activeFilters[] = ['label' => $lang->browse['flt_no_seeders'], 'param' => 'no_seeders'];
+}
+if ($seeders_gt_leechers) {
+    $activeFilters[] = ['label' => $lang->browse['flt_seeders_gt_leechers'], 'param' => 'seeders_gt_leechers'];
+}
+if ($hide_downloaded) {
+    $activeFilters[] = ['label' => $lang->browse['flt_hide_downloaded'], 'param' => 'hide_downloaded'];
+}
+if ($imdb_min > 0) {
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_imdb_min'], $imdb_min), 'param' => 'imdb_min'];
 }
 
+if ($daysprune > 0) {
+    $daysLabel = $daysprune_options[$daysprune] ?? sprintf($lang->browse['flt_last_n_days'], $daysprune);
+    $activeFilters[] = ['label' => $daysLabel, 'param' => 'daysprune'];
+}
+if ($added_from) {
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_added_from'], htmlspecialchars($_GET['added_from'])), 'param' => 'added_from'];
+}
+if ($added_to) {
+    $activeFilters[] = ['label' => sprintf($lang->browse['flt_added_to'], htmlspecialchars($_GET['added_to'])), 'param' => 'added_to'];
+}
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   WHERE + ссылки пагинации
-   ═══════════════════════════════════════════════════════════════════════════ */
+$filterGroups = [
+    'search'   => ['icon' => 'fa-magnifying-glass', 'color' => 'primary'],
+    'category' => ['icon' => 'fa-folder',           'color' => 'info'],
+    'health'   => ['icon' => 'fa-heart-pulse',      'color' => 'success'],
+    'size'     => ['icon' => 'fa-hdd',              'color' => 'warning'],
+    'date'     => ['icon' => 'fa-calendar',         'color' => 'secondary'],
+    'promo'    => ['icon' => 'fa-gift',             'color' => 'danger'],
+    'rating'   => ['icon' => 'fa-star',             'color' => 'warning'],
+    'personal' => ['icon' => 'fa-user',             'color' => 'dark'],
+];
 
-$flt       = browse_build_where($F, $myId, $is_mod);
-$WHERE     = $flt['where'];
-$innerjoin = $flt['join'];
-$params    = $flt['params'];
-$Links     = $flt['links'];
+$activeFiltersHtml = '';
+if (!empty($activeFilters)) {
+    $activeFiltersHtml = '<div class="d-flex flex-wrap gap-2 mt-2 mb-2">';
+    foreach ($activeFilters as $f) {
+        // Учитывает все параметры, включая добавленные позже (category,
+        // include_dead_torrents, hide_downloaded, imdb_min, special_search) -
+        // в исходном варианте они все молча попадали в "search" по умолчанию.
+        $group = match (true) {
+            in_array($f['param'], ['keywords', 'search_type'], true) => 'search',
+            $f['param'] === 'category' => 'category',
+            str_contains($f['param'], 'size') => 'size',
+            str_contains($f['param'], 'seeders') => 'health',
+            in_array($f['param'], ['daysprune', 'added_from', 'added_to'], true) => 'date',
+            str_contains($f['param'], 'freeleech') => 'promo',
+            $f['param'] === 'imdb_min' => 'rating',
+            in_array($f['param'], ['special_search', 'hide_downloaded', 'include_dead_torrents'], true) => 'personal',
+            default => 'search',
+        };
+        $g = $filterGroups[$group] ?? $filterGroups['search'];
+        $rmUrl = browse_url_without($_SERVER['SCRIPT_NAME'], $_GET, $f['param']);
+        $activeFiltersHtml .=
+            '<a href="' . htmlspecialchars($rmUrl, ENT_QUOTES) . '" ' .
+            'class="badge bg-' . $g['color'] . ' bg-opacity-10 text-' . $g['color'] . ' border border-' . $g['color'] . ' text-decoration-none py-2 px-3">' .
+            '<i class="fa-solid ' . $g['icon'] . ' me-1"></i>' .
+            $f['label'] .
+            ' <i class="bi bi-x-lg ms-1"></i>' .
+            '</a>';
+    }
+    $activeFiltersHtml .= '</div>';
+}
 
-// base - без сортировки (для заголовков колонок), page_url - с ней (для пагинации)
-$baseUrl  = $BASEURL . '/browse.php?' . implode('&amp;', $Links);
-$sortPart = $sortBy !== null ? 'sort=' . $sortBy . '&dir=' . $sortDir : '';
-$pageUrl  = $baseUrl . ($sortPart !== '' ? '&amp;' . str_replace('&', '&amp;', $sortPart) : '');
+$resetFiltersBtn = '<a href="' . htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES) . '" class="btn btn-outline-secondary btn-sm">'
+    . '<i class="fa-solid fa-rotate-left me-1"></i>' . $lang->browse['btn_reset_filters'] . '</a>';
+
+// Quick Filters: быстрые пресеты используют существующие фильтры каталога.
+// По умолчанию включены (не нужно нажимать отдельную кнопку) - выключить
+// можно через ссылку "Classic view" (smart_browse=0).
+$smartBrowse = (($_GET['smart_browse'] ?? '1') !== '0');
+
+$smartPreset = static function (array $changes): string {
+    $params = $_GET;
+    foreach ($changes as $key => $value) {
+        if ($value === null) {
+            unset($params[$key]);
+        } else {
+            $params[$key] = $value;
+        }
+    }
+    $params['smart_browse'] = '1';
+    return htmlspecialchars($_SERVER['SCRIPT_NAME'] . '?' . http_build_query($params), ENT_QUOTES);
+};
+
+// Активная подсветка пресета - раньше кнопки всегда выглядели одинаково,
+// даже если фильтр уже применён, никакой визуальной обратной связи не было.
+$smartPresetActive = static function (array $changes): bool {
+    foreach ($changes as $key => $value) {
+        $current = $_GET[$key] ?? null;
+        if ($value === null) {
+            if ($current !== null) {
+                return false;
+            }
+        } elseif ((string)$current !== (string)$value) {
+            return false;
+        }
+    }
+    return true;
+};
+$smartBtnClass = static function (array $changes) use ($smartPresetActive): string {
+    return $smartPresetActive($changes) ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline-primary';
+};
+
+$smartBrowseHtml = '';
+if ($smartBrowse) {
+    $smartBrowseHtml = '
+    <section class="card border-0 shadow-sm mb-3 smart-browse-panel" style="border-radius:18px;">
+      <div class="card-body p-3 p-lg-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 smart-browse-heading">
+          <div><div class="smart-eyebrow">' . $lang->browse['sec_discover'] . '</div><h4 class="mb-1"><i class="fa-solid fa-wand-magic-sparkles me-2"></i>' . $lang->browse['sec_quick_filters'] . '</h4>
+          <small>' . $lang->browse['hint_quick_filters'] . '</small></div>
+        </div>
+        
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_quick'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['health' => 'seeded']) . '" href="' . $smartPreset(['health' => 'seeded']) . '"><i class="fa-solid fa-heart-pulse me-1"></i>' . $lang->browse['qf_has_seeders'] . ' <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
+          <a class="' . $smartBtnClass(['sort' => 'seeders', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'seeders', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $lang->browse['qf_most_seeders'] . '</a>
+          <a class="' . $smartBtnClass(['min_seeders' => '1']) . '" href="' . $smartPreset(['min_seeders' => '1']) . '"><i class="fa-solid fa-signal me-1"></i>' . $lang->browse['qf_active'] . ' <span class="smart-preset-count">(@@CNT-SEEDED@@)</span></a>
+          <a class="' . $smartBtnClass(['daysprune' => '7']) . '" href="' . $smartPreset(['daysprune' => '7']) . '"><i class="fa-regular fa-clock me-1"></i>' . $lang->browse['opt_days_7'] . ' <span class="smart-preset-count">(@@CNT-7D@@)</span></a>
+          <a class="' . $smartBtnClass(['daysprune' => '30']) . '" href="' . $smartPreset(['daysprune' => '30']) . '"><i class="fa-regular fa-calendar me-1"></i>' . $lang->browse['opt_days_30'] . ' <span class="smart-preset-count">(@@CNT-30D@@)</span></a>
+          <a class="' . $smartBtnClass(['size_min' => '5368709120']) . '" href="' . $smartPreset(['size_min' => '5368709120']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 5) . ' <span class="smart-preset-count">(@@CNT-BIG@@)</span></a>
+          <a class="' . $smartBtnClass(['freeleech_only' => '1']) . '" href="' . $smartPreset(['freeleech_only' => '1']) . '"><i class="bi bi-gift me-1"></i>' . $lang->browse['flt_freeleech_only'] . ' <span class="smart-preset-count">(@@CNT-FL@@)</span></a>
+        </div>
+
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_popular'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['sort' => 'snatched', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'snatched', 'dir' => 'desc']) . '"><i class="fa-solid fa-fire me-1"></i>' . $lang->browse['qf_most_downloaded'] . '</a>
+          <a class="' . $smartBtnClass(['sort' => 'leechers', 'dir' => 'desc']) . '" href="' . $smartPreset(['sort' => 'leechers', 'dir' => 'desc']) . '"><i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $lang->browse['qf_most_leeched'] . '</a>
+        </div>
+
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_health'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['no_seeders' => '1']) . '" href="' . $smartPreset(['no_seeders' => '1']) . '"><i class="fa-solid fa-skull-crossbones me-1"></i>' . $lang->browse['flt_no_seeders'] . '</a>
+          <a class="' . $smartBtnClass(['seeders_gt_leechers' => '1']) . '" href="' . $smartPreset(['seeders_gt_leechers' => '1']) . '"><i class="fa-solid fa-scale-balanced me-1"></i>' . $lang->browse['flt_seeders_gt_leechers'] . '</a>
+        </div>
+
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_fresh'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['daysprune' => '1']) . '" href="' . $smartPreset(['daysprune' => '1']) . '"><i class="fa-solid fa-star me-1"></i>' . $lang->browse['qf_added_today'] . '</a>
+          <a class="' . $smartBtnClass(['daysprune' => '3']) . '" href="' . $smartPreset(['daysprune' => '3']) . '"><i class="fa-regular fa-clock me-1"></i>' . $lang->browse['qf_last_3_days'] . '</a>
+          <a class="' . $smartBtnClass(['size_max' => '536870912']) . '" href="' . $smartPreset(['size_max' => '536870912']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>' . sprintf($lang->browse['qf_small'], str_replace('.', $lang->browse['lbl_num_dec_point'], '0.5')) . '</a>
+          <a class="' . $smartBtnClass(['size_max' => '1073741824']) . '" href="' . $smartPreset(['size_max' => '1073741824']) . '"><i class="fa-solid fa-mobile-screen me-1"></i>' . sprintf($lang->browse['qf_small_torrents'], 1) . '</a>
+          <a class="' . $smartBtnClass(['size_min' => '10737418240']) . '" href="' . $smartPreset(['size_min' => '10737418240']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 10) . '</a>
+          <a class="' . $smartBtnClass(['size_min' => '53687091200']) . '" href="' . $smartPreset(['size_min' => '53687091200']) . '"><i class="fa-solid fa-database me-1"></i>' . sprintf($lang->browse['qf_size_plus'], 50) . '</a>' .
+          ($CURUSER['id'] ? '
+          <a class="' . $smartBtnClass(['hide_downloaded' => '1']) . '" href="' . $smartPreset(['hide_downloaded' => '1']) . '"><i class="fa-solid fa-eye-slash me-1"></i>' . $lang->browse['flt_hide_downloaded'] . '</a>' : '') . '
+        </div>' .
+        ($CURUSER['id'] ? '
+
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_authorship'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['special_search' => 'mytorrents']) . '" href="' . $smartPreset(['special_search' => 'mytorrents']) . '"><i class="fa-solid fa-user me-1"></i>' . $lang->browse['qf_my_uploads'] . '</a>
+          <a class="' . $smartBtnClass(['special_search' => 'mybookmarks']) . '" href="' . $smartPreset(['special_search' => 'mybookmarks']) . '"><i class="fa-solid fa-bookmark me-1"></i>' . $lang->browse['qf_my_bookmarks'] . '</a>
+          <a class="' . $smartBtnClass(['special_search' => 'myreseeds']) . '" href="' . $smartPreset(['special_search' => 'myreseeds']) . '"><i class="fa-solid fa-rotate me-1"></i>' . $lang->browse['qf_need_reseed'] . '</a>
+          <a class="' . $smartBtnClass(['include_dead_torrents' => 'yes']) . '" href="' . $smartPreset(['include_dead_torrents' => 'yes']) . '"><i class="fa-solid fa-ghost me-1"></i>' . $lang->browse['flt_include_dead'] . '</a>
+        </div>' : '') . '
+
+        <div class="smart-filter-label">' . $lang->browse['sec_qf_rating'] . '</div>
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="' . $smartBtnClass(['imdb_min' => '7']) . '" href="' . $smartPreset(['imdb_min' => '7']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 7) . '</a>
+          <a class="' . $smartBtnClass(['imdb_min' => '8']) . '" href="' . $smartPreset(['imdb_min' => '8']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 8) . '</a>
+          <a class="' . $smartBtnClass(['imdb_min' => '9']) . '" href="' . $smartPreset(['imdb_min' => '9']) . '">⭐ ' . sprintf($lang->browse['flt_imdb_min'], 9) . '</a>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-2 smart-filter-buttons">
+          <a class="btn btn-sm btn-outline-secondary" href="' . $smartPreset(['min_seeders' => null, 'daysprune' => null, 'size_min' => null, 'size_max' => null, 'health' => null, 'freeleech_only' => null, 'no_seeders' => null, 'seeders_gt_leechers' => null, 'hide_downloaded' => null, 'special_search' => null, 'include_dead_torrents' => null, 'imdb_min' => null, 'added_from' => null, 'added_to' => null]) . '"><i class="fa-solid fa-rotate-left me-1"></i>' . $lang->browse['qf_clear'] . '</a>
+        </div>
+
+      </div>
+    </section>';
+}
+
+$SearchTorrent = '
+<div class="container mt-3">
+    ' . $smartBrowseHtml . '
+    ' . $lang->browse['tsearch'] . '
+    <form method="get" action="' . $BASEURL . '/browse.php" name="searchtorrent" id="searchtorrent">
+    <input type="hidden" name="do" value="search" />
+
+    <!-- Поиск -->
+    <div class="form-group position-relative mb-2">
+        <input type="text" class="form-control" id="torrent-search" name="keywords"
+               placeholder="' . htmlspecialchars_uni($lang->browse['ph_search']) . '" autocomplete="off"
+               value="' . ($keywords ? htmlspecialchars_uni($keywords) : '') . '">
+        <div id="autocomplete-results" class="dropdown-menu"></div>
+    </div>
+
+    <!-- Все фильтры в один ряд -->
+    <div class="row g-2 mb-2">
+        <div class="col-md-2">
+            <select class="form-select" id="search_type" name="search_type">
+                <option value="t_name"'        . ($search_type === 't_name'        ? ' selected' : '') . '>' . $lang->browse['t_name']        . '</option>
+                <option value="t_description"' . ($search_type === 't_description' ? ' selected' : '') . '>' . $lang->browse['t_description'] . '</option>
+                <option value="t_tags"'        . ($search_type === 't_tags'        ? ' selected' : '') . '>' . $lang->browse['opt_tags'] . '</option>
+                <option value="t_both"'        . ($search_type === 't_both' || $search_type === '' ? ' selected' : '') . '>' . $lang->browse['t_both'] . '</option>
+                <option value="t_uploader"'    . ($search_type === 't_uploader'    ? ' selected' : '') . '>' . $lang->browse['t_uploader']    . '</option>
+                <option value="t_genre"'       . ($search_type === 't_genre'       ? ' selected' : '') . '>' . $lang->browse['t_genre']       . '</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            ' . $catdropdown . '
+        </div>
+        <div class="col-md-2">
+            <select class="form-select" name="include_dead_torrents">
+                <option value="yes"' . ($include_dead_torrents === 'yes' ? ' selected' : '') . '>' . $lang->browse['incdead1'] . '</option>
+                <option value="no"'  . ($include_dead_torrents === 'no'  ? ' selected' : '') . '>' . $lang->browse['incdead2'] . '</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            ' . $size_min_select . '
+        </div>
+        <div class="col-md-2">
+            ' . $size_max_select . '
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-magnifying-glass"></i> ' . $lang->browse['btn_search'] . '
+            </button>
+        </div>
+    </div>
+
+    <!-- Доп. фильтр по минимальному числу сидов -->
+    <div class="row g-2 mb-2">
+        <div class="col-md-2">
+            ' . $seeders_select . '
+        </div>
+		<div class="col-md-2">
+        ' . $daysprune_select . '
+        </div>
+        <div class="col-md-2">
+            <input type="text" id="added_from_input" class="form-control" name="added_from" placeholder="' . htmlspecialchars_uni($lang->browse['ph_added_from']) . '" autocomplete="off" value="' . htmlspecialchars($_GET['added_from'] ?? '', ENT_QUOTES) . '">
+        </div>
+        <div class="col-md-2">
+            <input type="text" id="added_to_input" class="form-control" name="added_to" placeholder="' . htmlspecialchars_uni($lang->browse['ph_added_to']) . '" autocomplete="off" value="' . htmlspecialchars($_GET['added_to'] ?? '', ENT_QUOTES) . '">
+        </div>
+    </div>
+
+    </form>
+
+    ' . $activeFiltersHtml . '
+
+    <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+        ' . $resetFiltersBtn . '
+        <a href="' . $BASEURL . '/getrss.php?' . htmlspecialchars(http_build_query($_GET), ENT_QUOTES) . '" class="btn btn-outline-warning btn-sm">
+            <i class="fa-solid fa-rss"></i> ' . $lang->browse['btn_rss'] . '
+        </a>
+    </div>
+</div>
+';
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Счётчики (один запрос: всего + цифры плиток и быстрых фильтров)
-   ═══════════════════════════════════════════════════════════════════════════ */
 
-$stats = ['total' => 0, 'active' => 0, 'dead' => 0, 'd1' => 0, 'd7' => 0, 'd30' => 0, 'big' => 0, 'fl' => 0];
-$statsQuery = $db->sql_query_prepared(
-    "SELECT COUNT(*) AS total,
-            COALESCE(SUM(t.seeders > 0), 0)             AS active,
-            COALESCE(SUM(t.seeders = 0), 0)             AS dead,
-            COALESCE(SUM(t.added >= ?), 0)              AS d1,
-            COALESCE(SUM(t.added >= ?), 0)              AS d7,
-            COALESCE(SUM(t.added >= ?), 0)              AS d30,
-            COALESCE(SUM(t.size >= 5368709120), 0)      AS big,
-            COALESCE(SUM(t.free = 'yes'), 0)            AS fl
-       FROM torrents t" . $innerjoin . $WHERE,
-    array_merge([TIMENOW - 86400, TIMENOW - 7 * 86400, TIMENOW - 30 * 86400], $params)
-);
-if ($statsQuery && ($srow = $db->fetch_array($statsQuery))) {
-    foreach ($stats as $k => $_) {
-        $stats[$k] = (int)($srow[$k] ?? 0);
+
+$WHERE = " WHERE" . ($include_dead_torrents === 'yes' ? '' : " t.visible = 'yes' AND") . " t.banned = 'no'";
+$Links[] = 'include_dead_torrents=' . ($include_dead_torrents === 'yes' ? 'yes' : 'no');
+
+$innerjoin = '';
+$params = [];
+
+if ($special_search === 'myreseeds') {
+    $Links[] = 'special_search=myreseeds';
+    $WHERE .= ' AND t.seeders = 0 AND t.leechers > 0 AND t.owner = ?';
+    $params[] = $CURUSER['id'];
+} elseif ($special_search === 'mybookmarks') {
+    $Links[] = 'special_search=mybookmarks';
+    $innerjoin = ' INNER JOIN bookmarks b ON (b.torrentid = t.id)';
+    $WHERE .= ' AND b.userid = ?';
+    $params[] = $CURUSER['id'];
+} elseif ($special_search === 'mytorrents') {
+    $Links[] = 'special_search=mytorrents';
+    $WHERE .= ' AND t.owner = ?';
+    $params[] = $CURUSER['id'];
+} elseif ($special_search === 'weaktorrents') {
+    $Links[] = 'special_search=weaktorrents';
+	$WHERE .= " AND (t.visible = 'no' OR (t.leechers > 0 AND t.seeders = 0) OR (t.leechers = 0 AND t.seeders = 0))";
+}
+
+$extraquery = [];
+$extra_params = [];
+
+if ($keywords && $search_type) {
+    $OrjKeywords = $keywords;
+    $Links[] = 'keywords=' . urlencode($keywords);
+    $Links[] = 'search_type=' . urlencode($search_type);
+    
+    $fulltextsearch = 'no';
+	
+	if ($fulltextsearch === 'yes') {
+        require INC_PATH . '/function_search_clean.php';
+        $keywords = clean_keywords_ft($keywords);
+    }
+
+    if ($keywords) {
+        switch ($search_type) {
+            case 't_name':
+                if ($fulltextsearch === 'yes') {
+                    $extraquery[] = "(MATCH(t.name) AGAINST(? IN BOOLEAN MODE))";
+                    $extra_params[] = $keywords;
+                } else {
+                    $extraquery[] = "(t.name LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                }
+                break;
+                
+            case 't_description':
+                if ($fulltextsearch === 'yes') {
+                    $extraquery[] = "(MATCH(t.descr) AGAINST(? IN BOOLEAN MODE))";
+                    $extra_params[] = $keywords;
+                } else {
+                    $extraquery[] = "(t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                }
+                break;
+                
+            case 't_tags':
+                if ($fulltextsearch === 'yes') {
+                    $extraquery[] = "(MATCH(t.tags) AGAINST(? IN BOOLEAN MODE))";
+                    $extra_params[] = $keywords;
+                } else {
+                    $extraquery[] = "(t.tags LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                }
+                break;
+                
+            case 't_both':
+                if ($fulltextsearch === 'yes') {
+                    $extraquery[] = "(MATCH(t.name) AGAINST(? IN BOOLEAN MODE) OR MATCH(t.descr) AGAINST(? IN BOOLEAN MODE))";
+                    $extra_params[] = $keywords;
+                    $extra_params[] = $keywords;
+                } else {
+                    $extraquery[] = "(t.name LIKE ? OR t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    $extra_params[] = "%" . $keywords . "%";
+                }
+                break;
+                
+            case 't_uploader':
+                $user_query = $db->sql_query_prepared(
+                    "SELECT id FROM users WHERE UPPER(username) = ? LIMIT 1", 
+                    [strtoupper($OrjKeywords)]
+                );
+                
+                if ($db->num_rows($user_query) > 0) {
+                    $user = $db->fetch_array($user_query);
+                    $extraquery[] = "t.owner = ?";
+                    $extra_params[] = $user['id'];
+                    if (!$is_mod) {
+                        $extraquery[] = "t.anonymous != 'yes'";
+                    }
+                } else {
+                    $extraquery[] = "t.owner = ?";
+                    $extra_params[] = $OrjKeywords;
+                }
+                break;
+                
+            case 't_genre':
+                if ($fulltextsearch === 'yes') {
+                    $extraquery[] = "(MATCH(t.t_link) AGAINST(? IN BOOLEAN MODE))";
+                    $extra_params[] = $keywords;
+                } else {
+                    $extraquery[] = "(t.t_link LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                }
+                break;
+        }
+        $keywords = $OrjKeywords;
     }
 }
-$threadcount = $stats['total'];
 
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Пагинация + выборка страницы
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-$perpage = (int)($CURUSER['torrentsperpage'] ?? 0);
-if ($perpage < 1) {
-    $perpage = (int)$ts_perpage > 0 ? (int)$ts_perpage : 20;
+if ($category) {
+    $cat_query = $db->sql_query_prepared(
+        "SELECT id FROM categories WHERE type='s' AND pid = ?", 
+        [$category]
+    );
+    
+    if ($db->num_rows($cat_query) > 0) {
+        $squerycats = [];
+        
+        while ($squery = $db->fetch_array($cat_query)) {
+            $squerycats[] = (int)$squery['id'];
+        }
+        $catIds = array_merge([$category], $squerycats);
+        $extraquery[] = 't.category IN (' . implode(',', array_fill(0, count($catIds), '?')) . ')';
+        $extra_params = array_merge($extra_params, $catIds);
+		
+    } else {
+        $extraquery[] = "t.category = ?";
+        $extra_params[] = $category;
+    }
+    $Links[] = 'category=' . $category;
 }
-$pages = max(1, (int)ceil($threadcount / $perpage));
-$page  = (int)($mybb->input['page'] ?? 1);
-if ($page < 1 || $page > $pages) {
+
+
+
+
+if ($special_search) {
+    $Links[] = 'special_search=' . urlencode($special_search);
+}
+
+
+
+// Фильтр по размеру — ДО применения extraquery
+// (сами $size_min_val/$size_max_val/$min_seeders_val уже вычислены выше,
+// перед блоком активных фильтров - здесь просто используем их)
+if ($size_min_val !== null && $size_min_val > 0) {
+    $extraquery[] = 't.size >= ?';
+    $extra_params[] = $size_min_val;
+    $Links[] = 'size_min=' . $size_min_val;
+}
+
+if ($size_max_val !== null && $size_max_val > 0) {
+    $extraquery[] = 't.size <= ?';
+    $extra_params[] = $size_max_val;
+    $Links[] = 'size_max=' . $size_max_val;
+}
+
+if ($health_filter === 'seeded') {
+    $extraquery[] = 't.seeders > 0';
+    $Links[] = 'health=seeded';
+}
+
+if ($freeleech_only) {
+    $extraquery[] = "t.free = 'yes'";
+    $Links[] = 'freeleech_only=1';
+}
+
+if ($no_seeders_only) {
+    $extraquery[] = 't.seeders = 0';
+    $Links[] = 'no_seeders=1';
+}
+
+if ($seeders_gt_leechers) {
+    $extraquery[] = 't.seeders > t.leechers';
+    $Links[] = 'seeders_gt_leechers=1';
+}
+
+if ($hide_downloaded && $CURUSER['id']) {
+    $extraquery[] = "t.id NOT IN (SELECT torrentid FROM snatched WHERE userid = ? AND finished = 'yes')";
+    $extra_params[] = $CURUSER['id'];
+    $Links[] = 'hide_downloaded=1';
+}
+
+if ($imdb_min > 0) {
+    // t_link хранит весь HTML-блок IMDB.php целиком, не чистую колонку
+    // рейтинга - быстро, но хрупко: если формат вывода парсера изменится,
+    // фильтр молча перестанет находить рейтинг (пустой список, без ошибки).
+    // $imdb_min ограничен whitelist'ом ['7','8','9'] выше - строится сам
+    // паттерн на сервере, не из пользовательского ввода напрямую.
+    $imdbDigits = range($imdb_min, 9);
+    $imdbAlternatives = array_map(fn($d) => $d . '\\.[0-9]', $imdbDigits);
+    if ($imdb_min <= 10) {
+        $imdbAlternatives[] = '10\\.0';
+    }
+    $imdbPattern = "IMDb Rating:</strong>\\s*<span[^>]*>(" . implode('|', $imdbAlternatives) . ")/10";
+    $extraquery[] = 't.t_link REGEXP ?';
+    $extra_params[] = $imdbPattern;
+    $Links[] = 'imdb_min=' . $imdb_min;
+}
+
+if ($min_seeders_val !== null && $min_seeders_val > 0) {
+    $extraquery[] = 't.seeders >= ?';
+    $extra_params[] = $min_seeders_val;
+    $Links[] = 'min_seeders=' . $min_seeders_val;
+}
+
+// Фильтр по дате добавления (daysprune)
+if ($daysprune > 0) {
+    $extraquery[]   = 't.added >= ?';
+    $extra_params[] = TIMENOW - ($daysprune * 86400);
+    $Links[]        = 'daysprune=' . $daysprune;
+}
+
+// Диапазон дат добавления (от/до конкретной даты)
+if ($added_from) {
+    $extraquery[]   = 't.added >= ?';
+    $extra_params[] = $added_from;
+    $Links[]        = 'added_from=' . urlencode($_GET['added_from']);
+}
+if ($added_to) {
+    $extraquery[]   = 't.added <= ?';
+    $extra_params[] = $added_to;
+    $Links[]        = 'added_to=' . urlencode($_GET['added_to']);
+}
+
+
+if (count($extraquery) > 0) {
+    $WHERE .= ' AND ' . implode(' AND ', $extraquery);
+    $params = array_merge($params, $extra_params);
+    $Links[] = 'do=search';
+    $Links[] = 'keywords=' . urlencode($keywords);
+    $Links[] = 'search_type=' . urlencode($search_type);
+}
+
+
+
+// Сортировка по клику на заголовок колонки - раньше $orderby была жёстко
+// зашита, пользователь не мог поменять порядок вообще. Whitelist колонок -
+// $_GET['sort'] никогда не идёт в SQL напрямую.
+$sortColumns = [
+    'name'     => 't.name',
+    'size'     => 't.size',
+    'snatched' => 't.times_completed',
+    'seeders'  => 't.seeders',
+    'leechers' => 't.leechers',
+    'added'    => 't.added',
+];
+$sortBy  = isset($_GET['sort']) && array_key_exists($_GET['sort'], $sortColumns) ? $_GET['sort'] : null;
+$sortDir = (isset($_GET['dir']) && $_GET['dir'] === 'asc') ? 'asc' : 'desc';
+
+if ($sortBy !== null) {
+    $orderby = 't.sticky, ' . $sortColumns[$sortBy] . ' ' . strtoupper($sortDir);
+} else {
+    $orderby = 't.sticky, t.added DESC';
+}
+
+
+
+$torrentsperpage = ($CURUSER['torrentsperpage'] <> 0 ? (int)$CURUSER['torrentsperpage'] : $ts_perpage);
+$threadcount = 0;
+
+// Было: SELECT 4 колонок + ORDER BY только чтобы посчитать num_rows() -
+// MySQL приходилось сортировать (возможно filesort) и передавать в PHP
+// весь подходящий набор строк ради счётчика. COUNT(*) без ORDER BY даёт
+// тот же результат без лишней работы и передачи данных.
+$count_sql = 'SELECT COUNT(*) AS cnt
+              FROM torrents t' . $innerjoin . ' 
+              LEFT JOIN users u ON (t.owner=u.id) 
+              LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
+              LEFT JOIN categories c ON (t.category=c.id)' . $WHERE;
+
+$countquery = $db->sql_query_prepared($count_sql, $params);
+$threadcount = $countquery ? (int)$db->fetch_field($countquery, 'cnt') : 0;
+
+// Smart Browse overview uses the same active WHERE conditions as the result list.
+$smartStats = ['total' => $threadcount, 'active' => 0, 'dead' => 0, 'new_today' => 0,
+    'last_7d' => 0, 'last_30d' => 0, 'big_size' => 0, 'freeleech' => 0];
+$smartStatsSql = 'SELECT
+    COALESCE(SUM(CASE WHEN t.seeders > 0 THEN 1 ELSE 0 END), 0) AS active_count,
+    COALESCE(SUM(CASE WHEN t.seeders = 0 THEN 1 ELSE 0 END), 0) AS dead_count,
+    COALESCE(SUM(CASE WHEN t.added >= ? THEN 1 ELSE 0 END), 0) AS new_today_count,
+    COALESCE(SUM(CASE WHEN t.added >= ? THEN 1 ELSE 0 END), 0) AS last_7d_count,
+    COALESCE(SUM(CASE WHEN t.added >= ? THEN 1 ELSE 0 END), 0) AS last_30d_count,
+    COALESCE(SUM(CASE WHEN t.size >= 5368709120 THEN 1 ELSE 0 END), 0) AS big_size_count,
+    COALESCE(SUM(CASE WHEN t.free = \'yes\' THEN 1 ELSE 0 END), 0) AS freeleech_count
+    FROM torrents t' . $innerjoin . '
+    LEFT JOIN users u ON (t.owner=u.id)
+    LEFT JOIN usergroups g ON (u.usergroup=g.gid)
+    LEFT JOIN categories c ON (t.category=c.id)' . $WHERE;
+$smartStatsParams = array_merge(
+    [TIMENOW - 86400, TIMENOW - 7 * 86400, TIMENOW - 30 * 86400],
+    $params
+);
+$smartStatsQuery = $db->sql_query_prepared($smartStatsSql, $smartStatsParams);
+if ($smartStatsQuery) {
+    $smartStatsRow = $db->fetch_array($smartStatsQuery);
+    if ($smartStatsRow) {
+        $smartStats['active'] = (int)$smartStatsRow['active_count'];
+        $smartStats['dead'] = (int)$smartStatsRow['dead_count'];
+        $smartStats['new_today'] = (int)$smartStatsRow['new_today_count'];
+        $smartStats['last_7d'] = (int)$smartStatsRow['last_7d_count'];
+        $smartStats['last_30d'] = (int)$smartStatsRow['last_30d_count'];
+        $smartStats['big_size'] = (int)$smartStatsRow['big_size_count'];
+        $smartStats['freeleech'] = (int)$smartStatsRow['freeleech_count'];
+    }
+}
+
+$SearchTorrent = str_replace(
+    ['@@CNT-SEEDED@@', '@@CNT-7D@@', '@@CNT-30D@@', '@@CNT-BIG@@', '@@CNT-FL@@'],
+    [$smartStats['active'], $smartStats['last_7d'], $smartStats['last_30d'], $smartStats['big_size'], $smartStats['freeleech']],
+    $SearchTorrent
+);
+
+// Строим только теперь, когда $threadcount уже реальный - раньше (до этой
+// строки) он ещё не был вычислен и всегда показал бы 0.
+
+
+$resultsCountHtml = '<p class="text-muted small mb-2 mt-2">'
+    . '<i class="bi bi-funnel me-1"></i> ' . sprintf($lang->browse['res_found'], '<strong>' . $threadcount . '</strong>')
+    . ($search_type !== '' && $search_type !== 't_both' ? ' · ' . sprintf($lang->browse['res_by'], '<em>' . htmlspecialchars_uni($search_type) . '</em>') : '')
+    . ($daysprune > 0 ? ' · <em>' . htmlspecialchars_uni($daysprune_options[$daysprune] ?? sprintf($lang->browse['flt_last_n_days'], $daysprune)) . '</em>' : '')
+    . '</p>';	
+	
+
+
+if (!$torrentsperpage || $torrentsperpage < 1) {
+    $torrentsperpage = 20;
+}
+
+$perpage = (int)$torrentsperpage;
+
+if (isset($mybb->input['page']) && (int)$mybb->input['page'] > 0) {
+    $page = (int)$mybb->input['page'];
+    $start = ($page - 1) * $perpage;
+    $pages = ceil($threadcount / $perpage);
+    
+    if ($page > $pages || $page <= 0) {
+        $start = 0;
+        $page = 1;
+    }
+} else {
+    $start = 0;
     $page = 1;
 }
-$start     = ($page - 1) * $perpage;
-$multipage = multipage($threadcount, $perpage, $page, $pageUrl);
 
-$TotalTorrents = [];
-$Query = $db->sql_query_prepared(
-    'SELECT t.*, c.name AS catname, u.username, u.usergroup
-       FROM torrents t' . $innerjoin . '
-       LEFT JOIN categories c ON (t.category = c.id)
-       LEFT JOIN users u ON (t.owner = u.id)'
-    . $WHERE . ' ORDER BY ' . $orderby . ' LIMIT ?, ?',
-    [...$params, $start, $perpage]
-);
-while ($Query && ($t = $db->fetch_array($Query))) {
-    $TotalTorrents[] = $t;
+$end = $start + $perpage;
+$lower = $start + 1;
+$upper = $end;
+
+if ($upper > $threadcount) {
+    $upper = $threadcount;
 }
 
-// «Уже скачивали» - одним запросом на все торренты страницы
+$page_url = $BASEURL . '/browse.php?' . (is_array($Links) && count($Links) > 0 ? implode('&amp;', $Links) : '');
+$multipage = multipage($threadcount, $perpage, $page, $page_url);
+
+// Ссылка-заголовок с индикатором направления сортировки (стрелка вверх/вниз),
+// сохраняет все активные фильтры из $page_url. Первый клик по колонке -
+// сортировка по возрастанию, повторный клик по той же - переключает
+// направление.
+function render_sort_header(string $label, string $col, string $pageUrl, ?string $currentSort, string $currentDir): string
+{
+    $isActive = ($currentSort === $col);
+    $nextDir  = ($isActive && $currentDir === 'asc') ? 'desc' : 'asc';
+    $arrow    = $isActive
+        ? ($currentDir === 'asc' ? ' <i class="bi bi-caret-up-fill"></i>' : ' <i class="bi bi-caret-down-fill"></i>')
+        : '';
+    $sep         = str_ends_with($pageUrl, '?') ? '' : '&amp;';
+    $href        = $pageUrl . $sep . 'sort=' . $col . '&amp;dir=' . $nextDir;
+    $activeClass = $isActive ? ' text-primary fw-bold' : 'text-dark';
+
+    return '<a href="' . $href . '" class="text-decoration-none ' . $activeClass . '">' . $label . $arrow . '</a>';
+}
+
+
+
+
+
+$ListTorrents = '
+' . ($is_mod ? '
+<form method="post" action="' . $BASEURL . '/admin/index.php?act=manage_torrents" name="manage_torrents" id="manage_torrents">
+<input type="hidden" name="do" value="update" />
+<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+<input type="hidden" name="return" value="yes" />
+<input type="hidden" name="return_address" value="' . $BASEURL . '/browse.php?page=' . (int)($_GET['page'] ?? 0) . '&amp;' . 
+    (!empty($Links) ? implode('&amp;', $Links) : '') . '" />
+' : '') . '
+
+<div id="listtorrents">
+
+<thead style="display:none">
+
+
+<tr>
+		<td>
+		</td>
+		
+		<td>
+		' . render_sort_header($lang->browse['hdr_name'], 'name', $page_url, $sortBy, $sortDir) . '
+		</td>
+		
+		<td class="text-center">
+		' . render_sort_header($lang->browse['sortby6'], 'size', $page_url, $sortBy, $sortDir) . '
+		</td>
+
+		<td class="text-center">
+	    ' . render_sort_header($lang->browse['sortby7'], 'snatched', $page_url, $sortBy, $sortDir) . '
+		</td>
+		
+		<td class="text-center">
+		' . render_sort_header($lang->browse['sortby4'], 'seeders', $page_url, $sortBy, $sortDir) . '
+		</td>
+		
+		<td class="text-center">
+		' . render_sort_header($lang->browse['sortby5'], 'leechers', $page_url, $sortBy, $sortDir) . '
+		</td>
+		
+		<td>
+		' . $lang->browse['sortby8'] . '
+		</td>
+	
+	
+	
+    ' . ($is_mod ? '
+    <th class="thead text-center">
+        <div class="form-check form-switch">
+            <input 
+                class="form-check-input" 
+                type="checkbox" 
+                id="checkAllSwitch"
+                role="switch" />
+        </div>
+    </th>' : '') . '
+</tr>
+</thead>
+<tbody>';
+
+
+
+		
+		
+	$sql = 'SELECT t.*, c.name as catname, u.username, u.usergroup 
+        FROM torrents t ' . $innerjoin . ' 
+        LEFT JOIN categories c ON (t.category=c.id) 
+        LEFT JOIN users u ON (t.owner=u.id) '
+        . $WHERE . ' ORDER BY ' . $orderby . ' LIMIT ?, ?';	
+		
+		
+		
+
+$data_params = [...$params, (int)$start, (int)$perpage];
+$Query = $db->sql_query_prepared($sql, $data_params);
+
+
+$TotalTorrents = [];
+
+if ($db->num_rows($Query)) {
+    while($t = $db->fetch_array($Query)) {
+        $TotalTorrents[] = $t;
+    }
+}
+
+// ── "Уже скачивали" (подсветка строки) ────────────────────────────────────
+// Одним пакетным запросом на все торренты текущей страницы, а не по
+// запросу на каждую строку в цикле ниже (N+1) - тот же id-список, что
+// уже получили выше.
 $already_snatched_ids = [];
-if ($TotalTorrents) {
-    $ids = array_map(static fn(array $t): int => (int)$t['id'], $TotalTorrents);
-    $sq  = $db->sql_query_prepared(
-        "SELECT torrentid FROM snatched WHERE userid = ? AND finished = 'yes' AND torrentid IN (" . implode(',', array_fill(0, count($ids), '?')) . ')',
-        array_merge([$myId], $ids)
+if ($CURUSER['id'] && !empty($TotalTorrents)) {
+    $pageTorrentIds = array_map(fn($t) => (int)$t['id'], $TotalTorrents);
+    $inPlaceholders = implode(',', array_fill(0, count($pageTorrentIds), '?'));
+    $snatchParams   = array_merge([$CURUSER['id']], $pageTorrentIds);
+
+    $snatchQuery = $db->sql_query_prepared(
+        "SELECT torrentid FROM snatched WHERE userid = ? AND torrentid IN ({$inPlaceholders}) AND finished = 'yes'",
+        $snatchParams
     );
-    while ($sq && ($sRow = $db->fetch_array($sq))) {
+    while ($snatchQuery && ($sRow = $db->fetch_array($snatchQuery))) {
         $already_snatched_ids[(int)$sRow['torrentid']] = true;
     }
 }
 
-// Лента свежих постеров - только на первой странице без фильтров
-$recentItems = [];
-if ($page === 1 && !$activeFilters && $sortBy === null) {
-    $rq = $db->sql_query_prepared(
-        "SELECT id, name, t_image FROM torrents
-          WHERE t_image != '' AND visible = 'yes' AND banned = 'no'
-          ORDER BY added DESC LIMIT ?",
-        [15]
-    );
-    while ($rq && ($r = $db->fetch_array($rq))) {
-        $recentItems[] = $r;
-    }
+
+
+
+
+if ($TotalTorrents && count($TotalTorrents)) 
+{
+    
+	
+    $worked = 0;
+    foreach($TotalTorrents as $Torrent) {
+        
+
+       
+        if (empty($Torrent["tags"])) {
+            $keywords2 = '';
+        } else {
+            $tags = explode(",", $Torrent['tags']);
+            $keywords2 = "";
+            foreach ($tags as $tag) {
+                $keywords2 .= '<a href="' . $BASEURL . '/browse.php?do=search&keywords=' . urlencode($tag) . '&search_type=t_tags" title="' . htmlspecialchars($tag) . '" class="badge bg-primary">' . htmlspecialchars($tag) . '</a> ';
+            }
+            $keywords2 = substr($keywords2, 0, -1);
+        }
+
+        $SEOLink = get_torrent_link($Torrent['id']);
+        $SEOLinkC = get_category_link($Torrent['category']);
+        
+       
+        $categoryIcon = $catIconMap[$Torrent['category']] ?? 'fa-solid fa-question';
+        
+       	
+
+		$torrentPeersLink = get_torrent_link($Torrent['id']) . (str_contains(get_torrent_link($Torrent['id']), '?') ? '&' : '?') . 'tab=peers';
+
+		$d_link = '<a href="' . get_download_link($Torrent['id']) . '" class="badge-popover download-popover" 
+           data-bs-toggle="popover" data-bs-placement="top" 
+           data-bs-title="📥 ' . htmlspecialchars_uni($lang->browse['pop_download_title']) . '" 
+           data-bs-content="' . htmlspecialchars('
+                <div class="download-popover-content">
+                    <div class="torrent-info mb-3">
+                        <strong>' . htmlspecialchars($Torrent['name']) . '</strong>
+                        <div class="torrent-details mt-2">
+                            <div class="detail-item">
+                                <i class="bi bi-hdd me-2"></i>
+                                <span>' . mksize($Torrent['size']) . '</span>
+                            </div>
+                            <div class="detail-item">
+                                <i class="bi bi-file-earmark me-2"></i>
+                                <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_files'], ts_nf($Torrent['numfiles']))) . '</span>
+                            </div>
+                            ' . ($Torrent['seeders'] > 0 ? '
+                            <div class="detail-item text-success">
+                                <i class="bi bi-arrow-up-circle me-2"></i>
+                                <a href="' . $torrentPeersLink . '#seeders" class="text-decoration-none text-success">
+                                    <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_seeders'], ts_nf($Torrent['seeders']))) . '</span>
+                                </a>
+                            </div>' : '') . '
+                            ' . ($Torrent['leechers'] > 0 ? '
+                            <div class="detail-item text-warning">
+                                <i class="bi bi-arrow-down-circle me-2"></i>
+                                <a href="' . $torrentPeersLink . '#leechers" class="text-decoration-none text-warning">
+                                    <span>' . htmlspecialchars_uni(sprintf($lang->browse['pop_leechers'], ts_nf($Torrent['leechers']))) . '</span>
+                                </a>
+                            </div>' : '') . '
+                        </div>
+                    </div>
+                    <div class="download-actions">
+                        <button class="btn btn-success btn-sm w-100" onclick="window.location.href=\'' . get_download_link($Torrent['id']) . '\'">
+                            <i class="bi bi-download me-1"></i>' . htmlspecialchars_uni($lang->browse['pop_download_btn']) . '
+                        </button>
+                        <div class="text-center mt-2">
+                            <small class="text-muted">' . htmlspecialchars_uni($lang->browse['pop_download_hint']) . '</small>
+                        </div>
+                    </div>
+                </div>
+           ', ENT_QUOTES) . '" 
+           data-bs-html="true" data-bs-trigger="hover focus">
+           <i class="fa-sharp fa-solid fa-file-arrow-down fa-lg" style="color: #055df5;"></i>
+        </a>';	
+			
+			
+			
+	
+			
+        
+        $zax = cutename($Torrent['name']);
+        
+   
+        
+        $flags = GetTorrentTags($Torrent);
+        $added = my_datee('relative', $Torrent['added']);
+        $size = mksize($Torrent['size']);
+        $times_completed = ts_nf($Torrent['times_completed']);
+        $sedars = ts_nf($Torrent['seeders']);
+        $lechars = ts_nf($Torrent['leechers']);
+        
+        $uploader = (!$is_mod && $Torrent['owner'] != $CURUSER['id'] && $Torrent['anonymous'] === 'yes' ? '
+            <div>
+                <i class="bi bi-eye-slash fs-5 opacity-50 mb-2 d-block"></i>  
+            </div>' : '
+            <a href="' . get_profile_link($Torrent['owner']) . '">' . format_name($Torrent['username'], $Torrent['usergroup']) . '</a>
+            ' . ($Torrent['anonymous'] === 'yes' ? '
+            <div>	
+                <i class="bi bi-eye-slash fs-5 opacity-50 mb-2 d-block"></i>
+            </div>' : '') . '
+        ');
+        
+        
+		
+
+$torrentImage = !empty($Torrent['t_image']) ? htmlspecialchars($Torrent['t_image']) : '';
+
+$moderation = ($is_mod ? '
+<td align="center" class="unsortable2">
+    <div class="form-check form-switch">
+        <input 
+            class="form-check-input" 
+            type="checkbox" 
+            id="torrentid_' . $Torrent['id'] . '" 
+            name="torrentid[]" 
+            value="' . $Torrent['id'] . '" 
+            data-title="' . htmlspecialchars($Torrent['name']) . '"
+            data-image="' . $torrentImage . '"
+            data-size="' . (int)$Torrent['size'] . '"
+            data-seeders="' . (int)$Torrent['seeders'] . '"
+            data-leechers="' . (int)$Torrent['leechers'] . '"
+            data-category="' . (int)$Torrent['category'] . '"
+            data-catname="' . htmlspecialchars($Torrent['catname']) . '"
+            role="switch"
+        />
+    </div>
+</td>' : '');
+		
+		
+        
+       
+	   
+	   
+	   
+	   
+	   
+	   
+$poster_zoom = !empty($Torrent['t_image']) 
+    ? 'data-zoom="'.htmlspecialchars_uni($Torrent['t_image']).'"' 
+    : '';		
+		
+		// Постер торрента
+$poster_html = '';
+if (!empty($Torrent['t_image'])) {
+    // URL уже полный — используем как есть
+    $poster_html = '<img src="'.htmlspecialchars_uni($Torrent['t_image']).'" 
+                        alt="'.htmlspecialchars_uni($Torrent['name']).'"
+                        class="torrent-poster"
+                        loading="lazy"
+                        onerror="this.style.display=\'none\'">';
+} else {
+    $poster_html = '<div class="torrent-poster-placeholder">
+        <i class="'.$categoryIcon.' fa-2x text-muted"></i>
+    </div>';
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Строки таблицы
-   ═══════════════════════════════════════════════════════════════════════════ */
 
-$hlKeywords = ($keywords !== '' && in_array($search_type, ['', 't_both', 't_name'], true)) ? $keywords : '';
-$colCount   = $is_mod ? 8 : 7;
-$rowsHtml   = '';
 
-foreach ($TotalTorrents as $Torrent) {
-    $tid      = (int)$Torrent['id'];
-    $s        = (int)$Torrent['seeders'];
-    $l        = (int)$Torrent['leechers'];
-    $name     = (string)$Torrent['name'];
-    $nameEsc  = htmlspecialchars_uni($name);
-    $catname  = htmlspecialchars_uni((string)($Torrent['catname'] ?? ''));
-    $catIcon  = htmlspecialchars_uni($catIconMap[(int)$Torrent['category']] ?? 'fa-solid fa-folder');
-    $link     = get_torrent_link($tid);
-    $peers    = $link . (str_contains($link, '?') ? '&amp;' : '?') . 'tab=peers';
-    $dl       = get_download_link($tid);
-    $size     = mksize($Torrent['size']);
-    $snatched = isset($already_snatched_ids[$tid]);
 
-    // Теги
-    $tagsHtml = '';
-    foreach (explode(',', (string)($Torrent['tags'] ?? '')) as $tag) {
-        $tag = trim($tag);
-        if ($tag === '') {
-            continue;
-        }
-        $tagsHtml .= '<a href="' . $BASEURL . '/browse.php?search_type=t_tags&amp;keywords=' . urlencode($tag) . '" class="br-tag">#'
-            . htmlspecialchars_uni($tag) . '</a>';
-    }
+$s = (int)$Torrent['seeders'];
+$l = (int)$Torrent['leechers'];
+$total_peers = $s + $l;
 
-    // Постер
-    $image = (string)($Torrent['t_image'] ?? '');
-    $poster = $image !== ''
-        ? '<img src="' . htmlspecialchars_uni($image) . '" alt="" class="torrent-poster" loading="lazy" onerror="this.classList.add(\'is-broken\')">'
-        : '<span class="torrent-poster-placeholder"><i class="' . $catIcon . '" aria-hidden="true"></i></span>';
 
-    // Поповер скачивания (без кнопок - их вырезает санитайзер Bootstrap)
-    $popHtml = '<div class="br-pop"><div class="br-pop__name">' . $nameEsc . '</div>'
-        . '<div class="br-pop__line"><i class="fa-solid fa-hard-drive"></i>' . $size . ' · '
-        . htmlspecialchars_uni(sprintf($lang->browse['pop_files'], ts_nf($Torrent['numfiles']))) . '</div>'
-        . '<div class="br-pop__line"><span class="text-success"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($s) . '</span>'
-        . ' <span class="text-danger ms-2"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($l) . '</span></div>'
-        . '<div class="br-pop__hint">' . htmlspecialchars_uni($lang->browse['pop_download_hint']) . '</div></div>';
 
-    // Автор
-    if ($Torrent['anonymous'] === 'yes' && !$is_mod && (int)$Torrent['owner'] !== $myId) {
-        $uploader = '<span class="br-anon">' . $lang->global['anonymous'] . '</span>';
-    } elseif (empty($Torrent['username'])) {
-        $uploader = '<span class="text-body-secondary">—</span>';
-    } else {
-        $uploader = '<a href="' . get_profile_link((int)$Torrent['owner']) . '">'
-            . format_name(htmlspecialchars_uni((string)$Torrent['username']), (int)$Torrent['usergroup']) . '</a>'
-            . ($Torrent['anonymous'] === 'yes' ? ' <i class="fa-solid fa-user-secret text-body-secondary" title="' . htmlspecialchars_uni(strip_tags($lang->global['anonymous'])) . '"></i>' : '');
-    }
 
-    $flags = GetTorrentTags($Torrent);
+$torrentPeersLinkRow = get_torrent_link($Torrent['id']) . (str_contains(get_torrent_link($Torrent['id']), '?') ? '&' : '?') . 'tab=peers';
+$isAlreadySnatched = isset($already_snatched_ids[(int)$Torrent['id']]);
 
-    $rowsHtml .= '
-<tr class="torrent-row' . ($snatched ? ' torrent-row-snatched' : '') . ($s === 0 && $l === 0 ? ' is-dead' : '') . '"'
-        . ($snatched ? ' title="' . htmlspecialchars_uni($lang->browse['tip_already_snatched']) . '"' : '')
-        . ' data-id="' . $tid . '" data-seeders="' . $s . '" data-leechers="' . $l . '">
-  <td class="torrent-poster-cell">
-    <a href="' . $link . '" class="poster-link"' . ($image !== '' ? ' data-zoom="' . htmlspecialchars_uni($image) . '"' : '') . '>' . $poster . '</a>
-  </td>
-  <td class="br-name-cell">
+$ListTorrentsss = '
+<tr class="torrent-row' . ($isAlreadySnatched ? ' torrent-row-snatched' : '') . '"
+    ' . ($isAlreadySnatched ? 'title="' . htmlspecialchars_uni($lang->browse['tip_already_snatched']) . '"' : '') . '
+    data-id="' . (int)$Torrent['id'] . '" 
+    data-seeders="' . $s . '" 
+    data-leechers="' . $l . '">	
+
+<!-- Category Icon + Poster -->
+<td class="torrent-poster-cell">
+    <a href="'.$SEOLinkC.'" class="category-icon-link" data-tooltip="'.$Torrent['catname'].'">
+        <i class="'.$categoryIcon.' category-icon-small"></i>
+    </a>
+    <a href="'.$SEOLink.'" class="poster-link" '.$poster_zoom.'>
+        '.$poster_html.'
+    </a>
+</td>
+
+<!-- Torrent Information -->
+<td class="torrent-info-cell">
     <div class="torrent-title">
-      <a href="' . $link . '" class="torrent-name-link" title="' . $nameEsc . '">' . br_highlight($name, $hlKeywords) . '</a>
-      <div class="torrent-actions-inline">
-        <a href="' . $dl . '" class="br-dl download-popover" aria-label="' . htmlspecialchars_uni($lang->browse['pop_download_title']) . '"
-           data-bs-toggle="popover" data-bs-placement="top" data-bs-html="true" data-bs-trigger="hover focus"
-           data-bs-title="' . htmlspecialchars_uni($lang->browse['pop_download_title']) . '"
-           data-bs-content="' . htmlspecialchars($popHtml, ENT_QUOTES) . '"><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i></a>
-        <span id="bookmark' . $tid . '" class="br-bm">' . get_torrent_bookmark_state($myId, $tid) . '</span>
+        <a href="'.$SEOLink.'" 
+           class="torrent-name-link"
+           data-tooltip="'.$zax.'">
+           '.(!empty($keywords) ? 
+               highlight(htmlspecialchars_uni($keywords), cutename($Torrent['name'])) : 
+               cutename($Torrent['name'])).'
+        </a>
+        <div class="torrent-actions-inline">
+            '.$d_link.'
+            <span id="bookmark'.$count.'" data-tooltip="'.htmlspecialchars_uni($lang->browse['title_bookmark_torrent']).'">
+                '.get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id']).'
+            </span>
+        </div>
+    </div>
+
+    <div class="torrent-meta">
+        <span class="torrent-date">
+            <i class="bi bi-calendar3 me-1"></i>'.$added.'
+        </span>
+        '.($flags ? '<span class="torrent-flags">'.$flags.'</span>' : '').'
+    </div>
+    
+    '.($keywords2 ? '<div>'.$keywords2.'</div>' : '').'
+</td>
+
+<!-- Size -->
+<td class="torrent-stat-cell text-center">
+    <i class="bi bi-hdd-stack me-1 text-muted"></i>
+    <span class="fw-bold">'.$size.'</span>
+</td>
+
+<!-- Snatched -->
+<td class="torrent-stat-cell text-center">
+    <a href="'.$BASEURL.'/viewsnatches.php?id='.$Torrent['id'].'" 
+       class="text-decoration-none text-muted"
+       data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_snatched_count']).'">
+        <i class="bi bi-cloud-download me-1"></i>
+        <span class="fw-semibold">'.$times_completed.'</span>
+    </a>
+</td>
+
+<!-- Seeders -->
+<td class="torrent-stat-cell text-center">
+    <span id="seeders_'.$Torrent['id'].'">
+        <a href="'.$torrentPeersLinkRow.'#seeders" 
+           class="text-decoration-none text-success fw-bold"
+           data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_current_seeders']).'">
+            <i class="bi bi-arrow-up-circle-fill me-1"></i>
+            <span class="fw-bold">'.$sedars.'</span>
+        </a>
+    </span>
+</td>
+
+<!-- Leechers -->
+<td class="torrent-stat-cell text-center">
+    <span id="leechers_'.$Torrent['id'].'">
+        <a href="'.$torrentPeersLinkRow.'#leechers" 
+           class="text-decoration-none text-danger"
+           data-tooltip="'.htmlspecialchars_uni($lang->browse['tip_current_leechers']).'">
+            <i class="bi bi-arrow-down-circle-fill me-1"></i>
+            <span class="fw-bold">'.$lechars.'</span>
+        </a>
+    </span>
+</td>
+
+<!-- Uploader -->
+<td class="torrent-uploader-cell">
+    <i class="bi bi-person-badge me-1 text-muted"></i>
+    '.$uploader.'
+</td>
+
+<!-- Moderation Checkbox -->
+'.$moderation.'
+
+</tr>';
+
+
+
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+		
+		
+		
+		$ListTorrents .= $ListTorrentsss;
+        $count++;
+    }
+} else {
+    $ListTorrents .= '
+    <tr>
+        <td colspan="' . ($is_mod ? '10' : '9') . '">
+            <div class="card-body p-4">
+                <div class="empty-state text-center py-5">
+                    <i class="fa-regular fa-folder-open fa-4x text-muted mb-4"></i>
+                    <h4>' . $lang->browse['empty_title'] . '</h4>
+                    <p class="text-muted">' . sprintf($lang->browse['empty_hint'], '<a href="' . $BASEURL . '/browse.php">' . $lang->browse['empty_reset_link'] . '</a>') . '</p>
+                    <a href="' . $BASEURL . '/browse.php" class="btn btn-primary mt-3">
+                        <i class="fa-solid fa-rotate-left me-1"></i> ' . $lang->browse['btn_reset_filters'] . '
+                    </a>
+                </div>
+            </div>
+        </td>
+    </tr>';
+}
+
+
+
+
+$bedit = '
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/moderation-modal.css">
+
+<!-- Moderation button with stats -->
+<div class="container mt-3">
+
+
+<div class="d-flex justify-content-between align-items-center">
+    <div class="moderation-stats">
+        <span class="badge bg-primary rounded-pill px-3 py-2" id="totalSelectedBadge">
+            <i class="fas fa-check-circle me-1"></i>
+            ' . sprintf($lang->browse['mod_selected'], '<span id="selectedCountDisplay" aria-live="polite">0</span>') . '
+        </span>
+        <span class="badge bg-secondary rounded-pill px-3 py-2 ms-2">
+            <i class="fas fa-list me-1"></i>
+            ' . sprintf($lang->browse['mod_total'], '<span id="totalTorrentsCount">' . $threadcount . '</span>') . '
+        </span>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" onclick="ModerationModal.selectAllFiltered(this)">
+            <i class="fas fa-check-double me-1"></i>' . $lang->browse['btn_select_all_filtered'] . '
+        </button>
+        <button type="button" class="btn btn-mod-trigger" data-bs-toggle="modal" data-bs-target="#moderationModal">
+            <i class="fas fa-shield-alt me-2"></i>' . $lang->browse['pane_moderation'] . '
+        </button>
+    </div>
+</div>
+
+
+</div>
+
+<!-- Moderation Actions Modal -->
+<div class="modal fade" id="moderationModal" tabindex="-1" aria-labelledby="moderationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+    <div class="modal-content mod-modal-content shadow-lg">
+
+      <div class="modal-header mod-modal-header">
+        <h5 class="modal-title" id="moderationModalLabel">
+            <i class="fas fa-shield-alt me-2"></i>' . $lang->browse['pane_moderation'] . '
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
+      </div>
+
+      <div class="modal-body mod-modal-body">
+
+        <div class="row">
+            <!-- Левая колонка: превью постера -->
+            <div class="col-md-3 mod-poster-column">
+                <div class="mod-poster-container" id="modPosterContainer">
+                    <div class="mod-poster-placeholder" id="modPosterPlaceholder">
+                        <i class="fas fa-images fa-3x text-muted"></i>
+                        <p class="text-muted mt-2 small">' . $lang->browse['hint_select_to_preview'] . '</p>
+                    </div>
+                    <div class="mod-poster-wrapper" id="modPosterWrapper" style="display:none;">
+                        <img id="modPosterPreview" src="" alt="' . htmlspecialchars_uni($lang->browse['alt_torrent_poster']) . '" class="mod-poster-img">
+                        <div class="mod-poster-count" id="modPosterCount"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка: действия -->
+            <div class="col-md-9">
+                <!-- Selection info -->
+                <div class="mod-selection-info alert alert-info alert-dismissible fade show" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ' . sprintf($lang->browse['mod_torrents_selected'], '<strong id="modalSelectedCount" aria-live="polite">0</strong>') . '
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
+                </div>
+
+                <!-- Progress bar -->
+                <div class="mod-progress-container mb-2" id="modProgressContainer" style="display:none;">
+                    <div class="d-flex justify-content-between small">
+                        <span>' . sprintf($lang->browse['mod_progress'], '<strong id="selectedCount2">0</strong>', '<span id="totalCount2">0</span>') . '</span>
+                        <span id="progressPercentage">0%</span>
+                    </div>
+                    <div class="progress" style="height:6px;border-radius:4px;">
+                        <div id="selectionProgress" class="progress-bar" style="width:0%;"></div>
+                    </div>
+                </div>
+				
+				
+			<div class="mod-restore-info" id="modRestoreInfo" style="display:none;">
+    <i class="fas fa-history me-1"></i>
+    <span id="modRestoreMessage">' . $lang->browse['mod_restored_default'] . '</span>
+    <button type="button" class="btn-close btn-close-sm float-end" id="modRestoreCloseBtn" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
+</div>
+				
+				
+				
+				
+
+                <!-- Сводная статистика по выбранным торрентам - ПЕРЕМЕЩЕНА СЮДА -->
+                <div class="mod-summary-stats" id="modSummaryStats" style="display:none;">
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-hdd"></i>
+                        <span id="modSummarySize">0 B</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-arrow-up text-success"></i>
+                        <span id="modSummarySeeders">0</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-arrow-down text-danger"></i>
+                        <span id="modSummaryLeechers">0</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-folder"></i>
+                        <span id="modSummaryCategories">0</span>
+                    </div>
+                </div>
+
+                <!-- Mini-list of selected torrents -->
+                <div id="selectedTorrentsList" class="mod-selected-list" style="display:none;"></div>
+
+                <label class="mod-label" for="actiontype">
+                    <i class="fas fa-bolt me-1"></i>' . $lang->browse['lbl_choose_action'] . '
+                </label>
+                <select class="form-select mod-select" name="actiontype" id="actiontype">
+                    <option value="0">⚙️ ' . $lang->browse['opt_select_action'] . '</option>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_torrent']) . ' ──">
+                        <option value="move">📁 ' . $lang->browse['opt_act_move'] . '</option>
+                        <option value="delete">🗑️ ' . $lang->browse['opt_act_delete'] . '</option>
+                        <option value="sticky">📌 ' . $lang->browse['opt_act_sticky'] . '</option>
+                        <option value="visible">👁️ ' . $lang->browse['opt_act_visible'] . '</option>
+                        <option value="banned">🚫 ' . $lang->browse['opt_act_banned'] . '</option>
+                        <option value="nuke">☢️ ' . $lang->browse['opt_act_nuke'] . '</option>
+                        <option value="openclose">💬 ' . $lang->browse['opt_act_openclose'] . '</option>
+                    </optgroup>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_promo']) . ' ──">
+                        <option value="free">🎁 ' . $lang->browse['opt_act_free'] . '</option>
+                        <option value="silver">🥈 ' . $lang->browse['opt_act_silver'] . '</option>
+                        <option value="doubleupload">⏫ ' . $lang->browse['opt_act_doubleupload'] . '</option>
+                        <option value="thirtypercent">🟣 ' . $lang->browse['opt_act_thirtypercent'] . '</option>
+                    </optgroup>
+                    <optgroup label="── ' . htmlspecialchars_uni($lang->browse['opt_grp_other']) . ' ──">
+                        <option value="anonymous">🎭 ' . $lang->browse['opt_act_anonymous'] . '</option>
+                        <option value="request">📩 ' . $lang->browse['opt_act_request'] . '</option>
+                        <option value="resetrating">⭐ ' . $lang->browse['opt_act_resetrating'] . '</option>
+                    </optgroup>
+                </select>
+
+                <!-- Move category (hidden until "Move selected" is chosen) -->
+                <div id="movetorrent" class="mod-move-block" style="display:none;">
+                    <div class="mod-move-container">
+                        <span class="mod-move-label">
+                            <i class="fas fa-folder-open me-1"></i>' . $lang->browse['lbl_move_to'] . '
+                        </span>
+                        ' . $catdropdown . '
+                    </div>
+                    <div id="modMoveCategoryWarning" class="mod-move-mismatch-warning" style="display:none;">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <span id="modMoveCategoryWarningText">' . $lang->browse['mod_mixed_categories'] . '</span>
+                    </div>
+                </div>
+
+                <!-- Action info -->
+                <div id="actionInfo" class="mod-action-info" style="display:none;">
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="actionDescription">' . $lang->browse['mod_action_default'] . '</span>
+                    </div>
+                </div>
+
+                <div class="mod-hint">
+                    <i class="fas fa-circle-info me-1"></i>
+                    <span>' . $lang->browse['hint_mod'] . '</span>
+                </div>
+            </div>
+        </div>
+
+      </div>
+
+      
+	  <div class="modal-footer mod-modal-footer">
+    <button type="button" class="btn btn-outline-danger btn-sm me-auto" id="clearAllSelectionsBtn">
+        <i class="fas fa-trash-alt me-1"></i>' . $lang->browse['btn_clear_all'] . '
+    </button>
+    <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
+        <i class="fas fa-times me-1"></i>' . $lang->browse['btn_cancel'] . '
+    </button>
+    <button type="button" class="btn btn-mod-apply" id="applyActionBtn">
+        <i class="fas fa-play me-1"></i> ' . $lang->browse['btn_apply'] . '
+    </button>
+</div>
+	  
+	  
+
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation modal -->
+<div class="modal fade" id="modConfirmModal" tabindex="-1" aria-labelledby="modConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content mod-modal-content shadow-lg">
+      <div class="modal-header mod-modal-header mod-modal-header-danger">
+        <h5 class="modal-title" id="modConfirmModalLabel">
+            <i class="fas fa-exclamation-triangle me-2"></i>' . $lang->browse['pane_confirm'] . '
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="' . htmlspecialchars_uni($lang->browse['btn_close']) . '"></button>
+      </div>
+      <div class="modal-body mod-modal-body">
+        <p id="modConfirmMessage" class="mb-0"></p>
+        <div id="modConfirmTorrentList" class="mod-selected-list mt-3" style="display:none;"></div>
+      </div>
+      <div class="modal-footer mod-modal-footer">
+        <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
+            <i class="fas fa-times me-1"></i>' . $lang->browse['btn_cancel'] . '
+        </button>
+        <button type="button" class="btn btn-mod-danger" id="modConfirmAcceptBtn">
+            <i class="fas fa-check me-1"></i>' . $lang->browse['btn_confirm'] . '
+        </button>
       </div>
     </div>
-    <div class="torrent-meta">
-      <a href="' . get_category_link((int)$Torrent['category']) . '" class="br-catchip"><i class="' . $catIcon . '" aria-hidden="true"></i>' . $catname . '</a>
-      <span class="torrent-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i>' . my_datee('relative', $Torrent['added']) . '</span>'
-      . ($flags ? '<span class="torrent-flags">' . $flags . '</span>' : '') . '
-    </div>
-    <div class="br-mstats">
-      <span><i class="fa-solid fa-hard-drive"></i>' . $size . '</span>
-      <span class="text-success"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($s) . '</span>
-      <span class="text-danger"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($l) . '</span>
-    </div>'
-    . ($tagsHtml !== '' ? '<div class="br-tags">' . $tagsHtml . '</div>' : '') . '
-  </td>
-  <td class="torrent-stat-cell br-col-md"><span class="br-size">' . $size . '</span></td>
-  <td class="torrent-stat-cell br-col-md">
-    <a href="' . $BASEURL . '/viewsnatches.php?id=' . $tid . '" class="br-stat" title="' . htmlspecialchars_uni($lang->browse['tip_snatched_count']) . '">
-      <i class="fa-solid fa-circle-check" aria-hidden="true"></i>' . ts_nf($Torrent['times_completed']) . '</a>
-  </td>
-  <td class="torrent-stat-cell br-col-sm">
-    <span id="seeders_' . $tid . '"><a href="' . $peers . '#seeders" class="br-stat br-stat--seed' . ($s === 0 ? ' br-stat--zero' : '') . '" title="' . htmlspecialchars_uni($lang->browse['tip_current_seeders']) . '">
-      <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>' . ts_nf($s) . '</a></span>
-  </td>
-  <td class="torrent-stat-cell br-col-sm">
-    <span id="leechers_' . $tid . '"><a href="' . $peers . '#leechers" class="br-stat br-stat--leech' . ($l === 0 ? ' br-stat--zero' : '') . '" title="' . htmlspecialchars_uni($lang->browse['tip_current_leechers']) . '">
-      <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>' . ts_nf($l) . '</a></span>
-  </td>
-  <td class="torrent-uploader-cell br-col-lg">' . $uploader . '</td>'
-  . ($is_mod ? '
-  <td class="br-check-cell">
-    <div class="form-check form-switch m-0">
-      <input class="form-check-input" type="checkbox" role="switch" id="torrentid_' . $tid . '" name="torrentid[]" value="' . $tid . '"
-             aria-label="' . $nameEsc . '"
-             data-title="' . $nameEsc . '" data-image="' . htmlspecialchars_uni($image) . '"
-             data-size="' . (int)$Torrent['size'] . '" data-seeders="' . $s . '" data-leechers="' . $l . '"
-             data-category="' . (int)$Torrent['category'] . '" data-catname="' . $catname . '">
-    </div>
-  </td>' : '') . '
-</tr>';
-}
-
-if ($rowsHtml === '') {
-    $rowsHtml = '
-<tr><td colspan="' . $colCount . '">
-  <div class="st-empty">
-    <div class="st-ico st-soft-muted"><i class="fa-regular fa-folder-open" aria-hidden="true"></i></div>
-    <div class="fw-semibold">' . $lang->browse['empty_title'] . '</div>
-    <div class="small mb-3">' . sprintf($lang->browse['empty_hint'], '<a href="' . $BASEURL . '/browse.php">' . $lang->browse['empty_reset_link'] . '</a>') . '</div>
-    <a href="' . $BASEURL . '/browse.php" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-rotate-left me-1"></i>' . $lang->browse['btn_reset_filters'] . '</a>
   </div>
-</td></tr>';
-}
+</div>
+
+</form>
+
+<!-- Initialize modal -->
+<script>
+    window.browseModTotalTorrents = ' . $threadcount . ';
+</script>';
 
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Вывод
-   ═══════════════════════════════════════════════════════════════════════════ */
 
-$toastOk  = is_string($_GET['mod_success'] ?? null) ? (string)$_GET['mod_success'] : '';
-$toastErr = is_string($_GET['mod_error'] ?? null) ? (string)$_GET['mod_error'] : '';
+
+
+
+
+
+
+
+$ListTorrents .= '
+    </tbody>
+</table>
+' . ($is_mod ? $bedit : '') . '
+</div>';
 
 stdhead($lang->browse['btitle']);
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css?ver=10">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/airbnb.css">';
-if ($is_mod) {
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
+
+
+
+
+
+$showimages = 'yes';
+$i_torrent_limit = '15';
+
+
+$carouselItems = [];
+$carouselQuery = $db->sql_query_prepared(
+    "SELECT id, name, t_image FROM torrents
+     WHERE t_image != '' AND visible = 'yes' AND banned = 'no'
+     ORDER BY added DESC
+     LIMIT ?",
+    [(int)$i_torrent_limit]
+);
+while ($carouselQuery && ($row2 = $db->fetch_array($carouselQuery))) {
+    $carouselItems[] = $row2;
 }
+$total = count($carouselItems);
 
-$e = static fn($v): string => htmlspecialchars_uni((string)$v);
-?>
-<div class="container-md st-page br-page" id="brPage"
-     data-total="<?= $threadcount ?>"
-     data-has-filters="<?= $activeFilters ? '1' : '0' ?>"
-     data-toast-ok="<?= $e($toastOk) ?>"
-     data-toast-err="<?= $e($toastErr) ?>">
-
-    <!-- Шапка -->
-    <header class="st-card st-head mb-3">
-        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-magnet" aria-hidden="true"></i></div>
-        <div class="min-w-0 flex-grow-1">
-            <h1 class="st-title"><?= $lang->browse['btitle'] ?></h1>
-            <div class="st-head__meta">
-                <span><i class="fa-solid fa-folder"></i><?= $catName !== '' ? $e($catName) : $lang->browse['alltypes'] ?></span>
-                <?php if ($keywords !== ''): ?>
-                    <span><i class="fa-solid fa-magnifying-glass"></i><?= $e($keywords) ?></span>
-                <?php endif; ?>
-                <span><i class="fa-solid fa-layer-group"></i><?= sprintf($lang->browse['res_found'], '<b>' . ts_nf($threadcount) . '</b>') ?></span>
-            </div>
+if ($showimages === 'yes' && $total > 0): ?>
+<div class="container mt-3">
+    <div id="cachedTorrentCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="4000">
+        <!-- Carousel Indicators (dots) -->
+        <div class="carousel-indicators">
+            <?php for ($i = 0; $i < $total; $i++): ?>
+                <button type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide-to="<?= $i ?>" 
+                    class="<?= $i === 0 ? 'active' : '' ?>" aria-current="<?= $i === 0 ? 'true' : 'false' ?>" 
+                    aria-label="<?= htmlspecialchars_uni(sprintf($lang->browse['lbl_slide'], $i + 1)) ?>"></button>
+            <?php endfor; ?>
         </div>
-        <div class="d-flex flex-wrap gap-2 ms-auto">
-            <a href="<?= $BASEURL ?>/upload.php" class="btn btn-primary st-pill"><i class="fa-solid fa-plus me-1"></i><?= $lang->browse['newtorrent'] ?></a>
-            <a href="<?= $BASEURL ?>/getrss.php?<?= $e(http_build_query(array_diff_key($_GET, ['page' => 1, 'mod_success' => 1, 'mod_error' => 1]))) ?>" class="btn btn-outline-warning st-pill" title="<?= $e($lang->browse['btn_rss']) ?>">
-                <i class="fa-solid fa-rss"></i><span class="d-none d-sm-inline ms-1"><?= $lang->browse['btn_rss'] ?></span>
-            </a>
-        </div>
-    </header>
 
-    <?= $promoNotice ?>
-
-    <div id="brRestoreSlot"></div>
-
-    <!-- Плитки -->
-    <div class="br-kpis mb-3">
-        <div class="st-kpi st-kpi--muted">
-            <div class="st-ico st-soft-primary"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($threadcount) ?></div>
-                <div class="st-kpi__lbl"><?= $e($lang->browse['lbl_kpi_found'] ?? 'Found') ?></div>
-            </div>
-            <i class="fa-solid fa-magnet st-kpi__bg" aria-hidden="true"></i>
-        </div>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['health' => 'seeded', 'no_seeders' => null])) ?>">
-            <div class="st-ico st-soft-success"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['active']) ?></div>
-                <div class="st-kpi__lbl"><?= $lang->browse['qf_active'] ?></div>
-            </div>
-            <i class="fa-solid fa-seedling st-kpi__bg" aria-hidden="true"></i>
-        </a>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['no_seeders' => '1', 'health' => null])) ?>">
-            <div class="st-ico st-soft-danger"><i class="fa-solid fa-skull-crossbones" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['dead']) ?></div>
-                <div class="st-kpi__lbl"><?= $lang->browse['flt_no_seeders'] ?></div>
-            </div>
-            <i class="fa-solid fa-ghost st-kpi__bg" aria-hidden="true"></i>
-        </a>
-        <a class="st-kpi st-kpi--muted" href="<?= $e(br_url(['daysprune' => '1'])) ?>">
-            <div class="st-ico st-soft-info"><i class="fa-solid fa-clock" aria-hidden="true"></i></div>
-            <div class="min-w-0">
-                <div class="st-kpi__val"><?= ts_nf($stats['d1']) ?></div>
-                <div class="st-kpi__lbl"><?= $e($lang->browse['opt_days_1']) ?></div>
-            </div>
-            <i class="fa-solid fa-calendar-day st-kpi__bg" aria-hidden="true"></i>
-        </a>
-    </div>
-
-    <?php if ($recentItems): ?>
-    <!-- Свежие постеры -->
-    <section class="st-card br-recent mb-3">
-        <div class="st-card__head">
-            <span class="st-ico st-soft-warning"><i class="fa-solid fa-fire" aria-hidden="true"></i></span>
-            <?= $lang->browse['recent_torrents'] ?>
-        </div>
-        <div class="br-recent__strip">
-            <?php foreach ($recentItems as $r): ?>
-                <a href="<?= get_torrent_link((int)$r['id']) ?>" class="br-recent__item" title="<?= $e($r['name']) ?>">
-                    <img src="<?= $e($r['t_image']) ?>" alt="<?= $e($r['name']) ?>" loading="lazy" onerror="this.parentNode.hidden=true">
-                    <span class="br-recent__name"><?= $e($r['name']) ?></span>
+        <!-- Carousel Inner -->
+        <div class="carousel-inner">
+            <?php foreach ($carouselItems as $index => $row2): 
+                $seolink = get_torrent_link($row2['id']);
+                $title = htmlspecialchars($row2['name']);
+                $image = htmlspecialchars($row2['t_image']);
+            ?>
+            <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
+                <a href="<?= $seolink ?>">
+                    <img src="<?= $image ?>" class="d-block w-100" alt="<?= $title ?>" 
+                         style="max-height: 300px; object-fit: cover;">
                 </a>
+                <div class="carousel-caption d-none d-md-block">
+                    <h5><?= $title ?></h5>
+                </div>
+            </div>
             <?php endforeach; ?>
         </div>
-    </section>
-    <?php endif; ?>
 
-    <?php if ($catTiles !== ''): ?>
-    <!-- Категории -->
-    <section class="st-card br-cats mb-3">
-        <div class="st-card__head">
-            <span class="st-ico st-soft-info"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i></span>
-            <?= $lang->browse['tcategory'] ?>
-            <button type="button" class="ms-auto st-icon-btn border-0 br-collapse-btn" data-bs-toggle="collapse" data-bs-target="#brCatsBody"
-                    aria-expanded="true" aria-controls="brCatsBody" aria-label="<?= $e(strip_tags($lang->browse['tcategory'])) ?>">
-                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-            </button>
-        </div>
-        <div class="collapse show" id="brCatsBody" data-br-remember="brCats">
-            <div class="br-cats__grid"><?= $catTiles ?></div>
-        </div>
-    </section>
-    <?php endif; ?>
-
-    <!-- Поиск -->
-    <form method="get" action="<?= $BASEURL ?>/browse.php" name="searchtorrent" id="searchtorrent" class="st-card br-search mb-3">
-        <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>
-            <?= $lang->browse['tsearch'] ?>
-        </div>
-        <div class="st-card__body">
-            <div class="row g-2">
-                <div class="col-12 col-lg-8">
-                    <div class="position-relative">
-                        <input type="search" class="form-control br-q" id="torrent-search" name="keywords"
-                               placeholder="<?= $e($lang->browse['ph_search']) ?>" aria-label="<?= $e($lang->browse['ph_search']) ?>"
-                               autocomplete="off" value="<?= $e($keywords) ?>">
-                        <div id="autocomplete-results" class="dropdown-menu"></div>
-                    </div>
-                </div>
-                <div class="col-12 col-lg-4">
-                    <?= $mkSelect('search_type', $searchTypeLabels, $search_type !== '' ? $search_type : 't_both', 'search_type', strip_tags($lang->browse['type'])) ?>
-                </div>
-
-                <div class="col-12 col-sm-6 col-lg-3"><?= $catdropdown ?></div>
-                <div class="col-6 col-lg-3">
-                    <?= $mkSelect('include_dead_torrents', ['no' => $lang->browse['incdead2'], 'yes' => $lang->browse['incdead1']], $include_dead_torrents === 'yes' ? 'yes' : 'no') ?>
-                </div>
-                <div class="col-6 col-lg-3"><?= $mkSelect('size_min', $size_options_min, $size_min_val ? (string)$size_min_val : '') ?></div>
-                <div class="col-6 col-lg-3"><?= $mkSelect('size_max', $size_options_max, $size_max_val ? (string)$size_max_val : '') ?></div>
-
-                <div class="col-6 col-lg-3"><?= $mkSelect('min_seeders', $seeders_options, $min_seeders_val ? (string)$min_seeders_val : '') ?></div>
-                <div class="col-6 col-lg-3"><?= $mkSelect('daysprune', $daysprune_options, (string)$daysprune, 'daysprune') ?></div>
-                <div class="col-6 col-lg-3">
-                    <input type="text" id="added_from_input" class="form-control" name="added_from" autocomplete="off"
-                           placeholder="<?= $e($lang->browse['ph_added_from']) ?>" aria-label="<?= $e($lang->browse['ph_added_from']) ?>" value="<?= $e($added_from ? $added_from_raw : '') ?>">
-                </div>
-                <div class="col-6 col-lg-3">
-                    <input type="text" id="added_to_input" class="form-control" name="added_to" autocomplete="off"
-                           placeholder="<?= $e($lang->browse['ph_added_to']) ?>" aria-label="<?= $e($lang->browse['ph_added_to']) ?>" value="<?= $e($added_to ? $added_to_raw : '') ?>">
-                </div>
-            </div>
-            <?php if (!$smartBrowse): ?><input type="hidden" name="smart_browse" value="0"><?php endif; ?>
-        </div>
-
-        <?php if ($activeFilters): ?>
-        <div class="br-active">
-            <?php foreach ($activeFilters as $f): ?>
-                <a href="<?= $e(br_url([$f['param'] => null])) ?>" class="st-badge st-soft-<?= $f['tone'] ?> br-active__chip">
-                    <i class="fa-solid <?= $f['icon'] ?>" aria-hidden="true"></i><?= $f['label'] ?><i class="fa-solid fa-xmark br-active__x" aria-hidden="true"></i>
-                </a>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-
-        <div class="st-toolbar st-toolbar--bottom">
-            <a href="<?= $BASEURL ?>/browse.php" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-rotate-left me-1"></i><?= $lang->browse['btn_reset_filters'] ?></a>
-            <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-magnifying-glass me-1"></i><?= $lang->browse['btn_search'] ?></button>
-        </div>
-    </form>
-
-    <?php if ($smartBrowse):
-        $qf = static function (array $changes, string $icon, string $label, ?int $count = null): string {
-            $active = br_preset_active($changes);
-            return '<a class="btn btn-sm st-pill ' . ($active ? 'btn-primary' : 'btn-outline-secondary') . '"'
-                . ($active ? ' aria-current="true"' : '') . ' href="' . htmlspecialchars_uni(br_url($changes + ['smart_browse' => '1'])) . '">'
-                . '<i class="' . $icon . ' me-1" aria-hidden="true"></i>' . $label
-                . ($count !== null ? ' <span class="br-qf__cnt">' . ts_nf($count) . '</span>' : '') . '</a>';
-        };
-        $clearAll = array_fill_keys(['min_seeders', 'daysprune', 'size_min', 'size_max', 'health', 'freeleech_only', 'no_seeders',
-            'seeders_gt_leechers', 'hide_downloaded', 'special_search', 'include_dead_torrents', 'imdb_min', 'added_from', 'added_to', 'sort', 'dir'], null);
-        $groups = [
-            $lang->browse['sec_qf_quick'] => [
-                $qf(['health' => 'seeded'], 'fa-solid fa-heart-pulse', $lang->browse['qf_has_seeders'], $stats['active']),
-                $qf(['sort' => 'seeders', 'dir' => 'desc'], 'fa-solid fa-arrow-down-wide-short', $lang->browse['qf_most_seeders']),
-                $qf(['daysprune' => '7'], 'fa-regular fa-clock', $e($lang->browse['opt_days_7']), $stats['d7']),
-                $qf(['daysprune' => '30'], 'fa-regular fa-calendar', $e($lang->browse['opt_days_30']), $stats['d30']),
-                $qf(['size_min' => '5368709120'], 'fa-solid fa-database', sprintf($lang->browse['qf_size_plus'], 5), $stats['big']),
-                $qf(['freeleech_only' => '1'], 'fa-solid fa-gift', $lang->browse['flt_freeleech_only'], $stats['fl']),
-            ],
-            $lang->browse['sec_qf_popular'] => [
-                $qf(['sort' => 'snatched', 'dir' => 'desc'], 'fa-solid fa-fire', $lang->browse['qf_most_downloaded']),
-                $qf(['sort' => 'leechers', 'dir' => 'desc'], 'fa-solid fa-users', $lang->browse['qf_most_leeched']),
-            ],
-            $lang->browse['sec_qf_health'] => [
-                $qf(['no_seeders' => '1'], 'fa-solid fa-skull-crossbones', $lang->browse['flt_no_seeders']),
-                $qf(['seeders_gt_leechers' => '1'], 'fa-solid fa-scale-balanced', $lang->browse['flt_seeders_gt_leechers']),
-            ],
-            $lang->browse['sec_qf_fresh'] => [
-                $qf(['daysprune' => '1'], 'fa-solid fa-star', $lang->browse['qf_added_today']),
-                $qf(['daysprune' => '3'], 'fa-regular fa-clock', $lang->browse['qf_last_3_days']),
-                $qf(['size_max' => '1073741824'], 'fa-solid fa-mobile-screen', sprintf($lang->browse['qf_small_torrents'], 1)),
-                $qf(['size_min' => '10737418240'], 'fa-solid fa-database', sprintf($lang->browse['qf_size_plus'], 10)),
-                $qf(['size_min' => '53687091200'], 'fa-solid fa-database', sprintf($lang->browse['qf_size_plus'], 50)),
-            ],
-            $lang->browse['sec_qf_authorship'] => [
-                $qf(['special_search' => 'mytorrents'], 'fa-solid fa-user', $lang->browse['qf_my_uploads']),
-                $qf(['special_search' => 'mybookmarks'], 'fa-solid fa-bookmark', $lang->browse['qf_my_bookmarks']),
-                $qf(['special_search' => 'myreseeds'], 'fa-solid fa-rotate', $lang->browse['qf_need_reseed']),
-                $qf(['hide_downloaded' => '1'], 'fa-solid fa-eye-slash', $lang->browse['flt_hide_downloaded']),
-                $qf(['include_dead_torrents' => 'yes'], 'fa-solid fa-ghost', $lang->browse['flt_include_dead']),
-            ],
-            $lang->browse['sec_qf_rating'] => [
-                $qf(['imdb_min' => '7'], 'fa-solid fa-star', sprintf($lang->browse['flt_imdb_min'], 7)),
-                $qf(['imdb_min' => '8'], 'fa-solid fa-star', sprintf($lang->browse['flt_imdb_min'], 8)),
-                $qf(['imdb_min' => '9'], 'fa-solid fa-star', sprintf($lang->browse['flt_imdb_min'], 9)),
-            ],
-        ];
-    ?>
-    <!-- Быстрые фильтры -->
-    <section class="st-card br-qf mb-3">
-        <div class="st-card__head">
-            <span class="st-ico br-soft-purple"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>
-            <div class="min-w-0">
-                <?= $lang->browse['sec_quick_filters'] ?>
-                <div class="br-qf__hint"><?= $lang->browse['hint_quick_filters'] ?></div>
-            </div>
-            <a href="<?= $e(br_url($clearAll)) ?>" class="ms-auto btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-xmark me-1"></i><span class="d-none d-sm-inline"><?= $lang->browse['qf_clear'] ?></span></a>
-            <button type="button" class="st-icon-btn border-0 br-collapse-btn" data-bs-toggle="collapse" data-bs-target="#brQfBody"
-                    aria-expanded="true" aria-controls="brQfBody" aria-label="<?= $e(strip_tags($lang->browse['sec_quick_filters'])) ?>">
-                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-            </button>
-        </div>
-        <div class="collapse show" id="brQfBody" data-br-remember="brQf">
-            <div class="st-card__body br-qf__body">
-                <?php foreach ($groups as $label => $buttons): ?>
-                    <div class="br-qf__group">
-                        <div class="br-qf__label"><?= $label ?></div>
-                        <div class="br-qf__btns"><?= implode('', $buttons) ?></div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </section>
-    <?php endif; ?>
-
-    <?php if ($is_mod): ?>
-    <form method="post" action="<?= $BASEURL ?>/admin/index.php?act=manage_torrents" name="manage_torrents" id="manage_torrents">
-        <input type="hidden" name="do" value="update">
-        <input type="hidden" name="my_post_key" value="<?= $e($mybb->post_code) ?>">
-        <input type="hidden" name="return" value="yes">
-        <input type="hidden" name="return_address" value="<?= $e($BASEURL . '/browse.php?page=' . $page . '&' . implode('&', $Links) . ($sortPart !== '' ? '&' . $sortPart : '')) ?>">
-    <?php endif; ?>
-
-    <!-- Результаты -->
-    <section class="st-card br-results mb-3">
-        <div class="st-card__head br-results__head">
-            <span class="st-ico st-soft-success"><i class="fa-solid fa-list" aria-hidden="true"></i></span>
-            <span><?= sprintf($lang->browse['res_found'], '<b>' . ts_nf($threadcount) . '</b>') ?></span>
-            <?php if ($search_type !== '' && $search_type !== 't_both' && $keywords !== ''): ?>
-                <span class="br-results__sub">· <?= sprintf($lang->browse['res_by'], $searchTypeLabels[$search_type]) ?></span>
-            <?php endif; ?>
-
-            <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
-                <?php if ($is_mod): ?>
-                    <span class="st-badge st-soft-primary" id="totalSelectedBadge">
-                        <i class="fa-solid fa-circle-check" aria-hidden="true"></i><?= sprintf($lang->browse['mod_selected'], '<span id="selectedCountDisplay" aria-live="polite">0</span>') ?>
-                    </span>
-                    <span class="st-badge st-soft-muted d-none d-md-inline-flex">
-                        <i class="fa-solid fa-list" aria-hidden="true"></i><?= sprintf($lang->browse['mod_total'], '<span id="totalTorrentsCount">' . $threadcount . '</span>') ?>
-                    </span>
-                    <button type="button" class="btn btn-sm btn-outline-primary st-pill" data-br-select-all>
-                        <i class="fa-solid fa-check-double me-1"></i><span class="d-none d-lg-inline"><?= $lang->browse['btn_select_all_filtered'] ?></span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary st-pill" data-bs-toggle="modal" data-bs-target="#moderationModal">
-                        <i class="fa-solid fa-shield-halved me-1"></i><span class="d-none d-sm-inline"><?= $lang->browse['pane_moderation'] ?></span>
-                    </button>
-                <?php endif; ?>
-                <div class="btn-group btn-group-sm br-view" role="group">
-                    <button type="button" class="btn btn-outline-secondary" id="smartViewTable" aria-pressed="true" title="<?= $e($lang->browse['btn_view_table'] ?? 'Table') ?>">
-                        <i class="fa-solid fa-list" aria-hidden="true"></i><span class="visually-hidden"><?= $e($lang->browse['btn_view_table'] ?? 'Table') ?></span>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="smartViewCards" aria-pressed="false" title="<?= $e($lang->browse['btn_view_cards'] ?? 'Cards') ?>">
-                        <i class="fa-solid fa-grip" aria-hidden="true"></i><span class="visually-hidden"><?= $e($lang->browse['btn_view_cards'] ?? 'Cards') ?></span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <?php if ($threadcount > $perpage): ?>
-            <div class="st-toolbar st-pager br-pager-top"><?= $multipage ?></div>
-        <?php endif; ?>
-
-        <div id="smartTorrentCards" class="br-cards" hidden aria-live="polite"></div>
-
-        <div id="smartTorrentTableWrap" class="table-responsive">
-            <div id="listtorrents">
-                <table class="table br-table mb-0">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="br-th-poster"><span class="visually-hidden"><?= $lang->browse['type'] ?></span></th>
-                            <th scope="col"><?= br_sort_link($lang->browse['hdr_name'], 'name', $baseUrl, $sortBy, $sortDir) ?>
-                                <span class="br-th-sep">·</span><?= br_sort_link($lang->browse['added'], 'added', $baseUrl, $sortBy, $sortDir) ?></th>
-                            <th scope="col" class="text-center br-col-md"><?= br_sort_link($lang->browse['sortby6'], 'size', $baseUrl, $sortBy, $sortDir) ?></th>
-                            <th scope="col" class="text-center br-col-md"><?= br_sort_link($lang->browse['sortby7'], 'snatched', $baseUrl, $sortBy, $sortDir) ?></th>
-                            <th scope="col" class="text-center br-col-sm"><?= br_sort_link($lang->browse['sortby4'], 'seeders', $baseUrl, $sortBy, $sortDir) ?></th>
-                            <th scope="col" class="text-center br-col-sm"><?= br_sort_link($lang->browse['sortby5'], 'leechers', $baseUrl, $sortBy, $sortDir) ?></th>
-                            <th scope="col" class="br-col-lg"><?= $lang->browse['sortby8'] ?></th>
-                            <?php if ($is_mod): ?>
-                            <th scope="col" class="br-check-cell">
-                                <div class="form-check form-switch m-0" title="<?= $e($lang->browse['tip_select_all_page']) ?>">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="checkAllSwitchVisible" aria-label="<?= $e($lang->browse['tip_select_all_page']) ?>">
-                                </div>
-                            </th>
-                            <?php endif; ?>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?= $rowsHtml ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <?php if ($threadcount > $perpage): ?>
-            <div class="st-toolbar st-toolbar--bottom st-pager"><?= $multipage ?></div>
-        <?php endif; ?>
-    </section>
-
-    <?php if ($is_mod): ?>
-    <!-- Модерация -->
-    <div class="modal fade br-modal" id="moderationModal" tabindex="-1" aria-labelledby="moderationModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
-        <div class="modal-content mod-modal-content">
-          <div class="modal-header mod-modal-header">
-            <span class="st-ico st-soft-primary me-2"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span>
-            <h5 class="modal-title" id="moderationModalLabel"><?= $lang->browse['pane_moderation'] ?></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $e($lang->browse['btn_close']) ?>"></button>
-          </div>
-          <div class="modal-body mod-modal-body">
-            <div class="row g-3">
-              <div class="col-md-3 mod-poster-column">
-                <div class="mod-poster-container" id="modPosterContainer">
-                  <div class="mod-poster-placeholder" id="modPosterPlaceholder">
-                    <i class="fa-solid fa-images fa-3x" aria-hidden="true"></i>
-                    <p class="mt-2 small mb-0"><?= $lang->browse['hint_select_to_preview'] ?></p>
-                  </div>
-                  <div class="mod-poster-wrapper" id="modPosterWrapper" style="display:none;">
-                    <img id="modPosterPreview" src="" alt="<?= $e($lang->browse['alt_torrent_poster']) ?>" class="mod-poster-img">
-                    <div class="mod-poster-count" id="modPosterCount"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="col-md-9">
-                <div class="mod-selection-info alert alert-info alert-dismissible fade show" role="alert">
-                  <i class="fa-solid fa-circle-info me-2" aria-hidden="true"></i><?= sprintf($lang->browse['mod_torrents_selected'], '<strong id="modalSelectedCount" aria-live="polite">0</strong>') ?>
-                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="<?= $e($lang->browse['btn_close']) ?>"></button>
-                </div>
-
-                <div class="mod-progress-container mb-2" id="modProgressContainer" style="display:none;">
-                  <div class="d-flex justify-content-between small">
-                    <span><?= sprintf($lang->browse['mod_progress'], '<strong id="selectedCount2">0</strong>', '<span id="totalCount2">0</span>') ?></span>
-                    <span id="progressPercentage">0%</span>
-                  </div>
-                  <div class="progress"><div id="selectionProgress" class="progress-bar" style="width:0%;"></div></div>
-                </div>
-
-                <div class="mod-restore-info" id="modRestoreInfo" style="display:none;">
-                  <i class="fa-solid fa-clock-rotate-left me-1" aria-hidden="true"></i>
-                  <span id="modRestoreMessage"><?= $lang->browse['mod_restored_default'] ?></span>
-                  <button type="button" class="btn-close btn-close-sm float-end" id="modRestoreCloseBtn" aria-label="<?= $e($lang->browse['btn_close']) ?>"></button>
-                </div>
-
-                <div class="mod-summary-stats" id="modSummaryStats" style="display:none;">
-                  <div class="mod-summary-stat"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i><span id="modSummarySize">0 B</span></div>
-                  <div class="mod-summary-stat"><i class="fa-solid fa-arrow-up text-success" aria-hidden="true"></i><span id="modSummarySeeders">0</span></div>
-                  <div class="mod-summary-stat"><i class="fa-solid fa-arrow-down text-danger" aria-hidden="true"></i><span id="modSummaryLeechers">0</span></div>
-                  <div class="mod-summary-stat"><i class="fa-solid fa-folder" aria-hidden="true"></i><span id="modSummaryCategories">0</span></div>
-                </div>
-
-                <div id="selectedTorrentsList" class="mod-selected-list" style="display:none;"></div>
-
-                <label class="mod-label" for="actiontype"><i class="fa-solid fa-bolt me-1" aria-hidden="true"></i><?= $lang->browse['lbl_choose_action'] ?></label>
-                <select class="form-select mod-select" name="actiontype" id="actiontype">
-                  <option value="0"><?= $e($lang->browse['opt_select_action']) ?></option>
-                  <optgroup label="<?= $e($lang->browse['opt_grp_torrent']) ?>">
-                    <option value="move">📁 <?= $e($lang->browse['opt_act_move']) ?></option>
-                    <option value="delete">🗑️ <?= $e($lang->browse['opt_act_delete']) ?></option>
-                    <option value="sticky">📌 <?= $e($lang->browse['opt_act_sticky']) ?></option>
-                    <option value="visible">👁️ <?= $e($lang->browse['opt_act_visible']) ?></option>
-                    <option value="banned">🚫 <?= $e($lang->browse['opt_act_banned']) ?></option>
-                    <option value="nuke">☢️ <?= $e($lang->browse['opt_act_nuke']) ?></option>
-                    <option value="openclose">💬 <?= $e($lang->browse['opt_act_openclose']) ?></option>
-                  </optgroup>
-                  <optgroup label="<?= $e($lang->browse['opt_grp_promo']) ?>">
-                    <option value="free">🎁 <?= $e($lang->browse['opt_act_free']) ?></option>
-                    <option value="silver">🥈 <?= $e($lang->browse['opt_act_silver']) ?></option>
-                    <option value="doubleupload">⏫ <?= $e($lang->browse['opt_act_doubleupload']) ?></option>
-                    <option value="thirtypercent">🟣 <?= $e($lang->browse['opt_act_thirtypercent']) ?></option>
-                  </optgroup>
-                  <optgroup label="<?= $e($lang->browse['opt_grp_other']) ?>">
-                    <option value="anonymous">🎭 <?= $e($lang->browse['opt_act_anonymous']) ?></option>
-                    <option value="request">📩 <?= $e($lang->browse['opt_act_request']) ?></option>
-                    <option value="resetrating">⭐ <?= $e($lang->browse['opt_act_resetrating']) ?></option>
-                  </optgroup>
-                </select>
-
-                <div id="movetorrent" class="mod-move-block" style="display:none;">
-                  <div class="mod-move-container">
-                    <label class="mod-move-label" for="br_move_category"><i class="fa-solid fa-folder-open me-1" aria-hidden="true"></i><?= $lang->browse['lbl_move_to'] ?></label>
-                    <?= $movedropdown ?>
-                  </div>
-                  <div id="modMoveCategoryWarning" class="mod-move-mismatch-warning" style="display:none;">
-                    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>
-                    <span id="modMoveCategoryWarningText"><?= $lang->browse['mod_mixed_categories'] ?></span>
-                  </div>
-                </div>
-
-                <div id="actionInfo" class="mod-action-info" style="display:none;">
-                  <div class="alert alert-warning mt-3 mb-0">
-                    <i class="fa-solid fa-triangle-exclamation me-2" aria-hidden="true"></i><span id="actionDescription"><?= $lang->browse['mod_action_default'] ?></span>
-                  </div>
-                </div>
-
-                <div class="mod-hint"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span><?= $lang->browse['hint_mod'] ?></span></div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer mod-modal-footer">
-            <button type="button" class="btn btn-sm btn-outline-danger st-pill me-auto" id="clearAllSelectionsBtn">
-              <i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i><?= $lang->browse['btn_clear_all'] ?>
-            </button>
-            <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal">
-              <i class="fa-solid fa-xmark me-1" aria-hidden="true"></i><?= $lang->browse['btn_cancel'] ?>
-            </button>
-            <button type="button" class="btn btn-primary st-pill" id="applyActionBtn">
-              <i class="fa-solid fa-play me-1" aria-hidden="true"></i><?= $lang->browse['btn_apply'] ?>
-            </button>
-          </div>
-        </div>
-      </div>
+        <!-- Controls -->
+        <button class="carousel-control-prev" type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide="prev">
+            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+            <span class="visually-hidden"><?= htmlspecialchars_uni($lang->browse['lbl_prev']) ?></span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#cachedTorrentCarousel" data-bs-slide="next">
+            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+            <span class="visually-hidden"><?= htmlspecialchars_uni($lang->browse['lbl_next']) ?></span>
+        </button>
     </div>
 
-    <!-- Подтверждение (запасной вариант, если SweetAlert2 не загрузился) -->
-    <div class="modal fade br-modal" id="modConfirmModal" tabindex="-1" aria-labelledby="modConfirmModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content mod-modal-content">
-          <div class="modal-header mod-modal-header">
-            <span class="st-ico st-soft-danger me-2"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
-            <h5 class="modal-title" id="modConfirmModalLabel"><?= $lang->browse['pane_confirm'] ?></h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= $e($lang->browse['btn_close']) ?>"></button>
-          </div>
-          <div class="modal-body mod-modal-body">
-            <p id="modConfirmMessage" class="mb-0"></p>
-            <div id="modConfirmTorrentList" class="mod-selected-list mt-3" style="display:none;"></div>
-          </div>
-          <div class="modal-footer mod-modal-footer">
-            <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal" id="modConfirmCancelBtn">
-              <i class="fa-solid fa-xmark me-1" aria-hidden="true"></i><?= $lang->browse['btn_cancel'] ?>
-            </button>
-            <button type="button" class="btn btn-danger st-pill" id="modConfirmAcceptBtn">
-              <i class="fa-solid fa-check me-1" aria-hidden="true"></i><?= $lang->browse['btn_confirm'] ?>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    </form>
-    <?php endif; ?>
-
-    <!-- Увеличенный постер при наведении -->
-    <div class="poster-zoom-overlay" id="posterZoomOverlay" aria-hidden="true">
-        <img src="" alt="<?= $e($lang->browse['alt_poster_preview']) ?>" class="poster-zoom-img" id="posterZoomImg">
+    <!-- Optional Thumbnails Below Carousel -->
+    <div class="d-flex justify-content-center flex-wrap gap-2 mt-3">
+        <?php foreach ($carouselItems as $index => $row2): ?>
+            <img src="<?= htmlspecialchars($row2['t_image']) ?>" alt="<?= htmlspecialchars_uni(sprintf($lang->browse['lbl_thumb'], $index + 1)) ?>" 
+                 style="width: 80px; height: 50px; object-fit: cover; cursor: pointer;" 
+                 onclick="bootstrap.Carousel.getInstance(document.querySelector('#cachedTorrentCarousel')).to(<?= $index ?>);">
+        <?php endforeach; ?>
     </div>
 </div>
-<?php
+<?php endif;
 
-// JS-строки: ключи js_* из ланга browse + js_bm_* из details (bookmark.js) -> AGS_LANG без префикса
+
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=11"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=7"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
+echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';
+echo '<script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>';
+echo '<script>
+document.addEventListener("DOMContentLoaded", function () {
+    if (typeof flatpickr === "undefined") return;
+    flatpickr("#added_from_input", { dateFormat: "Y-m-d", allowInput: true });
+    flatpickr("#added_to_input", { dateFormat: "Y-m-d", allowInput: true });
+});
+</script>';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/autocomplete.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css">';
+echo '<style>
+/* Smart Browse visual refresh: scoped so Classic view keeps the forum theme. */
+/* Smart Browse — Light Theme */
+
+.smart-browse-panel {
+    background: #ffffff;
+    color: #18233b;
+    border: 1px solid #e3eaf5 !important;
+    box-shadow: 0 10px 28px rgba(30, 55, 90, .08) !important;
+}
+
+.smart-browse-panel .text-muted,
+.smart-browse-panel small {
+    color: #71819c !important;
+}
+
+.smart-browse-heading h4 {
+    color: #18233b;
+    font-weight: 650;
+    letter-spacing: -.025em;
+}
+
+.smart-browse-heading .smart-eyebrow {
+    color: #6657e8;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .18em;
+    margin-bottom: .3rem;
+}
+
+.smart-browse-panel .btn {
+    border-radius: 10px;
+    transition: transform .16s ease,
+                background-color .16s ease,
+                border-color .16s ease;
+}
+
+.smart-browse-panel .btn:hover {
+    transform: translateY(-1px);
+}
+
+.smart-browse-panel .btn-primary {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.smart-browse-panel .btn-outline-primary {
+    color: #355b99;
+    border-color: #d9e4f3;
+    background: #f7f9fd;
+}
+
+.smart-browse-panel .btn-outline-primary:hover {
+    color: #fff;
+    background: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.smart-browse-panel .btn-outline-secondary {
+    color: #526581;
+    border-color: #d9e4f3;
+    background: #fff;
+}
+
+.smart-view-switch {
+    padding: 5px;
+    width: max-content;
+    max-width: 100%;
+    border: 1px solid #e1e8f3;
+    border-radius: 12px;
+    background: #f5f8fd;
+}
+
+.smart-view-switch .btn {
+    min-width: 100px;
+}
+
+.smart-filter-label {
+    color: #7585a0;
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .13em;
+    margin: 0 0 .65rem;
+}
+
+.smart-filter-buttons {
+    gap: .6rem !important;
+}
+
+.smart-preset-count {
+    opacity: .65;
+    font-size: .85em;
+}
+
+/* ── Flatpickr overrides ───────────────────────────────────────────────────── */
+.flatpickr-calendar {
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+}
+.flatpickr-day.today {
+    border-color: var(--bs-primary);
+}
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+/* Search field */
+
+body:has(.smart-browse-panel) #torrent-search {
+    min-height: 54px;
+    border-radius: 13px;
+    padding: .85rem 1rem;
+    background: #fff;
+    border: 1px solid #dce5f2;
+    color: #1d2b45;
+    box-shadow: 0 2px 8px rgba(35, 60, 100, .03);
+}
+
+body:has(.smart-browse-panel) #torrent-search::placeholder {
+    color: #8797b1;
+}
+
+body:has(.smart-browse-panel) #torrent-search:focus {
+    border-color: #8175f3;
+    box-shadow: 0 0 0 .2rem rgba(100, 87, 255, .13);
+}
+
+/* Torrent cards */
+
+body:has(.smart-browse-panel) #smartTorrentCards .smart-torrent-card {
+    color: #1c2a43;
+    background: #fff;
+    border: 1px solid #e2eaf5;
+    border-radius: 15px;
+    transition: transform .18s ease,
+                border-color .18s ease,
+                box-shadow .18s ease;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .smart-torrent-card:hover {
+    transform: translateY(-3px);
+    border-color: #aaa2ff;
+    box-shadow: 0 12px 28px rgba(50, 70, 120, .12) !important;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .card-title a {
+    color: #20385f;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .small {
+    color: #74839d !important;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .smart-card-poster {
+    background: #f2f5fa;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .badge {
+    font-weight: 650;
+}
+
+body:has(.smart-browse-panel) #smartTorrentCards .card-body {
+    padding: 1rem;
+}
+.torrent-row-snatched {
+    background-color: rgba(13, 110, 253, 0.08) !important;
+    border-left: 3px solid #0d6efd !important;
+}
+.torrent-row-snatched:hover {
+    background-color: rgba(13, 110, 253, 0.14) !important;
+}
+.torrent-row-snatched td {
+    background-color: transparent !important;
+}
+</style>';
+
+
+
+
+
+
+
+
+
+
+
+$actionns = $is_mod ? $lang->browse['acction'] : '';
+
+$table = '
+
+<!-- Enhanced Poster Zoom Overlay (один раз на страницу) -->
+<div class="poster-zoom-overlay" id="posterZoomOverlay">
+    <img src="" alt="'.htmlspecialchars_uni($lang->browse['alt_poster_preview']).'" class="poster-zoom-img" id="posterZoomImg">
+</div>
+
+<div class="container mt-3">
+  <div id="smartTorrentCards" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" hidden aria-live="polite"></div>
+  <div id="smartTorrentTableWrap">
+  <table class="table table-hover">
+    '.$multipage.'
+    <thead>
+      <tr>
+        <th>
+            <i class="bi bi-tag-fill me-1"></i>
+            '.$lang->browse['type'].'
+        </th>
+        <th>
+            <i class="bi bi-file-earmark-text me-1"></i>
+            '.render_sort_header($lang->browse['t_name'], 'name', $page_url, $sortBy, $sortDir).'
+        </th>
+        <th>
+            <i class="bi bi-hdd me-1"></i>
+            '.render_sort_header($lang->browse['sortby6'], 'size', $page_url, $sortBy, $sortDir).'
+        </th>
+        <th>
+            <i class="bi bi-download me-1"></i>
+            '.render_sort_header($lang->browse['sortby7'], 'snatched', $page_url, $sortBy, $sortDir).'
+        </th>
+        <th>
+            <i class="bi bi-arrow-up-circle me-1"></i>
+            '.render_sort_header($lang->browse['sortby4'], 'seeders', $page_url, $sortBy, $sortDir).'
+        </th>
+        <th>
+            <i class="bi bi-arrow-down-circle me-1"></i>
+            '.render_sort_header($lang->browse['sortby5'], 'leechers', $page_url, $sortBy, $sortDir).'
+        </th>
+        <th>
+            <i class="bi bi-person-circle me-1"></i>
+            '.$lang->browse['sortby8'].'
+        </th>
+        <th>
+            <i class="bi bi-gear me-1"></i>
+            '.$actionns.'
+            '.($is_mod ? '
+            <div class="form-check form-switch d-inline-block ms-2 align-middle" title="'.htmlspecialchars_uni($lang->browse['tip_select_all_page']).'">
+                <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="checkAllSwitchVisible"
+                    role="switch" />
+            </div>' : '').'
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      '.$ListTorrents.'
+    </tbody>
+  </table>
+  </div>
+</div>
+
+
+<div class="container mt-3">
+    '.$multipage.'
+</div>
+
+';
+
+
+
+
+
+
+echo '
+' . $___notice . '
+' . $categories . '
+' . $SearchTorrent . '
+' . $table . '
+';
+
+echo '<script>
+(function () {
+  const tableWrap = document.getElementById("smartTorrentTableWrap");
+  const cards = document.getElementById("smartTorrentCards");
+  const tableBtn = document.getElementById("smartViewTable");
+  const cardsBtn = document.getElementById("smartViewCards");
+  if (!tableWrap || !cards || !tableBtn || !cardsBtn) return;
+
+  const rows = tableWrap.querySelectorAll("tbody tr.torrent-row");
+  rows.forEach((row) => {
+    const cells = row.querySelectorAll(":scope > td");
+    if (cells.length < 7) return;
+    const col = document.createElement("div");
+    col.className = "col";
+    const card = document.createElement("article");
+    card.className = "card h-100 shadow-sm smart-torrent-card";
+    if (row.classList.contains("torrent-row-snatched")) card.classList.add("border-primary");
+
+    const poster = cells[0].querySelector(".poster-link");
+    const title = cells[1].querySelector(".torrent-name-link");
+    const body = document.createElement("div");
+    body.className = "card-body d-flex flex-column";
+    if (poster) {
+      const posterClone = poster.cloneNode(true);
+      posterClone.classList.add("smart-card-poster", "mb-2", "d-block", "text-center");
+      body.appendChild(posterClone);
+    }
+    const healthBadge = cells[1].querySelector(".torrent-title .badge");
+    if (healthBadge) {
+      const badgeClone = healthBadge.cloneNode(true);
+      badgeClone.classList.add("mb-2", "align-self-start");
+      body.appendChild(badgeClone);
+    }
+    if (title) {
+      const heading = document.createElement("h6");
+      heading.className = "card-title";
+      const titleClone = title.cloneNode(true);
+      titleClone.removeAttribute("data-tooltip");
+      heading.appendChild(titleClone);
+      body.appendChild(heading);
+    }
+    const meta = document.createElement("div");
+    meta.className = "small text-muted mb-2";
+    meta.textContent = cells[1].querySelector(".torrent-meta")?.innerText.trim() || "";
+    body.appendChild(meta);
+    const stats = document.createElement("div");
+    stats.className = "d-flex flex-wrap gap-3 small mt-auto";
+    [2,3,4,5].forEach((i, index) => {
+      const item = document.createElement("span");
+      item.innerHTML = cells[i].innerHTML;
+      item.setAttribute("aria-label", ' . json_encode([$lang->browse['js_card_size'], $lang->browse['js_card_downloads'], $lang->browse['js_card_seeders'], $lang->browse['js_card_leechers']], $agsJsonFlags) . '[index]);
+      stats.appendChild(item);
+    });
+    body.appendChild(stats);
+    if (row.classList.contains("torrent-row-snatched")) {
+      const badge = document.createElement("span");
+      badge.className = "badge bg-primary align-self-start mt-2";
+      badge.textContent = ' . json_encode($lang->browse['js_card_already'], $agsJsonFlags) . ';
+      body.appendChild(badge);
+    }
+    card.appendChild(body);
+    col.appendChild(card);
+    cards.appendChild(col);
+  });
+
+  function setView(view) {
+    const showCards = view === "cards";
+    tableWrap.hidden = showCards;
+    cards.hidden = !showCards;
+    tableBtn.classList.toggle("btn-primary", !showCards);
+    tableBtn.classList.toggle("btn-outline-primary", showCards);
+    cardsBtn.classList.toggle("btn-primary", showCards);
+    cardsBtn.classList.toggle("btn-outline-primary", !showCards);
+    tableBtn.setAttribute("aria-pressed", String(!showCards));
+    cardsBtn.setAttribute("aria-pressed", String(showCards));
+    try { localStorage.setItem("browseSmartView", view); } catch (e) {}
+  }
+  tableBtn.addEventListener("click", () => setView("table"));
+  cardsBtn.addEventListener("click", () => setView("cards"));
+  let preferred = "table";
+  try { preferred = localStorage.getItem("browseSmartView") || "table"; } catch (e) {}
+  setView(preferred === "cards" ? "cards" : "table");
+})();
+</script>
+<style>
+.smart-torrent-card { border-radius: 12px; overflow: hidden; }
+.smart-stats-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 1.4rem; }
+.smart-stat { display:flex; align-items:center; gap:12px; padding:15px 17px; border:1px solid #3b404c; border-radius:13px; background:linear-gradient(135deg,#292d36,#22252c); min-width:0; }
+.smart-stat-icon { display:grid; place-items:center; width:38px; height:38px; flex:0 0 38px; border-radius:11px; background:rgba(102,87,255,.18); color:#a59cff; font-size:1.4rem; font-weight:700; }
+.smart-stat strong { display:block; color:#f7f7fb; font-size:1.35rem; line-height:1.15; }
+.smart-stat small { display:block; color:#aeb4c0; font-size:.76rem; margin-top:3px; }
+.smart-stat-warning .smart-stat-icon { background:rgba(239,68,68,.16); color:#ff8585; }
+.smart-badge-new { background:#5144db; color:#fff; letter-spacing:.04em; }
+.smart-badge-popular { background:#a84b14; color:#fff; letter-spacing:.04em; }
+@media (max-width: 768px) { .smart-stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .smart-stat { padding:11px; } }
+@media (max-width: 420px) { .smart-stats-grid { grid-template-columns:1fr 1fr; } .smart-stat-icon { width:30px; height:30px; flex-basis:30px; } }
+.smart-card-poster img, .smart-card-poster .torrent-poster { max-width: 100%; max-height: 210px; object-fit: contain; }
+#smartTorrentCards[hidden], #smartTorrentTableWrap[hidden] { display: none !important; }
+</style>';
+
+// JS-строки: ключи js_* из ланга -> AGS_LANG без префикса
 $agsJsLang = [];
-ags_bookmark_lang();
-foreach ([$lang->browse ?? [], $lang->details ?? []] as $i => $set) {
-    foreach ($set as $agsKey => $agsVal) {
-        $agsKey = (string)$agsKey;
-        if ($i === 0 ? str_starts_with($agsKey, 'js_') : str_starts_with($agsKey, 'js_bm_')) {
-            $agsJsLang[substr($agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
-        }
+foreach ($lang->browse as $agsKey => $agsVal) {
+    if (str_starts_with((string)$agsKey, 'js_')) {
+        $agsJsLang[substr((string)$agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
     }
 }
+
+
+
+// Ключи js_bm_* для bookmark.js (лежат в ланге details) -> AGS_LANG без префикса js_
+ags_bookmark_lang();
+foreach ($lang->details ?? [] as $agsKey => $agsVal) {
+    if (str_starts_with((string)$agsKey, 'js_bm_')) {
+        $agsJsLang[substr((string)$agsKey, 3)] = preg_replace('/%(\d+)\$s/', '{$1}', (string)$agsVal);
+    }
+}
+
 echo '<script>const AGS_LANG = ' . json_encode($agsJsLang, $agsJsonFlags) . ';</script>';
 
-echo '<script src="' . $BASEURL . '/scripts/toast.js?ver=11"></script>';
-echo '<script src="' . $BASEURL . '/scripts/bookmark.js?ver=7"></script>';
-echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script src="' . $BASEURL . '/admin/scripts/flatpickr.js"></script>';
+
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse.js?ver=2"></script>';
+
 if ($is_mod) {
-    echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>';
+    echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse-moderation.js?ver=2"></script>';
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse-moderation.css">';
 }
-echo '<script src="' . $BASEURL . '/scripts/browse.js?ver=3"></script>';
-if ($is_mod) {
-    echo '<script src="' . $BASEURL . '/scripts/browse-moderation.js?ver=3"></script>';
-}
+
+
+
+
+$__toast_ok  = isset($_GET['mod_success']) ? htmlspecialchars($_GET['mod_success'], ENT_QUOTES) : null;
+$__toast_err = isset($_GET['mod_error']) ? htmlspecialchars($_GET['mod_error'], ENT_QUOTES) : null;
+
+if ($__toast_ok || $__toast_err):
+?>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    <?php if ($__toast_ok): ?>
+    showToast(<?= json_encode($__toast_ok, JSON_UNESCAPED_UNICODE) ?>, 'success');
+    <?php endif; ?>
+    <?php if ($__toast_err): ?>
+    showToast(<?= json_encode($__toast_err, JSON_UNESCAPED_UNICODE) ?>, 'error');
+    <?php endif; ?>
+
+    // Strip mod_success/mod_error from the URL so a refresh doesn't repeat the toast
+    if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('mod_success');
+        url.searchParams.delete('mod_error');
+        window.history.replaceState({}, document.title, url.toString());
+    }
+});
+</script>
+<?php endif; ?>
+
+<?php
+// ── Запоминание последнего фильтра (localStorage) ──────────────────────────
+// Пресеты и фильтры живут только в URL - если уйти со страницы обычной
+// ссылкой (не кнопкой "назад" браузера, там URL и так сохраняется), фильтр
+// терялся. При заходе с активными фильтрами - сохраняем query string. При
+// заходе на пустой browse.php - предлагаем восстановить, если есть что.
+$hasActiveFilters = !empty($activeFilters);
+?>
+<script>
+(function () {
+    const KEY = 'browse_last_filters';
+    const hasFilters = <?= $hasActiveFilters ? 'true' : 'false' ?>;
+    const currentQuery = window.location.search;
+    const L = {
+        msg: <?= json_encode($lang->browse['js_restore_filters_msg'], $agsJsonFlags) ?>,
+        restore: <?= json_encode($lang->browse['js_restore_filters_btn'], $agsJsonFlags) ?>,
+        dismiss: <?= json_encode($lang->browse['js_restore_filters_dismiss'], $agsJsonFlags) ?>
+    };
+
+    if (hasFilters) {
+        try { localStorage.setItem(KEY, currentQuery); } catch (e) {}
+        return;
+    }
+
+    // Пустой browse.php - есть ли что предложить восстановить?
+    let saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (!saved || saved === '' || saved === '?') return;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const bar = document.createElement('div');
+        bar.className = 'container mt-3';
+        const alertBox = document.createElement('div');
+        alertBox.className = 'alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 mb-0';
+
+        const msg = document.createElement('span');
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-clock-rotate-left me-1';
+        msg.appendChild(icon);
+        msg.appendChild(document.createTextNode(L.msg));
+
+        const actions = document.createElement('span');
+        const restoreLink = document.createElement('a');
+        restoreLink.href = window.location.pathname + saved;
+        restoreLink.className = 'btn btn-sm btn-primary me-2';
+        restoreLink.textContent = L.restore;
+        const dismissButton = document.createElement('button');
+        dismissButton.type = 'button';
+        dismissButton.className = 'btn btn-sm btn-outline-secondary';
+        dismissButton.id = 'dismissRestoreFilters';
+        dismissButton.textContent = L.dismiss;
+        actions.appendChild(restoreLink);
+        actions.appendChild(dismissButton);
+
+        alertBox.appendChild(msg);
+        alertBox.appendChild(actions);
+        bar.appendChild(alertBox);
+
+        const anchor = document.querySelector('nav[aria-label="breadcrumb"]');
+        if (anchor && anchor.parentElement) {
+            anchor.parentElement.insertAdjacentElement('afterend', bar);
+        } else {
+            document.body.insertBefore(bar, document.body.firstChild);
+        }
+
+        const dismissBtn = document.getElementById('dismissRestoreFilters');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                try { localStorage.removeItem(KEY); } catch (e) {}
+                bar.remove();
+            });
+        }
+    });
+})();
+</script>
+
+<?php
 
 stdfoot();

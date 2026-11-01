@@ -38,7 +38,7 @@ function ml_open(string $title): void
     global $BASEURL;
     stdhead($title);
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/memberlist.css?ver=1">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/memberlist.css?ver=5">';
     echo '<div class="container-md st-page ml-page">';
 }
 

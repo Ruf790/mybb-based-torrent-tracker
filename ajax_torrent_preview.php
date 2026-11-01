@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+define('NO_ONLINE', true);
+
 define('IN_MYBB',    1);
 define('THIS_SCRIPT', 'ajax_torrent_preview.php');
 define('SCRIPTNAME',  'ajax_torrent_preview.php');

@@ -10,7 +10,7 @@ declare(strict_types=1);
  *
  * Always answers JSON: {"ok":true,...} or {"ok":false,"error":"..."}.
  */
-
+ 
 define('IN_MYBB', 1);
 define('THIS_SCRIPT', 'notifications_ajax.php');
 

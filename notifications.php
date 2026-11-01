@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+
 define('IN_MYBB', 1);
 define('THIS_SCRIPT', 'notifications.php');
 

@@ -119,7 +119,6 @@ function handleXmlHttpAction(): void
         'get_torrents_by_ids' => handleGetTorrentsByIds(),
         'select_all_filtered' => handleSelectAllFiltered(),
         'quick_comment' => handleQuickComment(),
-        'edit_torrent' => handleEditTorrent(),
         'rate_torrent' => handleRateTorrent(),
         'rate_thread' => handleRateThread(),
         'get_thread_info' => handleGetThreadInfo(),
@@ -990,9 +989,10 @@ function handleGetTorrentsByIds(): void
 
 /**
  * Handle select_all_filtered action - возвращает ID ВСЕХ торрентов,
- * подходящих под текущие фильтры browse.php, не только видимых на текущей
- * странице. WHERE строится общей функцией browse_build_where()
- * (include/functions_browse.php) - те же результаты, что видны на экране.
+ * подходящих под текущие фильтры browse.php (категория, поиск, размер,
+ * include_dead_torrents), не только видимых на текущей странице.
+ * Логика построения WHERE намеренно продублирована из browse.php 1:1 -
+ * это должно давать точно те же результаты, что видны на экране.
  * Доступно только модераторам - массовый выбор по всем страницам имеет
  * смысл именно для модерации.
  */
@@ -1008,15 +1008,115 @@ function handleSelectAllFiltered(): void
         exit;
     }
 
-    // Тот же разбор фильтров и тот же WHERE, что в browse.php (include/functions_browse.php).
-    // Раньше логика была скопирована вручную и отстала: не учитывались «без сидов»,
-    // фрилич, даты, IMDb, «скрыть скачанные» и т.д. - «выбрать всё по фильтру»
-    // захватывало раздачи, которых в списке не было.
-    require_once INC_PATH . '/functions_browse.php';
-    $flt       = browse_build_where(browse_filter_input($_GET), (int)$CURUSER['id'], true);
-    $innerjoin = $flt['join'];
-    $WHERE     = $flt['where'];
-    $params    = $flt['params'];
+    $category = (int)($_GET['category'] ?? 0);
+    $keywords = $_GET['keywords'] ?? '';
+    $search_type = trim($_GET['search_type'] ?? '');
+    $special_search = trim($_GET['special_search'] ?? '');
+    $include_dead_torrents = trim($_GET['include_dead_torrents'] ?? '');
+    $size_min = $_GET['size_min'] ?? '';
+    $size_max = $_GET['size_max'] ?? '';
+
+    $WHERE = " WHERE" . ($include_dead_torrents === 'yes' ? '' : " t.visible = 'yes' AND") . " t.banned = 'no'";
+    $innerjoin = '';
+    $params = [];
+
+    if ($special_search === 'myreseeds') {
+        $WHERE .= ' AND t.seeders = 0 AND t.leechers > 0 AND t.owner = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'mybookmarks') {
+        $innerjoin = ' INNER JOIN bookmarks b ON (b.torrentid = t.id)';
+        $WHERE .= ' AND b.userid = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'mytorrents') {
+        $WHERE .= ' AND t.owner = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'weaktorrents') {
+        $WHERE .= " AND t.visible = 'no' OR (t.leechers > 0 AND t.seeders = 0) OR (t.leechers = 0 AND t.seeders = 0)";
+    }
+
+    $extraquery = [];
+    $extra_params = [];
+
+    if ($keywords && $search_type) {
+        $OrjKeywords = $keywords;
+
+        if ($keywords) {
+            switch ($search_type) {
+                case 't_name':
+                    $extraquery[] = "(t.name LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_description':
+                    $extraquery[] = "(t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_tags':
+                    $extraquery[] = "(t.tags LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_both':
+                    $extraquery[] = "(t.name LIKE ? OR t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_uploader':
+                    $user_query = $db->sql_query_prepared(
+                        "SELECT id FROM users WHERE UPPER(username) = ? LIMIT 1",
+                        [strtoupper($OrjKeywords)]
+                    );
+                    if ($db->num_rows($user_query) > 0) {
+                        $user = $db->fetch_array($user_query);
+                        $extraquery[] = "t.owner = ?";
+                        $extra_params[] = $user['id'];
+                        if (!$is_mod) {
+                            $extraquery[] = "t.anonymous != 'yes'";
+                        }
+                    } else {
+                        $extraquery[] = "t.owner = ?";
+                        $extra_params[] = $OrjKeywords;
+                    }
+                    break;
+                case 't_genre':
+                    $extraquery[] = "(t.t_link LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+            }
+        }
+    }
+
+    if ($category) {
+        $cat_query = $db->sql_query_prepared(
+            "SELECT id FROM categories WHERE type='s' AND pid = ?",
+            [$category]
+        );
+        if ($db->num_rows($cat_query) > 0) {
+            $squerycats = [];
+            while ($squery = $db->fetch_array($cat_query)) {
+                $squerycats[] = (int)$squery['id'];
+            }
+            $extraquery[] = 't.category IN (' . $category . ', ' . implode(', ', $squerycats) . ')';
+        } else {
+            $extraquery[] = "t.category = ?";
+            $extra_params[] = $category;
+        }
+    }
+
+    $size_min_val = ($size_min !== '') ? (int)$size_min : null;
+    $size_max_val = ($size_max !== '') ? (int)$size_max : null;
+
+    if ($size_min_val !== null && $size_min_val > 0) {
+        $extraquery[] = 't.size >= ?';
+        $extra_params[] = $size_min_val;
+    }
+    if ($size_max_val !== null && $size_max_val > 0) {
+        $extraquery[] = 't.size <= ?';
+        $extra_params[] = $size_max_val;
+    }
+
+    if (count($extraquery) > 0) {
+        $WHERE .= ' AND ' . implode(' AND ', $extraquery);
+        $params = array_merge($params, $extra_params);
+    }
 
     // Safety cap - защита от случайного выбора вообще всего трекера разом
     $MAX_SELECT = 2000;
@@ -1300,381 +1400,6 @@ show_msg($showcommenttable, false, "", false);
 	
 	
 }
-
-
-
-
-
-
-
-/**
- * Handle edit_torrent action - AJAX обработка редактирования торрента
- */
-function handleEditTorrent(): void
-{
-    global $db, $CURUSER, $lang, $BASEURL, $torrent_dir, $cache, $is_mod;
-    
-    // Проверяем авторизацию
-    if (empty($CURUSER['id'])) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_not_logged_in']]);
-        exit;
-    }
-
-    // Проверяем метод запроса
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_invalid_request_method']]);
-        exit;
-    }
-
-    $isAjax = isset($_POST['ajax']) && $_POST['ajax'] == '1';
-    
-    ob_start();
-
-    $errors = [];
-    if (empty($_POST['name'])) {
-        $errors[] = $lang->xmlhttp['err_name_empty'];
-    }
-    if (empty($_POST['descr'])) {
-        $errors[] = $lang->xmlhttp['err_descr_empty'];
-    }
-
-    if (!empty($errors) && $isAjax) {
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => false,
-            'message' => implode(', ', $errors)
-        ]);
-        ob_end_flush();
-        exit;
-    }
-
-    // Получаем ID торрента
-    $id = intval($_POST['id'] ?? 0);
-    if (!$id) {
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'success' => false,
-                'message' => $lang->xmlhttp['err_no_torrent_id']
-            ]);
-            ob_end_flush();
-            exit;
-        } else {
-            die($lang->xmlhttp['err_no_torrent_id']);
-        }
-    }
-
-    // Проверяем права доступа к торренту
-    $torrent = get_torrent($id);
-    if (!$torrent) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_torrent_not_found']]);
-        exit;
-    }
-
-    // Проверяем, может ли пользователь редактировать этот торрент
-    if ((int)$CURUSER['id'] !== (int)$torrent['owner'] && !$is_mod) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $lang->xmlhttp['err_access_denied']]);
-        exit;
-    }
-
-    // Basic data
-    $name = htmlspecialchars($_POST['name']);
-    $descr = htmlspecialchars($_POST['descr']);
-    $t_image_file = $_FILES['t_image_file'] ?? [];
-    $t_image_file2 = $_FILES['t_image_file2'] ?? [];
-    $t_image_url = isset($_POST['t_image_url']) ? htmlspecialchars($_POST['t_image_url']) : '';
-    $t_image_url2 = isset($_POST['t_image_url2']) ? htmlspecialchars($_POST['t_image_url2']) : '';
-    
-    $t_link = $_POST['t_link'] ?? '';
-    
-    $category = intval($_POST['category'] ?? 0);
-    $free = isset($_POST['free']) && $_POST['free'] == 'yes' ? 'yes' : 'no';
-    $silver = isset($_POST['silver']) && $_POST['silver'] == 'yes' ? 'yes' : 'no';
-    $thirtypercent = isset($_POST['thirtypercent']) && $_POST['thirtypercent'] == 'yes' ? 'yes' : 'no';
-	$doubleupload = isset($_POST['doubleupload']) && $_POST['doubleupload'] == 'yes' ? 'yes' : 'no';
-    $allowcomments = isset($_POST['allowcomments']) && $_POST['allowcomments'] == 'no' ? 'no' : 'yes';
-    $sticky = isset($_POST['sticky']) && $_POST['sticky'] == 'yes' ? 'yes' : 'no';
-    $isrequest = isset($_POST['isrequest']) && $_POST['isrequest'] == 'yes' ? 'yes' : 'no';
-    $isnuked = isset($_POST['isnuked']) && $_POST['isnuked'] == 'yes' ? 'yes' : 'no';
-    $WhyNuked = isset($_POST['WhyNuked']) ? htmlspecialchars($_POST['WhyNuked']) : '';
-
-    $UpdateSet = [
-        'name' => $name,
-        'descr' => $descr,
-        'category' => $category,
-        'free' => $free,
-        'silver' => $silver,
-		'thirtypercent' => $thirtypercent,
-        'doubleupload' => $doubleupload,
-        'allowcomments' => $allowcomments,
-        'sticky' => $sticky,
-        'isrequest' => $isrequest,
-        'isnuked' => $isnuked,
-        'WhyNuked' => $isnuked == 'yes' ? $WhyNuked : ''
-    ];
-
-    
-	
-	
-	
-	// Обработка первого изображения (файл) - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ
-if (!empty($t_image_file)) 
-{
-    if (((( 0 < $t_image_file['size'] AND $t_image_file['error'] === 0 ) AND $t_image_file['tmp_name']) AND $t_image_file['name'])) 
-    {
-        $t_image_url = fix_url($t_image_file['name']);
-        $AllowedFileTypes = array('jpeg', 'jpg', 'gif', 'png', 'webp');
-        $ImageExt = get_extension($t_image_url);
-
-        if (in_array($ImageExt, $AllowedFileTypes, true)) 
-        {
-            $AllowedMimeTypes = array('image/jpeg', 'image/gif', 'image/png', 'image/webp');
-            $ImageDetails = getimagesize($t_image_file['tmp_name']);
-
-            if (( $ImageDetails AND in_array($ImageDetails['mime'], $AllowedMimeTypes, true ))) 
-            {
-                if ($ImageContents = file_get_contents($t_image_file['tmp_name'])) 
-                {
-                    $NewImageURL = $torrent_dir . '/images/' . $id . '.' . $ImageExt;
-
-                    if (file_exists($NewImageURL)) 
-                    {
-                        @unlink($NewImageURL);
-                    }
-
-                    if (file_put_contents($NewImageURL, $ImageContents)) 
-                    {
-                        $COVERIMAGEUPDATED = true;
-                        
-                        $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                        
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Обработка второго изображения (файл) - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ
-if (!empty($t_image_file2)) 
-{
-    if (((( 0 < $t_image_file2['size'] AND $t_image_file2['error'] === 0 ) AND $t_image_file2['tmp_name']) AND $t_image_file2['name'])) 
-    {
-        $t_image_url2 = fix_url($t_image_file2['name']);
-        $AllowedFileTypes = array('jpeg', 'jpg', 'gif', 'png', 'webp');
-        $ImageExt = get_extension( $t_image_url2 );
-
-        if (in_array($ImageExt, $AllowedFileTypes, true)) 
-        {
-            $AllowedMimeTypes = array('image/jpeg', 'image/gif', 'image/png', 'image/webp');
-            $ImageDetails = getimagesize($t_image_file2['tmp_name']);
-
-            if (( $ImageDetails AND in_array($ImageDetails['mime'], $AllowedMimeTypes, true))) 
-            {
-                if ($ImageContents = file_get_contents( $t_image_file2['tmp_name'] )) 
-                {
-                    $NewImageURL = $torrent_dir . '/images/' . $id . '_2.' . $ImageExt;
-
-                    if (file_exists($NewImageURL)) 
-                    {
-                        @unlink($NewImageURL);
-                    }
-
-                    if (file_put_contents($NewImageURL, $ImageContents)) 
-                    {
-                        $COVERIMAGEUPDATED = true;
-                        
-                        $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                        
-                    }
-                }
-            }
-        }
-    }
-}	
-
-// Обработка первого изображения (URL) - ИСПРАВЛЕННАЯ ВЕРСИЯ
-if (!empty($t_image_url)) 
-{
-    $t_image_url = fix_url($t_image_url);
-    $AllowedFileTypes = array('jpg', 'gif', 'png', 'webp');
-    $ImageExt = get_extension($t_image_url);
-
-    if (in_array($ImageExt, $AllowedFileTypes, true)) 
-    {
-        // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
-        include_once(INC_PATH . '/functions_remote_connect.php');
-
-        if ($ImageContents = fetch_remote_file($t_image_url, false)) 
-        {
-            $NewImageURL = $torrent_dir . '/images/' . $id . '.' . $ImageExt;
-
-            if (file_exists($NewImageURL)) 
-            {
-                @unlink($NewImageURL);
-            }
-
-            if (file_put_contents($NewImageURL, $ImageContents)) 
-            {
-                $COVERIMAGEUPDATED = true;
-                
-                $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-               
-            }
-        }
-    }
-}
-
-// Обработка второго изображения (URL) - ИСПРАВЛЕННАЯ ВЕРСИЯ
-if (!empty($t_image_url2)) 
-{
-    $t_image_url2 = fix_url($t_image_url2);
-    $AllowedFileTypes = array('jpg', 'gif', 'png', 'webp');
-    $ImageExt = get_extension($t_image_url2);
-
-    if (in_array($ImageExt, $AllowedFileTypes, true)) 
-    {
-        // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
-        include_once(INC_PATH . '/functions_remote_connect.php');
-
-        if ($ImageContents = fetch_remote_file($t_image_url2, false)) 
-        {
-            $NewImageURL = $torrent_dir . '/images/' . $id . '_2.' . $ImageExt;
-
-            if (file_exists($NewImageURL)) 
-            {
-                @unlink($NewImageURL);
-            }
-
-            if (file_put_contents($NewImageURL, $ImageContents)) 
-            {
-                $COVERIMAGEUPDATED = true;
-                
-                $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                
-            }
-        }
-    }
-}
-
-// Удаление первого изображения если URL пустой
-if (empty($t_image_url)) 
-{
-    $image_types = array ('gif', 'jpg', 'jpeg', 'png', 'webp');
-    foreach ($image_types as $image)
-    {
-        if (@file_exists (TSDIR . '/' . $torrent_dir . '/images/' . $id . '.' . $image))
-        {
-            @unlink (TSDIR . '/' . $torrent_dir . '/images/' . $id . '.' . $image);
-            continue;
-        }
-    }
-    
-    $UpdateSet['t_image'] = '';
-}
-
-// Удаление второго изображения если URL пустой  
-if (empty($t_image_url2)) 
-{
-    $image_types2 = array ('gif', 'jpg', 'jpeg', 'png', 'webp');
-    foreach ($image_types2 as $image2)
-    {
-        if (@file_exists (TSDIR . '/' . $torrent_dir . '/images/' . $id . '_2.' . $image2))
-        {
-            @unlink (TSDIR . '/' . $torrent_dir . '/images/' . $id . '_2.' . $image2);
-            continue;
-        }
-    }
-    
-    $UpdateSet['t_image2'] = '';
-}
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-
-    // Обработка IMDB ссылки
-    if (!empty($t_link)) {
-        if (preg_match('@^https:\/\/www\.imdb\.com\/title\/(.*)\/$@isU', $t_link, $result)) {
-            if ($result[0]) {
-                $t_link = $result[0];
-                include_once(INC_PATH . '/imdb_parser.php');
-                $db->sql_query_prepared("UPDATE torrents SET t_link = ?, tags = ? WHERE id = ?", [$t_link, $Genre ?? '', $id]);
-                unset($result);
-            }
-        } else {
-            $db->sql_query_prepared("UPDATE torrents SET t_link = '', tags = '' WHERE id = ?", [$id]);
-        }
-    } else {
-        $db->sql_query_prepared("UPDATE torrents SET t_link = '', tags = '' WHERE id = ?", [$id]);
-    }
-
-    // Основное обновление торрента
-    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($UpdateSet)));
-    $params = array_values($UpdateSet);
-    $params[] = $id;
-    $res = $db->sql_query_prepared("UPDATE torrents SET {$set} WHERE id = ?", $params);
-    if ($res) 
-	{
-        
-		
-		// Исправленная версия с проверками
-$log_message = sprintf(
-    'Torrent edited: %s by %s',
-    '[URL='.$BASEURL."/".get_torrent_link($id).']<font color=red>' . $name . '</font>[/URL]', 
-    '[URL='.$BASEURL . '/'.get_profile_link($CURUSER['id']).']' . format_name($CURUSER['username'],$CURUSER['usergroup']) . '[/URL]'
-);
-write_log($log_message);
-		
-
-	  
-        
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'success' => true,
-                'message' => $lang->xmlhttp['flash_torrent_updated'],
-                'updatedData' => [
-                    'name' => $name,
-                    'descr' => $descr,
-                    't_image' => $UpdateSet['t_image'] ?? ($torrent['t_image'] ?? ''),
-                    't_image2' => $UpdateSet['t_image2'] ?? ($torrent['t_image2'] ?? ''),
-                    'category' => $category
-                ]
-            ]);
-        } else {
-            header("Location: details.php?id=" . $id);
-        }
-    } else {
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'success' => false,
-                'message' => $lang->xmlhttp['err_torrent_update_failed']
-            ]);
-        } else {
-            die($lang->xmlhttp['err_torrent_update_failed']);
-        }
-    }
-    ob_end_flush();
-    exit;
-}
-
-
-
-
-
 
 
 

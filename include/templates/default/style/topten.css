@@ -40,7 +40,11 @@
 .tt-page .tt-tabs-card { padding: .5rem; }
 .tt-page .tt-tabs {
   display: flex; gap: .35rem; margin: 0; padding: 0; list-style: none;
-  overflow-x: auto; scrollbar-width: thin;
+  overflow-x: auto; scrollbar-width: none;   /* скролл свайпом, без полосы */
+}
+.tt-page .tt-tabs::-webkit-scrollbar { display: none; }
+@media (min-width: 992px) {
+  .tt-page .tt-tabs { flex-wrap: wrap; overflow: visible; }   /* на десктопе — перенос, а не прокрутка */
 }
 .tt-page .tt-tabs li { flex: 1 0 auto; }
 .tt-page .tt-tab {

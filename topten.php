@@ -240,7 +240,7 @@ function tt_ratio(int|float $up, int|float $down): string
 stdhead($lang->topten["page_title"]);
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/topten.css?ver=3">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/topten.css?ver=4">';
 ?>
 
 <div class="container-md st-page tt-page py-3">

@@ -213,7 +213,7 @@ flash_message();
  * Перед скриптом выводит AGS_LANG — все ключи js_* ланга без префикса.
  * Вызывать после stdhead().
  */
-function enqueue_staff_assets(): void
+function enqueue_staff_assets(bool $legacy_css = true): void
 {
     global $BASEURL, $lang;
     static $done = false;
@@ -227,7 +227,11 @@ function enqueue_staff_assets(): void
         }
     }
 
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staff.css">' . "\n";
+    // staff.css глобально переопределяет .card/.btn/.form-control — на страницах
+    // в новом стиле (st-ui.css + staffpanel.css) его не подключаем.
+    if ($legacy_css) {
+        echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staff.css">' . "\n";
+    }
     echo '<script>const AGS_LANG = '
        . json_encode($js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
        . ';</script>' . "\n";
@@ -354,14 +358,13 @@ function render_stafftools_page(): void
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
 
-	stdhead($lang->staffpanel['page_stafftools']);
-    enqueue_staff_assets();
+    stdhead($lang->staffpanel['page_stafftools']);
+    enqueue_staff_assets(false);
     menu('stafftools');
 
-    echo '<div class="container mt-3">';
-      get_list();
-    echo '</div>';
+    get_list();
 
+    echo '</div>';                  // .sp-root (раньше не закрывался)
     echo '</td></tr></table>';
     stdfoot();
 }
@@ -402,26 +405,16 @@ function handle_managestafftools(): void
 
 
 
-   // Список инструментов
+    // Список инструментов
     stdhead($lang->staffpanel['page_manage']);
-    enqueue_staff_assets();
+    enqueue_staff_assets(false);
     menu('managestafftools');
-    $add_btn = '<p align="right"><input type="button" class="hoptobutton" value="'
-             . htmlspecialchars($lang->staffpanel['btn_add_tool'], ENT_QUOTES) . '"'
-             . ' onClick="jumpto(\'' . $_this_script_no_act . '?act=managestafftools&do=newtool\')"></p>';
-    echo $add_btn;
-
-	echo '
-
-	<div class="container mt-3">
-	<table align="center" border="0" class="tborder" cellpadding="0" cellspacing="0" width="100%">
-    <tbody><tr><td><table class="tback" border="0" cellpadding="6" cellspacing="0" width="100%"><tbody><tr><td class="thead" colspan="6" align="center">' . htmlspecialchars($lang->staffpanel['thead_manage']) . '</td></tr>';
-
+    sp_swal_assets();
 
     get_list2();
-    echo '</table></tbody></td></tr></table></tbody></div></td></tr></table>';
-    echo '</div>';
-    echo $add_btn;
+
+    echo '</div>';                  // .sp-root
+    echo '</td></tr></table>';
     stdfoot();
 }
 
@@ -439,21 +432,33 @@ function save_tool(string $mode, int $id = 0): void
 {
     global $db, $thispath, $lang;
 
-    $name        = htmlspecialchars_uni($_POST['name']        ?? '');
-    $description = htmlspecialchars_uni($_POST['description'] ?? '');
+    // Имя инструмента = ?act=<name> и файл admin/<name>.php, поэтому только [a-z0-9_].
+    // Раньше имя проходило через htmlspecialchars_uni() и могло содержать «../».
+    $name        = strtolower(trim((string) ($_POST['name'] ?? '')));
+    $description = trim((string) ($_POST['description'] ?? ''));
     $filename    = $name . '.php';
-    $groups      = !empty($_POST['gid']) ? implode(',', $_POST['gid']) : '';
 
-    if (empty($name) || empty($description) || empty($groups)) {
+    // Группы: только [число], а не произвольные строки из POST
+    $groups = [];
+    foreach ((array) ($_POST['gid'] ?? []) as $g) {
+        $g = (int) trim((string) $g, '[] ');
+        if ($g > 0) $groups['[' . $g . ']'] = true;
+    }
+    $groups = implode(',', array_keys($groups));
+
+    if ($name === '' || $description === '' || $groups === '') {
         stderr($lang->staffpanel['err_fields_blank']); return;
     }
+    if (!preg_match('/^[a-z0-9_]{1,64}$/', $name)) {
+        stderr($lang->staffpanel['err_tool_name_invalid'] ?? 'Tool name may contain only latin letters, digits and _.'); return;
+    }
     if (!file_exists($thispath . $filename)) {
-        stderr(ags_fmt($lang->staffpanel['err_file_missing'], htmlspecialchars($thispath . 'admin/' . $filename)), false); return;
+        stderr(ags_fmt($lang->staffpanel['err_file_missing'], htmlspecialchars('admin/' . $filename)), false); return;
     }
 
     $data = [
         'name'        => $name,
-        'description' => $description,
+        'description' => htmlspecialchars_uni($description),
         'filename'    => $filename,
         'usergroups'  => $groups,
     ];
@@ -465,37 +470,69 @@ function save_tool(string $mode, int $id = 0): void
             "INSERT INTO staffpanel (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
             array_values($data)
         );
+        write_log('Staff tool added: ' . $name, 'staff');
         redirect('admin/index.php?act=' . $name, $lang->staffpanel['flash_tool_added']);
     } else {
         $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($data)));
         $params = array_values($data);
         $params[] = $id;
         $db->sql_query_prepared("UPDATE staffpanel SET {$set} WHERE id = ?", $params);
+        write_log('Staff tool updated: ' . $name . ' (ID ' . $id . ')', 'staff');
         redirect('index.php?act=managestafftools', $lang->staffpanel['flash_tool_updated']);
     }
+}
+
+/** SweetAlert2 для подтверждений (с confirm() как запасным вариантом в JS). */
+function sp_swal_assets(): void
+{
+    global $BASEURL;
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">' . "\n";
+    echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js" defer></script>' . "\n";
+    echo '<script src="' . $BASEURL . '/admin/scripts/stafftools-manage.js?ver=1" defer></script>' . "\n";
 }
 
 function render_delete_confirm(int $id): void
 {
     global $_this_script_, $mybb, $lang;
 
-    stdhead($lang->staffpanel['page_confirm_delete']);
-    echo '<div class="container mt-4"><div class="alert alert-warning">
-        <p>' . htmlspecialchars($lang->staffpanel['del_question']) . '</p>
-        <form method="post" action="' . $_this_script_ . '&do=delete&id=' . $id . '">
-            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-            <button type="submit" class="btn btn-danger">' . htmlspecialchars($lang->staffpanel['btn_del_yes']) . '</button>
-            <a href="' . $_this_script_ . '" class="btn btn-secondary">' . htmlspecialchars($lang->staffpanel['btn_del_no']) . '</a>
-        </form>
-    </div></div>';
+    $tool = fetch_tool($id);
+    $L    = $lang->staffpanel;
+    $e    = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+
+    stdhead($L['page_confirm_delete']);
+    enqueue_staff_assets(false);
+    menu('managestafftools');
+
+    echo '<div class="container-md st-page sp-page">'
+       .   '<div class="st-card sp-confirm">'
+       .     '<div class="st-card__body">'
+       .       '<div class="st-ico st-soft-danger sp-confirm__ico"><i class="fa-solid fa-trash-can"></i></div>'
+       .       '<div class="sp-confirm__title">' . $e($L['del_question']) . '</div>'
+       .       '<div class="sp-confirm__tool"><code>' . $e($tool['name']) . '</code> — ' . $tool['description'] . '</div>'
+       .       '<form method="post" action="' . $_this_script_ . '&amp;do=delete&amp;id=' . $id . '" class="sp-confirm__actions">'
+       .         '<input type="hidden" name="my_post_key" value="' . $e($mybb->post_code ?? '') . '">'
+       .         '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left"></i> ' . $e($L['btn_del_no']) . '</a>'
+       .         '<button type="submit" class="btn btn-danger st-pill"><i class="fa-solid fa-trash-can"></i> ' . $e($L['btn_del_yes']) . '</button>'
+       .       '</form>'
+       .     '</div>'
+       .   '</div>'
+       . '</div>';
+
+    echo '</div>';                  // .sp-root
+    echo '</td></tr></table>';
     stdfoot();
 }
 
 function delete_tool(int $id): void
 {
-    global $db, $_this_script_, $lang;
+    global $db, $lang;
 
+    $tool = fetch_tool($id);
     $db->sql_query_prepared('DELETE FROM staffpanel WHERE id = ?', [$id]);
+    write_log('Staff tool deleted: ' . $tool['name'] . ' (ID ' . $id . ')', 'staff');
     redirect('admin/index.php?act=managestafftools', $lang->staffpanel['flash_tool_deleted']);
 }
 
@@ -503,154 +540,110 @@ function render_tool_form(string $mode, ?array $tool = null): void
 {
     global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb, $lang;
 
-	require_once $thispath . 'include/stafftoolsfunctions.php';
+    require_once $thispath . 'include/stafftoolsfunctions.php';
 
-    $is_edit     = $mode === 'edit';
-    $title       = $is_edit ? $lang->staffpanel['form_title_edit'] : $lang->staffpanel['form_title_create'];
-    $accent      = $is_edit ? '#f59e0b'     : '#3b82f6';
-    $accent_hov  = $is_edit ? '#d97706'     : '#1d4ed8';
-    $icon        = $is_edit ? 'fa-edit'     : 'fa-plus-circle';
-    $btn_class   = $is_edit ? 'btn-warning' : 'btn-primary';
-    $btn_label   = htmlspecialchars($is_edit ? $lang->staffpanel['btn_update'] : $lang->staffpanel['btn_create']);
+    $L       = $lang->staffpanel;
+    $e       = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $is_edit = $mode === 'edit';
+
     $form_action = $is_edit
-        ? $_this_script_ . '&do=savetool&id=' . $tool['id']
-        : $_this_script_ . '&do=savenewtool';
+        ? $_this_script_ . '&amp;do=savetool&amp;id=' . (int) $tool['id']
+        : $_this_script_ . '&amp;do=savenewtool';
 
-    $val_name    = $is_edit ? htmlspecialchars($tool['name'])        : '';
-    $val_desc    = $is_edit ? htmlspecialchars($tool['description'])  : '';
-    $val_file    = $is_edit ? htmlspecialchars($tool['filename'])     : '';
-    $tool_groups = $is_edit ? explode(',', $tool['usergroups'])       : [];
-    $post_key    = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
+    $val_name    = $is_edit ? $e($tool['name']) : '';
+    // description хранится уже экранированным (htmlspecialchars_uni при сохранении)
+    $val_desc    = $is_edit ? (string) $tool['description'] : '';
+    $tool_groups = $is_edit ? explode(',', (string) $tool['usergroups']) : [];
 
-    // Тексты формы (чистый текст из ланга → экранируем)
-    $t_title        = htmlspecialchars($title);
-    $t_subtitle     = htmlspecialchars($lang->staffpanel['form_subtitle']);
-    $t_lbl_name     = htmlspecialchars($lang->staffpanel['lbl_tool_name']);
-    $t_ph_name      = htmlspecialchars($lang->staffpanel['ph_tool_name'], ENT_QUOTES);
-    $t_lbl_desc     = htmlspecialchars($lang->staffpanel['lbl_description']);
-    $t_ph_desc      = htmlspecialchars($lang->staffpanel['ph_description'], ENT_QUOTES);
-    $t_lbl_file     = htmlspecialchars($lang->staffpanel['lbl_filename']);
-    $t_hint_file    = htmlspecialchars($lang->staffpanel['hint_filename']);
-    $t_lbl_perms    = htmlspecialchars($lang->staffpanel['lbl_permissions']);
-    $t_badge_def    = htmlspecialchars($lang->staffpanel['badge_default']);
-    $t_check_all    = htmlspecialchars($lang->staffpanel['btn_check_all']);
-    $t_uncheck_all  = htmlspecialchars($lang->staffpanel['btn_uncheck_all']);
-    $t_lbl_id       = htmlspecialchars($lang->staffpanel['lbl_id']);
-    $t_lbl_created  = htmlspecialchars($lang->staffpanel['lbl_created']);
-    $t_back         = htmlspecialchars($lang->staffpanel['btn_back']);
-    $t_reset        = htmlspecialchars($lang->staffpanel['btn_reset']);
+    // Группы с доступом к панели
+    $perms = '';
+    $sql = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel = '1' ORDER BY disporder");
+    while ($sql && ($g = $db->fetch_array($sql))) {
+        $gid     = (int) $g['gid'];
+        $checked = $is_edit ? in_array('[' . $gid . ']', $tool_groups, true) : $gid === UC_SYSOP;
+        $label   = str_replace('{username}', htmlspecialchars_uni((string) $g['title']), (string) $g['namestyle']);
+        $default = (!$is_edit && $gid === UC_SYSOP)
+            ? ' <span class="st-badge st-soft-primary">' . $e($L['badge_default']) . '</span>' : '';
+        $perms .= '<label class="sp-perm" for="group_' . $gid . '">'
+                . '<input class="form-check-input perm-cb" type="checkbox" name="gid[]" value="[' . $gid . ']" id="group_' . $gid . '"' . ($checked ? ' checked' : '') . '>'
+                . '<span class="sp-perm__name">' . $label . '</span>' . $default
+                . '</label>';
+    }
+
+    $title = $is_edit ? $L['form_title_edit'] : $L['form_title_create'];
 
     stdhead($title);
-    enqueue_staff_assets();
+    enqueue_staff_assets(false);
+    menu($is_edit ? 'managestafftools' : 'newtool');
 
-
-
-    echo "<style>:root{--staff-accent:{$accent};--staff-accent-hover:{$accent_hov};}</style>\n";
-    menu('managestafftools');
-
-    echo <<<HTML
-<div class="container-fluid py-4">
-  <div class="row justify-content-center">
-    <div class="col-lg-8 col-xl-6">
-      <div class="staff-card">
-        <div class="staff-card-header d-flex align-items-center gap-3"
-             style="background:linear-gradient(135deg,var(--staff-accent),var(--staff-accent-hover))">
-          <div class="staff-header-icon"><i class="fas {$icon}"></i></div>
-          <div>
-            <h4 class="mb-1 fw-bold">{$t_title}</h4>
-            <p class="mb-0" style="opacity:.8;font-size:.9em">{$t_subtitle}</p>
-          </div>
-        </div>
-        <div class="p-4">
-          <form method="post" action="{$form_action}" class="needs-validation" novalidate>
-            <input type="hidden" name="my_post_key" value="{$post_key}">
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_name}</label>
-              <input type="text" class="form-control staff-form-control" id="toolName" name="name"
-                     value="{$val_name}" placeholder="{$t_ph_name}" required>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_desc}</label>
-              <input type="text" class="form-control staff-form-control" name="description"
-                     value="{$val_desc}" placeholder="{$t_ph_desc}" required>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-1">{$t_lbl_file}</label>
-              <input type="text" class="form-control staff-form-control" id="toolFilename"
-                     name="filename" value="{$val_file}" placeholder="tool.php" required>
-              <div class="form-text text-muted">{$t_hint_file}</div>
-            </div>
-            <div class="mb-4">
-              <label class="fw-semibold mb-2">{$t_lbl_perms}</label>
-              <div class="staff-permissions">
-HTML;
-
-    $sql = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel='1' ORDER BY disporder");
-    while ($sql && ($g = $db->fetch_array($sql))) {
-        $checked = ($is_edit
-            ? in_array('[' . $g['gid'] . ']', $tool_groups)
-            : $g['gid'] == UC_SYSOP) ? 'checked' : '';
-        //$label   = get_user_color($g['title'], $g['namestyle']);
-
-		$label = str_replace('{username}', $g['title'], $g['namestyle']);
-
-        $default = (!$is_edit && $g['gid'] == UC_SYSOP)
-            ? ' <span class="badge bg-primary ms-1" style="font-size:.7em">' . $t_badge_def . '</span>' : '';
-        echo <<<HTML
-                <div class="form-check">
-                  <input class="form-check-input perm-cb" type="checkbox"
-                         name="gid[]" value="[{$g['gid']}]" id="group_{$g['gid']}" {$checked}>
-                  <label class="form-check-label" for="group_{$g['gid']}">{$label}{$default}</label>
-                </div>
-HTML;
-    }
-
-    echo <<<HTML
-              </div>
-              <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="setPerms(true)">
-                  <i class="fas fa-check-double me-1"></i>{$t_check_all}
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPerms(false)">
-                  <i class="fas fa-times me-1"></i>{$t_uncheck_all}
-                </button>
-              </div>
-            </div>
-HTML;
-
+    $info = '';
     if ($is_edit) {
-        $created = date('Y-m-d H:i', $tool['added']);
-        echo <<<HTML
-            <div class="alert alert-info border-0 rounded-3 mb-4">
-              <i class="fas fa-info-circle me-2"></i>
-              <strong>{$t_lbl_id}</strong> {$tool['id']} &nbsp;|&nbsp; <strong>{$t_lbl_created}</strong> {$created}
-            </div>
-HTML;
+        $added = (int) ($tool['added'] ?? 0);
+        $info  = '<div class="st-head__meta">'
+               . '<span><i class="fa-solid fa-hashtag"></i>' . $e($L['lbl_id']) . ' ' . (int) $tool['id'] . '</span>'
+               . ($added > 0 ? '<span><i class="fa-solid fa-calendar-plus"></i>' . $e($L['lbl_created']) . ' ' . date('Y-m-d H:i', $added) . '</span>' : '')
+               . '</div>';
+    } else {
+        $info = '<div class="st-head__meta"><span>' . $e($L['form_subtitle']) . '</span></div>';
     }
 
-    echo <<<HTML
-            <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-              <a href="{$_this_script_no_act}?act=managestafftools" class="btn btn-outline-secondary staff-btn">
-                <i class="fas fa-arrow-left me-1"></i> {$t_back}
-              </a>
-              <div class="d-flex gap-2">
-                <button type="reset" class="btn btn-outline-danger staff-btn">
-                  <i class="fas fa-undo me-1"></i> {$t_reset}
-                </button>
-                <button type="submit" class="btn {$btn_class} staff-btn px-4">
-                  <i class="fas fa-save me-1"></i> {$btn_label}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-HTML;
+    $ph_file = $is_edit ? $e($tool['filename']) : 'tool_name.php';
 
-    echo '</div>';
+    echo '<div class="container-md st-page sp-page">'
+       . '<header class="st-card st-head mb-3">'
+       .   '<div class="st-head__icon ' . ($is_edit ? 'st-soft-warning' : 'st-soft-primary') . '"><i class="fa-solid ' . ($is_edit ? 'fa-pen-to-square' : 'fa-square-plus') . '"></i></div>'
+       .   '<div class="flex-grow-1 min-w-0"><h1 class="st-title">' . $e($title) . '</h1>' . $info . '</div>'
+       . '</header>'
+
+       . '<form method="post" action="' . $form_action . '" class="st-card sp-form needs-validation" novalidate>'
+       .   '<input type="hidden" name="my_post_key" value="' . $e($mybb->post_code ?? '') . '">'
+
+       .   '<div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-toolbox"></i></span>' . $e($L['form_subtitle']) . '</div>'
+       .   '<div class="st-card__body">'
+       .     '<div class="row g-3">'
+       .       '<div class="col-md-6">'
+       .         '<label class="form-label sp-lbl" for="toolName"><i class="fa-solid fa-tag"></i>' . $e($L['lbl_tool_name']) . '</label>'
+       .         '<input type="text" class="form-control" id="toolName" name="name" value="' . $val_name . '"'
+       .           ' placeholder="' . $e($L['ph_tool_name']) . '" pattern="[A-Za-z0-9_]{1,64}" maxlength="64" required autocomplete="off">'
+       .       '</div>'
+       .       '<div class="col-md-6">'
+       .         '<label class="form-label sp-lbl" for="toolFilename"><i class="fa-solid fa-file-code"></i>' . $e($L['lbl_filename']) . '</label>'
+       .         '<div class="input-group">'
+       .           '<span class="input-group-text">admin/</span>'
+       .           '<input type="text" class="form-control sp-mono" id="toolFilename" value="' . ($is_edit ? $e($tool['filename']) : '') . '" placeholder="' . $ph_file . '" readonly tabindex="-1">'
+       .         '</div>'
+       .         '<div class="form-text">' . $e($L['hint_filename_auto'] ?? 'Generated from the tool name — the file must already exist.') . '</div>'
+       .       '</div>'
+       .       '<div class="col-12">'
+       .         '<label class="form-label sp-lbl" for="toolDesc"><i class="fa-solid fa-align-left"></i>' . $e($L['lbl_description']) . '</label>'
+       .         '<input type="text" class="form-control" id="toolDesc" name="description" value="' . $val_desc . '"'
+       .           ' placeholder="' . $e($L['ph_description']) . '" required>'
+       .       '</div>'
+       .     '</div>'
+       .   '</div>'
+
+       .   '<div class="st-card__head sp-form__sec">'
+       .     '<span class="st-ico st-soft-success"><i class="fa-solid fa-user-shield"></i></span>' . $e($L['lbl_permissions'])
+       .     '<div class="ms-auto d-flex gap-2">'
+       .       '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-sp-perms="1"><i class="fa-solid fa-check-double"></i> ' . $e($L['btn_check_all']) . '</button>'
+       .       '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-sp-perms="0"><i class="fa-solid fa-xmark"></i> ' . $e($L['btn_uncheck_all']) . '</button>'
+       .     '</div>'
+       .   '</div>'
+       .   '<div class="st-card__body"><div class="sp-perms">' . $perms . '</div></div>'
+
+       .   '<div class="st-toolbar st-toolbar--bottom">'
+       .     '<a href="' . $_this_script_no_act . '?act=managestafftools" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-arrow-left"></i> ' . $e($L['btn_back']) . '</a>'
+       .     '<div class="d-flex gap-2">'
+       .       '<button type="reset" class="btn btn-outline-danger st-pill"><i class="fa-solid fa-rotate-left"></i> ' . $e($L['btn_reset']) . '</button>'
+       .       '<button type="submit" class="btn ' . ($is_edit ? 'btn-warning' : 'btn-primary') . ' st-pill"><i class="fa-solid fa-floppy-disk"></i> ' . $e($is_edit ? $L['btn_update'] : $L['btn_create']) . '</button>'
+       .     '</div>'
+       .   '</div>'
+       . '</form>'
+       . '</div>';
+
+    sp_swal_assets();               // stafftools-manage.js: «отметить все», имя файла из названия
+
+    echo '</div>';                  // .sp-root
     echo '</td></tr></table>';
     stdfoot();
 }
@@ -898,224 +891,167 @@ function render_dashboard(): void
 {
     global $db, $CURUSER, $SITENAME, $thispath, $BASEURL, $lang;
 
-	require_once $thispath . 'include/stafftoolsfunctions.php';
+    require_once $thispath . 'include/stafftoolsfunctions.php';
 
-    $cut  = TIMENOW - 86400;
+    $L   = $lang->staffpanel;
+    $e   = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $cut = TIMENOW - 86400;
 
-    $totalusers    = get_count('c', 'users',    "WHERE ustatus='confirmed'");
-    $newuserstoday = get_count('c', 'users',    'WHERE added > ?', [$cut]);
-    $pendingusers  = get_count('c', 'users',    "WHERE ustatus='pending'");
-    $todaycomments = get_count('c', 'comments', 'WHERE dateline > ?', [$cut]);
-    $todayvisits   = get_count('c', 'users',    'WHERE lastactive > ?', [$cut]);
-    $peers         = get_count('c', 'peers');
-    $seeders       = get_count('c', 'peers',    "WHERE seeder='yes'");
-    $leechers      = get_count('c', 'peers',    "WHERE seeder='no'");
+    // Пользователи — один запрос вместо пяти
+    $u = $db->fetch_array($db->sql_query_prepared(
+        "SELECT COALESCE(SUM(ustatus = 'confirmed'), 0) AS total,
+                COALESCE(SUM(added > ?), 0)             AS new_today,
+                COALESCE(SUM(ustatus = 'pending'), 0)   AS pending,
+                COALESCE(SUM(lastactive > ?), 0)        AS active_today,
+                COALESCE(SUM(uploaded), 0)              AS ul,
+                COALESCE(SUM(downloaded), 0)            AS dl
+         FROM users",
+        [$cut, $cut]
+    )) ?: [];
+
+    // Пиры — один запрос вместо трёх
+    $p = $db->fetch_array($db->sql_query_prepared(
+        "SELECT COUNT(*) AS peers, COALESCE(SUM(seeder = 'yes'), 0) AS seeders FROM peers"
+    )) ?: [];
+
+    $totalusers    = (int) ($u['total'] ?? 0);
+    $newuserstoday = (int) ($u['new_today'] ?? 0);
+    $pendingusers  = (int) ($u['pending'] ?? 0);
+    $todayvisits   = (int) ($u['active_today'] ?? 0);
+    $peers         = (int) ($p['peers'] ?? 0);
+    $seeders       = (int) ($p['seeders'] ?? 0);
+    $leechers      = max(0, $peers - $seeders);
     $totaltorrents = get_count('c', 'torrents');
+    $todaycomments = get_count('c', 'comments', 'WHERE dateline > ?', [$cut]);
 
-    $sum_q    = $db->sql_query_prepared('SELECT SUM(downloaded) AS dl, SUM(uploaded) AS ul FROM users');
-    $row      = $sum_q ? $db->fetch_array($sum_q) : ['dl' => 0, 'ul' => 0];
-    $dl       = (float) $row['dl'];
-    $ul       = (float) $row['ul'];
-    $dl_disp  = mksize($dl);
-    $ul_disp  = mksize($ul);
-    $ratio    = $dl > 0 ? round($ul / $dl, 2) : '∞';
-
-    $username = htmlspecialchars_uni($CURUSER['username']);
-    $date_str = date($lang->staffpanel['fmt_date_short']);
-    $time_str = date('H:i:s');
+    $ul    = (float) ($u['ul'] ?? 0);
+    $dl    = (float) ($u['dl'] ?? 0);
+    $ratio = $dl > 0 ? number_format($ul / $dl, 2) : '∞';
 
     // Системные метрики
-    $serverload     = function_exists('get_server_load')  ? get_server_load()  : 0;
+    $serverload     = function_exists('get_server_load')  ? (float) get_server_load() : 0.0;
     $memory_display = function_exists('get_memory_usage') ? mksize(get_memory_usage()) : '—';
-    $dbsize         = function_exists('getDbSize')        ? getDbSize()        : '—';
-    $diskfree       = function_exists('getDiskFree')      ? getDiskFree()      : '—';
-    $recentactivity = function_exists('getRecentActivity')? getRecentActivity(): '';
+    $dbsize         = getDbSize();
+    $diskfree       = getDiskFree();
+    $recentactivity = getRecentActivity(6);
 
-    $load_bar = $serverload > 80 ? 'bg-danger' : ($serverload > 60 ? 'bg-warning' : 'bg-success');
-    $load_pct = min($serverload, 100);
+    $load_pct  = (int) round(min(max($serverload, 0), 100));
+    $load_tone = $load_pct > 80 ? 'danger' : ($load_pct > 60 ? 'warning' : 'success');
 
-    $sc = fn($icon, $lbl, $val, $cls = 'text-dark') => <<<HTML
-<div class="col">
-  <div class="stat-card">
-    <i class="fas {$icon} fs-2 mb-1"></i>
-    <div class="small text-muted">{$lbl}</div>
-    <div class="fw-bold fs-5 {$cls}">{$val}</div>
-  </div>
-</div>
-HTML;
-
-    $col_total    = $sc('fa-user-plus text-primary',      htmlspecialchars($lang->staffpanel['stat_total_users']),  ts_nf($totalusers));
-    $col_new      = $sc('fa-user-clock text-success',     htmlspecialchars($lang->staffpanel['stat_new_today']),    ts_nf($newuserstoday),  'text-success');
-    $col_pending  = $sc('fa-user-times text-warning',     htmlspecialchars($lang->staffpanel['stat_unconfirmed']),  ts_nf($pendingusers),   'text-warning');
-    $col_active   = $sc('fa-eye text-info',               htmlspecialchars($lang->staffpanel['stat_active_users']), ts_nf($todayvisits),    'text-info');
-    $col_comments = $sc('fa-comment-dots text-secondary', htmlspecialchars($lang->staffpanel['stat_comments']),     ts_nf($todaycomments),  'text-secondary');
-    $col_peers    = $sc('fa-users text-danger',           htmlspecialchars($lang->staffpanel['stat_peers']),        ts_nf($peers),          'text-danger');
-    $col_seeders  = $sc('fa-arrow-up text-success',       htmlspecialchars($lang->staffpanel['stat_seeders']),      ts_nf($seeders),        'text-success');
-    $col_leechers = $sc('fa-arrow-down text-primary',     htmlspecialchars($lang->staffpanel['stat_leechers']),     ts_nf($leechers),       'text-primary');
-    $col_torrents = $sc('fa-file-alt text-info',          htmlspecialchars($lang->staffpanel['stat_torrents']),     ts_nf($totaltorrents),  'text-info');
-    $col_ul       = $sc('fa-upload text-success',         htmlspecialchars($lang->staffpanel['stat_uploaded']),     $ul_disp,               'text-success');
-    $col_dl       = $sc('fa-download text-danger',        htmlspecialchars($lang->staffpanel['stat_downloaded']),   $dl_disp,               'text-danger');
-    $col_ratio    = $sc('fa-balance-scale text-warning',  htmlspecialchars($lang->staffpanel['stat_ratio']),        $ratio,                 'text-warning');
-
-    $t_welcome    = ags_fmt(htmlspecialchars($lang->staffpanel['dash_welcome']), $SITENAME);
-    $t_tagline    = htmlspecialchars($lang->staffpanel['dash_tagline']);
-    $t_user_stats = htmlspecialchars($lang->staffpanel['card_user_stats']);
-    $t_activity   = htmlspecialchars($lang->staffpanel['card_activity']);
-    $t_peers      = $lang->staffpanel['card_peers']; // содержит &amp;
-    $t_traffic    = htmlspecialchars($lang->staffpanel['card_traffic']);
-    $t_health     = htmlspecialchars($lang->staffpanel['card_health']);
-    $t_recent     = htmlspecialchars($lang->staffpanel['card_recent']);
-    $t_load       = htmlspecialchars($lang->staffpanel['lbl_server_load']);
-    $t_db_size    = htmlspecialchars($lang->staffpanel['lbl_db_size']);
-    $t_disk_free  = htmlspecialchars($lang->staffpanel['lbl_disk_free']);
-    $t_memory     = htmlspecialchars($lang->staffpanel['lbl_memory']);
-    $t_view_logs  = htmlspecialchars($lang->staffpanel['btn_view_logs']);
-
-
-
-    stdhead($lang->staffpanel['page_dashboard']);
-    enqueue_staff_assets();
+    stdhead($L['page_dashboard']);
+    enqueue_staff_assets(false);
     menu('welcome');
 
+    // ── KPI-плитки ──
+    $tile = static function (string $icon, string $soft, string $val, string $lbl, string $sub = ''): string {
+        return '<div class="st-kpi st-kpi--muted">'
+             .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+             .   '<div class="min-w-0">'
+             .     '<div class="st-kpi__val">' . $val . '</div>'
+             .     '<div class="st-kpi__lbl">' . $lbl . '</div>'
+             .     ($sub !== '' ? '<div class="sp-kpi__sub">' . $sub . '</div>' : '')
+             .   '</div>'
+             .   '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+             . '</div>';
+    };
+
+    // ── Строка «метка — значение» (st-rows из st-ui.css) ──
+    $row = static fn(string $icon, string $lbl, string $val, string $cls = ''): string =>
+        '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid ' . $icon . '"></i>' . $lbl . '</span>'
+        . '<span class="st-row__val' . ($cls !== '' ? ' ' . $cls : '') . '">' . $val . '</span></div>';
+
+    $kpis = $tile('fa-users',      'st-soft-primary', ts_nf($totalusers),    $e($L['stat_total_users']),
+                  '<i class="fa-solid fa-plus text-success"></i> ' . ts_nf($newuserstoday) . ' ' . $e(mb_strtolower($L['stat_new_today'])))
+          . $tile('fa-eye',        'st-soft-info',    ts_nf($todayvisits),   $e($L['stat_active_users']),
+                  '<i class="fa-solid fa-comment-dots"></i> ' . ts_nf($todaycomments) . ' ' . $e(mb_strtolower($L['stat_comments'])))
+          . $tile('fa-users-line', 'st-soft-success', ts_nf($peers),         $e($L['stat_peers']),
+                  '<i class="fa-solid fa-arrow-up text-success"></i> ' . ts_nf($seeders)
+                  . ' <i class="fa-solid fa-arrow-down text-danger ms-1"></i> ' . ts_nf($leechers))
+          . $tile('fa-magnet',     'st-soft-danger',  ts_nf($totaltorrents), $e($L['stat_torrents']));
+
+    $users_rows = $row('fa-user-check',  $e($L['stat_total_users']),  ts_nf($totalusers))
+                . $row('fa-user-plus',   $e($L['stat_new_today']),    ts_nf($newuserstoday), 'text-success')
+                . $row('fa-user-clock',  $e($L['stat_unconfirmed']),  ts_nf($pendingusers),  $pendingusers > 0 ? 'text-warning' : '')
+                . $row('fa-eye',         $e($L['stat_active_users']), ts_nf($todayvisits))
+                . $row('fa-comment-dots',$e($L['stat_comments']),     ts_nf($todaycomments));
+
+    $traffic_rows = $row('fa-arrow-up',        $e($L['stat_uploaded']),   mksize($ul), 'text-success')
+                  . $row('fa-arrow-down',      $e($L['stat_downloaded']), mksize($dl), 'text-danger')
+                  . $row('fa-scale-balanced',  $e($L['stat_ratio']),      $ratio)
+                  . $row('fa-seedling',        $e($L['stat_seeders']),    ts_nf($seeders), 'text-success')
+                  . $row('fa-download',        $e($L['stat_leechers']),   ts_nf($leechers), 'text-danger');
+
+    $health_rows = $row('fa-database', $e($L['lbl_db_size']),   $e($dbsize))
+                 . $row('fa-hard-drive', $e($L['lbl_disk_free']), $e($diskfree))
+                 . $row('fa-memory',   $e($L['lbl_memory']),    $e($memory_display));
+
+    $t_welcome = ags_fmt($e($L['dash_welcome']), $e($SITENAME));
+    $username  = htmlspecialchars_uni($CURUSER['username']);
+    $date_str  = $e(date($L['fmt_date_short']));
+    $time_str  = date('H:i:s');
+
     echo <<<HTML
-<div class="container mt-3">
+<div class="container-md st-page sp-page">
 
-  <!-- Welcome Card -->
-  <div class="card bg-primary text-white rounded-4 mb-4">
-    <div class="card-body p-4">
-      <div class="row align-items-center">
-        <div class="col-md-8">
-          <h3 class="fw-bold mb-1"><i class="fas fa-user-shield me-2"></i>{$username}</h3>
-          <h5 class="mb-2">{$t_welcome}</h5>
-          <p class="mb-0 opacity-75">{$t_tagline}</p>
-        </div>
-        <div class="col-md-4 text-md-end mt-3 mt-md-0">
-          <div class="bg-white bg-opacity-25 rounded-3 p-3 d-inline-block text-center">
-            <i class="fas fa-clock fa-2x mb-1"></i>
-            <div class="fw-bold" id="live-clock">{$time_str}</div>
-            <small>{$date_str}</small>
-          </div>
-        </div>
+  <header class="st-card st-head mb-3">
+    <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-user-shield"></i></div>
+    <div class="flex-grow-1 min-w-0">
+      <h1 class="st-title">{$t_welcome}</h1>
+      <div class="st-head__meta">
+        <span><i class="fa-solid fa-user"></i>{$username}</span>
+        <span>{$e($L['dash_tagline'])}</span>
       </div>
     </div>
+    <div class="sp-clock" aria-live="off">
+      <i class="fa-solid fa-clock"></i>
+      <div>
+        <div class="sp-clock__time" id="live-clock">{$time_str}</div>
+        <div class="sp-clock__date">{$date_str}</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="sp-kpis mb-3">{$kpis}</div>
+
+  <div class="sp-grid mb-3">
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-users"></i></span>{$e($L['card_user_stats'])}</div>
+      <div class="st-card__body"><div class="st-rows">{$users_rows}</div></div>
+    </section>
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-info"><i class="fa-solid fa-right-left"></i></span>{$e($L['card_traffic'])}</div>
+      <div class="st-card__body"><div class="st-rows">{$traffic_rows}</div></div>
+    </section>
   </div>
 
-  <!-- User & Activity -->
-  <div class="row g-4 mb-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-primary text-white">
-          <h6 class="mb-0"><i class="fas fa-users me-2"></i>{$t_user_stats}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_total}{$col_new}{$col_pending}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-success text-white">
-          <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>{$t_activity}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_active}{$col_comments}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Peers & Traffic -->
-  <div class="row g-4 mb-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-warning text-dark">
-          <h6 class="mb-0"><i class="fas fa-download me-2"></i>{$t_peers}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_peers}{$col_seeders}{$col_leechers}{$col_torrents}</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-info text-white">
-          <h6 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>{$t_traffic}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row text-center g-3">{$col_ul}{$col_dl}{$col_ratio}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- System Health & Activity -->
-  <div class="row g-4">
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-danger text-white">
-          <h6 class="mb-0"><i class="fas fa-heartbeat me-2"></i>{$t_health}</h6>
-        </div>
-        <div class="card-body">
-          <div class="row align-items-center mb-3">
-            <div class="col-8">
-              <h6 class="mb-1">{$t_load}</h6>
-              <div class="progress" style="height:8px">
-                <div class="progress-bar {$load_bar}" style="width:{$load_pct}%"></div>
-              </div>
-            </div>
-            <div class="col-4 text-end"><span class="fw-bold">{$serverload}%</span></div>
-          </div>
-          <div class="row text-center">
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-database text-primary fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_db_size}</h6>
-              <small class="fw-bold">{$dbsize}</small>
-            </div>
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-hdd text-info fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_disk_free}</h6>
-              <small class="fw-bold">{$diskfree}</small>
-            </div>
-            <div class="col-md-4 mb-3">
-              <i class="fas fa-memory text-success fs-3"></i>
-              <h6 class="text-muted mb-1 mt-1">{$t_memory}</h6>
-              <small class="fw-bold">{$memory_display}</small>
-            </div>
+  <div class="sp-grid mb-3">
+    <section class="st-card">
+      <div class="st-card__head"><span class="st-ico st-soft-danger"><i class="fa-solid fa-heart-pulse"></i></span>{$e($L['card_health'])}</div>
+      <div class="st-card__body">
+        <div class="sp-load">
+          <div class="sp-load__top"><span><i class="fa-solid fa-gauge-high"></i>{$e($L['lbl_server_load'])}</span><strong>{$load_pct}%</strong></div>
+          <div class="progress sp-load__bar" role="progressbar" aria-valuenow="{$load_pct}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar bg-{$load_tone}" style="width:{$load_pct}%"></div>
           </div>
         </div>
+        <div class="st-rows">{$health_rows}</div>
       </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm border-0 h-100">
-        <div class="card-header bg-secondary text-white">
-          <h6 class="mb-0"><i class="fas fa-history me-2"></i>{$t_recent}</h6>
-        </div>
-        <div class="card-body d-flex flex-column">
-          <div class="flex-grow-1">{$recentactivity}</div>
-          <div class="text-center mt-3">
-            <a href="index.php?act=log" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-list me-1"></i>{$t_view_logs}
-            </a>
-          </div>
-        </div>
+    </section>
+    <section class="st-card sp-recent">
+      <div class="st-card__head">
+        <span class="st-ico st-soft-muted"><i class="fa-solid fa-clock-rotate-left"></i></span>{$e($L['card_recent'])}
+        <a href="index.php?act=log" class="ms-auto btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-list"></i> {$e($L['btn_view_logs'])}</a>
       </div>
-    </div>
+      <div class="st-card__body">{$recentactivity}</div>
+    </section>
   </div>
-
 
 </div>
 HTML;
 
-    echo '</div></td></tr></table>';
-
-	stdfoot();
+    echo '</div></td></tr></table>';   // .sp-root + layout
+    stdfoot();
 }
-
-
-
-
-
-
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1155,21 +1091,19 @@ function getRecentActivity(int $limit = 5): string
          ORDER BY l.id DESC LIMIT ?", [$limit]);
 
     if (!$r || $db->num_rows($r) === 0) {
-        return '<div class="text-center text-muted py-3">'
-             . '<i class="fas fa-history opacity-50 me-1"></i>'
+        return '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-solid fa-clock-rotate-left"></i></div>'
              . htmlspecialchars($lang->staffpanel['no_recent_activity']) . '</div>';
     }
 
-    $html = '<ul class="list-unstyled mb-0">';
-    while ($r && ($row = $db->fetch_array($r))) {
+    $html = '<ul class="sp-log">';
+    while ($row = $db->fetch_array($r)) {
         $user   = htmlspecialchars($row['username'] ?? $lang->staffpanel['user_system']);
         $action = htmlspecialchars($row['txt']      ?? '');
         $time   = date('d.m H:i', (int)($row['added'] ?? 0));
-        $html  .= "<li class='d-flex align-items-start gap-2 mb-2'>"
-                . "<i class='fas fa-circle text-secondary mt-1' style='font-size:.5em;flex-shrink:0'></i>"
-                . "<div><span class='fw-semibold'>{$user}</span> "
-                . "<span class='text-muted'>{$action}</span>"
-                . "<div><small class='text-muted'>{$time}</small></div></div></li>";
+        $html  .= '<li class="sp-log__item">'
+                . '<span class="sp-log__dot" aria-hidden="true"></span>'
+                . '<div class="min-w-0"><div class="sp-log__text"><strong>' . $user . '</strong> ' . $action . '</div>'
+                . '<div class="sp-log__time"><i class="fa-solid fa-clock"></i>' . $time . '</div></div></li>';
     }
     return $html . '</ul>';
 }

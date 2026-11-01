@@ -1,0 +1,252 @@
+/* ============================================================================
+   staffpanel.css — главная админки (admin/index.php): меню, дашборд, Staff Tools
+   Базовые компоненты (.st-card, .st-head, .st-ico, .st-badge, .st-kpi, .st-rows,
+   .st-toolbar, .st-empty, .st-pill) — из общего st-ui.css.
+   Всё под .sp-page. Только переменные Bootstrap — тёмная тема работает.
+   ============================================================================ */
+
+.sp-page { padding-top: .75rem; padding-bottom: .25rem; }
+.sp-page + .sp-page { padding-top: 0; }
+.sp-page--nav { padding-bottom: 0; margin-bottom: .75rem; }
+
+/* ── Серые KPI-плитки с иконкой в углу ─────────────────────────────────────
+   (если визуальный слой уже есть в st-ui.css, первые 4 правила можно удалить) */
+.sp-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
+.sp-page .st-kpi { position: relative; overflow: hidden; }
+.sp-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.sp-page .st-kpi__bg {
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+.sp-page .sp-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .75rem;
+}
+.sp-page .sp-kpi__sub { font-size: .75em; color: var(--bs-secondary-color); margin-top: .15rem; white-space: nowrap; }
+.sp-page .st-kpi__val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Фиолетовый тон (в st-ui.css его нет) */
+.sp-page { --sp-purple-soft: rgba(139, 92, 246, .14); --sp-purple-strong: #6d28d9; }
+[data-bs-theme="dark"] .sp-page { --sp-purple-strong: #c4b5fd; }
+.sp-page .sp-soft-purple { background: var(--sp-purple-soft); color: var(--sp-purple-strong); }
+
+/* ── Меню панели ───────────────────────────────────────────────────────── */
+.sp-page .sp-nav {
+    display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem;
+    padding: .5rem .6rem .5rem .9rem;
+}
+.sp-page .sp-nav__brand { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.sp-page .sp-nav__title { font-weight: 700; color: var(--bs-emphasis-color); white-space: nowrap; }
+.sp-page .sp-nav__status {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .78em; font-weight: 600; color: var(--bs-success-text-emphasis);
+    background: var(--bs-success-bg-subtle); padding: .15rem .55rem; border-radius: 999px;
+}
+.sp-page .sp-nav__dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--bs-success); }
+.sp-page .sp-nav__list {
+    display: flex; gap: .25rem; margin: 0 0 0 auto; padding: 0; list-style: none;
+    overflow-x: auto; scrollbar-width: none;
+}
+.sp-page .sp-nav__list::-webkit-scrollbar { display: none; }
+.sp-page .sp-nav__link {
+    display: flex; align-items: center; gap: .45rem;
+    padding: .45rem .8rem; border-radius: 999px;
+    font-size: .86em; font-weight: 600; white-space: nowrap;
+    color: var(--bs-secondary-color); text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+.sp-page .sp-nav__link:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.sp-page .sp-nav__link.active { background: var(--bs-primary); color: #fff; box-shadow: 0 6px 14px -8px var(--bs-primary); }
+@media (min-width: 992px) {
+    /* на десктопе пункты в одну линию: плотнее и с правом сжиматься */
+    .sp-page .sp-nav__list { flex: 1 1 auto; min-width: 0; gap: .1rem; justify-content: flex-end; }
+    .sp-page .sp-nav__list li { flex: 0 1 auto; min-width: 0; }
+    .sp-page .sp-nav__link { padding: .45rem .6rem; gap: .4rem; font-size: .84em; }
+    .sp-page .sp-nav__label { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ── Дашборд ───────────────────────────────────────────────────────────── */
+.sp-page .sp-clock {
+    display: flex; align-items: center; gap: .7rem; flex: 0 0 auto;
+    padding: .55rem .9rem; border-radius: .8rem;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
+}
+.sp-page .sp-clock > i { font-size: 1.3rem; opacity: .7; }
+.sp-page .sp-clock__time {
+    font-weight: 700; font-size: 1.15rem; line-height: 1.1;
+    color: var(--bs-emphasis-color); font-variant-numeric: tabular-nums;
+}
+.sp-page .sp-clock__date { font-size: .78em; }
+
+.sp-page .sp-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+}
+.sp-page .sp-grid > .st-card { min-width: 0; }
+
+.sp-page .sp-load { margin-bottom: .9rem; }
+.sp-page .sp-load__top {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .92em; margin-bottom: .4rem;
+}
+.sp-page .sp-load__top span { color: var(--bs-secondary-color); }
+.sp-page .sp-load__top i { margin-right: .45rem; opacity: .75; }
+.sp-page .sp-load__top strong { color: var(--bs-emphasis-color); }
+.sp-page .sp-load__bar { height: .5rem; border-radius: 999px; background: var(--bs-tertiary-bg); }
+.sp-page .sp-load__bar .progress-bar { border-radius: 999px; }
+
+/* Последняя активность */
+.sp-page .sp-log { list-style: none; margin: 0; padding: 0; }
+.sp-page .sp-log__item {
+    display: flex; gap: .7rem; padding: .55rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.sp-page .sp-log__item:first-child { padding-top: 0; }
+.sp-page .sp-log__item:last-child { border-bottom: 0; padding-bottom: 0; }
+.sp-page .sp-log__dot {
+    flex: 0 0 auto; width: .5rem; height: .5rem; margin-top: .45rem;
+    border-radius: 50%; background: var(--bs-primary); opacity: .55;
+}
+.sp-page .sp-log__text { font-size: .9em; overflow-wrap: anywhere; color: var(--bs-secondary-color); }
+.sp-page .sp-log__text strong { color: var(--bs-emphasis-color); }
+.sp-page .sp-log__time { font-size: .75em; color: var(--bs-secondary-color); margin-top: .1rem; }
+.sp-page .sp-log__time i { margin-right: .3rem; opacity: .7; }
+
+/* ── Staff Tools ───────────────────────────────────────────────────────── */
+.sp-page .sp-filter .st-toolbar { justify-content: flex-start; }
+.sp-page .sp-filter__search { flex: 1 1 18rem; width: auto; }
+.sp-page .sp-filter__search .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.sp-page .sp-filter__pills { display: flex; flex-wrap: wrap; gap: .35rem; }
+.sp-page .sp-filter__pills .btn { display: inline-flex; align-items: center; gap: .35rem; }
+.sp-page .sp-pill-count {
+    font-size: .78em; font-weight: 700; padding: 0 .4rem; border-radius: 999px;
+    background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.sp-page .sp-tools {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: .75rem;
+}
+.sp-page .sp-tool {
+    display: flex; align-items: flex-start; gap: .8rem;
+    padding: .9rem 1rem;
+    color: inherit; text-decoration: none;
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.sp-page .sp-tool[hidden], .sp-page .sp-noresult[hidden] { display: none; }
+.sp-page .sp-tool:hover {
+    border-color: var(--bs-primary-border-subtle);
+    transform: translateY(-2px);
+    box-shadow: 0 .5rem 1.2rem -.8rem rgba(0, 0, 0, .35);
+}
+.sp-page .sp-tool__ico { width: 2.6rem; height: 2.6rem; font-size: 1.05rem; border-radius: .75rem; }
+.sp-page .sp-tool__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
+.sp-page .sp-tool__name {
+    font-weight: 700; color: var(--bs-emphasis-color);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-page .sp-tool__desc {
+    font-size: .84em; color: var(--bs-secondary-color); line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sp-page .sp-tool__cat {
+    display: inline-flex; align-items: center; gap: .35rem; margin-top: .2rem;
+    font-size: .74em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.sp-page .sp-tool__go {
+    flex: 0 0 auto; align-self: center; font-size: .85rem;
+    color: var(--bs-secondary-color); opacity: .5;
+    transition: transform .15s ease, opacity .15s ease, color .15s ease;
+}
+.sp-page .sp-tool:hover .sp-tool__go { opacity: 1; color: var(--bs-primary); transform: translateX(3px); }
+.sp-page .sp-empty__title { font-weight: 600; color: var(--bs-emphasis-color); margin-bottom: .2rem; }
+
+/* ── Управление инструментами ──────────────────────────────────────── */
+.sp-page .sp-kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sp-page .sp-mlist { overflow: hidden; }
+.sp-page .sp-mtool {
+    display: flex; align-items: flex-start; gap: .85rem;
+    padding: .85rem 1.1rem; border-top: 1px solid var(--bs-border-color-translucent);
+    transition: background-color .15s ease;
+}
+.sp-page .sp-mlist > .st-card__head + .sp-mtool { border-top: 0; }
+.sp-page .sp-mtool:hover { background: var(--bs-tertiary-bg); }
+.sp-page .sp-mtool--missing { box-shadow: inset 3px 0 0 var(--bs-danger); }
+.sp-page .sp-mtool__main { flex: 1 1 auto; min-width: 0; }
+.sp-page .sp-mtool__top { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.sp-page .sp-mtool__name {
+    font-weight: 700; color: var(--bs-emphasis-color); text-decoration: none;
+    font-family: var(--bs-font-monospace); font-size: .95em;
+}
+.sp-page a.sp-mtool__name:hover { color: var(--bs-primary-text-emphasis); }
+.sp-page .sp-mtool__desc { font-size: .88em; color: var(--bs-secondary-color); margin-top: .15rem; overflow-wrap: anywhere; }
+.sp-page .sp-mtool__groups { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .45rem; }
+.sp-page .sp-mtool__lbl {
+    display: inline-flex; align-items: center; gap: .3rem; margin-right: .15rem;
+    font-size: .74em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.sp-page .sp-gbadge {
+    display: inline-flex; align-items: center; padding: .12rem .55rem; border-radius: 999px;
+    font-size: .78em; font-weight: 600; background: var(--bs-tertiary-bg);
+}
+.sp-page .sp-mtool__actions { display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
+.sp-page .sp-mtool__actions form { margin: 0; }
+.sp-page .sp-mtool__actions .btn { display: inline-flex; align-items: center; gap: .35rem; }
+.sp-page .sp-dot { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
+
+/* ── Форма инструмента ─────────────────────────────────────────────── */
+.sp-page .sp-form { overflow: hidden; }
+.sp-page .sp-form__sec { border-top: 1px solid var(--bs-border-color); }
+.sp-page .sp-lbl {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .88em; font-weight: 600; color: var(--bs-secondary-color);
+}
+.sp-page .sp-form .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-family: var(--bs-font-monospace); font-size: .88em; }
+.sp-page .sp-mono { font-family: var(--bs-font-monospace); font-size: .92em; background: var(--bs-tertiary-bg); }
+.sp-page .sp-perms {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem;
+}
+.sp-page .sp-perm {
+    display: flex; align-items: center; gap: .6rem; margin: 0;
+    padding: .6rem .8rem; border-radius: .7rem; cursor: pointer;
+    background: var(--bs-tertiary-bg); border: 1px solid transparent;
+    transition: background-color .15s ease, border-color .15s ease;
+}
+.sp-page .sp-perm .form-check-input { flex: 0 0 auto; margin: 0; float: none; cursor: pointer; }
+.sp-page .sp-perm__name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-page .sp-perm:hover { border-color: var(--bs-border-color); }
+.sp-page .sp-perm:has(.form-check-input:checked) { background: var(--bs-primary-bg-subtle); border-color: var(--bs-primary-border-subtle); }
+.sp-page .sp-form.was-validated .form-control:invalid { border-color: var(--bs-danger); }
+
+/* ── Подтверждение удаления ────────────────────────────────────────── */
+.sp-page .sp-confirm { max-width: 34rem; margin: 0 auto; text-align: center; }
+.sp-page .sp-confirm .st-card__body { padding: 1.75rem 1.5rem; }
+.sp-page .sp-confirm__ico { width: 3.2rem; height: 3.2rem; font-size: 1.35rem; border-radius: .9rem; margin: 0 auto .8rem; }
+.sp-page .sp-confirm__title { font-weight: 700; font-size: 1.1em; color: var(--bs-emphasis-color); }
+.sp-page .sp-confirm__tool { margin-top: .35rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.sp-page .sp-confirm__actions { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem; margin-top: 1.2rem; }
+
+/* ── Адаптив ───────────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .sp-page .sp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sp-page .sp-grid { grid-template-columns: 1fr; }
+    .sp-page .sp-kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .sp-page .sp-nav__list { margin-left: 0; width: 100%; }
+}
+@media (max-width: 575.98px) {
+    .sp-page .sp-clock { width: 100%; }
+    .sp-page .sp-nav__label { display: none; }
+    .sp-page .sp-nav__link.active .sp-nav__label { display: inline; }
+    .sp-page .sp-tools { grid-template-columns: 1fr; }
+    .sp-page .sp-kpis--3 { grid-template-columns: 1fr; }
+    .sp-page .sp-hide-sm { display: none; }
+    .sp-page .sp-mtool { flex-wrap: wrap; }
+    .sp-page .sp-mtool__actions { width: 100%; justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .sp-page .sp-tool, .sp-page .sp-tool__go, .sp-page .sp-nav__link { transition: none; }
+}

@@ -14,112 +14,61 @@ function _access_check_ ()
 
 
 
+/**
+ * Стили панели в новом стиле: общий st-ui.css + admin/templates/staffpanel.css.
+ * Один раз за запрос (menu() вызывается на всех экранах index.php).
+ */
+function sp_assets(): void
+{
+    global $BASEURL;
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">' . "\n";
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/staffpanel.css?ver=2">' . "\n";
+}
+
 function menu($selected = '') {
-    global $usergroups, $_this_script_, $_this_script_no_act, $BASEURL, $lang;
+    global $usergroups, $_this_script_no_act, $lang;
 
-    $m_title      = htmlspecialchars($lang->staffpanel['menu_title']);
-    $m_online     = htmlspecialchars($lang->staffpanel['menu_online']);
-    $m_welcome    = htmlspecialchars($lang->staffpanel['menu_welcome']);
-    $m_stafftools = htmlspecialchars($lang->staffpanel['menu_stafftools']);
-    $m_manage     = htmlspecialchars($lang->staffpanel['menu_manage']);
-    $m_newtool    = htmlspecialchars($lang->staffpanel['menu_newtool']);
-    $m_security   = htmlspecialchars($lang->staffpanel['menu_security']);
-    $m_settings   = htmlspecialchars($lang->staffpanel['menu_settings']);
+    sp_assets();
 
-    print '
+    $L    = $lang->staffpanel;
+    $base = $_this_script_no_act;
+    $do   = $_GET['do'] ?? '';
 
-	<div class="container mt-3">
+    // [ключ, ссылка, иконка, ключ ланга, только для cansettingspanel]
+    $items = [
+        ['welcome',          $base,                                  'fa-house',         'menu_welcome',    false],
+        ['stafftools',       $base . '?act=stafftools',              'fa-screwdriver-wrench', 'menu_stafftools', false],
+        ['managestafftools', $base . '?act=managestafftools',        'fa-wrench',        'menu_manage',     true],
+        ['newtool',          $base . '?act=managestafftools&amp;do=newtool', 'fa-square-plus', 'menu_newtool', true],
+        ['securitycheck',    $base . '?act=securitycheck',           'fa-shield-halved', 'menu_security',   true],
+        ['settings',         'managesettings.php',                   'fa-gears',         'menu_settings',   true],
+    ];
+    $is_admin = (int) ($usergroups['cansettingspanel'] ?? 0) === 1;
 
-	<div class="admin-menu-wrapper light-theme white-bg">
-        <div class="menu-background"></div>
-        <div class="menu-container">
-            <div class="menu-header stat-card">
-                <div class="menu-title">
-                    <i class="fas fa-tachometer-alt blue-icon"></i>
-                    <span>' . $m_title . '</span>
-                </div>
-                <div class="menu-status">
-                    <span class="status-dot"></span>
-                    <span>' . $m_online . '</span>
-                </div>
-            </div>
-
-            <nav class="menu-nav">
-                <ul class="menu-list">
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'welcome' ? 'active' : '') . '" href="' . $_this_script_no_act . '">
-                            <div class="menu-icon">
-                                <i class="fas fa-home blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_welcome . '</span>
-                            <div class="menu-badge">🏠</div>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'stafftools' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=stafftools">
-                            <div class="menu-icon">
-                                <i class="fas fa-users-cog blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_stafftools . '</span>
-                            <div class="menu-badge">👥</div>
-                        </a>
-                    </li>';
-
-    if ($usergroups['cansettingspanel'] == 1) {
-        print '
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'managestafftools' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=managestafftools">
-                            <div class="menu-icon">
-                                <i class="fas fa-wrench blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_manage . '</span>
-                            <div class="menu-badge">🔧</div>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . (($_GET['do'] ?? '') == 'newtool' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=managestafftools&do=newtool">
-                            <div class="menu-icon">
-                                <i class="fas fa-plus-square blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_newtool . '</span>
-                            <div class="menu-badge">➕</div>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'securitycheck' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=securitycheck">
-                            <div class="menu-icon">
-                                <i class="fas fa-shield-alt blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_security . '</span>
-                            <div class="menu-badge security">🔒</div>
-                        </a>
-                    </li>
-
-                    <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'settings' ? 'active' : '') . '" href="managesettings.php">
-                            <div class="menu-icon">
-                                <i class="fas fa-cogs blue-icon"></i>
-                            </div>
-                            <span class="menu-text">' . $m_settings . '</span>
-                            <div class="menu-badge">⚙️</div>
-                        </a>
-                    </li>';
+    $links = '';
+    foreach ($items as [$key, $href, $icon, $lkey, $admin_only]) {
+        if ($admin_only && !$is_admin) continue;
+        $active = $key === 'newtool'
+            ? $do === 'newtool'
+            : ($selected === $key && !($key === 'managestafftools' && $do === 'newtool'));
+        $links .= '<li><a class="sp-nav__link' . ($active ? ' active' : '') . '" href="' . $href . '"'
+                . ($active ? ' aria-current="page"' : '') . '>'
+                . '<i class="fa-solid ' . $icon . '"></i><span class="sp-nav__label">' . htmlspecialchars($L[$lkey]) . '</span></a></li>';
     }
 
-    print '
-                </ul>
-            </nav>
-
-
-        </div>
-    </div>
-	 </div>
-
-    <link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin-menu.css">
-    ';
+    echo '<div class="container-md st-page sp-page sp-page--nav">'
+       .   '<nav class="st-card sp-nav" aria-label="' . htmlspecialchars($L['menu_title']) . '">'
+       .     '<div class="sp-nav__brand">'
+       .       '<span class="st-ico st-soft-primary"><i class="fa-solid fa-gauge-high"></i></span>'
+       .       '<span class="sp-nav__title">' . htmlspecialchars($L['menu_title']) . '</span>'
+       .       '<span class="sp-nav__status"><span class="sp-nav__dot"></span>' . htmlspecialchars($L['menu_online']) . '</span>'
+       .     '</div>'
+       .     '<ul class="sp-nav__list">' . $links . '</ul>'
+       .   '</nav>'
+       . '</div>';
 }
 
 
@@ -127,451 +76,306 @@ function menu($selected = '') {
 
 function get_list()
 {
-    global $thispath;
-    global $_this_script_no_act;
-    global $CURUSER;
-    global $eol;
-    global $db;
-	global $BASEURL;
-    global $lang;
+    global $thispath, $_this_script_no_act, $CURUSER, $db, $BASEURL, $lang;
+
+    $L   = $lang->staffpanel;
+    $e   = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $gid = (int) $CURUSER['usergroup'];
 
     $query = $db->sql_query_prepared(
         'SELECT * FROM staffpanel WHERE usergroups LIKE ? ORDER BY name',
-        ['%[' . intval($CURUSER['usergroup']) . ']%']
+        ['%[' . $gid . ']%']
     );
 
-    $str = '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/get-list.css">' . $eol;
-
-    $count = 0;
-    $tools_html = '';
-    $categories = [];
-
-    // Внутренний ключ категории (data-category, фильтр) остаётся английским,
-    // переводится только подпись.
+    // Внутренний ключ категории (data-category, фильтр) — английский, подпись — из ланга.
     $cat_labels = [
-        'Users'         => $lang->staffpanel['cat_users'],
-        'Moderation'    => $lang->staffpanel['cat_moderation'],
-        'Torrents'      => $lang->staffpanel['cat_torrents'],
-        'Forums'        => $lang->staffpanel['cat_forums'],
-        'Content'       => $lang->staffpanel['cat_content'],
-        'System'        => $lang->staffpanel['cat_system'],
-        'Statistics'    => $lang->staffpanel['cat_statistics'],
-        'Communication' => $lang->staffpanel['cat_communication'],
-        'Maintenance'   => $lang->staffpanel['cat_maintenance'],
-        'Tools'         => $lang->staffpanel['cat_tools'],
+        'Users'         => $L['cat_users'],
+        'Moderation'    => $L['cat_moderation'],
+        'Torrents'      => $L['cat_torrents'],
+        'Forums'        => $L['cat_forums'],
+        'Content'       => $L['cat_content'],
+        'System'        => $L['cat_system'],
+        'Statistics'    => $L['cat_statistics'],
+        'Communication' => $L['cat_communication'],
+        'Maintenance'   => $L['cat_maintenance'],
+        'Tools'         => $L['cat_tools'],
     ];
 
-    $user_level   = htmlspecialchars((string) $CURUSER['usergroup']);
-    $t_tool_badge = htmlspecialchars($lang->staffpanel['tool_badge']);
-    $t_access_lvl = htmlspecialchars(ags_fmt($lang->staffpanel['tool_access_level'], (string) $CURUSER['usergroup']));
+    // Цвет → soft-класс (st-ui.css + фиолетовый из staffpanel.css)
+    $soft = [
+        'blue' => 'st-soft-primary', 'green' => 'st-soft-success', 'red' => 'st-soft-danger',
+        'orange' => 'st-soft-warning', 'cyan' => 'st-soft-info',
+        'purple' => 'sp-soft-purple', 'indigo' => 'sp-soft-purple', 'pink' => 'sp-soft-purple',
+    ];
 
-    // Расширенный массив иконок
     $tool_icons = [
-        'user' => ['icon' => 'fas fa-users', 'color' => 'green', 'category' => 'Users'],
-        'users' => ['icon' => 'fas fa-users', 'color' => 'green', 'category' => 'Users'],
-        'profile' => ['icon' => 'fas fa-user-circle', 'color' => 'blue', 'category' => 'Users'],
-        'ban' => ['icon' => 'fas fa-gavel', 'color' => 'red', 'category' => 'Moderation'],
-        'block' => ['icon' => 'fas fa-ban', 'color' => 'red', 'category' => 'Moderation'],
-        'torrent' => ['icon' => 'fas fa-magnet', 'color' => 'purple', 'category' => 'Torrents'],
-        'upload' => ['icon' => 'fas fa-cloud-upload-alt', 'color' => 'purple', 'category' => 'Torrents'],
-        'download' => ['icon' => 'fas fa-download', 'color' => 'purple', 'category' => 'Torrents'],
-        'forum' => ['icon' => 'fas fa-comments', 'color' => 'blue', 'category' => 'Forums'],
-        'topic' => ['icon' => 'fas fa-comment-dots', 'color' => 'blue', 'category' => 'Forums'],
-        'post' => ['icon' => 'fas fa-reply', 'color' => 'blue', 'category' => 'Forums'],
-        'news' => ['icon' => 'fas fa-newspaper', 'color' => 'cyan', 'category' => 'Content'],
-        'announce' => ['icon' => 'fas fa-bullhorn', 'color' => 'orange', 'category' => 'Content'],
-        'backup' => ['icon' => 'fas fa-database', 'color' => 'indigo', 'category' => 'System'],
-        'log' => ['icon' => 'fas fa-history', 'color' => 'purple', 'category' => 'System'],
-        'logs' => ['icon' => 'fas fa-history', 'color' => 'purple', 'category' => 'System'],
-        'config' => ['icon' => 'fas fa-cog', 'color' => 'blue', 'category' => 'System'],
-        'setting' => ['icon' => 'fas fa-sliders-h', 'color' => 'blue', 'category' => 'System'],
-        'report' => ['icon' => 'fas fa-flag', 'color' => 'red', 'category' => 'Moderation'],
-        'reports' => ['icon' => 'fas fa-flag', 'color' => 'red', 'category' => 'Moderation'],
-        'statistic' => ['icon' => 'fas fa-chart-line', 'color' => 'green', 'category' => 'Statistics'],
-        'stats' => ['icon' => 'fas fa-chart-bar', 'color' => 'green', 'category' => 'Statistics'],
-        'mail' => ['icon' => 'fas fa-envelope', 'color' => 'purple', 'category' => 'Communication'],
-        'message' => ['icon' => 'fas fa-envelope', 'color' => 'purple', 'category' => 'Communication'],
-        'clean' => ['icon' => 'fas fa-broom', 'color' => 'orange', 'category' => 'Maintenance'],
-        'maintain' => ['icon' => 'fas fa-wrench', 'color' => 'orange', 'category' => 'Maintenance'],
-        'default' => ['icon' => 'fas fa-toolbox', 'color' => 'blue', 'category' => 'Tools']
+        'user'      => ['fa-users',            'green',  'Users'],
+        'users'     => ['fa-users',            'green',  'Users'],
+        'profile'   => ['fa-circle-user',      'blue',   'Users'],
+        'ban'       => ['fa-gavel',            'red',    'Moderation'],
+        'block'     => ['fa-ban',              'red',    'Moderation'],
+        'torrent'   => ['fa-magnet',           'purple', 'Torrents'],
+        'upload'    => ['fa-cloud-arrow-up',   'purple', 'Torrents'],
+        'download'  => ['fa-download',         'purple', 'Torrents'],
+        'forum'     => ['fa-comments',         'blue',   'Forums'],
+        'topic'     => ['fa-comment-dots',     'blue',   'Forums'],
+        'post'      => ['fa-reply',            'blue',   'Forums'],
+        'news'      => ['fa-newspaper',        'cyan',   'Content'],
+        'announce'  => ['fa-bullhorn',         'orange', 'Content'],
+        'backup'    => ['fa-database',         'indigo', 'System'],
+        'log'       => ['fa-clock-rotate-left','purple', 'System'],
+        'logs'      => ['fa-clock-rotate-left','purple', 'System'],
+        'config'    => ['fa-gear',             'blue',   'System'],
+        'setting'   => ['fa-sliders',          'blue',   'System'],
+        'report'    => ['fa-flag',             'red',    'Moderation'],
+        'reports'   => ['fa-flag',             'red',    'Moderation'],
+        'statistic' => ['fa-chart-line',       'green',  'Statistics'],
+        'stats'     => ['fa-chart-column',     'green',  'Statistics'],
+        'mail'      => ['fa-envelope',         'purple', 'Communication'],
+        'message'   => ['fa-envelope',         'purple', 'Communication'],
+        'clean'     => ['fa-broom',            'orange', 'Maintenance'],
+        'maintain'  => ['fa-wrench',           'orange', 'Maintenance'],
     ];
+    $default_icon = ['fa-toolbox', 'blue', 'Tools'];
 
-    while ($query && ($tools = $db->fetch_array($query)))
-    {
-        $usergroups = explode(',', $tools['usergroups']);
-        if (((@file_exists($thispath . $tools['filename']) AND strstr($tools['usergroups'], '[' . $CURUSER['usergroup'] . ']')) AND in_array('[' . $CURUSER['usergroup'] . ']', $usergroups, true)))
-        {
-            // Определение иконки
-            $icon_data = $tool_icons['default'];
-            foreach ($tool_icons as $key => $data) {
-                if ($key !== 'default' && stripos($tools['name'], $key) !== false) {
-                    $icon_data = $data;
-                    break;
-                }
-            }
+    $count      = 0;
+    $categories = [];
+    $tools_html = '';
+    $needle     = '[' . $gid . ']';
 
-            $icon = $icon_data['icon'];
-            $color_class = $icon_data['color'];
-            $category = $icon_data['category'];
-            $category_label = htmlspecialchars($cat_labels[$category] ?? $category);
-            $display_name = htmlspecialchars(ucwords(str_replace('_', ' ', $tools['name'])));
-            $short_desc = strlen($tools['description']) > 100 ? substr($tools['description'], 0, 100) . '...' : $tools['description'];
-
-            $categories[$category] = ($categories[$category] ?? 0) + 1;
-
-            $tools_html .= '
-            <div class="tool-card ' . $color_class . '" data-category="' . htmlspecialchars($category) . '" data-name="' . strtolower($display_name) . '" style="animation-delay: ' . ($count * 0.05) . 's">
-                <div class="tool-bg-pattern"></div>
-                <div class="tool-content" onclick="window.location.href=\'' . $_this_script_no_act . '?act=' . $tools['name'] . '\'">
-                    <div class="tool-header">
-                        <div class="tool-icon">
-                            <i class="' . $icon . '"></i>
-                        </div>
-                        <div class="tool-info">
-                            <div class="tool-name">
-                                ' . $display_name . '
-                                <span class="tool-badge"><i class="fas fa-shield-alt"></i> ' . $t_tool_badge . '</span>
-                            </div>
-                            <div class="tool-category">
-                                <i class="fas fa-folder"></i> ' . $category_label . '
-                            </div>
-                        </div>
-                    </div>
-                    <p class="tool-description">
-                        <i class="fas fa-quote-left" style="font-size: 0.7rem; opacity: 0.5; margin-right: 0.25rem;"></i>
-                        ' . htmlspecialchars($short_desc) . '
-                    </p>
-                    <div class="tool-meta">
-                        <div class="tool-access">
-                            <i class="fas fa-key"></i>
-                            <span>' . $t_access_lvl . '</span>
-                            <i class="fas fa-circle" style="font-size: 0.3rem; color: ' . $icon_data['color'] . ';"></i>
-                            <span><i class="fas fa-clock"></i> ' . date('H:i') . '</span>
-                        </div>
-                        <div class="tool-link">
-                            <i class="fas fa-arrow-right"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>' . $eol;
-
-            ++$count;
-        }
-    }
-
-    // Основная разметка
-     $str .= '
-    <div class="staff-dashboard">
-        <!-- Hero секция -->
-        <div class="staff-hero">
-            <div class="hero-content">
-                <div class="hero-badge">
-                    <i class="fas fa-shield-alt"></i> ' . htmlspecialchars($lang->staffpanel['hero_badge']) . '
-                </div>
-                <h1 class="hero-title">
-                    <i class="fas fa-toolbox"></i>
-                    ' . htmlspecialchars($lang->staffpanel['hero_title']) . '
-                </h1>
-                <p class="hero-subtitle">
-                    ' . ags_fmt(htmlspecialchars($lang->staffpanel['hero_subtitle']), htmlspecialchars($CURUSER['username'])) . '
-                </p>
-                <div class="hero-stats">
-                    <div class="hero-stat">
-                        <i class="fas fa-calendar"></i>
-                        <span>' . date($lang->staffpanel['fmt_date_long']) . '</span>
-                    </div>
-                    <div class="hero-stat">
-                        <i class="fas fa-clock"></i>
-                        <span>' . date($lang->staffpanel['fmt_time_short']) . '</span>
-                    </div>
-                    <div class="hero-stat">
-                        <i class="fas fa-user-shield"></i>
-                        <span>' . htmlspecialchars(ags_fmt($lang->staffpanel['hero_level'], $user_level)) . '</span>
-                    </div>
-                </div>
-            </div>
-        </div>';
-
-    if ($count > 0)
-    {
-        $str .= '
-        <!-- Поиск и фильтры -->
-        <div class="staff-controls">
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="toolSearch" placeholder="' . htmlspecialchars($lang->staffpanel['ph_search_tools'], ENT_QUOTES) . '" onkeyup="filterTools()">
-            </div>
-            <div class="filter-buttons">
-                <button class="filter-btn active" onclick="filterByCategory(\'all\')">
-                    <i class="fas fa-th-large"></i> ' . htmlspecialchars($lang->staffpanel['btn_filter_all']) . '
-                </button>';
-
-        foreach (array_keys($categories) as $cat) {
-            $str .= '<button class="filter-btn" onclick="filterByCategory(\'' . htmlspecialchars($cat) . '\')">
-                        <i class="fas fa-folder"></i> ' . htmlspecialchars($cat_labels[$cat] ?? $cat) . '
-                    </button>';
+    while ($query && ($tool = $db->fetch_array($query))) {
+        if (!in_array($needle, explode(',', (string) $tool['usergroups']), true)
+            || !@file_exists($thispath . $tool['filename'])) {
+            continue;
         }
 
-        $str .= '
-            </div>
-        </div>
-
-        <!-- Сетка инструментов -->
-        <div class="tools-grid" id="toolsGrid">
-            ' . $tools_html . '
-        </div>
-
-        <!-- Статистика -->
-        <div class="stats-section">
-            <div class="stat-card" style="--stat-color: var(--primary)">
-                <div class="stat-icon">
-                    <i class="fas fa-tools"></i>
-                </div>
-                <div class="stat-info">
-                    <div class="stat-value">' . $count . '</div>
-                    <div class="stat-label">' . htmlspecialchars($lang->staffpanel['stat_available_tools']) . '</div>
-                </div>
-                <div class="stat-trend">
-                    <i class="fas fa-check-circle"></i> ' . htmlspecialchars($lang->staffpanel['stat_active']) . '
-                </div>
-            </div>
-
-            <div class="stat-card" style="--stat-color: var(--success)">
-                <div class="stat-icon">
-                    <i class="fas fa-layer-group"></i>
-                </div>
-                <div class="stat-info">
-                    <div class="stat-value">' . count($categories) . '</div>
-                    <div class="stat-label">' . htmlspecialchars($lang->staffpanel['stat_categories']) . '</div>
-                </div>
-                <div class="stat-trend">
-                    <i class="fas fa-tags"></i> ' . htmlspecialchars($lang->staffpanel['stat_organized']) . '
-                </div>
-            </div>
-
-            <div class="stat-card" style="--stat-color: var(--warning)">
-                <div class="stat-icon">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <div class="stat-info">
-                    <div class="stat-value">100%</div>
-                    <div class="stat-label">' . htmlspecialchars($lang->staffpanel['stat_system_status']) . '</div>
-                </div>
-                <div class="stat-trend">
-                    <i class="fas fa-heartbeat"></i> ' . htmlspecialchars($lang->staffpanel['stat_operational']) . '
-                </div>
-            </div>
-        </div>';
-
-        // JavaScript для фильтрации
-        $str .= '
-        <script>
-        function filterTools() {
-            const searchTerm = document.getElementById("toolSearch").value.toLowerCase();
-            const cards = document.querySelectorAll(".tool-card");
-
-            cards.forEach(card => {
-                const name = card.getAttribute("data-name");
-                const desc = card.querySelector(".tool-description").innerText.toLowerCase();
-                const matches = name.includes(searchTerm) || desc.includes(searchTerm);
-                card.style.display = matches ? "" : "none";
-            });
-        }
-
-        function filterByCategory(category) {
-            const cards = document.querySelectorAll(".tool-card");
-            const buttons = document.querySelectorAll(".filter-btn");
-
-            buttons.forEach(btn => btn.classList.remove("active"));
-            event.target.classList.add("active");
-
-            if (category === "all") {
-                cards.forEach(card => card.style.display = "");
-            } else {
-                cards.forEach(card => {
-                    const cardCategory = card.getAttribute("data-category");
-                    card.style.display = cardCategory === category ? "" : "none";
-                });
+        [$icon, $color, $category] = $default_icon;
+        foreach ($tool_icons as $key => $data) {
+            if (stripos((string) $tool['name'], $key) !== false) {
+                [$icon, $color, $category] = $data;
+                break;
             }
         }
+        $categories[$category] = ($categories[$category] ?? 0) + 1;
 
-        // Показываем уведомление при клике на карточку (опционально)
-        document.querySelectorAll(".tool-card").forEach(card => {
-            card.addEventListener("click", function(e) {
-                if(e.target.tagName !== "A" && !e.target.closest("a")) {
-                    console.log("Opening tool:", this.querySelector(".tool-name").innerText);
-                }
-            });
-        });
-        </script>';
-    }
-    else
-    {
-        $str .= '
-        <div class="empty-state">
-            <div class="empty-animation">
-                <i class="fas fa-shield-alt"></i>
-            </div>
-            <div class="empty-title">
-                <i class="fas fa-lock"></i> ' . htmlspecialchars($lang->staffpanel['empty_title']) . '
-            </div>
-            <div class="empty-text">
-                ' . htmlspecialchars($lang->staffpanel['empty_text']) . '
-            </div>
-            <a href="#" class="empty-help" onclick="alert(window.staffT ? staffT(\'contact_admin\', \'Contact administrator for access\') : \'Contact administrator for access\')">
-                <i class="fas fa-headset"></i> ' . htmlspecialchars($lang->staffpanel['empty_request']) . '
-            </a>
-        </div>';
+        $display_name = ucwords(str_replace('_', ' ', (string) $tool['name']));
+        $desc         = (string) $tool['description'];
+        $href         = $_this_script_no_act . '?act=' . rawurlencode((string) $tool['name']);
+
+        $tools_html .= '<a class="st-card sp-tool" href="' . $href . '"'
+            . ' data-category="' . $e($category) . '"'
+            . ' data-search="' . $e(mb_strtolower($display_name . ' ' . $tool['name'] . ' ' . $desc)) . '">'
+            .   '<span class="st-ico sp-tool__ico ' . ($soft[$color] ?? 'st-soft-primary') . '"><i class="fa-solid ' . $icon . '"></i></span>'
+            .   '<span class="sp-tool__body">'
+            .     '<span class="sp-tool__name">' . $e($display_name) . '</span>'
+            .     '<span class="sp-tool__desc" title="' . $e($desc) . '">' . $e($desc) . '</span>'
+            .     '<span class="sp-tool__cat"><i class="fa-solid fa-folder"></i>' . $e($cat_labels[$category] ?? $category) . '</span>'
+            .   '</span>'
+            .   '<i class="fa-solid fa-arrow-right sp-tool__go" aria-hidden="true"></i>'
+            . '</a>';
+        ++$count;
     }
 
-    $str .= '
-    </div>
+    // Название группы для плитки «уровень доступа»
+    $group      = usergroup_permissions($gid);
+    $group_name = (string) ($group['title'] ?? $gid);
 
-    <!-- Тостовое уведомление -->
-    <div id="toast" class="toast-notification">
-        <i class="fas fa-info-circle"></i>
-        <span>' . htmlspecialchars($lang->staffpanel['toast_opened']) . '</span>
-    </div>
+    echo '<div class="container-md st-page sp-page">';
 
-    <script>
-    function showToast(message) {
-        const toast = document.getElementById("toast");
-        toast.querySelector("span").innerText = message;
-        toast.classList.add("show");
-        setTimeout(() => {
-            toast.classList.remove("show");
-        }, 3000);
+    // ── Шапка ──
+    echo '<header class="st-card st-head mb-3">'
+       .   '<div class="st-head__icon st-soft-primary"><i class="fa-solid fa-toolbox"></i></div>'
+       .   '<div class="flex-grow-1 min-w-0">'
+       .     '<h1 class="st-title">' . $e($L['hero_title']) . '</h1>'
+       .     '<div class="st-head__meta">'
+       .       '<span>' . ags_fmt($e($L['hero_subtitle']), $e($CURUSER['username'])) . '</span>'
+       .     '</div>'
+       .   '</div>'
+       .   '<span class="st-badge st-soft-primary d-none d-md-inline-flex"><i class="fa-solid fa-shield-halved"></i>' . $e($L['hero_badge']) . '</span>'
+       . '</header>';
+
+    // ── Плитки ──
+    $tile = static fn(string $icon, string $soft_cls, string $val, string $lbl): string =>
+        '<div class="st-kpi st-kpi--muted">'
+        . '<span class="st-ico ' . $soft_cls . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div>'
+        . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+        . '</div>';
+
+    echo '<div class="sp-kpis mb-3">'
+       . $tile('fa-screwdriver-wrench', 'st-soft-primary', (string) $count,              $e($L['stat_available_tools']))
+       . $tile('fa-layer-group',        'st-soft-success', (string) count($categories),  $e($L['stat_categories']))
+       . $tile('fa-user-shield',        'st-soft-warning', $e($group_name),              $e($L['lbl_access']))
+       . $tile('fa-calendar-day',       'st-soft-info',    $e(date($L['fmt_time_short'])), $e(date($L['fmt_date_long'])))
+       . '</div>';
+
+    if ($count === 0) {
+        echo '<div class="st-card"><div class="st-empty">'
+           .   '<div class="st-ico st-soft-danger"><i class="fa-solid fa-lock"></i></div>'
+           .   '<div class="sp-empty__title">' . $e($L['empty_title']) . '</div>'
+           .   '<div>' . $e($L['empty_text']) . '</div>'
+           . '</div></div>';
+        echo '</div>';
+        return;
     }
-    </script>' . $eol;
 
-    echo $str;
+    // ── Поиск + категории ──
+    $pills = '<button type="button" class="btn btn-sm btn-primary st-pill" data-sp-cat="all">'
+           . '<i class="fa-solid fa-table-cells-large"></i> ' . $e($L['btn_filter_all'])
+           . ' <span class="sp-pill-count">' . $count . '</span></button>';
+    ksort($categories);
+    foreach ($categories as $cat => $n) {
+        $pills .= '<button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-sp-cat="' . $e($cat) . '">'
+                . $e($cat_labels[$cat] ?? $cat) . ' <span class="sp-pill-count">' . (int) $n . '</span></button>';
+    }
+
+    echo '<section class="st-card sp-filter mb-3">'
+       .   '<div class="st-toolbar">'
+       .     '<div class="input-group sp-filter__search">'
+       .       '<span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>'
+       .       '<input type="search" class="form-control" id="spToolSearch" placeholder="' . $e($L['ph_search_tools']) . '" autocomplete="off">'
+       .     '</div>'
+       .     '<div class="sp-filter__pills" id="spToolCats">' . $pills . '</div>'
+       .   '</div>'
+       . '</section>';
+
+    echo '<div class="sp-tools" id="spTools">' . $tools_html . '</div>';
+    echo '<div class="st-card sp-noresult" id="spNoResult" hidden><div class="st-empty">'
+       .   '<div class="st-ico st-soft-muted"><i class="fa-solid fa-magnifying-glass"></i></div>'
+       .   '<div class="sp-empty__title">' . $e($L['msg_no_tools_found'] ?? 'No tools match your search') . '</div>'
+       . '</div></div>';
+
+    echo '</div>';   // .sp-page
+    echo '<script src="' . $BASEURL . '/admin/scripts/stafftools.js?ver=1" defer></script>';
 }
-
-
-
-
-
-
-
-
 
 
 
 
 function get_list2()
 {
-    global $thispath;
-    global $_this_script_;
-    global $_this_script_no_act;
-    global $eol;
-    global $db;
-	global $BASEURL;
-    global $lang;
+    global $thispath, $_this_script_, $_this_script_no_act, $db, $mybb, $lang;
 
-    $query = $db->sql_query_prepared('SELECT * FROM staffpanel ORDER BY name');
+    $L = $lang->staffpanel;
+    $e = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 
-    $str = '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/get-list2.css">' . $eol;
-
-    $count = 0;
-    $tools_html = '';
-
-    $t_access  = htmlspecialchars($lang->staffpanel['lbl_access']);
-    $t_active  = htmlspecialchars($lang->staffpanel['lbl_status_active']);
-    $t_edit    = htmlspecialchars($lang->staffpanel['tip_edit_tool'], ENT_QUOTES);
-    $t_delete  = htmlspecialchars($lang->staffpanel['tip_delete_tool'], ENT_QUOTES);
-
-    while ($query && ($tools = $db->fetch_array($query)))
-    {
-        if (@file_exists($thispath . $tools['filename']))
-        {
-            $usergroups = str_replace(array('[', ']'), '', $tools['usergroups']);
-            $icon = get_tool_icon_admin($tools['name']);
-
-            $tools_html .= '
-            <div class="tool-row">
-                <div class="tool-item">
-                    <div>
-                        <div class="tool-header-info">
-                            <div class="tool-icon">
-                                <i class="' . $icon . '"></i>
-                            </div>
-                            <div class="tool-info">
-                                <h3 class="tool-name" title="' . htmlspecialchars($tools['name']) . '">' . htmlspecialchars(strtoupper($tools['name'])) . '</h3>
-                                <p class="tool-description" title="' . htmlspecialchars($tools['description']) . '">' . htmlspecialchars($tools['description']) . '</p>
-                            </div>
-                        </div>
-
-                        <div class="tool-groups">
-                            <div class="groups-label">' . $t_access . '</div>
-                            <div class="groups-list" title="' . htmlspecialchars($usergroups) . '">' . htmlspecialchars($usergroups) . '</div>
-                        </div>
-                    </div>
-
-                    <div class="tool-meta">
-                        <div class="tool-status">
-                            <span class="status-dot"></span>
-                            <span>' . $t_active . '</span>
-                        </div>
-                        <div class="tool-actions">
-                            <a class="tool-btn edit" href="' . $_this_script_ . '&do=edit&id=' . $tools['id'] . '" title="' . $t_edit . '" aria-label="' . $t_edit . '">
-                                <i class="fas fa-edit"></i>
-                            </a>
-                            <a class="tool-btn delete" href="' . $_this_script_ . '&do=delete&id=' . $tools['id'] . '" onclick="return confirm(window.staffT ? staffT(\'confirm_delete_tool\', \'Delete this tool?\') : \'Delete this tool?\')" title="' . $t_delete . '" aria-label="' . $t_delete . '">
-                                <i class="fas fa-trash"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>' . $eol;
-
-            ++$count;
-        }
+    // Группы с доступом к панели: gid => [title, namestyle]
+    $groups = [];
+    $gq = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel = '1' ORDER BY disporder");
+    while ($gq && ($g = $db->fetch_array($gq))) {
+        $groups[(int) $g['gid']] = str_replace('{username}', htmlspecialchars_uni((string) $g['title']), (string) $g['namestyle']);
     }
 
-    $str .= '
-    <div class="admin-tools-table">
-        <div class="tools-header">
-            <h2 class="tools-title">
-                <i class="fas fa-cogs"></i>
-                ' . htmlspecialchars($lang->staffpanel['list_title']) . '
-            </h2>
-        </div>
+    $post_key = $e($mybb->post_code ?? '');
+    $rows     = '';
+    $count    = 0;
+    $missing  = 0;
 
-        <div class="tools-grid">' . $tools_html . '</div>
+    $query = $db->sql_query_prepared('SELECT * FROM staffpanel ORDER BY name');
+    while ($query && ($tool = $db->fetch_array($query))) {
+        ++$count;
+        $id      = (int) $tool['id'];
+        $exists  = @file_exists($thispath . $tool['filename']);
+        if (!$exists) ++$missing;
 
-        <div class="tools-footer">
-            <div class="tools-count">
-                ' . ags_fmt(htmlspecialchars($lang->staffpanel['tools_count']), '<span class="count-number">' . $count . '</span>') . '
-            </div>
-        </div>
-    </div>' . $eol;
+        // Бейджи групп
+        $badges = '';
+        foreach (explode(',', (string) $tool['usergroups']) as $raw) {
+            $gid = (int) trim($raw, '[] ');
+            if ($gid <= 0) continue;
+            $badges .= '<span class="sp-gbadge">' . ($groups[$gid] ?? ('#' . $gid)) . '</span>';
+        }
 
-    echo $str;
+        $status = $exists
+            ? '<span class="st-badge st-soft-success"><span class="sp-dot"></span>' . $e($L['lbl_status_active']) . '</span>'
+            : '<span class="st-badge st-soft-danger" title="admin/' . $e($tool['filename']) . '"><i class="fa-solid fa-file-circle-xmark"></i>' . $e($L['badge_file_missing'] ?? 'File missing') . '</span>';
+
+        $name_html = $exists
+            ? '<a href="' . $_this_script_no_act . '?act=' . rawurlencode((string) $tool['name']) . '" class="sp-mtool__name">' . $e($tool['name']) . '</a>'
+            : '<span class="sp-mtool__name">' . $e($tool['name']) . '</span>';
+
+        $rows .= '<div class="sp-mtool' . ($exists ? '' : ' sp-mtool--missing') . '">'
+            . '<span class="st-ico st-soft-primary"><i class="fa-solid ' . get_tool_icon_admin((string) $tool['name']) . '"></i></span>'
+            . '<div class="sp-mtool__main">'
+            .   '<div class="sp-mtool__top">' . $name_html . $status . '</div>'
+            .   '<div class="sp-mtool__desc">' . $tool['description'] . '</div>'   // хранится экранированным
+            .   '<div class="sp-mtool__groups"><span class="sp-mtool__lbl"><i class="fa-solid fa-key"></i>' . $e($L['lbl_access']) . '</span>' . $badges . '</div>'
+            . '</div>'
+            . '<div class="sp-mtool__actions">'
+            .   '<a class="btn btn-sm btn-outline-secondary st-pill" href="' . $_this_script_ . '&amp;do=edit&amp;id=' . $id . '" title="' . $e($L['tip_edit_tool']) . '">'
+            .     '<i class="fa-solid fa-pen"></i><span class="sp-hide-sm">' . $e($L['tip_edit_tool']) . '</span></a>'
+            .   '<form method="post" action="' . $_this_script_ . '&amp;do=delete&amp;id=' . $id . '" data-sp-confirm="' . $e($L['js_confirm_delete_tool'] ?? $L['del_question']) . '"'
+            .     ' data-sp-confirm-detail="' . $e($tool['name']) . '" data-sp-yes="' . $e($L['btn_del_yes']) . '" data-sp-no="' . $e($L['btn_del_no']) . '">'
+            .     '<input type="hidden" name="my_post_key" value="' . $post_key . '">'
+            .     '<button type="submit" class="btn btn-sm btn-outline-danger st-pill" title="' . $e($L['tip_delete_tool']) . '" aria-label="' . $e($L['tip_delete_tool']) . '"><i class="fa-solid fa-trash-can"></i></button>'
+            .   '</form>'
+            . '</div>'
+            . '</div>';
+    }
+
+    $tile = static fn(string $icon, string $soft, string $val, string $lbl): string =>
+        '<div class="st-kpi st-kpi--muted">'
+        . '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div>'
+        . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i>'
+        . '</div>';
+
+    echo '<div class="container-md st-page sp-page">'
+       . '<header class="st-card st-head mb-3">'
+       .   '<div class="st-head__icon st-soft-primary"><i class="fa-solid fa-wrench"></i></div>'
+       .   '<div class="flex-grow-1 min-w-0">'
+       .     '<h1 class="st-title">' . $e($L['thead_manage']) . '</h1>'
+       .     '<div class="st-head__meta"><span>' . ags_fmt($e($L['tools_count']), (string) $count) . '</span></div>'
+       .   '</div>'
+       .   '<a href="' . $_this_script_no_act . '?act=managestafftools&amp;do=newtool" class="btn btn-primary st-pill"><i class="fa-solid fa-plus"></i> ' . $e($L['btn_add_tool']) . '</a>'
+       . '</header>'
+
+       . '<div class="sp-kpis sp-kpis--3 mb-3">'
+       .   $tile('fa-screwdriver-wrench', 'st-soft-primary', (string) $count,          $e($L['list_title']))
+       .   $tile('fa-user-shield',        'st-soft-success', (string) count($groups),  $e($L['lbl_kpi_staff_groups'] ?? 'Staff groups'))
+       .   $tile('fa-file-circle-xmark',  $missing > 0 ? 'st-soft-danger' : 'st-soft-muted', (string) $missing, $e($L['lbl_kpi_missing'] ?? 'Missing files'))
+       . '</div>';
+
+    if ($count === 0) {
+        echo '<div class="st-card"><div class="st-empty">'
+           . '<div class="st-ico st-soft-muted"><i class="fa-solid fa-toolbox"></i></div>'
+           . '<div class="sp-empty__title">' . ags_fmt($e($L['tools_count']), '0') . '</div>'
+           . '</div></div>';
+    } else {
+        echo '<section class="st-card sp-mlist">'
+           .   '<div class="st-card__head"><span class="st-ico st-soft-primary"><i class="fa-solid fa-list"></i></span>' . $e($L['list_title'])
+           .     '<span class="ms-auto st-badge st-soft-muted">' . $count . '</span></div>'
+           .   $rows
+           . '</section>';
+    }
+
+    echo '</div>';
 }
 
 // Функция для получения иконок инструментов (остается без изменений)
 function get_tool_icon_admin($tool_name) {
-    $tool_lower = strtolower($tool_name);
+    // Возвращает имя иконки без префикса стиля (fa-solid ставит вызывающий код)
+    $tool_lower = strtolower((string) $tool_name);
 
     $icon_map = [
-        'user' => 'fas fa-users',
-        'search' => 'fas fa-search',
-        'stats' => 'fas fa-chart-bar',
-        'log' => 'fas fa-clipboard-list',
-        'settings' => 'fas fa-cogs',
-        'security' => 'fas fa-shield-alt',
-        'backup' => 'fas fa-database',
-        'mail' => 'fas fa-envelope',
-        'report' => 'fas fa-flag',
-        'moderate' => 'fas fa-gavel',
-        'torrent' => 'fas fa-download',
-        'forum' => 'fas fa-comments',
-        'system' => 'fas fa-server',
-        'debug' => 'fas fa-bug',
-        'test' => 'fas fa-vial',
-        'money' => 'fas fa-coins',
-        'news' => 'fas fa-newspaper',
-        'announce' => 'fas fa-bullhorn'
+        'user' => 'fa-users',
+        'search' => 'fa-magnifying-glass',
+        'stats' => 'fa-chart-column',
+        'log' => 'fa-clipboard-list',
+        'settings' => 'fa-gears',
+        'security' => 'fa-shield-halved',
+        'backup' => 'fa-database',
+        'mail' => 'fa-envelope',
+        'report' => 'fa-flag',
+        'moderate' => 'fa-gavel',
+        'torrent' => 'fa-download',
+        'forum' => 'fa-comments',
+        'system' => 'fa-server',
+        'debug' => 'fa-bug',
+        'test' => 'fa-vial',
+        'money' => 'fa-coins',
+        'news' => 'fa-newspaper',
+        'announce' => 'fa-bullhorn'
     ];
 
     foreach ($icon_map as $key => $icon) {
@@ -580,5 +384,5 @@ function get_tool_icon_admin($tool_name) {
         }
     }
 
-    return 'fas fa-toolbox';
+    return 'fa-toolbox';
 }

@@ -91,6 +91,24 @@
 .tt-page .tt-kpi__sub   { font-size: .78rem; color: var(--bs-secondary-color); }
 .tt-page .tt-ico-sm     { font-size: .8em; }
 
+/* Серые плитки с полупрозрачной иконкой в углу */
+.tt-page .tt-kpi {
+    position: relative;
+    overflow: hidden;
+    background: var(--bs-tertiary-bg);
+}
+.tt-page .tt-kpi > :not(.tt-kpi__bg) { position: relative; z-index: 1; }
+.tt-page .tt-kpi__bg {
+    position: absolute;
+    right: -.4rem;
+    bottom: -.7rem;
+    font-size: 4.2rem;
+    opacity: .07;
+    transform: rotate(-12deg);
+    pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 .tt-page .tt-tabs-card { padding: .5rem; }
 .tt-page .tt-tabs {

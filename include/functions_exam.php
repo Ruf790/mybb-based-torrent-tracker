@@ -41,6 +41,13 @@ const EXAM_INDEX_DOWNLOADED           = 3;
 const EXAM_INDEX_SEED_BONUS           = 4;
 const EXAM_INDEX_SEED_POINTS          = 5;
 const EXAM_INDEX_UPLOAD_TORRENT_COUNT = 6;
+// Our additions (not in NexusPHP)
+const EXAM_INDEX_SEEDING_COUNT      = 7;   // torrents seeding right now (state)
+const EXAM_INDEX_RATIO              = 8;   // share ratio right now (state), stored ×100
+const EXAM_INDEX_REQUESTS_FILLED    = 9;   // requests filled since the start
+const EXAM_INDEX_CLAIMS_TAKEN       = 10;  // torrents claimed since the start
+const EXAM_INDEX_COMMENTS           = 11;  // torrent comments since the start
+const EXAM_INDEX_FORUM_POSTS        = 12;  // forum posts since the start
 
 // 'name' - English, for logs; for display use exam_index_name() / exam_index_unit()
 const EXAM_INDEXES = [
@@ -50,7 +57,29 @@ const EXAM_INDEXES = [
     EXAM_INDEX_SEED_BONUS           => ['name' => 'Bonus gained',      'unit' => '',   'key' => 'idx_seed_bonus'],
     EXAM_INDEX_SEED_POINTS          => ['name' => 'Seed points',       'unit' => '',   'key' => 'idx_seed_points'],
     EXAM_INDEX_UPLOAD_TORRENT_COUNT => ['name' => 'Torrents uploaded', 'unit' => '',   'key' => 'idx_upload_count'],
+    EXAM_INDEX_SEEDING_COUNT        => ['name' => 'Torrents seeding',  'unit' => '',   'key' => 'idx_seeding_count'],
+    EXAM_INDEX_RATIO                => ['name' => 'Share ratio',       'unit' => '',   'key' => 'idx_ratio'],
+    EXAM_INDEX_REQUESTS_FILLED      => ['name' => 'Requests filled',   'unit' => '',   'key' => 'idx_requests_filled'],
+    EXAM_INDEX_CLAIMS_TAKEN         => ['name' => 'Torrents claimed',  'unit' => '',   'key' => 'idx_claims_taken'],
+    EXAM_INDEX_COMMENTS             => ['name' => 'Torrent comments',  'unit' => '',   'key' => 'idx_comments'],
+    EXAM_INDEX_FORUM_POSTS          => ['name' => 'Forum posts',       'unit' => '',   'key' => 'idx_forum_posts'],
 ];
+
+/**
+ * Indexes whose value is already "since the start" (or the current state), so the progress
+ * is the value itself, not value − start snapshot. Bonus gained is counted from the bonus log
+ * (positive amounts only), so spending in the shop no longer lowers the progress.
+ */
+const EXAM_ABSOLUTE_INDEXES = [
+    EXAM_INDEX_SEED_BONUS, EXAM_INDEX_UPLOAD_TORRENT_COUNT, EXAM_INDEX_SEEDING_COUNT, EXAM_INDEX_RATIO,
+    EXAM_INDEX_REQUESTS_FILLED, EXAM_INDEX_CLAIMS_TAKEN, EXAM_INDEX_COMMENTS, EXAM_INDEX_FORUM_POSTS,
+];
+
+/** Bonus log types that don't count as "earned" for the Bonus gained index */
+const EXAM_BONUS_NOT_EARNED = ['exam', 'gift', 'staff'];
+
+/** Requirement stored as an integer × scale (ratio 1.50 is stored as 150) */
+const EXAM_INDEX_SCALE = [EXAM_INDEX_RATIO => 100];
 
 const EXAM_FILTER_USER_CLASS                = 'classes';            // здесь: id групп
 const EXAM_FILTER_USER_REGISTER_TIME_RANGE  = 'register_time_range';
@@ -126,6 +155,19 @@ function exam_index_name(int $index): string
 function exam_index_unit(int $index): string
 {
     return $index === EXAM_INDEX_SEED_TIME_AVERAGE ? exam_t('unit_hours') : (EXAM_INDEXES[$index]['unit'] ?? '');
+}
+
+function exam_index_scale(int $index): int
+{
+    return EXAM_INDEX_SCALE[$index] ?? 1;
+}
+
+/** Stored requirement as text: «200 GB», «1.5», «3» */
+function exam_require_text(int $index, int $stored): string
+{
+    $scale = exam_index_scale($index);
+    $num   = $scale > 1 ? exam_num($stored / $scale, 2) : exam_num($stored, 2);
+    return trim($num . ' ' . exam_index_unit($index));
 }
 
 // ── Время ────────────────────────────────────────────────
@@ -471,7 +513,6 @@ function exam_progress_value(array $user, int $index, array $eu): int
     switch ($index) {
         case EXAM_INDEX_UPLOADED:    return (int)$user['uploaded'];
         case EXAM_INDEX_DOWNLOADED:  return (int)$user['downloaded'];
-        case EXAM_INDEX_SEED_BONUS:  return (int)floor((float)$user['seedbonus']);
         case EXAM_INDEX_SEED_POINTS: return (int)floor((float)($user['seed_points'] ?? 0));
         case EXAM_INDEX_SEED_TIME_AVERAGE:
             // В NexusPHP users.seedtime; здесь сумма snatched.seedtime
@@ -487,6 +528,38 @@ function exam_progress_value(array $user, int $index, array $eu): int
                 [(int)$user['id'], exam_ts((string)$eu['created_at'])]
             ));
             return (int)($r['n'] ?? 0);
+    }
+
+    // Our additions: counted since the start of this attempt / current state
+    $uid   = (int)$user['id'];
+    $start = max(exam_ts((string)$eu['created_at']), !empty($eu['begin']) ? exam_ts((string)$eu['begin']) : 0);
+    $count = static function (string $sql, array $params) use ($db): int {
+        $r = $db->fetch_array($db->sql_query_prepared($sql, $params));
+        return (int)($r['n'] ?? 0);
+    };
+    switch ($index) {
+        case EXAM_INDEX_SEED_BONUS:
+            // Earned since the start (bonus log, positive amounts) - spending doesn't lower it
+            $ph = implode(',', array_fill(0, count(EXAM_BONUS_NOT_EARNED), '?'));
+            return $count(
+                "SELECT COALESCE(FLOOR(SUM(amount)), 0) AS n FROM bonus_logs
+                 WHERE uid = ? AND added >= ? AND amount > 0 AND type NOT IN ({$ph})",
+                array_merge([$uid, $start], EXAM_BONUS_NOT_EARNED)
+            );
+        case EXAM_INDEX_SEEDING_COUNT:
+            return $count("SELECT COUNT(DISTINCT torrent) AS n FROM peers WHERE userid = ? AND seeder = 'yes'", [$uid]);
+        case EXAM_INDEX_RATIO:
+            $down = (float)$user['downloaded'];
+            // Nothing downloaded yet: ratio is "infinite" - the requirement counts as met
+            return $down > 0 ? (int)floor((float)$user['uploaded'] / $down * 100) : 999999;
+        case EXAM_INDEX_REQUESTS_FILLED:
+            return $count("SELECT COUNT(*) AS n FROM requests WHERE filled_by = ? AND status = 'filled' AND filled_at >= ?", [$uid, $start]);
+        case EXAM_INDEX_CLAIMS_TAKEN:
+            return $count('SELECT COUNT(*) AS n FROM claims WHERE uid = ? AND added >= ?', [$uid, $start]);
+        case EXAM_INDEX_COMMENTS:
+            return $count('SELECT COUNT(*) AS n FROM comments WHERE user = ? AND dateline >= ?', [$uid, $start]);
+        case EXAM_INDEX_FORUM_POSTS:
+            return $count('SELECT COUNT(*) AS n FROM posts WHERE uid = ? AND dateline >= ? AND visible = 1', [$uid, $start]);
     }
     throw new ExamException(exam_t('err_unknown_index', $index));
 }
@@ -535,7 +608,7 @@ function exam_update_progress(array $eu, ?array $exam = null, ?array $user = nul
             );
         }
 
-        $delta = $value - $init;
+        $delta = in_array($idx, EXAM_ABSOLUTE_INDEXES, true) ? $value : $value - $init;
         if ($idx === EXAM_INDEX_SEED_TIME_AVERAGE) {
             // Делим на число торрентов с активностью за время экзамена; 0 -> 1
             $col = EXAM_SNATCHED_LAST_ACTION;
@@ -592,6 +665,11 @@ function exam_progress_formatted(array $exam, array $progress): array
                 $curText = exam_num($current / 3600, 2) . " {$unit}";
                 $atomic  = $require * 3600;
                 break;
+            case EXAM_INDEX_RATIO:
+                // both stored ×100
+                $curText = $current >= 999999 ? '∞' : exam_num($current / 100, 2);
+                $atomic  = $require;
+                break;
             default:
                 $curText = exam_num($current);
                 $atomic  = $require;
@@ -601,7 +679,7 @@ function exam_progress_formatted(array $exam, array $progress): array
             'index'         => $idx,
             'name'          => exam_index_name($idx),
             'require_value' => $require,
-            'require_text'  => trim(exam_num($require, 2) . " {$unit}"),
+            'require_text'  => exam_require_text($idx, $require),
             'current_value' => $current,
             'current_text'  => $curText,
             'pct'           => $atomic > 0 ? (int)min(100, max(0, floor($current / $atomic * 100))) : 100,
@@ -648,6 +726,134 @@ function exam_notify(int $uid, string|array $subject, string|array $message): vo
         'language_file' => 'exam_functions',
         'sender'        => ['uid' => -1],
     ], -1, true);
+}
+
+
+// ── Rewards (our addition: upload, VIP days, invites besides bonus) ───────
+
+/** The exam/task pays something on success */
+function exam_has_reward(array $exam): bool
+{
+    return (int)($exam['success_reward_bonus'] ?? 0) > 0 || (int)($exam['reward_upload_gb'] ?? 0) > 0
+        || (int)($exam['reward_vip_days'] ?? 0) > 0 || (int)($exam['reward_invites'] ?? 0) > 0;
+}
+
+/**
+ * Temporary VIP for $days, like the bonus shop: User / Power User become VIP with
+ * auto_vip (cron vipexpire.php returns the old group); a temporary VIP gets the days added.
+ * Permanent VIP, uploaders and staff are not touched. Returns true if VIP was given.
+ */
+function exam_grant_vip(int $uid, int $gid, int $days): bool
+{
+    global $db;
+    if ($days <= 0) return false;
+    $sec = $days * 86400;
+
+    if ($gid === UC_USER || $gid === UC_POWER_USER) {
+        $db->sql_query_prepared('UPDATE users SET usergroup = ? WHERE id = ? AND usergroup = ?', [UC_VIP, $uid, $gid]);
+        if ((int)$db->affected_rows() !== 1) return false;
+        $db->sql_query_prepared('REPLACE INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)', [$uid, TIMENOW + $sec, $gid]);
+        return true;
+    }
+    if ($gid === UC_VIP) {
+        // Only a temporary VIP (has an auto_vip row) is extended
+        $db->sql_query_prepared('UPDATE auto_vip SET vip_until = GREATEST(vip_until, ?) + ? WHERE userid = ?', [TIMENOW, $sec, $uid]);
+        return (int)$db->affected_rows() === 1;
+    }
+    return false;
+}
+
+/**
+ * Pays every reward of the exam/task. Returns what was actually given:
+ * ['bonus' => int, 'upload_gb' => int, 'vip_days' => int, 'invites' => int].
+ */
+function exam_give_rewards(array $exam, array $user, string $why): array
+{
+    global $db;
+    $uid  = (int)$user['id'];
+    $out  = ['bonus' => 0, 'upload_gb' => 0, 'vip_days' => 0, 'invites' => 0];
+
+    $bonus = (int)($exam['success_reward_bonus'] ?? 0);
+    if ($bonus > 0) {
+        $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$bonus, $uid]);
+        bonus_log($uid, $bonus, 'exam', $why, (int)$exam['id']);
+        $out['bonus'] = $bonus;
+    }
+    $gb = (int)($exam['reward_upload_gb'] ?? 0);
+    if ($gb > 0) {
+        $db->sql_query_prepared('UPDATE users SET uploaded = uploaded + ? WHERE id = ?', [$gb * EXAM_GB, $uid]);
+        $out['upload_gb'] = $gb;
+    }
+    $vip = (int)($exam['reward_vip_days'] ?? 0);
+    if ($vip > 0 && exam_grant_vip($uid, (int)$user['usergroup'], $vip)) {
+        $out['vip_days'] = $vip;
+    }
+    $inv = (int)($exam['reward_invites'] ?? 0);
+    if ($inv > 0) {
+        $db->sql_query_prepared('UPDATE users SET invites = invites + ? WHERE id = ?', [$inv, $uid]);
+        $out['invites'] = $inv;
+    }
+    if ($gb > 0 || $out['vip_days'] > 0 || $inv > 0) {
+        $db->sql_query_prepared(
+            'UPDATE users SET modcomment = CONCAT(?, COALESCE(modcomment, \'\')) WHERE id = ?',
+            [gmdate('Y-m-d') . ' - ' . $why . ': ' . exam_rewards_summary($out) . "\n", $uid]
+        );
+    }
+    return $out;
+}
+
+/** English one-liner for logs / modcomment: «500 BP, 10 GB upload, 7 days VIP, 1 invite(s)» */
+function exam_rewards_summary(array $r): string
+{
+    $p = [];
+    if (($r['bonus'] ?? 0) > 0)     $p[] = exam_num((int)$r['bonus']) . ' BP';
+    if (($r['upload_gb'] ?? 0) > 0) $p[] = exam_num((int)$r['upload_gb']) . ' GB upload';
+    if (($r['vip_days'] ?? 0) > 0)  $p[] = (int)$r['vip_days'] . ' days VIP';
+    if (($r['invites'] ?? 0) > 0)   $p[] = (int)$r['invites'] . ' invite(s)';
+    return implode(', ', $p);
+}
+
+/** What the exam promises, from its columns (for logs and lists) */
+function exam_rewards_of(array $exam): array
+{
+    return [
+        'bonus'     => (int)($exam['success_reward_bonus'] ?? 0),
+        'upload_gb' => (int)($exam['reward_upload_gb'] ?? 0),
+        'vip_days'  => (int)($exam['reward_vip_days'] ?? 0),
+        'invites'   => (int)($exam['reward_invites'] ?? 0),
+    ];
+}
+
+/**
+ * Rewards as text in the given language (rw_* keys of exam_functions.lang.php);
+ * '' = current page language. For PMs, whose text is in the recipient's language.
+ */
+function exam_rewards_text(array $r, string $language = ''): string
+{
+    global $lang;
+    static $cache = [];
+    $L = [];
+    if ($language !== '' && is_object($lang) && method_exists($lang, 'get_section')) {
+        $L = $cache[$language] ??= (array)$lang->get_section('exam_functions', $language);
+    }
+    $t = static function (string $key, int $n) use ($L): string {
+        $s = isset($L[$key]) ? (string)$L[$key] : exam_t($key);
+        return str_replace(['{1}', '%1$s'], exam_num($n), $s);
+    };
+    $p = [];
+    if (($r['bonus'] ?? 0) > 0)     $p[] = $t('rw_bonus', (int)$r['bonus']);
+    if (($r['upload_gb'] ?? 0) > 0) $p[] = $t('rw_upload', (int)$r['upload_gb']);
+    if (($r['vip_days'] ?? 0) > 0)  $p[] = $t('rw_vip', (int)$r['vip_days']);
+    if (($r['invites'] ?? 0) > 0)   $p[] = $t('rw_invites', (int)$r['invites']);
+    return implode(', ', $p);
+}
+
+/** Recipient's language for PMs (users.language, english by default) */
+function exam_user_language(int $uid): string
+{
+    global $db;
+    $r = $db->fetch_array($db->sql_query_prepared('SELECT language FROM users WHERE id = ?', [$uid]));
+    return (string)($r['language'] ?? '') !== '' ? (string)$r['language'] : 'english';
 }
 
 // ── Кроны ────────────────────────────────────────────────
@@ -858,25 +1064,19 @@ function exam_cron_checkout(bool $ignoreTimeRange = false): int
 
             if ($isDone) {
                 if ($isTask) {
-                    $reward = (int)$exam['success_reward_bonus'];
-                    if ($reward > 0) {
-                        $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$reward, $uid]);
-                        bonus_log($uid, $reward, 'exam', "Task completed: {$name}", (int)$exam['id']);
-                    }
+                    $given  = exam_give_rewards($exam, $user, "Task completed: {$name}");
+                    $reward = exam_rewards_text($given, exam_user_language($uid));
                     $note($exam, 'passed', $user);
-                    exam_notify($uid, ['pm_task_done_subj', $name], $reward > 0
-                        ? ['pm_task_done_msg', $name, $range, exam_num($reward)]
+                    exam_notify($uid, ['pm_task_done_subj', $name], $reward !== ''
+                        ? ['pm_task_done_msg', $name, $range, $reward]
                         : ['pm_task_done_msg_noreward', $name, $range]);
                 } else {
-                    // Our addition (not in NexusPHP): optional bonus reward for passing an exam
-                    $reward = (int)$exam['success_reward_bonus'];
-                    if ($reward > 0) {
-                        $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$reward, $uid]);
-                        bonus_log($uid, $reward, 'exam', "Exam passed: {$name}", (int)$exam['id']);
-                    }
+                    // Our addition (not in NexusPHP): optional reward for passing an exam
+                    $given  = exam_give_rewards($exam, $user, "Exam passed: {$name}");
+                    $reward = exam_rewards_text($given, exam_user_language($uid));
                     $note($exam, 'passed', $user);
-                    exam_notify($uid, ['pm_exam_passed_subj', $name], $reward > 0
-                        ? ['pm_exam_passed_msg_bonus', $name, $range, exam_num($reward)]
+                    exam_notify($uid, ['pm_exam_passed_subj', $name], $reward !== ''
+                        ? ['pm_exam_passed_msg_bonus', $name, $range, $reward]
                         : ['pm_exam_passed_msg', $name, $range]);
                     // Повторяющийся экзамен - сразу следующий цикл, если пользователь всё ещё подходит
                     if (!empty($exam['recurring']) && exam_match_user($exam, $user)) {
@@ -1010,9 +1210,9 @@ function exam_checkout_log_line(array $s): string
 
     $parts = [];
     if ($s['passed']) {
-        $reward  = (int)$exam['success_reward_bonus'];
+        $reward  = exam_rewards_summary(exam_rewards_of($exam));
         $parts[] = ($isTask ? 'completed' : 'passed') . ' ' . count($s['passed'])
-                 . ($reward > 0 ? ' (+' . exam_num($reward) . ' BP each)' : '') . ': ' . $list($s['passed']);
+                 . ($reward !== '' ? ' (+' . $reward . ' each)' : '') . ': ' . $list($s['passed']);
     }
     if ($s['failed']) {
         $deduct  = $isTask ? (int)$exam['fail_deduct_bonus'] : 0;

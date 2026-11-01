@@ -161,8 +161,8 @@ function ex_indexes_html(array $exam): string
 {
     $out = '';
     foreach (exam_checked_indexes($exam) as $i) {
-        $meta = EXAM_INDEXES[(int)$i['index']];
-        $out .= '<div class="ex-req">' . ex_e($meta['name']) . ': <strong>' . (int)$i['require_value'] . ' ' . ex_e($meta['unit']) . '</strong></div>';
+        $k    = (int)$i['index'];
+        $out .= '<div class="ex-req">' . ex_e(exam_index_name($k)) . ': <strong>' . ex_e(exam_require_text($k, (int)$i['require_value'])) . '</strong></div>';
     }
     return $out;
 }
@@ -224,7 +224,7 @@ function ex_check_indexes(array $indexes, float $hours): void
     foreach ($indexes as $i) {
         if (empty($i['checked'])) continue;
         if (!ctype_digit((string)$i['require_value'])) {
-            throw new ExamException(ex_t('err_index_whole', EXAM_INDEXES[$i['index']]['name']));
+            throw new ExamException(ex_t('err_index_whole', exam_index_name((int)$i['index'])));
         }
         if ($i['index'] === EXAM_INDEX_SEED_TIME_AVERAGE && (int)$i['require_value'] > $hours) {
             throw new ExamException(ex_t('err_seed_avg_long', $i['require_value'], $hours));
@@ -269,7 +269,7 @@ function ex_indexes_diff(array $old, array $new): array
     };
     $o = $map($old);
     $n = $map($new);
-    $fmt = static fn(int $k, int $v): string => trim(exam_num($v) . ' ' . EXAM_INDEXES[$k]['unit']);
+    $fmt = static fn(int $k, int $v): string => exam_require_text($k, $v);
 
     $lines = [];
     foreach (EXAM_INDEXES as $k => $meta) {
@@ -677,9 +677,14 @@ function ex_save(int $id): never
 
     $indexes = [];
     foreach (array_keys(EXAM_INDEXES) as $k) {
+        $raw = trim((string)($_POST['idx_value'][$k] ?? '0'));
+        // Ratio etc.: decimals in the form, stored as an integer × scale (1.5 -> 150)
+        if (($scale = exam_index_scale($k)) > 1 && is_numeric($n = str_replace(',', '.', $raw))) {
+            $raw = (string)max(0, (int)round((float)$n * $scale));
+        }
         $indexes[] = [
             'index'         => $k,
-            'require_value' => trim((string)($_POST['idx_value'][$k] ?? '0')),
+            'require_value' => $raw,
             'checked'       => !empty($_POST['idx_checked'][$k]),
         ];
     }
@@ -706,6 +711,10 @@ function ex_save(int $id): never
         // Reward: tasks (NexusPHP) and, our addition, exams too
         'success_reward_bonus' => max(0, (int)($_POST['success_reward_bonus'] ?? 0)),
         'fail_deduct_bonus'    => $type === EXAM_TYPE_TASK ? max(0, (int)($_POST['fail_deduct_bonus'] ?? 0)) : 0,
+        // Our addition: rewards besides bonus
+        'reward_upload_gb'     => max(0, min(100000, (int)($_POST['reward_upload_gb'] ?? 0))),
+        'reward_vip_days'      => max(0, min(3650, (int)($_POST['reward_vip_days'] ?? 0))),
+        'reward_invites'       => max(0, min(100, (int)($_POST['reward_invites'] ?? 0))),
         'max_user_count'       => $type === EXAM_TYPE_TASK ? max(0, (int)($_POST['max_user_count'] ?? 0)) : 0,
         'background_color'     => isset(EXAM_BG[$color]) ? $color : 'blue',
         'updated_at'           => exam_now(),
@@ -826,6 +835,11 @@ function ex_render_list(): string
         $extra  = $isTask
             ? '<div class="ex-sub">' . ex_e(ex_t('reward_penalty', exam_num((int)$x['success_reward_bonus']), exam_num((int)$x['fail_deduct_bonus']))) . '</div>'
             : '<div class="ex-sub">' . ex_e((int)$x['success_reward_bonus'] > 0 ? ex_t('reward_fail_disabled', exam_num((int)$x['success_reward_bonus'])) : ex_t('fail_disabled')) . '</div>';
+        $more   = exam_rewards_of($x);
+        $more['bonus'] = 0;   // bonus is already in the line above
+        if (($moreText = exam_rewards_text($more)) !== '') {
+            $extra .= '<div class="ex-sub"><i class="fa-solid fa-gift"></i> +' . ex_e($moreText) . '</div>';
+        }
         $count  = ($ongoing[$id] ?? 0) . ($isTask ? ' / ' . ((int)$x['max_user_count'] ?: '∞') : '');
         $st     = $stats[$id] ?? null;
         $anom   = exam_anomaly($st);
@@ -884,6 +898,7 @@ function ex_render_form(?array $x, bool $clone = false): string
         ]),
         'status' => EXAM_STATUS_ENABLED, 'is_discovered' => 0, 'priority' => 0, 'type' => EXAM_TYPE_EXAM,
         'success_reward_bonus' => 0, 'fail_deduct_bonus' => 0, 'max_user_count' => 0, 'background_color' => 'blue',
+        'reward_upload_gb' => 0, 'reward_vip_days' => 0, 'reward_invites' => 0,
     ]);
     $id    = (int)$x['id'];
     $f     = $x['filters'];
@@ -903,13 +918,21 @@ function ex_render_form(?array $x, bool $clone = false): string
         EXAM_INDEX_SEED_POINTS => ex_t('hint_seed_points'),
         EXAM_INDEX_SEED_TIME_AVERAGE => ex_t('hint_seed_time_avg'),
         EXAM_INDEX_UPLOAD_TORRENT_COUNT => ex_t('hint_upload_count'),
+        EXAM_INDEX_SEEDING_COUNT        => ex_t('hint_seeding_count'),
+        EXAM_INDEX_RATIO                => ex_t('hint_ratio'),
+        EXAM_INDEX_REQUESTS_FILLED      => ex_t('hint_requests_filled'),
+        EXAM_INDEX_CLAIMS_TAKEN         => ex_t('hint_claims_taken'),
+        EXAM_INDEX_COMMENTS             => ex_t('hint_comments'),
+        EXAM_INDEX_FORUM_POSTS          => ex_t('hint_forum_posts'),
     ];
     foreach (EXAM_INDEXES as $k => $meta) {
         $cur = $byIdx[$k] ?? ['require_value' => 0, 'checked' => false];
         $idxRows .= '<label class="ex-idx' . (!empty($cur['checked']) ? ' is-on' : '') . '">'
             . '<input type="checkbox" name="idx_checked[' . $k . ']" value="1"' . $chk(!empty($cur['checked'])) . '>'
-            . '<span class="ex-idx__name">' . ex_e($meta['name']) . ($hints[$k] ?? '' ? '<small>' . ex_e($hints[$k]) . '</small>' : '') . '</span>'
-            . '<input type="number" min="0" step="1" name="idx_value[' . $k . ']" value="' . (int)$cur['require_value'] . '">'
+            . '<span class="ex-idx__name">' . ex_e(exam_index_name($k)) . ($hints[$k] ?? '' ? '<small>' . ex_e($hints[$k]) . '</small>' : '') . '</span>'
+            . (($scale = exam_index_scale($k)) > 1
+                ? '<input type="number" min="0" step="0.01" name="idx_value[' . $k . ']" value="' . ex_e(rtrim(rtrim(number_format((int)$cur['require_value'] / $scale, 2, '.', ''), '0'), '.')) . '">'
+                : '<input type="number" min="0" step="1" name="idx_value[' . $k . ']" value="' . (int)$cur['require_value'] . '">')
             . '<span class="ex-idx__unit">' . ex_e($units[$k] ?? '') . '</span></label>';
     }
 
@@ -954,7 +977,7 @@ function ex_render_form(?array $x, bool $clone = false): string
         if (!empty($i['checked'])) $origIdx[(int)$i['index']] = (int)$i['require_value'];
     }
     $idxMeta = [];
-    foreach (EXAM_INDEXES as $k => $m) $idxMeta[$k] = [$m['name'], $m['unit']];
+    foreach (EXAM_INDEXES as $k => $m) $idxMeta[$k] = [exam_index_name($k), $m['unit'], exam_index_scale($k)];
 
     $h .= '<form method="post" action="' . ex_e(ex_self()) . '" id="ex-form"'
         . ($ongoing > 0 ? ' data-ex-ongoing="' . $ongoing . '" data-ex-orig-idx="' . ex_e(json_encode((object)$origIdx)) . '"'
@@ -1015,6 +1038,9 @@ function ex_render_form(?array $x, bool $clone = false): string
         . '<div class="ex-field"><label for="ex-rw"><span data-for-type="1">' . ex_e(ex_t('reward_passing')) . '</span><span data-for-type="2">' . ex_e(ex_t('reward_completing')) . '</span> <small>' . ex_e(ex_t('reward_hint')) . '</small></label><input id="ex-rw" type="number" min="0" name="success_reward_bonus" value="' . (int)$x['success_reward_bonus'] . '"></div>'
         . '<div class="ex-field" data-for-type="2"><label for="ex-fd">' . ex_e(ex_t('penalty_failing')) . '</label><input id="ex-fd" type="number" min="0" name="fail_deduct_bonus" value="' . (int)$x['fail_deduct_bonus'] . '"></div>'
         . '<div class="ex-field" data-for-type="2"><label for="ex-max">' . ex_e(ex_t('max_participants')) . ' <small>' . ex_e(ex_t('zero_unlimited')) . '</small></label><input id="ex-max" type="number" min="0" name="max_user_count" value="' . (int)$x['max_user_count'] . '"></div>'
+        . '<div class="ex-field"><label for="ex-rgb"><i class="fa-solid fa-cloud-arrow-up"></i> ' . ex_e(ex_t('reward_upload_gb')) . ' <small>' . ex_e(ex_t('zero_none')) . '</small></label><input id="ex-rgb" type="number" min="0" name="reward_upload_gb" value="' . (int)($x['reward_upload_gb'] ?? 0) . '"></div>'
+        . '<div class="ex-field"><label for="ex-rvip"><i class="fa-solid fa-crown"></i> ' . ex_e(ex_t('reward_vip_days')) . ' <small>' . ex_e(ex_t('reward_vip_hint')) . '</small></label><input id="ex-rvip" type="number" min="0" name="reward_vip_days" value="' . (int)($x['reward_vip_days'] ?? 0) . '"></div>'
+        . '<div class="ex-field"><label for="ex-rinv"><i class="fa-solid fa-envelope-open-text"></i> ' . ex_e(ex_t('reward_invites')) . ' <small>' . ex_e(ex_t('zero_none')) . '</small></label><input id="ex-rinv" type="number" min="0" name="reward_invites" value="' . (int)($x['reward_invites'] ?? 0) . '"></div>'
         . '</div></div>'
 
         // Other

@@ -21,7 +21,19 @@ $language['exam_functions'] = array(
     'idx_seed_bonus'        => 'Получено бонусов',
     'idx_seed_points'       => 'Очки сидирования',
     'idx_upload_count'      => 'Залито торрентов',
+    'idx_seeding_count'     => 'Раздач на сиде',
+    'idx_ratio'             => 'Рейтинг (ratio)',
+    'idx_requests_filled'   => 'Закрыто запросов',
+    'idx_claims_taken'      => 'Взято claims',
+    'idx_comments'          => 'Комментариев к раздачам',
+    'idx_forum_posts'       => 'Постов на форуме',
     'unit_hours'            => 'ч',
+
+    // ── Награды (список в ЛС, task.php, карточка экзамена) ──
+    'rw_bonus'              => '{1} бонусов',
+    'rw_upload'             => '{1} ГБ отдачи',
+    'rw_vip'                => 'VIP на {1} дн.',
+    'rw_invites'            => 'инвайтов: {1}',
 
     // ── Progress box (exam_render_current) ──
     'unit_d'        => 'д',
@@ -57,11 +69,11 @@ $language['exam_functions'] = array(
 
     // ── PM: results ──
     'pm_task_done_subj'          => 'Задание выполнено: {1}',
-    'pm_task_done_msg'           => 'Поздравляем! Вы выполнили задание [b]{1}[/b] вовремя ({2}) и получили [b]{3}[/b] бонусов.',
+    'pm_task_done_msg'           => 'Поздравляем! Вы выполнили задание [b]{1}[/b] вовремя ({2}) и получили: [b]{3}[/b].',
     'pm_task_done_msg_noreward'  => 'Поздравляем! Вы выполнили задание [b]{1}[/b] вовремя ({2}).',
     'pm_exam_passed_subj'        => 'Экзамен сдан: {1}',
     'pm_exam_passed_msg'         => 'Поздравляем! Вы сдали экзамен [b]{1}[/b] вовремя ({2}).',
-    'pm_exam_passed_msg_bonus'   => 'Поздравляем! Вы сдали экзамен [b]{1}[/b] вовремя ({2}) и получили [b]{3}[/b] бонусов.',
+    'pm_exam_passed_msg_bonus'   => 'Поздравляем! Вы сдали экзамен [b]{1}[/b] вовремя ({2}) и получили: [b]{3}[/b].',
     'pm_task_failed_subj'        => 'Задание не выполнено: {1}',
     'pm_task_failed_msg'         => 'Вы не выполнили задание [b]{1}[/b] вовремя ({2}). Списано [b]{3}[/b] бонусов.',
     'pm_task_failed_msg_free'    => 'Вы не выполнили задание [b]{1}[/b] вовремя ({2}). Бонусы не списаны.',

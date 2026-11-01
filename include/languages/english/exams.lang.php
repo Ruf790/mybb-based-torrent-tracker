@@ -128,7 +128,7 @@ $language['exams'] = array
 	'title_delete' => 'Delete',
 	'confirm_delete' => 'Delete "{1}" and all its attempts?',
 	'copy' => '(copy)',
-	'hint_seed_bonus' => 'Balance difference: spending in the shop lowers progress',
+	'hint_seed_bonus' => 'Earned since the start (bonus log); spending, gifts and staff transfers are not counted',
 	'hint_seed_points' => 'Only points earned by seeding, spending does not count',
 	'hint_seed_time_avg' => 'Seed time gained / number of torrents with activity',
 	'hint_upload_count' => 'Visible, non-banned torrents since assignment',
@@ -250,5 +250,18 @@ $language['exams'] = array
 	'bulk_opt_finish' => 'Finish now',
 	'bulk_opt_remove' => 'Delete attempts',
 	'apply' => 'Apply',
+
+	// ── New indexes and rewards ──
+	'hint_seeding_count' => 'Torrents seeding at the moment of the check, not a sum',
+	'hint_ratio' => 'Share ratio at the moment of the check, e.g. 1.5; nothing downloaded = met',
+	'hint_requests_filled' => 'Requests filled with own torrents since assignment',
+	'hint_claims_taken' => 'Torrents claimed for keeping since assignment',
+	'hint_comments' => 'Comments on torrents since assignment',
+	'hint_forum_posts' => 'Visible forum posts since assignment',
+	'reward_upload_gb' => 'Upload, GB',
+	'reward_vip_days' => 'VIP, days',
+	'reward_vip_hint' => 'User / Power User only; temporary VIP is extended',
+	'reward_invites' => 'Invites',
+	'zero_none' => '0 = none',
 );
 ?>

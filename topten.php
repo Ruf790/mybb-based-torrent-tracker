@@ -7,7 +7,7 @@ declare(strict_types=1);
 define("THIS_SCRIPT", "topten.php");
 require "./global.php";
 $lang->load("topten");
-define("T_VERSION", "2.2");
+define("T_VERSION", "2.3");
 
 include_once INC_PATH . "/functions_ratio.php";
 require_once INC_PATH . "/functions_icons.php";
@@ -261,6 +261,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
     <div class="row g-3 mb-3">
         <div class="col-6 col-lg-3">
             <div class="tt-card tt-kpi">
+                <i class="fa-solid fa-users tt-kpi__bg" aria-hidden="true"></i>
                 <div class="tt-kpi__icon tt-soft-primary"><i class="fa-solid fa-users"></i></div>
                 <div>
                     <div class="tt-kpi__value"><?php echo number_format($kpi_users); ?></div>
@@ -270,6 +271,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
         </div>
         <div class="col-6 col-lg-3">
             <div class="tt-card tt-kpi">
+                <i class="fa-solid fa-magnet tt-kpi__bg" aria-hidden="true"></i>
                 <div class="tt-kpi__icon tt-soft-danger"><i class="fa-solid fa-magnet"></i></div>
                 <div>
                     <div class="tt-kpi__value"><?php echo number_format($kpi_torrents); ?></div>
@@ -279,6 +281,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
         </div>
         <div class="col-6 col-lg-3">
             <div class="tt-card tt-kpi">
+                <i class="fa-solid fa-seedling tt-kpi__bg" aria-hidden="true"></i>
                 <div class="tt-kpi__icon tt-soft-success"><i class="fa-solid fa-seedling"></i></div>
                 <div>
                     <div class="tt-kpi__value"><?php echo number_format($kpi_peers); ?></div>
@@ -292,6 +295,7 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
         </div>
         <div class="col-6 col-lg-3">
             <div class="tt-card tt-kpi">
+                <i class="fa-solid fa-right-left tt-kpi__bg" aria-hidden="true"></i>
                 <div class="tt-kpi__icon tt-soft-warning"><i class="fa-solid fa-right-left"></i></div>
                 <div>
                     <div class="tt-kpi__value tt-kpi__value--sm">

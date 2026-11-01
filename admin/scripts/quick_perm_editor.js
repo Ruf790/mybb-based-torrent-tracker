@@ -37,8 +37,7 @@ const QuickPermEditor = {
     labels: {
         canview:        'View',
         canpostthreads: 'Post Threads',
-        canpostreplys:  'Post Replies',
-        canpostpolls:   'Post Polls'
+        canpostreplys:  'Post Replies'
     },
 
     /** Текущее перетаскивание: dataTransfer.getData() недоступен в dragover, поэтому храним здесь */

@@ -1861,8 +1861,8 @@ if ($mybb->input['action'] === 'profile') {
 		
     }
 
-    if ($enablepms != 0 && $uid != $CURUSER['id'] && $usergroups['canusepms'] == 1
-        && (($memprofile['receivepms'] != 0 && $memperms['canusepms'] != 0
+    if ($enablepms != 0 && $uid != $CURUSER['id'] && !empty($CURUSER['id'])
+        && (($memprofile['receivepms'] != 0
             && str_contains(',' . $memprofile['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false)
             || $usergroups['canoverridepm'] == 1)) {
         

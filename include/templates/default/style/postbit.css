@@ -88,7 +88,7 @@ a:target + .pb-post .pb-card { border-color: var(--bs-primary); box-shadow: 0 0 
 
 /* ── Текст ────────────────────────────────────────────────────────────────── */
 .pb-body { padding: .9rem 1rem; overflow-wrap: anywhere; }
-.pb-body .post_body { line-height: 1.6; }
+.pb-body .post_body { font-size: 1.08em; line-height: 1.65; }   /* текст поста чуть крупнее */
 .pb-body .post_body img { max-width: 100%; height: auto; }
 .pb-body blockquote { border-radius: .6rem; }
 .pb-edited-wrap:empty { display: none; }

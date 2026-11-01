@@ -182,7 +182,7 @@ stdhead($lang->task['pg_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task.css?ver=2">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task.css?ver=3">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 
 <div class="container-md st-page tq-page py-3">

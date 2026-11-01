@@ -27,10 +27,9 @@
 .tq-page .tq-alert--success { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .tq-page .tq-alert--danger  { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
 
-/* The current-task card from functions_exam_header.php sits inside the page.
-   errorss.css gives it a pulsing scale(1.05) animation: here it grew wider than the
-   page and over the fixed menu, so it stays still on this page. */
-.tq-page .exam-card { margin: 0 0 1rem; max-width: none; animation: none; transform: none; }
+/* The current-task card from functions_exam_header.php sits inside the page
+   (keeps its pulse animation from errorss.css; .tq-page z-index keeps it under the menu) */
+.tq-page .exam-card { margin: 0 0 1rem; max-width: none; }
 
 /* ── Section title ───────────────────────────────────────────────── */
 .tq-page .tq-sec { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; }

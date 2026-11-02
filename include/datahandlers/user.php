@@ -653,6 +653,17 @@ public function validate_user(): bool
        
         update_stats(['numusers' => '+1']);
 
+        // Chat bot: "New member: X — welcome!" (switch: Settings → Cleanup → Chat bot).
+        // Never breaks a registration: chat_bot_post() swallows its own errors.
+        if (defined('IN_TRACKER') && is_file(INC_PATH . '/functions_chat.php')) {
+            try {
+                require_once INC_PATH . '/functions_chat.php';
+                chat_bot_post('register', ['id' => $this->uid]);
+            } catch (\Throwable $e) {
+                error_log('chat bot (register): ' . $e->getMessage());
+            }
+        }
+
         if ((int)$user['usergroup'] == 5) {
             $cache->update_awaitingactivation();
         }

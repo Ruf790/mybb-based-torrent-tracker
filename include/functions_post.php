@@ -720,7 +720,11 @@ function get_post_attachments($id, &$post)
             if ($attachment['thumbnail'] != "SMALL" && $attachment['thumbnail'] != "" && $attachthumbnails == "yes") {
                 $post['thumblist'] .= $attbit;
             } elseif (($attachment['thumbnail'] == "SMALL" || $attachthumbnails == "no") && $isimage) {
-                $post['imagelist'] .= $attbit;
+                if ($forumpermissions['candlattachments']) {
+                    $post['imagelist'] .= $attbit;
+                } else {
+                    $post['thumblist'] .= $attbit;
+                }
             } else {
                 $post['attachmentlist'] .= $attbit;
             }

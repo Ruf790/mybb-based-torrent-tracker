@@ -215,9 +215,6 @@ class IMDB {
             'runtime_minutes'     => $runtimeMin,
             'plot'                => $details['overview'] ?? '',
             'poster'              => $poster,
-            'backdrop'            => !empty($details['backdrop_path'])
-                ? 'https://image.tmdb.org/t/p/w1280' . $details['backdrop_path']
-                : '',
             'content_rating'      => $contentRating,
             'languages'           => $languages,
             'countries'           => $countries,

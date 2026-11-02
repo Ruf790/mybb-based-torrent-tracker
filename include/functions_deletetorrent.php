@@ -397,6 +397,17 @@ function delete_file_by_name(string $filename, string $type = 'comments'): bool
 function delete_torrent_database_records(int $id): void
 {
     global $db;
+
+    // Reactions on the torrent's comments (include/functions_reactions.php): one JOIN, before the
+    // comments themselves go. Skipped while reactions.sql is not installed.
+    try {
+        $db->sql_query_prepared(
+            "DELETE r FROM reactions r JOIN comments c ON c.id = r.item_id WHERE r.type = 'comment' AND c.torrent = ?",
+            [$id]
+        );
+    } catch (\Throwable $e) {
+        error_log('deletetorrent reactions: ' . $e->getMessage());
+    }
     
     $tables = [
         "peers"           => "torrent",

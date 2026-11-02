@@ -340,7 +340,7 @@ stdhead(chat_t('arch_title', 'Chat archive'));
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
-                <div class="ch-arch__body"><?= chat_parse(chat_bot_text((string)$r['message']), $name) ?></div>
+                <div class="ch-arch__body"><?= chat_parse(chat_bot_text((string)$r['message'], false), $name) ?></div>
             </div>
             <?php endforeach; ?>
         <?php endif; ?>

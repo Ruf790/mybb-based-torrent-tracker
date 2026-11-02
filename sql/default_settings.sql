@@ -97,6 +97,7 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('chat_bot_offer',          'yes'),
 ('chat_bot_offer_uploaded', 'yes'),
 ('chat_bot_register',       'yes'),
+('chat_bot_freeleech',      'yes'),
 ('notify_keep_read_days', '60'),
 ('notify_keep_all_days',  '180'),
 ('notify_max_per_user',   '300'),

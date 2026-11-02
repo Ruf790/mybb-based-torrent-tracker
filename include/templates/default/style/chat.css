@@ -727,6 +727,7 @@
 .ch .ch-msg.is-bot-offer          { --ch-bot: var(--bs-info-rgb); }
 .ch .ch-msg.is-bot-offer_uploaded { --ch-bot: var(--bs-primary-rgb); }
 .ch .ch-msg.is-bot-register       { --ch-bot: var(--bs-danger-rgb); }
+.ch .ch-msg.is-bot-freeleech      { --ch-bot: var(--bs-warning-rgb); }
 .ch .ch-msg.is-bot .ch-avatar {
     background: rgba(var(--ch-bot), .16);
     color: rgb(var(--ch-bot));

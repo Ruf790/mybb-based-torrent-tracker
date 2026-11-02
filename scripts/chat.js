@@ -280,6 +280,7 @@
         const BOT_ICONS = {
             upload: 'fa-cloud-arrow-up', request: 'fa-hand', request_filled: 'fa-circle-check',
             offer: 'fa-lightbulb', offer_uploaded: 'fa-box-open', register: 'fa-user-plus',
+            freeleech: 'fa-gift',
         };
 
         const avatar = (m) => {

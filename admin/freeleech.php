@@ -91,6 +91,18 @@ class TorrentManager
         }
 
         $changed = (int)$this->db->affected_rows();
+
+        // Chat bot: "Global freeleech is ON / over" — only when something really changed
+        // (switch: Settings → Cleanup → Chat bot; never breaks this action)
+        if ($changed > 0 && is_file(INC_PATH . '/functions_chat.php')) {
+            try {
+                require_once INC_PATH . '/functions_chat.php';
+                chat_bot_post('freeleech', ['on' => $target === 'yes']);
+            } catch (\Throwable $e) {
+                error_log('chat bot (freeleech): ' . $e->getMessage());
+            }
+        }
+
         // Лог — всегда на английском.
         $label   = $target === 'yes' ? 'Free' : 'Normal';
         $this->logAction("All torrents set to {$label} ({$changed} changed)");

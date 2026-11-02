@@ -111,6 +111,19 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
     $showcommentstable .= generateHeaderSection($torrent_name, $moderator);
 
+    // Reactions (include/functions_reactions.php): all comments of the page in one query,
+    // CSS + config + JS once per page. Without reactions.sql the comments simply show none.
+    require_once INC_PATH . '/functions_reactions.php';
+    $reactSum = [];
+    try {
+        $reactSum = react_summary('comment', array_column($rows, 'id'), (int)($CURUSER['id'] ?? 0));
+    } catch (\Throwable $e) {
+        error_log('comment reactions: ' . $e->getMessage());
+    }
+    $canReact = (int)($CURUSER['id'] ?? 0) > 0
+        && !(defined('UC_BANNED') && (int)($CURUSER['usergroup'] ?? 0) === UC_BANNED);
+    $showcommentstable .= react_assets();
+
 
 
     foreach ($rows as $row) {
@@ -129,6 +142,9 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $pid = (int)$row['id'];
         $tid = (int)$row['torrentid'];
         $postlink = get_comment_link($pid, $tid);
+
+        // Reactions block under the text (react_bar() returns '' for a guest when there are none)
+        $reactions_html = react_bar('comment', $pid, $reactSum[$pid] ?? [], $canReact);
 
         // Attachments from bulk pre-fetched array (no extra DB query)
        
@@ -368,6 +384,7 @@ if (!empty($att_bulk[$pid])) {
 
 </div>
 '.$comment_attachments_html.'	
+'.$reactions_html.'
 
 
 

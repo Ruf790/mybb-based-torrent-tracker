@@ -229,7 +229,7 @@ if ($foruminfo['type'] === 'f' && $foruminfo['open'] != 0 && $fpermissions['canp
 // Поиск по форуму. postcode обязателен: search.php?action=do_search без него
 // отвечает «неверный поиск» (verify_post_check), раньше форма не работала.
 $searchforum = '';
-if (!empty($CURUSER['id']) && $foruminfo['type'] === 'f') {
+if ($fpermissions['cansearch'] != 0 && $foruminfo['type'] === 'f') {
     $searchforum = '<form action="search.php" method="post" class="fd-search" role="search">'
         . '<input type="hidden" name="action" value="do_search">'
         . '<input type="hidden" name="postcode" value="' . generate_post_check() . '">'

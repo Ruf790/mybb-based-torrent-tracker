@@ -182,10 +182,13 @@ stdhead($lang->task['pg_title']);
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task.css?ver=3">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/task.css?ver=12">
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 
 <div class="container-md st-page tq-page py-3">
+
+  <?php // Current task with its progress (same card as under the site header), first on the page ?>
+  <?= exam_render_header_notice($uid) ?>
 
   <!-- Header -->
   <header class="st-card st-head mb-3">
@@ -241,9 +244,6 @@ stdhead($lang->task['pg_title']);
       <span><?= $e((string)$flash['m']) ?></span>
     </div>
   <?php endif; ?>
-
-  <?php // Current task with its progress (same card as under the site header) ?>
-  <?= exam_render_header_notice($uid) ?>
 
   <!-- Tasks -->
   <div class="tq-sec mb-2">

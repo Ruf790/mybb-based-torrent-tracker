@@ -361,7 +361,7 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
         $db->sql_query_prepared("DELETE FROM attachments WHERE filename='' OR filesize<1");
 
         // Did the user choose to post a poll? Redirect them to the poll posting page.
-        if ($mybb->get_input('postpoll', MyBB::INPUT_INT)) {
+        if ($mybb->get_input('postpoll', MyBB::INPUT_INT) && $forumpermissions['canpostpolls']) {
             $url = "polls.php?action=newpoll&tid=$tid&polloptions=".$mybb->get_input('numpolloptions', MyBB::INPUT_INT);
             $redirect_postedited = $lang->editpost['flash_post_edited_poll'];
         } elseif ($visible == 0 && $first_post && !$is_mod) {

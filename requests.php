@@ -15,7 +15,6 @@ require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_bonuslog.php';
 require_once INC_PATH . '/datahandler.php';
-require_once INC_PATH . '/functions_requests.php';
 
 
 $parser = new postParser;
@@ -170,10 +169,7 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
     $category_id = $mybb->get_input('category_id', MyBB::INPUT_INT);
     $year = ($year_raw = trim($mybb->get_input('year'))) !== '' && (int)$year_raw > 0 ? (int)$year_raw : null;
     $bounty = max(0, (float)($mybb->input['bounty'] ?? 0));
-    $imdb_raw = trim($mybb->get_input('imdb'));
-    $imdb_id  = $imdb_raw !== '' ? req_imdb_id($imdb_raw) : null;
     $errors = [];
-    if ($imdb_raw !== '' && $imdb_id === null) $errors[] = $lang->requests['err_imdb_invalid'];
     if (strlen($title) < 3) $errors[] = $lang->requests['err_title_short'];
     if (strlen($title) > 255) $errors[] = $lang->requests['err_title_long'];
     if ($bounty > 0 && (float)$CURUSER['seedbonus'] < $bounty) $errors[] = $lang->requests['err_no_bonus'];
@@ -183,9 +179,9 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
         }
         $logBounty = $bounty;
         $db->sql_query_prepared(
-            "INSERT INTO requests (user_id, title, description, category_id, year, imdb_id, status, votes, bounty, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?)",
-            [(int)$CURUSER['id'], $title, $description, $category_id, $year, $imdb_id, $bounty, TIMENOW, TIMENOW]
+            "INSERT INTO requests (user_id, title, description, category_id, year, status, votes, bounty, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'open', 1, ?, ?, ?)",
+            [(int)$CURUSER['id'], $title, $description, $category_id, $year, $bounty, TIMENOW, TIMENOW]
         );
         $id = $db->insert_id();
         if (!empty($logBounty)) bonus_log((int)$CURUSER['id'], -$logBounty, 'request', "Bounty for new request #{$id}", (int)$id);
@@ -206,14 +202,62 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
 if ($action === 'fill' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->requests['err_post_key']);
     $torrent_id = $mybb->get_input('torrent_id', MyBB::INPUT_INT);
-
-    // Закрыть может владелец раздачи или стафф; награда — владельцу раздачи
-    $res = req_fill($rid, $torrent_id, (int)$CURUSER['id'], $is_mod);
-    if (!$res['ok']) {
-        $msg = $lang->requests[$res['error']] ?? $res['error'];
-        $_SESSION['flash'] = ['msg' => ags_fmt($msg, ...($res['args'] ?? [])), 'type' => 'danger'];
+    $req = $db->fetch_array($db->sql_query_prepared("SELECT * FROM requests WHERE id = ?", [$rid]));
+    if (!$req || $req['status'] !== 'open') stderr($lang->requests['err_invalid_request']);
+    if (!$torrent_id || !$db->num_rows($db->sql_query_prepared("SELECT id FROM torrents WHERE id = ?", [$torrent_id]))) {
+        $_SESSION['flash'] = ['msg' => ags_fmt($lang->requests['flash_torrent_missing'], $torrent_id), 'type' => 'danger'];
         header('Location: requests.php?action=view&rid=' . $rid);
         exit();
+    }
+    if ((float)$req['bounty'] > 0) {
+        $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$req['bounty'], (int)$CURUSER['id']]);
+        bonus_log((int)$CURUSER['id'], (float)$req['bounty'], 'request', "Bounty for filling request #{$rid}", $rid);
+    }
+    $db->sql_query_prepared(
+        "UPDATE requests SET status = ?, filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ? WHERE id = ?",
+        ['filled', (int)$CURUSER['id'], $torrent_id, TIMENOW, TIMENOW, $rid]
+    );
+    if ($req['user_id'] != $CURUSER['id']) {
+        $requester = $db->fetch_array($db->sql_query_prepared("SELECT id, language FROM users WHERE id = ?", [(int)$req['user_id']]));
+        if ($requester) {
+            require_once INC_PATH . '/functions_pm.php';
+
+            // Скобки в названии ломают [b]...[/b] / [url=...]...[/url]
+            $request_title = str_replace(['[', ']'], ['(', ')'], (string)$req['title']);
+
+            // Текст ЛС берётся из requests.lang.php на языке получателя
+            send_pm([
+                'subject'       => ['pm_filled_subject'],
+                'message'       => [
+                    'pm_filled_message',
+                    $request_title,
+                    $BASEURL . '/details.php?id=' . $torrent_id,
+                ],
+                'touid'         => (int)$requester['id'],
+                'language'      => (string)($requester['language'] ?? ''),
+                'language_file' => 'requests',
+                'sender'        => ['uid' => -1],
+            ], -1, true);
+        }
+    }
+
+    // Bell: the request's author + everyone who voted (the PM to the author stays).
+    // The filler gets nothing: notify() skips actor == recipient
+    try {
+        require_once INC_PATH . '/functions_notify.php';
+        $nLink  = 'details.php?id=' . $torrent_id;
+        $nTitle = [(string)$req['title']];
+        notify((int)$req['user_id'], 'request_filled', (int)$CURUSER['id'], $rid, $nTitle, $nLink);
+
+        $vq = $db->sql_query_prepared(
+            'SELECT DISTINCT user_id FROM request_votes WHERE request_id = ? AND user_id <> ?',
+            [$rid, (int)$req['user_id']]
+        );
+        while ($vq && ($v = $db->fetch_array($vq))) {
+            notify((int)$v['user_id'], 'request_vote_filled', (int)$CURUSER['id'], $rid, $nTitle, $nLink);
+        }
+    } catch (\Throwable $e) {
+        error_log('notify (request filled): ' . $e->getMessage());
     }
 
     $_SESSION['flash'] = ['msg' => $lang->requests['flash_filled'], 'type' => 'success'];
@@ -395,9 +439,6 @@ if ($action === 'view' && $rid) {
                             <span><i class="fas fa-calendar me-1"></i><?= my_datee($dateformat, $req['created_at']) ?> <?= my_datee($timeformat, $req['created_at']) ?></span>
                             <?php if ($req['year']): ?>
                             <span><i class="fas fa-film me-1"></i><?= (int)$req['year'] ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($req['imdb_id'])): ?>
-                            <span><i class="fa-brands fa-imdb me-1"></i><a href="https://www.imdb.com/title/<?= htmlspecialchars((string)$req['imdb_id']) ?>/" target="_blank" rel="noopener" class="text-decoration-none"><?= htmlspecialchars((string)$req['imdb_id']) ?></a></span>
                             <?php endif; ?>
                             <?php if ((float)$req['bounty'] > 0): ?>
                             <span class="text-warning fw-semibold"><i class="fas fa-coins me-1"></i><?= htmlspecialchars(ags_fmt($lang->requests['lbl_bounty_amount'], number_format((float)$req['bounty'], 1))) ?></span>
@@ -765,11 +806,6 @@ if ($action === 'create') {
                     <div class="mb-3">
                         <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_title']) ?> <span class="text-danger">*</span></label>
                         <input type="text" class="form-control rounded-3" name="title" maxlength="255" required value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="<?= htmlspecialchars($lang->requests['ph_title']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"><i class="fa-brands fa-imdb me-1"></i><?= htmlspecialchars($lang->requests['lbl_imdb']) ?></label>
-                        <input type="text" class="form-control rounded-3" name="imdb" maxlength="255" value="<?= htmlspecialchars($mybb->get_input('imdb')) ?>" placeholder="https://www.imdb.com/title/tt1234567/">
-                        <div class="form-text"><?= htmlspecialchars($lang->requests['hint_imdb']) ?></div>
                     </div>
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">

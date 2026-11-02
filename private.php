@@ -30,7 +30,7 @@ if ($enablepms == 0) {
     error($lang->private['pms_disabled']);
 }
 
-if ($CURUSER['id'] == '/' || $CURUSER['id'] == 0) {
+if ($CURUSER['id'] == '/' || $CURUSER['id'] == 0 || $usergroups['canusepms'] == 0) {
     print_no_permission();
 }
 
@@ -513,7 +513,7 @@ if ($action === 'read') {
     $message = build_postbit($pm, 2);
 
     $quickreply = '';
-    if ($pm['fromid'] != 0 && $pm['folder'] != 3) {
+    if ($usergroups['cansendpms'] != 0 && $pm['fromid'] != 0 && $pm['folder'] != 3) {
         $optionschecked = ['savecopy' => 'checked="checked"', 'readreceipt' => 'checked="checked"'];
 
         require_once INC_PATH . '/functions_posting.php';

@@ -582,7 +582,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
     if (count($errors) > 0) $reply_errors = inline_error($errors);
 
     // ── Attachments ───────────────────────────────────────────────────────────
-    if ($enableattachments != 0) {
+    if ($enableattachments != 0 && $forumpermissions['canpostattachments'] != 0) {
         $attachcount = 0;
         if ($pid) {
             $attachwhere_sql    = "pid = ?";

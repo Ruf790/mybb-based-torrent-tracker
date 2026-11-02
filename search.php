@@ -202,6 +202,7 @@ function sr_load_attach_images(array $post_rows, array $fperms): array
     $pid_fid = [];
     foreach ($post_rows as $r) {
         $fid = (int)$r['fid'];
+        if (($fperms[$fid]['candlattachments'] ?? 1) == 0) continue;
         $pid_fid[(int)$r['pid']] = $fid;
     }
     if (!$pid_fid) return [];
@@ -248,7 +249,7 @@ add_breadcrumb($lang->search['nav_search'], 'search.php');
 
 $mybb->input['action'] = $mybb->get_input('action');
 if ($mybb->input['action'] === 'results') add_breadcrumb($lang->search['nav_results']);
-if (empty($CURUSER['id'])) print_no_permission();
+if (empty($usergroups) || $usergroups['cansearch'] == 0) print_no_permission();
 
 $now             = TIMENOW;
 $mybb->input['keywords'] = trim($mybb->get_input('keywords'));
@@ -910,10 +911,8 @@ if ($mybb->input['action'] === 'results') {
 
     $plugins->run_hooks('search_do_search_start');
 
-    // Пауза между поисками (сек) для не-стаффа; 0 = выключено.
-    // Раньше условие было cansearch != 1, т.е. флуд-контроль фактически не работал.
-    $searchfloodtime = 0;
-    if ($searchfloodtime > 0 && !$is_mod) {
+    $searchfloodtime = 30;
+    if ($searchfloodtime > 0 && $usergroups['cansearch'] != 1) {
         $timecut = TIMENOW - $searchfloodtime;
         if ($CURUSER['id']) {
             $cond_sql    = "uid = ?";

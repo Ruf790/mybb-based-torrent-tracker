@@ -1,0 +1,107 @@
+/* Smilie reactions on page items (torrent comments): react_bar() + scripts/reactions.js.
+   Bootstrap 5 variables only, so the dark theme works. The chat has its own styles in chat.css. */
+
+.rx {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    margin-top: .75rem;
+}
+.rx.is-busy { opacity: .65; pointer-events: none; }
+
+.rx-pill,
+.rx-add {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    height: 1.95rem;
+    padding: 0 .6rem 0 .4rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 999px;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .875rem;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease, transform .12s ease;
+}
+.rx-pill:hover { border-color: rgba(var(--bs-primary-rgb), .45); transform: translateY(-1px); }
+.rx-pill:active { transform: scale(.94); }
+.rx-pill.is-mine {
+    background: rgba(var(--bs-primary-rgb), .12);
+    border-color: rgba(var(--bs-primary-rgb), .55);
+    color: var(--bs-primary);
+}
+.rx-pill img {
+    width: 1.35rem;
+    height: 1.35rem;
+    max-width: none;
+    object-fit: contain;
+    margin: 0;
+}
+
+/* "Add" button: quiet until the comment is hovered (always visible on touch screens) */
+.rx-add {
+    padding: 0 .55rem;
+    border-style: dashed;
+    background: transparent;
+    font-size: 1rem;
+    opacity: .55;
+}
+.rx-add__plus { font-size: .6rem; margin-left: -.15rem; }
+.rx-add:hover,
+.rx-add:focus-visible { opacity: 1; color: var(--bs-primary); border-color: rgba(var(--bs-primary-rgb), .5); }
+@media (hover: hover) {
+    .rx:not(:has(.rx-pill)) .rx-add { opacity: 0; }
+    :hover > .rx .rx-add,
+    .rx:hover .rx-add,
+    .rx-add:focus-visible { opacity: .55; }
+    .rx-add:hover { opacity: 1; }
+}
+
+/* Picker: placed by reactions.js, lives in <body> */
+.rx-pick {
+    position: fixed;
+    z-index: 1080;
+    max-width: min(22rem, calc(100vw - 16px));
+    padding: .35rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .9rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 .5rem 1.6rem rgba(0, 0, 0, .18);
+    animation: rx-pick-in .12s ease-out;
+}
+@keyframes rx-pick-in { from { opacity: 0; transform: translateY(4px) scale(.97); } to { opacity: 1; transform: none; } }
+.rx-pick__quick { display: flex; align-items: center; gap: .15rem; }
+.rx-pick__all {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.3rem, 1fr));
+    gap: .1rem;
+    max-height: 14rem;
+    overflow-y: auto;
+    margin-top: .35rem;
+    padding-top: .35rem;
+    border-top: 1px solid var(--bs-border-color);
+    overscroll-behavior: contain;
+}
+.rx-pick__item,
+.rx-pick__more {
+    display: grid;
+    place-items: center;
+    width: 2.3rem;
+    height: 2.3rem;
+    padding: 0;
+    border: 0;
+    border-radius: .6rem;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color .1s ease, transform .1s ease;
+}
+.rx-pick__item img { width: 1.6rem; height: 1.6rem; object-fit: contain; }
+.rx-pick__item:hover { background: var(--bs-tertiary-bg); transform: scale(1.15); }
+.rx-pick__item.is-mine { background: rgba(var(--bs-primary-rgb), .14); }
+.rx-pick__more { color: var(--bs-secondary-color); font-size: .95rem; }
+.rx-pick__more:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }

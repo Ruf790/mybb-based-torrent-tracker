@@ -105,3 +105,10 @@
 .rx-pick__item.is-mine { background: rgba(var(--bs-primary-rgb), .14); }
 .rx-pick__more { color: var(--bs-secondary-color); font-size: .95rem; }
 .rx-pick__more:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+
+/* Guests: pills only show who reacted */
+.rx-pill:disabled { cursor: default; opacity: .85; }
+.rx-pill:disabled:hover { transform: none; border-color: var(--bs-border-color); }
+
+/* Forum postbit: between the text and "edited by" / signature */
+.pb-body > .rx { margin: .9rem 0 .2rem; }

@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Reactions with the site's own smilies (pic/smilies/), shared by every kind of item.
  *
  *   reactions (type, item_id, uid, rkey, added)   PK (type, item_id, uid, rkey)
- *     type  'chat' = chat_messages.id; 'comment' reserved for torrent comments
+ *     type  'chat' = chat_messages.id, 'comment' = comments.id (torrents), 'post' = posts.pid (forum)
  *     rkey  the smilie code (smilies.stext, e.g. ':thumbsup:'), case-sensitive (utf8mb4_bin)
  *
  * react_toggle()  add / remove one reaction of one user
@@ -19,7 +19,7 @@ if (!defined('IN_TRACKER')) {
     die('Direct access denied.');
 }
 
-const REACT_TYPES         = ['chat', 'comment'];
+const REACT_TYPES         = ['chat', 'comment', 'post'];
 const REACT_MAX_PER_USER  = 3;      // different reactions of one user on one item
 const REACT_NAMES_MAX     = 15;     // names in the tooltip of one reaction
 const REACT_QUICK_MAX     = 8;
@@ -154,9 +154,9 @@ function react_delete_items(string $type, array $itemIds): void
     );
 }
 
-// ── Reactions block for pages (torrent comments; the chat has its own in chat.js) ──
+// ── Reactions block for pages (torrent comments, forum posts; the chat has its own in chat.js) ──
 
-/** Strings, from the 'details' lang (comment pages always load it), with English fallbacks. */
+/** Strings, from the 'details' lang (loaded here when the page hasn't), with English fallbacks. */
 function react_lang(): array
 {
     global $lang;
@@ -191,13 +191,16 @@ function react_assets(): string
         'key'      => function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? ''),
         'lang'     => react_lang(),
     ];
-    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=1">'
+    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=2">'
         . '<script>window.AGS_REACT = ' . json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>'
-        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=1" defer></script>';
+        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=2" defer></script>';
 }
 
-/** Pills + the "add" button of one item. $list = react_summary(...)[$id] ?? []. */
-function react_bar(string $type, int $id, array $list): string
+/**
+ * Pills + the "add" button of one item. $list = react_summary(...)[$id] ?? [].
+ * $canReact = false (guests): the pills only show who reacted, no "add" button.
+ */
+function react_bar(string $type, int $id, array $list, bool $canReact = true): string
 {
     $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $L = react_lang();
@@ -207,12 +210,16 @@ function react_bar(string $type, int $id, array $list): string
         $who = implode(', ', (array)$r['who']);
         if ((int)$r['more'] > 0) $who .= ' ' . str_replace('{1}', (string)(int)$r['more'], $L['more']);
         if (!empty($r['mine']))  $who .= "\n" . $L['remove'];
-        $html .= '<button type="button" class="rx-pill' . (!empty($r['mine']) ? ' is-mine' : '') . '" data-key="' . $e((string)$r['k']) . '" title="' . $e($who) . '">'
+        $html .= '<button type="button" class="rx-pill' . (!empty($r['mine']) ? ' is-mine' : '') . '" data-key="' . $e((string)$r['k']) . '" title="' . $e($who) . '"' . ($canReact ? '' : ' disabled') . '>'
                . '<img src="' . $e((string)$r['src']) . '" alt="' . $e((string)$r['k']) . '" loading="lazy">'
                . '<span class="rx-n">' . (int)$r['n'] . '</span></button>';
     }
-    $html .= '<button type="button" class="rx-add" title="' . $e($L['add']) . '" aria-label="' . $e($L['add']) . '">'
-           . '<i class="fa-regular fa-face-smile"></i><i class="fa-solid fa-plus rx-add__plus"></i></button>';
+    if ($canReact) {
+        $html .= '<button type="button" class="rx-add" title="' . $e($L['add']) . '" aria-label="' . $e($L['add']) . '">'
+               . '<i class="fa-regular fa-face-smile"></i><i class="fa-solid fa-plus rx-add__plus"></i></button>';
+    } elseif (!$list) {
+        return '';                                 // a guest and nothing to show
+    }
     return $html . '</div>';
 }
 
@@ -222,6 +229,8 @@ function react_item_exists(string $type, int $id): bool
     global $db;
     $sql = match ($type) {
         'comment' => 'SELECT 1 FROM comments WHERE id = ? LIMIT 1',
+        // Only approved posts of approved threads
+        'post'    => 'SELECT 1 FROM posts p JOIN threads t ON t.tid = p.tid WHERE p.pid = ? AND p.visible = 1 AND t.visible = 1 LIMIT 1',
         default   => null,
     };
     if ($sql === null || $id <= 0) return false;
@@ -257,12 +266,14 @@ function react_ajax(): never
     $out(['ok' => true, 'reactions' => react_summary($type, [$id], $uid)[$id] ?? []]);
 }
 
-/** Reactions of items that are gone (comments are deleted in many places): run by the daily cleanup. */
+/** Reactions of items that are gone (comments and posts are deleted in many places): run by the daily cleanup. */
 function react_prune_orphans(): int
 {
     global $db;
     $db->sql_query_prepared("DELETE r FROM reactions r LEFT JOIN comments c ON c.id = r.item_id WHERE r.type = 'comment' AND c.id IS NULL");
     $n = max(0, (int)$db->affected_rows());
     $db->sql_query_prepared("DELETE r FROM reactions r LEFT JOIN chat_messages m ON m.id = r.item_id WHERE r.type = 'chat' AND m.id IS NULL");
+    $n += max(0, (int)$db->affected_rows());
+    $db->sql_query_prepared("DELETE r FROM reactions r LEFT JOIN posts p ON p.pid = r.item_id WHERE r.type = 'post' AND p.pid IS NULL");
     return $n + max(0, (int)$db->affected_rows());
 }

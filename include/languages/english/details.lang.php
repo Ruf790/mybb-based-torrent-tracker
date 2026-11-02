@@ -551,9 +551,9 @@ $language['details'] = array
     'react_more'       => 'and {1} more',
     'react_remove'     => 'Click to remove yours',
     'react_err_bad'    => 'Unknown reaction.',
-    'react_err_limit'  => 'Up to {1} reactions on one comment.',
+    'react_err_limit'  => 'Up to {1} reactions on one message.',
     'react_err_login'  => 'Log in to react.',
-    'react_err_gone'   => 'This comment no longer exists.',
+    'react_err_gone'   => 'This message no longer exists.',
     'react_err_token'  => 'Security token expired. Reload the page.',
 );
 ?>

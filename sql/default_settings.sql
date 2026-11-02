@@ -90,6 +90,12 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 
 ('chat_keep_deleted_days', '30'),
 ('chat_keep_days',         '0'),
+-- chat bot: site events in the public chat (Settings → Cleanup → Chat bot)
+('chat_bot_upload',         'yes'),
+('chat_bot_request',        'yes'),
+('chat_bot_request_filled', 'yes'),
+('chat_bot_offer',          'yes'),
+('chat_bot_offer_uploaded', 'yes'),
 ('notify_keep_read_days', '60'),
 ('notify_keep_all_days',  '180'),
 ('notify_max_per_user',   '300'),

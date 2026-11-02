@@ -48,9 +48,14 @@
 
     const paint = (bar, list) => {
         bar.querySelectorAll('.rx-pill').forEach((p) => p.remove());
-        const add = bar.querySelector('.rx-add');
+        const add = bar.querySelector('.rx-add');          // null when the button sits in a footer
         list.forEach((r) => bar.insertBefore(pill(r), add));
+        bar.classList.toggle('is-empty', !list.length && !add);
     };
+
+    // The block of a button: its own .rx, or (react_trigger() in a footer) the .rx with the same type + id
+    const barOf = (btn) => btn.closest('.rx')
+        || document.querySelector('.rx[data-rx-type="' + CSS.escape(btn.dataset.rxType || '') + '"][data-rx-id="' + CSS.escape(btn.dataset.rxId || '') + '"]');
 
     // ── Toggle ──
     const busy = new WeakSet();
@@ -110,7 +115,8 @@
         close();
         if (again) return;
 
-        const bar  = btn.closest('.rx');
+        const bar  = barOf(btn);
+        if (!bar) return;
         const mine = new Set([...bar.querySelectorAll('.rx-pill.is-mine')].map((p) => p.dataset.key));
         const item = (s) => {
             const b = el('button', 'rx-pick__item' + (mine.has(s.k) ? ' is-mine' : ''));
@@ -161,13 +167,13 @@
 
     // ── Events ──
     document.addEventListener('click', (e) => {
-        const add = e.target.closest('.rx .rx-add');
+        const add = e.target.closest('.rx .rx-add, .rx-trigger');
         if (add) { e.preventDefault(); open(add); return; }
         const p = e.target.closest('.rx .rx-pill');
         if (p) { e.preventDefault(); toggle(p.closest('.rx'), p.dataset.key); }
     });
     document.addEventListener('pointerdown', (e) => {
-        if (picker && !picker.contains(e.target) && !e.target.closest('.rx-add')) close();
+        if (picker && !picker.contains(e.target) && !e.target.closest('.rx-add, .rx-trigger')) close();
     }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
     window.addEventListener('resize', close);

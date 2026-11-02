@@ -143,8 +143,10 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $tid = (int)$row['torrentid'];
         $postlink = get_comment_link($pid, $tid);
 
-        // Reactions block under the text (react_bar() returns '' for a guest when there are none)
-        $reactions_html = react_bar('comment', $pid, $reactSum[$pid] ?? [], $canReact);
+        // Reactions: pills under the text, the "React" button in the footer next to "Quote"
+        // (react_bar() returns '' for a guest when there are none)
+        $reactions_html = react_bar('comment', $pid, $reactSum[$pid] ?? [], $canReact, false);
+        $react_button   = $canReact ? react_trigger('comment', $pid, 'postlinks') : '';
 
         // Attachments from bulk pre-fetched array (no extra DB query)
        
@@ -402,6 +404,9 @@ if (!empty($att_bulk[$pid])) {
 '.$post['button_multiquote'].'</div>	
 
 <div class="col-auto align-self-center small text-start pe-0 me-0">
+'.$react_button.'</div>
+
+<div class="col-auto align-self-center small text-start pe-0 me-0">
 '.$post['button_rep'].'</div>	
 
 <div class="col align-self-center small text-end">
@@ -570,4 +575,4 @@ function generateHeaderSection(string $torrent_name, bool $moderator): string
 if (!defined('IN_TRACKER')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
-?>
+?>

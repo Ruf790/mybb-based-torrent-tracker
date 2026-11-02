@@ -44,6 +44,14 @@ function ca_lang(): array
  *
  * @return array{video:int, audio:int, image:int, other:int}
  */
+/**
+ * Вложения включены? (Настройки → «Включить вложения», $enableattachments)
+ */
+function att_enabled(): bool
+{
+    return (int)($GLOBALS['enableattachments'] ?? 1) === 1;
+}
+
 function att_size_limits(): array
 {
     $mb = static function (string $name, int $default): int {
@@ -119,7 +127,7 @@ function get_attachment_icon2(string $ext): string
 function attach_to_comment(string $posthash, int $comment_id, int $user_id): void
 {
     global $db, $maxattachments;
-    if (empty($posthash) || !$comment_id) return;
+    if (empty($posthash) || !$comment_id || !att_enabled()) return;
 
 	
 	// Та же семантика, что и у постов на форуме: $maxattachments > 0 && ... — 0 пропускает проверку (без лимита)
@@ -218,6 +226,10 @@ function delete_comment_attachments(int $comment_id): void
 function render_attachment_uploader(string $posthash, int $user_id, array $existing = [], int $comment_id = 0): string
 {
     global $BASEURL, $mybb;
+    // Вложения выключены в настройках — виджет загрузки не показываем
+    if (!att_enabled()) {
+        return '';
+    }
     $post_key = $mybb->post_code ?? '';
 
     static $js_loaded = false;

@@ -680,6 +680,17 @@ function eu_vip_until(array $userdata): ?array
     return [$badge, $hint];
 }
 
+/** Бейдж с датой окончания; оставшееся время — во всплывающей подсказке */
+function eu_badge_until(string $soft, string $icon, string $tpl, int $ts): string
+{
+    global $lang, $dateformat;
+    $L    = $lang->edituser;
+    $left = $ts - TIMENOW;
+    $tip  = $left > 0 ? ags_fmt($L['tip_vip_left'] ?? 'Left: {1}', mkprettytime($left)) : '';
+    return '<span' . ($tip !== '' ? ' title="' . htmlspecialchars($tip) . '"' : '') . '>'
+         . eu_badge($soft, $icon, ags_fmt($tpl, my_datee((string)$dateformat, $ts))) . '</span>';
+}
+
 /** Статус-бейджи в шапке */
 function get_user_status_badges(array $userdata): string
 {
@@ -687,7 +698,18 @@ function get_user_status_badges(array $userdata): string
     $L = $lang->edituser;
     $b = '';
     if ($userdata['enabled'] === 'no')  $b .= eu_badge('danger',  'fa-ban',                  $L['badge_banned']);
-    if ($userdata['warned'] === 'yes')  $b .= eu_badge('warning', 'fa-triangle-exclamation', $L['badge_warned']);
+    if ($userdata['warned'] === 'yes') {
+        $wu = (int)($userdata['warneduntil'] ?? 0);
+        $b .= $wu > 0
+            ? eu_badge_until('warning', 'fa-triangle-exclamation', $L['badge_warned_until'] ?? 'Warned until {1}', $wu)
+            : eu_badge('warning', 'fa-triangle-exclamation', $L['badge_warned']);
+    }
+    if (($userdata['leechwarn'] ?? 'no') === 'yes') {
+        $lu = (int)($userdata['leechwarnuntil'] ?? 0);
+        $b .= $lu > 0
+            ? eu_badge_until('danger', 'fa-skull-crossbones', $L['badge_leechwarn_until'] ?? 'Low ratio: ban {1}', $lu)
+            : eu_badge('danger', 'fa-skull-crossbones', $L['badge_leechwarn'] ?? 'Low ratio');
+    }
     if ($userdata['donor'] === 'yes')   $b .= eu_badge('success', 'fa-heart',                $L['badge_donor']);
     if ((int)$userdata['moderateposts'] === 1) $b .= eu_badge('info', 'fa-eye',             $L['badge_moderated']);
     if ($vip = eu_vip_until($userdata))  $b .= $vip[0];

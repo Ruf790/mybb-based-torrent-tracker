@@ -611,6 +611,15 @@ if (isset($parser) && method_exists($parser, 'primeTorrentEmbedCache')) {
     }
 }
 
+// Reactions of every post on the page: one query (build_postbit() → postbit_reactions())
+try {
+    require_once INC_PATH . '/functions_reactions.php';
+    $GLOBALS['postbit_reactions'] = react_summary('post', $pid_list, (int)($CURUSER['id'] ?? 0));
+} catch (\Throwable $e) {
+    error_log('post reactions: ' . $e->getMessage());   // reactions.sql not run yet
+    $GLOBALS['postbit_reactions'] = [];
+}
+
 $posts = '';
 foreach ($post_rows as $post) {
     if ($thread['firstpost'] == $post['pid'] && $thread['visible'] == 0) {

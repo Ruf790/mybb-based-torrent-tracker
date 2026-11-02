@@ -544,5 +544,16 @@ $language['details'] = array
 	'lbl_req_votes'				=> 'Голосов: {1}',
 	'lbl_req_bounty'			=> '{1} BP',
 	'conf_req_fill'				=> 'Закрыть этот запрос текущей раздачей?',
+
+    // ── Реакции на комментарии (include/functions_reactions.php, scripts/reactions.js) ──
+    'react_add'        => 'Добавить реакцию',
+    'react_all'        => 'Все смайлы',
+    'react_more'       => 'и ещё {1}',
+    'react_remove'     => 'Нажмите, чтобы убрать свою',
+    'react_err_bad'    => 'Неизвестная реакция.',
+    'react_err_limit'  => 'Не больше {1} реакций на одно сообщение.',
+    'react_err_login'  => 'Войдите, чтобы ставить реакции.',
+    'react_err_gone'   => 'Это сообщение уже удалено.',
+    'react_err_token'  => 'Ключ безопасности устарел. Обновите страницу.',
 );
 ?>

@@ -128,6 +128,9 @@ function handleXmlHttpAction(): void
         'chat_history', 'chat_online', 'chat_pin',
         'chat_dm_list', 'chat_dm_user', 'chat_dm_prefs', 'chat_dm_block', 'chat_report', 'chat_react' => handleChat($mybb->input['action']),
 
+        // Smilie reactions on torrent comments (include/functions_reactions.php); the chat uses chat_react
+        'react' => handleReact(),
+
         default => handleUnknownAction()
     };
 }
@@ -1412,6 +1415,17 @@ function handleChat(string $action): void
     $lang->load('chat');
     require_once INC_PATH . '/functions_chat.php';
     chat_ajax($action);
+}
+
+/**
+ * Reactions (torrent comments)
+ */
+function handleReact(): void
+{
+    global $lang;
+    $lang->load('details');
+    require_once INC_PATH . '/functions_reactions.php';
+    react_ajax();
 }
 
 /**

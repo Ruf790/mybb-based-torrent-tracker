@@ -544,5 +544,16 @@ $language['details'] = array
 	'lbl_req_votes'				=> 'Votes: {1}',
 	'lbl_req_bounty'			=> '{1} BP',
 	'conf_req_fill'				=> 'Fill this request with the current torrent?',
+
+    // ── Comment reactions (include/functions_reactions.php, scripts/reactions.js) ──
+    'react_add'        => 'Add a reaction',
+    'react_all'        => 'All smilies',
+    'react_more'       => 'and {1} more',
+    'react_remove'     => 'Click to remove yours',
+    'react_err_bad'    => 'Unknown reaction.',
+    'react_err_limit'  => 'Up to {1} reactions on one message.',
+    'react_err_login'  => 'Log in to react.',
+    'react_err_gone'   => 'This message no longer exists.',
+    'react_err_token'  => 'Security token expired. Reload the page.',
 );
 ?>

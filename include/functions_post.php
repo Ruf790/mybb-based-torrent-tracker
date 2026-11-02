@@ -130,6 +130,7 @@ function build_postbit_body(array $post, string $unapproved_shade): string
          . $post['message']
          . $post['attachments']
          . '</div>'
+         . ($post['reactions'] ?? '')
          . '<span class="post_edit pb-edited-wrap" id="edited_by_' . $pid . '">' . $post['editedmsg'] . '</span>'
          . $post['signature']
          . $post['poststatus']
@@ -641,6 +642,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
     /* ── Render postbit ──────────────────────────────────────────── */
     $pid = (int)$post['pid'];
 
+    // Reactions: thread posts only (not previews, PMs or announcements), approved ones
+    $post['reactions'] = ($post_type == 0 && (int)($post['visible'] ?? 1) === 1) ? postbit_reactions($pid) : '';
+
     // .inline_row — на неё вешает .trow_selected inline_moderation.js
     $postbit = postbit_css_link()
              . $ignore_bit
@@ -657,6 +661,28 @@ if (empty($post['pid'])) $post['pid'] = 0;
 
     $GLOBALS['post'] = '';
     return $postbit;
+}
+
+/**
+ * Reactions block of one forum post (include/functions_reactions.php).
+ * showthread.php loads the reactions of the whole page into $GLOBALS['postbit_reactions'] with one
+ * query; a single post (quick reply via AJAX) gets its own query. '' when reactions.sql is not run.
+ */
+function postbit_reactions(int $pid): string
+{
+    global $CURUSER;
+    if ($pid <= 0) return '';
+    try {
+        require_once INC_PATH . '/functions_reactions.php';
+        $me  = (int)($CURUSER['id'] ?? 0);
+        $map = $GLOBALS['postbit_reactions'] ?? null;
+        $list = is_array($map) ? ($map[$pid] ?? []) : (react_summary('post', [$pid], $me)[$pid] ?? []);
+        $can  = $me > 0 && !(defined('UC_BANNED') && (int)($CURUSER['usergroup'] ?? 0) === UC_BANNED);
+        return react_assets() . react_bar('post', $pid, $list, $can);
+    } catch (\Throwable $e) {
+        error_log('post reactions: ' . $e->getMessage());
+        return '';
+    }
 }
 
 function get_post_attachments($id, &$post)

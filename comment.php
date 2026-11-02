@@ -15,6 +15,27 @@ function allowcomments(int $torrentid = 0): bool
     return !($result["allowcomments"] != 'yes' && !$is_mod);
 }
 
+/**
+ * Reactions of comments that are deleted (include/functions_reactions.php). With $intoId > 0 (merge)
+ * they move to that comment first; a reaction the user already has there is dropped.
+ * Never breaks the deletion: skipped while reactions.sql is not installed.
+ */
+function comment_reactions_gone(array $commentIds, int $intoId = 0): void
+{
+    global $db;
+    $ids = array_values(array_filter(array_map('intval', $commentIds), static fn(int $i): bool => $i > 0));
+    if (!$ids) return;
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    try {
+        if ($intoId > 0) {
+            $db->sql_query_prepared("UPDATE IGNORE reactions SET item_id = ? WHERE type = 'comment' AND item_id IN ({$ph})", [$intoId, ...$ids]);
+        }
+        $db->sql_query_prepared("DELETE FROM reactions WHERE type = 'comment' AND item_id IN ({$ph})", $ids);
+    } catch (\Throwable $e) {
+        error_log('comment reactions: ' . $e->getMessage());
+    }
+}
+
 define("SCRIPTNAME", "comment.php");
 define("IN_MYBB", 1);
 define('C_VERSION', '1.8.8');
@@ -734,6 +755,9 @@ function handleDeleteAction(): void
     }
     $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id = ?", [$commentid]);
 
+    // Its reactions
+    comment_reactions_gone([$commentid]);
+
     // Delete comment
     $db->sql_query_prepared("DELETE FROM comments WHERE id = ?", [$commentid]);
 
@@ -826,6 +850,9 @@ function handleMassDeleteAction(): void
             }
         }
         $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id = ?", [$comment_id]);
+
+        // Its reactions
+        comment_reactions_gone([$comment_id]);
 
         // Delete comment
         $db->sql_query_prepared("DELETE FROM comments WHERE id = ?", [$comment_id]);
@@ -953,6 +980,9 @@ function handleMergeAction(): void
         "UPDATE comments SET text = ?, editedat = ?, editedby = ? WHERE id = ?",
         [$mergedText, TIMENOW, (int)$CURUSER['id'], $masterid]
     );
+
+    // Реакции поглощённых переходят на мастер-комментарий (повтор той же реакции того же человека отбрасывается)
+    comment_reactions_gone($mergedIds, $masterid);
 
     // Удаляем поглощённые комментарии
     $db->sql_query_prepared("DELETE FROM comments WHERE id IN ({$ph})", $mergedParams);

@@ -59,6 +59,16 @@ flush();
 // Load language and execute cron jobs
 $lang->load('cron');
 
+// Chat bot: timed site-wide freeleech / silver / 2x started or ended (cheap file check, every hit)
+if (is_file(INC_PATH . '/functions_chat.php')) {
+    try {
+        require_once INC_PATH . '/functions_chat.php';
+        chat_bot_freeleech_tick();
+    } catch (\Throwable $e) {
+        error_log('chat bot (freeleech tick): ' . $e->getMessage());
+    }
+}
+
 // Get pending cron jobs
 $cronQuery = $db->sql_query_prepared(
     "SELECT cronid, minutes, filename, loglevel FROM cron WHERE nextrun <= ? AND active = '1'",

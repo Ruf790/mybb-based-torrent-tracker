@@ -203,7 +203,7 @@ function react_assets(): string
         'key'      => function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? ''),
         'lang'     => react_lang(),
     ];
-    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=2">'
+    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=3">'
         . '<script>window.AGS_REACT = ' . json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>'
         . '<script src="' . $e($base) . '/scripts/reactions.js?ver=2" defer></script>';
 }

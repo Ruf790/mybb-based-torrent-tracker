@@ -43,24 +43,24 @@
     margin: 0;
 }
 
-/* "Add" button: quiet until the comment is hovered (always visible on touch screens) */
+/* "Add" button: always visible, same shape as the pills, turns blue on hover */
 .rx-add {
-    padding: 0 .55rem;
-    border-style: dashed;
-    background: transparent;
-    font-size: 1rem;
-    opacity: .55;
+    gap: .2rem;
+    padding: 0 .65rem 0 .55rem;
+    background: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-secondary-color);
+    font-size: 1.05rem;
 }
-.rx-add__plus { font-size: .6rem; margin-left: -.15rem; }
+.rx-add__plus { font-size: .7rem; }
 .rx-add:hover,
-.rx-add:focus-visible { opacity: 1; color: var(--bs-primary); border-color: rgba(var(--bs-primary-rgb), .5); }
-@media (hover: hover) {
-    .rx:not(:has(.rx-pill)) .rx-add { opacity: 0; }
-    :hover > .rx .rx-add,
-    .rx:hover .rx-add,
-    .rx-add:focus-visible { opacity: .55; }
-    .rx-add:hover { opacity: 1; }
+.rx-add:focus-visible {
+    background: rgba(var(--bs-primary-rgb), .1);
+    border-color: rgba(var(--bs-primary-rgb), .55);
+    color: var(--bs-primary);
+    transform: translateY(-1px);
 }
+.rx-add:active { transform: scale(.94); }
 
 /* Picker: placed by reactions.js, lives in <body> */
 .rx-pick {

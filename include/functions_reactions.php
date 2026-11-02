@@ -105,13 +105,84 @@ function react_toggle(string $type, int $itemId, int $uid, string $key): string
     }
 
     $q = $db->sql_query_prepared('SELECT COUNT(*) AS c FROM reactions WHERE type = ? AND item_id = ? AND uid = ?', [$type, $itemId, $uid]);
-    if ((int)(($q ? $db->fetch_array($q) : [])['c'] ?? 0) >= REACT_MAX_PER_USER) return 'limit';
+    $had = (int)(($q ? $db->fetch_array($q) : [])['c'] ?? 0);
+    if ($had >= REACT_MAX_PER_USER) return 'limit';
 
     $db->sql_query_prepared(
         'INSERT IGNORE INTO reactions (type, item_id, uid, rkey, added) VALUES (?, ?, ?, ?, ?)',
         [$type, $itemId, $uid, $key, TIMENOW]
     );
+
+    // Bell for the author: only for this user's first reaction on the item (adding a 2nd / 3rd
+    // smilie doesn't ring again), and never fatal for the reaction itself
+    if ($had === 0) {
+        try {
+            react_notify($type, $itemId, $uid);
+        } catch (\Throwable $e) {
+            error_log('react notify: ' . $e->getMessage());
+        }
+    }
     return 'added';
+}
+
+/**
+ * Notification center: "X reacted to your comment / post / chat message".
+ * Grouped per item while unread (functions_notify.php: types reaction, reaction_post, reaction_chat),
+ * so many reactions on one message stay one line. Never to yourself (notify() skips actor == uid).
+ */
+function react_notify(string $type, int $itemId, int $actor): void
+{
+    global $db;
+    $one = static function (string $sql, array $p) use ($db): ?array {
+        $q = $db->sql_query_prepared($sql, $p);
+        $r = $q ? $db->fetch_array($q) : null;
+        return is_array($r) ? $r : null;
+    };
+    $cut = static fn(string $s): string => mb_strimwidth(trim((string)preg_replace('~\s+~u', ' ', $s)), 0, 80, '…');
+
+    switch ($type) {
+        case 'comment':
+            $r = $one('SELECT c.user, c.torrent, t.name FROM comments c LEFT JOIN torrents t ON t.id = c.torrent WHERE c.id = ?', [$itemId]);
+            if (!$r) return;
+            $to   = (int)$r['user'];
+            $nt   = 'reaction';
+            $args = [(string)($r['name'] ?? '')];
+            $link = (function_exists('get_comment_link') ? (string)get_comment_link($itemId, (int)$r['torrent']) : 'details.php?id=' . (int)$r['torrent']) . '#pid' . $itemId;
+            break;
+
+        case 'post':
+            $r = $one('SELECT p.uid, p.tid, t.subject FROM posts p LEFT JOIN threads t ON t.tid = p.tid WHERE p.pid = ?', [$itemId]);
+            if (!$r) return;
+            $to   = (int)$r['uid'];
+            $nt   = 'reaction_post';
+            $args = [(string)($r['subject'] ?? '')];
+            $link = (function_exists('get_post_link') ? (string)get_post_link($itemId, (int)$r['tid']) : 'showthread.php?pid=' . $itemId) . '#pid' . $itemId;
+            break;
+
+        case 'chat':
+            $r = $one('SELECT uid, to_uid, message FROM chat_messages WHERE id = ? AND deleted = 0', [$itemId]);
+            if (!$r) return;
+            $to = (int)$r['uid'];
+            if ($to <= 0) return;                                  // the bot (uid 0) gets no bell
+            // Already in the chat: the pill on the message is enough
+            if (function_exists('chat_is_present') && chat_is_present($to)) return;
+            $text = (string)$r['message'];
+            if (function_exists('chat_bot_text')) $text = chat_bot_text($text, false);
+            $text = function_exists('chat_plain') ? chat_plain($text, 80) : $cut((string)preg_replace('~\[/?[a-z*]+(?:=[^\]]*)?\]~i', '', $text));
+            $nt   = 'reaction_chat';
+            $args = [$text];
+            // A private message opens its dialog, a public one the chat
+            $link = (int)$r['to_uid'] > 0 ? 'chat.php?dm=' . $actor : 'chat.php';
+            break;
+
+        default:
+            return;
+    }
+
+    if ($to <= 0 || $to === $actor) return;
+    require_once INC_PATH . '/functions_notify.php';
+    // get_post_link() / get_comment_link() return HTML-escaped URLs (&amp;); the bell stores a plain one
+    notify($to, $nt, $actor, $itemId, $args, htmlspecialchars_decode($link, ENT_QUOTES));
 }
 
 /**
@@ -177,6 +248,7 @@ function react_lang(): array
     $get = static fn(string $k, string $f): string => (string)preg_replace('/%(\d+)\$s/', '{$1}', (string)($d[$k] ?? $f));
     return [
         'add'       => $get('react_add', 'Add a reaction'),
+        'btn'       => $get('react_btn', 'React'),
         'all'       => $get('react_all', 'All smilies'),
         'more'      => $get('react_more', 'and {1} more'),
         'remove'    => $get('react_remove', 'Click to remove yours'),
@@ -203,19 +275,26 @@ function react_assets(): string
         'key'      => function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? ''),
         'lang'     => react_lang(),
     ];
-    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=3">'
+    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=4">'
         . '<script>window.AGS_REACT = ' . json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>'
-        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=2" defer></script>';
+        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=3" defer></script>';
 }
 
 /**
  * Pills + the "add" button of one item. $list = react_summary(...)[$id] ?? [].
  * $canReact = false (guests): the pills only show who reacted, no "add" button.
+ * $addButton = false: the button lives elsewhere (react_trigger() in a footer); with no reactions
+ * yet the block is an empty, hidden placeholder the first reaction is drawn into.
  */
-function react_bar(string $type, int $id, array $list, bool $canReact = true): string
+function react_bar(string $type, int $id, array $list, bool $canReact = true, bool $addButton = true): string
 {
     $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $L = react_lang();
+
+    if (!$list && (!$canReact || !$addButton)) {
+        // Nothing to show: a guest gets nothing, a member an empty target for react_trigger()
+        return $canReact ? '<div class="rx is-empty" data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '"></div>' : '';
+    }
 
     $html = '<div class="rx" data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '">';
     foreach ($list as $r) {
@@ -226,13 +305,26 @@ function react_bar(string $type, int $id, array $list, bool $canReact = true): s
                . '<img src="' . $e((string)$r['src']) . '" alt="' . $e((string)$r['k']) . '" loading="lazy">'
                . '<span class="rx-n">' . (int)$r['n'] . '</span></button>';
     }
-    if ($canReact) {
+    if ($canReact && $addButton) {
         $html .= '<button type="button" class="rx-add" title="' . $e($L['add']) . '" aria-label="' . $e($L['add']) . '">'
                . '<i class="fa-regular fa-face-smile"></i><i class="fa-solid fa-plus rx-add__plus"></i></button>';
     } elseif (!$list) {
         return '';                                 // a guest and nothing to show
     }
     return $html . '</div>';
+}
+
+/**
+ * A "React" button placed away from the pills (e.g. next to "Quote" in a footer); opens the picker
+ * for the react_bar() of the same type + id. $class: the place's own button classes.
+ */
+function react_trigger(string $type, int $id, string $class = ''): string
+{
+    $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $L = react_lang();
+    return '<button type="button" class="rx-trigger' . ($class !== '' ? ' ' . $e($class) : '') . '"'
+        . ' data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '" title="' . $e($L['add']) . '">'
+        . '<i class="fa-regular fa-face-smile"></i> ' . $e($L['btn']) . '</button>';
 }
 
 /** Does the item exist (and may the viewer react to it)? Chat messages go through chat_react instead. */

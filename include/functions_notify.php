@@ -69,7 +69,9 @@ function notify_types(): array
 		'chat_dm'         => ['icon' => 'fa-envelope',     'color' => 'primary', 'group' => true],
         'thread_reply'    => ['icon' => 'fa-comments',     'color' => 'primary', 'group' => true],
         'rating'          => ['icon' => 'fa-star',         'color' => 'warning', 'group' => true],
-        'reaction'        => ['icon' => 'fa-face-smile',   'color' => 'warning', 'group' => true],
+        'reaction'        => ['icon' => 'fa-face-smile',   'color' => 'warning', 'group' => true],   // torrent comment
+        'reaction_post'   => ['icon' => 'fa-face-smile',   'color' => 'warning', 'group' => true],   // forum post
+        'reaction_chat'   => ['icon' => 'fa-face-smile',   'color' => 'warning', 'group' => true],   // chat message
         'claim'           => ['icon' => 'fa-hand-holding-heart', 'color' => 'success', 'group' => true],
         'claim_settled'   => ['icon' => 'fa-calendar-check', 'color' => 'info',  'group' => false],
         'claim_warning'   => ['icon' => 'fa-triangle-exclamation', 'color' => 'warning', 'group' => false],

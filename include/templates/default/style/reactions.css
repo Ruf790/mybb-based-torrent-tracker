@@ -112,3 +112,16 @@
 
 /* Forum postbit: between the text and "edited by" / signature */
 .pb-body > .rx { margin: .9rem 0 .2rem; }
+
+/* Placeholder for the first reaction when the button sits elsewhere (react_trigger()) */
+.rx.is-empty { display: none; }
+
+/* "React" button next to "Quote": takes the look of the place (e.g. .pb-act in the postbit footer);
+   :where() keeps these defaults at zero specificity so the place's classes win */
+:where(.rx-trigger) {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+.rx-trigger .fa-face-smile { font-size: 1.05em; }

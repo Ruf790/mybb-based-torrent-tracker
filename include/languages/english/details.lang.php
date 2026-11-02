@@ -547,6 +547,7 @@ $language['details'] = array
 
     // ── Comment reactions (include/functions_reactions.php, scripts/reactions.js) ──
     'react_add'        => 'Add a reaction',
+    'react_btn'        => 'React',
     'react_all'        => 'All smilies',
     'react_more'       => 'and {1} more',
     'react_remove'     => 'Click to remove yours',

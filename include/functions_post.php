@@ -95,6 +95,7 @@ function build_postbit_footer(array $post): string
 {
     return '<div class="pb-foot">'
          . $post['button_multiquote']
+         . ($post['button_react'] ?? '')
          . $post['button_rep']
          . '<span class="pb-foot__sp"></span>'
          . $post['button_edit']
@@ -643,7 +644,9 @@ if (empty($post['pid'])) $post['pid'] = 0;
     $pid = (int)$post['pid'];
 
     // Reactions: thread posts only (not previews, PMs or announcements), approved ones
-    $post['reactions'] = ($post_type == 0 && (int)($post['visible'] ?? 1) === 1) ? postbit_reactions($pid) : '';
+    [$post['reactions'], $post['button_react']] = ($post_type == 0 && (int)($post['visible'] ?? 1) === 1)
+        ? postbit_reactions($pid)
+        : ['', ''];
 
     // .inline_row — на неё вешает .trow_selected inline_moderation.js
     $postbit = postbit_css_link()
@@ -664,24 +667,28 @@ if (empty($post['pid'])) $post['pid'] = 0;
 }
 
 /**
- * Reactions block of one forum post (include/functions_reactions.php).
- * showthread.php loads the reactions of the whole page into $GLOBALS['postbit_reactions'] with one
- * query; a single post (quick reply via AJAX) gets its own query. '' when reactions.sql is not run.
+ * Reactions of one forum post (include/functions_reactions.php): [pills under the text, "React" button
+ * for the footer next to "Quote"]. showthread.php loads the reactions of the whole page into
+ * $GLOBALS['postbit_reactions'] with one query; a single post (quick reply via AJAX) gets its own.
+ * ['', ''] when reactions.sql is not run.
  */
-function postbit_reactions(int $pid): string
+function postbit_reactions(int $pid): array
 {
     global $CURUSER;
-    if ($pid <= 0) return '';
+    if ($pid <= 0) return ['', ''];
     try {
         require_once INC_PATH . '/functions_reactions.php';
         $me  = (int)($CURUSER['id'] ?? 0);
         $map = $GLOBALS['postbit_reactions'] ?? null;
         $list = is_array($map) ? ($map[$pid] ?? []) : (react_summary('post', [$pid], $me)[$pid] ?? []);
         $can  = $me > 0 && !(defined('UC_BANNED') && (int)($CURUSER['usergroup'] ?? 0) === UC_BANNED);
-        return react_assets() . react_bar('post', $pid, $list, $can);
+        return [
+            react_assets() . react_bar('post', $pid, $list, $can, false),
+            $can ? react_trigger('post', $pid, 'pb-act') : '',
+        ];
     } catch (\Throwable $e) {
         error_log('post reactions: ' . $e->getMessage());
-        return '';
+        return ['', ''];
     }
 }
 

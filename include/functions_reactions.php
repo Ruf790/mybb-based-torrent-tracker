@@ -177,6 +177,7 @@ function react_lang(): array
     $get = static fn(string $k, string $f): string => (string)preg_replace('/%(\d+)\$s/', '{$1}', (string)($d[$k] ?? $f));
     return [
         'add'       => $get('react_add', 'Add a reaction'),
+        'btn'       => $get('react_btn', 'React'),
         'all'       => $get('react_all', 'All smilies'),
         'more'      => $get('react_more', 'and {1} more'),
         'remove'    => $get('react_remove', 'Click to remove yours'),
@@ -203,19 +204,26 @@ function react_assets(): string
         'key'      => function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? ''),
         'lang'     => react_lang(),
     ];
-    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=3">'
+    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=4">'
         . '<script>window.AGS_REACT = ' . json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>'
-        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=2" defer></script>';
+        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=3" defer></script>';
 }
 
 /**
  * Pills + the "add" button of one item. $list = react_summary(...)[$id] ?? [].
  * $canReact = false (guests): the pills only show who reacted, no "add" button.
+ * $addButton = false: the button lives elsewhere (react_trigger() in a footer); with no reactions
+ * yet the block is an empty, hidden placeholder the first reaction is drawn into.
  */
-function react_bar(string $type, int $id, array $list, bool $canReact = true): string
+function react_bar(string $type, int $id, array $list, bool $canReact = true, bool $addButton = true): string
 {
     $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $L = react_lang();
+
+    if (!$list && (!$canReact || !$addButton)) {
+        // Nothing to show: a guest gets nothing, a member an empty target for react_trigger()
+        return $canReact ? '<div class="rx is-empty" data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '"></div>' : '';
+    }
 
     $html = '<div class="rx" data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '">';
     foreach ($list as $r) {
@@ -226,13 +234,26 @@ function react_bar(string $type, int $id, array $list, bool $canReact = true): s
                . '<img src="' . $e((string)$r['src']) . '" alt="' . $e((string)$r['k']) . '" loading="lazy">'
                . '<span class="rx-n">' . (int)$r['n'] . '</span></button>';
     }
-    if ($canReact) {
+    if ($canReact && $addButton) {
         $html .= '<button type="button" class="rx-add" title="' . $e($L['add']) . '" aria-label="' . $e($L['add']) . '">'
                . '<i class="fa-regular fa-face-smile"></i><i class="fa-solid fa-plus rx-add__plus"></i></button>';
     } elseif (!$list) {
         return '';                                 // a guest and nothing to show
     }
     return $html . '</div>';
+}
+
+/**
+ * A "React" button placed away from the pills (e.g. next to "Quote" in a footer); opens the picker
+ * for the react_bar() of the same type + id. $class: the place's own button classes.
+ */
+function react_trigger(string $type, int $id, string $class = ''): string
+{
+    $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $L = react_lang();
+    return '<button type="button" class="rx-trigger' . ($class !== '' ? ' ' . $e($class) : '') . '"'
+        . ' data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '" title="' . $e($L['add']) . '">'
+        . '<i class="fa-regular fa-face-smile"></i> ' . $e($L['btn']) . '</button>';
 }
 
 /** Does the item exist (and may the viewer react to it)? Chat messages go through chat_react instead. */

@@ -547,6 +547,7 @@ $language['details'] = array
 
     // ── Реакции на комментарии (include/functions_reactions.php, scripts/reactions.js) ──
     'react_add'        => 'Добавить реакцию',
+    'react_btn'        => 'Реакция',
     'react_all'        => 'Все смайлы',
     'react_more'       => 'и ещё {1}',
     'react_remove'     => 'Нажмите, чтобы убрать свою',

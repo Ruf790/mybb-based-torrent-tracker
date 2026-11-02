@@ -240,6 +240,8 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('iu_deleteafter',        '15'),
 ('iu_protect_groups',     '4,5,6,7,8'),
 
+
+
 -- ── Claims (include/functions_claim.php, Settings → Claims) ──────────────────
 ('claim_enabled',            'yes'),
 ('claim_min_age_days',       '30'),
@@ -252,5 +254,7 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('claim_give_up_deduct',     '400'),
 ('claim_warn_days',          '5'),
 ('claim_keeper_max_seeders', '2'),
+
+
 
 ('offline_message',       'Site is currently under maintenance. Please check back later.');

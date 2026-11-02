@@ -11,19 +11,22 @@ declare(strict_types=1);
 // Array of usergroup permission fields and their default values.
 $usergroup_permissions = [
     'isbannedgroup'        => 0, 'canview'              => 1,
-    'canviewthreads'       => 1,
+    'canviewthreads'       => 1, 'candlattachments'     => 1,
     'canviewboardclosed'   => 1, 'canpostthreads'       => 1,
-    'canpostreplys'        => 1,
+    'canpostreplys'        => 1, 'canpostattachments'   => 1,
     'modposts'             => 0,
     'modthreads'           => 0, 'modattachments'       => 0,
     'mod_edit_posts'       => 0, 'caneditposts'         => 1,
     'candeletetorrent'     => 1, 'candeleteposts'       => 1,
-    'candeletethreads'     => 1,
+    'candeletethreads'     => 1, 'caneditattachments'   => 1,
+    'canpostpolls'         => 1,
+    'canvotepolls'         => 1, 'canundovotes'         => 0,
+    'canusepms'            => 1, 'cansendpms'           => 1,
     'cantrackpms'          => 1, 'candenypmreceipts'    => 1,
     'pmquota'              => 100,'maxpmrecipients'     => 5,
     'cansendemail'         => 1, 'cansendemailoverride' => 0,
     'canviewwolinvis'      => 0, 'cansettingspanel'     => 0,
-    'issupermod'           => 0,
+    'issupermod'           => 0, 'cansearch'            => 1, 
 	'showforumteam'        => 0, 'attachquota'          => 5000,
 	'canstaffpanel'      => 0,   'canoverridepm'        => 0, 
 	'max_screenshots' => 3,
@@ -400,9 +403,11 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'isbannedgroup'         => $g('isbannedgroup'),
                 'canview'               => $g('canview'),
                 'canviewthreads'        => $g('canviewthreads'),
+                'candlattachments'      => $g('candlattachments'),
                 'canviewboardclosed'    => $g('canviewboardclosed'),
                 'canpostthreads'        => $g('canpostthreads'),
                 'canpostreplys'         => $g('canpostreplys'),
+                'canpostattachments'    => $g('canpostattachments'),
                 'modposts'              => $g('modposts'),
                 'modthreads'            => $g('modthreads'),
                 'mod_edit_posts'        => $g('mod_edit_posts'),
@@ -411,6 +416,12 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'candeletetorrent'      => $g('candeletetorrent'),
                 'candeleteposts'        => $g('candeleteposts'),
                 'candeletethreads'      => $g('candeletethreads'),
+                'caneditattachments'    => $g('caneditattachments'),
+                'canpostpolls'          => $g('canpostpolls'),
+                'canvotepolls'          => $g('canvotepolls'),
+                'canundovotes'          => $g('canundovotes'),
+                'canusepms'             => $g('canusepms'),
+                'cansendpms'            => $g('cansendpms'),
                 'cantrackpms'           => $g('cantrackpms'),
                 'candenypmreceipts'     => $g('candenypmreceipts'),
                 'pmquota'               => $g('pmquota'),
@@ -420,6 +431,7 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'cansettingspanel'      => $g('cansettingspanel'),
                 'canviewwolinvis'       => $g('canviewwolinvis'),
                 'issupermod'            => $g('issupermod'),
+                'cansearch'             => $g('cansearch'),
                 'showforumteam'         => $g('showforumteam'),
                 'attachquota'           => $g('attachquota'),
                 'canstaffpanel'         => $g('canstaffpanel'),
@@ -516,19 +528,28 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     ug_sec_open('fa-eye', 'ic-blue', $lang->groups['sec_viewing']);
     ug_switch('canview',            $lang->groups['sw_canview'],             $in['canview'] ?? 0,            'fa-house');
     ug_switch('canviewthreads',     $lang->groups['sw_canviewthreads'],               $in['canviewthreads'] ?? 0,     'fa-list');
+    ug_switch('cansearch',          $lang->groups['sw_cansearch'],              $in['cansearch'] ?? 0,          'fa-magnifying-glass');
+    ug_switch('candlattachments',   $lang->groups['sw_candlattachments'],       $in['candlattachments'] ?? 0,   'fa-download');
     ug_switch('canviewboardclosed', $lang->groups['sw_canviewboardclosed'], $in['canviewboardclosed'] ?? 0, 'fa-door-closed');
     ug_sec_close();
     ug_sec_open('fa-paper-plane', 'ic-green', $lang->groups['sec_posting']);
     ug_switch('canpostthreads', $lang->groups['sw_canpostthreads'], $in['canpostthreads'] ?? 0, 'fa-square-plus');
     ug_switch('canpostreplys',  $lang->groups['sw_canpostreplys'], $in['canpostreplys'] ?? 0,  'fa-reply');
     ug_sec_close();
+    ug_sec_open('fa-square-poll-vertical', 'ic-purple', $lang->groups['sec_polls']);
+    ug_switch('canpostpolls', $lang->groups['sw_canpostpolls'],        $in['canpostpolls'] ?? 0, 'fa-chart-simple');
+    ug_switch('canvotepolls', $lang->groups['sw_canvotepolls'],       $in['canvotepolls'] ?? 0, 'fa-check-to-slot');
+    ug_switch('canundovotes', $lang->groups['sw_canundovotes'], $in['canundovotes'] ?? 0, 'fa-rotate-left');
+    ug_sec_close();
     echo '</div><div class="col-lg-6">';
     ug_sec_open('fa-pen-to-square', 'ic-amber', $lang->groups['sec_editing']);
     ug_switch('caneditposts',       $lang->groups['sw_caneditposts'],        $in['caneditposts'] ?? 0,       'fa-pen');
     ug_switch('candeleteposts',     $lang->groups['sw_candeleteposts'],      $in['candeleteposts'] ?? 0,     'fa-eraser');
     ug_switch('candeletethreads',   $lang->groups['sw_candeletethreads'],    $in['candeletethreads'] ?? 0,   'fa-trash-can');
+    ug_switch('caneditattachments', $lang->groups['sw_caneditattachments'],  $in['caneditattachments'] ?? 0, 'fa-file-pen');
     ug_sec_close();
     ug_sec_open('fa-paperclip', 'ic-teal', $lang->groups['sec_attach']);
+    ug_switch('canpostattachments', $lang->groups['sw_canpostattachments'], $in['canpostattachments'] ?? 0, 'fa-paperclip');
     ug_number_row('attachquota', 'fa-hard-drive', htmlspecialchars_uni($lang->groups['lbl_attachquota']), $in['attachquota'] ?? 0, htmlspecialchars_uni($lang->groups['hint_unlimited']), htmlspecialchars_uni($lang->groups['unit_kb']));
     ug_number_row('max_screenshots', 'fa-camera', htmlspecialchars_uni($lang->groups['lbl_max_screenshots']), $in['max_screenshots'] ?? 3, htmlspecialchars_uni($lang->groups['hint_not_allowed']), '', ['max' => 299]);
     ug_sec_close();
@@ -538,6 +559,8 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<div class="tab-pane fade" id="tab_users_permissions" role="tabpanel"><div class="ug-card"><div class="row g-0">';
     echo '<div class="col-lg-6">';
     ug_sec_open('fa-envelope-open-text', 'ic-blue', $lang->groups['sec_pms']);
+    ug_switch('canusepms',         $lang->groups['sw_canusepms'], $in['canusepms'] ?? 0,         'fa-inbox');
+    ug_switch('cansendpms',        $lang->groups['sw_cansendpms'],         $in['cansendpms'] ?? 0,        'fa-paper-plane');
     ug_switch('cantrackpms',       $lang->groups['sw_cantrackpms'],        $in['cantrackpms'] ?? 0,       'fa-location-crosshairs');
     ug_switch('candenypmreceipts', $lang->groups['sw_candenypmreceipts'],    $in['candenypmreceipts'] ?? 0, 'fa-eye-slash');
     ug_switch('canoverridepm',     $lang->groups['sw_canoverridepm'],      $in['canoverridepm'] ?? 0,     'fa-forward-fast', true);

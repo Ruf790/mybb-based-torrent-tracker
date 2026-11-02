@@ -2940,6 +2940,16 @@ CREATE TABLE IF NOT EXISTS `privatemessages` (
   KEY `toid` (`toid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `reactions` (
+  `type` varchar(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `item_id` int unsigned NOT NULL,
+  `uid` int unsigned NOT NULL,
+  `rkey` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `added` int unsigned NOT NULL,
+  PRIMARY KEY (`type`,`item_id`,`uid`,`rkey`),
+  KEY `uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS `reports` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `addedby` int unsigned NOT NULL DEFAULT '0',
@@ -3573,16 +3583,6 @@ CREATE TABLE IF NOT EXISTS `notconnectablepmlog` (
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS `reactions` (
-  `type` varchar(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `item_id` int unsigned NOT NULL,
-  `uid` int unsigned NOT NULL,
-  `rkey` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-  `added` int unsigned NOT NULL,
-  PRIMARY KEY (`type`,`item_id`,`uid`,`rkey`),
-  KEY `uid` (`uid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `requests` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,

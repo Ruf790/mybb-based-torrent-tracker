@@ -196,15 +196,23 @@ $language['chat'] = array(
     'bot_name'           => 'Tracker Bot',
     'bot_by'             => 'by {1}',
     'bot_anon'           => 'Anonymous',
-    'bot_upload'         => '[b]New torrent:[/b] {1}',
+    'bot_upload'         => '[b]New torrent[/b]',
     'bot_request'        => '[b]New request:[/b] {1}',
-    'bot_request_filled' => '[b]Request filled:[/b] {1} → {2}',
+    'bot_request_filled' => '[b]Request filled:[/b] {1}',
     'bot_offer'          => '[b]New offer:[/b] {1}',
-    'bot_offer_uploaded' => '[b]Offer uploaded:[/b] {1} → {2}',
+    'bot_offer_uploaded' => '[b]Offer uploaded:[/b] {1}',
     'bot_bounty'         => 'bounty {1} BP',
     'bot_promo_free'     => 'Free',
     'bot_promo_silver'   => 'Silver',
     'bot_promo_thirty'   => '30% leech',
     'bot_promo_double'   => '2x upload',
+
+    // ── Reactions ──
+    'err_react_bad'      => 'Unknown reaction.',
+    'err_react_limit'    => 'Up to {1} reactions on one message.',
+    'js_react'           => 'React',
+    'js_react_all'       => 'All smilies',
+    'js_react_more'      => 'and {1} more',
+    'js_react_remove'    => 'Click to remove yours',
 );
 ?>

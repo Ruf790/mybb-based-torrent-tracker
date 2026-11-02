@@ -17,6 +17,7 @@ declare(strict_types=1);
  *   xmlhttp.php?action=chat_edit     POST id, text
  *   xmlhttp.php?action=chat_delete   POST id
  *   xmlhttp.php?action=chat_report   POST id, reason            report a private message to staff
+ *   xmlhttp.php?action=chat_react    POST id, key               add / remove a smilie reaction (functions_reactions.php)
  *   xmlhttp.php?action=chat_dm_block POST uid (0 = everybody), on (1/0)
  *   xmlhttp.php?action=chat_pin      POST text ('' = unpin)                     (staff)
  *   xmlhttp.php?action=chat_ban      POST uid, minutes (0 = permanent), reason  (staff)
@@ -41,13 +42,15 @@ if (!defined('IN_TRACKER')) {
     die('Direct access denied.');
 }
 
+require_once INC_PATH . '/functions_reactions.php';
+
 const CHAT_PAGE_SIZE       = 50;     // messages on first load / per fetch / per history page
 const CHAT_MAX_LENGTH      = 1000;   // characters (messages and the pinned message)
 const CHAT_FLOOD_SECONDS   = 3;      // between two messages of one user (staff exempt)
 const CHAT_EDIT_WINDOW     = 600;    // own message: edit / delete within N seconds
 const CHAT_POLL_MS         = 4000;   // visible tab
 const CHAT_POLL_HIDDEN_MS  = 20000;  // background tab
-const CHAT_ASSET_VER       = 11;
+const CHAT_ASSET_VER       = 16;
 const CHAT_GROUP_SECONDS   = 120;    // messages of one author within N s share avatar/name; 0 = never group
 const CHAT_TEXTAREA_ID     = 'chatText'; // id the BBCode editor binds to (one chat box per page)
 const CHAT_ONLINE_WINDOW   = 60;     // "in the chat" = polled within N seconds (hidden tabs poll every 20 s)
@@ -229,9 +232,11 @@ function chat_format(array $r, array $me, bool $mod): array
     // Bot: text built for the viewer; staff may delete it, nobody edits it
     $botData = $uid === CHAT_BOT_UID ? chat_bot_data($msg) : null;
     $bot     = $uid === CHAT_BOT_UID;
+    $plain   = $msg;  // text for the preview / reply quote
     if ($bot) {
-        $msg  = chat_bot_text($msg);
-        $user = chat_t('bot_name', 'Tracker Bot');
+        $plain = chat_bot_text($msg, false);
+        $msg   = chat_bot_text($msg);
+        $user  = chat_t('bot_name', 'Tracker Bot');
     }
 
     $out = [
@@ -267,10 +272,11 @@ function chat_format(array $r, array $me, bool $mod): array
         'mine'       => $mine,
         'mention'    => $mention || $repliedToMe,
         'reply'      => $reply,
-        'snippet'    => chat_plain($msg),
+        'snippet'    => chat_plain($plain),
         'can_edit'   => !$bot && ($power || ($mine && $fresh)),
         'can_delete' => $power || ($mine && $fresh),
         'can_report' => $dm && !$mine,
+        'reactions'  => $r['_react'] ?? [],
     ];
     if ($out['can_edit']) $out['raw'] = $msg;
     return $out;
@@ -378,8 +384,12 @@ function chat_bot_data(string $raw): ?array
     return is_array($d) && in_array($d['bot'] ?? '', CHAT_BOT_EVENTS, true) ? $d : null;
 }
 
-/** BBCode of a bot message in the viewer's language; any other text is returned unchanged. */
-function chat_bot_text(string $raw): string
+/**
+ * BBCode of a bot message in the viewer's language; any other text is returned unchanged.
+ * $card = true: the torrent is shown as the [torrent=ID] card (poster, category, size, peers,
+ * "unavailable" once deleted). false: a plain link instead, for previews, quotes and logs.
+ */
+function chat_bot_text(string $raw, bool $card = true): string
 {
     global $BASEURL;
     $d = chat_bot_data($raw);
@@ -403,11 +413,18 @@ function chat_bot_text(string $raw): string
 
     $id    = (int)($d['id'] ?? 0);
     $parts = [];
+    $embed = '';     // [torrent=ID] card, on its own line under the text
     switch ($d['bot']) {
         case 'upload':
-            $head = chat_t('bot_upload', '[b]New torrent:[/b] {1}', $tLink($id, (string)$d['title']));
-            if ((string)($d['cat'] ?? '') !== '') $parts[] = $clean($d['cat']);
-            if ((int)($d['size'] ?? 0) > 0 && function_exists('mksize')) $parts[] = mksize((int)$d['size']);
+            if ($card) {
+                // Category and size are on the card
+                $head  = chat_t('bot_upload', '[b]New torrent[/b]');
+                $embed = '[torrent=' . $id . ']';
+            } else {
+                $head = chat_t('bot_upload', '[b]New torrent[/b]') . ' ' . $tLink($id, (string)$d['title']);
+                if ((string)($d['cat'] ?? '') !== '') $parts[] = $clean($d['cat']);
+                if ((int)($d['size'] ?? 0) > 0 && function_exists('mksize')) $parts[] = mksize((int)$d['size']);
+            }
             foreach ((array)($d['promo'] ?? []) as $p) {
                 $parts[] = '[b]' . chat_t('bot_promo_' . $p, match ($p) {
                     'free' => 'Free', 'silver' => 'Silver', 'thirty' => '30% leech', 'double' => '2x upload', default => (string)$p,
@@ -430,21 +447,40 @@ function chat_bot_text(string $raw): string
             break;
 
         case 'request_filled':
-            $head = chat_t('bot_request_filled', '[b]Request filled:[/b] {1} → {2}',
-                $link('requests.php?action=view&rid=' . $id, (string)$d['title']), $tLink((int)$d['tid'], (string)$d['tname']));
+            $head = chat_t('bot_request_filled', '[b]Request filled:[/b] {1}', $link('requests.php?action=view&rid=' . $id, (string)$d['title']));
+            if ($card) $embed = '[torrent=' . (int)$d['tid'] . ']';
+            else       $head .= ' → ' . $tLink((int)$d['tid'], (string)$d['tname']);
             $parts[] = $by();
             break;
 
         case 'offer_uploaded':
-            $head = chat_t('bot_offer_uploaded', '[b]Offer uploaded:[/b] {1} → {2}',
-                $link('offers.php?action=view&oid=' . $id, (string)$d['title']), $tLink((int)$d['tid'], (string)$d['tname']));
+            $head = chat_t('bot_offer_uploaded', '[b]Offer uploaded:[/b] {1}', $link('offers.php?action=view&oid=' . $id, (string)$d['title']));
+            if ($card) $embed = '[torrent=' . (int)$d['tid'] . ']';
+            else       $head .= ' → ' . $tLink((int)$d['tid'], (string)$d['tname']);
             $parts[] = $by();
             break;
 
         default:
             return '';
     }
-    return $head . ($parts ? "\n" . implode(' · ', $parts) : '');
+    return $head . ($parts ? ' · ' . implode(' · ', $parts) : '') . ($embed !== '' ? "\n" . $embed : '');
+}
+
+/** Torrent ids of the bot cards among $rows: the parser loads them all in one query. */
+function chat_bot_prime(array $rows): void
+{
+    $ids = [];
+    foreach ($rows as $r) {
+        if ((int)($r['uid'] ?? -1) !== CHAT_BOT_UID || (int)($r['deleted'] ?? 0) === 1) continue;
+        $d = chat_bot_data((string)($r['message'] ?? ''));
+        if ($d === null) continue;
+        $tid = $d['bot'] === 'upload' ? (int)($d['id'] ?? 0) : (int)($d['tid'] ?? 0);
+        if ($tid > 0) $ids[] = $tid;
+    }
+    $parser = $ids ? chat_parser() : null;
+    if ($parser && method_exists($parser, 'primeTorrentEmbedCache')) {
+        $parser->primeTorrentEmbedCache($ids);
+    }
 }
 
 /** The bot's "name" in the chat and the archive. */
@@ -487,6 +523,8 @@ function chat_can_see(array $r, int $uid): bool
 function chat_attach_replies(array $rows): array
 {
     global $db;
+    chat_bot_prime($rows);   // every list of messages passes here before it is formatted
+    $rows = chat_attach_reactions($rows);
     $ids = array_values(array_unique(array_filter(array_map(static fn(array $r): int => (int)($r['reply_to'] ?? 0), $rows))));
     if (!$ids) return $rows;
 
@@ -499,7 +537,7 @@ function chat_attach_replies(array $rows): array
     $map = [];
     while ($q && ($r = $db->fetch_array($q))) {
         if ((int)$r['uid'] === CHAT_BOT_UID) {      // quoted bot message: readable text and name
-            $r['message']  = chat_bot_text((string)$r['message']);
+            $r['message']  = chat_bot_text((string)$r['message'], false);
             $r['username'] = chat_t('bot_name', 'Tracker Bot');
         }
         $map[(int)$r['id']] = $r;
@@ -510,6 +548,28 @@ function chat_attach_replies(array $rows): array
         if ($to <= 0) continue;
         $quoted = $map[$to] ?? null;
         $row['_reply'] = ($quoted && chat_conv_key($quoted) === chat_conv_key($row)) ? $quoted : null;
+    }
+    unset($row);
+    return $rows;
+}
+
+/** Adds '_react' (react_summary()) to every visible message: one query for the whole list. */
+function chat_attach_reactions(array $rows): array
+{
+    global $CURUSER;
+    $ids = [];
+    foreach ($rows as $r) {
+        if ((int)($r['deleted'] ?? 0) !== 1 && isset($r['id'])) $ids[] = (int)$r['id'];
+    }
+    if (!$ids) return $rows;
+    try {
+        $sum = react_summary('chat', $ids, (int)($CURUSER['id'] ?? 0));
+    } catch (\Throwable $e) {
+        error_log('chat reactions: ' . $e->getMessage());   // reactions.sql not run yet: chat works without them
+        return $rows;
+    }
+    foreach ($rows as &$row) {
+        $row['_react'] = $sum[(int)($row['id'] ?? 0)] ?? [];
     }
     unset($row);
     return $rows;
@@ -545,7 +605,8 @@ function chat_feed(int $me, int $peer, int $after, int $since): array
     while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
 
     if ($since > 0) {
-        $q = $db->sql_query_prepared("SELECT {$cols} WHERE {$conv} AND m.id <= ? AND m.edited_at >= ? ORDER BY m.id ASC LIMIT 200", [...$cp, $after, $since]);
+        // Changed since the last poll: edited / deleted, or got / lost a reaction
+        $q = $db->sql_query_prepared("SELECT {$cols} WHERE {$conv} AND m.id <= ? AND (m.edited_at >= ? OR m.react_at >= ?) ORDER BY m.id ASC LIMIT 200", [...$cp, $after, $since, $since]);
         while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
     }
     return [chat_attach_replies($rows), false];
@@ -1340,9 +1401,22 @@ function chat_ajax(string $action): never
                 }
                 if (!$mine && function_exists('write_log')) {
                     $who = (int)$row['uid'] === CHAT_BOT_UID ? 'the bot' : (string)$row['username'];
-                    write_log("[Chat] message #{$row['id']} of {$who} deleted by {$me['username']}: " . mb_strimwidth(chat_plain(chat_bot_text((string)$row['message']), 200), 0, 120, '…'));
+                    write_log("[Chat] message #{$row['id']} of {$who} deleted by {$me['username']}: " . mb_strimwidth(chat_plain(chat_bot_text((string)$row['message'], false), 200), 0, 120, '…'));
                 }
             }
+            $row = chat_row((int)$row['id']);
+            chat_json(['ok' => true, 'now' => TIMENOW, 'message' => $row ? $format($row) : null]);
+
+        case 'chat_react':
+            // Anybody who can read the message, public or in their own dialog; a chat ban stops it too
+            if ($ban = chat_ban($uid)) chat_json(['ok' => false, 'error' => chat_ban_text($ban)]);
+            $row = chat_row((int)($_POST['id'] ?? 0));
+            if (!$row || (int)$row['deleted'] === 1 || !chat_can_see($row, $uid)) chat_fail('err_not_found', 'Message not found.');
+            $res = react_toggle('chat', (int)$row['id'], $uid, (string)($_POST['key'] ?? ''));
+            if ($res === 'bad')   chat_fail('err_react_bad', 'Unknown reaction.');
+            if ($res === 'limit') chat_fail('err_react_limit', 'Up to {1} reactions on one message.', REACT_MAX_PER_USER);
+            // Everybody's next poll picks the message up again (chat_feed: react_at >= since)
+            $db->sql_query_prepared('UPDATE chat_messages SET react_at = ? WHERE id = ?', [TIMENOW, (int)$row['id']]);
             $row = chat_row((int)$row['id']);
             chat_json(['ok' => true, 'now' => TIMENOW, 'message' => $row ? $format($row) : null]);
 
@@ -1560,6 +1634,7 @@ function chat_render_box(bool $page = false): string
         'pollBg'   => CHAT_POLL_HIDDEN_MS,
         'max'      => CHAT_MAX_LENGTH,
         'group'    => CHAT_GROUP_SECONDS,
+        'react'    => react_picker(),
         'lang'     => chat_js_lang(),
     ];
 

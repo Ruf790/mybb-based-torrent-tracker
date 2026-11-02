@@ -2479,10 +2479,12 @@ CREATE TABLE IF NOT EXISTS `chat_messages` (
   `added` int unsigned NOT NULL,
   `edited_at` int unsigned NOT NULL DEFAULT '0',
   `edited_by` int unsigned NOT NULL DEFAULT '0',
+  `react_at` int unsigned NOT NULL DEFAULT '0',
   `deleted` tinyint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `uid_added` (`uid`,`added`),
   KEY `edited_at` (`edited_at`),
+  KEY `react_at` (`react_at`),
   KEY `added` (`added`),
   KEY `to_id` (`to_uid`,`id`),
   KEY `dm_in` (`to_uid`,`uid`,`id`),
@@ -3571,6 +3573,16 @@ CREATE TABLE IF NOT EXISTS `notconnectablepmlog` (
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `reactions` (
+  `type` varchar(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `item_id` int unsigned NOT NULL,
+  `uid` int unsigned NOT NULL,
+  `rkey` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `added` int unsigned NOT NULL,
+  PRIMARY KEY (`type`,`item_id`,`uid`,`rkey`),
+  KEY `uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `requests` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,

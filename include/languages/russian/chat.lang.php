@@ -206,5 +206,13 @@ $language['chat'] = array(
     'bot_promo_silver'   => 'Silver',
     'bot_promo_thirty'   => '30% leech',
     'bot_promo_double'   => '2x аплоад',
+
+    // ── Реакции ──
+    'err_react_bad'      => 'Неизвестная реакция.',
+    'err_react_limit'    => 'Не больше {1} реакций на одно сообщение.',
+    'js_react'           => 'Реакция',
+    'js_react_all'       => 'Все смайлы',
+    'js_react_more'      => 'и ещё {1}',
+    'js_react_remove'    => 'Нажмите, чтобы убрать свою',
 );
 ?>

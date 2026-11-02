@@ -126,7 +126,7 @@ function handleXmlHttpAction(): void
         // AJAX chat: handlers live in include/functions_chat.php, loaded only for these actions
         'chat_fetch', 'chat_send', 'chat_edit', 'chat_delete', 'chat_ban', 'chat_unban', 'chat_bans',
         'chat_history', 'chat_online', 'chat_pin',
-        'chat_dm_list', 'chat_dm_user', 'chat_dm_prefs', 'chat_dm_block', 'chat_report' => handleChat($mybb->input['action']),
+        'chat_dm_list', 'chat_dm_user', 'chat_dm_prefs', 'chat_dm_block', 'chat_report', 'chat_react' => handleChat($mybb->input['action']),
 
         default => handleUnknownAction()
     };

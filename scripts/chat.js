@@ -323,6 +323,112 @@
             return imgs.length + emojis <= JUMBO_MAX;
         };
 
+        // ── Reactions (site smilies, functions_reactions.php) ──
+        const reactBar = (list) => {
+            const bar = el('div', 'ch-reacts');
+            list.forEach((r) => {
+                const b = el('button', 'ch-react' + (r.mine ? ' is-mine' : ''));
+                b.type = 'button';
+                b.dataset.key = r.k;
+                let who = (r.who || []).join(', ');
+                if (r.more > 0) who += ' ' + t('react_more', 'and {1} more', r.more);
+                if (r.mine) who += '\n' + t('react_remove', 'Click to remove yours');
+                b.title = who;
+                const img = el('img');
+                img.src = r.src;
+                img.alt = r.k;
+                img.loading = 'lazy';
+                b.append(img, el('span', 'ch-react__n', String(r.n)));
+                bar.appendChild(b);
+            });
+            return bar;
+        };
+
+        const react = async (li, v, key) => {
+            closePicker();
+            const data = await post('chat_react', { id: li.dataset.id, key });
+            if (!data.ok) { setStatus(data.error, 'danger', 6000); return; }
+            if (data.message) apply(v, [data.message]);
+        };
+
+        // Picker: the quick set, "+" opens every smilie. One at a time, closed by Esc / a click outside.
+        let picker = null;
+        const closePicker = () => {
+            if (!picker) return;
+            picker.remove();
+            picker = null;
+            document.removeEventListener('pointerdown', onOutside, true);
+            document.removeEventListener('keydown', onEsc, true);
+            window.removeEventListener('resize', closePicker);
+        };
+        const onOutside = (e) => { if (picker && !picker.contains(e.target) && !e.target.closest('.ch-act[data-act="react"]')) closePicker(); };
+        const onEsc = (e) => { if (e.key === 'Escape') closePicker(); };
+
+        const place = (anchor) => {
+            const r  = anchor.getBoundingClientRect();
+            const pw = picker.offsetWidth;
+            const ph = picker.offsetHeight;
+            let left = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8);
+            let top  = r.top - ph - 6;
+            if (top < 8) top = r.bottom + 6;
+            picker.style.left = left + 'px';
+            picker.style.top  = Math.min(top, window.innerHeight - ph - 8) + 'px';
+        };
+
+        const openPicker = (anchor, li, v) => {
+            const again = picker && picker.dataset.for === li.dataset.id;
+            closePicker();
+            if (again) return;                       // second click on the same button closes it
+
+            const mine = new Set([...li.querySelectorAll('.ch-react.is-mine')].map((b) => b.dataset.key));
+            const item = (s) => {
+                const b = el('button', 'ch-rpick__item' + (mine.has(s.k) ? ' is-mine' : ''));
+                b.type = 'button';
+                b.title = s.k;
+                b.dataset.key = s.k;
+                const img = el('img');
+                img.src = s.src;
+                img.alt = s.k;
+                img.loading = 'lazy';
+                b.appendChild(img);
+                return b;
+            };
+
+            picker = el('div', 'ch-rpick');
+            picker.dataset.for = li.dataset.id;
+            picker.setAttribute('role', 'dialog');
+            const quick = el('div', 'ch-rpick__quick');
+            cfg.react.quick.forEach((s) => quick.appendChild(item(s)));
+            picker.appendChild(quick);
+
+            if ((cfg.react.all || []).length > cfg.react.quick.length) {
+                const more = el('button', 'ch-rpick__more');
+                more.type = 'button';
+                more.title = t('react_all', 'All smilies');
+                more.setAttribute('aria-label', more.title);
+                more.appendChild(el('i', 'fa-solid fa-plus'));
+                quick.appendChild(more);
+                more.addEventListener('click', () => {
+                    more.remove();
+                    const all = el('div', 'ch-rpick__all');
+                    cfg.react.all.forEach((s) => all.appendChild(item(s)));
+                    picker.appendChild(all);
+                    place(anchor);
+                });
+            }
+
+            picker.addEventListener('click', (e) => {
+                const b = e.target.closest('.ch-rpick__item');
+                if (b) react(li, v, b.dataset.key).catch(() => setStatus(t('send_error', 'Not sent, try again.'), 'danger'));
+            });
+
+            document.body.appendChild(picker);
+            place(anchor);
+            document.addEventListener('pointerdown', onOutside, true);
+            document.addEventListener('keydown', onEsc, true);
+            window.addEventListener('resize', closePicker);
+        };
+
         const build = (m) => {
             const when  = new Date(m.ts * 1000);
             const tTime = fmtTime(when);
@@ -351,6 +457,7 @@
 
             const acts = el('span', 'ch-acts');
             acts.appendChild(button('fa-reply', t('reply', 'Reply'), 'reply'));
+            if (cfg.react?.quick?.length) acts.appendChild(button('fa-face-smile', t('react', 'React'), 'react'));
             if (!m.dm && !m.mine && m.uid > 0 && m.uid !== cfg.meId) acts.appendChild(button('fa-envelope', t('dm_write', 'Write privately'), 'dm'));
             if (m.can_edit)        acts.appendChild(button('fa-pen', t('edit', 'Edit'), 'edit'));
             if (m.can_delete)      acts.appendChild(button('fa-trash', t('delete', 'Delete'), 'delete'));
@@ -367,6 +474,7 @@
             body.innerHTML = m.html;             // output of postParser: HTML disabled, BBCode and smilies only
             if (isJumbo(body)) body.classList.add('is-jumbo');
             content.appendChild(body);
+            if (m.reactions?.length) content.appendChild(reactBar(m.reactions));
 
             // Short time on the left of continued messages (shown on hover)
             const side = el('time', 'ch-side-time', tTime);
@@ -1120,8 +1228,15 @@
                 if (btn && li) {
                     if (btn.dataset.act === 'reply') { startReply(li); return; }
                     if (btn.dataset.act === 'dm') { openDm({ uid: Number(li.dataset.uid), name: li.dataset.name }); return; }
+                    if (btn.dataset.act === 'react') { openPicker(btn, li, v); return; }
                     const fn = { edit, delete: remove, report, pin, ban }[btn.dataset.act];
                     fn?.(li, v).catch(() => setStatus(t('send_error', 'Not sent, try again.'), 'danger'));
+                    return;
+                }
+
+                const rb = e.target.closest('.ch-react');
+                if (rb && li) {
+                    react(li, v, rb.dataset.key).catch(() => setStatus(t('send_error', 'Not sent, try again.'), 'danger'));
                     return;
                 }
 
@@ -1165,6 +1280,7 @@
             }, true);
 
             v.list.addEventListener('scroll', () => {
+                closePicker();                       // it is placed for where the button was
                 if (v.list.hidden) return;
                 v.atBottom = nearBottom(v);
                 if (v.atBottom && v === cur) newer.hidden = true;

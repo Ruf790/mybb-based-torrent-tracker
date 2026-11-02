@@ -77,6 +77,13 @@ $purge = static function (string $where, array $params) use ($db, $chunk, &$CQue
             // comment_files.chat_id not added yet: delete the messages anyway
         }
 
+        // Their reactions (reactions.sql may not be installed yet)
+        try {
+            $db->sql_query_prepared("DELETE FROM reactions WHERE type = 'chat' AND item_id IN ({$ph})", $ids);
+            $CQueryCount++;
+        } catch (\Throwable $e) {
+        }
+
         $db->sql_query_prepared("DELETE FROM chat_messages WHERE id IN ({$ph})", $ids);
         $msgs += count($ids);
         $CQueryCount++;

@@ -17,6 +17,7 @@ declare(strict_types=1);
  *   xmlhttp.php?action=chat_edit     POST id, text
  *   xmlhttp.php?action=chat_delete   POST id
  *   xmlhttp.php?action=chat_report   POST id, reason            report a private message to staff
+ *   xmlhttp.php?action=chat_react    POST id, key               add / remove a smilie reaction (functions_reactions.php)
  *   xmlhttp.php?action=chat_dm_block POST uid (0 = everybody), on (1/0)
  *   xmlhttp.php?action=chat_pin      POST text ('' = unpin)                     (staff)
  *   xmlhttp.php?action=chat_ban      POST uid, minutes (0 = permanent), reason  (staff)
@@ -41,13 +42,15 @@ if (!defined('IN_TRACKER')) {
     die('Direct access denied.');
 }
 
+require_once INC_PATH . '/functions_reactions.php';
+
 const CHAT_PAGE_SIZE       = 50;     // messages on first load / per fetch / per history page
 const CHAT_MAX_LENGTH      = 1000;   // characters (messages and the pinned message)
 const CHAT_FLOOD_SECONDS   = 3;      // between two messages of one user (staff exempt)
 const CHAT_EDIT_WINDOW     = 600;    // own message: edit / delete within N seconds
 const CHAT_POLL_MS         = 4000;   // visible tab
 const CHAT_POLL_HIDDEN_MS  = 20000;  // background tab
-const CHAT_ASSET_VER       = 15;
+const CHAT_ASSET_VER       = 16;
 const CHAT_GROUP_SECONDS   = 120;    // messages of one author within N s share avatar/name; 0 = never group
 const CHAT_TEXTAREA_ID     = 'chatText'; // id the BBCode editor binds to (one chat box per page)
 const CHAT_ONLINE_WINDOW   = 60;     // "in the chat" = polled within N seconds (hidden tabs poll every 20 s)
@@ -273,6 +276,7 @@ function chat_format(array $r, array $me, bool $mod): array
         'can_edit'   => !$bot && ($power || ($mine && $fresh)),
         'can_delete' => $power || ($mine && $fresh),
         'can_report' => $dm && !$mine,
+        'reactions'  => $r['_react'] ?? [],
     ];
     if ($out['can_edit']) $out['raw'] = $msg;
     return $out;
@@ -520,6 +524,7 @@ function chat_attach_replies(array $rows): array
 {
     global $db;
     chat_bot_prime($rows);   // every list of messages passes here before it is formatted
+    $rows = chat_attach_reactions($rows);
     $ids = array_values(array_unique(array_filter(array_map(static fn(array $r): int => (int)($r['reply_to'] ?? 0), $rows))));
     if (!$ids) return $rows;
 
@@ -543,6 +548,28 @@ function chat_attach_replies(array $rows): array
         if ($to <= 0) continue;
         $quoted = $map[$to] ?? null;
         $row['_reply'] = ($quoted && chat_conv_key($quoted) === chat_conv_key($row)) ? $quoted : null;
+    }
+    unset($row);
+    return $rows;
+}
+
+/** Adds '_react' (react_summary()) to every visible message: one query for the whole list. */
+function chat_attach_reactions(array $rows): array
+{
+    global $CURUSER;
+    $ids = [];
+    foreach ($rows as $r) {
+        if ((int)($r['deleted'] ?? 0) !== 1 && isset($r['id'])) $ids[] = (int)$r['id'];
+    }
+    if (!$ids) return $rows;
+    try {
+        $sum = react_summary('chat', $ids, (int)($CURUSER['id'] ?? 0));
+    } catch (\Throwable $e) {
+        error_log('chat reactions: ' . $e->getMessage());   // reactions.sql not run yet: chat works without them
+        return $rows;
+    }
+    foreach ($rows as &$row) {
+        $row['_react'] = $sum[(int)($row['id'] ?? 0)] ?? [];
     }
     unset($row);
     return $rows;
@@ -578,7 +605,8 @@ function chat_feed(int $me, int $peer, int $after, int $since): array
     while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
 
     if ($since > 0) {
-        $q = $db->sql_query_prepared("SELECT {$cols} WHERE {$conv} AND m.id <= ? AND m.edited_at >= ? ORDER BY m.id ASC LIMIT 200", [...$cp, $after, $since]);
+        // Changed since the last poll: edited / deleted, or got / lost a reaction
+        $q = $db->sql_query_prepared("SELECT {$cols} WHERE {$conv} AND m.id <= ? AND (m.edited_at >= ? OR m.react_at >= ?) ORDER BY m.id ASC LIMIT 200", [...$cp, $after, $since, $since]);
         while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
     }
     return [chat_attach_replies($rows), false];
@@ -1379,6 +1407,19 @@ function chat_ajax(string $action): never
             $row = chat_row((int)$row['id']);
             chat_json(['ok' => true, 'now' => TIMENOW, 'message' => $row ? $format($row) : null]);
 
+        case 'chat_react':
+            // Anybody who can read the message, public or in their own dialog; a chat ban stops it too
+            if ($ban = chat_ban($uid)) chat_json(['ok' => false, 'error' => chat_ban_text($ban)]);
+            $row = chat_row((int)($_POST['id'] ?? 0));
+            if (!$row || (int)$row['deleted'] === 1 || !chat_can_see($row, $uid)) chat_fail('err_not_found', 'Message not found.');
+            $res = react_toggle('chat', (int)$row['id'], $uid, (string)($_POST['key'] ?? ''));
+            if ($res === 'bad')   chat_fail('err_react_bad', 'Unknown reaction.');
+            if ($res === 'limit') chat_fail('err_react_limit', 'Up to {1} reactions on one message.', REACT_MAX_PER_USER);
+            // Everybody's next poll picks the message up again (chat_feed: react_at >= since)
+            $db->sql_query_prepared('UPDATE chat_messages SET react_at = ? WHERE id = ?', [TIMENOW, (int)$row['id']]);
+            $row = chat_row((int)$row['id']);
+            chat_json(['ok' => true, 'now' => TIMENOW, 'message' => $row ? $format($row) : null]);
+
         case 'chat_report':
             // Only a private message you received can be reported (public ones staff sees anyway)
             $row = chat_row((int)($_POST['id'] ?? 0));
@@ -1593,6 +1634,7 @@ function chat_render_box(bool $page = false): string
         'pollBg'   => CHAT_POLL_HIDDEN_MS,
         'max'      => CHAT_MAX_LENGTH,
         'group'    => CHAT_GROUP_SECONDS,
+        'react'    => react_picker(),
         'lang'     => chat_js_lang(),
     ];
 

@@ -33,6 +33,16 @@ $chunk           = 5000; // rows per DELETE, so the table is never locked for lo
 $n = notify_prune($cfg['notify_keep_read_days'], $cfg['notify_keep_all_days'], $cfg['notify_max_per_user']);
 $CQueryCount++;
 
+// ── Reactions of deleted comments / chat messages (comments are deleted in many places) ──
+$reactGone = 0;
+try {
+    require_once INC_PATH . '/functions_reactions.php';
+    $reactGone = react_prune_orphans();
+    $CQueryCount += 2;
+} catch (\Throwable $e) {
+    // reactions.sql not run yet
+}
+
 // ── Chat: expired temporary bans (until = 0 is permanent) ──
 $db->sql_query_prepared('DELETE FROM chat_bans WHERE until > 0 AND until < ?', [TIMENOW]);
 $bans = max(0, $db->affected_rows());
@@ -117,11 +127,11 @@ $db->sql_query_prepared(
 $reports = max(0, $db->affected_rows());
 $CQueryCount++;
 
-$total = $n['read'] + $n['old'] + $n['cap'] + $bans + $presence + $deleted + $old + $reports + $pictures;
+$total = $n['read'] + $n['old'] + $n['cap'] + $bans + $presence + $deleted + $old + $reports + $pictures + $reactGone;
 if ($total > 0) {
     savelog(sprintf(
-        'Chat/notifications cleanup: notifications read=%d old=%d cap=%d; chat bans=%d presence=%d deleted=%d old=%d reports=%d pictures=%d',
-        $n['read'], $n['old'], $n['cap'], $bans, $presence, $deleted, $old, $reports, $pictures
+        'Chat/notifications cleanup: notifications read=%d old=%d cap=%d; chat bans=%d presence=%d deleted=%d old=%d reports=%d pictures=%d; orphan reactions=%d',
+        $n['read'], $n['old'], $n['cap'], $bans, $presence, $deleted, $old, $reports, $pictures, $reactGone
     ));
     $CQueryCount++;
 }

@@ -153,3 +153,116 @@ function react_delete_items(string $type, array $itemIds): void
         [$type, ...$ids]
     );
 }
+
+// ── Reactions block for pages (torrent comments; the chat has its own in chat.js) ──
+
+/** Strings, from the 'details' lang (comment pages always load it), with English fallbacks. */
+function react_lang(): array
+{
+    global $lang;
+    if (is_object($lang) && empty($lang->details)) $lang->load('details');
+    $d   = is_object($lang) && is_array($lang->details ?? null) ? $lang->details : [];
+    $get = static fn(string $k, string $f): string => (string)preg_replace('/%(\d+)\$s/', '{$1}', (string)($d[$k] ?? $f));
+    return [
+        'add'       => $get('react_add', 'Add a reaction'),
+        'all'       => $get('react_all', 'All smilies'),
+        'more'      => $get('react_more', 'and {1} more'),
+        'remove'    => $get('react_remove', 'Click to remove yours'),
+        'err_bad'   => $get('react_err_bad', 'Unknown reaction.'),
+        'err_limit' => $get('react_err_limit', 'Up to {1} reactions on one item.'),
+        'err_login' => $get('react_err_login', 'Log in to react.'),
+        'err_gone'  => $get('react_err_gone', 'This item no longer exists.'),
+        'err_token' => $get('react_err_token', 'Security token expired. Reload the page.'),
+    ];
+}
+
+/** CSS + config + JS, once per page (later calls return ''). Echo it before the first react_bar(). */
+function react_assets(): string
+{
+    static $done = false;
+    if ($done) return '';
+    $done = true;
+
+    global $BASEURL, $mybb;
+    $base = rtrim((string)$BASEURL, '/');
+    $e    = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $cfg  = react_picker() + [
+        'endpoint' => $base . '/xmlhttp.php',
+        'key'      => function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? ''),
+        'lang'     => react_lang(),
+    ];
+    return '<link rel="stylesheet" href="' . $e($base) . '/include/templates/default/style/reactions.css?ver=1">'
+        . '<script>window.AGS_REACT = ' . json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>'
+        . '<script src="' . $e($base) . '/scripts/reactions.js?ver=1" defer></script>';
+}
+
+/** Pills + the "add" button of one item. $list = react_summary(...)[$id] ?? []. */
+function react_bar(string $type, int $id, array $list): string
+{
+    $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $L = react_lang();
+
+    $html = '<div class="rx" data-rx-type="' . $e($type) . '" data-rx-id="' . $id . '">';
+    foreach ($list as $r) {
+        $who = implode(', ', (array)$r['who']);
+        if ((int)$r['more'] > 0) $who .= ' ' . str_replace('{1}', (string)(int)$r['more'], $L['more']);
+        if (!empty($r['mine']))  $who .= "\n" . $L['remove'];
+        $html .= '<button type="button" class="rx-pill' . (!empty($r['mine']) ? ' is-mine' : '') . '" data-key="' . $e((string)$r['k']) . '" title="' . $e($who) . '">'
+               . '<img src="' . $e((string)$r['src']) . '" alt="' . $e((string)$r['k']) . '" loading="lazy">'
+               . '<span class="rx-n">' . (int)$r['n'] . '</span></button>';
+    }
+    $html .= '<button type="button" class="rx-add" title="' . $e($L['add']) . '" aria-label="' . $e($L['add']) . '">'
+           . '<i class="fa-regular fa-face-smile"></i><i class="fa-solid fa-plus rx-add__plus"></i></button>';
+    return $html . '</div>';
+}
+
+/** Does the item exist (and may the viewer react to it)? Chat messages go through chat_react instead. */
+function react_item_exists(string $type, int $id): bool
+{
+    global $db;
+    $sql = match ($type) {
+        'comment' => 'SELECT 1 FROM comments WHERE id = ? LIMIT 1',
+        default   => null,
+    };
+    if ($sql === null || $id <= 0) return false;
+    $q = $db->sql_query_prepared($sql, [$id]);
+    return $q && $db->num_rows($q) > 0;
+}
+
+/** xmlhttp.php?action=react  POST type, id, key, my_post_key → {ok, reactions} */
+function react_ajax(): never
+{
+    global $CURUSER;
+    $L    = react_lang();
+    $out  = static function (array $data): never {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    };
+    $fail = static fn(string $msg) => $out(['ok' => false, 'error' => $msg]);
+
+    $uid = (int)($CURUSER['id'] ?? 0);
+    if ($uid <= 0 || (defined('UC_BANNED') && (int)($CURUSER['usergroup'] ?? 0) === UC_BANNED)) $fail($L['err_login']);
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) $fail($L['err_token']);
+
+    $type = (string)($_POST['type'] ?? '');
+    $id   = (int)($_POST['id'] ?? 0);
+    if ($type === 'chat' || !react_item_exists($type, $id)) $fail($L['err_gone']);
+
+    $res = react_toggle($type, $id, $uid, (string)($_POST['key'] ?? ''));
+    if ($res === 'bad')   $fail($L['err_bad']);
+    if ($res === 'limit') $fail(str_replace('{1}', (string)REACT_MAX_PER_USER, $L['err_limit']));
+
+    $out(['ok' => true, 'reactions' => react_summary($type, [$id], $uid)[$id] ?? []]);
+}
+
+/** Reactions of items that are gone (comments are deleted in many places): run by the daily cleanup. */
+function react_prune_orphans(): int
+{
+    global $db;
+    $db->sql_query_prepared("DELETE r FROM reactions r LEFT JOIN comments c ON c.id = r.item_id WHERE r.type = 'comment' AND c.id IS NULL");
+    $n = max(0, (int)$db->affected_rows());
+    $db->sql_query_prepared("DELETE r FROM reactions r LEFT JOIN chat_messages m ON m.id = r.item_id WHERE r.type = 'chat' AND m.id IS NULL");
+    return $n + max(0, (int)$db->affected_rows());
+}

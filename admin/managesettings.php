@@ -551,7 +551,7 @@ match(true) {
                  'hr_min_ratio',
                  'iu_maxdays','iu_deleteafter','iu_protect_groups',
                  'chat_keep_deleted_days','chat_keep_days',
-                 'chat_bot_upload','chat_bot_request','chat_bot_request_filled','chat_bot_offer','chat_bot_offer_uploaded',
+                 'chat_bot_upload','chat_bot_request','chat_bot_request_filled','chat_bot_offer','chat_bot_offer_uploaded','chat_bot_register',
                  'notify_keep_read_days','notify_keep_all_days','notify_max_per_user'];
         $raw = $_POST['configoption'] ?? [];
 
@@ -586,7 +586,7 @@ match(true) {
         }
 
         // Chat bot switches (include/functions_chat.php chat_bot_enabled()): yes / no only
-        foreach (['chat_bot_upload','chat_bot_request','chat_bot_request_filled','chat_bot_offer','chat_bot_offer_uploaded'] as $sw) {
+        foreach (['chat_bot_upload','chat_bot_request','chat_bot_request_filled','chat_bot_offer','chat_bot_offer_uploaded','chat_bot_register'] as $sw) {
             if (array_key_exists($sw, $raw)) {
                 $raw[$sw] = ($raw[$sw] === 'yes') ? 'yes' : 'no';
             }
@@ -928,6 +928,7 @@ $chat_bot_request        = $settings['chat_bot_request']        ?? 'yes';
 $chat_bot_request_filled = $settings['chat_bot_request_filled'] ?? 'yes';
 $chat_bot_offer          = $settings['chat_bot_offer']          ?? 'yes';
 $chat_bot_offer_uploaded = $settings['chat_bot_offer_uploaded'] ?? 'yes';
+$chat_bot_register       = $settings['chat_bot_register']       ?? 'yes';
 $notify_keep_read_days  = $settings['notify_keep_read_days']  ?? '60';
 $notify_keep_all_days   = $settings['notify_keep_all_days']   ?? '180';
 $notify_max_per_user    = $settings['notify_max_per_user']    ?? '300';
@@ -1570,6 +1571,7 @@ stdhead();
                                 <?php fswitch('chat_bot_request_filled', $chat_bot_request_filled === 'yes', $lang->managesettings['lbl_chat_bot_request_filled'] ?? 'Filled requests', '', 'fa-circle-check'); ?>
                                 <?php fswitch('chat_bot_offer',          $chat_bot_offer === 'yes',          $lang->managesettings['lbl_chat_bot_offer'] ?? 'New offers', '', 'fa-lightbulb'); ?>
                                 <?php fswitch('chat_bot_offer_uploaded', $chat_bot_offer_uploaded === 'yes', $lang->managesettings['lbl_chat_bot_offer_uploaded'] ?? 'Uploaded offers', '', 'fa-box-open'); ?>
+                                <?php fswitch('chat_bot_register',       $chat_bot_register === 'yes',       $lang->managesettings['lbl_chat_bot_register'] ?? 'New members', '', 'fa-user-plus'); ?>
                             </div>
 
                             <?php fsec('fa-bell', $lang->managesettings['sec_notify_cleanup'] ?? 'Notifications', $lang->managesettings['sec_notify_cleanup_hint'] ?? ''); ?>

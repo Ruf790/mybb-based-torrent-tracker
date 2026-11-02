@@ -50,7 +50,7 @@ const CHAT_FLOOD_SECONDS   = 3;      // between two messages of one user (staff 
 const CHAT_EDIT_WINDOW     = 600;    // own message: edit / delete within N seconds
 const CHAT_POLL_MS         = 4000;   // visible tab
 const CHAT_POLL_HIDDEN_MS  = 20000;  // background tab
-const CHAT_ASSET_VER       = 16;
+const CHAT_ASSET_VER       = 17;
 const CHAT_GROUP_SECONDS   = 120;    // messages of one author within N s share avatar/name; 0 = never group
 const CHAT_TEXTAREA_ID     = 'chatText'; // id the BBCode editor binds to (one chat box per page)
 const CHAT_ONLINE_WINDOW   = 60;     // "in the chat" = polled within N seconds (hidden tabs poll every 20 s)
@@ -60,7 +60,7 @@ const CHAT_ARCHIVE_PERPAGE = 50;
 const CHAT_DM_LIST_MAX     = 30;     // recent dialogs in the "new dialog" window
 const CHAT_REPORT_CONTEXT  = 5;      // messages before / after a reported one that staff sees
 const CHAT_BOT_UID         = 0;      // chat_messages.uid of the bot's messages (no such user)
-const CHAT_BOT_EVENTS      = ['upload', 'request', 'request_filled', 'offer', 'offer_uploaded'];
+const CHAT_BOT_EVENTS      = ['upload', 'request', 'request_filled', 'offer', 'offer_uploaded', 'register'];
 
 // ── Language ─────────────────────────────────────────────
 
@@ -372,6 +372,14 @@ function chat_bot_collect(string $event, int $id, int $tid, int $by): ?array
             $hide = ($t['anonymous'] ?? 'no') === 'yes' && (int)$t['owner'] === $by;
             return ['id' => (int)$r['id'], 'title' => $cut($r['title']),
                     'tid' => (int)$t['id'], 'tname' => $cut($t['name'])] + ($hide ? ['uid' => 0, 'user' => ''] : $user($by));
+
+        case 'register':
+            // $id = the new user; who invited them (invite-only registration), if anyone
+            $u = $one('SELECT id, username, invited_by FROM users WHERE id = ?', [$id]);
+            if (!$u) return null;
+            $inv = $user((int)($u['invited_by'] ?? 0));
+            return ['uid' => (int)$u['id'], 'user' => (string)$u['username'],
+                    'inv_uid' => $inv['uid'], 'inv_user' => $inv['user']];
     }
     return null;
 }
@@ -458,6 +466,15 @@ function chat_bot_text(string $raw, bool $card = true): string
             if ($card) $embed = '[torrent=' . (int)$d['tid'] . ']';
             else       $head .= ' → ' . $tLink((int)$d['tid'], (string)$d['tname']);
             $parts[] = $by();
+            break;
+
+        case 'register':
+            $pLink = static fn(int $uid, string $name): string => $link(
+                function_exists('get_profile_link') ? (string)get_profile_link($uid) : 'member.php?action=profile&uid=' . $uid, $name);
+            $head = chat_t('bot_register', '[b]New member:[/b] {1} — welcome!', $pLink((int)$d['uid'], (string)$d['user']));
+            if ((int)($d['inv_uid'] ?? 0) > 0 && (string)($d['inv_user'] ?? '') !== '') {
+                $parts[] = chat_t('bot_invited_by', 'invited by {1}', $pLink((int)$d['inv_uid'], (string)$d['inv_user']));
+            }
             break;
 
         default:

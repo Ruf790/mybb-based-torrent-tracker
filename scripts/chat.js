@@ -279,7 +279,7 @@
         // Bot messages (uid 0): an icon per event instead of an avatar
         const BOT_ICONS = {
             upload: 'fa-cloud-arrow-up', request: 'fa-hand', request_filled: 'fa-circle-check',
-            offer: 'fa-lightbulb', offer_uploaded: 'fa-box-open',
+            offer: 'fa-lightbulb', offer_uploaded: 'fa-box-open', register: 'fa-user-plus',
         };
 
         const avatar = (m) => {

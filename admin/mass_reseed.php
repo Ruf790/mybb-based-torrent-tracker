@@ -77,8 +77,20 @@ class ReseedRequestHandler
         // Текст не менялся: шаблон можно подставить на языке получателя.
         // textarea отдаёт переводы строк как \r\n, поэтому нормализуем перед сравнением.
         $norm = static fn(string $s): string => trim(str_replace("\r\n", "\n", $s));
+
+        // "2x upload" appends a note to the text in the form (js_double_note, in the staff's language).
+        // It is not an edit: take it off before comparing, and with the default text give every
+        // recipient the note in their own language (sendNotifications()).
+        $bodyNorm = $norm($message);
+        $note     = $norm((string)($lang->mass_reseed['js_double_note'] ?? ''));
+        $hasNote  = $note !== '' && str_ends_with($bodyNorm, $note);
+        if ($hasNote) {
+            $bodyNorm = rtrim(substr($bodyNorm, 0, -strlen($note)));
+        }
+
         $useDefault = $norm($subject) === $norm((string)$lang->mass_reseed['msg_subject'])
-                   && $norm($message) === $norm((string)$lang->mass_reseed['msg_body']);
+                   && $bodyNorm === $norm((string)$lang->mass_reseed['msg_body']);
+        $addNote = $useDefault && $hasNote && $double;
 
         if (!$torrentIds || $subject === '' || $message === '') {
             flash_message($lang->mass_reseed['flash_fill'], 'error');
@@ -89,8 +101,8 @@ class ReseedRequestHandler
         require_once INC_PATH . '/functions_pm.php';
         require_once INC_PATH . '/functions_notify.php';
         $sent = $requestFrom === 'owner'
-            ? $this->notifyUploaders($torrentIds, $subject, $message, $senderId, $useDefault)
-            : $this->notifyAllSnatchers($torrentIds, $subject, $message, $senderId, $useDefault);
+            ? $this->notifyUploaders($torrentIds, $subject, $message, $senderId, $useDefault, $addNote)
+            : $this->notifyAllSnatchers($torrentIds, $subject, $message, $senderId, $useDefault, $addNote);
 
         if ($double && $sent > 0) {
             $this->enableDoubleUpload($torrentIds);
@@ -109,17 +121,17 @@ class ReseedRequestHandler
 
     private function idPlaceholders(array $ids): string { return implode(',', array_fill(0, count($ids), '?')); }
 
-    private function notifyUploaders(array $ids, string $subject, string $message, int $senderId, bool $useDefault): int
+    private function notifyUploaders(array $ids, string $subject, string $message, int $senderId, bool $useDefault, bool $addNote = false): int
     {
         $q = $this->db->sql_query_prepared("
             SELECT t.owner, t.name, t.id, u.username, u.language
             FROM torrents t INNER JOIN users u ON t.owner = u.id
             WHERE t.id IN ({$this->idPlaceholders($ids)}) AND t.seeders = 0 AND t.owner > 0 AND u.enabled = 'yes'
         ", array_values($ids));
-        return $this->sendNotifications($q, $subject, $message, $senderId, $useDefault);
+        return $this->sendNotifications($q, $subject, $message, $senderId, $useDefault, $addNote);
     }
 
-    private function notifyAllSnatchers(array $ids, string $subject, string $message, int $senderId, bool $useDefault): int
+    private function notifyAllSnatchers(array $ids, string $subject, string $message, int $senderId, bool $useDefault, bool $addNote = false): int
     {
         $q = $this->db->sql_query_prepared("
             SELECT DISTINCT s.userid AS owner, s.torrentid AS id, t.name, u.username, u.language
@@ -130,10 +142,10 @@ class ReseedRequestHandler
               AND t.seeders = 0 AND u.enabled = 'yes'
             ORDER BY s.torrentid
         ", array_values($ids));
-        return $this->sendNotifications($q, $subject, $message, $senderId, $useDefault);
+        return $this->sendNotifications($q, $subject, $message, $senderId, $useDefault, $addNote);
     }
 
-    private function sendNotifications(mixed $query, string $subject, string $message, int $senderId, bool $useDefault): int
+    private function sendNotifications(mixed $query, string $subject, string $message, int $senderId, bool $useDefault, bool $addNote = false): int
     {
         // Раньше тип параметра был object — при ошибке запроса (false) падало с TypeError
         if (!$query) return 0;
@@ -148,6 +160,11 @@ class ReseedRequestHandler
                 $ls   = get_lang_section('mass_reseed', (string)($t['language'] ?? ''));
                 $subj = (string)($ls['msg_subject'] ?? $subject);
                 $text = (string)($ls['msg_body'] ?? $message);
+                // "2x upload" note in the recipient's language too
+                if ($addNote) {
+                    global $lang;
+                    $text .= "\n\n" . (string)($ls['js_double_note'] ?? $lang->mass_reseed['js_double_note'] ?? '');
+                }
             }
 
             $url = $this->base() . '/' . get_torrent_link((int)$t['id']);

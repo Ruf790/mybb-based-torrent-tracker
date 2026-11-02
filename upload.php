@@ -1136,6 +1136,10 @@ if ($torrentFilename)
        
 		
 		notify_upload_subscribers((int)$category, $NewTID, $torrentName);
+
+		// Chat bot: "New torrent" in the public chat (switch: Settings → Cleanup → Chat bot)
+		require_once INC_PATH . '/functions_chat.php';
+		chat_bot_post('upload', ['id' => (int)$NewTID]);
 		
 		//kps('+', $kpsupload, $CURUSER['id']);
 		kps('+', $kpsupload, $CURUSER['id'],

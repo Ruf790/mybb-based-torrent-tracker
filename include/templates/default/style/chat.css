@@ -718,3 +718,29 @@
 .ch-rep__actions .btn, .ch-rep__actions .form-select { border-radius: 50rem; }
 .ch-rep__actions .form-select { width: auto; }
 .ch-rep__done { font-size: .82rem; color: var(--bs-success); margin-top: .5rem; }
+
+/* ── Bot (site events: uploads, requests, offers) ── */
+.ch .ch-msg.is-bot { --ch-bot: var(--bs-info-rgb); }
+.ch .ch-msg.is-bot-upload         { --ch-bot: var(--bs-success-rgb); }
+.ch .ch-msg.is-bot-request        { --ch-bot: var(--bs-warning-rgb); }
+.ch .ch-msg.is-bot-request_filled { --ch-bot: var(--bs-success-rgb); }
+.ch .ch-msg.is-bot-offer          { --ch-bot: var(--bs-info-rgb); }
+.ch .ch-msg.is-bot-offer_uploaded { --ch-bot: var(--bs-primary-rgb); }
+.ch .ch-msg.is-bot .ch-avatar {
+    background: rgba(var(--ch-bot), .16);
+    color: rgb(var(--ch-bot));
+    font-size: 1.15rem;
+    box-shadow: 0 0 0 2px var(--bs-body-bg), 0 0 0 3px rgba(var(--ch-bot), .45);
+}
+.ch .ch-msg.is-bot .ch-body {
+    border-left: 3px solid rgba(var(--ch-bot), .55);
+    background: rgba(var(--ch-bot), .06);
+    border-radius: 0 .5rem .5rem 0;
+    padding: .3rem .6rem;
+    color: var(--bs-secondary-color);
+}
+.ch .ch-msg.is-bot .ch-body a { font-weight: 600; }
+.ch .ch-msg.is-bot .ch-body strong,
+.ch .ch-msg.is-bot .ch-body b { color: var(--bs-body-color); }
+.ch-bot-name { font-weight: 600; font-size: 1rem; color: var(--bs-secondary-color); white-space: nowrap; }
+.ch-bot-name .fa-robot { opacity: .8; margin-right: .15rem; }

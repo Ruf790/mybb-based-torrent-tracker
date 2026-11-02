@@ -161,6 +161,8 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
             [(int)$CURUSER['id'], $title, $description, $category_id, $year, TIMENOW, TIMENOW]
         );
         $id = $db->insert_id();
+        require_once INC_PATH . '/functions_chat.php';
+        chat_bot_post('offer', ['id' => (int)$id]);
         $_SESSION['flash'] = ['msg' => $lang->offers['flash_created'], 'type' => 'success'];
         header('Location: offers.php?action=view&oid=' . $id);
         exit();
@@ -216,6 +218,8 @@ if ($action === 'upload' && $mybb->request_method === 'post') {
             error_log('notify (offer uploaded): ' . $e->getMessage());
         }
     }
+    require_once INC_PATH . '/functions_chat.php';
+    chat_bot_post('offer_uploaded', ['id' => (int)$oid, 'tid' => (int)$torrent_id, 'by' => (int)$CURUSER['id']]);
     $_SESSION['flash'] = ['msg' => $lang->offers['flash_uploaded'], 'type' => 'success'];
     header('Location: offers.php?action=view&oid=' . $oid);
     exit();

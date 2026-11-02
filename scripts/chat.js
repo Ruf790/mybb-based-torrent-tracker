@@ -276,10 +276,18 @@
             return b;
         };
 
+        // Bot messages (uid 0): an icon per event instead of an avatar
+        const BOT_ICONS = {
+            upload: 'fa-cloud-arrow-up', request: 'fa-hand', request_filled: 'fa-circle-check',
+            offer: 'fa-lightbulb', offer_uploaded: 'fa-box-open',
+        };
+
         const avatar = (m) => {
             const a = el('span', 'ch-avatar');
             a.setAttribute('aria-hidden', 'true');
-            if (m.avatar) {
+            if (m.bot) {
+                a.appendChild(el('i', 'fa-solid ' + (BOT_ICONS[m.bot] || 'fa-robot')));
+            } else if (m.avatar) {
                 const img = el('img');
                 img.src = m.avatar;
                 img.alt = '';
@@ -319,7 +327,8 @@
             const when  = new Date(m.ts * 1000);
             const tTime = fmtTime(when);
             const tFull = fmtDate(when) + ' ' + tTime;
-            const li = el('div', 'ch-msg' + (m.mine ? ' is-mine' : '') + (m.mention ? ' is-mention' : ''));
+            const li = el('div', 'ch-msg' + (m.mine ? ' is-mine' : '') + (m.mention ? ' is-mention' : '')
+                + (m.bot ? ' is-bot is-bot-' + m.bot : ''));
             li.dataset.id = String(m.id);
             li.dataset.uid = String(m.uid);
             li.dataset.name = m.name || '';
@@ -347,7 +356,7 @@
             if (m.can_delete)      acts.appendChild(button('fa-trash', t('delete', 'Delete'), 'delete'));
             if (m.can_report)      acts.appendChild(button('fa-flag', t('report', 'Report to staff'), 'report'));
             if (cfg.mod && !m.dm)  acts.appendChild(button('fa-thumbtack', t('pin', 'Pin'), 'pin'));
-            if (cfg.mod && !m.dm && !m.mine) acts.appendChild(button('fa-ban', t('ban', 'Ban from chat'), 'ban'));
+            if (cfg.mod && !m.dm && !m.mine && !m.bot) acts.appendChild(button('fa-ban', t('ban', 'Ban from chat'), 'ban'));
             meta.appendChild(acts);
 
             const content = el('div', 'ch-content');
@@ -385,6 +394,7 @@
                 const cont = prev !== null
                     && (cfg.group ?? 0) > 0
                     && prev.dataset.uid === m.dataset.uid
+                    && !m.classList.contains('is-bot')      // every bot message keeps its event icon
                     && !m.querySelector('.ch-quote')        // a reply always shows who wrote it
                     && Number(m.dataset.ts) - Number(prev.dataset.ts) <= cfg.group;
                 m.classList.toggle('is-cont', cont);

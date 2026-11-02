@@ -192,6 +192,8 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
             "INSERT INTO request_votes (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
             array_values($vote_data)
         );
+        require_once INC_PATH . '/functions_chat.php';
+        chat_bot_post('request', ['id' => (int)$id]);
         $_SESSION['flash'] = ['msg' => $lang->requests['flash_created'], 'type' => 'success'];
         header('Location: requests.php?action=view&rid=' . $id);
         exit();
@@ -260,6 +262,8 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
         error_log('notify (request filled): ' . $e->getMessage());
     }
 
+    require_once INC_PATH . '/functions_chat.php';
+    chat_bot_post('request_filled', ['id' => (int)$rid, 'tid' => (int)$torrent_id, 'by' => (int)$CURUSER['id']]);
     $_SESSION['flash'] = ['msg' => $lang->requests['flash_filled'], 'type' => 'success'];
     header('Location: requests.php?action=view&rid=' . $rid);
     exit();

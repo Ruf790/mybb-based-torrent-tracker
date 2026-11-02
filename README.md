@@ -1,14 +1,16 @@
 # 🎬 PHP Torrent Tracker
 
-[![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb3?logo=php&logoColor=white)](https://www.php.net/)
-[![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![PHP](https://img.shields.io/badge/PHP-8.5-777bb3?logo=php&logoColor=white)](https://www.php.net/)
+[![MySQL](https://img.shields.io/badge/MySQL-9.7_LTS-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Composer](https://img.shields.io/badge/Composer-Required-885630?logo=composer&logoColor=white)](https://getcomposer.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> ⚡ A lightweight **PHP-based torrent tracker** with announce system,  
-> built-in torrent parser, and a simple but functional admin panel.  
+> ⚡ A private **BitTorrent tracker** with a forum, built on a heavily reworked MyBB 1.8 core:
+> announce with anti-cheat, torrent parser (BitTorrent v1 + v2), AJAX chat, reactions,
+> notifications, requests & offers, and a full staff panel.
 
-Perfect for **private communities**, testing torrent workflows, or learning how trackers work under the hood.  
+Running live at **[ArtCore Gangsta](https://artcore-gangsta.eu)**. Perfect for **private communities**,
+testing torrent workflows, or learning how trackers work under the hood.
 
 ---
 
@@ -25,12 +27,12 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ![Upload Details](docs/5.png)
 
 
-### 🔹Details Page
+### 🔹 Details Page
 ![Torrent Details](docs/11.jpeg)
 
 
 ### 🔹 Forum
-![Admin Panel](docs/11.jpeg)
+![Forum](docs/11.jpeg)
 
 
 ### 🔹 Admin Panel
@@ -40,39 +42,43 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 ## ✨ Features
 
-**Core**
-- 🔗 Fully working announce endpoint with real-time anti-cheat detection (cron-based + live checks)
-- 📂 Torrent file parsing via [arokettu/torrent-file](https://github.com/arokettu/torrent-file)
-- 🧲 Magnet link generation for external/cross-seeded torrents
-- 🎯 Hit-and-Run ratio enforcement with VIP/mod/owner/freeleech exemptions
-- ⭐ 10-star thread rating system
-- 📎 Forum attachment & comment system
+**Tracker**
+- 🔗 Announce endpoint with real-time anti-cheat checks plus a cron-based cheat detector
+- 📂 Torrent parsing via [arokettu/torrent-file](https://github.com/arokettu/torrent-file), **BitTorrent v2 (BEP 52)** info-hash support
+- 🧲 Magnet links for external / cross-seeded torrents
+- 🎁 Promotions: Free, Silver, 2× upload, 30% leech — automatic on upload or set by staff
+- 🎯 Hit & Run with automatic warnings and bans, VIP / staff exemptions
+- 🏷️ Claims (keep-seeding commitments) and seed bonus points with a full bonus log
+- 🙋 **Requests & Offers** marketplace with votes, bounties and auto-matching to uploads
+- 🎓 Exams / tasks for new members
+- ⭐ 10-star ratings for torrents and forum threads
+
+**Community**
+- 💬 **AJAX chat**: replies, @mentions with sound, private 1:1 dialogs with block list and reports, pinned message, staff archive & search
+- 🤖 **Chat bot** posts new torrents (as embedded torrent cards), requests and offers — each event switchable in settings
+- 😀 **Reactions** with the site's own smilies on chat messages, torrent comments and forum posts
+- 🔔 **Notification center** (header bell): replies, mentions, filled requests, awards, subscriptions
+- 🗨️ Forum with attachments, BBCode editor, `[torrent=ID]` cards, `[spoiler]`, `[nfo]`, tables
+- 🌍 Full **English / Russian** interface, switchable per user
 
 **Security**
-- 🔐 Mandatory TOTP-based 2FA for the admin panel (no bypass) with backup codes
-- 📧 Email alerts on 2FA enable/disable and new-device login
-- 🖥️ Known-devices tracking with session management ("log out everywhere")
-- 🕵️ Fake-staff detection — flags accounts in moderator groups not present in the trusted staff list
-- 🛡️ CSRF hardening across AJAX endpoints
-- 🚫 No-cache headers on sensitive admin pages to prevent stale-page bypass
+- 🔐 Mandatory TOTP 2FA for staff with backup codes; email alerts on 2FA changes and new-device logins
+- 🖥️ Known-devices tracking and session management ("log out everywhere")
+- 🛡️ CSRF protection on all POST / AJAX actions, prepared statements everywhere, bcrypt passwords
+- 🕵️ Fake-staff detection and auto-expiring IP bans
 
-**Search**
-- 🔎 Full-text forum search with live autocomplete suggestions
-- 📅 Absolute date-range filtering (from/to) with calendar picker
-- 📊 Sort by date, replies, views, rating, subject, author, or forum
-- 🃏 Modern card-based results UI
+**Staff Panel**
+- 📈 Dashboard with KPI tiles and stats; activity heatmap
+- 👤 Per-user tools: activity log, security, hit & run history, audit log, usage charts
+- 🧰 Upload / download / ratio managers, mass reseed, torrent health, latest comments moderation (move / copy / merge)
+- ⚙️ Settings editor with logging of every change; cron manager
 
-**Admin Panel**
-- 📈 Dashboard with stats widgets
-- 👤 Per-user admin tools: activity log, security tab, hit & run history, forum activity, audit log, usage stats (Chart.js)
-- 🔔 Category-based forum subscription notifications
-- 🧰 Unified staff upload/download tool management
+**Code**
+- 🆕 Typed PHP 8.5 codebase (`declare(strict_types=1)`, `match`, typed signatures)
+- 🧹 Vanilla JS — no jQuery dependency; Bootstrap 5 with dark theme
+- 🎨 Contextual error pages (404 / 403 / 401 / 500)
+- ⚙️ Web installer, no table-prefix legacy
 
-**Code Quality**
-- 🆕 Fully typed PHP 8.5 codebase (strict types, match expressions, enums where applicable)
-- 🧹 Vanilla JS throughout — no jQuery/Select2 dependency
-- 🎨 Typed, contextual error pages (404/403/401/500) instead of generic error dumps
-- ⚙️ Clean web-based installer with no table-prefix legacy cruft
 ---
 
 ## ⚡ Installation

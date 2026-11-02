@@ -236,9 +236,11 @@ function get_user_data(): void
                COALESCE(sn.leechtime, 0)     AS snatch_leechtime,
                COALESCE(pr.peers_total, 0)   AS peers_total,
                COALESCE(pr.peers_seeding, 0) AS peers_seeding,
-               COALESCE(rc.cnt, 0)           AS report_count
+               COALESCE(rc.cnt, 0)           AS report_count,
+               av.vip_until                  AS vip_until
         FROM users u
         LEFT JOIN usergroups g ON g.gid = u.usergroup
+        LEFT JOIN auto_vip av ON av.userid = u.id
         LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM posts   WHERE uid = ? GROUP BY uid) pc ON pc.uid = u.id
         LEFT JOIN (SELECT uid, COUNT(*) AS cnt FROM threads WHERE uid = ? GROUP BY uid) tc ON tc.uid = u.id
         LEFT JOIN (SELECT addedby, COUNT(*) AS cnt FROM reports WHERE addedby = ? GROUP BY addedby) rc ON rc.addedby = u.id
@@ -647,6 +649,37 @@ function eu_subpanes(array $panes): string
     return $out . '</div>';
 }
 
+/**
+ * Временный VIP: [бейдж, подсказка] или null.
+ * Только группа VIP + запись в auto_vip с vip_until > 0 (0 = бессрочно — не показываем).
+ */
+function eu_vip_until(array $userdata): ?array
+{
+    global $lang, $dateformat;
+    $L = $lang->edituser;
+
+    $until = (int)($userdata['vip_until'] ?? 0);
+    if ($until <= 0 || (int)$userdata['usergroup'] !== UC_VIP) {
+        return null;
+    }
+
+    $left = $until - TIMENOW;
+    $date = my_datee((string)$dateformat, $until);
+
+    if ($left <= 0) {
+        // Срок вышел, cron ещё не снял группу
+        $badge = eu_badge('danger', 'fa-circle-exclamation', ags_fmt($L['badge_vip_expired'] ?? 'VIP expired {1}', $date));
+        $hint  = ags_fmt($L['hint_vip_expired'] ?? 'Temporary VIP expired {1} — the group will be removed by the next cron run.', $date);
+    } else {
+        $soft  = $left <= 7 * 86400 ? 'warning' : 'info';
+        $badge = '<span title="' . htmlspecialchars(ags_fmt($L['tip_vip_left'] ?? 'Left: {1}', mkprettytime($left))) . '">'
+               . eu_badge($soft, 'fa-crown', ags_fmt($L['badge_vip_until'] ?? 'VIP until {1}', $date)) . '</span>';
+        $hint  = ags_fmt($L['hint_vip_until'] ?? 'Temporary VIP until {1} (left: {2}). After that the user returns to the previous group.', $date, mkprettytime($left));
+    }
+
+    return [$badge, $hint];
+}
+
 /** Статус-бейджи в шапке */
 function get_user_status_badges(array $userdata): string
 {
@@ -657,6 +690,7 @@ function get_user_status_badges(array $userdata): string
     if ($userdata['warned'] === 'yes')  $b .= eu_badge('warning', 'fa-triangle-exclamation', $L['badge_warned']);
     if ($userdata['donor'] === 'yes')   $b .= eu_badge('success', 'fa-heart',                $L['badge_donor']);
     if ((int)$userdata['moderateposts'] === 1) $b .= eu_badge('info', 'fa-eye',             $L['badge_moderated']);
+    if ($vip = eu_vip_until($userdata))  $b .= $vip[0];
     return $b;
 }
 
@@ -705,7 +739,7 @@ function renderBasicInfoTab(): string
               '', 'fa-award') . '</div>'
       .   '<div class="col-12">' . eu_field($L['lbl_usergroup'],
               '<select name="usergroup" class="form-select">' . $groupOpts . '</select>',
-              '', 'fa-users') . '</div>'
+              ($vip = eu_vip_until($userdata)) ? '<i class="fa-solid fa-crown me-1"></i>' . $vip[1] : '', 'fa-users') . '</div>'
       . '</div>';
 
     // Аватар (разметку avatar-container / avatar-input использует /scripts/avatar_upload.js)
@@ -2320,6 +2354,10 @@ function processUserUpdateData(): array
             } else {
                 $updateData['usergroup'] = $newGid;
                 modcomment("Usergroup changed from '{$userdata['usergroup']}' to '{$newGid}'");
+                // Ушёл из VIP вручную — иначе vipexpire.php по старой записи вернёт его в old_gid
+                if ((int)$userdata['usergroup'] === UC_VIP) {
+                    $db->sql_query_prepared('DELETE FROM auto_vip WHERE userid = ?', [$uid]);
+                }
             }
         }
     }

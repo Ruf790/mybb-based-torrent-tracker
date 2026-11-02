@@ -56,6 +56,18 @@ function react_quick(): array
     $setting = trim((string)($GLOBALS['reactions_quick'] ?? ''));
     $codes   = array_map('trim', explode(',', $setting !== '' ? $setting : REACT_DEFAULT_QUICK));
     $codes   = array_values(array_unique(array_filter($codes, 'react_valid_key')));
+
+    // The site's smilies don't have these codes: take the first pictures of the list instead,
+    // so the reaction button never disappears
+    if (count($codes) < 3) {
+        $seen = array_flip(array_map(static fn(string $k): string => react_smilies()[$k], $codes));
+        foreach (react_smilies() as $k => $src) {
+            if (count($codes) >= 6) break;
+            if (isset($seen[$src])) continue;
+            $seen[$src] = true;
+            $codes[]    = (string)$k;
+        }
+    }
     return array_slice($codes, 0, REACT_QUICK_MAX);
 }
 

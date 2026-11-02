@@ -164,6 +164,28 @@ function ids_to_sql(array $ids): string
     return implode(',', array_map('intval', $ids));
 }
 
+/**
+ * Реакции удаляемых комментариев (include/functions_reactions.php). С $intoId > 0 (merge)
+ * сначала переносятся на этот комментарий; одинаковая реакция одного человека остаётся одна.
+ * Удаление не ломает: без reactions.sql просто пропускается.
+ *
+ * @param int[] $ids
+ */
+function lc_reactions_gone(array $ids, int $intoId = 0): void
+{
+    global $db;
+    $ids_str = ids_to_sql(array_filter(array_map('intval', $ids)));
+    if ($ids_str === '') return;
+    try {
+        if ($intoId > 0) {
+            $db->sql_query_prepared("UPDATE IGNORE reactions SET item_id = ? WHERE type = 'comment' AND item_id IN ({$ids_str})", [$intoId]);
+        }
+        $db->sql_query_prepared("DELETE FROM reactions WHERE type = 'comment' AND item_id IN ({$ids_str})");
+    } catch (\Throwable $e) {
+        error_log('latest_comments reactions: ' . $e->getMessage());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // KPS helper — удаление очков за комментарии
 // ---------------------------------------------------------------------------
@@ -588,6 +610,7 @@ if ($action === 'delete') {
         if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
     }
     $db->sql_query_prepared('DELETE FROM attachments WHERE comment_id = ?', [$id]);
+    lc_reactions_gone([$id]);
     $db->sql_query_prepared('DELETE FROM comments WHERE id = ?', [$id]);
     // Пересчёт счётчиков
     sync_torrent_comment_count($torrent_id);
@@ -632,6 +655,7 @@ if ($action === 'bulk_delete') {
         if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
     }
     $db->sql_query_prepared("DELETE FROM attachments WHERE comment_id IN ({$ids_str})");
+    lc_reactions_gone($ids);
     $db->sql_query_prepared("DELETE FROM comments WHERE id IN ({$ids_str})");
     $deleted = (int)$db->affected_rows();
     // Пересчёт через sync_
@@ -941,6 +965,9 @@ if ($action === 'merge_comments') {
         "UPDATE comment_files SET comment_id = ?, torrent_id = ? WHERE comment_id IN ({$ids_str})",
         [$new_comment_id, $target_tid]
     );
+
+    // Реакции тоже переходят на новый объединённый комментарий
+    lc_reactions_gone($ids, $new_comment_id);
 
     $db->sql_query_prepared("DELETE FROM comments WHERE id IN ({$ids_str})");
 

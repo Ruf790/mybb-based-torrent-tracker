@@ -30,6 +30,11 @@ declare(strict_types=1);
  * Box:     echo chat_render_box();          (index.php, any page after stdhead)
  *          echo chat_render_box(true);      (chat.php, tall version)
  * Archive: chat_archive.php (staff) uses chat_search() / chat_search_count() / chat_reports_*().
+ *
+ * Bot:     chat_bot_post('upload', ['id' => $tid]) etc. (upload.php, requests.php, offers.php).
+ *          Posts as uid 0 into the public chat. The row keeps JSON, the text is built when shown,
+ *          in the viewer's language (chat_bot_text()). Each event is switched on/off in
+ *          Staff Panel → Settings → Cleanup → Chat bot (settings chat_bot_<event> = yes/no).
  */
 
 if (!defined('IN_TRACKER')) {
@@ -42,7 +47,7 @@ const CHAT_FLOOD_SECONDS   = 3;      // between two messages of one user (staff 
 const CHAT_EDIT_WINDOW     = 600;    // own message: edit / delete within N seconds
 const CHAT_POLL_MS         = 4000;   // visible tab
 const CHAT_POLL_HIDDEN_MS  = 20000;  // background tab
-const CHAT_ASSET_VER       = 10;
+const CHAT_ASSET_VER       = 11;
 const CHAT_GROUP_SECONDS   = 120;    // messages of one author within N s share avatar/name; 0 = never group
 const CHAT_TEXTAREA_ID     = 'chatText'; // id the BBCode editor binds to (one chat box per page)
 const CHAT_ONLINE_WINDOW   = 60;     // "in the chat" = polled within N seconds (hidden tabs poll every 20 s)
@@ -51,6 +56,8 @@ const CHAT_SNIPPET_LENGTH  = 90;     // reply preview / notification text
 const CHAT_ARCHIVE_PERPAGE = 50;
 const CHAT_DM_LIST_MAX     = 30;     // recent dialogs in the "new dialog" window
 const CHAT_REPORT_CONTEXT  = 5;      // messages before / after a reported one that staff sees
+const CHAT_BOT_UID         = 0;      // chat_messages.uid of the bot's messages (no such user)
+const CHAT_BOT_EVENTS      = ['upload', 'request', 'request_filled', 'offer', 'offer_uploaded'];
 
 // ── Language ─────────────────────────────────────────────
 
@@ -219,15 +226,23 @@ function chat_format(array $r, array $me, bool $mod): array
     $dm      = (int)($r['to_uid'] ?? 0) > 0;
     // Staff powers end at private dialogs: there only the author may edit / delete (in the usual window)
     $power   = $mod && !$dm;
+    // Bot: text built for the viewer; staff may delete it, nobody edits it
+    $botData = $uid === CHAT_BOT_UID ? chat_bot_data($msg) : null;
+    $bot     = $uid === CHAT_BOT_UID;
+    if ($bot) {
+        $msg  = chat_bot_text($msg);
+        $user = chat_t('bot_name', 'Tracker Bot');
+    }
 
     $out = [
         'id'      => (int)$r['id'],
         'uid'     => $uid,
         'ts'      => (int)$r['added'],
-        'user'    => $user !== '' ? chat_user_html($uid, $user, (int)($r['usergroup'] ?? 2)) : '',
+        'user'    => $bot ? chat_bot_user_html() : ($user !== '' ? chat_user_html($uid, $user, (int)($r['usergroup'] ?? 2)) : ''),
         'name'    => $user,
         'deleted' => $deleted,
         'dm'      => $dm,
+        'bot'     => $bot ? (string)($botData['bot'] ?? 'info') : '',
     ];
     if ($deleted) return $out;
 
@@ -241,7 +256,7 @@ function chat_format(array $r, array $me, bool $mod): array
     }
 
     $myName  = (string)($me['username'] ?? '');
-    $mention = !$dm && !$mine && $myName !== ''
+    $mention = !$bot && !$dm && !$mine && $myName !== ''
         && (bool)preg_match('/(?<![\p{L}\p{N}_@])@' . preg_quote($myName, '/') . '(?![\p{L}\p{N}_])/iu', $msg);
     $repliedToMe = !$dm && !$mine && $reply !== null && $reply['uid'] === $myId;
 
@@ -253,12 +268,190 @@ function chat_format(array $r, array $me, bool $mod): array
         'mention'    => $mention || $repliedToMe,
         'reply'      => $reply,
         'snippet'    => chat_plain($msg),
-        'can_edit'   => $power || ($mine && $fresh),
+        'can_edit'   => !$bot && ($power || ($mine && $fresh)),
         'can_delete' => $power || ($mine && $fresh),
         'can_report' => $dm && !$mine,
     ];
     if ($out['can_edit']) $out['raw'] = $msg;
     return $out;
+}
+
+// ── Bot ──────────────────────────────────────────────────
+
+/** chat_bot_<event> setting ('yes' by default, so the bot works before the settings are saved once). */
+function chat_bot_enabled(string $event): bool
+{
+    return in_array($event, CHAT_BOT_EVENTS, true)
+        && (string)($GLOBALS['chat_bot_' . $event] ?? 'yes') === 'yes';
+}
+
+/**
+ * Post a site event to the public chat. Never throws: a chat problem must not break an upload.
+ *   upload          ['id' => torrent id]                      (name, category, size, promo, uploader read here)
+ *   request         ['id' => request id]
+ *   request_filled  ['id' => request id, 'tid' => torrent id, 'by' => filler uid]
+ *   offer           ['id' => offer id]
+ *   offer_uploaded  ['id' => offer id,   'tid' => torrent id, 'by' => uid who marked it]
+ */
+function chat_bot_post(string $event, array $args): void
+{
+    global $db;
+    try {
+        if (!chat_bot_enabled($event)) return;
+        $id   = (int)($args['id'] ?? 0);
+        $data = $id > 0 ? chat_bot_collect($event, $id, (int)($args['tid'] ?? 0), (int)($args['by'] ?? 0)) : null;
+        if ($data === null) return;
+
+        $json = json_encode(['bot' => $event] + $data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) return;
+        $db->sql_query_prepared(
+            'INSERT INTO chat_messages (uid, to_uid, message, added, reply_to) VALUES (?, 0, ?, ?, 0)',
+            [CHAT_BOT_UID, $json, TIMENOW]
+        );
+    } catch (\Throwable $e) {
+        error_log('chat bot (' . $event . '): ' . $e->getMessage());
+    }
+}
+
+/** Snapshot of what the message shows (names are kept as they were at the time of the event). */
+function chat_bot_collect(string $event, int $id, int $tid, int $by): ?array
+{
+    global $db;
+    $one = static function (string $sql, array $p) use ($db): ?array {
+        $q = $db->sql_query_prepared($sql, $p);
+        $r = $q ? $db->fetch_array($q) : null;
+        return is_array($r) ? $r : null;
+    };
+    $cut  = static fn(mixed $s): string => mb_strimwidth(trim((string)$s), 0, 200, '…');
+    $user = static function (int $uid) use ($one): array {
+        $u = $uid > 0 ? $one('SELECT id, username FROM users WHERE id = ?', [$uid]) : null;
+        return $u ? ['uid' => (int)$u['id'], 'user' => (string)$u['username']] : ['uid' => 0, 'user' => ''];
+    };
+
+    switch ($event) {
+        case 'upload':
+            $t = $one('SELECT t.id, t.name, t.size, t.owner, t.anonymous, t.free, t.silver, t.doubleupload, t.thirtypercent,
+                              c.name AS cat
+                         FROM torrents t LEFT JOIN categories c ON c.id = t.category
+                        WHERE t.id = ?', [$id]);
+            if (!$t) return null;
+            $promo = [];
+            if (($t['free'] ?? '') === 'yes')          $promo[] = 'free';
+            if (($t['silver'] ?? '') === 'yes')        $promo[] = 'silver';
+            if (($t['thirtypercent'] ?? '') === 'yes') $promo[] = 'thirty';
+            if (($t['doubleupload'] ?? '') === 'yes')  $promo[] = 'double';
+            // Anonymous upload: the uploader is not stored at all, so nothing can leak later
+            $who = ($t['anonymous'] ?? 'no') === 'yes' ? ['uid' => 0, 'user' => ''] : $user((int)$t['owner']);
+            return ['id' => (int)$t['id'], 'title' => $cut($t['name']), 'cat' => $cut($t['cat'] ?? ''),
+                    'size' => (int)$t['size'], 'promo' => $promo] + $who;
+
+        case 'request':
+        case 'offer':
+            $table = $event === 'request' ? 'requests' : 'offers';
+            $extra = $event === 'request' ? ', r.bounty' : '';
+            $r = $one("SELECT r.id, r.title, r.year, r.user_id{$extra}, c.name AS cat
+                         FROM {$table} r LEFT JOIN categories c ON c.id = r.category_id
+                        WHERE r.id = ?", [$id]);
+            if (!$r) return null;
+            return ['id' => (int)$r['id'], 'title' => $cut($r['title']), 'year' => (int)($r['year'] ?? 0),
+                    'cat' => $cut($r['cat'] ?? ''), 'bounty' => (float)($r['bounty'] ?? 0)] + $user((int)$r['user_id']);
+
+        case 'request_filled':
+        case 'offer_uploaded':
+            $table = $event === 'request_filled' ? 'requests' : 'offers';
+            $r = $one("SELECT id, title FROM {$table} WHERE id = ?", [$id]);
+            $t = $tid > 0 ? $one('SELECT id, name, owner, anonymous FROM torrents WHERE id = ?', [$tid]) : null;
+            if (!$r || !$t) return null;
+            // The uploader of an anonymous torrent filling with it would be revealed: no name then
+            $hide = ($t['anonymous'] ?? 'no') === 'yes' && (int)$t['owner'] === $by;
+            return ['id' => (int)$r['id'], 'title' => $cut($r['title']),
+                    'tid' => (int)$t['id'], 'tname' => $cut($t['name'])] + ($hide ? ['uid' => 0, 'user' => ''] : $user($by));
+    }
+    return null;
+}
+
+/** The decoded bot payload, or null for an ordinary message. */
+function chat_bot_data(string $raw): ?array
+{
+    if (!str_starts_with($raw, '{"bot":')) return null;
+    $d = json_decode($raw, true);
+    return is_array($d) && in_array($d['bot'] ?? '', CHAT_BOT_EVENTS, true) ? $d : null;
+}
+
+/** BBCode of a bot message in the viewer's language; any other text is returned unchanged. */
+function chat_bot_text(string $raw): string
+{
+    global $BASEURL;
+    $d = chat_bot_data($raw);
+    if ($d === null) return $raw;
+
+    $base  = rtrim((string)$BASEURL, '/') . '/';
+    $abs   = static fn(string $u): string => preg_match('~^(https?:)?//~i', $u) ? $u : $base . ltrim($u, '/');
+    // [ ] in a title would break the [url] tag around it
+    $clean = static fn(mixed $s): string => str_replace(['[', ']'], ['(', ')'], (string)$s);
+    $link  = static fn(string $url, string $text): string => '[url=' . $abs($url) . ']' . $clean($text) . '[/url]';
+    $tLink = static fn(int $tid, string $name): string => $link(
+        function_exists('get_torrent_link') ? (string)get_torrent_link($tid) : 'details.php?id=' . $tid, $name);
+    $by = static function () use ($d, $link): string {
+        $uid = (int)($d['uid'] ?? 0);
+        $who = $uid > 0 && (string)($d['user'] ?? '') !== ''
+            ? $link(function_exists('get_profile_link') ? (string)get_profile_link($uid) : 'member.php?action=profile&uid=' . $uid, (string)$d['user'])
+            : chat_t('bot_anon', 'Anonymous');
+        return chat_t('bot_by', 'by {1}', $who);
+    };
+    $title = static fn(): string => (string)$d['title'] . ((int)($d['year'] ?? 0) > 0 && !str_contains((string)$d['title'], (string)$d['year']) ? ' (' . (int)$d['year'] . ')' : '');
+
+    $id    = (int)($d['id'] ?? 0);
+    $parts = [];
+    switch ($d['bot']) {
+        case 'upload':
+            $head = chat_t('bot_upload', '[b]New torrent:[/b] {1}', $tLink($id, (string)$d['title']));
+            if ((string)($d['cat'] ?? '') !== '') $parts[] = $clean($d['cat']);
+            if ((int)($d['size'] ?? 0) > 0 && function_exists('mksize')) $parts[] = mksize((int)$d['size']);
+            foreach ((array)($d['promo'] ?? []) as $p) {
+                $parts[] = '[b]' . chat_t('bot_promo_' . $p, match ($p) {
+                    'free' => 'Free', 'silver' => 'Silver', 'thirty' => '30% leech', 'double' => '2x upload', default => (string)$p,
+                }) . '[/b]';
+            }
+            $parts[] = $by();
+            break;
+
+        case 'request':
+            $head = chat_t('bot_request', '[b]New request:[/b] {1}', $link('requests.php?action=view&rid=' . $id, $title()));
+            if ((string)($d['cat'] ?? '') !== '') $parts[] = $clean($d['cat']);
+            if ((float)($d['bounty'] ?? 0) > 0) $parts[] = chat_t('bot_bounty', 'bounty {1} BP', rtrim(rtrim(number_format((float)$d['bounty'], 1, '.', ''), '0'), '.'));
+            $parts[] = $by();
+            break;
+
+        case 'offer':
+            $head = chat_t('bot_offer', '[b]New offer:[/b] {1}', $link('offers.php?action=view&oid=' . $id, $title()));
+            if ((string)($d['cat'] ?? '') !== '') $parts[] = $clean($d['cat']);
+            $parts[] = $by();
+            break;
+
+        case 'request_filled':
+            $head = chat_t('bot_request_filled', '[b]Request filled:[/b] {1} → {2}',
+                $link('requests.php?action=view&rid=' . $id, (string)$d['title']), $tLink((int)$d['tid'], (string)$d['tname']));
+            $parts[] = $by();
+            break;
+
+        case 'offer_uploaded':
+            $head = chat_t('bot_offer_uploaded', '[b]Offer uploaded:[/b] {1} → {2}',
+                $link('offers.php?action=view&oid=' . $id, (string)$d['title']), $tLink((int)$d['tid'], (string)$d['tname']));
+            $parts[] = $by();
+            break;
+
+        default:
+            return '';
+    }
+    return $head . ($parts ? "\n" . implode(' · ', $parts) : '');
+}
+
+/** The bot's "name" in the chat and the archive. */
+function chat_bot_user_html(): string
+{
+    return '<span class="ch-bot-name"><i class="fa-solid fa-robot"></i> '
+        . htmlspecialchars(chat_t('bot_name', 'Tracker Bot'), ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</span>';
 }
 
 // ── Reading ──────────────────────────────────────────────
@@ -304,7 +497,13 @@ function chat_attach_replies(array $rows): array
         $ids
     );
     $map = [];
-    while ($q && ($r = $db->fetch_array($q))) $map[(int)$r['id']] = $r;
+    while ($q && ($r = $db->fetch_array($q))) {
+        if ((int)$r['uid'] === CHAT_BOT_UID) {      // quoted bot message: readable text and name
+            $r['message']  = chat_bot_text((string)$r['message']);
+            $r['username'] = chat_t('bot_name', 'Tracker Bot');
+        }
+        $map[(int)$r['id']] = $r;
+    }
 
     foreach ($rows as &$row) {
         $to = (int)($row['reply_to'] ?? 0);
@@ -1122,6 +1321,7 @@ function chat_ajax(string $action): never
             if (!$power && !($mine && $fresh)) chat_fail('err_no_permission', 'You can no longer change this message.');
 
             if ($action === 'chat_edit') {
+                if ((int)$row['uid'] === CHAT_BOT_UID) chat_fail('err_no_permission', 'You can no longer change this message.');
                 // A chat ban also stops editing your own messages (otherwise the last one could be rewritten)
                 if (!$power && ($ban = chat_ban($uid))) chat_json(['ok' => false, 'error' => chat_ban_text($ban)]);
                 $text = chat_text_from_post();
@@ -1139,7 +1339,8 @@ function chat_ajax(string $action): never
                     chat_delete_uploads([(int)$row['id']]);
                 }
                 if (!$mine && function_exists('write_log')) {
-                    write_log("[Chat] message #{$row['id']} of {$row['username']} deleted by {$me['username']}: " . mb_strimwidth((string)$row['message'], 0, 120, '…'));
+                    $who = (int)$row['uid'] === CHAT_BOT_UID ? 'the bot' : (string)$row['username'];
+                    write_log("[Chat] message #{$row['id']} of {$who} deleted by {$me['username']}: " . mb_strimwidth(chat_plain(chat_bot_text((string)$row['message']), 200), 0, 120, '…'));
                 }
             }
             $row = chat_row((int)$row['id']);

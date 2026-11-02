@@ -191,5 +191,20 @@ $language['chat'] = array(
     'js_report_text'    => 'Staff will see this message and a few messages around it. Nothing else of your dialog.',
     'js_report_reason'  => 'Reason (optional)',
     'js_reports_open'   => 'Open reports: {1}',
+
+    // ── Bot (site events in the public chat) ──
+    'bot_name'           => 'Tracker Bot',
+    'bot_by'             => 'by {1}',
+    'bot_anon'           => 'Anonymous',
+    'bot_upload'         => '[b]New torrent:[/b] {1}',
+    'bot_request'        => '[b]New request:[/b] {1}',
+    'bot_request_filled' => '[b]Request filled:[/b] {1} → {2}',
+    'bot_offer'          => '[b]New offer:[/b] {1}',
+    'bot_offer_uploaded' => '[b]Offer uploaded:[/b] {1} → {2}',
+    'bot_bounty'         => 'bounty {1} BP',
+    'bot_promo_free'     => 'Free',
+    'bot_promo_silver'   => 'Silver',
+    'bot_promo_thirty'   => '30% leech',
+    'bot_promo_double'   => '2x upload',
 );
 ?>

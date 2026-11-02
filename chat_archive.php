@@ -314,7 +314,7 @@ stdhead(chat_t('arch_title', 'Chat archive'));
                 <div class="ch-arch__meta">
                     <span class="ch-arch__id">#<?= (int)$r['id'] ?></span>
                     <span class="ch-arch__date"><?= $h(chat_date((int)$r['added'])) ?></span>
-                    <span class="ch-arch__who"><?= $name !== '' ? chat_user_html((int)$r['uid'], $name, (int)($r['usergroup'] ?? 2)) : '#' . (int)$r['uid'] ?></span>
+                    <span class="ch-arch__who"><?= (int)$r['uid'] === CHAT_BOT_UID ? chat_bot_user_html() : ($name !== '' ? chat_user_html((int)$r['uid'], $name, (int)($r['usergroup'] ?? 2)) : '#' . (int)$r['uid']) ?></span>
                     <?php if ($deleted): ?>
                         <span class="badge rounded-pill text-bg-danger"><i class="fa-solid fa-trash me-1"></i><?= $t('badge_deleted', 'deleted') ?><?= !empty($r['edited_name']) ? ' · ' . $h((string)$r['edited_name']) : '' ?></span>
                     <?php elseif ((int)$r['edited_at'] > 0): ?>
@@ -340,7 +340,7 @@ stdhead(chat_t('arch_title', 'Chat archive'));
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
-                <div class="ch-arch__body"><?= chat_parse((string)$r['message'], $name) ?></div>
+                <div class="ch-arch__body"><?= chat_parse(chat_bot_text((string)$r['message']), $name) ?></div>
             </div>
             <?php endforeach; ?>
         <?php endif; ?>

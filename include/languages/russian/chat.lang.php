@@ -191,5 +191,20 @@ $language['chat'] = array(
     'js_report_text'    => 'Администрация увидит это сообщение и несколько сообщений вокруг него. Больше ничего из вашего диалога.',
     'js_report_reason'  => 'Причина (необязательно)',
     'js_reports_open'   => 'Открытые жалобы: {1}',
+
+    // ── Бот (события сайта в общем чате) ──
+    'bot_name'           => 'Бот трекера',
+    'bot_by'             => 'от {1}',
+    'bot_anon'           => 'Аноним',
+    'bot_upload'         => '[b]Новая раздача:[/b] {1}',
+    'bot_request'        => '[b]Новый запрос:[/b] {1}',
+    'bot_request_filled' => '[b]Запрос выполнен:[/b] {1} → {2}',
+    'bot_offer'          => '[b]Новое предложение:[/b] {1}',
+    'bot_offer_uploaded' => '[b]Предложение залито:[/b] {1} → {2}',
+    'bot_bounty'         => 'награда {1} BP',
+    'bot_promo_free'     => 'Free',
+    'bot_promo_silver'   => 'Silver',
+    'bot_promo_thirty'   => '30% leech',
+    'bot_promo_double'   => '2x аплоад',
 );
 ?>

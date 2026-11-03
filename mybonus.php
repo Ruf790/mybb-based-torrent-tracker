@@ -457,7 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($used && empty($errors)) {
-            $messages[] = ags_fmt($lang->mybonus['message1'], htmlspecialchars_uni((string)$bonus['bonusname']));
+            $messages[] = ags_fmt($lang->mybonus['message1'], htmlspecialchars_uni(bonusItemText($bonus)[0]));
             $points -= (int)$bonus['points'];
             $CURUSER['seedbonus'] = $points;
             // PRG паттерн — редирект чтобы повторный F5 не отправлял POST
@@ -615,6 +615,23 @@ if ($seeding && $ub['rawBonus'] > 0) {
 
 // ── Рендер бонусных карточек ──────────────────────────────
 
+/**
+ * Item name/description in the user's language. Items are stored in the DB in English,
+ * so text comes from lang keys by type (art): item_<art> / item_<art>_desc, {1} = amount (menge).
+ * No key for the type (or an empty one) -> the DB text as is.
+ */
+function bonusItemText(array $b): array
+{
+    global $lang;
+    $art  = (string)($b['art'] ?? '');
+    $L    = (array)$lang->mybonus;
+    $amt  = (int)($b['menge'] ?? 0);
+    $amtS = $art === 'traffic' ? mksize($amt) : number_format($amt);
+    $name = !empty($L['item_' . $art])           ? ags_fmt($L['item_' . $art], $amtS)           : (string)$b['bonusname'];
+    $desc = !empty($L['item_' . $art . '_desc']) ? ags_fmt($L['item_' . $art . '_desc'], $amtS) : (string)$b['description'];
+    return [$name, $desc];
+}
+
 function renderBonusCard(array $b, int $points): string
 {
     global $mybb, $lang;
@@ -630,8 +647,9 @@ function renderBonusCard(array $b, int $points): string
         'class'    => ['fa-crown',               'warning'],
         default    => ['fa-gem',                 'primary'],
     };
-    $name     = htmlspecialchars_uni($b['bonusname']);
-    $desc     = nl2br(htmlspecialchars_uni($b['description']));
+    [$name, $desc] = bonusItemText($b);
+    $name     = htmlspecialchars_uni($name);
+    $desc     = nl2br(htmlspecialchars_uni($desc));
     $ptsLabel = ags_fmt($lang->mybonus['val_pts'], number_format($price));
     $btnBuy   = $lang->mybonus['btn_buy'];
     $need     = $disabled

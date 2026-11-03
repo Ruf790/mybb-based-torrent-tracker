@@ -52,4 +52,11 @@ $language['usercpnav'] = array
 'tab_content' => "Content & files",
 'tab_messages' => "Messages",
 
+// PM folders
+'ucp_nav_folder_inbox' => "Inbox",
+'ucp_nav_folder_unread' => "Unread",
+'ucp_nav_folder_sent' => "Sent Items",
+'ucp_nav_folder_drafts' => "Drafts",
+'ucp_nav_folder_trash' => "Trash Can",
+'ucp_nav_folder_untitled' => "Untitled folder",
 );

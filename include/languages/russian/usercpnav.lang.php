@@ -48,4 +48,11 @@ $language['usercpnav'] = array
 'tab_content' => "Контент и файлы",
 'tab_messages' => "Сообщения",
 
+// PM folders
+'ucp_nav_folder_inbox' => "Входящие",
+'ucp_nav_folder_unread' => "Непрочитанные",
+'ucp_nav_folder_sent' => "Отправленные",
+'ucp_nav_folder_drafts' => "Черновики",
+'ucp_nav_folder_trash' => "Корзина",
+'ucp_nav_folder_untitled' => "Папка без названия",
 );

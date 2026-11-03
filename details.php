@@ -448,7 +448,7 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=24">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=26">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
@@ -1199,13 +1199,13 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
     }
 
     if ($rm_list) {
-        $rm_conf = htmlspecialchars(json_encode(($lang->details['conf_req_fill'] ?? 'Fill this request with the current torrent?'), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT));
+        $rm_conf = htmlspecialchars(json_encode($lang->details['conf_req_fill'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT));
         $rm_rows = '';
         foreach ($rm_list as $rm) {
             $rm_rid   = (int)$rm['id'];
             $rm_badge = $rm['match_by'] === 'imdb'
-                ? '<span class="rm-badge rm-badge--imdb"><i class="fa-brands fa-imdb"></i>' . htmlspecialchars(($lang->details['lbl_req_match_imdb'] ?? 'IMDb match')) . '</span>'
-                : '<span class="rm-badge"><i class="fa-solid fa-font"></i>' . htmlspecialchars(ags_fmt(($lang->details['lbl_req_match_title'] ?? 'Title match {1}%'), (int)$rm['match_score'])) . '</span>';
+                ? '<span class="rm-badge rm-badge--imdb"><i class="fa-brands fa-imdb"></i>' . htmlspecialchars($lang->details['lbl_req_match_imdb']) . '</span>'
+                : '<span class="rm-badge"><i class="fa-solid fa-font"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_match_title'], (int)$rm['match_score'])) . '</span>';
             $rm_meta  = [];
             if (!empty($rm['year'])) {
                 $rm_meta[] = '<span><i class="fa-regular fa-calendar"></i>' . (int)$rm['year'] . '</span>';
@@ -1213,9 +1213,9 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
             if (!empty($rm['category_name'])) {
                 $rm_meta[] = '<span><i class="fa-solid fa-tag"></i>' . htmlspecialchars_uni((string)$rm['category_name']) . '</span>';
             }
-            $rm_meta[] = '<span><i class="fa-solid fa-users"></i>' . htmlspecialchars(ags_fmt(($lang->details['lbl_req_votes'] ?? 'Votes: {1}'), (int)$rm['votes'])) . '</span>';
+            $rm_meta[] = '<span><i class="fa-solid fa-users"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_votes'], (int)$rm['votes'])) . '</span>';
             if ((float)$rm['bounty'] > 0) {
-                $rm_meta[] = '<span class="rm-bounty"><i class="fa-solid fa-coins"></i>' . htmlspecialchars(ags_fmt(($lang->details['lbl_req_bounty'] ?? '{1} BP'), number_format((float)$rm['bounty'], 1))) . '</span>';
+                $rm_meta[] = '<span class="rm-bounty"><i class="fa-solid fa-coins"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_bounty'], number_format((float)$rm['bounty'], 1))) . '</span>';
             }
 
             $rm_rows .= '
@@ -1227,7 +1227,7 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
                 <form method="post" action="requests.php?action=fill&amp;rid=' . $rm_rid . '" class="rm-item__form" onsubmit="return confirm(' . $rm_conf . ')">
                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                     <input type="hidden" name="torrent_id" value="' . (int)$id . '">
-                    <button type="submit" class="btn btn-sm btn-success rounded-pill px-3"><i class="fa-solid fa-check me-1"></i>' . htmlspecialchars(($lang->details['btn_req_fill'] ?? 'Fill')) . '</button>
+                    <button type="submit" class="btn btn-sm btn-success rounded-pill px-3"><i class="fa-solid fa-check me-1"></i>' . htmlspecialchars($lang->details['btn_req_fill']) . '</button>
                 </form>
             </div>';
         }
@@ -1237,8 +1237,8 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
         <div class="rm-panel__head">
             <span class="rm-panel__icon"><i class="fa-solid fa-hand-holding-heart"></i></span>
             <div>
-                <div class="rm-panel__title">' . htmlspecialchars(($lang->details['sec_req_match'] ?? 'This torrent may fill open requests')) . '</div>
-                <div class="rm-panel__hint">' . htmlspecialchars(($lang->details['hint_req_match'] ?? 'Only you and staff see this. Filling a request closes it and gives you its bounty.')) . '</div>
+                <div class="rm-panel__title">' . htmlspecialchars($lang->details['sec_req_match']) . '</div>
+                <div class="rm-panel__hint">' . htmlspecialchars($lang->details['hint_req_match']) . '</div>
             </div>
         </div>
         <div class="rm-panel__list">' . $rm_rows . '</div>

@@ -848,5 +848,8 @@ You do not have permission to access this page. This could be because of one of 
 	
 	
 	
+// Picture that failed to load ([img] fallback card)
+'img_unavailable'   => 'Image unavailable',
+'img_open_original' => 'Open original',
 );
 ?>

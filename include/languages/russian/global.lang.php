@@ -847,5 +847,8 @@ $language['global'] = array(
 
 
 
+// Picture that failed to load ([img] fallback card)
+'img_unavailable'   => 'Изображение недоступно',
+'img_open_original' => 'Открыть оригинал',
 );
 ?>

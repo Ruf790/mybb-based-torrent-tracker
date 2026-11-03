@@ -490,6 +490,7 @@ IP: {1}
 'btn_add_buddy'        => 'В друзья',
 'aria_add_buddy'       => 'Добавить в друзья',
 'report_user'          => 'Пожаловаться',
+'btn_edit_profile'     => 'Редактировать профиль',
 'tip_report_user'      => 'Пожаловаться на нарушения этого пользователя',
 'stat_posts'           => 'СООБЩЕНИЯ',
 'stat_threads'         => 'ТЕМЫ',

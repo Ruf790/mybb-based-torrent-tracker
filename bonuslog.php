@@ -40,12 +40,8 @@ $rows    = bonus_log_fetch($uid, $type ?: null, $perPage, ($page - 1) * $perPage
 $pages   = max(1, (int)ceil($filter['count'] / $perPage));
 
 $reasonText = static function (string $type, string $reason) use ($L): string {
-    if ($type === 'seeding' && $reason === 'Seeding') return $L['reason_seeding'];
-    if ($type === 'gift') {
-        if (preg_match('/^Gift to (.+): ([\d,]+) \+ fee ([\d,]+)$/su', $reason, $m)) return ags_fmt($L['reason_gift_to'], $m[1], $m[2], $m[3]);
-        if (preg_match('/^Gift from (.+)$/su', $reason, $m)) return ags_fmt($L['reason_gift_from'], $m[1]);
-    }
-    return $reason;
+    // English reason from the log → the viewer's language (BONUS_LOG_REASONS in functions_bonuslog.php)
+    return bonus_log_reason_text($reason, $L);
 };
 $url = static fn(array $p): string => $BASEURL . '/bonuslog.php' . ($p ? '?' . http_build_query(array_filter($p, static fn($v) => $v !== '' && $v !== 1)) : '');
 

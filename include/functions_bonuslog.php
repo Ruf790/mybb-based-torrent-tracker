@@ -38,6 +38,68 @@ function bonus_log_reason(string $reason): string
     return mb_substr(trim($reason), 0, 255);
 }
 
+/**
+ * Reasons are stored in English (one log for all languages); this turns the ones the
+ * system writes into the viewer's language. $L = $lang->bonuslog (bonuslog.lang.php),
+ * keys reason_*. Anything unknown (shop item names, old rows) is shown as stored.
+ */
+const BONUS_LOG_REASONS = [
+    // pattern (anchored, /u)                                                    => lang key
+    '/^Seeding$/'                                                                 => 'reason_seeding',
+    '/^Gift to (.+): ([\d,.]+) \+ fee ([\d,.]+)$/s'                               => 'reason_gift_to',
+    '/^Gift from (.+)$/s'                                                         => 'reason_gift_from',
+    '/^Bounty for new request #(\d+)$/'                                           => 'reason_req_new',
+    '/^Bounty added to request #(\d+)$/'                                          => 'reason_req_added',
+    '/^Bounty for filling request #(\d+)$/'                                       => 'reason_req_filled',
+    '/^Bounty refund: request #(\d+) deleted$/'                                   => 'reason_req_refund',
+    '/^Claim given up: torrent #(\d+)$/'                                          => 'reason_claim_give_up',
+    '/^Claims (\d{4}-\d{2}): (\d+) torrent\(s\) reached$/'                        => 'reason_claim_reached',
+    '/^Claims (\d{4}-\d{2}): (\d+) torrent\(s\) removed, not seeded enough$/'     => 'reason_claim_removed',
+    '/^Task completed: (.+)$/s'                                                   => 'reason_task_done',
+    '/^Task failed: (.+)$/s'                                                      => 'reason_task_failed',
+    '/^Task abandoned: (.+)$/s'                                                   => 'reason_task_abandoned',
+    '/^Exam passed: (.+)$/s'                                                      => 'reason_exam_passed',
+    '/^Comment on (.+) \(#(\d+), comment #(\d+)\)$/s'                             => 'reason_comment',
+    '/^Comment deleted on torrent #(\d+) \(comment #(\d+)\)$/'                    => 'reason_comment_deleted',
+    '/^Comment deleted by moderator (.+?) on torrent #(\d+) \(comment #(\d+)\)$/s' => 'reason_comment_deleted_mod',
+    '/^Comments removed with deleted torrent (?:(.+) )?\(#(\d+), (\d+) comments?\)$/s' => 'reason_comments_removed',
+    '/^Torrent uploaded: (.+) \(#(\d+)\)$/s'                                      => 'reason_torrent_uploaded',
+    '/^Torrent deleted by moderator (.+?): (.+) \(#(\d+)\)$/s'                    => 'reason_torrent_deleted_mod',
+    '/^Torrent deleted: (.+) \(#(\d+)\)$/s'                                       => 'reason_torrent_deleted',
+    '/^New forum thread: (.+) \(#(\d+)\)$/s'                                      => 'reason_forum_thread',
+    '/^Forum reply: (.+) \(thread #(\d+), post #(\d+)\)$/s'                       => 'reason_forum_reply',
+    '/^Rated torrent #(\d+) \((\d+)\/10\)$/'                                      => 'reason_rated_torrent',
+    '/^Rated forum thread #(\d+) \((\d+)\/10\)$/'                                 => 'reason_rated_thread',
+    '/^Activity bonus$/'                                                          => 'reason_activity',
+    '/^From staff: (.+)$/s'                                                       => 'reason_from_staff',
+    '/^From staff \((.+)\)$/s'                                                    => 'reason_from_staff_group',
+    '/^Balance set by staff: (.+) → (.+)$/su'                                     => 'reason_balance_set',
+    '/^Balance reset by staff \((.+)\)$/s'                                        => 'reason_balance_reset',
+];
+
+function bonus_log_reason_text(string $reason, array $L): string
+{
+    foreach (BONUS_LOG_REASONS as $re => $key) {
+        if (!isset($L[$key]) || !preg_match($re . (str_ends_with($re, 'u') ? '' : 'u'), $reason, $m)) {
+            continue;
+        }
+        $args = array_slice($m, 1);
+        if ($key === 'reason_balance_reset' && $args[0] === 'all groups') {
+            $args[0] = (string)($L['reason_all_groups'] ?? 'all groups');
+        }
+        $map = [];
+        foreach ($args as $i => $v) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$v;
+            $map['%' . $n . '$s'] = (string)$v;
+        }
+        $text = strtr((string)$L[$key], $map);
+        // Torrent name missing in "comments removed with deleted torrent": no double space
+        return trim(preg_replace('/\s{2,}/u', ' ', $text) ?? $text);
+    }
+    return $reason;
+}
+
 /** One user. $amount: + received, - spent. */
 function bonus_log(int $uid, float $amount, string $type, string $reason, ?int $refId = null, ?int $actorId = null): void
 {

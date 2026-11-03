@@ -838,7 +838,14 @@ const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX
 </script>
 <?php
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=231"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=233"></script>';
+// Уведомления: SweetAlert2 + swal-notify.js (тот же showToast(), toast.js больше не нужен).
+// AGS_SWAL_LOADED - чтобы редактор быстрого ответа (editor.php) не подключал Swal второй раз
+if (!defined('AGS_SWAL_LOADED')) {
+    define('AGS_SWAL_LOADED', true);
+    echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/sweetalert2.min.css">';
+    echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/sweetalert2.min.js"></script>';
+}
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/swal-notify.js?ver=1"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js?ver=7"></script>';
 

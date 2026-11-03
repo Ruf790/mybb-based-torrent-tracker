@@ -616,19 +616,31 @@ if ($seeding && $ub['rawBonus'] > 0) {
 // ── Рендер бонусных карточек ──────────────────────────────
 
 /**
- * Item name/description in the user's language. Items are stored in the DB in English,
- * so text comes from lang keys by type (art): item_<art> / item_<art>_desc, {1} = amount (menge).
- * No key for the type (or an empty one) -> the DB text as is.
+ * Item name/description in the user's language. Items are stored in the DB in English.
+ *   english  -> DB text (bonusname / description) as the admin wrote it
+ *   russian  -> bonusname_ru / description_ru from the admin panel, if filled
+ *   other    -> lang keys by type (art): item_<art> / item_<art>_desc, {1} = amount (menge)
+ *   nothing found -> the English DB text
  */
 function bonusItemText(array $b): array
 {
     global $lang;
+    $name = (string)$b['bonusname'];
+    $desc = (string)$b['description'];
+    $code = (string)($lang->language ?? 'english');
+    if ($code === 'english') {
+        return [$name, $desc];
+    }
+
     $art  = (string)($b['art'] ?? '');
     $L    = (array)$lang->mybonus;
     $amt  = (int)($b['menge'] ?? 0);
     $amtS = $art === 'traffic' ? mksize($amt) : number_format($amt);
-    $name = !empty($L['item_' . $art])           ? ags_fmt($L['item_' . $art], $amtS)           : (string)$b['bonusname'];
-    $desc = !empty($L['item_' . $art . '_desc']) ? ags_fmt($L['item_' . $art . '_desc'], $amtS) : (string)$b['description'];
+    $ownN = $code === 'russian' ? trim((string)($b['bonusname_ru'] ?? ''))    : '';
+    $ownD = $code === 'russian' ? trim((string)($b['description_ru'] ?? '')) : '';
+
+    $name = $ownN !== '' ? $ownN : (!empty($L['item_' . $art])           ? ags_fmt($L['item_' . $art], $amtS)           : $name);
+    $desc = $ownD !== '' ? $ownD : (!empty($L['item_' . $art . '_desc']) ? ags_fmt($L['item_' . $art . '_desc'], $amtS) : $desc);
     return [$name, $desc];
 }
 

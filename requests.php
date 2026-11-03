@@ -173,7 +173,7 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
     $imdb_raw = trim($mybb->get_input('imdb'));
     $imdb_id  = $imdb_raw !== '' ? req_imdb_id($imdb_raw) : null;
     $errors = [];
-    if ($imdb_raw !== '' && $imdb_id === null) $errors[] = $lang->requests['err_imdb_invalid'];
+    if ($imdb_raw !== '' && $imdb_id === null) $errors[] = ($lang->requests['err_imdb_invalid'] ?? 'Invalid IMDb link. Example: https://www.imdb.com/title/tt1234567/');
     if (strlen($title) < 3) $errors[] = $lang->requests['err_title_short'];
     if (strlen($title) > 255) $errors[] = $lang->requests['err_title_long'];
     if ($bounty > 0 && (float)$CURUSER['seedbonus'] < $bounty) $errors[] = $lang->requests['err_no_bonus'];
@@ -212,7 +212,7 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
     // Закрыть может владелец раздачи или стафф; награда, ЛС и колокольчик — в req_fill()
     $res = req_fill($rid, $torrent_id, (int)$CURUSER['id'], $is_mod);
     if (!$res['ok']) {
-        $msg = $lang->requests[$res['error']] ?? $res['error'];
+        $msg = $lang->requests[$res['error']] ?? ($res['error'] === 'err_fill_not_owner' ? 'You can only fill a request with your own torrent.' : $res['error']);
         $_SESSION['flash'] = ['msg' => ags_fmt($msg, ...($res['args'] ?? [])), 'type' => 'danger'];
         header('Location: requests.php?action=view&rid=' . $rid);
         exit();
@@ -771,9 +771,9 @@ if ($action === 'create') {
                         <input type="text" class="form-control rounded-3" name="title" maxlength="255" required value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="<?= htmlspecialchars($lang->requests['ph_title']) ?>">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold"><i class="fa-brands fa-imdb me-1"></i><?= htmlspecialchars($lang->requests['lbl_imdb']) ?></label>
+                        <label class="form-label fw-semibold"><i class="fa-brands fa-imdb me-1"></i><?= htmlspecialchars(($lang->requests['lbl_imdb'] ?? 'IMDb link')) ?></label>
                         <input type="text" class="form-control rounded-3" name="imdb" maxlength="255" value="<?= htmlspecialchars($mybb->get_input('imdb')) ?>" placeholder="https://www.imdb.com/title/tt1234567/">
-                        <div class="form-text"><?= htmlspecialchars($lang->requests['hint_imdb']) ?></div>
+                        <div class="form-text"><?= htmlspecialchars(($lang->requests['hint_imdb'] ?? 'Optional. With an IMDb link the tracker will offer this request to the uploader of a matching torrent automatically.')) ?></div>
                     </div>
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">

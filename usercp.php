@@ -2134,6 +2134,9 @@ if ($mybb->input['action'] === 'manage_files') {
             $badge_post = $file['postid']
                 ? '<a href="' . $postlink . '#pid' . $file['postid'] . '" class="st-badge st-soft-primary"><i class="fa-solid fa-file-lines me-1"></i>' . sprintf($lang->usercp['lbl_badge_post'], $file['postid']) . '</a>'
                 : '';
+            $badge_chat = !empty($file['chat_id'])
+                ? '<a href="chat.php" class="st-badge st-soft-danger"><i class="fa-solid fa-comments me-1"></i>' . sprintf($lang->usercp['lbl_badge_chat'] ?? 'Chat #%s', (int)$file['chat_id']) . '</a>'
+                : '';
             $badge_msg = $file['messages_id']
                 ? '<a href="messages.php?id=' . $file['messages_id'] . '" class="st-badge st-soft-secondary"><i class="fa-solid fa-envelope-open-text me-1"></i>' . sprintf($lang->usercp['lbl_badge_message'], $file['messages_id']) . '</a>'
                 : '';
@@ -2160,7 +2163,7 @@ if ($mybb->input['action'] === 'manage_files') {
                                 <span class="file-type">{$file_type_icon}</span>
                             </div>
                             <div class="file-date small text-muted"><i class="fa-regular fa-clock me-1"></i>{$file['uploaded_at']}</div>
-                            <div class="file-badges mt-2">{$badge_comment}{$badge_news}{$badge_torrent}{$badge_post}{$badge_msg}</div>
+                            <div class="file-badges mt-2">{$badge_comment}{$badge_news}{$badge_torrent}{$badge_post}{$badge_msg}{$badge_chat}</div>
                         </div>
                         <div class="file-actions d-grid">
                             <a href="{$file_url}" target="_blank" class="btn btn-outline-primary st-pill"><i class="fa-solid fa-eye me-2"></i>{$lang->usercp['btn_view_file']}</a>

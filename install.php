@@ -3591,6 +3591,7 @@ CREATE TABLE IF NOT EXISTS `requests` (
   `description` text,
   `category_id` int UNSIGNED NOT NULL DEFAULT '0',
   `year` smallint UNSIGNED DEFAULT NULL,
+  `imdb_id` varchar(12) DEFAULT NULL,
   `status` enum('open','filled','cancelled') NOT NULL DEFAULT 'open',
   `filled_by` int UNSIGNED DEFAULT NULL,
   `torrent_id` int UNSIGNED DEFAULT NULL,
@@ -3604,7 +3605,8 @@ CREATE TABLE IF NOT EXISTS `requests` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_category_id` (`category_id`),
   KEY `idx_created_at` (`created_at`),
-  KEY `idx_filled_by` (`filled_by`)
+  KEY `idx_filled_by` (`filled_by`),
+  KEY `idx_imdb_id` (`imdb_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `request_votes` (

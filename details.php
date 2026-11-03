@@ -448,7 +448,7 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=22">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=24">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
@@ -1187,6 +1187,65 @@ $act = '<span id="bookmark' . $Torrent['id'] . '">'
      . get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id'])
      . '</span>';
 
+// ── Подходящие открытые запросы (видят владелец раздачи и стафф) ───────────
+$RequestMatches = '';
+if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
+    require_once INC_PATH . '/functions_requests.php';
+    $rm_list = [];
+    try {
+        $rm_list = req_find_matches($Torrent);
+    } catch (\Throwable $e) {
+        error_log('req_find_matches: ' . $e->getMessage());
+    }
+
+    if ($rm_list) {
+        $rm_conf = htmlspecialchars(json_encode($lang->details['conf_req_fill'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT));
+        $rm_rows = '';
+        foreach ($rm_list as $rm) {
+            $rm_rid   = (int)$rm['id'];
+            $rm_badge = $rm['match_by'] === 'imdb'
+                ? '<span class="rm-badge rm-badge--imdb"><i class="fa-brands fa-imdb"></i>' . htmlspecialchars($lang->details['lbl_req_match_imdb']) . '</span>'
+                : '<span class="rm-badge"><i class="fa-solid fa-font"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_match_title'], (int)$rm['match_score'])) . '</span>';
+            $rm_meta  = [];
+            if (!empty($rm['year'])) {
+                $rm_meta[] = '<span><i class="fa-regular fa-calendar"></i>' . (int)$rm['year'] . '</span>';
+            }
+            if (!empty($rm['category_name'])) {
+                $rm_meta[] = '<span><i class="fa-solid fa-tag"></i>' . htmlspecialchars_uni((string)$rm['category_name']) . '</span>';
+            }
+            $rm_meta[] = '<span><i class="fa-solid fa-users"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_votes'], (int)$rm['votes'])) . '</span>';
+            if ((float)$rm['bounty'] > 0) {
+                $rm_meta[] = '<span class="rm-bounty"><i class="fa-solid fa-coins"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_req_bounty'], number_format((float)$rm['bounty'], 1))) . '</span>';
+            }
+
+            $rm_rows .= '
+            <div class="rm-item">
+                <div class="rm-item__main">
+                    <a class="rm-item__title" href="requests.php?action=view&amp;rid=' . $rm_rid . '">' . htmlspecialchars_uni((string)$rm['title']) . '</a>
+                    <div class="rm-item__meta">' . $rm_badge . implode('', $rm_meta) . '</div>
+                </div>
+                <form method="post" action="requests.php?action=fill&amp;rid=' . $rm_rid . '" class="rm-item__form" onsubmit="return confirm(' . $rm_conf . ')">
+                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
+                    <input type="hidden" name="torrent_id" value="' . (int)$id . '">
+                    <button type="submit" class="btn btn-sm btn-success rounded-pill px-3"><i class="fa-solid fa-check me-1"></i>' . htmlspecialchars($lang->details['btn_req_fill']) . '</button>
+                </form>
+            </div>';
+        }
+
+        $RequestMatches = '
+    <div class="rm-panel mb-5 animate__animated animate__fadeIn">
+        <div class="rm-panel__head">
+            <span class="rm-panel__icon"><i class="fa-solid fa-hand-holding-heart"></i></span>
+            <div>
+                <div class="rm-panel__title">' . htmlspecialchars($lang->details['sec_req_match']) . '</div>
+                <div class="rm-panel__hint">' . htmlspecialchars($lang->details['hint_req_match']) . '</div>
+            </div>
+        </div>
+        <div class="rm-panel__list">' . $rm_rows . '</div>
+    </div>';
+    }
+}
+
 // ── Main layout ─────────────────────────────────────────────────────────────
 $ags_health    = getHealthPercentage($Torrent['seeders'], $Torrent['leechers']);
 $ags_health_c  = getHealthColor($Torrent['seeders'], $Torrent['leechers']);
@@ -1257,6 +1316,8 @@ $details = '
             </div>
         </div>
     </div>
+
+    ' . $RequestMatches . '
 
     <!-- Action-card -->
     <div class="card shadow-sm border-0 mb-5 action-card animate__animated animate__zoomIn">

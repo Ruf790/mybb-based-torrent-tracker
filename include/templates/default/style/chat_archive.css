@@ -149,3 +149,27 @@
     border-top: 1px solid var(--bs-border-color-translucent); font-size: .88em; color: var(--bs-success-text-emphasis);
 }
 @media (max-width: 575.98px) { .cx-page .cx-bub { max-width: 100%; } }
+
+/* [torrent=ID] card: compact row like in the chat (small poster on the left) instead of the
+   420px forum card; the generic img limits above must not touch its poster */
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_card {
+    display: flex !important; flex-direction: row; align-items: stretch;
+    max-width: 440px !important; margin: .35rem 0 .1rem !important; overflow: hidden;
+    border-radius: .6rem; color: inherit; font-weight: normal; background: var(--bs-body-bg);
+    transition: border-color .12s ease, box-shadow .12s ease;
+}
+.cx-page :is(.cx-row__body, .cx-bub__text) a.mycode_torrent_card:hover { border-color: var(--bs-primary); box-shadow: 0 .2rem .6rem rgba(0, 0, 0, .1); }
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_poster {
+    flex: 0 0 64px; width: 64px; height: auto !important; min-height: 90px; border-radius: 0 !important;
+}
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_poster img {
+    max-width: none; max-height: none; margin: 0; border-radius: 0; box-shadow: none;
+}
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_noposter .fa-3x { font-size: 1.4rem; margin: 0 !important; }
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_noposter span { display: none; }
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_card .card-body {
+    min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: .15rem; padding: .45rem .75rem !important;
+}
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_card .fw-bold { color: var(--bs-body-color); }
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_missing { padding: .6rem .8rem !important; max-width: 440px !important; }
+.cx-page :is(.cx-row__body, .cx-bub__text) .mycode_torrent_missing .fa-2x { font-size: 1.4rem; }

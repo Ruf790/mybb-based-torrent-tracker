@@ -22,13 +22,24 @@ function postbit_css_link(): string
     }
     $done = true;
 
-    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=300">';
+    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=301">';
+}
+
+/** PM sent by the system (fromid = 0), not by a user */
+function postbit_is_system(array $post): bool
+{
+    return array_key_exists('fromid', $post) && (int)$post['fromid'] === 0;
 }
 
 /** Аватар автора: ссылка + картинка (заглушка-иконка для гостей и запрещённых удалённых аватаров) */
 function postbit_avatar(array $post, string $mod = ''): string
 {
     $cls = 'pb-avatar' . ($mod !== '' ? ' pb-avatar--' . $mod : '');
+
+    // PM from the system (fromid = 0): branded icon instead of the guest silhouette
+    if (postbit_is_system($post)) {
+        return '<span class="' . $cls . ' pb-avatar--system"><i class="fa-solid fa-robot"></i><span class="pb-avatar__ok"><i class="fa-solid fa-check"></i></span></span>';
+    }
 
     if (empty($post['userusername'])) {
         return '<span class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></span>';
@@ -105,9 +116,14 @@ function build_postbit_footer(array $post): string
 
 function build_postbit_header(array $post): string
 {
+    global $lang;
     $title = !empty($post['usertitle']) && !empty($post['userusername'])
         ? '<span class="pb-utitle">' . $post['usertitle'] . '</span>'
         : '';
+    if (postbit_is_system($post)) {
+        $sys   = (string)($lang->private['pm_system_sender'] ?? 'System message');
+        $title = '<span class="pb-sysbadge"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars($sys, ENT_QUOTES, 'UTF-8') . '</span>';
+    }
 
     return '<div class="pb-head">'
          . '<div class="pb-head__av">' . postbit_avatar($post, 'sm') . '</div>'

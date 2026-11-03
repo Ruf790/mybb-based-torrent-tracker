@@ -28,6 +28,30 @@
 .pb-avatar--sm.pb-avatar--ph,
 .pb-avatar--sm.pb-avatar--guest { border-radius: 50%; }
 
+/* PM from the system: gradient badge with a robot icon */
+.pb-avatar--system {
+  position: relative; overflow: visible; border: 0; border-radius: 50%; font-size: 2.6rem; color: #fff;
+  background: linear-gradient(135deg, var(--bs-primary) 0%, #6f42c1 100%);
+  box-shadow: 0 .45rem 1.2rem rgba(var(--bs-primary-rgb), .35), inset 0 0 0 4px rgba(255, 255, 255, .18);
+}
+.pb-avatar--system i { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .25)); }
+.pb-avatar--system .pb-avatar__ok {
+  font-size: .8rem;
+  position: absolute; right: .2rem; bottom: .2rem;
+  display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 50%;
+  color: #fff; background: var(--bs-success); border: 3px solid var(--bs-body-bg);
+}
+.pb-avatar--sm.pb-avatar--system { font-size: 1.25rem; box-shadow: 0 .2rem .5rem rgba(var(--bs-primary-rgb), .3); }
+.pb-avatar--sm.pb-avatar--system .pb-avatar__ok { display: none; }
+.pb-head:has(.pb-avatar--system) .pb-author,
+.pb-head:has(.pb-avatar--system) .pb-author a { color: var(--bs-primary); }
+.pb-post:has(.pb-avatar--system) .pb-author { color: var(--bs-primary); }
+.pb-sysbadge {
+  display: inline-flex; align-items: center; gap: .3rem; margin-right: .6rem;
+  padding: .05rem .55rem; border-radius: 50rem; font-size: .78em; font-weight: 600;
+  color: var(--bs-primary-text-emphasis); background: var(--bs-primary-bg-subtle);
+}
+
 /* ── Карточка ─────────────────────────────────────────────────────────────── */
 .pb-card {
   flex: 1 1 auto; min-width: 0;

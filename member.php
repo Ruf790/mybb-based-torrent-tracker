@@ -1841,12 +1841,10 @@ if ($mybb->input['action'] === 'profile') {
 
     $useravatar = format_avatar($memprofile['avatar'], $memprofile['avatardimensions']);
    	
-	$avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
-
-    $avatar = '
-      <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
-             <div class="author_avatar"><img class="'.$avatarClass.'" src="'.$useravatar['image'].'" alt="" /></div>
-      </div>';	
+    // Avatar picture for the header; format_avatar() may return an HTML stub instead of a URL
+    $pf_avatar_img = !empty($useravatar['is_html'])
+        ? '<span class="pf-ava__none"><i class="fa-solid fa-user"></i></span>'
+        : '<img class="' . (!empty($useravatar['is_placeholder']) ? 'is-placeholder' : '') . '" src="' . $useravatar['image'] . '" alt="">';	
 	  
 
 
@@ -1870,54 +1868,29 @@ if ($mybb->input['action'] === 'profile') {
 		$sendpm = '<div class="py-2 border-bottom"><span class="text-muted">'.$lang->member['pm'].'</span> <a href="private.php?action=send&amp;uid='.$memprofile['id'].'">'.$send_pms.'</a></div>';
     }
 
-    $any_contact_field = false;
-    if ($any_contact_field || $sendemail || $sendpm || $website) {
-        
-		$contact_details = '<div class="card-clean mb-4 hov-soft">
-  <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
-    <i class="bi bi-person-lines-fill"></i>
-    <span>'.hsafe($lang->member['sec_contact_details']).'</span>
-  </div>
-
-  <div class="p-3">
-    <div class="list-row">
-      <span class="muted d-flex align-items-center gap-2">
-        <i class="bi bi-envelope-fill"></i>
-        <span>'.hsafe($lang->member['lbl_private_message']).'</span>
-      </span>
-      <span>'.$sendpm.'</span>
-    </div>
-
-    <div class="list-row">
-      <span class="muted d-flex align-items-center gap-2">
-        <i class="bi bi-at"></i>
-        <span>'.hsafe($lang->member['lbl_email']).'</span>
-      </span>
-      <span>'.$sendemail.'</span>
-    </div>
-
-  </div>
-</div>';
-		
-		
-		
+    // Contact tab: only rows the viewer can actually use
+    $contact_details = '';
+    if ($sendpm || $sendemail) {
+        $contact_details = '<section class="st-card">'
+            . '<div class="st-card__head"><i class="fa-solid fa-address-card"></i>' . hsafe($lang->member['sec_contact_details']) . '</div>'
+            . '<div class="st-card__body"><div class="st-rows">'
+            . ($sendpm ? '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-envelope"></i>' . hsafe($lang->member['lbl_private_message']) . '</span>'
+                . '<span class="st-row__val"><a href="private.php?action=send&amp;uid=' . (int)$memprofile['id'] . '">' . $send_pms . '</a></span></div>' : '')
+            . ($sendemail ? '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-at"></i>' . hsafe($lang->member['lbl_email']) . '</span>'
+                . '<span class="st-row__val"><a href="member.php?action=emailuser&amp;id=' . (int)$memprofile['id'] . '">' . $send_user_email . '</a></span></div>' : '')
+            . '</div></div></section>';
     }
 
     $signature = '';
+    $pf_signature = static function (string $html) use ($users_signature): string {
+        return '<section class="st-card mb-3">'
+            . '<div class="st-card__head"><i class="fa-solid fa-signature"></i>' . $users_signature . '</div>'
+            . '<div class="st-card__body pf-sig">' . $html . '</div></section>';
+    };
     if ($memprofile['signature']) {
         $sig_parser = ['allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
-        
-		$signature = '<div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		'.$users_signature.'
-	</div>
-	<div class="card-body border-bottom pb-3">
-		'.$memprofile['signature'].'
-	</div>
-</div>';
-		
-		
+        $signature = $pf_signature($memprofile['signature']);
     }
 
     // User data with permissions
@@ -2039,14 +2012,15 @@ if ($mybb->input['action'] === 'profile') {
                 $location      = build_friendly_wol_location($activity);
                 $location_time = my_datee($timeformat, $last_seen);
                 
-				$online_status = '<a href="online.php"><span class="online" style="font-weight: bold; text-success">'.$lang->global['postbit_status_online'].'</span></a> ('.$location.' @ '.$location_time.')';
+				$online_status = '<a href="online.php" class="pf-online"><span class="pf-online__dot"></span>' . $lang->global['postbit_status_online'] . '</a>'
+                    . ' <span class="st-meta">' . $location . ' @ ' . $location_time . '</span>';
             }
         }
     }
 
     if (!isset($online_status)) {
         
-		$online_status = '<span class="offline" style="font-weight: bold;">'.$lang->global['postbit_status_offline'].'</span>';
+		$online_status = '<span class="pf-offline">' . $lang->global['postbit_status_offline'] . '</span>';
 		
 		
     }
@@ -2091,46 +2065,18 @@ if ($mybb->input['action'] === 'profile') {
             $timeremaining        = '<span class="' . $banned_class . '">' . hsafe(ags_fmt($lang->member['ban_time_remaining'], $timeremaining)) . '</span>';
             $memban['adminuser']  = build_profile_link(htmlspecialchars_uni($memban['adminuser']), $memban['admin']);
             
-			$bannedbit = '<div class="card-clean p-3 mb-4" style="border-left:4px solid #dc3545;">
-  <div class="d-flex align-items-start gap-3">
-    <div class="text-danger" style="font-size:1.5rem;">
-      <i class="fa-solid fa-ban" aria-hidden="true"></i>
-    </div>
-
-    <div class="flex-grow-1">
-      <div class="d-flex justify-content-between flex-wrap gap-2">
-        <h5 class="mb-1 text-danger fw-semibold">'.$lang->member['ban_note'].'</h5>
-        <span class="badge-soft" style="background:#ffe6e6;border-color:#ffc9c9;color:#b02a37;">
-          <i class="fa-regular fa-clock me-1"></i> '.$banlength.'
-        </span>
-      </div>
-
-      <div class="mt-2 small muted">
-        <strong>'.$lang->global['banned_warning2'].'</strong>
-      </div>
-
-      <!-- Причина -->
-      <div class="mt-2 p-2 rounded small" style="background:#fff5f5;border:1px solid #f8d7da;">
-        '.$memban['reason'].'
-      </div>
-
-      <!-- Метаданные -->
-      <div class="mt-2 small muted">
-        <span class="me-3">
-          <i class="fa-solid fa-user-shield me-1"></i>
-          <strong>'.$lang->member['ban_by'].'</strong>
-          <span class="links">'.$memban['adminuser'].'</span>
-        </span>
-        <span>
-          <i class="fa-regular fa-hourglass-half me-1"></i>
-          <strong>'.$lang->member['ban_length'].'</strong> '.$banlength.'
-          <span class="ms-1">'.$timeremaining.'</span>
-        </span>
-      </div>
-    </div>
-  </div>
-</div>';
-        
+			$bannedbit = '<section class="st-card pf-ban mb-3">'
+                . '<div class="st-card__body d-flex gap-3">'
+                .   '<span class="st-ico st-soft-danger"><i class="fa-solid fa-ban"></i></span>'
+                .   '<div class="flex-grow-1 min-w-0">'
+                .     '<div class="d-flex flex-wrap justify-content-between gap-2"><strong class="text-danger">' . $lang->member['ban_note'] . '</strong>'
+                .       '<span class="st-badge st-soft-danger"><i class="fa-regular fa-clock"></i>' . $banlength . '</span></div>'
+                .     '<div class="st-meta mt-1">' . $lang->global['banned_warning2'] . '</div>'
+                .     '<div class="pf-ban__reason mt-2">' . $memban['reason'] . '</div>'
+                .     '<div class="st-meta mt-2"><i class="fa-solid fa-user-shield me-1"></i>' . $lang->member['ban_by'] . ' ' . $memban['adminuser']
+                .       ' &middot; <i class="fa-regular fa-hourglass-half me-1"></i>' . $lang->member['ban_length'] . ' ' . $banlength . ' ' . $timeremaining . '</div>'
+                .   '</div>'
+                . '</div></section>';        
 		}
     }
 
@@ -2138,13 +2084,8 @@ if ($mybb->input['action'] === 'profile') {
     $memprofile['lastip'] = my_inet_ntop($db->unescape_binary($memprofile['lastip']));
     
 	
-	$ipaddress = '<div class="py-2 border-bottom">
-						<span class="text-muted">'.$lang->member['registration_ip'].'</span> '.$memprofile['regip'].'
-					</div>
-					<div class="py-2 border-bottom">
-						<span class="text-muted">'.$lang->member['last_known_ip'].'</span> '.$memprofile['lastip'].'
-					</div>';
-	
+	$ipaddress = '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-user-plus"></i>' . $lang->member['registration_ip'] . '</span><span class="st-row__val"><code>' . hsafe((string)$memprofile['regip']) . '</code></span></div>'
+               . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-location-dot"></i>' . $lang->member['last_known_ip'] . '</span><span class="st-row__val"><code>' . hsafe((string)$memprofile['lastip']) . '</code></span></div>';	
 	
 	
 
@@ -2171,64 +2112,24 @@ if ($mybb->input['action'] === 'profile') {
 
     if ($memperms['isbannedgroup'] == 1 && $usergroups['canstaffpanel'] == 1) {
         
-		$manageban = '<li><a href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'">'.$lang->member['edit_ban_in_mcp'].'</a></li>
-        <li><a href="'.$BASEURL.'/modcp.php?action=liftban&amp;uid='.$uid.'&amp;my_post_key='.$mybb->post_code.'">'.$lang->member['lift_ban_in_mcp'].'</a></li>';
-		
-		
+		$manageban = '<a class="pf-act" href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'"><i class="fa-solid fa-pen-to-square"></i>'.$lang->member['edit_ban_in_mcp'].'</a>'
+                   . '<a class="pf-act" href="'.$BASEURL.'/modcp.php?action=liftban&amp;uid='.$uid.'&amp;my_post_key='.$mybb->post_code.'"><i class="fa-solid fa-shield-heart"></i>'.$lang->member['lift_ban_in_mcp'].'</a>';
     } else {
-        
-		$banuser = '<li><a href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'">'.$lang->member['ban_in_mcp'].'</a></li>';
-		
-		
+		$banuser = '<a class="pf-act pf-act--danger" href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'"><i class="fa-solid fa-ban"></i>'.$lang->member['ban_in_mcp'].'</a>';
     }
-    
-	$editprofile = '<li><a href="'.$BASEURL.'/admin/edituser.php?action=edituser&userid='.$uid.'">'.$lang->member['edit_in_mcp'].'</a></li>';
-	
+	$editprofile = '<a class="pf-act" href="'.$BASEURL.'/admin/edituser.php?action=edituser&amp;userid='.$uid.'"><i class="fa-solid fa-user-pen"></i>'.$lang->member['edit_in_mcp'].'</a>';
     $manageuser = $editprofile . $banuser . $manageban;
 
     if ($IsStaff) {
         
 
-$modoptions = '<!-- Moderator Options (compact) -->
-<div class="card-clean mb-4 hov-soft">
-  <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
-    <i class="bi bi-shield-check"></i><span>'.hsafe($lang->member['mod_options']).'</span>
-  </div>
-
-  <div class="p-3">
-    <div class="list-row">
-      <span class="muted d-flex align-items-center gap-2">
-        <i class="bi bi-geo-alt-fill"></i><span>'.hsafe($lang->member['lbl_ip_address']).'</span>
-      </span>
-      <span>'.$ipaddress.'</span>
-    </div>
-
-    <div class="mt-3">
-      <div class="muted mb-2 d-flex align-items-center gap-2">
-        <i class="bi bi-tools"></i><span>'.hsafe($lang->member['lbl_quick_actions']).'</span>
-      </div>
-
-      
-      <ul id="mod-actions" class="icon-grid m-0 list-unstyled">
-        '.$manageuser.'
-      </ul>
-    </div>
-  </div>
-</div>
-
-<style>
-  .icon-grid{display:flex;flex-wrap:wrap;gap:.5rem}
-  .icon-grid a{
-    display:inline-flex;align-items:center;justify-content:center;
-    width:36px;height:36px;border-radius:10px;
-    border:1px solid #e5e7eb;background:#f9fafb;text-decoration:none;
-  }
-  .icon-grid a:hover{transform:translateY(-2px)}
-  @media (prefers-color-scheme: dark){
-    .icon-grid a{border-color:#1f2a38;background:#0f1720}
-  }
-</style>
-<script type="text/javascript" src="' . $BASEURL . '/scripts/mod-actions.js?ver=2"></script>';
+$modoptions = '<section class="st-card mb-3">'
+    . '<div class="st-card__head"><i class="fa-solid fa-shield-halved"></i>' . hsafe($lang->member['mod_options']) . '</div>'
+    . '<div class="st-card__body">'
+    .   '<div class="st-rows mb-3">' . $ipaddress . '</div>'
+    .   '<div class="st-meta mb-2"><i class="fa-solid fa-screwdriver-wrench me-1"></i>' . hsafe($lang->member['lbl_quick_actions']) . '</div>'
+    .   '<div class="pf-acts">' . $manageuser . '</div>'
+    . '</div></section>';
 
 		
 		
@@ -2237,17 +2138,11 @@ $modoptions = '<!-- Moderator Options (compact) -->
     $findposts = $findthreads = '';
     if (!empty($memprofile['postnum']))  { 
 	
-	$findposts   = '<a href="search.php?action=finduser&amp;uid='.$uid.'" class="text-decoration-none text-primary">
-    <i class="fa-solid fa-file-lines me-1"></i> '.$lang->member['find_posts'].'
-</a>'; 
-	
+	$findposts   = '<a href="search.php?action=finduser&amp;uid='.$uid.'" class="btn btn-sm btn-outline-primary st-pill"><i class="fa-solid fa-magnifying-glass me-1"></i>'.$lang->member['find_posts'].'</a>';	
 	}
     if (!empty($memprofile['threadnum']))
 	{ 
-        $findthreads = '<a href="search.php?action=finduserthreads&amp;uid='.$uid.'" class="text-decoration-none text-success">
-                       <i class="fa-solid fa-comments me-1"></i> '.$lang->member['find_threads'].'
-                       </a>'; 
-		
+        $findthreads = '<a href="search.php?action=finduserthreads&amp;uid='.$uid.'" class="btn btn-sm btn-outline-success st-pill"><i class="fa-solid fa-magnifying-glass me-1"></i>'.$lang->member['find_threads'].'</a>';		
 	}
 
     // Buddy/ignore
@@ -2265,7 +2160,9 @@ $modoptions = '<!-- Moderator Options (compact) -->
 		{ 
 	        
 			
-			$buddy_options = '<li><a href="'.$add_remove_options['url'].'" class="links">'.$add_remove_options['lang'].'</a></li>'; 
+			$isBuddy = $add_remove_options['class'] === 'remove_buddy_button';
+			$buddy_options = '<a href="'.$add_remove_options['url'].'" class="btn btn-sm st-pill '.($isBuddy ? 'btn-outline-danger' : 'btn-outline-secondary').'">'
+				. '<i class="fa-solid '.($isBuddy ? 'fa-user-minus' : 'fa-user-plus').' me-1"></i>'.$add_remove_options['lang'].'</a>';
 			
 		}
 
@@ -2275,7 +2172,9 @@ $modoptions = '<!-- Moderator Options (compact) -->
 
         if (!in_array($uid, $buddy_list)) 
 		{ 
-	          $ignore_options = '<li><a href="'.$add_remove_options['url'].'" class="links">'.$add_remove_options['lang'].'</a></li>'; 
+	          $isIgnored = $add_remove_options['class'] === 'remove_ignore_button';
+	          $ignore_options = '<a href="'.$add_remove_options['url'].'" class="btn btn-sm st-pill btn-outline-secondary pf-icon-btn" title="'.hsafe(strip_tags($add_remove_options['lang'])).'" aria-label="'.hsafe(strip_tags($add_remove_options['lang'])).'">'
+	              . '<i class="fa-solid '.($isIgnored ? 'fa-eye' : 'fa-eye-slash').'"></i></a>';
 			  
 	    }
     }
@@ -2285,7 +2184,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     // Invited by
     $invs = '';
     if ($memprofile['invited_by']) {
-        $invs = '<div class="py-2 border-bottom"><span class="text-muted">' . sprintf($lang->member['iby'], $memprofile['invited_by']) . '</span></div>';
+        $invs = $memprofile['invited_by'];
     }
 
     // Swarm & completed
@@ -2302,8 +2201,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
     require_once INC_PATH . '/functions_claim.php';
     // Own profile or staff: other users' claims are not public (claim.php checks it too)
     $claims_line = claim_enabled() && ((int)$uid === (int)$CURUSER['id'] || (isset($usergroups) && is_mod($usergroups)))
-        ? '<div class="mt-1 small"><a href="' . $BASEURL . '/claim.php?uid=' . (int)$uid . '" class="text-decoration-none">'
-          . '<i class="bi bi-heart-pulse me-1"></i>' . hsafe(ags_fmt($lang->member['lbl_claims'], claim_count_user((int)$uid), number_format(claim_cfg('max_per_user')))) . '</a></div>'
+        ? '<a href="' . $BASEURL . '/claim.php?uid=' . (int)$uid . '" class="pf-kpi-sub">'
+          . '<i class="fa-solid fa-heart-pulse me-1"></i>' . hsafe(ags_fmt($lang->member['lbl_claims'], claim_count_user((int)$uid), number_format(claim_cfg('max_per_user')))) . '</a>'
         : '';
     $completed_list        = $completed['html'];
     $times_completed_total = ts_nf($completed['count']);
@@ -2323,7 +2222,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     // Report button
     $report_button = '';
     if ($CURUSER['id'] != $memprofile['id'] && $CURUSER['id'] != 0) {
-        $report_button = '<button type="button" class="btn btn-sm btn-outline-danger" onclick="openReportUserModal(' . $memprofile['id'] . ', \'' . addslashes($memprofile['username']) . '\')" data-bs-toggle="tooltip" title="' . hsafe($lang->member['tip_report_user']) . '"><i class="fa-solid fa-flag me-1"></i> ' . hsafe($lang->member['report_user']) . '</button>';
+        $report_button = '<button type="button" class="btn btn-sm btn-outline-danger st-pill pf-icon-btn" onclick="openReportUserModal(' . $memprofile['id'] . ', \'' . addslashes($memprofile['username']) . '\')" title="' . hsafe($lang->member['tip_report_user']) . '" aria-label="' . hsafe($lang->member['report_user']) . '"><i class="fa-solid fa-flag"></i></button>';
     }
 
     $reasons_map = [
@@ -2357,48 +2256,24 @@ $modoptions = '<!-- Moderator Options (compact) -->
             $comment_link = $BASEURL . '/' . get_comment_link($pid, $tid);
             $torrent_name = htmlspecialchars_uni($comment['torrent_name'] ?? $lang->member['lbl_unknown_torrent']);
 
-            $recent_comments_html .= '
-            <div class="list-row">
-                <div class="flex-grow-1 me-3" style="min-width:0;">
-                    <div class="fw-semibold text-truncate">
-                        <a href="' . $comment_link . '#pid' . $pid . '" class="text-decoration-none">
-                            <i class="bi bi-collection-play me-1 text-muted"></i>' . $torrent_name . '
-                        </a>
-                    </div>
-                    <div class="muted mt-1" style="font-size:0.85rem;">' . $comment_text . '</div>
-                </div>
-                <div class="text-end flex-shrink-0">
-                    <div class="small text-muted">' . $comment_date . '</div>
-                    <div class="small text-muted">' . $comment_time . '</div>
-                </div>
-            </div>';
+            $recent_comments_html .= '<a class="pf-cmt" href="' . $comment_link . '#pid' . $pid . '">'
+                . '<span class="st-ico st-soft-primary"><i class="fa-solid fa-comment"></i></span>'
+                . '<span class="flex-grow-1 min-w-0">'
+                .   '<span class="pf-cmt__title">' . $torrent_name . '</span>'
+                .   '<span class="pf-cmt__text">' . htmlspecialchars_uni($comment_text) . '</span>'
+                . '</span>'
+                . '<span class="pf-cmt__date">' . $comment_date . '<br>' . $comment_time . '</span>'
+                . '</a>';
         }
     } else {
-        $recent_comments_html = '<div class="text-center py-4">
-            <div class="d-inline-flex flex-column align-items-center gap-3">
-                <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width:70px;height:70px;">
-                    <i class="bi bi-chat-square-dots fs-1 text-secondary opacity-50"></i>
-                </div>
-                <div class="text-secondary fw-medium">' . hsafe($lang->member['empty_comments']) . '</div>
-            </div>
-        </div>';
+        $recent_comments_html = '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-regular fa-comments"></i></div>' . hsafe($lang->member['empty_comments']) . '</div>';
     }
 
     // Signature (second pass if needed)
     if ($memprofile['signature'] && !$signature) {
         $sig_parser = ['allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
-        
-		$signature = '<div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		'.$users_signature.'
-	</div>
-	<div class="card-body border-bottom pb-3">
-		'.$memprofile['signature'].'
-	</div>
-</div>';
-		
-		
+        $signature = $pf_signature($memprofile['signature']);
     }
 
     // Strings for report_user.js: js_report_* lang keys → AGS_LANG without the js_ prefix
@@ -2413,432 +2288,193 @@ $modoptions = '<!-- Moderator Options (compact) -->
         . json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
         . ');</script>';
 
-  $formattedname = format_name($memprofile['username'], (int)($memprofile['usergroup'] ?? 1));
+    $formattedname = format_name($memprofile['username'], (int)($memprofile['usergroup'] ?? 1));
+    $pfL = static fn(string $k, string $fb): string => hsafe((string)($lang->member[$k] ?? $fb));
+
+    /** Gray KPI tile with a big icon in the corner (same as requests / offers / mybonus) */
+    $pf_kpi = static function (string $icon, string $tone, string $value, string $label, string $extra = ''): string {
+        return '<div class="st-kpi st-kpi--muted">'
+             . '<span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+             . '<div class="min-w-0 flex-grow-1"><div class="st-kpi__val">' . $value . '</div><div class="st-kpi__lbl">' . $label . '</div>' . $extra . '</div>'
+             . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i></div>';
+    };
+    $pf_bar = static fn(int $pct, string $tone): string =>
+        '<div class="pf-bar"><span class="bg-' . $tone . '" style="width:' . $pct . '%"></span></div>';
+
+    $ratio_tone = match ($ratio_class) { 'ratio-ok' => 'success', 'ratio-warn' => 'warning', default => 'danger' };
+    $ratio_text = match ($ratio_class) { 'ratio-ok' => $lang->member['lbl_ratio_good'], 'ratio-warn' => $lang->member['lbl_ratio_fair'], default => $lang->member['lbl_ratio_poor'] };
+
+    // Header buttons
+    $head_btns = '';
+    if ($is_own_profile) {
+        $head_btns .= '<a href="usercp.php?action=profile" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-user-pen me-1"></i>' . $pfL('btn_edit_profile', 'Edit profile') . '</a>';
+    } else {
+        if ($sendpm) {
+            $head_btns .= '<a href="private.php?action=send&amp;uid=' . (int)$memprofile['id'] . '" class="btn btn-sm btn-primary st-pill" aria-label="' . hsafe($lang->member['aria_send_pm']) . '"><i class="fa-solid fa-envelope me-1"></i>' . hsafe($lang->member['btn_send_pm']) . '</a>';
+        }
+        $head_btns .= $buddy_options . $ignore_options . $report_button;
+    }
+
+    $tab_contact_btn = $contact_details !== ''
+        ? '<button data-bs-toggle="pill" data-bs-target="#pf-contact" type="button" role="tab"><i class="fa-solid fa-address-card"></i>' . hsafe($lang->member['tab_contact']) . '</button>'
+        : '';
+
+    $about_rows = '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-calendar-plus"></i>' . rtrim($lang->member['joined'], ':') . '</span><span class="st-row__val">' . $memregdate . '</span></div>'
+        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-clock-rotate-left"></i>' . rtrim($lang->member['lastvisit'], ':') . '</span><span class="st-row__val">' . $memlastvisitdate . '</span></div>'
+        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-cake-candles"></i>' . rtrim($lang->member['date_of_birth'], ':') . '</span><span class="st-row__val">' . $membday . ' ' . $membdayage . '</span></div>'
+        . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-earth-europe"></i>' . rtrim($lang->member['local_time'], ':') . '</span><span class="st-row__val">' . $localtime . '</span></div>'
+        . ($invs !== '' ? '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-ticket"></i>' . trim(str_replace(['{1}', '%1$s'], '', $lang->member['iby']), ' :') . '</span><span class="st-row__val">' . $invs . '</span></div>' : '');
 
     $profile = '
-	
-	<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>'.$SITENAME.' - '.hsafe(ags_fmt($lang->member['profile'], $me_username)).'</title>
-  
-  <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-  '.$ags_lang_script.'
-  <script type="text/javascript" src="'.$BASEURL.'/scripts/report_user.js?ver=3"></script>
-  
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  
-  <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/member_profile.css">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=1">
+<script src="' . $BASEURL . '/scripts/toast.js"></script>
+' . $ags_lang_script . '
+<script src="' . $BASEURL . '/scripts/report_user.js?ver=3"></script>
 
-</head>
-<body>
-<div class="container-md my-4">
-  <!-- HERO -->
-  <div class="profile-hero p-3 p-md-4 mb-4 hov-soft">
-    <div class="hero-inner">
-      <div class="row g-3 g-lg-4 align-items-center">
-        
-		
-	
-<div class="col-auto">
-  <div class="avatar-ring position-relative hov-soft"
-       id="avatar-container"
-       data-uid="'.$memprofile['id'].'"
-       data-can-change="'.$can_change_avatar.'"
-	   data-max-mb="'.round($avatarsize / 1024).'"
-       title="'.hsafe($lang->member['tip_avatar']).'">
-    <div>
-      '.$avatar.'
-      '.$status_dot_html.'
-      <span class="avatar-overlay">'.hsafe($lang->member['lbl_change_avatar']).'</span>
+<div class="container-md st-page pf-page py-3">
+
+  <!-- Header -->
+  <header class="st-card st-head pf-head mb-3">
+    <div class="pf-ava-wrap">
+      <div class="pf-ava" id="avatar-container" data-uid="' . (int)$memprofile['id'] . '" data-can-change="' . $can_change_avatar . '"
+           data-max-mb="' . round($avatarsize / 1024) . '" title="' . hsafe($lang->member['tip_avatar']) . '">
+        <div>
+          ' . $pf_avatar_img . '
+          ' . $status_dot_html . '
+          <span class="avatar-overlay"><i class="fa-solid fa-camera me-1"></i>' . hsafe($lang->member['lbl_change_avatar']) . '</span>
+        </div>
+        <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
+      </div>
+      <input type="file" id="avatar-input" accept="image/*" hidden>
     </div>
 
-    <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
-  </div>
-</div>
-
-<input type="file" id="avatar-input" accept="image/*" style="display:none;">
-		
-		
-
-
-        <div class="col">
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <h2 class="mb-0 me-1">'.$formattedname.'</h2> '.$usericons.'
-          </div>
-          <div class="muted mt-1">'.$usertitle.'</div>
-          <div class="mt-2">'.$groupimage.'</div>
-          <div class="mt-2">'.$userstars.'</div>
-
-          <div class="mt-3 d-flex flex-wrap gap-2">
-    <span class="chip"><i class="bi bi-upload me-1 text-success"></i> '.hsafe($lang->member['lbl_seeding']).' <strong>'.$active_seeds.'</strong></span>
-    <span class="chip"><i class="bi bi-download me-1 text-danger"></i> '.hsafe($lang->member['lbl_leeching']).' <strong>'.$active_leeches.'</strong></span>
-    <span class="chip"><i class="bi bi-check2-circle me-1 text-primary"></i> '.hsafe($lang->member['lbl_completed']).' <strong>'.$times_completed_total.'</strong></span>
-    <span class="chip"><i class="bi bi-calendar-check me-1 text-muted"></i> '.hsafe($lang->member['joined']).' <strong>'.$memregdate.'</strong></span>
-</div>
-        </div>
-
-        <div class="col-12 col-lg-3">
-          <div class="d-grid gap-2">
-            <a href="private.php?action=send&uid='.$memprofile['id'].'" class="btn btn-primary btn-sm" aria-label="'.hsafe($lang->member['aria_send_pm']).'">
-              <i class="bi bi-envelope me-1"></i> '.hsafe($lang->member['btn_send_pm']).'
-            </a>
-            <a href="misc.php?action=buddy&add='.$memprofile['id'].'" class="btn btn-outline-secondary btn-sm" aria-label="'.hsafe($lang->member['aria_add_buddy']).'">
-              <i class="bi bi-person-plus me-1"></i> '.hsafe($lang->member['btn_add_buddy']).'
-            </a>
-            '.$report_button.'
-          </div>
-		  
-		   <!-- Мини-статистика под кнопками -->
-    <div class="mt-3 p-3 card-clean text-center">
-        <div class="row g-2">
-            <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_posts']).'</div>
-                <div class="fw-bold">'.$memprofile['postnum'].'</div>
-            </div>
-            <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_threads']).'</div>
-                <div class="fw-bold">'.$memprofile['threadnum'].'</div>
-            </div>
-            <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_seeds']).'</div>
-                <div class="fw-bold text-success">'.$active_seeds.'</div>
-            </div>
-            <div class="col-6">
-                <div class="muted" style="font-size:0.7rem;">'.hsafe($lang->member['stat_leeches']).'</div>
-                <div class="fw-bold text-danger">'.$active_leeches.'</div>
-            </div>
-        </div>
-    </div>
-		  
-        </div>
+    <div class="flex-grow-1 min-w-0">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <h1 class="st-title mb-0">' . $formattedname . '</h1>' . $usericons . '
+      </div>
+      ' . ($usertitle !== '' ? '<div class="pf-utitle mt-1">' . $usertitle . '</div>' : '') . '
+      ' . ($groupimage !== '' ? '<div class="mt-1">' . $groupimage . '</div>' : '') . '
+      <div class="pf-chips mt-2">
+        <span class="pf-chip">' . $online_status . '</span>
+        <span class="pf-chip"><i class="fa-solid fa-arrow-up text-success"></i>' . hsafe(rtrim($lang->member['lbl_seeding'], ':')) . ' <strong>' . $active_seeds . '</strong></span>
+        <span class="pf-chip"><i class="fa-solid fa-arrow-down text-danger"></i>' . hsafe(rtrim($lang->member['lbl_leeching'], ':')) . ' <strong>' . $active_leeches . '</strong></span>
+        <span class="pf-chip"><i class="fa-regular fa-calendar"></i>' . hsafe(rtrim($lang->member['joined'], ':')) . ' <strong>' . $memregdate . '</strong></span>
       </div>
     </div>
+
+    ' . ($head_btns !== '' ? '<div class="pf-head__btns">' . $head_btns . '</div>' : '') . '
+  </header>
+
+  <!-- KPI tiles -->
+  <div class="pf-kpis mb-3">
+    ' . $pf_kpi('fa-scale-balanced', $ratio_tone, '<span class="text-' . $ratio_tone . '">' . $ratio . '</span>', hsafe($lang->member['lbl_ratio']),
+            '<span class="st-badge st-soft-' . $ratio_tone . ' mt-1">' . hsafe($ratio_text) . '</span>') . '
+    ' . $pf_kpi('fa-cloud-arrow-up', 'success', $uploaded, hsafe($lang->member['lbl_uploaded']), $pf_bar($uploaded_percent, 'success')) . '
+    ' . $pf_kpi('fa-cloud-arrow-down', 'danger', $downloaded, hsafe($lang->member['lbl_downloaded']), $pf_bar($downloaded_percent, 'danger')) . '
+    ' . $pf_kpi('fa-circle-check', 'primary', $times_completed_total, hsafe($lang->member['lbl_snatched']), $claims_line) . '
   </div>
 
+  <div class="row g-3">
+    <div class="col-lg-8 min-w-0">
 
-<!-- METRICS — замените весь блок -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="metric text-center hov-soft">
-            <div class="label">'.hsafe($lang->member['lbl_ratio']).'</div>
-            <div class="value '.$ratio_class.'" style="font-size:1.35rem;">'.$ratio.'</div>
-            <div class="mt-2">
-                
-                   '.$ratio_label.'
-				  
-                
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="metric text-center hov-soft">
-            <div class="label"><i class="bi bi-check2-circle me-1"></i>'.hsafe($lang->member['lbl_snatched']).'</div>
-            <div class="value" style="font-size:1.35rem;">'.$times_completed_total.'</div>
-            '.$claims_line.'
-        </div>
-    </div>
-    <div class="col-12 col-md-3">
-        <div class="metric hov-soft">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="label"><i class="bi bi-arrow-up-right text-success me-1"></i>'.hsafe($lang->member['lbl_uploaded']).'</div>
-                <div class="value text-success">'.$uploaded.'</div>
-            </div>
-            <div class="progress mt-2">
-                <div class="progress-bar" style="width:'.$uploaded_percent.'%;background:linear-gradient(90deg,#4ade80,#22c55e)"></div>
-            </div>
-            <div class="d-flex justify-content-between mt-1">
-                <small class="muted">'.hsafe(ags_fmt($lang->member['lbl_pct_of_total'], $uploaded_percent)).'</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-md-3">
-        <div class="metric hov-soft">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="label"><i class="bi bi-arrow-down-right text-danger me-1"></i>'.hsafe($lang->member['lbl_downloaded']).'</div>
-                <div class="value text-danger">'.$downloaded.'</div>
-            </div>
-            <div class="progress mt-2">
-                <div class="progress-bar" style="width:'.$downloaded_percent.'%;background:linear-gradient(90deg,#f87171,#ef4444)"></div>
-            </div>
-            <div class="d-flex justify-content-between mt-1">
-                <small class="muted">'.hsafe(ags_fmt($lang->member['lbl_pct_of_total'], $downloaded_percent)).'</small>
-            </div>
-        </div>
-    </div>
-</div>
-
-  <div class="row g-4">
-    <!-- LEFT -->
-    <div class="col-12 col-lg-8">
-      <!-- Tabs -->
-      
-	  
-	 
-	  
-	  
-	  
-	  <ul class="nav nav-tabs mb-3" role="tablist">
-    <li class="nav-item">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-about" type="button">
-            <i class="bi bi-person me-1"></i>'.hsafe($lang->member['tab_about']).'
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-forum" type="button">
-            <i class="bi bi-chat-dots me-1"></i>'.hsafe($lang->member['tab_forum']).'
-            <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$memprofile['postnum'].'</span>
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-torrents" type="button">
-            <i class="bi bi-collection-play me-1"></i>'.hsafe($lang->member['tab_torrents']).'
-            <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$times_completed_total.'</span>
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contact" type="button">
-            <i class="bi bi-envelope me-1"></i>'.hsafe($lang->member['tab_contact']).'
-        </button>
-    </li>
-</ul>
-	  
-	  
-	  
-	  
-	  
-	  
+      <nav class="pf-tabs mb-3" role="tablist">
+        <button class="active" data-bs-toggle="pill" data-bs-target="#pf-about" type="button" role="tab"><i class="fa-solid fa-user"></i>' . hsafe($lang->member['tab_about']) . '</button>
+        <button data-bs-toggle="pill" data-bs-target="#pf-forum" type="button" role="tab"><i class="fa-solid fa-comments"></i>' . hsafe($lang->member['tab_forum']) . '<span class="pf-tabs__n">' . ts_nf((int)$memprofile['postnum']) . '</span></button>
+        <button data-bs-toggle="pill" data-bs-target="#pf-torrents" type="button" role="tab"><i class="fa-solid fa-layer-group"></i>' . hsafe($lang->member['tab_torrents']) . '<span class="pf-tabs__n">' . $times_completed_total . '</span></button>
+        ' . $tab_contact_btn . '
+      </nav>
 
       <div class="tab-content">
-        <!-- ABOUT -->
-        <div class="tab-pane fade show active" id="tab-about">
-          
-          <!-- красивый бан-блок: сформируй в PHP в переменную новым стилем -->
-          '.$bannedbit.'
-          '.$signature.'
 
-          
+        <!-- About -->
+        <div class="tab-pane fade show active" id="pf-about" role="tabpanel">
+          ' . $bannedbit . '
+          <section class="st-card mb-3">
+            <div class="st-card__head"><i class="fa-solid fa-id-card"></i>' . hsafe($lang->member['tab_about']) . '</div>
+            <div class="st-card__body"><div class="st-rows">' . $about_rows . '</div></div>
+          </section>
+          ' . $signature . '
+        </div>
 
-          <div class="card-clean p-3 mt-3 hov-soft">
-            <div class="row row-cols-1 row-cols-md-2 g-3">
-              <div class="col">
-                <div class="list-row">
-                  <span class="muted"><i class="bi bi-calendar-event me-1"></i>'.$lang->member['joined'].'</span>
-                  <span>'.$memregdate.'</span>
-                </div>
-                <div class="list-row">
-                  <span class="muted"><i class="bi bi-clock-history me-1"></i>'.$lang->member['lastvisit'].'</span>
-                  <span>'.$memlastvisitdate.'</span>
-                </div>
-                <div class="list-row">
-                  <span class="muted"><i class="bi bi-cake me-1"></i>'.$lang->member['date_of_birth'].'</span>
-                  <span>'.$membday.' '.$membdayage.'</span>
-                </div>
-                <div class="list-row">
-                  <span class="muted"><i class="bi bi-globe2 me-1"></i>'.$lang->member['local_time'].'</span>
-                  <span>'.$localtime.'</span>
-                </div>
-              </div>
-              <div class="col">
-                '.$invs.'
-                <!-- соцсети / доп. факты сюда -->
-              </div>
+        <!-- Forum -->
+        <div class="tab-pane fade" id="pf-forum" role="tabpanel">
+          <div class="pf-forum mb-3">
+            <div class="st-kpi st-kpi--muted">
+              <span class="st-ico st-soft-primary"><i class="fa-solid fa-message"></i></span>
+              <div class="min-w-0 flex-grow-1"><div class="st-kpi__val">' . ts_nf((int)$memprofile['postnum']) . '</div><div class="st-kpi__lbl">' . rtrim($lang->member['total_posts'], ':') . ' &middot; ' . $ppd_percent_total . '</div></div>
+              ' . ($findposts !== '' ? '<div class="pf-forum__btn">' . $findposts . '</div>' : '') . '
+              <i class="fa-solid fa-message st-kpi__bg" aria-hidden="true"></i>
+            </div>
+            <div class="st-kpi st-kpi--muted">
+              <span class="st-ico st-soft-success"><i class="fa-solid fa-layer-group"></i></span>
+              <div class="min-w-0 flex-grow-1"><div class="st-kpi__val">' . ts_nf((int)$memprofile['threadnum']) . '</div><div class="st-kpi__lbl">' . rtrim($lang->member['total_threads'], ':') . ' &middot; ' . $tpd_percent_total . '</div></div>
+              ' . ($findthreads !== '' ? '<div class="pf-forum__btn">' . $findthreads . '</div>' : '') . '
+              <i class="fa-solid fa-layer-group st-kpi__bg" aria-hidden="true"></i>
             </div>
           </div>
-
-          
-		  
-		<!-- Status & time -->
-              <div class="card-clean p-0 mt-3 hov-soft">
-                <div class="p-3 border-bottom d-flex align-items-center gap-2">
-                  <i class="bi bi-activity"></i>
-                  <strong>'.hsafe($lang->member['sec_status']).'</strong>
-                </div>
-                <div class="p-3">
-                  <div class="list-row">
-                    <span class="muted d-flex align-items-center gap-2">
-                      <i class="bi bi-circle-fill" style="font-size:.6rem"></i>
-                      '.$lang->global['postbit_status'].'
-                    </span>
-                    <span>'.$online_status.'</span>
-                  </div>
-                  <div class="list-row">
-                    <span class="muted d-flex align-items-center gap-2">
-                      <i class="bi bi-clock-history"></i>
-                      '.$lang->member['timeonline'].'
-                    </span>
-                    <span>'.$timeonline.'</span>
-                  </div>
-                </div>
-              </div>
-		  
-		  
-		  
-		  
+          <section class="st-card">
+            <div class="st-card__head"><i class="fa-solid fa-comment-dots"></i>' . hsafe($lang->member['sec_recent_comments']) . '<span class="st-badge st-soft-muted ms-auto">' . ts_nf((int)$memprofile['comms']) . '</span></div>
+            <div class="pf-cmts">' . $recent_comments_html . '</div>
+          </section>
         </div>
 
-
-
-
-
-<!-- FORUM -->
-<div class="tab-pane fade" id="tab-forum">
-
-    <!-- KPIs постов/тредов -->
-    <div class="card-clean mb-3 hov-soft">
-        <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
-            <i class="bi bi-chat-dots-fill"></i>
-            <span>'.$users_forum_info.'</span>
+        <!-- Torrents -->
+        <div class="tab-pane fade" id="pf-torrents" role="tabpanel">
+          <section class="st-card mb-3">
+            <div class="st-card__head"><i class="fa-solid fa-cloud-arrow-up"></i>' . hsafe($lang->member['sec_uploaded_torrents']) . '</div>
+            <div class="st-card__body pf-tlist">' . $recent_user_torrents . '</div>
+          </section>
+          <section class="st-card mb-3">
+            <div class="st-card__head"><i class="fa-solid fa-arrow-up"></i>' . hsafe($lang->member['sec_seeding_now']) . '<span class="st-badge st-soft-success ms-auto">' . $active_seeds . '</span></div>
+            <div class="st-card__body pf-tlist">' . $seeding_now . '</div>
+          </section>
+          <section class="st-card mb-3">
+            <div class="st-card__head"><i class="fa-solid fa-arrow-down"></i>' . hsafe($lang->member['sec_leeching_now']) . '<span class="st-badge st-soft-danger ms-auto">' . $active_leeches . '</span></div>
+            <div class="st-card__body pf-tlist">' . $leeching_now . '</div>
+          </section>
+          <section class="st-card">
+            <div class="st-card__head"><i class="fa-solid fa-circle-check"></i>' . hsafe($lang->member['sec_completed_recently']) . '<span class="st-badge st-soft-primary ms-auto">' . $times_completed_total . '</span></div>
+            <div class="st-card__body pf-tlist">' . $completed_list . '</div>
+          </section>
         </div>
-        <div class="p-3">
-            <div class="row g-3">
-                <div class="col-12 col-md-6">
-                    <div class="metric hov-soft d-flex align-items-center gap-3">
-                        <div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width:42px;height:42px;">
-                            <i class="bi bi-chat-left-text-fill"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <div class="label d-flex justify-content-between align-items-center">
-                                <span>'.$lang->member['total_posts'].'</span>
-                                <span class="badge-soft">'.$ppd_percent_total.'</span>
-                            </div>
-                            <div class="value mt-1">'.$memprofile['postnum'].'</div>
-                        </div>
-                        <div class="ms-2 d-none d-md-block">'.$findposts.'</div>
-                    </div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="metric hov-soft d-flex align-items-center gap-3">
-                        <div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width:42px;height:42px;">
-                            <i class="bi bi-journal-text"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <div class="label d-flex justify-content-between align-items-center">
-                                <span>'.$lang->member['total_threads'].'</span>
-                                <span class="badge-soft">'.$tpd_percent_total.'</span>
-                            </div>
-                            <div class="value mt-1">'.$memprofile['threadnum'].'</div>
-                        </div>
-                        <div class="ms-2 d-none d-md-block">'.$findthreads.'</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Последние комментарии -->
-    <div class="card-clean p-0 hov-soft">
-        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-            <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-chat-left-text-fill"></i>
-                '.hsafe($lang->member['sec_recent_comments']).'
-            </span>
-            <span class="badge-soft">'.$memprofile['comms'].'</span>
-        </div>
-        <div class="p-3">
-            '.$recent_comments_html.'
-        </div>
-    </div>
-
-</div>
-		
-		
-
-        
-		
-		
-		
-		
-		<!-- TORRENTS -->
-<div class="tab-pane fade" id="tab-torrents">
-    <div class="card-clean p-0 hov-soft mb-3">
-        <div class="p-3 border-bottom text-19 fw-bold">'.hsafe($lang->member['sec_uploaded_torrents']).'</div>
-        <div class="p-3">'.$recent_user_torrents.'</div>
-    </div>
-
-    <!-- Seeding & Leeching в одну колонку -->
-    <div class="card-clean p-0 hov-soft mb-3">
-        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-            <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-cloud-upload"></i> '.hsafe($lang->member['sec_seeding_now']).'
-            </span>
-            <span class="badge-soft">'.$active_seeds.'</span>
-        </div>
-        <div class="p-3">
-            <!-- Здесь каждый элемент seeding будет на всю ширину -->
-            '.$seeding_now.'
-        </div>
-    </div>
-
-    <div class="card-clean p-0 hov-soft mb-3">
-        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-            <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-cloud-download"></i> '.hsafe($lang->member['sec_leeching_now']).'
-            </span>
-            <span class="badge-soft">'.$active_leeches.'</span>
-        </div>
-        <div class="p-3">
-            <!-- Здесь каждый элемент leeching будет на всю ширину -->
-            '.$leeching_now.'
-        </div>
-    </div>
-
-    <div class="card-clean p-0 hov-soft">
-        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-            <span class="text-19 fw-bold d-flex align-items-center gap-2">
-                <i class="bi bi-check-circle-fill"></i> '.hsafe($lang->member['sec_completed_recently']).'
-            </span>
-            <span class="badge-soft">'.$times_completed_total.'</span>
-        </div>
-        <div class="p-3">'.$completed_list.'</div>
-    </div>
-</div>
-		
-		
-		
-		
-		
-
-        <!-- CONTACT -->
-        <div class="tab-pane fade" id="tab-contact">'.$contact_details.'</div>
+        ' . ($contact_details !== '' ? '<div class="tab-pane fade" id="pf-contact" role="tabpanel">' . $contact_details . '</div>' : '') . '
       </div>
     </div>
 
-    <!-- RIGHT -->
-    <div class="col-12 col-lg-4">
-      <div class="sticky-col">
-        '.$modoptions.'
+    <!-- Side -->
+    <div class="col-lg-4">
+      <div class="pf-side">
+        <section class="st-card mb-3">
+          <div class="st-card__head"><i class="fa-solid fa-signal"></i>' . hsafe($lang->member['sec_status']) . '</div>
+          <div class="st-card__body"><div class="st-rows">
+            <div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-circle-dot"></i>' . rtrim($lang->global['postbit_status'], ': ') . '</span><span class="st-row__val">' . $online_status . '</span></div>
+            <div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-hourglass-half"></i>' . rtrim($lang->member['timeonline'], ':') . '</span><span class="st-row__val">' . $timeonline . '</span></div>
+          </div></div>
+        </section>
+        <div class="pf-mini mb-3">
+          <div class="pf-mini__i"><span>' . ts_nf((int)$memprofile['postnum']) . '</span>' . hsafe($lang->member['stat_posts']) . '</div>
+          <div class="pf-mini__i"><span>' . ts_nf((int)$memprofile['threadnum']) . '</span>' . hsafe($lang->member['stat_threads']) . '</div>
+          <div class="pf-mini__i"><span class="text-success">' . $active_seeds . '</span>' . hsafe($lang->member['stat_seeds']) . '</div>
+          <div class="pf-mini__i"><span class="text-danger">' . $active_leeches . '</span>' . hsafe($lang->member['stat_leeches']) . '</div>
+        </div>
+        ' . $modoptions . '
       </div>
     </div>
   </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // remember the open tab in the URL hash (#pf-forum ...)
+  var btns = document.querySelectorAll(".pf-tabs [data-bs-target]");
+  if (!btns.length || !window.bootstrap) return;
+  var h = location.hash && document.querySelector(".pf-tabs [data-bs-target=\"" + location.hash.replace(/"/g, "") + "\"]");
+  if (h) bootstrap.Tab.getOrCreateInstance(h).show();
+  btns.forEach(function (b) { b.addEventListener("shown.bs.tab", function () { history.replaceState(null, "", b.getAttribute("data-bs-target")); }); });
+});
+</script>';
 
-
-</body>
-</html>';
-
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
     echo $profile;
     
 	?>

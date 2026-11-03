@@ -1,0 +1,151 @@
+/* member.php?action=profile — new style on st-ui.css. Everything scoped under .pf-page (prefix pf-). */
+
+/* ═════ Visual layer: gradient header, tinted card heads, KPI corner icon ═════ */
+.pf-page .st-head {
+    background: linear-gradient(120deg, var(--bs-primary-bg-subtle) 0%, var(--bs-body-bg) 65%);
+}
+.pf-page .st-card > .st-card__head { background: var(--bs-tertiary-bg); }
+.pf-page .st-card > .st-card__head:first-child { border-radius: var(--st-radius) var(--st-radius) 0 0; }
+.pf-page .st-card__head > i:first-child { color: var(--bs-primary); }
+
+.pf-page .st-kpi { position: relative; overflow: hidden; }
+.pf-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.pf-page .st-kpi__bg {
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+.pf-page .st-kpi--muted { background: var(--bs-tertiary-bg); align-items: flex-start; }
+.pf-page .st-row__lbl { white-space: normal; }
+
+/* ── Header ───────────────────────────────────────────────────── */
+.pf-page .pf-head { align-items: center; gap: 1.1rem; }
+.pf-page .pf-ava-wrap { flex: 0 0 auto; }
+.pf-page .pf-ava { position: relative; width: 6.5rem; height: 6.5rem; }
+.pf-page .pf-ava > div { position: relative; width: 100%; height: 100%; }
+.pf-page .pf-ava img,
+.pf-page .pf-ava__none {
+    width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 50%;
+    border: 3px solid var(--bs-body-bg); box-shadow: 0 0 0 2px var(--bs-primary-border-subtle), 0 .4rem 1rem rgba(0, 0, 0, .08);
+    background: var(--bs-tertiary-bg);
+}
+.pf-page .pf-ava__none { display: grid; place-items: center; font-size: 2.4rem; color: var(--bs-secondary-color); }
+.pf-page .pf-ava .status-dot {
+    position: absolute; right: .35rem; bottom: .35rem; z-index: 2;
+    width: 1rem; height: 1rem; border-radius: 50%; border: 3px solid var(--bs-body-bg); background: var(--bs-success);
+}
+.pf-page .pf-ava .status-away { background: var(--bs-warning); }
+.pf-page .pf-ava .status-off  { background: var(--bs-secondary); }
+.pf-page .avatar-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+    background: rgba(0, 0, 0, .45); color: #fff; font-size: .8rem; font-weight: 700; opacity: 0; transition: opacity .2s;
+}
+.pf-page #avatar-container[data-can-change="1"] { cursor: pointer; }
+.pf-page #avatar-container[data-can-change="1"]:hover .avatar-overlay { opacity: 1; }
+.pf-page #avatar-container[data-can-change="0"] .avatar-overlay { display: none; }
+.pf-page #avatar-progress {
+    position: absolute; left: 50%; bottom: -.7rem; transform: translateX(-50%); display: none;
+    width: 6rem; height: .35rem; border-radius: 50rem; overflow: hidden; background: var(--bs-tertiary-bg);
+}
+.pf-page #avatar-progress-bar { width: 0; height: 100%; background: var(--bs-primary); }
+
+.pf-page .pf-utitle { color: var(--bs-secondary-color); font-size: .9em; }
+.pf-page .pf-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.pf-page .pf-chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .2rem .65rem; border-radius: 50rem; font-size: .8em;
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); color: var(--bs-secondary-color);
+}
+.pf-page .pf-chip strong { color: var(--bs-emphasis-color); }
+.pf-page .pf-chip .st-meta { display: none; }   /* location stays in the Status card */
+.pf-page .pf-online { display: inline-flex; align-items: center; gap: .35rem; font-weight: 700; color: var(--bs-success); text-decoration: none; }
+.pf-page .pf-online__dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--bs-success); box-shadow: 0 0 0 3px var(--bs-success-bg-subtle); }
+.pf-page .pf-offline { font-weight: 600; color: var(--bs-secondary-color); }
+
+.pf-page .pf-head__btns { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; max-width: 19rem; }
+.pf-page .pf-icon-btn { padding-left: .6rem !important; padding-right: .6rem !important; }
+
+@media (max-width: 767.98px) {
+    .pf-page .pf-head { flex-wrap: wrap; }
+    .pf-page .pf-head > .flex-grow-1 { flex: 1 1 calc(100% - 7.6rem); }
+    .pf-page .pf-ava { width: 5rem; height: 5rem; }
+    .pf-page .pf-head__btns { max-width: none; width: 100%; justify-content: flex-start; }
+}
+
+/* ── KPI tiles ────────────────────────────────────────────────── */
+.pf-page .pf-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 991.98px) { .pf-page .pf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 575.98px) { .pf-page .pf-kpis .st-kpi__val { font-size: 1.1rem; white-space: nowrap; } .pf-page .pf-kpis .st-kpi > .st-ico { display: none; } }
+.pf-page .pf-bar { height: .3rem; margin-top: .45rem; border-radius: 50rem; overflow: hidden; background: var(--bs-body-bg); }
+.pf-page .pf-bar span { display: block; height: 100%; border-radius: inherit; }
+.pf-page .pf-kpi-sub { display: inline-block; margin-top: .3rem; font-size: .78em; text-decoration: none; }
+
+/* ── Tabs: one line on desktop, swipe on mobile (no scrollbar) ── */
+.pf-page .pf-tabs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; }
+.pf-page .pf-tabs::-webkit-scrollbar { display: none; }
+.pf-page .pf-tabs button {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: .45rem;
+    padding: .38rem 1rem; border-radius: 50rem;
+    border: 1px solid var(--bs-border-color); background: var(--bs-body-bg);
+    color: var(--bs-body-color); font-size: .9em; font-weight: 600; white-space: nowrap;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+.pf-page .pf-tabs button i { opacity: .7; }
+.pf-page .pf-tabs button:hover { border-color: var(--bs-primary); color: var(--bs-primary); }
+.pf-page .pf-tabs button.active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.pf-page .pf-tabs button.active i { opacity: 1; }
+.pf-page .pf-tabs__n { font-size: .75em; padding: .05rem .45rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.pf-page .pf-tabs button.active .pf-tabs__n { background: rgba(255, 255, 255, .25); color: #fff; }
+
+/* ── About / ban / signature ──────────────────────────────────── */
+.pf-page .pf-ban { border-color: var(--bs-danger-border-subtle); box-shadow: inset 4px 0 0 var(--bs-danger); }
+.pf-page .pf-ban__reason { padding: .55rem .75rem; border-radius: .6rem; background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); font-size: .9em; }
+.pf-page .pf-sig { overflow-wrap: anywhere; }
+.pf-page .pf-sig img { max-width: 100%; height: auto; }
+
+/* ── Forum ────────────────────────────────────────────────────── */
+.pf-page .pf-forum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+@media (max-width: 575.98px) { .pf-page .pf-forum { grid-template-columns: 1fr; } }
+.pf-page .pf-forum .st-kpi { align-items: center; flex-wrap: wrap; }
+.pf-page .pf-forum__btn { flex: 0 0 auto; }
+.pf-page .pf-cmt {
+    display: flex; align-items: center; gap: .8rem; padding: .7rem 1.1rem;
+    border-top: 1px solid var(--bs-border-color-translucent); color: inherit; text-decoration: none;
+    transition: background-color .15s ease;
+}
+.pf-page .pf-cmt:first-child { border-top: 0; }
+.pf-page .pf-cmt:hover { background: rgba(var(--bs-primary-rgb), .04); }
+.pf-page .pf-cmt:hover .pf-cmt__title { color: var(--bs-primary); }
+.pf-page .pf-cmt__title { display: block; font-weight: 600; color: var(--bs-emphasis-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-page .pf-cmt__text { display: block; font-size: .85em; color: var(--bs-secondary-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-page .pf-cmt__date { flex: 0 0 auto; font-size: .78em; color: var(--bs-secondary-color); text-align: end; }
+
+/* ── Torrent lists (cards built by the build_* helpers) ───────── */
+.pf-page .pf-tlist .card { border: 1px solid var(--bs-border-color-translucent) !important; box-shadow: none !important; border-radius: .8rem; background: var(--bs-body-bg); transition: border-color .15s ease, transform .15s ease; }
+.pf-page .pf-tlist .card:hover { border-color: var(--bs-primary) !important; transform: translateY(-1px); }
+.pf-page .pf-tlist .text-dark { color: var(--bs-emphasis-color) !important; }
+.pf-page .pf-tlist .bg-light { background: var(--bs-tertiary-bg) !important; }
+.pf-page .pf-tlist .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pf-page .pf-tlist .min-width-0 { min-width: 0; }
+.pf-page .pf-tlist .text-center.py-4,
+.pf-page .pf-tlist .text-center.p-4 { padding: 1.25rem !important; }
+
+/* ── Side column ──────────────────────────────────────────────── */
+.pf-page .pf-side { position: sticky; top: 1rem; }
+@media (max-width: 991.98px) { .pf-page .pf-side { position: static; } }
+.pf-page .pf-mini { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.pf-page .pf-mini__i {
+    padding: .6rem .7rem; border-radius: .8rem; background: var(--bs-tertiary-bg);
+    font-size: .7rem; font-weight: 600; letter-spacing: .03em; color: var(--bs-secondary-color); text-transform: uppercase;
+}
+.pf-page .pf-mini__i span { display: block; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; color: var(--bs-emphasis-color); text-transform: none; }
+.pf-page .pf-acts { display: grid; gap: .4rem; }
+.pf-page .pf-act {
+    display: flex; align-items: center; gap: .55rem; padding: .45rem .75rem; border-radius: .7rem;
+    border: 1px solid var(--bs-border-color-translucent); color: var(--bs-body-color); text-decoration: none; font-size: .9em; font-weight: 600;
+    transition: border-color .15s ease, color .15s ease;
+}
+.pf-page .pf-act i { width: 1.1rem; text-align: center; color: var(--bs-primary); }
+.pf-page .pf-act:hover { border-color: var(--bs-primary); color: var(--bs-primary); }
+.pf-page .pf-act--danger i { color: var(--bs-danger); }
+.pf-page .pf-act--danger:hover { border-color: var(--bs-danger); color: var(--bs-danger); }

@@ -1893,7 +1893,7 @@ if ($showimages === 'yes' && $total > 0): ?>
 // Уведомления: SweetAlert2 (swal-notify.js даёт тот же showToast(), toast.js больше не нужен)
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/swal-notify.js?ver=1"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/swal-notify.js?ver=2"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=7"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';

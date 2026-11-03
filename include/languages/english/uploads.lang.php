@@ -11,6 +11,7 @@ $language['uploads'] = array
 'err_login_required'    => "You must be logged in to upload files.",
 'err_csrf'              => "Security check failed. Please refresh the page and try again.",
 'err_no_file'           => "No file was uploaded.",
+'err_attachments_disabled' => "Attachments are currently disabled.",
 'err_not_image'         => "The file is corrupted or is not a valid image.",
 'err_save_failed'       => "Failed to save the file.",
 'err_save_failed_code'  => "Failed to save the file (code {1}).",

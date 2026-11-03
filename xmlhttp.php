@@ -662,8 +662,7 @@ function handleEditPost(): void
         $post['username'] = htmlspecialchars_uni($post['username']);
         $post['message'] = $parser->parse_message($message, $parser_options);
 
-        $enableattachments = "1";
-        if ($enableattachments != 0) {
+        if ((int)($GLOBALS['enableattachments'] ?? 1) !== 0) {
             $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$post['pid']]);
             while ($query && ($attachment = $db->fetch_array($query))) {
                 $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;

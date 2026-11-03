@@ -50,7 +50,7 @@ const CHAT_FLOOD_SECONDS   = 3;      // between two messages of one user (staff 
 const CHAT_EDIT_WINDOW     = 600;    // own message: edit / delete within N seconds
 const CHAT_POLL_MS         = 4000;   // visible tab
 const CHAT_POLL_HIDDEN_MS  = 20000;  // background tab
-const CHAT_ASSET_VER       = 18;
+const CHAT_ASSET_VER       = 19;
 const CHAT_GROUP_SECONDS   = 120;    // messages of one author within N s share avatar/name; 0 = never group
 const CHAT_TEXTAREA_ID     = 'chatText'; // id the BBCode editor binds to (one chat box per page)
 const CHAT_ONLINE_WINDOW   = 60;     // "in the chat" = polled within N seconds (hidden tabs poll every 20 s)
@@ -299,7 +299,9 @@ function chat_bot_enabled(string $event): bool
  *   offer           ['id' => offer id]
  *   offer_uploaded  ['id' => offer id,   'tid' => torrent id, 'by' => uid who marked it]
  *   register        ['id' => new user id]
- *   freeleech       ['on' => true|false]                      (global freeleech switched on / off)
+ *   freeleech       ['on' => true|false]                      (admin/freeleech.php: every torrent set Free / back)
+ *                   ['on' => …, 'type' => freeleech|silverleech|doubleupload, 'until' => ts]
+ *                                                             (timed site-wide promo, chat_bot_freeleech_tick())
  */
 function chat_bot_post(string $event, array $args): void
 {
@@ -309,7 +311,8 @@ function chat_bot_post(string $event, array $args): void
         $id   = (int)($args['id'] ?? 0);
         $data = match (true) {
             // Site-wide events: nothing to look up
-            $event === 'freeleech' => ['on' => !empty($args['on']) ? 1 : 0],
+            $event === 'freeleech' => ['on' => !empty($args['on']) ? 1 : 0]
+                                    + (isset($args['type']) ? ['type' => (string)$args['type'], 'until' => (int)($args['until'] ?? 0)] : []),
             $id > 0                => chat_bot_collect($event, $id, (int)($args['tid'] ?? 0), (int)($args['by'] ?? 0)),
             default                => null,
         };
@@ -476,9 +479,29 @@ function chat_bot_text(string $raw, bool $card = true): string
             break;
 
         case 'freeleech':
-            $head = !empty($d['on'])
-                ? chat_t('bot_freeleech_on', '[b]Global freeleech is ON![/b] Every torrent is free — downloads do not count against your ratio.')
-                : chat_t('bot_freeleech_off', '[b]Global freeleech is over.[/b] Torrents are back to normal.');
+            $type = (string)($d['type'] ?? '');
+            if ($type === '') {
+                // admin/freeleech.php: every torrent switched to Free / back
+                $head = !empty($d['on'])
+                    ? chat_t('bot_freeleech_on', '[b]Global freeleech is ON![/b] Every torrent is free — downloads do not count against your ratio.')
+                    : chat_t('bot_freeleech_off', '[b]Global freeleech is over.[/b] Torrents are back to normal.');
+                break;
+            }
+            // Timed site-wide promo (Settings → Freeleech): one text per type, end date in the viewer's format
+            $type = in_array($type, ['freeleech', 'silverleech', 'doubleupload'], true) ? $type : 'freeleech';
+            $name = chat_t('bot_fl_name_' . $type, match ($type) {
+                'silverleech' => 'silver leech', 'doubleupload' => '2x upload', default => 'freeleech',
+            });
+            if (!empty($d['on'])) {
+                $until = (int)($d['until'] ?? 0) > 0 ? chat_date((int)$d['until']) : '';
+                $head  = chat_t('bot_fl_on_' . $type, match ($type) {
+                    'silverleech'  => '[b]Global silver leech is ON![/b] Only half of what you download counts — until {1}.',
+                    'doubleupload' => '[b]Global 2x upload is ON![/b] Everything you upload counts double — until {1}.',
+                    default        => '[b]Global freeleech is ON![/b] Downloads do not count against your ratio — until {1}.',
+                }, $until);
+            } else {
+                $head = chat_t('bot_fl_off', '[b]Global {1} is over.[/b] Torrents are back to normal.', $name);
+            }
             break;
 
         case 'register':
@@ -494,6 +517,63 @@ function chat_bot_text(string $raw, bool $card = true): string
             return '';
     }
     return $head . ($parts ? ' · ' . implode(' · ', $parts) : '') . ($embed !== '' ? "\n" . $embed : '');
+}
+
+/**
+ * Timed site-wide promo (Settings → Freeleech, cache/freeleech.php: type + start + end) starts and
+ * ends by the clock, not by a click: this compares "active now" with the state it saw last time
+ * (cache/chatbot_freeleech.json) and posts on a change — on when it starts (or its type / end
+ * changes while active), off when it ends. Cheap: two small file reads; called from cron.php on
+ * every pseudo-cron hit and right after the setting is saved. Never throws.
+ */
+function chat_bot_freeleech_tick(): void
+{
+    try {
+        $dir   = defined('TSDIR') ? TSDIR . '/cache' : dirname(__DIR__) . '/cache';
+        $cache = $dir . '/freeleech.php';
+        $state = $dir . '/chatbot_freeleech.json';
+        if (!is_file($cache) || !is_dir($dir) || !is_writable($dir)) return;
+
+        // Read the values without include (no opcache surprises, nothing executed)
+        $src = (string)@file_get_contents($cache);
+        $val = static fn(string $var): string =>
+            preg_match('/\$' . $var . '\s*=\s*\'((?:[^\'\\\\]|\\\\.)*)\'/', $src, $m) ? stripcslashes($m[1]) : '';
+        $type  = $val('__FLSTYPE');
+        $start = $val('__F_START');
+        $end   = $val('__F_END');
+        $ts    = static fn(string $v): int => $v === '' ? 0 : (ctype_digit($v) ? (int)$v : (int)strtotime($v));
+        $from  = $ts($start);
+        $until = $ts($end);
+        $now   = defined('TIMENOW') ? TIMENOW : time();
+        // Same rule as announce.php: start <= now <= end
+        $active = $type !== '' && $from > 0 && $until > 0 && $now >= $from && $now <= $until;
+        $sig    = $type . '|' . $from . '|' . $until;
+
+        $fh = @fopen($state, 'c+');
+        if (!$fh) return;
+        if (!flock($fh, LOCK_EX | LOCK_NB)) { fclose($fh); return; }   // another request is on it
+        $prev = json_decode((string)stream_get_contents($fh), true);
+        $prev = is_array($prev) ? $prev : ['active' => false, 'sig' => '', 'type' => ''];
+
+        $post = null;
+        if ($active && (empty($prev['active']) || ($prev['sig'] ?? '') !== $sig)) {
+            $post = ['on' => true, 'type' => $type, 'until' => $until];
+        } elseif (!$active && !empty($prev['active'])) {
+            $post = ['on' => false, 'type' => (string)($prev['type'] ?? $type), 'until' => 0];
+        }
+
+        if ($post !== null || ($prev['sig'] ?? '') !== $sig || (bool)($prev['active'] ?? false) !== $active) {
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, (string)json_encode(['active' => $active, 'sig' => $sig, 'type' => $type]));
+        }
+        flock($fh, LOCK_UN);
+        fclose($fh);
+
+        if ($post !== null) chat_bot_post('freeleech', $post);
+    } catch (\Throwable $e) {
+        error_log('chat bot (freeleech tick): ' . $e->getMessage());
+    }
 }
 
 /** Torrent ids of the bot cards among $rows: the parser loads them all in one query. */

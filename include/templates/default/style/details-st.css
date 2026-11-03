@@ -45,8 +45,10 @@
 .tp-page .tp-chip--bm:empty { display: none; }
 
 /* ── Download + posters ──────────────────────────────────────── */
-.tp-page .tp-hero { display: flex; gap: 1.25rem; padding: 1.1rem; }
-.tp-page .tp-posters { flex: 0 0 auto; display: flex; flex-direction: column; gap: .6rem; width: 13rem; }
+.tp-page .tp-hero { padding: 1.1rem; }
+/* Posters: a row under the Download button */
+.tp-page .tp-posters { display: flex; flex-wrap: wrap; gap: .75rem; }
+.tp-page .tp-posters a { flex: 0 0 auto; width: 15rem; max-width: 100%; }
 .tp-page .tp-posters img {
     display: block; width: 100%; height: auto; border-radius: .7rem;
     box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .12); transition: transform .2s ease;
@@ -70,9 +72,8 @@
 .tp-page .tp-hero .claim-box { margin-top: 0 !important; }
 
 @media (max-width: 767.98px) {
-    .tp-page .tp-hero { flex-direction: column; }
-    .tp-page .tp-posters { width: 100%; flex-direction: row; overflow-x: auto; scrollbar-width: none; }
-    .tp-page .tp-posters a { flex: 0 0 9rem; }
+    .tp-page .tp-posters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .tp-page .tp-posters a { width: 11rem; }
     .tp-page .tp-dl__main { flex: 1 1 auto; text-align: center; }
 }
 

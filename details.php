@@ -1280,7 +1280,7 @@ $tp_reseed = ((int)$Torrent['seeders'] === 0 && $CURUSER) ? '
 
 $details = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details-st.css?ver=1">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details-st.css?ver=2">
 
 <div id="torrent_details" class="container-md st-page tp-page py-3">
 
@@ -1313,8 +1313,7 @@ $details = '
     ' . $RequestMatches . '
 
     <!-- Download + posters -->
-    <section class="st-card tp-hero mb-3' . ($modal_images ? ' has-posters' : '') . '">
-        ' . ($modal_images ? '<div class="tp-posters">' . $modal_images . '</div>' : '') . '
+    <section class="st-card tp-hero mb-3">
         <div class="tp-hero__main">
             <div class="tp-dl">
                 <span class="tp-dl__ico"><i class="fa-solid fa-cloud-arrow-down"></i></span>
@@ -1350,6 +1349,9 @@ $details = '
                     </ul>
                 </div>
             </div>
+
+            ' . ($modal_images ? '<!-- Posters -->
+            <div class="tp-posters">' . $modal_images . '</div>' : '') . '
 
             <!-- Health -->
             <div class="tp-health">

@@ -145,7 +145,7 @@ $cx_ava = static function (array $r) use ($h): string {
 ?>
 <link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/chat.css?ver=<?= CHAT_ASSET_VER ?>">
 <link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/chat_archive.css?ver=1">
+<link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/chat_archive.css?ver=2">
 
 <div class="container-md st-page cx-page py-3">
 

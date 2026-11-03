@@ -172,6 +172,72 @@ function fix_mktime(string $format, string|int $year): string
     return $format;
 }
 
+// ── Auth pages UI (login, register, activation, lost / reset password, 2FA) ──
+// st-ui.css + auth.css (.au-page). Labels from the lang file may end with ':' and may hold HTML (abbr).
+
+/** Centered card: gradient head with an icon, body, optional footer. $wide = registration form */
+function au_page(string $icon, string $tone, string $title, string $sub, string $body, string $foot = '', bool $wide = false): string
+{
+    global $BASEURL;
+    return '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">'
+        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/auth.css?ver=1">'
+        . '<div class="container-md st-page au-page' . ($wide ? ' au-page--wide' : '') . ' py-4">'
+        .   '<div class="st-card au-card">'
+        .     '<div class="au-head">'
+        .       '<span class="au-head__ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        .       '<div class="min-w-0"><h1 class="st-title">' . $title . '</h1>' . ($sub !== '' ? '<div class="st-meta mt-1">' . $sub . '</div>' : '') . '</div>'
+        .     '</div>'
+        .     '<div class="au-body">' . $body . '</div>'
+        .     ($foot !== '' ? '<div class="au-foot">' . $foot . '</div>' : '')
+        .   '</div>'
+        . '</div>';
+}
+
+/** Label text without the trailing colon (lang strings are "Username:") */
+function au_label(string $text): string
+{
+    return rtrim(trim($text), ':');
+}
+
+/** Input with an icon inside. .field-wrap: regvalidator.js puts its messages there */
+function au_field(string $id, string $name, string $label, string $icon, string $type = 'text', string $value = '', string $attrs = '', string $extra = ''): string
+{
+    return '<div class="au-field field-wrap">'
+        . '<label class="st-label" for="' . $id . '">' . au_label($label) . '</label>'
+        . '<div class="au-input"><i class="fa-solid ' . $icon . '" aria-hidden="true"></i>'
+        . '<input class="form-control" type="' . $type . '" id="' . $id . '" name="' . $name . '" value="' . $value . '" ' . $attrs . '></div>'
+        . $extra
+        . '</div>';
+}
+
+/** <select> with an icon inside; $options = ready <option> HTML */
+function au_select(string $id, string $name, string $label, string $icon, string $options, string $hint = ''): string
+{
+    return '<div class="au-field">'
+        . '<label class="st-label" for="' . $id . '">' . au_label($label) . '</label>'
+        . '<div class="au-input"><i class="fa-solid ' . $icon . '" aria-hidden="true"></i>'
+        . '<select class="form-select" id="' . $id . '" name="' . $name . '">' . $options . '</select></div>'
+        . ($hint !== '' ? '<div class="st-meta mt-1">' . $hint . '</div>' : '')
+        . '</div>';
+}
+
+/** Big submit button */
+function au_submit(string $icon, string $label, string $name = 'submit'): string
+{
+    return '<button type="submit" class="btn btn-primary st-pill au-submit" name="' . $name . '" value="' . hsafe(strip_tags($label)) . '">'
+        . '<i class="fa-solid ' . $icon . ' me-2"></i>' . $label . '</button>';
+}
+
+/** Footer links of the auth pages: [[href, icon, text], ...] */
+function au_links(array $links): string
+{
+    $out = '<div class="au-links">';
+    foreach ($links as [$href, $icon, $text]) {
+        $out .= '<a href="' . $href . '"><i class="fa-solid ' . $icon . '"></i>' . $text . '</a>';
+    }
+    return $out . '</div>';
+}
+
 // ── Active swarm ───────────────────────────────────────────────────────────
 function build_user_active_swarm(object $db, int $uid, int $limit = 10): array
 {
@@ -790,21 +856,10 @@ if ($mybb->input['action'] === 'register') {
             $lang->member['password'] = $lang->member['complex_password'] = sprintf($lang->member['complex_password'], $minpasswordlength);
         }
         
-			$passboxes = '
-			
-			<div class="py-3 border-bottom">
-	<div class="row g-3">
-		<div class="col-lg-6">
-<label for="password">'.$lang->member['password'].'</label>
-		<input type="password" class="form-control form-control-sm border" name="password" id="password" />
-		</div>
-		<div class="col-lg-6">
-		<label for="password2">'.$lang->member['confirm_password'].'</label>
-		<input type="password" class="form-control form-control-sm border" name="password2" id="password2" style="width: 100%" />			
-		</div>
-		<div class="col" style="display: none" id="password_status">&nbsp;</div>
-	</div>
-</div>';
+			$passboxes = '<div class="au-grid">'
+                . au_field('password', 'password', $lang->member['password'], 'fa-lock', 'password', '', 'autocomplete="new-password" required')
+                . au_field('password2', 'password2', $lang->member['confirm_password'], 'fa-lock', 'password', '', 'autocomplete="new-password" required')
+                . '</div><div style="display: none" id="password_status">&nbsp;</div>';
 
         $invitehash = htmlspecialchars_uni(
             $_POST['invitehash'] ?? 
@@ -816,9 +871,7 @@ if ($mybb->input['action'] === 'register') {
 		
         $showinvitecode = '';
         if ($regtype === 'invite') {
-            $showinvitecode = '<div class="py-3">' . $lang->member['invitecode']
-                . '<input type="text" class="form-control form-control-sm border" name="invitehash" id="invitehash" value="' . $invitehash . '" />'
-                . '</div>';
+            $showinvitecode = au_field('invitehash', 'invitehash', $lang->member['invitecode'], 'fa-ticket', 'text', $invitehash, 'autocomplete="off"');
         }
 
         $time            = TIMENOW;
@@ -855,209 +908,71 @@ if ($mybb->input['action'] === 'register') {
         $plugins->run_hooks('member_register_end');
         
 		
-		$registration = '
-		
-		<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>'.$SITENAME.' - '.$lang->member['welcome_register'].'</title>
-    
-</head>
-<body>
+        // Timezone: keep only the <select> of build_timezone_select() (it comes wrapped with a hint)
+        $tz_only = preg_match('~<select\b.*?</select>~s', $tzselect, $m) ? $m[0] : $tzselect;
+        $tz_only = preg_replace('~class="[^"]*"~', 'class="form-select"', $tz_only, 1);
 
+        $sw = static fn(string $name, string $check, string $icon, string $label): string =>
+            '<label class="st-check" for="' . $name . '"><input class="form-check-input" type="checkbox" name="' . $name . '" id="' . $name . '" value="1" ' . $check . '>'
+            . '<span><i class="fa-solid ' . $icon . ' me-1"></i>' . $label . '</span></label>';
 
-<div class="container mt-3">
-    '.$inline_errors.'
-    '.$member_loggedin_notice.'
-    
-    <div class="row justify-content-center">
-        <div class="col-lg-10">
-            <div class="card">
-                <div class="card-header bg-primary text-white py-3">
-                    <h4 class="mb-0"><i class="fas fa-user-plus me-2"></i> '.$lang->member['welcome_register'].'</h4>
-                </div>
-                
-                <div class="card-body">
-                    '.$regerrors.'
-                    
-                    <form action="member.php" method="post" id="registration_form">
-                        <input type="text" style="display: none;" value="" name="regcheck1" />
-                        <input type="text" style="display: none;" value="true" name="regcheck2" />
-                        
-                        <!-- Секция данных аккаунта -->
-                        <div class="card-section">
-                            <h5 class="section-title mb-4">
-                                <i class="fas fa-user-circle me-2"></i> '.$lang->member['account_details'].'
-                            </h5>
-                            
-                            <div class="row">
-                                <!-- Имя пользователя -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="username" class="form-label">'.$lang->member['username'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-user form-icon"></i>
-                                        <input type="text" class="form-control input-with-icon" name="username" id="username" value="'.$username.'" placeholder="'.hsafe($lang->member['ph_username']).'" />
-                                    </div>
-                                </div>
-                                
-                                <!-- Поля пароля -->
-                                '.$passboxes.'
-                                
-                                <!-- Email -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="email" class="form-label">'.$lang->member['email'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-envelope form-icon"></i>
-                                        <input type="email" class="form-control input-with-icon" name="email" id="email" maxlength="50" value="'.$email.'" placeholder="'.hsafe($lang->member['ph_email']).'" />
-                                    </div>
-                                </div>
-                                
-                                <!-- Подтверждение email -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="email2" class="form-label">'.$lang->member['confirm_email'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-envelope-circle-check form-icon"></i>
-                                        <input type="email" class="form-control input-with-icon" name="email2" id="email2" maxlength="50" value="'.$email2.'" placeholder="'.hsafe($lang->member['ph_email2']).'" />
-                                    </div>
-                                    <div style="display: none;" id="email_status">&nbsp;</div>
-                                </div>
-                                
-                               
-                                
-                                <!-- Код приглашения -->
-                                <div class="col-md-6 mb-3">
-                                    '.$showinvitecode.'
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Секция настроек аккаунта -->
-                        <div class="card-section">
-                            <h5 class="section-title mb-4">
-                                <i class="fas fa-sliders-h me-2"></i> '.$lang->member['account_prefs'].'
-                            </h5>
-                            
-                            <div class="row">
-                                <!-- Язык -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="language" class="form-label">'.$lang->member['lbl_language'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-language form-icon"></i>
-                                        <select name="language" id="language" class="form-select input-with-icon">
-                                            '.$langoptions.'
-                                        </select>
-                                    </div>
-                                    <div class="form-text">'.$lang->member['hint_language'].'</div>
-                                </div>
+        $reg_body = ($inline_errors ?? '') . ($member_loggedin_notice ?? '') . $regerrors
+            . '<form action="member.php" method="post" id="registration_form">'
+            . '<input type="text" style="display: none;" value="" name="regcheck1" />'
+            . '<input type="text" style="display: none;" value="true" name="regcheck2" />'
 
-                                <!-- Часовой пояс -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="timezone" class="form-label">'.$lang->member['time_offset'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-globe form-icon"></i>
-                                        '.$tzselect.'
-                                    </div>
-                                </div>
-                                
-                                <!-- Коррекция летнего времени -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="dstcorrection" class="form-label">'.$lang->member['dst_correction'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-clock form-icon"></i>
-                                        <select name="dstcorrection" class="form-select input-with-icon">
-                                            <option value="2" '.$dst_auto_selected.'>'.$lang->member['dst_correction_auto'].'</option>
-                                            <option value="1" '.$dst_enabled_selected.'>'.$lang->member['dst_correction_enabled'].'</option>
-                                            <option value="0" '.$dst_disabled_selected.'>'.$lang->member['dst_correction_disabled'].'</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <!-- Настройки уведомлений -->
-                                <div class="col-12 mb-3">
-                                    <label class="form-label">'.hsafe($lang->member['lbl_notifications']).'</label>
-                                    <div class="border rounded p-3">
-                                        <div class="form-check form-switch mb-2">
-                                            <input class="form-check-input" type="checkbox" name="allownotices" id="allownotices" value="1" '.$allownoticescheck.'>
-                                            <label class="form-check-label" for="allownotices">
-                                                <i class="fas fa-bell me-1"></i> '.$lang->member['allow_notices'].'
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch mb-2">
-                                            <input class="form-check-input" type="checkbox" name="hideemail" id="hideemail" value="1" '.$hideemailcheck.'>
-                                            <label class="form-check-label" for="hideemail">
-                                                <i class="fas fa-eye-slash me-1"></i> '.$lang->member['hide_email'].'
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch mb-2">
-                                            <input class="form-check-input" type="checkbox" name="receivepms" id="receivepms" value="1" '.$receivepmscheck.'>
-                                            <label class="form-check-label" for="receivepms">
-                                                <i class="fas fa-comments me-1"></i> '.$lang->member['receive_pms'].'
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch mb-2">
-                                            <input class="form-check-input" type="checkbox" name="pmnotice" id="pmnotice" value="1" '.$pmnoticecheck.'>
-                                            <label class="form-check-label" for="pmnotice">
-                                                <i class="fas fa-desktop me-1"></i> '.$lang->member['pm_notice'].'
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch mb-2">
-                                            <input class="form-check-input" type="checkbox" name="pmnotify" id="pmnotify" value="1" '.$pmnotifycheck.'>
-                                            <label class="form-check-label" for="pmnotify">
-                                                <i class="fas fa-envelope me-1"></i> '.$lang->member['email_notify_newpm'].'
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" name="invisible" id="invisible" value="1" '.$invisiblecheck.'>
-                                            <label class="form-check-label" for="invisible">
-                                                <i class="fas fa-user-secret me-1"></i> '.$lang->member['invisible_mode'].'
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Метод подписки -->
-                                <div class="col-md-6 mb-3">
-                                    <label for="subscriptionmethod" class="form-label">'.$lang->member['subscription_method'].'</label>
-                                    <div class="position-relative">
-                                        <i class="fas fa-rss form-icon"></i>
-                                        <select name="subscriptionmethod" id="subscriptionmethod" class="form-select input-with-icon">
-                                            <option value="0" '.$no_auto_subscribe_selected.'>'.$lang->member['no_auto_subscribe'].'</option>
-                                            <option value="1" '.$no_subscribe_selected.'>'.$lang->member['no_subscribe'].'</option>
-                                            <option value="2" '.$instant_email_subscribe_selected.'>'.$lang->member['instant_email_subscribe'].'</option>
-                                            <option value="3" '.$instant_pm_subscribe_selected.'>'.$lang->member['instant_pm_subscribe'].'</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Дополнительные поля -->
-                       
-                        <!-- Кнопка отправки -->
-                        <div class="d-grid gap-2 mt-4">
-                            <input type="hidden" name="step" value="registration" />
-                            <input type="hidden" name="action" value="do_register" />
-                            <button type="submit" class="btn btn-primary btn-lg" name="regsubmit" value="'.$lang->member['submit_registration'].'">
-                                <i class="fas fa-user-plus me-2"></i> '.$lang->member['submit_registration'].'
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+            . '<div class="au-sec"><i class="fa-solid fa-user-circle"></i>' . au_label($lang->member['account_details']) . '</div>'
+            . '<div class="au-grid">'
+            .   au_field('username', 'username', $lang->member['username'], 'fa-user', 'text', $username, 'placeholder="' . hsafe($lang->member['ph_username']) . '" autocomplete="username" required')
+            .   ($showinvitecode !== '' ? $showinvitecode : '<div class="d-none d-md-block"></div>')
+            . '</div>'
+            . $passboxes
+            . '<div class="au-grid">'
+            .   au_field('email', 'email', $lang->member['email'], 'fa-envelope', 'email', $email, 'maxlength="50" placeholder="' . hsafe($lang->member['ph_email']) . '" autocomplete="email" required')
+            .   au_field('email2', 'email2', $lang->member['confirm_email'], 'fa-envelope-circle-check', 'email', $email2, 'maxlength="50" placeholder="' . hsafe($lang->member['ph_email2']) . '" required',
+                    '<div style="display: none;" id="email_status">&nbsp;</div>')
+            . '</div>'
 
-'.$validator_javascript.'
-<script type="text/javascript" src="'.$BASEURL.'/scripts/regvalidator.js?ver=1823"></script>
-    
+            . '<div class="au-sec"><i class="fa-solid fa-sliders"></i>' . au_label($lang->member['account_prefs']) . '</div>'
+            . '<div class="au-grid">'
+            .   au_select('language', 'language', $lang->member['lbl_language'], 'fa-language', $langoptions, $lang->member['hint_language'])
+            .   '<div class="au-field"><label class="st-label" for="timezoneoffset">' . au_label($lang->member['time_offset']) . '</label>'
+            .     '<div class="au-input"><i class="fa-solid fa-globe" aria-hidden="true"></i>' . $tz_only . '</div></div>'
+            .   au_select('dstcorrection', 'dstcorrection', $lang->member['dst_correction'], 'fa-clock',
+                    '<option value="2" ' . $dst_auto_selected . '>' . $lang->member['dst_correction_auto'] . '</option>'
+                  . '<option value="1" ' . $dst_enabled_selected . '>' . $lang->member['dst_correction_enabled'] . '</option>'
+                  . '<option value="0" ' . $dst_disabled_selected . '>' . $lang->member['dst_correction_disabled'] . '</option>')
+            .   au_select('subscriptionmethod', 'subscriptionmethod', $lang->member['subscription_method'], 'fa-rss',
+                    '<option value="0" ' . $no_auto_subscribe_selected . '>' . $lang->member['no_auto_subscribe'] . '</option>'
+                  . '<option value="1" ' . $no_subscribe_selected . '>' . $lang->member['no_subscribe'] . '</option>'
+                  . '<option value="2" ' . $instant_email_subscribe_selected . '>' . $lang->member['instant_email_subscribe'] . '</option>'
+                  . '<option value="3" ' . $instant_pm_subscribe_selected . '>' . $lang->member['instant_pm_subscribe'] . '</option>')
+            . '</div>'
 
-</body>
-</html>';
-		
-		
-		
-		
+            . '<div class="au-sec"><i class="fa-solid fa-bell"></i>' . hsafe($lang->member['lbl_notifications']) . '</div>'
+            . '<div class="au-checks">'
+            .   $sw('allownotices', $allownoticescheck, 'fa-bell', $lang->member['allow_notices'])
+            .   $sw('hideemail', $hideemailcheck, 'fa-eye-slash', $lang->member['hide_email'])
+            .   $sw('receivepms', $receivepmscheck, 'fa-comments', $lang->member['receive_pms'])
+            .   $sw('pmnotice', $pmnoticecheck, 'fa-desktop', $lang->member['pm_notice'])
+            .   $sw('pmnotify', $pmnotifycheck, 'fa-envelope', $lang->member['email_notify_newpm'])
+            .   $sw('invisible', $invisiblecheck, 'fa-user-secret', $lang->member['invisible_mode'])
+            . '</div>'
+
+            . '<input type="hidden" name="step" value="registration" />'
+            . '<input type="hidden" name="action" value="do_register" />'
+            . au_submit('fa-user-plus', $lang->member['submit_registration'], 'regsubmit')
+            . '</form>';
+
+        $reg_foot = au_links([
+            ['member.php?action=login', 'fa-right-to-bracket', hsafe((string)($lang->member['lnk_have_account'] ?? 'Already have an account? Sign in'))],
+        ]);
+
+        $registration = au_page('fa-user-plus', 'success', $lang->member['welcome_register'],
+                hsafe((string)($lang->member['hint_register'] ?? 'Free account: takes a minute')), $reg_body, $reg_foot, true)
+            . $validator_javascript
+            . '<script type="text/javascript" src="' . $BASEURL . '/scripts/regvalidator.js?ver=1823"></script>';
+
         stdhead();
         build_breadcrumb();
         echo $registration;
@@ -1128,45 +1043,15 @@ if ($mybb->input['action'] === 'activate') {
         $code = htmlspecialchars_uni($mybb->get_input('code'));
         $user['username'] = htmlspecialchars_uni($user['username'] ?? '');
         
-		$activate = '<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['account_activation'].'</title>
+		$activate = au_page('fa-user-check', 'success', $lang->member['account_activation'], hsafe((string)($lang->member['hint_activate'] ?? 'Enter your username and the code from the e-mail')),
+            '<form action="member.php" method="post">'
+            . au_field('username', 'username', $lang->member['username'], 'fa-user', 'text', $user['username'], 'autocomplete="username" required')
+            . au_field('code', 'code', $lang->member['activation_code'], 'fa-key', 'text', $code, 'autocomplete="one-time-code" required')
+            . '<input type="hidden" name="action" value="activate" />'
+            . au_submit('fa-check', $lang->member['activate_account'], 'regsubmit')
+            . '</form>',
+            au_links([['member.php?action=resendactivation', 'fa-envelope-circle-check', hsafe((string)($lang->member['lnk_resend_activation'] ?? 'Resend activation code'))]]));
 
-</head>
-<body>
-
-	<div class="container-md">
-
-<form action="member.php" method="post">
-   <div class="card">
-<div class="card-body">
-	
-	
-	<div class="pb-4 border-bottom">
-                 <label for="username">'.$lang->member['username'].'</label>
-                <input type="text" class="form-control border form-control-sm" name="username" value="'.$user['username'].'" />
-	</div>
-	
-	<div class="mt-3">
-                 <label for="email" class="form-label">'.$lang->member['activation_code'].'</label>
-                <input type="text" class="form-control border form-control-sm" name="code" value="'.$code.'" />
-	</div>
-	   </div>
-	
-	<div class="card-footer text-center">
-
-<button type="submit" class="btn btn-primary" name="regsubmit" value="'.$lang->member['activate_account'].'"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->member['activate_account'].'</button>
-</div>
-
-	
-	   </div>
-	</div>
-
-</form>
-</body>
-</html>';
-		
-		
         stdhead($lang->member['account_activation']);
         echo $activate;
     }
@@ -1226,55 +1111,15 @@ if ($mybb->input['action'] === 'resendactivation') {
 
     $plugins->run_hooks('member_resendactivation_end');
     
-$activate = '<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['resend_activation'].'</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-<div class="container-md py-4" style="max-width:520px;">
-    '.$errors.'
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div class="p-4 text-white" style="background:linear-gradient(105deg,#4f46e5 0%,#4338ca 100%);">
-            <div class="d-flex align-items-center gap-3">
-                <div class="d-flex align-items-center justify-content-center rounded-circle bg-white bg-opacity-25" style="width:48px;height:48px;flex-shrink:0;">
-                    <i class="fa-solid fa-envelope-circle-check fs-4"></i>
-                </div>
-                <div>
-                    <h5 class="mb-0 fw-bold">'.$lang->member['resend_activation'].'</h5>
-                    <p class="mb-0 small opacity-75">'.hsafe($lang->member['hint_resend_activation']).'</p>
-                </div>
-            </div>
-        </div>
-        <div class="card-body p-4">
-            <form action="member.php" method="post">
-                <input type="hidden" name="action" value="do_resendactivation" />
+    $activate = au_page('fa-envelope-circle-check', 'primary', $lang->member['resend_activation'], hsafe($lang->member['hint_resend_activation']),
+        $errors
+        . '<form action="member.php" method="post">'
+        . '<input type="hidden" name="action" value="do_resendactivation" />'
+        . au_field('email', 'email', $lang->member['email_address'], 'fa-envelope', 'email', $email, 'placeholder="you@example.com" autocomplete="email" required')
+        . au_submit('fa-paper-plane', $lang->member['request_activation'])
+        . '</form>',
+        au_links([['member.php?action=login', 'fa-arrow-left', hsafe($lang->member['lnk_back_to_login'])]]));
 
-                <div class="mb-4">
-                    <label for="email" class="form-label fw-semibold">'.$lang->member['email_address'].'</label>
-                    <div class="position-relative">
-                        <i class="fa-solid fa-envelope position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;"></i>
-                        <input type="email" class="form-control form-control-lg ps-5" id="email" name="email"
-                               value="'.$email.'" placeholder="you@example.com" required />
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-lg w-100 text-white fw-semibold" name="submit"
-                        style="background:linear-gradient(95deg,#4f46e5,#4338ca);border:none;border-radius:12px;">
-                    <i class="fa-solid fa-paper-plane me-2"></i>'.$lang->member['request_activation'].'
-                </button>
-            </form>
-        </div>
-        <div class="card-footer bg-light border-0 text-center py-3">
-            <a href="member.php?action=login" class="small text-muted text-decoration-none">
-                <i class="fa-solid fa-arrow-left me-1"></i>'.hsafe($lang->member['lnk_back_to_login']).'
-            </a>
-        </div>
-    </div>
-</div>
-</body>
-</html>';
-	
 	stdhead();
     echo $activate;
 }
@@ -1317,53 +1162,18 @@ if ($mybb->input['action'] === 'lostpw') {
     $errors = (isset($errors) && count($errors) > 0) ? inline_error($errors) : '';
     $email  = $errors ? htmlspecialchars_uni($mybb->get_input('email')) : '';
     
-	$lostpw = '<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['request_user_pass'].'</title>
+	$lostpw = au_page('fa-key', 'warning', $lang->member['lost_pw'], hsafe((string)($lang->member['hint_lostpw'] ?? 'We will e-mail you a link to reset the password')),
+        $errors
+        . '<form action="member.php" method="post">'
+        . au_field('email', 'email', $lang->member['email_address'], 'fa-envelope', 'email', $email, 'placeholder="you@example.com" autocomplete="email" required')
+        . '<input type="hidden" name="action" value="do_lostpw" />'
+        . au_submit('fa-paper-plane', $lang->member['request_user_pass'])
+        . '</form>',
+        au_links([
+            ['member.php?action=login', 'fa-arrow-left', hsafe($lang->member['lnk_back_to_login'])],
+            ['recoverhint.php', 'fa-circle-question', hsafe((string)($lang->member['lnk_recoverhint'] ?? 'Recover via secret question'))],
+        ]));
 
-</head>
-<body>
-
-	
-	
-	
-	<div class="container-md">
-
-	
-<form action="member.php" method="post">
-    <div class="card">
-		<div class="card-body">
-	
-	'.$errors.'
-           
-                 <label for="email" class="form-label fw-bold">'.$lang->member['email_address'].'</label>
-                <input class="form-control border form-control-sm" type="text" id="email" name="email" value="'.$email.'" placeholder=""/>
-            
-            <div class="row mt-3">
-                <div class="col align-self-center">
-                   
-                </div>
-            </div>
-					
-					
-		</div>
-		<div class="card-footer">
-                         <button name="submit" type="submit" class="btn btn-primary" value="'.$lang->member['request_user_pass'].'" /><i class="fa-solid fa-key"></i> &nbsp;'.$lang->member['request_user_pass'].'</button>
-		</div>
-
-<input type="hidden" name="action" value="do_lostpw" />
-		
-		
-	</div>
-     
-    
-	</div>
-</form>
-
-</body>
-</html>';
-	
-	
     stdhead($lang->member['lost_pw']);
     echo $lostpw;
 }
@@ -1411,42 +1221,15 @@ if ($mybb->input['action'] === 'resetpassword') {
         $input_username = htmlspecialchars_uni($mybb->get_input('username'));
         stdhead($lang->member['reset_password']);
         
-		$activate = '<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['reset_password'].'</title>
+		$activate = au_page('fa-unlock-keyhole', 'warning', $lang->member['reset_password'], hsafe((string)($lang->member['hint_resetpw'] ?? 'A new password will be sent to your e-mail')),
+            '<form action="member.php" method="post">'
+            . au_field('username', 'username', $lang->member['username'], 'fa-user', 'text', $input_username, 'autocomplete="username" required')
+            . au_field('code', 'code', $lang->member['activation_code'], 'fa-key', 'text', $code, 'autocomplete="one-time-code" required')
+            . '<input type="hidden" name="action" value="resetpassword" />'
+            . au_submit('fa-paper-plane', $lang->member['send_password'], 'regsubmit')
+            . '</form>',
+            au_links([['member.php?action=login', 'fa-arrow-left', hsafe($lang->member['lnk_back_to_login'])]]));
 
-</head>
-<body>
-
-<div class="container-md">
-<form action="member.php" method="post">
-<div class="card shadow-sm border-0 align-center">
-<div class="card-body p-2 p-sm-2 p-md-2 p-lg-3 p-xl-3 p-xxl-3 border-0 text-start">
-	
-	<div class="legend mb-4">'.$lang->member['reset_password'].'</div>
-
-	<div class="mb-3 ps-3 pe-3">
-                 <label for="email" class="form-label">'.$lang->member['username'].'</label>
-                <input type="text" class="form-control border form-control-sm" name="username" value="'.$input_username.'" />
-	</div>
-	
-	<div class="mb-3 ps-3 pe-3">
-                 <label for="email" class="form-label">'.$lang->member['activation_code'].'</label>
-                <input type="text" class="form-control border form-control-sm" name="code" value="'.$code.'" />
-	</div>
-
-
-<div class="ps-3 text-start"><input type="hidden" name="action" value="resetpassword" /><input type="submit" class="btn btn-primary mt-2" style="padding-left 40px; padding-right: 40px" name="regsubmit" value="'.$lang->member['send_password'].'" /></div>
-	</div>
-	</div>
-	</div>
-</form>
-
-</body>
-</html>';
-		
-		
-		
         echo $activate;
     }
 }
@@ -1595,52 +1378,21 @@ if ($mybb->input['action'] === 'verify_2fa') {
             send_pm($pm, -1, true);
 			
 			
-			$error = '<div class="alert alert-danger mt-3">
-                <i class="fa-solid fa-triangle-exclamation me-2"></i>
-                ' . hsafe($lang->member['err_2fa_invalid']) . '
-            </div>';
+			$error = '<div class="st-notice st-soft-danger mb-3"><i class="fa-solid fa-triangle-exclamation"></i><div>' . hsafe($lang->member['err_2fa_invalid']) . '</div></div>';
         }
     }
 
     stdhead($SITENAME . ' - ' . $lang->member['sec_2fa']);
-    echo '
-    <div class="container-md mt-5" style="max-width:420px">
-        <div class="card shadow-sm">
-            <div class="card-header bg-dark text-white text-center">
-                <h5 class="mb-0">
-                    <i class="fa-solid fa-shield-halved me-2"></i>
-                    ' . hsafe($lang->member['sec_2fa']) . '
-                </h5>
-            </div>
-            <div class="card-body">
-                ' . $error . '
-                <p class="text-muted small mb-3">
-                    ' . hsafe($lang->member['hint_2fa']) . '
-                </p>
-                <form method="post" action="member.php?action=verify_2fa">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">' . hsafe($lang->member['lbl_2fa_code']) . '</label>
-                        <input type="text" name="totp_code"
-                               class="form-control form-control-lg text-center fw-bold letter-spacing-3"
-                               placeholder="000 000" maxlength="6"
-                               autocomplete="one-time-code" autofocus
-                               inputmode="numeric" pattern="[0-9]{6}">
-                    </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fa-solid fa-right-to-bracket me-2"></i>' . hsafe($lang->member['btn_2fa_verify']) . '
-                        </button>
-                    </div>
-                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-                </form>
-            </div>
-            <div class="card-footer text-center">
-                <a href="member.php?action=login" class="small text-muted">
-                    <i class="fa-solid fa-arrow-left me-1"></i>' . hsafe($lang->member['lnk_back_to_login']) . '
-                </a>
-            </div>
-        </div>
-    </div>';
+    echo au_page('fa-shield-halved', 'success', hsafe($lang->member['sec_2fa']), hsafe($lang->member['hint_2fa']),
+        $error
+        . '<form method="post" action="member.php?action=verify_2fa">'
+        . '<div class="au-field"><label class="st-label" for="totp_code">' . hsafe($lang->member['lbl_2fa_code']) . '</label>'
+        . '<input type="text" id="totp_code" name="totp_code" class="form-control au-otp" placeholder="000000" maxlength="6"'
+        . ' autocomplete="one-time-code" autofocus inputmode="numeric" pattern="[0-9]{6}" required></div>'
+        . au_submit('fa-right-to-bracket', hsafe($lang->member['btn_2fa_verify']))
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '</form>',
+        au_links([['member.php?action=login', 'fa-arrow-left', hsafe($lang->member['lnk_back_to_login'])]]));
     stdfoot();
     exit;
 }
@@ -1660,7 +1412,7 @@ if ($mybb->input['action'] === 'login') {
         $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
         $already_logged_in   = sprintf($lang->member['already_logged_in'], build_profile_link($CURUSER['username'], $CURUSER['id']));
         
-		$member_loggedin_notice = '<div class="rounded p-2 mt-3 mb-3 bg-nav">'.$already_logged_in.'</div>';
+		$member_loggedin_notice = '<div class="st-notice st-soft-info mb-3"><i class="fa-solid fa-circle-info"></i><div>' . $already_logged_in . '</div></div>';
     }
     login_attempt_check();
     $redirect_url = '';
@@ -1673,59 +1425,28 @@ if ($mybb->input['action'] === 'login') {
     if (!empty($errors)) { $inline_errors = inline_error($errors); }
     $plugins->run_hooks('member_login_end');
    
-    $login = '
-	
-	<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['login'].'</title>
-</head>
-<body>
-<div class="container-md">
-<form action="member.php" method="post">
-	
-<div class="card">
-		<div class="card-body">			
-				'.$inline_errors.'
-'.$member_loggedin_notice.'
-			<div class="pb-3 border-bottom">
-  <label for="username" class="form-label fw-bold">'.$lang->member['username'].'</label>
-  <input class="form-control form-control-sm border" name="username" type="text" id="username" value="'.$username.'"/>
-</div>
-			
-			<div class="py-3 border-bottom">
-  <label for="password" class="form-label fw-bold">'.$lang->member['password'].'<br /><a href="'.$BASEURL.'/member.php?action=lostpw" class="fw-normal small">'.$lang->member['lostpw_note'].'</a></label>
-  <input class="form-control form-control-sm border" name="password"  type="password" id="password" value="'.$password.'"/>
-</div>
-            
-	
-					<div class="form-check pt-3">
-  <input class="form-check-input" type="checkbox" name="remember" value="yes" id="flexCheckDefault" checked>
-  <label class="form-check-label" for="flexCheckDefault">
-    '.$lang->member['remember_me'].'
-  </label>
-	</div>
-					
-						
-	'.$lang->member['footer'].'			
-   
-	</div>
-<div class="card-footer text-center">
-<button type="submit" class="btn btn-primary" name="submit" value="'.$lang->member['login'].'"><i class="fa-solid fa-right-to-bracket"></i> &nbsp;'.$lang->member['login'].'</button>
-	</div>
-		
-		
-<input type="hidden" name="action" value="do_login" />
-<input type="hidden" name="url" value="'.$redirect_url.'" />
-<input name="my_post_key" type="hidden" value="'.$mybb->post_code.'" />
-</form>
-	</div>
-	</div>
-</body>
-</html>';
-	
-	
-	
-	
+    $login_body = '<form action="member.php" method="post">'
+        . $inline_errors . $member_loggedin_notice
+        . au_field('username', 'username', $lang->member['username'], 'fa-user', 'text', $username, 'autocomplete="username" autofocus required')
+        . au_field('password', 'password', $lang->member['password'], 'fa-lock', 'password', $password, 'autocomplete="current-password" required',
+              '<a class="au-forgot" href="' . $BASEURL . '/member.php?action=lostpw">' . $lang->member['lostpw_note'] . '</a>')
+        . '<label class="st-check au-remember" for="remember"><input class="form-check-input" type="checkbox" name="remember" value="yes" id="remember" checked><span>' . $lang->member['remember_me'] . '</span></label>'
+        . au_submit('fa-right-to-bracket', $lang->member['login'])
+        . '<input type="hidden" name="action" value="do_login" />'
+        . '<input type="hidden" name="url" value="' . $redirect_url . '" />'
+        . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . '</form>';
+
+    $login_foot = au_links([
+        ['member.php?action=register',         'fa-user-plus',          hsafe((string)($lang->member['lnk_register'] ?? 'Create an account'))],
+        ['recoverhint.php',                    'fa-circle-question',    hsafe((string)($lang->member['lnk_recoverhint'] ?? 'Recover via secret question'))],
+        ['member.php?action=resendactivation', 'fa-envelope-circle-check', hsafe((string)($lang->member['lnk_resend_activation'] ?? 'Resend activation code'))],
+        ['contactus.php',                      'fa-headset',            hsafe((string)($lang->member['lnk_contact'] ?? 'Contact us'))],
+    ]);
+
+    $login = au_page('fa-right-to-bracket', 'primary', au_label($lang->member['nav_login'] ?? $lang->member['login']),
+        hsafe((string)($lang->member['hint_login'] ?? 'Sign in to your account')), $login_body, $login_foot);
+
     stdhead();
     echo $login;
 }
@@ -2664,60 +2385,31 @@ if ($mybb->input['action'] === 'emailuser') {
     $from_email = '';
     if ($CURUSER['id'] == 0) 
 	{ 
-         $from_email = '<div class="pb-4 border-bottom mb-4">
-	<label for="fromname">'.$lang->member['your_name'].'</label>
-		<input type="text" class="form-control border form-control-sm" size="50" name="fromname" value="'.$fromname.'" />
-	</div>
-
-     <div class="pb-4 border-bottom mb-4">
-			<label for="fromemail">'.$lang->member['your_email'].'</label>
-		<input type="text" class="form-control border form-control-sm" size="50" name="fromemail"  value="'.$fromemail.'" />
-	</div>'; 
+         $from_email = '<div class="au-grid">'
+             . au_field('fromname', 'fromname', $lang->member['your_name'], 'fa-user', 'text', $fromname, 'required')
+             . au_field('fromemail', 'fromemail', $lang->member['your_email'], 'fa-envelope', 'email', $fromemail, 'required')
+             . '</div>';
 		 
 	}
 
     $plugins->run_hooks('member_emailuser_end');
 	
 
-$emailuser = '
-<div class="container-md mt-4">
-    ' . $errors . '
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="mb-0">
-                <i class="fas fa-envelope me-2"></i>' . $email_user . '
-            </h5>
-        </div>
-        <form action="member.php" method="post">
-            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-            <input type="hidden" name="action" value="do_emailuser">
-            <input type="hidden" name="id" value="' . (int)$to_user['id'] . '">
-            <div class="card-body">
-                ' . $from_email . '
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">
-                        <i class="fas fa-heading me-1 text-muted"></i>' . $lang->member['email_subject'] . '
-                    </label>
-                    <input type="text" class="form-control" name="subject" value="' . htmlspecialchars_uni($subject) . '">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">
-                        <i class="fas fa-align-left me-1 text-muted"></i>' . $lang->member['email_message'] . '
-                    </label>
-                    <textarea class="form-control" name="message" rows="10" style="resize:vertical">' . htmlspecialchars_uni($message) . '</textarea>
-                </div>
-            </div>
-            <div class="card-footer bg-light text-center py-3">
-                <button type="submit" class="btn btn-primary px-4">
-                    <i class="fas fa-paper-plane me-2"></i>' . $lang->member['send_email'] . '
-                </button>
-                <a href="javascript:history.back()" class="btn btn-outline-secondary ms-2 px-4">
-                    <i class="fas fa-times me-2"></i>' . $lang->member['cans'] . '
-                </a>
-            </div>
-        </form>
-    </div>
-</div>';
+$emailuser = au_page('fa-envelope', 'primary', $email_user, '',
+    $errors
+    . '<form action="member.php" method="post">'
+    . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
+    . '<input type="hidden" name="action" value="do_emailuser">'
+    . '<input type="hidden" name="id" value="' . (int)$to_user['id'] . '">'
+    . $from_email
+    . au_field('subject', 'subject', $lang->member['email_subject'], 'fa-heading', 'text', $subject, 'required')
+    . '<div class="au-field"><label class="st-label" for="message">' . au_label($lang->member['email_message']) . '</label>'
+    . '<textarea class="form-control" id="message" name="message" rows="9" required>' . $message . '</textarea></div>'
+    . '<div class="d-flex flex-wrap gap-2">'
+    .   '<button type="submit" class="btn btn-primary st-pill flex-grow-1"><i class="fa-solid fa-paper-plane me-2"></i>' . $lang->member['send_email'] . '</button>'
+    .   '<a href="javascript:history.back()" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-xmark me-1"></i>' . $lang->member['cans'] . '</a>'
+    . '</div>'
+    . '</form>', '', true);
 
 
 

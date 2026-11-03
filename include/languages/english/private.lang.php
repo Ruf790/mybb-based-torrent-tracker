@@ -228,4 +228,5 @@ $language['private'] = array
 'err_pms_not_found'      => "The selected messages were not found.",
 'err_pms_delete_failed'  => "Could not delete the selected messages. Database error:",
 
+'pm_system_sender'       => "System message",
 );

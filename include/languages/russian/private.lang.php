@@ -226,4 +226,5 @@ $language['private'] = array
 'err_pms_not_found'      => "Выбранные сообщения не найдены.",
 'err_pms_delete_failed'  => "Не удалось удалить выбранные сообщения. Ошибка базы данных:",
 
+'pm_system_sender'       => "Системное сообщение",
 );

@@ -1280,7 +1280,7 @@ $tp_reseed = ((int)$Torrent['seeders'] === 0 && $CURUSER) ? '
 
 $details = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details-st.css?ver=2">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details-st.css?ver=3">
 
 <div id="torrent_details" class="container-md st-page tp-page py-3">
 
@@ -1321,7 +1321,6 @@ $details = '
                     <div class="tp-dl__title">' . $details_h('dltorrent') . '</div>
                     <div class="st-meta"><i class="fa-solid fa-hard-drive me-1"></i>' . mksize($Torrent['size']) . ' &middot; ' . $ags_files_lbl . '</div>
                 </div>
-            </div>
             <div class="tp-dl__btns">
                 <a href="' . get_download_link($id) . '" class="btn btn-primary st-pill tp-dl__main" title="' . $details_h('dltorrent') . '">
                     <i class="fa-solid fa-download me-2"></i>' . $details_h('download') . '
@@ -1348,6 +1347,7 @@ $details = '
                         <li><a class="dropdown-item scroll-to-tab" href="#peers" data-scroll-tab="peers"><i class="bi bi-people me-2"></i>' . $details_h('menu_peers') . '</a></li>
                     </ul>
                 </div>
+            </div>
             </div>
 
             ' . ($modal_images ? '<!-- Posters -->

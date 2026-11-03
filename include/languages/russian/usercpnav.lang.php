@@ -55,4 +55,7 @@ $language['usercpnav'] = array
 'ucp_nav_folder_drafts' => "Черновики",
 'ucp_nav_folder_trash' => "Корзина",
 'ucp_nav_folder_untitled' => "Папка без названия",
+'ucp_nav_2fa' => "Двухфакторная аутентификация",
+'ucp_nav_sessions' => "Активные сессии",
+'ucp_nav_my_files' => "Мои файлы",
 );

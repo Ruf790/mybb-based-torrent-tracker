@@ -11,6 +11,7 @@ require_once 'cache/smilies.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_user.php';
+require_once INC_PATH . '/functions_ucp.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/datahandler.php';
 

@@ -129,69 +129,80 @@ $doneMsg  = match ((string)($_GET['done'] ?? '')) {
 $postKey = function_exists('generate_post_check') ? (string)generate_post_check() : (string)($mybb->post_code ?? '');
 
 stdhead(chat_t('arch_title', 'Chat archive'));
-?>
-<link rel="stylesheet" href="<?= $h(rtrim((string)$BASEURL, '/')) ?>/include/templates/default/style/chat.css?ver=<?= CHAT_ASSET_VER ?>">
 
-<div class="ch-arch container my-3">
+$base = $h(rtrim((string)$BASEURL, '/'));
+/** Round avatar: picture or the first letter of the name */
+$cx_ava = static function (array $r) use ($h): string {
+    if ((int)($r['uid'] ?? 0) === CHAT_BOT_UID) {
+        return '<span class="cx-ava cx-ava--bot"><i class="fa-solid fa-robot"></i></span>';
+    }
+    $url  = chat_avatar((string)($r['avatar'] ?? ''));
+    $name = (string)($r['username'] ?? '?');
+    return $url !== ''
+        ? '<img class="cx-ava" src="' . $h($url) . '" alt="" loading="lazy">'
+        : '<span class="cx-ava cx-ava--letter">' . $h(mb_strtoupper(mb_substr($name !== '' ? $name : '?', 0, 1))) . '</span>';
+};
+?>
+<link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/chat.css?ver=<?= CHAT_ASSET_VER ?>">
+<link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/st-ui.css?ver=12">
+<link rel="stylesheet" href="<?= $base ?>/include/templates/default/style/chat_archive.css?ver=1">
+
+<div class="container-md st-page cx-page py-3">
 
     <!-- Header -->
-    <div class="ch-arch__head">
-        <span class="ch-arch__icon"><i class="fa-solid fa-box-archive"></i></span>
-        <div class="ch-arch__titles">
-            <h1 class="ch-arch__title"><?= $t('arch_title', 'Chat archive') ?></h1>
-            <div class="ch-arch__subtitle"><?= $t('arch_subtitle', 'Search all public chat messages, including deleted ones.') ?></div>
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-box-archive"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $t('arch_title', 'Chat archive') ?></h1>
+            <div class="st-meta mt-1"><?= $t('arch_subtitle', 'Search all public chat messages, including deleted ones.') ?></div>
         </div>
-        <a class="btn btn-sm btn-outline-secondary rounded-pill px-3" href="chat.php">
-            <i class="fa-solid fa-arrow-left me-1"></i><?= $t('btn_back_chat', 'Back to chat') ?>
-        </a>
-    </div>
+        <a class="btn btn-outline-secondary st-pill cx-head-btn" href="chat.php"><i class="fa-solid fa-arrow-left me-1"></i><?= $t('btn_back_chat', 'Back to chat') ?></a>
+    </header>
 
-    <!-- KPI -->
-    <div class="row g-3 mt-1">
-        <?php foreach ($kpis as [$icon, $color, $label, $value]): ?>
-        <div class="col-6 col-lg-3">
-            <div class="ch-arch__kpi">
-                <span class="ch-arch__kpi-icon" style="background:rgba(var(--bs-<?= $color ?>-rgb),.12);color:var(--bs-<?= $color ?>);">
-                    <i class="fa-solid <?= $icon ?>"></i>
-                </span>
-                <div>
-                    <div class="ch-arch__kpi-val"><?= number_format((int)$value, 0, '', ' ') ?></div>
-                    <div class="ch-arch__kpi-lbl"><?= $h($label) ?></div>
-                </div>
-            </div>
-        </div>
+    <!-- KPI tiles -->
+    <div class="cx-kpis mb-3">
+        <?php foreach ($kpis as [$icon, $color, $label, $value]):
+            $isRep = $icon === 'fa-flag';
+            $tag   = $isRep ? 'a href="chat_archive.php?view=reports"' : 'div'; ?>
+        <<?= $tag ?> class="st-kpi st-kpi--muted<?= $isRep && (int)$value > 0 ? ' cx-kpi--alert' : '' ?>">
+            <span class="st-ico st-soft-<?= $color ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+            <div class="min-w-0"><div class="st-kpi__val"><?= number_format((int)$value, 0, '', ' ') ?></div><div class="st-kpi__lbl"><?= $h($label) ?></div></div>
+            <i class="fa-solid <?= $icon ?> st-kpi__bg" aria-hidden="true"></i>
+        </<?= $isRep ? 'a' : 'div' ?>>
         <?php endforeach; ?>
     </div>
 
     <!-- Messages / Reports -->
-    <nav class="ch-arch__tabs" aria-label="<?= $t('arch_tabs', 'Archive sections') ?>">
-        <a class="btn btn-sm <?= $view === 'messages' ? 'btn-primary' : 'btn-outline-secondary' ?>" href="chat_archive.php"<?= $view === 'messages' ? ' aria-current="page"' : '' ?>>
-            <i class="fa-solid fa-comments me-1"></i><?= $t('tab_messages', 'Public messages') ?>
+    <nav class="cx-tabs mb-3" aria-label="<?= $t('arch_tabs', 'Archive sections') ?>">
+        <a class="<?= $view === 'messages' ? 'active' : '' ?>" href="chat_archive.php"<?= $view === 'messages' ? ' aria-current="page"' : '' ?>>
+            <i class="fa-solid fa-comments"></i><?= $t('tab_messages', 'Public messages') ?>
         </a>
-        <a class="btn btn-sm <?= $view === 'reports' ? 'btn-primary' : 'btn-outline-secondary' ?>" href="chat_archive.php?view=reports"<?= $view === 'reports' ? ' aria-current="page"' : '' ?>>
-            <i class="fa-solid fa-flag me-1"></i><?= $t('tab_reports', 'Reports on private messages') ?>
-            <?php if ((int)$stats['reports'] > 0): ?><span class="badge rounded-pill text-bg-danger"><?= (int)$stats['reports'] ?></span><?php endif; ?>
+        <a class="<?= $view === 'reports' ? 'active' : '' ?>" href="chat_archive.php?view=reports"<?= $view === 'reports' ? ' aria-current="page"' : '' ?>>
+            <i class="fa-solid fa-flag"></i><?= $t('tab_reports', 'Reports on private messages') ?>
+            <?php if ((int)$stats['reports'] > 0): ?><span class="cx-tabs__n cx-tabs__n--alert"><?= (int)$stats['reports'] ?></span><?php endif; ?>
         </a>
     </nav>
 
     <?php if ($view === 'reports'): ?>
 
     <?php if ($doneMsg): ?>
-    <div class="alert alert-<?= $doneMsg[0] ?> mt-3 mb-0" role="status"><?= $h($doneMsg[1]) ?></div>
+    <div class="cx-note cx-note--<?= $doneMsg[0] ?> mb-3" role="status">
+        <i class="fa-solid <?= $doneMsg[0] === 'success' ? 'fa-circle-check' : ($doneMsg[0] === 'danger' ? 'fa-circle-xmark' : 'fa-triangle-exclamation') ?>"></i><div><?= $h($doneMsg[1]) ?></div>
+    </div>
     <?php endif; ?>
 
-    <div class="alert alert-secondary mt-3 mb-0 small">
-        <i class="fa-solid fa-lock me-1"></i><?= $t('rep_privacy', 'Private dialogs are not visible to staff. Here you only see a message somebody reported, with up to {1} messages before and after it.', CHAT_REPORT_CONTEXT) ?>
+    <div class="cx-note mb-3">
+        <i class="fa-solid fa-lock"></i><div><?= $t('rep_privacy', 'Private dialogs are not visible to staff. Here you only see a message somebody reported, with up to {1} messages before and after it.', CHAT_REPORT_CONTEXT) ?></div>
     </div>
 
-    <div class="d-flex gap-2 mt-3">
-        <a class="btn btn-sm rounded-pill <?= $repState === 'open' ? 'btn-dark' : 'btn-outline-secondary' ?>" href="chat_archive.php?view=reports"><?= $t('rep_open', 'Open') ?></a>
-        <a class="btn btn-sm rounded-pill <?= $repState === 'done' ? 'btn-dark' : 'btn-outline-secondary' ?>" href="chat_archive.php?view=reports&amp;state=done"><?= $t('rep_handled', 'Handled') ?></a>
+    <div class="cx-sub mb-3">
+        <a class="<?= $repState === 'open' ? 'active' : '' ?>" href="chat_archive.php?view=reports"><i class="fa-solid fa-inbox"></i><?= $t('rep_open', 'Open') ?></a>
+        <a class="<?= $repState === 'done' ? 'active' : '' ?>" href="chat_archive.php?view=reports&amp;state=done"><i class="fa-solid fa-check-double"></i><?= $t('rep_handled', 'Handled') ?></a>
     </div>
 
     <?php if (!$reports): ?>
-        <div class="ch-arch__empty mt-3">
-            <i class="fa-solid fa-flag"></i>
+        <div class="st-card st-empty">
+            <span class="st-ico st-soft-success"><i class="fa-solid fa-flag-checkered"></i></span>
             <div><?= $repState === 'open' ? $t('rep_empty', 'No open reports.') : $t('rep_empty_done', 'No handled reports yet.') ?></div>
         </div>
     <?php endif; ?>
@@ -202,45 +213,53 @@ stdhead(chat_t('arch_title', 'Chat archive'));
         $toQ  = $db->sql_query_prepared('SELECT username FROM users WHERE id = ?', [(int)$m['to_uid']]);
         $toNm = (string)(($toQ ? $db->fetch_array($toQ) : [])['username'] ?? ('#' . $m['to_uid']));
         $from = (string)($m['username'] ?? ('#' . $m['uid']));
+        $handled = $rep['handled_at'] > 0;
     ?>
-    <div class="ch-rep<?= $rep['handled_at'] > 0 ? ' is-handled' : '' ?>">
-        <div class="ch-rep__head">
-            <span class="ch-arch__id">#<?= (int)$m['id'] ?></span>
-            <span class="ch-rep__pair"><?= $h($from) ?><i class="fa-solid fa-arrow-right"></i><?= $h($toNm) ?></span>
-            <span class="ch-arch__date ms-auto"><?= $h(chat_date((int)$m['added'])) ?></span>
+    <section class="st-card cx-rep mb-3<?= $handled ? ' is-handled' : '' ?>">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-<?= $handled ? 'success' : 'danger' ?>"><i class="fa-solid <?= $handled ? 'fa-check' : 'fa-flag' ?>"></i></span>
+            <span class="cx-rep__pair"><?= $h($from) ?><i class="fa-solid fa-arrow-right"></i><?= $h($toNm) ?></span>
+            <span class="cx-id">#<?= (int)$m['id'] ?></span>
+            <span class="st-meta ms-auto"><?= $h(chat_date((int)$m['added'])) ?></span>
         </div>
-        <div class="ch-rep__who">
+        <div class="cx-rep__who">
             <?php foreach ($rep['reporters'] as $rp): ?>
-                <div><i class="fa-solid fa-flag text-danger me-1"></i><?= $t('rep_by', 'Reported by {1}', (string)($rp['username'] ?? ('#' . $rp['reporter']))) ?>
-                    · <?= $h(chat_date((int)$rp['added'])) ?><?= trim((string)$rp['reason']) !== '' ? ' · <strong>' . $h((string)$rp['reason']) . '</strong>' : '' ?></div>
+            <div class="cx-rep__by">
+                <i class="fa-solid fa-flag"></i>
+                <span><?= $t('rep_by', 'Reported by {1}', (string)($rp['username'] ?? ('#' . $rp['reporter']))) ?> <span class="st-meta">· <?= $h(chat_date((int)$rp['added'])) ?></span></span>
+                <?php if (trim((string)$rp['reason']) !== ''): ?><span class="cx-rep__reason"><?= $h((string)$rp['reason']) ?></span><?php endif; ?>
+            </div>
             <?php endforeach; ?>
         </div>
-        <div class="ch-rep__ctx">
+        <div class="cx-rep__ctx">
             <?php foreach ($rep['context'] as $c):
                 $isRep = (int)$c['id'] === (int)$m['id'];
                 $cName = (string)($c['username'] ?? ('#' . $c['uid']));
+                $mine  = (int)$c['uid'] === (int)$m['uid'];
             ?>
-            <div class="ch-rep__msg<?= $isRep ? ' is-reported' : '' ?><?= (int)$c['deleted'] === 1 ? ' is-deleted' : '' ?>">
-                <span class="ch-rep__meta"><?= $h(date('d.m H:i', (int)$c['added'])) ?></span>
-                <strong><?= $h($cName) ?>:</strong>
-                <span class="ch-rep__body"><?= chat_parse((string)$c['message'], $cName) ?></span>
+            <div class="cx-bub<?= $mine ? ' is-from' : ' is-to' ?><?= $isRep ? ' is-reported' : '' ?><?= (int)$c['deleted'] === 1 ? ' is-deleted' : '' ?>">
+                <?= $cx_ava($c) ?>
+                <div class="cx-bub__box">
+                    <div class="cx-bub__meta"><strong><?= $h($cName) ?></strong> · <?= $h(date('d.m H:i', (int)$c['added'])) ?><?= $isRep ? ' <span class="cx-flag"><i class="fa-solid fa-flag"></i></span>' : '' ?></div>
+                    <div class="cx-bub__text"><?= chat_parse((string)$c['message'], $cName) ?></div>
+                </div>
             </div>
             <?php endforeach; ?>
         </div>
 
-        <?php if ($rep['handled_at'] > 0): ?>
-            <div class="ch-rep__done"><i class="fa-solid fa-check me-1"></i><?= $t('rep_handled_by', 'Handled by {1}, {2}', $rep['handled_by'] !== '' ? $rep['handled_by'] : '—', chat_date($rep['handled_at'])) ?></div>
+        <?php if ($handled): ?>
+            <div class="cx-rep__done"><i class="fa-solid fa-circle-check"></i><?= $t('rep_handled_by', 'Handled by {1}, {2}', $rep['handled_by'] !== '' ? $rep['handled_by'] : '—', chat_date($rep['handled_at'])) ?></div>
         <?php else: ?>
-        <div class="ch-rep__actions">
+        <div class="cx-rep__actions">
             <form method="post" action="chat_archive.php?view=reports">
                 <input type="hidden" name="my_post_key" value="<?= $h($postKey) ?>">
                 <input type="hidden" name="msg_id" value="<?= (int)$m['id'] ?>">
-                <button type="submit" name="act" value="close" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-check me-1"></i><?= $t('rep_btn_close', 'Nothing wrong, close') ?></button>
+                <button type="submit" name="act" value="close" class="btn btn-sm btn-outline-success st-pill"><i class="fa-solid fa-check me-1"></i><?= $t('rep_btn_close', 'Nothing wrong, close') ?></button>
                 <?php if ((int)$m['deleted'] === 0): ?>
-                <button type="submit" name="act" value="delete" class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-trash me-1"></i><?= $t('rep_btn_delete', 'Delete the message') ?></button>
+                <button type="submit" name="act" value="delete" class="btn btn-sm btn-outline-danger st-pill"><i class="fa-solid fa-trash me-1"></i><?= $t('rep_btn_delete', 'Delete the message') ?></button>
                 <?php endif; ?>
             </form>
-            <form method="post" action="chat_archive.php?view=reports">
+            <form method="post" action="chat_archive.php?view=reports" class="cx-ban">
                 <input type="hidden" name="my_post_key" value="<?= $h($postKey) ?>">
                 <input type="hidden" name="msg_id" value="<?= (int)$m['id'] ?>">
                 <select name="minutes" class="form-select form-select-sm" aria-label="<?= $t('rep_ban_for', 'Ban for') ?>">
@@ -249,59 +268,51 @@ stdhead(chat_t('arch_title', 'Chat archive'));
                     <option value="10080"><?= $t('rep_ban_7d', '7 days') ?></option>
                     <option value="0"><?= $t('rep_ban_forever', 'Permanently') ?></option>
                 </select>
-                <button type="submit" name="act" value="ban" class="btn btn-sm btn-danger"><i class="fa-solid fa-user-slash me-1"></i><?= $t('rep_btn_ban', 'Ban {1} from the chat', $from) ?></button>
+                <button type="submit" name="act" value="ban" class="btn btn-sm btn-danger st-pill"><i class="fa-solid fa-user-slash me-1"></i><?= $t('rep_btn_ban', 'Ban {1} from the chat', $from) ?></button>
             </form>
         </div>
         <?php endif; ?>
-    </div>
+    </section>
     <?php endforeach; ?>
 
     <?php if ($repPages > 1): ?>
-    <div class="mt-3"><?= $repMulti ?></div>
+    <div class="st-pager d-flex justify-content-center mt-3"><?= $repMulti ?></div>
     <?php endif; ?>
 
     <?php else: ?>
 
     <!-- Filters -->
-    <form class="ch-arch__filters" method="get" action="chat_archive.php">
-        <div class="row g-2 align-items-end">
-            <div class="col-12 col-md-3">
-                <label class="form-label" for="archUser"><?= $t('lbl_user', 'User') ?></label>
-                <input type="text" class="form-control" id="archUser" name="user" value="<?= $h($filters['user']) ?>" placeholder="<?= $t('ph_user', 'Username') ?>" maxlength="64">
-            </div>
-            <div class="col-12 col-md-3">
-                <label class="form-label" for="archText"><?= $t('lbl_text', 'Text contains') ?></label>
-                <input type="search" class="form-control" id="archText" name="q" value="<?= $h($filters['q']) ?>" placeholder="<?= $t('ph_text', 'Word or phrase') ?>" maxlength="200">
-            </div>
-            <div class="col-6 col-md-2">
-                <label class="form-label" for="archFrom"><?= $t('lbl_from', 'From') ?></label>
-                <input type="date" class="form-control" id="archFrom" name="from" value="<?= $h($filters['from']) ?>">
-            </div>
-            <div class="col-6 col-md-2">
-                <label class="form-label" for="archTo"><?= $t('lbl_to', 'To') ?></label>
-                <input type="date" class="form-control" id="archTo" name="to" value="<?= $h($filters['to']) ?>">
-            </div>
-            <div class="col-12 col-md-2">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="archDeleted" name="deleted" value="1"<?= $filters['deleted'] ? ' checked' : '' ?>>
-                    <label class="form-check-label" for="archDeleted"><?= $t('lbl_deleted', 'Include deleted') ?></label>
-                </div>
-            </div>
+    <form class="st-card mb-3" method="get" action="chat_archive.php">
+        <div class="st-card__head"><i class="fa-solid fa-magnifying-glass"></i><?= $t('btn_search', 'Search') ?>
+            <span class="st-badge st-soft-primary ms-auto"><?= $t('lbl_found', 'Found: {1}', number_format($total, 0, '', ' ')) ?></span>
         </div>
-        <div class="ch-arch__actions">
-            <button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-magnifying-glass me-1"></i><?= $t('btn_search', 'Search') ?></button>
-            <?php if ($active): ?>
-            <a class="btn btn-outline-secondary rounded-pill px-3" href="chat_archive.php"><i class="fa-solid fa-rotate-left me-1"></i><?= $t('btn_reset', 'Reset') ?></a>
-            <?php endif; ?>
-            <span class="ch-arch__found ms-auto"><?= $t('lbl_found', 'Found: {1}', number_format($total, 0, '', ' ')) ?></span>
+        <div class="st-card__body">
+            <div class="cx-filters">
+                <div class="cx-f"><label class="st-label" for="archUser"><?= $t('lbl_user', 'User') ?></label>
+                    <div class="cx-in"><i class="fa-solid fa-user"></i><input type="text" class="form-control" id="archUser" name="user" value="<?= $h($filters['user']) ?>" placeholder="<?= $t('ph_user', 'Username') ?>" maxlength="64"></div></div>
+                <div class="cx-f cx-f--wide"><label class="st-label" for="archText"><?= $t('lbl_text', 'Text contains') ?></label>
+                    <div class="cx-in"><i class="fa-solid fa-font"></i><input type="search" class="form-control" id="archText" name="q" value="<?= $h($filters['q']) ?>" placeholder="<?= $t('ph_text', 'Word or phrase') ?>" maxlength="200"></div></div>
+                <div class="cx-f"><label class="st-label" for="archFrom"><?= $t('lbl_from', 'From') ?></label>
+                    <input type="date" class="form-control" id="archFrom" name="from" value="<?= $h($filters['from']) ?>"></div>
+                <div class="cx-f"><label class="st-label" for="archTo"><?= $t('lbl_to', 'To') ?></label>
+                    <input type="date" class="form-control" id="archTo" name="to" value="<?= $h($filters['to']) ?>"></div>
+            </div>
+            <div class="cx-actions">
+                <label class="st-check mb-0" for="archDeleted"><input class="form-check-input" type="checkbox" id="archDeleted" name="deleted" value="1"<?= $filters['deleted'] ? ' checked' : '' ?>><span><i class="fa-solid fa-trash-can me-1"></i><?= $t('lbl_deleted', 'Include deleted') ?></span></label>
+                <span class="ms-auto"></span>
+                <?php if ($active): ?>
+                <a class="btn btn-outline-secondary st-pill" href="chat_archive.php"><i class="fa-solid fa-rotate-left me-1"></i><?= $t('btn_reset', 'Reset') ?></a>
+                <?php endif; ?>
+                <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-magnifying-glass me-1"></i><?= $t('btn_search', 'Search') ?></button>
+            </div>
         </div>
     </form>
 
     <!-- Results -->
-    <div class="ch-arch__list">
+    <section class="st-card cx-list">
         <?php if (!$rows): ?>
-            <div class="ch-arch__empty">
-                <i class="fa-solid fa-magnifying-glass"></i>
+            <div class="st-empty">
+                <span class="st-ico st-soft-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <div><?= $t('lbl_nothing', 'Nothing found.') ?></div>
             </div>
         <?php else: ?>
@@ -310,44 +321,47 @@ stdhead(chat_t('arch_title', 'Chat archive'));
                 $name    = (string)($r['username'] ?? '');
                 $reply   = $r['_reply'] ?? null;
             ?>
-            <div class="ch-arch__item<?= $deleted ? ' is-deleted' : '' ?>">
-                <div class="ch-arch__meta">
-                    <span class="ch-arch__id">#<?= (int)$r['id'] ?></span>
-                    <span class="ch-arch__date"><?= $h(chat_date((int)$r['added'])) ?></span>
-                    <span class="ch-arch__who"><?= (int)$r['uid'] === CHAT_BOT_UID ? chat_bot_user_html() : ($name !== '' ? chat_user_html((int)$r['uid'], $name, (int)($r['usergroup'] ?? 2)) : '#' . (int)$r['uid']) ?></span>
-                    <?php if ($deleted): ?>
-                        <span class="badge rounded-pill text-bg-danger"><i class="fa-solid fa-trash me-1"></i><?= $t('badge_deleted', 'deleted') ?><?= !empty($r['edited_name']) ? ' · ' . $h((string)$r['edited_name']) : '' ?></span>
-                    <?php elseif ((int)$r['edited_at'] > 0): ?>
-                        <span class="badge rounded-pill text-bg-secondary"><i class="fa-solid fa-pen me-1"></i><?= !empty($r['edited_name']) && (int)$r['edited_by'] !== (int)$r['uid']
-                            ? $t('badge_edited_by', 'edited by {1}', (string)$r['edited_name'])
-                            : $t('badge_edited', 'edited') ?></span>
-                    <?php endif; ?>
-                    <?php if ($name !== ''): ?>
-                    <a class="ch-arch__filter-user ms-auto" href="chat_archive.php?<?= $h(http_build_query(['user' => $name, 'deleted' => $filters['deleted'] ?: null])) ?>" title="<?= $t('tip_only_user', 'Only messages of {1}', $name) ?>">
-                        <i class="fa-solid fa-filter"></i>
-                    </a>
-                    <?php endif; ?>
-                </div>
-                <?php if ((int)$r['reply_to'] > 0): ?>
-                    <div class="ch-arch__reply">
-                        <i class="fa-solid fa-reply me-1"></i>
-                        <?php if (is_array($reply)): ?>
-                            <strong><?= $h((string)($reply['username'] ?? '')) ?></strong>:
-                            <?= (int)$reply['deleted'] === 1 ? '<em>' . $t('reply_gone_srv', 'message deleted') . '</em>' : $h(chat_plain((string)$reply['message'])) ?>
-                            <span class="ch-arch__id">#<?= (int)$reply['id'] ?></span>
-                        <?php else: ?>
-                            <em><?= $t('reply_gone_srv', 'message deleted') ?></em>
+            <div class="cx-row<?= $deleted ? ' is-deleted' : '' ?>">
+                <?= $cx_ava($r) ?>
+                <div class="cx-row__main">
+                    <div class="cx-row__meta">
+                        <span class="cx-row__who"><?= (int)$r['uid'] === CHAT_BOT_UID ? chat_bot_user_html() : ($name !== '' ? chat_user_html((int)$r['uid'], $name, (int)($r['usergroup'] ?? 2)) : '#' . (int)$r['uid']) ?></span>
+                        <span class="st-meta"><?= $h(chat_date((int)$r['added'])) ?></span>
+                        <span class="cx-id">#<?= (int)$r['id'] ?></span>
+                        <?php if ($deleted): ?>
+                            <span class="st-badge st-soft-danger"><i class="fa-solid fa-trash"></i><?= $t('badge_deleted', 'deleted') ?><?= !empty($r['edited_name']) ? ' · ' . $h((string)$r['edited_name']) : '' ?></span>
+                        <?php elseif ((int)$r['edited_at'] > 0): ?>
+                            <span class="st-badge st-soft-muted"><i class="fa-solid fa-pen"></i><?= !empty($r['edited_name']) && (int)$r['edited_by'] !== (int)$r['uid']
+                                ? $t('badge_edited_by', 'edited by {1}', (string)$r['edited_name'])
+                                : $t('badge_edited', 'edited') ?></span>
+                        <?php endif; ?>
+                        <?php if ($name !== ''): ?>
+                        <a class="cx-row__filter ms-auto" href="chat_archive.php?<?= $h(http_build_query(['user' => $name, 'deleted' => $filters['deleted'] ?: null])) ?>" title="<?= $t('tip_only_user', 'Only messages of {1}', $name) ?>">
+                            <i class="fa-solid fa-filter"></i>
+                        </a>
                         <?php endif; ?>
                     </div>
-                <?php endif; ?>
-                <div class="ch-arch__body"><?= chat_parse(chat_bot_text((string)$r['message'], false), $name) ?></div>
+                    <?php if ((int)$r['reply_to'] > 0): ?>
+                        <div class="cx-quote">
+                            <i class="fa-solid fa-reply"></i>
+                            <?php if (is_array($reply)): ?>
+                                <strong><?= $h((string)($reply['username'] ?? '')) ?></strong>:
+                                <?= (int)$reply['deleted'] === 1 ? '<em>' . $t('reply_gone_srv', 'message deleted') . '</em>' : $h(chat_plain((string)$reply['message'])) ?>
+                                <span class="cx-id">#<?= (int)$reply['id'] ?></span>
+                            <?php else: ?>
+                                <em><?= $t('reply_gone_srv', 'message deleted') ?></em>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                    <div class="cx-row__body"><?= chat_parse(chat_bot_text((string)$r['message'], false), $name) ?></div>
+                </div>
             </div>
             <?php endforeach; ?>
         <?php endif; ?>
-    </div>
+    </section>
 
     <?php if ($pages > 1): ?>
-    <div class="mt-3"><?= $multipage ?></div>
+    <div class="st-pager d-flex justify-content-center mt-3"><?= $multipage ?></div>
     <?php endif; ?>
 
     <?php endif; /* view */ ?>

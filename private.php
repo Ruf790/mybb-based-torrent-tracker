@@ -982,7 +982,8 @@ if (!$mybb->input['action']) {
     }
 
     $query = $db->sql_query_prepared("
-        SELECT pm.*, fu.username AS fromusername, tu.username as tousername, fu.avatar, fu.avatardimensions
+        SELECT pm.*, fu.username AS fromusername, tu.username as tousername, fu.avatar, fu.avatardimensions,
+               tu.avatar AS to_avatar, tu.avatardimensions AS to_avatardimensions
         FROM privatemessages pm
         LEFT JOIN users fu ON (fu.id = pm.fromid)
         LEFT JOIN users tu ON (tu.id = pm.toid)
@@ -1072,10 +1073,20 @@ if (!$mybb->input['action']) {
 
             $tofromusername = build_profile_link($tofromusername, $tofromuid);
 
-            $useravatar = format_avatar($message['avatar'], $message['avatardimensions']);
-            $ava_img = str_starts_with($useravatar['image'], '<')
-                ? $noAvatarSvg
-                : '<img class="user-avatar" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
+            // Avatar of the other side: sender in inbox-type folders, recipient in sent/drafts
+            $isOut   = ($folder == 2 || $folder == 3);
+            $isSys   = !$isOut && (int)$message['fromid'] === 0;
+            $avRaw   = $isOut ? ($message['to_avatar'] ?? '') : ($message['avatar'] ?? '');
+            $avDim   = $isOut ? ($message['to_avatardimensions'] ?? '') : ($message['avatardimensions'] ?? '');
+            $avName  = trim(html_entity_decode(strip_tags((string)$tofromusername), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($isSys) {
+                $ava_img = '<span class="pm-ava pm-ava--sys"><i class="fa-solid fa-robot"></i></span>';
+            } else {
+                $useravatar = $avRaw !== '' ? format_avatar($avRaw, $avDim) : ['image' => '<'];
+                $ava_img = (str_starts_with((string)$useravatar['image'], '<') || !empty($useravatar['is_html']))
+                    ? '<span class="pm-ava pm-ava--letter">' . htmlspecialchars(mb_strtoupper(mb_substr($avName !== '' ? $avName : '?', 0, 1)), ENT_QUOTES, 'UTF-8') . '</span>'
+                    : '<img class="pm-ava" src="' . $useravatar['image'] . '" alt="" loading="lazy">';
+            }
 
             $denyreceipt = ($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
                 ? '<span class="st-meta ms-2"><a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '&amp;denyreceipt=1">' . $lang->private['deny_receipt'] . '</a></span>'
@@ -1084,21 +1095,29 @@ if (!$mybb->input['action']) {
             if (!trim($message['subject'])) $message['subject'] = ($lang->private['pm_no_subject'] ?? '[no subject]');
             $message['subject'] = htmlspecialchars_uni($parser->parse_badwords($message['subject']));
             $senddate = $message['folder'] != '3' ? my_datee('relative', $message['dateline']) : ($lang->private['not_sent'] ?? 'N/A (not sent)');
+            // Short date for the row (time today, day.month this year, full date otherwise); full one in the tooltip
+            $ts = (int)$message['dateline'];
+            $shortdate = $message['folder'] == '3' ? $senddate
+                : (date('Y-m-d', $ts) === date('Y-m-d', TIMENOW) ? date('H:i', $ts)
+                : (date('Y', $ts) === date('Y', TIMENOW) ? date('d.m', $ts) : date('d.m.Y', $ts)));
 
             $plugins->run_hooks('private_message');
 
-            $messagelist .= '<div class="st-frow message-card">'
-                . '<input type="checkbox" form="pmForm" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">'
-                . '<div class="st-frow__body">'
-                .   '<div class="st-frow__top">'
-                .     '<a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '" class="st-frow__title ' . $msgstatus . '">' . $message['subject'] . '</a>'
+            $unread = (int)$message['status'] === 0;
+            $messagelist .= '<div class="pm-row message-card' . ($unread ? ' is-unread' : '') . ($isSys ? ' is-system' : '') . '">'
+                . '<input type="checkbox" form="pmForm" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '" aria-label="' . $pl('check_all', 'Select') . '">'
+                . $ava_img
+                . '<div class="pm-row__body">'
+                .   '<div class="pm-row__top">'
+                .     '<span class="pm-row__from">' . $tofromusername . '</span>'
+                .     ($isSys ? '<span class="pm-row__sys">' . $pl('pm_system_sender', 'System message') . '</span>' : '')
+                .     '<span class="pm-row__date" title="' . htmlspecialchars(strip_tags((string)$senddate), ENT_QUOTES, 'UTF-8') . '">' . $shortdate . '</span>'
+                .   '</div>'
+                .   '<div class="pm-row__line">'
+                .     '<span class="pm-row__st ' . $badge_class . '" title="' . $msgalt . '" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body">' . $fa_icon_html . '</span>'
+                .     '<a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '" class="pm-row__subj stretched-link ' . $msgstatus . '">' . $message['subject'] . '</a>'
                 .     $denyreceipt
                 .   '</div>'
-                .   '<div class="st-frow__desc"><i class="fa-solid fa-user me-1"></i>' . $tofromusername . '</div>'
-                . '</div>'
-                . '<div class="st-frow__last">'
-                .   '<span class="st-badge ' . $badge_class . '" title="' . $msgalt . '" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body">' . $fa_icon_html . '</span>'
-                .   '<span class="st-meta text-nowrap"><i class="fa-regular fa-clock me-1"></i>' . $senddate . '</span>'
                 . '</div>'
                 . '</div>';
         }
@@ -1117,8 +1136,14 @@ if (!$mybb->input['action']) {
         $pmscount_arr = $quota_query ? $db->fetch_array($quota_query) : null;
         $total = (int)($pmscount_arr['total'] ?? 0);
         $spaceused    = $total == 0 ? 0 : min(100, $total / $usergroups['pmquota'] * 100);
-        $pmspacebar   = '<div class="progress mt-3" style="height:24px"><div class="progress-bar" role="progressbar" style="width:' . $spaceused . '%"></div></div>'
-            . '<div class="st-meta mt-1">' . round($spaceused, 0) . '% ' . $lang->private['pmspaceused'] . '</div>';
+        $barTone      = $spaceused >= 90 ? 'bg-danger' : ($spaceused >= 70 ? 'bg-warning' : 'bg-primary');
+        $pmspacebar   = '<div class="st-card pm-quota mt-3">'
+            . '<div class="d-flex justify-content-between align-items-center mb-2">'
+            .   '<span class="st-meta"><i class="fa-solid fa-box-archive me-1"></i>' . round($spaceused, 0) . '% ' . $lang->private['pmspaceused'] . '</span>'
+            .   '<span class="fw-semibold">' . $total . ' / ' . (int)$usergroups['pmquota'] . '</span>'
+            . '</div>'
+            . '<div class="progress pm-quota__bar"><div class="progress-bar ' . $barTone . '" role="progressbar" style="width:' . $spaceused . '%"></div></div>'
+            . '</div>';
         $limitwarning = $total >= $usergroups['pmquota']
             ? '<div class="st-notice st-soft-danger mb-3"><i class="fa-solid fa-triangle-exclamation"></i><div>' . $lang->private['reached_warning'] . '</div></div>'
             : '';
@@ -1129,6 +1154,7 @@ if (!$mybb->input['action']) {
     stdhead('title');
     build_breadcrumb();
     echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/private.css?ver=1">';
 
     echo ucp_open('fa-envelope', 'primary', $foldernames[$fid] ?: $lang->private['nav_pms'], $foldername)
         . $limitwarning
@@ -1136,7 +1162,7 @@ if (!$mybb->input['action']) {
         . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
         . '<input type="hidden" name="action" value="do_stuff" />'
 
-        . '<div class="st-card mb-3 overflow-hidden">'
+        . '<div class="st-card mb-3 overflow-hidden pm-list">'
         .   '<div class="st-card__head">'
         .     '<span class="st-ico st-soft-primary"><i class="fa-solid fa-inbox"></i></span>'
         .     '<a href="private.php?fid=' . $fid . '&amp;sortby=subject&amp;order=asc" class="text-decoration-none">' . $lang->private['message_title'] . '</a>'

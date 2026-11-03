@@ -13,6 +13,33 @@ document.addEventListener('DOMContentLoaded', function () {
         return src.replace(/\{(\d+)\}/g, (m, n) => (args[n - 1] !== undefined ? String(args[n - 1]) : m));
     }
 
+    // ── Вкладки: запоминаем в hash (#bn-earn и т.п.) ───────
+    const tabs = document.querySelectorAll('.bn-tabs [data-bs-target]');
+    if (tabs.length && window.bootstrap && bootstrap.Tab) {
+        const fromHash = location.hash && document.querySelector('.bn-tabs [data-bs-target="' + CSS.escape(location.hash) + '"]');
+        if (fromHash) bootstrap.Tab.getOrCreateInstance(fromHash).show();
+
+        tabs.forEach(function (btn) {
+            btn.addEventListener('shown.bs.tab', function () {
+                history.replaceState(null, '', btn.getAttribute('data-bs-target'));
+                btn.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+            });
+        });
+    }
+
+    // ── Фильтр таблицы торрентов ──────────────────────────
+    const filter = document.getElementById('mbTorFilter');
+    const body   = document.getElementById('mbTorBody');
+    if (filter && body) {
+        const rows = Array.from(body.rows);
+        filter.addEventListener('input', function () {
+            const q = filter.value.trim().toLowerCase();
+            rows.forEach(function (tr) {
+                tr.hidden = q !== '' && !(tr.dataset.name || '').includes(q);
+            });
+        });
+    }
+
     // ── Копирование статистики ────────────────────────────
     window.copyStats = function () {
         const el = document.getElementById('bonusStatsData');
@@ -29,8 +56,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .map(([k, v]) => `${k}: ${v}`)
             .join('\n');
 
-        navigator.clipboard.writeText(text)
-            .then(() => alert(t('copied', 'Bonus stats copied to clipboard!')));
+        navigator.clipboard.writeText(text).then(function () {
+            const msg = t('copied', 'Bonus stats copied to clipboard!');
+            if (typeof showToast === 'function') showToast(msg, 'success');
+        });
     };
 
 });

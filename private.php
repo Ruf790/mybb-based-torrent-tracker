@@ -23,9 +23,24 @@ $lang->load('private');
 $pl = static fn(string $key, string $fallback): string
     => htmlspecialchars((string)($lang->private[$key] ?? $fallback), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-/** "No Avatar" placeholder */
-$noAvatarSvg = '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">'
-    . htmlspecialchars((string)($lang->header['hdr_no_avatar'] ?? 'No Avatar'), ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</text></svg>';
+/** Round avatar for PM rows: picture, first letter of the name when there is none, robot for the system */
+$pm_ava = static function (?string $avatar, ?string $dims, string $name, bool $system = false): string {
+    if ($system) {
+        return '<span class="pm-ava pm-ava--sys"><i class="fa-solid fa-robot"></i></span>';
+    }
+    $av = (string)$avatar !== '' ? format_avatar((string)$avatar, (string)$dims) : ['image' => '<'];
+    if (str_starts_with((string)$av['image'], '<') || !empty($av['is_html'])) {
+        $name = trim(html_entity_decode(strip_tags($name), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        return '<span class="pm-ava pm-ava--letter">' . htmlspecialchars(mb_strtoupper(mb_substr($name !== '' ? $name : '?', 0, 1)), ENT_QUOTES, 'UTF-8') . '</span>';
+    }
+    return '<img class="pm-ava" src="' . $av['image'] . '" alt="" loading="lazy">';
+};
+
+/** Short date for PM rows: time today, day.month this year, full date otherwise */
+$pm_short_date = static function (int $ts): string {
+    if (date('Y-m-d', $ts) === date('Y-m-d', TIMENOW)) return date('H:i', $ts);
+    return date('Y', $ts) === date('Y', TIMENOW) ? date('d.m', $ts) : date('d.m.Y', $ts);
+};
 
 if ($enablepms == 0) {
     error($lang->private['pms_disabled']);
@@ -611,22 +626,22 @@ if ($action === 'tracking') {
         $rm['subject']     = htmlspecialchars_uni($parser->parse_badwords($rm['subject']));
         $rm['tousername']  = htmlspecialchars_uni($rm['tousername']);
         $rm['profilelink'] = build_profile_link($rm['tousername'], $rm['toid']);
-        $readdate          = my_datee('relative', $rm['readtime']);
-        $rm_useravatar = format_avatar($rm['avatar'], $rm['avatardimensions']);
-        $rm_ava_img = str_starts_with($rm_useravatar['image'], '<')
-            ? $noAvatarSvg
-            : '<img class="user-avatar" src="' . $rm_useravatar['image'] . '" alt="" ' . $rm_useravatar['width_height'] . ' />';
-        $readmessages .= '<div class="st-frow">'
-            . '<div class="col-auto">' . $rm_ava_img . '</div>'
-            . '<div class="st-frow__body">'
-            .   '<div class="st-frow__top"><a class="st-frow__title" href="private.php?action=read&amp;pmid=' . $rm['pmid'] . '">' . $rm['subject'] . '</a></div>'
-            .   '<div class="st-frow__desc">' . $rm['profilelink'] . '</div>'
-            . '</div>'
-            . '<div class="st-frow__last">'
-            .   '<span class="st-badge st-soft-info"><i class="fa-regular fa-clock"></i>' . $readdate . '</span>'
-            .   '<input type="checkbox" class="form-check-input ms-2" name="readcheck[' . $rm['pmid'] . ']" value="1" />'
+        $rm_full = my_datee('relative', $rm['readtime']);
+        $rows_rm = '<div class="pm-row">'
+            . '<input type="checkbox" class="form-check-input" name="readcheck[' . $rm['pmid'] . ']" value="1" aria-label="' . $pl('check_all', 'Select') . '">'
+            . $pm_ava($rm['avatar'], $rm['avatardimensions'], (string)$rm['tousername'])
+            . '<div class="pm-row__body">'
+            .   '<div class="pm-row__top">'
+            .     '<span class="pm-row__from">' . $rm['profilelink'] . '</span>'
+            .     '<span class="pm-row__date" title="' . htmlspecialchars(strip_tags((string)$rm_full), ENT_QUOTES, 'UTF-8') . '">' . $pm_short_date((int)$rm['readtime']) . '</span>'
+            .   '</div>'
+            .   '<div class="pm-row__line">'
+            .     '<span class="pm-row__st st-soft-success"><i class="fa-solid fa-check-double fa-fw"></i></span>'
+            .     '<a class="pm-row__subj stretched-link" href="private.php?action=read&amp;pmid=' . $rm['pmid'] . '">' . $rm['subject'] . '</a>'
+            .   '</div>'
             . '</div>'
             . '</div>';
+        $readmessages .= $rows_rm;
     }
 
     $stoptrackingread = !empty($readmessages)
@@ -664,22 +679,22 @@ if ($action === 'tracking') {
         $um['subject']     = htmlspecialchars_uni($parser->parse_badwords($um['subject']));
         $um['tousername']  = htmlspecialchars_uni($um['tousername']);
         $um['profilelink'] = build_profile_link($um['tousername'], $um['toid']);
-        $senddate          = my_datee('relative', $um['dateline']);
-        $um_useravatar = format_avatar($um['avatar'], $um['avatardimensions']);
-        $um_ava_img = str_starts_with($um_useravatar['image'], '<')
-            ? $noAvatarSvg
-            : '<img class="user-avatar" src="' . $um_useravatar['image'] . '" alt="" ' . $um_useravatar['width_height'] . ' />';
-        $unreadmessages .= '<div class="st-frow">'
-            . '<div class="col-auto">' . $um_ava_img . '</div>'
-            . '<div class="st-frow__body">'
-            .   '<div class="st-frow__top"><a class="st-frow__title" href="private.php?action=read&amp;pmid=' . $um['pmid'] . '">' . $um['subject'] . '</a></div>'
-            .   '<div class="st-frow__desc">' . $um['profilelink'] . '</div>'
-            . '</div>'
-            . '<div class="st-frow__last">'
-            .   '<span class="st-badge st-soft-warning"><i class="fa-regular fa-clock"></i>' . $senddate . '</span>'
-            .   '<input type="checkbox" class="form-check-input ms-2" name="unreadcheck[' . $um['pmid'] . ']" value="1" />'
+        $um_full = my_datee('relative', $um['dateline']);
+        $rows_um = '<div class="pm-row">'
+            . '<input type="checkbox" class="form-check-input" name="unreadcheck[' . $um['pmid'] . ']" value="1" aria-label="' . $pl('check_all', 'Select') . '">'
+            . $pm_ava($um['avatar'], $um['avatardimensions'], (string)$um['tousername'])
+            . '<div class="pm-row__body">'
+            .   '<div class="pm-row__top">'
+            .     '<span class="pm-row__from">' . $um['profilelink'] . '</span>'
+            .     '<span class="pm-row__date" title="' . htmlspecialchars(strip_tags((string)$um_full), ENT_QUOTES, 'UTF-8') . '">' . $pm_short_date((int)$um['dateline']) . '</span>'
+            .   '</div>'
+            .   '<div class="pm-row__line">'
+            .     '<span class="pm-row__st st-soft-warning"><i class="fa-solid fa-envelope fa-fw"></i></span>'
+            .     '<a class="pm-row__subj stretched-link" href="private.php?action=read&amp;pmid=' . $um['pmid'] . '">' . $um['subject'] . '</a>'
+            .   '</div>'
             . '</div>'
             . '</div>';
+        $unreadmessages .= $rows_um;
     }
 
     $stoptrackingunread = !empty($unreadmessages)
@@ -697,18 +712,19 @@ if ($action === 'tracking') {
     stdhead($lang->private['pm_tracking']);
     build_breadcrumb();
 
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/private.css?ver=2">';
     echo ucp_open('fa-envelope-open-text', 'info', $lang->private['pm_tracking'])
 
         . '<form action="private.php" method="post">'
         . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
         . '<input type="hidden" name="action" value="do_tracking" />'
-        . '<div class="st-card mb-3 overflow-hidden">'
+        . '<div class="st-card mb-3 overflow-hidden pm-list">'
         .   '<div class="st-card__head">'
         .     '<span class="st-ico st-soft-info"><i class="fa-solid fa-envelope-open"></i></span>'
         .     '<span>' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</span>'
         .     '<span class="st-badge st-soft-info ms-auto">' . $lang->private['dateread'] . '</span>'
         .   '</div>'
-        .   '<div class="st-card__body">' . $readmessages . '</div>'
+        .   '<div>' . $readmessages . '</div>'
         .   $stoptrackingread
         . '</div>'
         . '</form>'
@@ -718,13 +734,13 @@ if ($action === 'tracking') {
         . '<form action="private.php" method="post" class="mt-3">'
         . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
         . '<input type="hidden" name="action" value="do_tracking" />'
-        . '<div class="st-card mb-3 overflow-hidden">'
+        . '<div class="st-card mb-3 overflow-hidden pm-list">'
         .   '<div class="st-card__head">'
         .     '<span class="st-ico st-soft-warning"><i class="fa-solid fa-envelope"></i></span>'
         .     '<span>' . $lang->private['message_title'] . ' &mdash; ' . $lang->private['sentto'] . '</span>'
         .     '<span class="st-badge st-soft-warning ms-auto">' . $lang->private['datesent'] . '</span>'
         .   '</div>'
-        .   '<div class="st-card__body">' . $unreadmessages . '</div>'
+        .   '<div>' . $unreadmessages . '</div>'
         .   $stoptrackingunread
         . '</div>'
         . '</form>'
@@ -1079,15 +1095,7 @@ if (!$mybb->input['action']) {
             $isSys   = !$isOut && (int)$message['fromid'] === 0;
             $avRaw   = $isOut ? ($message['to_avatar'] ?? '') : ($message['avatar'] ?? '');
             $avDim   = $isOut ? ($message['to_avatardimensions'] ?? '') : ($message['avatardimensions'] ?? '');
-            $avName  = trim(html_entity_decode(strip_tags((string)$tofromusername), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            if ($isSys) {
-                $ava_img = '<span class="pm-ava pm-ava--sys"><i class="fa-solid fa-robot"></i></span>';
-            } else {
-                $useravatar = $avRaw !== '' ? format_avatar($avRaw, $avDim) : ['image' => '<'];
-                $ava_img = (str_starts_with((string)$useravatar['image'], '<') || !empty($useravatar['is_html']))
-                    ? '<span class="pm-ava pm-ava--letter">' . htmlspecialchars(mb_strtoupper(mb_substr($avName !== '' ? $avName : '?', 0, 1)), ENT_QUOTES, 'UTF-8') . '</span>'
-                    : '<img class="pm-ava" src="' . $useravatar['image'] . '" alt="" loading="lazy">';
-            }
+            $ava_img = $pm_ava($avRaw, $avDim, (string)$tofromusername, $isSys);
 
             $denyreceipt = ($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
                 ? '<span class="st-meta ms-2"><a href="private.php?action=read&amp;pmid=' . $message['pmid'] . '&amp;denyreceipt=1">' . $lang->private['deny_receipt'] . '</a></span>'
@@ -1098,9 +1106,7 @@ if (!$mybb->input['action']) {
             $senddate = $message['folder'] != '3' ? my_datee('relative', $message['dateline']) : ($lang->private['not_sent'] ?? 'N/A (not sent)');
             // Short date for the row (time today, day.month this year, full date otherwise); full one in the tooltip
             $ts = (int)$message['dateline'];
-            $shortdate = $message['folder'] == '3' ? $senddate
-                : (date('Y-m-d', $ts) === date('Y-m-d', TIMENOW) ? date('H:i', $ts)
-                : (date('Y', $ts) === date('Y', TIMENOW) ? date('d.m', $ts) : date('d.m.Y', $ts)));
+            $shortdate = $message['folder'] == '3' ? $senddate : $pm_short_date($ts);
 
             $plugins->run_hooks('private_message');
 
@@ -1155,7 +1161,7 @@ if (!$mybb->input['action']) {
     stdhead('title');
     build_breadcrumb();
     echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/private.css?ver=1">';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/private.css?ver=2">';
 
     echo ucp_open('fa-envelope', 'primary', $foldernames[$fid] ?: $lang->private['nav_pms'], $foldername)
         . $limitwarning

@@ -2,20 +2,6 @@
 
 declare(strict_types=1);
 
-// work out which items the user has collapsed
-$collapse = $collapsed = $collapsedimg = $collapsedthead = [];
-if (!empty($mybb->cookies['collapsed'])) {
-    $colcookie = $mybb->cookies['collapsed'];
-    // Preserve and don't unset $collapse, will be needed globally throughout many pages
-    $collapse = explode("|", $colcookie);
-    foreach ($collapse as $val) {
-        $collapsed[$val."_e"] = "display: none;";
-        $collapsedimg[$val] = "_collapsed";
-        $collapsedthead[$val] = " thead_collapsed";
-    }
-}
-
-
 function validate_password_from_uid(int|string $uid, string $password, array $user = []): array|false
 {
     global $db, $mybb, $CURUSER;

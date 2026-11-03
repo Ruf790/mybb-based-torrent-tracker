@@ -255,5 +255,13 @@ $language['mybonus'] = array (
 	
 	
 
+	// ── Restyle: tabs, KPI, shop ──
+	'lbl_need_more' => 'Need {1} more',
+	'kpi_balance' => 'Balance',
+	'tab_shop' => 'Shop',
+	'tab_earn' => 'My earnings',
+	'tab_how' => 'How it works',
+	'txt_shop_empty' => 'The shop is empty right now.',
+
 );
 ?>

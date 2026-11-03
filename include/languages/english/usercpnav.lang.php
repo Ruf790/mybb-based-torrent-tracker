@@ -59,4 +59,7 @@ $language['usercpnav'] = array
 'ucp_nav_folder_drafts' => "Drafts",
 'ucp_nav_folder_trash' => "Trash Can",
 'ucp_nav_folder_untitled' => "Untitled folder",
+'ucp_nav_2fa' => "Two-Factor Authentication",
+'ucp_nav_sessions' => "Active Sessions",
+'ucp_nav_my_files' => "My Files",
 );

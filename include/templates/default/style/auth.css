@@ -1,0 +1,81 @@
+/* member.php auth pages: login, register, activation, lost / reset password, 2FA, e-mail user.
+   st-ui.css + this file, everything under .au-page (prefix au-). */
+
+.au-page { max-width: 30rem; }
+.au-page--wide { max-width: 52rem; }
+
+.au-page .au-card { overflow: hidden; }
+
+/* Gradient head with an icon */
+.au-page .au-head {
+    display: flex; align-items: center; gap: .9rem;
+    padding: 1.25rem 1.4rem;
+    background: linear-gradient(120deg, var(--bs-primary-bg-subtle) 0%, var(--bs-body-bg) 70%);
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.au-page .au-head__ico {
+    flex: 0 0 auto; display: grid; place-items: center;
+    width: 3rem; height: 3rem; border-radius: .9rem; font-size: 1.3rem;
+}
+.au-page .au-head .st-title { font-size: 1.3rem; margin: 0; }
+
+.au-page .au-body { padding: 1.25rem 1.4rem 1.4rem; }
+.au-page .au-foot {
+    padding: .85rem 1.4rem; background: var(--bs-tertiary-bg);
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+
+/* Fields */
+.au-page .au-field { margin-bottom: 1rem; position: relative; }
+.au-page .au-field .st-label { display: block; margin-bottom: .35rem; font-weight: 600; font-size: .9em; }
+.au-page .au-input { position: relative; }
+.au-page .au-input > i {
+    position: absolute; left: .95rem; top: 50%; transform: translateY(-50%);
+    color: var(--bs-secondary-color); pointer-events: none; z-index: 3; font-size: .9em;
+}
+.au-page .au-input > .form-control,
+.au-page .au-input > .form-select { padding-left: 2.6rem; }
+.au-page .form-control,
+.au-page .form-select { border-radius: .75rem; min-height: 2.75rem; }
+.au-page textarea.form-control { min-height: 8rem; resize: vertical; }
+.au-page .form-control:focus,
+.au-page .form-select:focus { border-color: var(--bs-primary); box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15); }
+
+.au-page .au-forgot { position: absolute; top: 0; right: 0; font-size: .82em; text-decoration: none; }
+.au-page .au-remember { margin-bottom: 1rem; }
+
+.au-page .au-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1rem; }
+@media (max-width: 575.98px) { .au-page .au-grid { grid-template-columns: 1fr; } }
+
+/* Registration sections */
+.au-page .au-sec {
+    display: flex; align-items: center; gap: .5rem;
+    margin: .5rem 0 .85rem; padding-top: .9rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    font-weight: 700; color: var(--bs-emphasis-color);
+}
+.au-page form > .au-sec:first-of-type,
+.au-page .au-body > form > input + input + .au-sec { border-top: 0; padding-top: 0; margin-top: 0; }
+.au-page .au-sec i { color: var(--bs-primary); }
+.au-page .au-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin-bottom: 1.1rem; }
+@media (max-width: 575.98px) { .au-page .au-checks { grid-template-columns: 1fr; } }
+.au-page .au-checks .st-check { margin: 0; }
+
+/* Submit */
+.au-page .au-submit { width: 100%; padding-top: .65rem; padding-bottom: .65rem; font-weight: 600; }
+
+/* Footer links */
+.au-page .au-links { display: flex; flex-direction: column; gap: .35rem; }
+.au-page .au-links a { display: inline-flex; align-items: center; gap: .55rem; font-size: .88em; text-decoration: none; color: var(--bs-secondary-color); }
+.au-page .au-links a i { width: 1rem; text-align: center; color: var(--bs-primary); opacity: .8; }
+.au-page .au-links a:hover { color: var(--bs-primary); }
+
+/* 2FA code */
+.au-page .au-otp { text-align: center; font-size: 1.6rem; font-weight: 700; letter-spacing: .45em; padding-left: .45em; font-variant-numeric: tabular-nums; }
+
+/* Messages inside the card (st-notice lives in st-ucp.css, not loaded here) */
+.au-page .st-notice {
+    display: flex; gap: .65rem; align-items: flex-start; margin-bottom: 1rem;
+    padding: .7rem .9rem; border-radius: .75rem; font-size: .9em;
+}
+.au-page .st-notice > i { margin-top: .15rem; }

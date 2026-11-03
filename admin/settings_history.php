@@ -85,73 +85,6 @@ $level_names = [
 ];
 
 // ============================================================
-//  ОБРАБОТКА POST ЗАПРОСОВ
-// ============================================================
-if (isset($_POST['action'])) {
-    switch ($_POST['action']) {
-        case 'cleanup':
-
-            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-                flash_message(($lang->managesettings['hist_flash_csrf'] ?? 'Security check failed. Please try again.'), 'error');
-                admin_redirect('settings_history.php');
-            }
-            if (isset($_POST['confirm']) && $_POST['confirm'] === 'yes') {
-                $cutoff = time() - (90 * 86400);
-                $query = $db->sql_query_prepared("DELETE FROM sitelog WHERE category = 'settings' AND added < ?", [$cutoff]);
-                $deleted = $db->affected_rows($query);
-                flash_message(ags_fmt(($lang->managesettings['hist_flash_deleted'] ?? 'Old logs deleted: {1}'), (int)$deleted), "success");
-            }
-            admin_redirect("settings_history.php");
-            break;
-
-        case 'export':
-            $search = $_GET['search'] ?? '';
-            $user = $_GET['user'] ?? '';
-            $history = get_settings_history(10000, 0, $search, $user);
-            $logs = $history['logs'] ?? [];
-
-            header('Content-Type: text/csv');
-            header('Content-Disposition: attachment; filename="settings_history_' . date('Y-m-d_H-i') . '.csv"');
-
-            $output = fopen('php://output', 'w');
-            fputcsv($output, [
-                ($lang->managesettings['hist_csv_datetime'] ?? 'Date/Time'),
-                ($lang->managesettings['hist_csv_uid'] ?? 'User ID'),
-                ($lang->managesettings['hist_csv_user'] ?? 'User'),
-                ($lang->managesettings['hist_csv_event'] ?? 'Event'),
-                ($lang->managesettings['hist_csv_level'] ?? 'Level'),
-                ($lang->managesettings['hist_csv_ip'] ?? 'IP Address'),
-            ]);
-
-            foreach ($logs as $log) {
-                fputcsv($output, [
-                    date('Y-m-d H:i:s', (int)$log['added']),
-                    $log['uid'],
-                    $log['username'] ?? ($lang->managesettings['hist_lbl_system'] ?? 'System'),
-                    $log['txt'],
-                    $level_names[(int)$log['level']] ?? ($lang->managesettings['hist_lvl_info'] ?? 'Info'),
-                    $log['ipaddress'] ?? '0.0.0.0'
-                ]);
-            }
-            fclose($output);
-            exit;
-
-        case 'export_json':
-            $search = $_GET['search'] ?? '';
-            $user = $_GET['user'] ?? '';
-            $history = get_settings_history(10000, 0, $search, $user);
-            $logs = $history['logs'] ?? [];
-
-            header('Content-Type: application/json');
-            header('Content-Disposition: attachment; filename="settings_history_' . date('Y-m-d_H-i') . '.json"');
-
-            echo json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            exit;
-            break;
-    }
-}
-
-// ============================================================
 //  ФУНКЦИИ
 // ============================================================
 if (!function_exists('get_settings_history')) {
@@ -213,6 +146,103 @@ if (!function_exists('get_settings_history')) {
     }
 }
 
+/** WHERE for the settings log with the page filters (same for the list, the count and the tiles) */
+function settings_history_where(?string $search, ?string $user): array
+{
+    $where  = ["category = 'settings'"];
+    $params = [];
+    if ($search !== null && $search !== '') { $where[] = 'txt LIKE ?'; $params[] = '%' . $search . '%'; }
+    if ($user !== null && $user !== '')     { $where[] = 'txt LIKE ?'; $params[] = '%' . $user . '%'; }
+    return ['WHERE ' . implode(' AND ', $where), $params];
+}
+
+/** Tiles: counts over ALL matching rows (not only the 50 on this page) */
+function settings_history_stats(?string $search, ?string $user): array
+{
+    global $db;
+    [$w, $p] = settings_history_where($search, $user);
+    $today = strtotime('today');
+    $week  = strtotime('-7 days', $today);
+    $q = $db->sql_query_prepared(
+        "SELECT SUM(level = 0) AS info, SUM(level = 1) AS warning, SUM(level = 2) AS error,
+                SUM(added >= ?) AS today, SUM(added >= ?) AS this_week
+           FROM sitelog {$w}",
+        [$today, $week, ...$p]
+    );
+    $r = $q ? $db->fetch_array($q) : [];
+    return array_map('intval', [
+        'info' => $r['info'] ?? 0, 'warning' => $r['warning'] ?? 0, 'error' => $r['error'] ?? 0,
+        'today' => $r['today'] ?? 0, 'this_week' => $r['this_week'] ?? 0,
+    ]);
+}
+
+// ============================================================
+//  ОБРАБОТКА POST ЗАПРОСОВ
+// ============================================================
+if (isset($_POST['action'])) {
+    switch ($_POST['action']) {
+        case 'cleanup':
+
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                flash_message(($lang->managesettings['hist_flash_csrf'] ?? 'Security check failed. Please try again.'), 'error');
+                admin_redirect('settings_history.php');
+            }
+            if (isset($_POST['confirm']) && $_POST['confirm'] === 'yes') {
+                $cutoff = time() - (90 * 86400);
+                $query = $db->sql_query_prepared("DELETE FROM sitelog WHERE category = 'settings' AND added < ?", [$cutoff]);
+                $deleted = $db->affected_rows($query);
+                flash_message(ags_fmt(($lang->managesettings['hist_flash_deleted'] ?? 'Old logs deleted: {1}'), (int)$deleted), "success");
+            }
+            admin_redirect("settings_history.php");
+            break;
+
+        case 'export':
+            $search = (string)($_POST['search'] ?? $_GET['search'] ?? '');
+            $user   = (string)($_POST['user'] ?? $_GET['user'] ?? '');
+            $history = get_settings_history(10000, 0, $search, $user);
+            $logs = $history['logs'] ?? [];
+
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="settings_history_' . date('Y-m-d_H-i') . '.csv"');
+
+            $output = fopen('php://output', 'w');
+            fputcsv($output, [
+                ($lang->managesettings['hist_csv_datetime'] ?? 'Date/Time'),
+                ($lang->managesettings['hist_csv_uid'] ?? 'User ID'),
+                ($lang->managesettings['hist_csv_user'] ?? 'User'),
+                ($lang->managesettings['hist_csv_event'] ?? 'Event'),
+                ($lang->managesettings['hist_csv_level'] ?? 'Level'),
+                ($lang->managesettings['hist_csv_ip'] ?? 'IP Address'),
+            ]);
+
+            foreach ($logs as $log) {
+                fputcsv($output, [
+                    date('Y-m-d H:i:s', (int)$log['added']),
+                    $log['uid'],
+                    $log['username'] ?? ($lang->managesettings['hist_lbl_system'] ?? 'System'),
+                    $log['txt'],
+                    $level_names[(int)$log['level']] ?? ($lang->managesettings['hist_lvl_info'] ?? 'Info'),
+                    $log['ipaddress'] ?? '0.0.0.0'
+                ]);
+            }
+            fclose($output);
+            exit;
+
+        case 'export_json':
+            $search = (string)($_POST['search'] ?? $_GET['search'] ?? '');
+            $user   = (string)($_POST['user'] ?? $_GET['user'] ?? '');
+            $history = get_settings_history(10000, 0, $search, $user);
+            $logs = $history['logs'] ?? [];
+
+            header('Content-Type: application/json');
+            header('Content-Disposition: attachment; filename="settings_history_' . date('Y-m-d_H-i') . '.json"');
+
+            echo json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            exit;
+            break;
+    }
+}
+
 // Получаем параметры фильтрации
 $search = $_GET['search'] ?? '';
 $user = $_GET['user'] ?? '';
@@ -228,26 +258,7 @@ $total = $history_data['total'] ?? 0;
 // ============================================================
 //  СТАТИСТИКА ПО ЛОГАМ
 // ============================================================
-$log_stats = [
-    'info' => 0,
-    'warning' => 0,
-    'error' => 0,
-    'today' => 0,
-    'this_week' => 0
-];
-
-$today_start = strtotime(date('Y-m-d 00:00:00'));
-$week_start = strtotime(date('Y-m-d 00:00:00', strtotime('-7 days')));
-
-foreach ($logs as $log) {
-    $level = (int)$log['level'];
-    if ($level === 0) $log_stats['info']++;
-    elseif ($level === 1) $log_stats['warning']++;
-    elseif ($level === 2) $log_stats['error']++;
-
-    if ($log['added'] >= $today_start) $log_stats['today']++;
-    if ($log['added'] >= $week_start) $log_stats['this_week']++;
-}
+$log_stats = settings_history_stats($search, $user);
 
 // Создаем пагинацию
 $page_url = 'settings_history.php?' . http_build_query(array_filter([
@@ -268,7 +279,7 @@ stdhead($lang->managesettings['hist_page_title'] ?? 'Settings History');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings.css">
-<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings_history.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings_history.css?ver=2">
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
 
 <?php flash_message(); ?>
@@ -291,27 +302,21 @@ stdhead($lang->managesettings['hist_page_title'] ?? 'Settings History');
     <!-- ============================================================
          СТАТИСТИКА
     ============================================================ -->
-    <div class="stats-row">
-        <div class="stat-box info">
-            <div class="stat-number"><?= $log_stats['info'] ?></div>
-            <div class="stat-label"><i class="fas fa-info-circle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_info'] ?? 'Info') ?></div>
-        </div>
-        <div class="stat-box warning">
-            <div class="stat-number"><?= $log_stats['warning'] ?></div>
-            <div class="stat-label"><i class="fas fa-exclamation-triangle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_warnings'] ?? 'Warnings') ?></div>
-        </div>
-        <div class="stat-box error">
-            <div class="stat-number"><?= $log_stats['error'] ?></div>
-            <div class="stat-label"><i class="fas fa-times-circle me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_errors'] ?? 'Errors') ?></div>
-        </div>
-        <div class="stat-box today">
-            <div class="stat-number"><?= $log_stats['today'] ?></div>
-            <div class="stat-label"><i class="fas fa-calendar-day me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_today'] ?? 'Today') ?></div>
-        </div>
-        <div class="stat-box week">
-            <div class="stat-number"><?= $log_stats['this_week'] ?></div>
-            <div class="stat-label"><i class="fas fa-calendar-week me-1"></i> <?= htmlspecialchars($lang->managesettings['hist_stat_week'] ?? 'This Week') ?></div>
-        </div>
+    <?php
+    $hist_kpi = static function (string $icon, string $tone, int $value, string $label): string {
+        return '<div class="sh-kpi">'
+             . '<span class="sh-kpi__ico sh-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+             . '<div class="sh-kpi__txt"><div class="sh-kpi__val">' . number_format($value) . '</div>'
+             . '<div class="sh-kpi__lbl">' . htmlspecialchars($label) . '</div></div>'
+             . '<i class="fa-solid ' . $icon . ' sh-kpi__bg" aria-hidden="true"></i></div>';
+    };
+    ?>
+    <div class="sh-kpis">
+        <?= $hist_kpi('fa-circle-info',          'info',    $log_stats['info'],      $lang->managesettings['hist_stat_info'] ?? 'Info') ?>
+        <?= $hist_kpi('fa-triangle-exclamation', 'warning', $log_stats['warning'],   $lang->managesettings['hist_stat_warnings'] ?? 'Warnings') ?>
+        <?= $hist_kpi('fa-circle-xmark',         'danger',  $log_stats['error'],     $lang->managesettings['hist_stat_errors'] ?? 'Errors') ?>
+        <?= $hist_kpi('fa-calendar-day',         'success', $log_stats['today'],     $lang->managesettings['hist_stat_today'] ?? 'Today') ?>
+        <?= $hist_kpi('fa-calendar-week',        'primary', $log_stats['this_week'], $lang->managesettings['hist_stat_week'] ?? 'This Week') ?>
     </div>
 
     <!-- ============================================================

@@ -1890,7 +1890,10 @@ if ($showimages === 'yes' && $total > 0): ?>
 <?php endif;
 
 
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=11"></script>';
+// Уведомления: SweetAlert2 (swal-notify.js даёт тот же showToast(), toast.js больше не нужен)
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/swal-notify.js?ver=1"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=7"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';
@@ -2325,7 +2328,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(<?= json_encode($__toast_err, JSON_UNESCAPED_UNICODE) ?>, 'error');
     <?php endif; ?>
 
-    // Strip mod_success/mod_error from the URL so a refresh doesn't repeat the toast
+    // Strip mod_success/mod_error from the URL so a refresh doesn't repeat the notification
     if (window.history && window.history.replaceState) {
         const url = new URL(window.location.href);
         url.searchParams.delete('mod_success');

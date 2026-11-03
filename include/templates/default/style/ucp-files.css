@@ -1,0 +1,19 @@
+/* usercp.php "My files": tabs Uploads / Attachments (prefix uf-) */
+.st-page .uf-tabs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; }
+.st-page .uf-tabs::-webkit-scrollbar { display: none; }
+.st-page .uf-tabs a {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: .45rem;
+    padding: .38rem 1rem; border-radius: 50rem;
+    border: 1px solid var(--bs-border-color); background: var(--bs-body-bg);
+    color: var(--bs-body-color); font-size: .9em; font-weight: 600; white-space: nowrap; text-decoration: none;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+.st-page .uf-tabs a i { opacity: .7; }
+.st-page .uf-tabs a:hover { border-color: var(--bs-primary); color: var(--bs-primary); }
+.st-page .uf-tabs a.active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.st-page .uf-tabs a.active i { opacity: 1; }
+.st-page .uf-tabs__n {
+    font-size: .75em; padding: .05rem .45rem; border-radius: 50rem;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
+}
+.st-page .uf-tabs a.active .uf-tabs__n { background: rgba(255, 255, 255, .25); color: #fff; }

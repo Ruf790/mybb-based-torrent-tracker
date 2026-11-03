@@ -873,12 +873,16 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
         }
         $fname = htmlspecialchars($fname, ENT_QUOTES, 'UTF-8');
 
+        // Card texts from global.lang.php (English fallback for older lang files)
+        global $lang;
+        $imgNA   = htmlspecialchars((string)($lang->global['img_unavailable'] ?? 'Image unavailable'), ENT_QUOTES, 'UTF-8');
+        $imgOpen = htmlspecialchars((string)($lang->global['img_open_original'] ?? 'Open original'), ENT_QUOTES, 'UTF-8');
         $fallback = '<span class="mycode_img_fallback d-none flex-column align-items-center justify-content-center text-center rounded border bg-body-tertiary text-body-secondary p-3"'
                   . ' style="' . $fb_size . 'max-width:100%;">'
                   . '<i class="fa-regular fa-image fa-2x mb-2 opacity-50"></i>'
-                  . '<span class="fw-semibold small">Image unavailable</span>'
+                  . '<span class="fw-semibold small">' . $imgNA . '</span>'
                   . '<span class="small text-truncate w-100 opacity-75" title="' . $fname . '">' . $fname . '</span>'
-                  . '<a href="' . $url . '" target="_blank" rel="noopener nofollow" class="small mt-1">Open original</a>'
+                  . '<a href="' . $url . '" target="_blank" rel="noopener nofollow" class="small mt-1">' . $imgOpen . '</a>'
                   . '</span>';
 
         $onerror = "this.nextElementSibling.classList.replace('d-none','d-flex');this.remove();";

@@ -633,6 +633,10 @@ final class BonusPointsManager
         }
 
         if ($rows) {
+            // Reasons in the staff member's language (same texts as the user's bonuslog.php)
+            global $lang;
+            $lang->load('bonuslog');
+            $reasonL = is_array($lang->bonuslog ?? null) ? $lang->bonuslog : [];
             $tr = '';
             foreach ($rows as $r) {
                 $a = (float)$r['amount'];
@@ -646,7 +650,7 @@ final class BonusPointsManager
                     . '<td class="text-nowrap">' . date('d.m.Y', (int)$r['added']) . '<div class="bp-muted">' . date('H:i', (int)$r['added']) . '</div></td>'
                     . '<td>' . $name . '</td>'
                     . '<td><div class="bp-muted small text-uppercase"><i class="fa-solid ' . $icon . ' me-1"></i>' . $this->e($label) . '</div>'
-                    . $this->e($r['reason']) . ($r['type'] === 'seeding' ? ' <span class="bp-muted">' . $this->t('lbl_whole_day') . '</span>' : '')
+                    . $this->e(bonus_log_reason_text((string)$r['reason'], $reasonL)) . ($r['type'] === 'seeding' ? ' <span class="bp-muted">' . $this->t('lbl_whole_day') . '</span>' : '')
                     . (!empty($r['actor_name']) ? ' <span class="bp-muted">&middot; ' . $this->t('lbl_by_actor', $this->e($r['actor_name'])) . '</span>' : '') . '</td>'
                     . '<td class="text-end text-nowrap fw-bold ' . ($a >= 0 ? 'text-success' : 'text-danger') . '">' . $this->e(bonus_log_amount($a)) . '</td>'
                     . '<td class="text-end text-nowrap bp-muted">' . ($r['balance'] !== null ? $this->pts($r['balance']) : '-') . '</td>'

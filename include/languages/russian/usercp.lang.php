@@ -665,6 +665,7 @@ $language['usercp'] = array(
     'lbl_badge_torrent'              => 'Раздача #{1}',
     'lbl_badge_post'                 => 'Сообщение #{1}',
     'lbl_badge_message'              => 'ЛС #{1}',
+    'lbl_badge_chat'                 => 'Чат #{1}',
     'lbl_no_files'                   => 'Файлов пока нет',
     'hint_no_files'                  => 'Вы ещё не загрузили ни одного файла.',
     'hint_confirm_delete_files'      => 'Удалить выбранные файлы? Это действие нельзя отменить.',

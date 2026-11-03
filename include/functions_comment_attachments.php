@@ -384,13 +384,37 @@ function render_comment_attachments_from_array(array $atts): string
     global $BASEURL;
     if (empty($atts)) return '';
 
-    ob_start();
-    echo '<div class="att-display-list">';
+    // Картинки — плиткой превью, как в постах форума; остальное — карточками файлов
+    $thumbs = '';
+    $files  = '';
     foreach ($atts as $att) {
-        echo render_attachment_preview_item($att, $BASEURL, false);
+        if (str_starts_with((string)($att['filetype'] ?? ''), 'image/')) {
+            $thumbs .= render_comment_image_thumb($att, $BASEURL);
+        } else {
+            $files .= render_attachment_preview_item($att, $BASEURL, false);
+        }
     }
-    echo '</div>';
-    return ob_get_clean();
+
+    return ($thumbs !== '' ? '<div class="att-thumbs">' . $thumbs . '</div>' : '')
+         . ($files  !== '' ? '<div class="att-display-list">' . $files . '</div>' : '');
+}
+
+/**
+ * Плитка-превью картинки (клик — оригинал в новой вкладке)
+ */
+function render_comment_image_thumb(array $att, string $BASEURL): string
+{
+    $path  = static fn(string $f): string => implode('/', array_map('rawurlencode', explode('/', $f)));
+    $url   = $BASEURL . '/uploads/attachments/' . $path((string)$att['attachname']);
+    $thumb = (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL')
+        ? $BASEURL . '/uploads/attachments/' . $path((string)$att['thumbnail'])
+        : $url;
+    $title = (string)$att['filename'] . "\n" . format_filesize((int)$att['filesize']);
+    $h     = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+    return '<a href="' . $h($url) . '" target="_blank" rel="noopener" class="att-thumb" title="' . $h($title) . '">'
+         . '<img src="' . $h($thumb) . '" alt="' . $h((string)$att['filename']) . '" loading="lazy">'
+         . '</a>';
 }
 
 function format_filesize(int $bytes): string

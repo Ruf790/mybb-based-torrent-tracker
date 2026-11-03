@@ -72,7 +72,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 ?>
 
 
-<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css?ver=2">
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js?ver=2"></script>
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/commenttable.js?ver=2"></script>
 

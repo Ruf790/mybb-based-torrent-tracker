@@ -771,4 +771,7 @@ $language['usercp'] = array(
     'hint_home_sub'                  => 'Ваш аккаунт коротко',
     'hint_options_sub'               => 'Уведомления, дата и время, отображение страниц',
 
+    // My files: tabs
+    'tab_uploads' => 'Загрузки',
+    'tab_attachments' => 'Вложения',
 );

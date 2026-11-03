@@ -810,4 +810,7 @@ Thank you,
     'hint_home_sub'                  => 'Your account at a glance',
     'hint_options_sub'               => 'Notifications, date and time, page display',
 
+    // My files: tabs
+    'tab_uploads' => 'Uploads',
+    'tab_attachments' => 'Attachments',
 );

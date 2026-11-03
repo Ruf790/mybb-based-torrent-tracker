@@ -81,6 +81,10 @@ function ucp_nav_is_active(string $href): bool
 
     $script = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
     $cur    = preg_replace('/^do_/', '', (string)($mybb->input['action'] ?? ''));
+    // "My files" page has two tabs: uploads (manage_files) and attachments
+    if ($cur === 'attachments') {
+        $cur = 'manage_files';
+    }
 
     // usercp.php / usercp.php?action=xxx
     if (preg_match('~^usercp\.php(?:\?action=([a-z0-9_]+))?$~i', $href, $m)) {
@@ -223,7 +227,6 @@ function usercp_menu_misc(): void
 
     $usercpmenu .= '<div class="st-unav__sep"></div>'
         . ucp_nav_link('usercp.php?action=editlists',          'fa-solid fa-user-group',  $lang->usercpnav['ucp_nav_editlists'], 'success')
-        . ucp_nav_link('usercp.php?action=attachments',        'fa-solid fa-paperclip',   $lang->usercpnav['ucp_nav_attachments'] ?? 'Manage Attachments', 'muted')
         . ucp_nav_link('usercp.php?action=drafts',             'fa-solid fa-pen-ruler',   $lang->usercpnav['ucp_nav_drafts'] ?? 'Saved Drafts', 'warning', $draftbadge)
         . ucp_nav_link('usercp.php?action=subscriptions',      'fa-solid fa-comment',     $lang->usercpnav['ucp_nav_subscribed_threads'], 'info')
         . ucp_nav_link('usercp.php?action=forumsubscriptions', 'fa-solid fa-eye',         $lang->usercpnav['ucp_nav_forum_subscriptions'], 'info')
@@ -233,4 +236,34 @@ function usercp_menu_misc(): void
         . '<div class="st-unav__sep"></div>'
         . ucp_nav_link($profile_link, 'fa-solid fa-id-card-clip', $lang->usercpnav['ucp_nav_view_profile'], 'primary',
             '<i class="fa-solid fa-arrow-up-right-from-square ms-auto small opacity-50"></i>');
+}
+
+/**
+ * Tabs of the "My files" page: uploads from the editor (comment_files, action=manage_files)
+ * and forum/comment attachments (attachments, action=attachments). Both lists keep their own
+ * storage and delete logic; this only joins them on one page.
+ */
+function ucp_files_tabs(string $active): string
+{
+    global $db, $CURUSER, $lang, $BASEURL, $enableattachments;
+
+    $uid = (int)$CURUSER['id'];
+    $q   = $db->sql_query_prepared('SELECT COUNT(*) AS n FROM comment_files WHERE user_id = ?', [$uid]);
+    $nUp = $q ? (int)$db->fetch_field($q, 'n') : 0;
+
+    $tabs = [['manage_files', 'fa-cloud-arrow-up', $lang->usercp['tab_uploads'] ?? 'Uploads', $nUp]];
+    if ((int)($enableattachments ?? 1) !== 0) {
+        $q    = $db->sql_query_prepared('SELECT COUNT(*) AS n FROM attachments WHERE uid = ?', [$uid]);
+        $nAt  = $q ? (int)$db->fetch_field($q, 'n') : 0;
+        $tabs[] = ['attachments', 'fa-paperclip', $lang->usercp['tab_attachments'] ?? 'Attachments', $nAt];
+    }
+
+    $out = '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/ucp-files.css?ver=1">'
+         . '<nav class="uf-tabs mb-3">';
+    foreach ($tabs as [$act, $icon, $label, $n]) {
+        $out .= '<a href="usercp.php?action=' . $act . '"' . ($act === $active ? ' class="active" aria-current="page"' : '') . '>'
+              . '<i class="fa-solid ' . $icon . '"></i>' . htmlspecialchars((string)$label, ENT_QUOTES, 'UTF-8')
+              . '<span class="uf-tabs__n">' . number_format($n) . '</span></a>';
+    }
+    return $out . '</nav>';
 }

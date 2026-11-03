@@ -2196,8 +2196,11 @@ if ($mybb->input['action'] === 'manage_files') {
     $ucp_head = ucp_open('fa-images', 'info', $lang->usercp['lbl_my_files'], $files_subtitle);
     $ucp_tail = ucp_close();
 
+    $files_tabs = ucp_files_tabs('manage_files');
+
     $files_html = <<<HTML
 {$ucp_head}
+            {$files_tabs}
             <form id="fileDeleteForm" action="usercp.php" method="post">
                 <input type="hidden" name="my_post_key" value="{$post_code}">
                 <input type="hidden" name="action" value="do_remove_files">
@@ -3418,7 +3421,7 @@ if ($mybb->input['action'] === 'attachments') {
     }
 
     $plugins->run_hooks('usercp_attachments_end');
-    stdhead($lang->usercp['attachments_manager']);
+    stdhead($lang->usercp['lbl_my_files'] . ' - ' . $lang->usercp['attachments_manager']);
     
     build_breadcrumb();
 
@@ -3426,8 +3429,9 @@ if ($mybb->input['action'] === 'attachments') {
         '<div class="col-6 col-md-4"><div class="st-kpi"><span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
         . '<div class="min-w-0"><div class="st-kpi__val">' . $val . '</div><div class="st-kpi__lbl">' . $lbl . '</div></div></div></div>';
 
-    echo ucp_open('fa-paperclip', 'primary', $lang->usercp['attachments_manager'],
+    echo ucp_open('fa-images', 'info', $lang->usercp['lbl_my_files'],
             sprintf($lang->usercp['lbl_attach_header'], $totalattachments, $friendlyusage))
+        . ucp_files_tabs('attachments')
         . '<div class="row g-3 mb-3">'
         .   $att_kpi('fa-file', 'primary', $totalattachments, $lang->usercp['attachstats_attachs'])
         .   $att_kpi('fa-hard-drive', 'success', $friendlyusage, $lang->usercp['attachstats_spaceused'])

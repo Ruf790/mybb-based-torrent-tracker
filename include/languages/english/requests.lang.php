@@ -121,5 +121,24 @@ $language['requests'] = array
     'js_comment_error'      => 'Error adding comment',
     'js_server_error'       => 'Server error (HTTP {1}). Please try again.',
     'js_network_error'      => 'Network error. Please check your connection and try again.',
+
+    // ── New page layout ──────────────────────────────────────────────────────
+    'hint_list'             => 'Ask for a release that is missing on the tracker. Vote for others and add bonus points: the uploader who fills a request gets its reward.',
+    'hint_create'           => 'Describe what you are looking for. Others can vote and add bonus points to the reward.',
+    'kpi_open'              => 'Open requests',
+    'kpi_filled'            => 'Filled',
+    'kpi_pool'              => 'Bounty waiting',
+    'kpi_mine'              => 'My open requests',
+    'kpi_age'               => 'Request age',
+    'aria_status'           => 'Status',
+    'aria_sort'             => 'Sort',
+    'sort_votes'            => 'Votes',
+    'sort_bounty'           => 'Bounty',
+    'sort_new'              => 'New',
+    'sec_what'              => 'What to find',
+    'txt_no_description'    => 'No description.',
+    'lbl_filled_by'         => 'Filled by {1}',
+    'js_yes'                => 'Yes',
+    'js_no'                 => 'No',
 );
 ?>

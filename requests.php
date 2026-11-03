@@ -41,9 +41,8 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
-// ── Flash helper ──────────────────────────────────────────────────────────────
+// ── Flash helper (SweetAlert2 via swal-notify.js, same showToast() API) ────────
 function show_flash(): void {
-    global $BASEURL;
     if (!empty($_SESSION['flash'])) {
         $f = $_SESSION['flash'];
         $type = match($f['type']) {
@@ -52,8 +51,10 @@ function show_flash(): void {
             'warning' => 'warning',
             default   => 'info',
         };
-        echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
-        echo '<script>document.addEventListener("DOMContentLoaded", function(){ showToast(' . json_encode($f['msg']) . ', ' . json_encode($type) . '); });</script>';
+        $flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+        // Message as text, not HTML (it may contain a request title)
+        echo '<script>document.addEventListener("DOMContentLoaded", function(){ var d = document.createElement("div"); d.textContent = '
+           . json_encode((string)$f['msg'], $flags) . '; showToast(d.innerHTML, ' . json_encode($type) . '); });</script>';
         unset($_SESSION['flash']);
     }
 }
@@ -202,6 +203,7 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
         header('Location: requests.php?action=view&rid=' . $id);
         exit();
     }
+    $action = 'create';   // show the form again with the errors and the typed values
 }
 
 // ── POST: Fill / Cancel / Delete ─────────────────────────────────────────────
@@ -258,13 +260,70 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Shared view helpers (new style: st-ui.css + requests.css, prefix rq-)
+// ═══════════════════════════════════════════════════════════════════════════════
+$rqL = static fn(string $k, string $fb): string => (string)($lang->requests[$k] ?? $fb);
+$h   = static fn(?string $s): string => htmlspecialchars((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+/** CSS/JS shared by all request pages (after stdhead()) */
+$rq_assets = static function () use ($BASEURL): void {
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/requests.css?ver=1">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+       . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+       . '<script src="' . $BASEURL . '/scripts/swal-notify.js?ver=2"></script>';
+};
+
+/** Status badge */
+$rq_status = static function (string $status) use ($lang, $h): string {
+    return match ($status) {
+        'open'      => '<span class="st-badge st-soft-success"><i class="fa-solid fa-circle-dot"></i>' . $h($lang->requests['status_open']) . '</span>',
+        'filled'    => '<span class="st-badge st-soft-primary"><i class="fa-solid fa-check"></i>' . $h($lang->requests['status_filled']) . '</span>',
+        'cancelled' => '<span class="st-badge st-soft-muted"><i class="fa-solid fa-ban"></i>' . $h($lang->requests['status_cancelled']) . '</span>',
+        default     => '',
+    };
+};
+
+/** Avatar: stored path / remote URL / first letter */
+$rq_avatar = static function (?string $avatar, string $name, int $size = 36) use ($BASEURL, $h): string {
+    $avatar = trim((string)$avatar);
+    if ($avatar === '') {
+        return '<span class="rq-ava rq-ava--letter" style="width:' . $size . 'px;height:' . $size . 'px">' . $h(mb_strtoupper(mb_substr($name, 0, 1))) . '</span>';
+    }
+    $src = preg_match('#^https?://#i', $avatar) ? $avatar : $BASEURL . '/' . ltrim($avatar, '/');
+    return '<img class="rq-ava" src="' . $h($src) . '" width="' . $size . '" height="' . $size . '" alt="" loading="lazy">';
+};
+
+/** Gray KPI tile with a big icon in the corner */
+$rq_kpi = static function (string $icon, string $tone, string $value, string $label) use ($h): string {
+    return '<div class="st-kpi st-kpi--muted">'
+         . '<span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+         . '<div class="min-w-0"><div class="st-kpi__val">' . $value . '</div><div class="st-kpi__lbl">' . $h($label) . '</div></div>'
+         . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i></div>';
+};
+
+/** Breadcrumb */
+$rq_crumbs = static function (array $items) use ($BASEURL, $lang, $h): string {
+    $out = '<nav aria-label="breadcrumb" class="mb-3"><ol class="breadcrumb rq-crumbs mb-0">'
+         . '<li class="breadcrumb-item"><a href="' . $BASEURL . '/index2.php" title="' . $h($lang->requests['nav_home']) . '" aria-label="' . $h($lang->requests['nav_home']) . '"><i class="fa-solid fa-house"></i></a></li>';
+    foreach ($items as [$label, $url]) {
+        $out .= $url !== ''
+            ? '<li class="breadcrumb-item"><a href="' . $h($url) . '">' . $h($label) . '</a></li>'
+            : '<li class="breadcrumb-item active text-truncate" aria-current="page">' . $h($label) . '</li>';
+    }
+    return $out . '</ol></nav>';
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // VIEW: Single request
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $rid) {
     $req = $db->fetch_array($db->sql_query_prepared(
-        "SELECT r.*, u.username, u.avatar, u.usergroup
+        "SELECT r.*, u.username, u.avatar, u.usergroup,
+                f.username AS filler_name, f.usergroup AS filler_group
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
+         LEFT JOIN users f ON f.id = r.filled_by
          WHERE r.id = ?",
         [$rid]
     ));
@@ -283,531 +342,261 @@ if ($action === 'view' && $rid) {
          ORDER BY rc.created_at ASC",
         [$rid]
     );
+    $comments = [];
+    while ($c = $db->fetch_array($comments_q)) $comments[] = $c;
 
-    $status_badge = match($req['status']) {
-        'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>' . htmlspecialchars($lang->requests['status_open']) . '</span>',
-        'filled'    => '<span class="badge bg-primary bg-opacity-25 text-primary"><i class="fas fa-check me-1"></i>' . htmlspecialchars($lang->requests['status_filled']) . '</span>',
-        'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary"><i class="fas fa-times me-1"></i>' . htmlspecialchars($lang->requests['status_cancelled']) . '</span>',
-        default     => ''
-    };
+    $isOpen  = $req['status'] === 'open';
+    $isOwner = (int)$req['user_id'] === (int)$CURUSER['id'];
+    $tone    = match ($req['status']) { 'open' => 'success', 'filled' => 'primary', default => 'muted' };
+    $icon    = match ($req['status']) { 'open' => 'fa-hand-holding-heart', 'filled' => 'fa-circle-check', default => 'fa-ban' };
+    $author  = $req['username'] !== null
+        ? '<a href="' . $h(get_profile_link((int)$req['user_id'])) . '">' . format_name($h($req['username']), (int)$req['usergroup']) . '</a>'
+        : '#' . (int)$req['user_id'];
 
     stdhead(htmlspecialchars(ags_fmt($lang->requests['title_view'], $req['title'])));
+    $rq_assets();
     show_flash();
     ?>
-    <style>
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes popIn {
-            0% { transform: scale(0.8); opacity: 0; }
-            70% { transform: scale(1.05); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.6s ease forwards;
-            opacity: 0;
-        }
-        .animate-fade-in-up:nth-child(1) { animation-delay: 0.05s; }
-        .animate-fade-in-up:nth-child(2) { animation-delay: 0.10s; }
-        .animate-fade-in-up:nth-child(3) { animation-delay: 0.15s; }
-        .animate-fade-in-up:nth-child(4) { animation-delay: 0.20s; }
-        .animate-fade-in-up:nth-child(5) { animation-delay: 0.25s; }
-        .animate-fade-in-up:nth-child(6) { animation-delay: 0.30s; }
-        .animate-fade-in-up:nth-child(7) { animation-delay: 0.35s; }
-        .animate-fade-in-up:nth-child(8) { animation-delay: 0.40s; }
-        .animate-fade-in-up:nth-child(9) { animation-delay: 0.45s; }
-        .animate-fade-in-up:nth-child(10) { animation-delay: 0.50s; }
-        .pulse-on-hover:hover {
-            animation: pulse 0.6s ease;
-        }
-        .loading-spinner {
-            display: inline-block;
-            width: 1.2rem;
-            height: 1.2rem;
-            border: 3px solid rgba(13,110,253,0.1);
-            border-top-color: #0d6efd;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-        .vote-number-pop {
-            animation: popIn 0.5s ease;
-        }
-        .comment-slide-in {
-            animation: slideDown 0.4s ease;
-        }
-        .btn-loading {
-            pointer-events: none;
-            opacity: 0.7;
-        }
-        .req-row {
-            transition: all 0.2s ease;
-        }
-        .req-row:hover {
-            background: rgba(13,110,253,.04);
-            transform: translateX(4px);
-        }
-        .badge { font-weight: 500; }
-    </style>
+<div class="container-md st-page rq-page py-3">
 
-    <div class="container py-4">
-        <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->requests['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->requests['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="requests.php"><i class="fas fa-list-alt me-1"></i><?= htmlspecialchars($lang->requests['nav_requests']) ?></a></li>
-                <li class="breadcrumb-item active text-truncate" style="max-width:300px"><?= htmlspecialchars($req['title']) ?></li>
-            </ol>
-        </nav>
+    <?= $rq_crumbs([[$lang->requests['nav_requests'], 'requests.php'], [(string)$req['title'], '']]) ?>
 
-        <div class="row g-4">
-            <div class="col-lg-8">
-                <div class="card border-0 shadow-sm rounded-4 mb-4 animate-fade-in-up">
-                    <div class="card-header bg-transparent d-flex align-items-center justify-content-between gap-2 flex-wrap border-0 pb-0 pt-3">
-                        <div class="d-flex align-items-center gap-3">
-                            <?= $status_badge ?>
-                            <h5 class="mb-0 fw-bold"><?= htmlspecialchars($req['title']) ?></h5>
-                        </div>
-                        <?php if ($req['category_id'] && isset($cats[$req['category_id']])): ?>
-                        <span class="badge bg-light text-dark border rounded-pill px-3">
-                            <i class="fas fa-tag me-1"></i><?= htmlspecialchars($cats[$req['category_id']]) ?>
-                        </span>
-                        <?php endif; ?>
-                    </div>
-                    <div class="card-body">
-                        <?php if ($req['description']): ?>
-                        <div class="mb-3 p-3 bg-light rounded-3"><?= $parser->parse_message($req['description'], $parser_options) ?></div>
-                        <?php endif; ?>
-                        <div class="d-flex flex-wrap gap-3 small text-muted">
-                            <span><i class="fas fa-user me-1"></i><a href="<?= $BASEURL ?>/user-<?= $req['user_id'] ?>.html" class="text-decoration-none"><?= htmlspecialchars($req['username']) ?></a></span>
-                            <span><i class="fas fa-calendar me-1"></i><?= my_datee($dateformat, $req['created_at']) ?> <?= my_datee($timeformat, $req['created_at']) ?></span>
-                            <?php if ($req['year']): ?>
-                            <span><i class="fas fa-film me-1"></i><?= (int)$req['year'] ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($req['imdb_id'])): ?>
-                            <span><i class="fa-brands fa-imdb me-1"></i><a href="https://www.imdb.com/title/<?= htmlspecialchars((string)$req['imdb_id']) ?>/" target="_blank" rel="noopener" class="text-decoration-none"><?= htmlspecialchars((string)$req['imdb_id']) ?></a></span>
-                            <?php endif; ?>
-                            <?php if ((float)$req['bounty'] > 0): ?>
-                            <span class="text-warning fw-semibold"><i class="fas fa-coins me-1"></i><?= htmlspecialchars(ags_fmt($lang->requests['lbl_bounty_amount'], number_format((float)$req['bounty'], 1))) ?></span>
-                            <?php endif; ?>
-                            <span><i class="fas fa-users me-1"></i><?= htmlspecialchars(ags_fmt($lang->requests['lbl_voters_count'], (int)$req['votes'])) ?></span>
-                        </div>
-                        <?php if ($req['status'] === 'filled' && $req['torrent_id']): ?>
-                        <div class="alert alert-success mt-4 mb-0 rounded-3 animate-fade-in-up">
-                            <i class="fas fa-check-circle me-2"></i>
-                            <?= htmlspecialchars($lang->requests['txt_filled']) ?> <a href="<?= get_torrent_link($req['torrent_id']) ?>" class="alert-link fw-semibold"><?= htmlspecialchars($lang->requests['lnk_download']) ?></a>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    <?php if ($req['status'] === 'open'): ?>
-                    <div class="card-footer bg-transparent border-0 d-flex flex-wrap gap-2 align-items-center">
-                        <?php if (!$my_vote && $req['user_id'] != $CURUSER['id']): ?>
-                        <button class="btn btn-sm btn-outline-success rounded-pill px-4 pulse-on-hover" onclick="voteRequest(<?= $rid ?>)" id="voteBtn">
-                            <i class="fas fa-thumbs-up me-1"></i><?= htmlspecialchars($lang->requests['btn_vote']) ?> (<span id="vote-count"><?= (int)$req['votes'] ?></span>)
-                        </button>
-                        <div class="input-group input-group-sm" style="width:200px">
-                            <input type="number" class="form-control" id="bountyInput" placeholder="<?= htmlspecialchars($lang->requests['ph_add_bp']) ?>" min="0" step="0.1">
-                            <span class="input-group-text text-muted small"><?= htmlspecialchars(ags_fmt($lang->requests['lbl_balance'], number_format((float)$CURUSER['seedbonus'], 1))) ?></span>
-                        </div>
-                        <?php else: ?>
-                        <span class="text-muted small"><i class="fas fa-check-circle text-success me-1"></i><?= htmlspecialchars($lang->requests['txt_you_voted']) ?></span>
-                        <?php endif; ?>
-                        <button class="btn btn-sm btn-primary rounded-pill px-4 ms-auto pulse-on-hover" data-bs-toggle="modal" data-bs-target="#fillModal">
-                            <i class="fas fa-upload me-1"></i><?= htmlspecialchars($lang->requests['btn_fill']) ?>
-                        </button>
-                        <?php if ($req['user_id'] == $CURUSER['id'] || $is_mod): ?>
-                        <form method="post" action="requests.php?action=cancel&rid=<?= $rid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->requests['conf_cancel'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
-                            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover"><i class="fas fa-times me-1"></i><?= htmlspecialchars($lang->requests['btn_cancel_request']) ?></button>
-                        </form>
-                        <?php if ($is_mod): ?>
-                        <form method="post" action="requests.php?action=delete&rid=<?= $rid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->requests['conf_delete'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
-                            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-danger rounded-pill px-3 pulse-on-hover"><i class="fas fa-trash-alt me-1"></i><?= htmlspecialchars($lang->requests['btn_delete']) ?></button>
-                        </form>
-                        <?php endif; ?>
-                        <?php endif; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <div class="card border-0 shadow-sm rounded-4 animate-fade-in-up">
-                    <div class="card-header bg-transparent border-0">
-                        <h6 class="mb-0"><i class="fas fa-comments me-2"></i><?= htmlspecialchars($lang->requests['sec_comments']) ?></h6>
-                    </div>
-                    <div class="card-body p-0" id="commentsContainer">
-                        <?php
-                        $comment_count = 0;
-                        while ($c = $db->fetch_array($comments_q)):
-                            $comment_count++;
-                        ?>
-                        <div class="d-flex gap-3 p-3 <?= $comment_count > 1 ? 'border-top' : '' ?> comment-slide-in" style="animation-delay: <?= $comment_count * 0.05 ?>s">
-                            <div class="flex-shrink-0">
-                                <?php if ($c['avatar']): ?>
-                                <img src="<?= $BASEURL ?>/<?= htmlspecialchars($c['avatar']) ?>" class="rounded-circle" width="36" height="36" alt="">
-                                <?php else: ?>
-                                <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style="width:36px;height:36px;font-size:.8rem">
-                                    <?= strtoupper(substr($c['username'], 0, 1)) ?>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <a href="<?= $BASEURL ?>/user-<?= $c['user_id'] ?>.html" class="fw-semibold small text-decoration-none"><?= htmlspecialchars($c['username']) ?></a>
-                                    <small class="text-muted"><?= my_datee($dateformat, $c['created_at']) ?> <?= my_datee($timeformat, $c['created_at']) ?></small>
-                                </div>
-                                <p class="mb-0 small"><?= $parser->parse_message($c['message'], $parser_options) ?></p>
-                            </div>
-                        </div>
-                        <?php endwhile; ?>
-                        <?php if ($comment_count === 0): ?>
-                        <div class="text-center py-4 text-muted small"><?= htmlspecialchars($lang->requests['txt_no_comments']) ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <?php if ($req['status'] === 'open'): ?>
-                    <div class="card-footer bg-transparent border-0">
-                        <div class="d-flex gap-2">
-                            <textarea class="form-control form-control-sm rounded-3" id="commentText" rows="2" placeholder="<?= htmlspecialchars($lang->requests['ph_comment']) ?>"></textarea>
-                            <button class="btn btn-sm btn-primary rounded-pill px-4 pulse-on-hover" onclick="addComment(<?= $rid ?>)" title="<?= htmlspecialchars($lang->requests['aria_send_comment']) ?>" aria-label="<?= htmlspecialchars($lang->requests['aria_send_comment']) ?>"><i class="fas fa-paper-plane"></i></button>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
+    <!-- Header -->
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-1"><?= $rq_status((string)$req['status']) ?>
+                <?php if ($req['category_id'] && isset($cats[$req['category_id']])): ?>
+                    <span class="st-badge st-soft-muted"><i class="fa-solid fa-tag"></i><?= $h($cats[$req['category_id']]) ?></span>
+                <?php endif; ?>
             </div>
-
-            <div class="col-lg-4">
-                <div class="card border-0 shadow-sm rounded-4 text-center animate-fade-in-up">
-                    <div class="card-body">
-                        <div class="display-4 fw-bold text-primary" id="vote-count-sidebar"><?= (int)$req['votes'] ?></div>
-                        <div class="text-muted small"><?= htmlspecialchars($lang->requests['lbl_voters']) ?></div>
-                        <?php if ((float)$req['bounty'] > 0): ?>
-                        <hr>
-                        <div class="text-warning fw-semibold"><i class="fas fa-coins me-1"></i><?= number_format((float)$req['bounty'], 1) ?> <?= htmlspecialchars($lang->requests['unit_bp']) ?></div>
-                        <div class="text-muted small"><?= htmlspecialchars($lang->requests['lbl_total_bounty']) ?></div>
-                        <?php endif; ?>
-                        <hr>
-                        <div class="small text-muted"><?= htmlspecialchars(ags_fmt($lang->requests['txt_created_ago'], mkprettytime(TIMENOW - $req['created_at']))) ?></div>
-                    </div>
-                </div>
+            <h1 class="st-title"><?= $h($req['title']) ?><?= $req['year'] ? ' <span class="rq-year">(' . (int)$req['year'] . ')</span>' : '' ?></h1>
+            <div class="st-head__meta">
+                <span><i class="fa-solid fa-user"></i><?= $author ?></span>
+                <span><i class="fa-regular fa-calendar"></i><?= my_datee($dateformat, $req['created_at']) ?> <?= my_datee($timeformat, $req['created_at']) ?></span>
+                <?php if (!empty($req['imdb_id'])): ?>
+                    <span><span class="rq-imdb me-1">IMDb</span><a href="https://www.imdb.com/title/<?= $h((string)$req['imdb_id']) ?>/" target="_blank" rel="noopener"><?= $h((string)$req['imdb_id']) ?></a></span>
+                <?php endif; ?>
             </div>
         </div>
+    </header>
+
+    <!-- KPI tiles -->
+    <div class="rq-kpis rq-kpis--3 mb-3">
+        <?= $rq_kpi('fa-users', 'primary', '<span id="vote-count-sidebar">' . number_format((int)$req['votes']) . '</span>', $lang->requests['lbl_voters']) ?>
+        <?= $rq_kpi('fa-coins', 'warning', number_format((float)$req['bounty'], 1) . ' <small>' . $h($lang->requests['unit_bp']) . '</small>', $lang->requests['lbl_total_bounty']) ?>
+        <?= $rq_kpi('fa-clock', 'info', $h(mkprettytime(TIMENOW - (int)$req['created_at'])), $rqL('kpi_age', 'Request age')) ?>
     </div>
 
-    <div class="modal fade" id="fillModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow rounded-4">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i><?= htmlspecialchars($lang->requests['pane_fill']) ?></h5>
-                    <button class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->requests['aria_close']) ?>"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small"><?= htmlspecialchars($lang->requests['hint_fill']) ?></p>
-                    <form method="post" action="requests.php?action=fill&rid=<?= $rid ?>">
+    <?php if ($req['status'] === 'filled' && $req['torrent_id']): ?>
+        <div class="rq-filled mb-3">
+            <span class="st-ico st-soft-success"><i class="fa-solid fa-circle-check"></i></span>
+            <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold"><?= $h($lang->requests['txt_filled']) ?></div>
+                <?php if (!empty($req['filler_name'])): ?>
+                    <div class="st-meta"><?= $h(ags_fmt($rqL('lbl_filled_by', 'Filled by {1}'), (string)$req['filler_name'])) ?><?= !empty($req['filled_at']) ? ' &middot; ' . my_datee($dateformat, $req['filled_at']) : '' ?></div>
+                <?php endif; ?>
+            </div>
+            <a href="<?= $h(get_torrent_link((int)$req['torrent_id'])) ?>" class="btn btn-sm btn-success st-pill"><i class="fa-solid fa-download me-1"></i><?= $h($lang->requests['lnk_download']) ?></a>
+        </div>
+    <?php endif; ?>
+
+    <!-- Description + actions -->
+    <section class="st-card mb-3">
+        <div class="st-card__head"><i class="fa-solid fa-align-left"></i><?= $h($lang->requests['lbl_description']) ?></div>
+        <div class="st-card__body">
+            <?php if (trim((string)$req['description']) !== ''): ?>
+                <div class="rq-desc"><?= $parser->parse_message($req['description'], $parser_options) ?></div>
+            <?php else: ?>
+                <div class="st-meta"><?= $h($rqL('txt_no_description', 'No description.')) ?></div>
+            <?php endif; ?>
+        </div>
+        <?php if ($isOpen): ?>
+        <div class="st-toolbar st-toolbar--bottom rq-actions">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <?php if (!$my_vote && !$isOwner): ?>
+                    <button type="button" class="btn btn-sm btn-success st-pill" data-rq-vote="<?= $rid ?>" id="voteBtn">
+                        <i class="fa-solid fa-thumbs-up me-1"></i><?= $h($lang->requests['btn_vote']) ?> (<span id="vote-count"><?= (int)$req['votes'] ?></span>)
+                    </button>
+                    <div class="input-group input-group-sm rq-bounty-input">
+                        <span class="input-group-text"><i class="fa-solid fa-coins"></i></span>
+                        <input type="number" class="form-control" id="bountyInput" placeholder="<?= $h($lang->requests['ph_add_bp']) ?>" min="0" step="0.1">
+                    </div>
+                    <span class="st-meta"><?= $h(ags_fmt($lang->requests['lbl_balance'], number_format((float)$CURUSER['seedbonus'], 1))) ?></span>
+                <?php else: ?>
+                    <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $h($lang->requests['txt_you_voted']) ?></span>
+                <?php endif; ?>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-primary st-pill" data-bs-toggle="modal" data-bs-target="#fillModal">
+                    <i class="fa-solid fa-upload me-1"></i><?= $h($lang->requests['btn_fill']) ?>
+                </button>
+                <?php if ($isOwner || $is_mod): ?>
+                    <form method="post" action="requests.php?action=cancel&amp;rid=<?= $rid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->requests['conf_cancel']) ?>">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_torrent_id']) ?></label>
-                            <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="<?= htmlspecialchars($lang->requests['ph_torrent_id']) ?>">
-                        </div>
-                        <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal"><?= htmlspecialchars($lang->requests['btn_modal_cancel']) ?></button>
-                            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->requests['btn_mark_filled']) ?></button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-xmark me-1"></i><?= $h($lang->requests['btn_cancel_request']) ?></button>
                     </form>
+                <?php endif; ?>
+                <?php if ($is_mod): ?>
+                    <form method="post" action="requests.php?action=delete&amp;rid=<?= $rid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->requests['conf_delete']) ?>">
+                        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                        <button class="btn btn-sm btn-outline-danger st-pill"><i class="fa-solid fa-trash-can me-1"></i><?= $h($lang->requests['btn_delete']) ?></button>
+                    </form>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+    </section>
+
+    <!-- Comments -->
+    <section class="st-card mb-3" id="rq-comments">
+        <div class="st-card__head"><i class="fa-solid fa-comments"></i><?= $h($lang->requests['sec_comments']) ?>
+            <span class="st-badge st-soft-muted ms-auto"><?= count($comments) ?></span>
+        </div>
+        <div id="commentsContainer">
+            <?php foreach ($comments as $i => $c):
+                $cname = (string)($c['username'] ?? ('#' . (int)$c['user_id'])); ?>
+                <div class="rq-comment<?= $i > 0 ? ' border-top' : '' ?>">
+                    <?= $rq_avatar($c['avatar'] ?? '', $cname) ?>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="rq-comment__head">
+                            <a href="<?= $h(get_profile_link((int)$c['user_id'])) ?>"><?= format_name($h($cname), (int)($c['usergroup'] ?? 1)) ?></a>
+                            <span class="st-meta"><?= my_datee($dateformat, $c['created_at']) ?> <?= my_datee($timeformat, $c['created_at']) ?></span>
+                        </div>
+                        <div class="rq-comment__text"><?= $parser->parse_message($c['message'], $parser_options) ?></div>
+                    </div>
                 </div>
+            <?php endforeach; ?>
+            <?php if (!$comments): ?>
+                <div class="st-empty"><span class="st-ico st-soft-muted"><i class="fa-regular fa-comment"></i></span><div><?= $h($lang->requests['txt_no_comments']) ?></div></div>
+            <?php endif; ?>
+        </div>
+        <?php if ($isOpen): ?>
+            <div class="st-toolbar st-toolbar--bottom rq-compose">
+                <textarea class="form-control" id="commentText" rows="2" placeholder="<?= $h($lang->requests['ph_comment']) ?>"></textarea>
+                <button type="button" class="btn btn-primary st-pill" data-rq-comment="<?= $rid ?>" id="commentBtn" title="<?= $h($lang->requests['aria_send_comment']) ?>" aria-label="<?= $h($lang->requests['aria_send_comment']) ?>"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        <?php endif; ?>
+    </section>
+</div>
+
+<!-- Fill modal -->
+<div class="modal fade" id="fillModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="fa-solid fa-upload me-2"></i><?= $h($lang->requests['pane_fill']) ?></h5>
+                <button class="btn-close" data-bs-dismiss="modal" aria-label="<?= $h($lang->requests['aria_close']) ?>"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small"><?= $h($lang->requests['hint_fill']) ?></p>
+                <form method="post" action="requests.php?action=fill&amp;rid=<?= $rid ?>">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold"><?= $h($lang->requests['lbl_torrent_id']) ?></label>
+                        <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="<?= $h($lang->requests['ph_torrent_id']) ?>">
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal"><?= $h($lang->requests['btn_modal_cancel']) ?></button>
+                        <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4"><?= $h($lang->requests['btn_mark_filled']) ?></button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
+</div>
 
     <?php
     $ags_js_lang = [];
     foreach ($lang->requests as $k => $v) {
         if (str_starts_with((string)$k, 'js_')) $ags_js_lang[substr((string)$k, 3)] = $v;
     }
+    $flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
     ?>
-    <script>
-const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-
-// Translation helper: t(key, fallback, ...args) — substitutes {1} and %1$s
-function t(key, fallback, ...args) {
-    let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
-    args.forEach((a, i) => {
-        const n = i + 1;
-        s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
-    });
-    return s;
-}
-
-const postKey = '<?= $mybb->post_code ?>';
-
-function voteRequest(rid) {
-    const btn = document.getElementById('voteBtn');
-    if (!btn) {
-        console.error('Vote button not found');
-        return;
-    }
-    
-    const bountyInput = document.getElementById('bountyInput');
-    const bounty = bountyInput ? parseFloat(bountyInput.value) || 0 : 0;
-    
-    // Сохраняем оригинальный HTML
-    const originalHtml = btn.innerHTML;
-    
-    // Показываем спиннер
-    btn.textContent = '';
-    const spinner = document.createElement('span');
-    spinner.className = 'loading-spinner me-1';
-    btn.appendChild(spinner);
-    btn.appendChild(document.createTextNode(' ' + t('voting', 'Voting...')));
-    btn.classList.add('btn-loading');
-    btn.disabled = true;
-    
-    fetch('requests.php?action=vote&rid=' + rid, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: new URLSearchParams({
-            my_post_key: postKey, 
-            bounty: bounty
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            // Обновляем счетчики с анимацией
-            const countEl = document.getElementById('vote-count');
-            const sidebarEl = document.getElementById('vote-count-sidebar');
-            
-            if (countEl) {
-                countEl.textContent = data.votes;
-                countEl.classList.remove('vote-number-pop');
-                // Trigger reflow для перезапуска анимации
-                void countEl.offsetWidth;
-                countEl.classList.add('vote-number-pop');
-            }
-            
-            if (sidebarEl) {
-                sidebarEl.textContent = data.votes;
-                sidebarEl.classList.remove('vote-number-pop');
-                void sidebarEl.offsetWidth;
-                sidebarEl.classList.add('vote-number-pop');
-            }
-            
-            // Показываем успех через flash и перезагружаем
-            setTimeout(() => location.reload(), 600);
-        } else {
-            // Восстанавливаем кнопку
-            btn.innerHTML = originalHtml;
-            btn.classList.remove('btn-loading');
-            btn.disabled = false;
-            alert(data.error || t('vote_error', 'Error processing vote'));
-        }
-    })
-    .catch(error => {
-        console.error('Vote error:', error);
-        btn.innerHTML = originalHtml;
-        btn.classList.remove('btn-loading');
-        btn.disabled = false;
-        
-        // Показываем понятное сообщение об ошибке
-        if (error.message.includes('HTTP')) {
-            alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
-        } else {
-            alert(t('network_error', 'Network error. Please check your connection and try again.'));
-        }
-    });
-}
-
-function addComment(rid) {
-    const msg = document.getElementById('commentText').value.trim();
-    if (!msg) {
-        alert(t('comment_empty', 'Please enter a comment.'));
-        return;
-    }
-    
-    const btn = document.querySelector('#commentsContainer + .card-footer .btn-primary');
-    if (!btn) {
-        // Fallback - ищем кнопку другим способом
-        const btns = document.querySelectorAll('.card-footer .btn-primary');
-        if (btns.length > 0) {
-            const btnFallback = btns[btns.length - 1];
-            btnFallback.innerHTML = '<span class="loading-spinner"></span>';
-            btnFallback.disabled = true;
-        }
-    } else {
-        btn.innerHTML = '<span class="loading-spinner"></span>';
-        btn.disabled = true;
-    }
-    
-    fetch('requests.php?action=add_comment&rid=' + rid, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: new URLSearchParams({
-            my_post_key: postKey, 
-            message: msg
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            if (btn) {
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-                btn.disabled = false;
-            }
-            alert(data.error || t('comment_error', 'Error adding comment'));
-        }
-    })
-    .catch(error => {
-        console.error('Comment error:', error);
-        if (btn) {
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-            btn.disabled = false;
-        }
-        if (error.message.includes('HTTP')) {
-            alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
-        } else {
-            alert(t('network_error', 'Network error. Please check your connection and try again.'));
-        }
-    });
-}
-
-// Дополнительно: обработка Enter в поле комментария
-document.addEventListener('DOMContentLoaded', function() {
-    const commentText = document.getElementById('commentText');
-    if (commentText) {
-        commentText.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                const rid = <?= $rid ?>;
-                addComment(rid);
-            }
-        });
-    }
-});
+<script>
+const AGS_LANG = <?= json_encode($ags_js_lang, $flags) ?>;
+const RQ_POST_KEY = <?= json_encode((string)$mybb->post_code, $flags) ?>;
 </script>
+<script src="<?= $BASEURL ?>/scripts/requests.js?ver=1"></script>
     <?php
     stdfoot();
     exit();
 }
 
-// ── VIEW: Create Form ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEW: Create Form
+// ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'create') {
     $editor = insert_bbcode_editor($smilies ?? [], $BASEURL, 'description');
+    $selCat = $mybb->get_input('category_id', MyBB::INPUT_INT);
     stdhead(htmlspecialchars($lang->requests['title_create']));
+    $rq_assets();
     show_flash();
     ?>
-    <style>
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.6s ease forwards;
-            opacity: 0;
-        }
-        .pulse-on-hover:hover {
-            animation: pulse 0.4s ease;
-        }
-    </style>
-    <div class="container py-4">
-        <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->requests['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->requests['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="requests.php"><i class="fas fa-list-alt me-1"></i><?= htmlspecialchars($lang->requests['nav_requests']) ?></a></li>
-                <li class="breadcrumb-item active"><?= htmlspecialchars($lang->requests['nav_new']) ?></li>
-            </ol>
-        </nav>
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-header bg-transparent border-0">
-                <h5 class="mb-0"><i class="fas fa-plus-circle me-2 text-primary"></i><?= htmlspecialchars($lang->requests['pane_create']) ?></h5>
+<div class="container-md st-page rq-page py-3">
+
+    <?= $rq_crumbs([[$lang->requests['nav_requests'], 'requests.php'], [$lang->requests['nav_new'], '']]) ?>
+
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-plus"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $h($lang->requests['pane_create']) ?></h1>
+            <div class="st-meta mt-1"><?= $h($rqL('hint_create', 'Describe what you are looking for. Others can vote and add bonus points to the reward.')) ?></div>
+        </div>
+        <span class="st-badge st-soft-warning d-none d-md-inline-flex"><i class="fa-solid fa-coins"></i><?= $h(ags_fmt($lang->requests['hint_balance'], number_format((float)$CURUSER['seedbonus'], 1))) ?></span>
+    </header>
+
+    <?php if (!empty($errors)): ?>
+        <div class="rq-errors mb-3" role="alert">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div><?= implode('<br>', array_map($h, $errors)) ?></div>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" action="requests.php?action=do_create" class="st-card">
+        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+        <div class="st-card__head"><i class="fa-solid fa-film"></i><?= $h($rqL('sec_what', 'What to find')) ?></div>
+        <div class="st-card__body">
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="rq-title"><?= $h($lang->requests['lbl_title']) ?> <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="rq-title" name="title" maxlength="255" required value="<?= $h($mybb->get_input('title')) ?>" placeholder="<?= $h($lang->requests['ph_title']) ?>">
             </div>
-            <div class="card-body">
-                <?php if (!empty($errors)): ?>
-                <div class="alert alert-danger rounded-3"><?= implode('<br>', array_map('htmlspecialchars', $errors)) ?></div>
-                <?php endif; ?>
-                <form method="post" action="requests.php?action=do_create">
-                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_title']) ?> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control rounded-3" name="title" maxlength="255" required value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="<?= htmlspecialchars($lang->requests['ph_title']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"><i class="fa-brands fa-imdb me-1"></i><?= htmlspecialchars(($lang->requests['lbl_imdb'] ?? 'IMDb link')) ?></label>
-                        <input type="text" class="form-control rounded-3" name="imdb" maxlength="255" value="<?= htmlspecialchars($mybb->get_input('imdb')) ?>" placeholder="https://www.imdb.com/title/tt1234567/">
-                        <div class="form-text"><?= htmlspecialchars(($lang->requests['hint_imdb'] ?? 'Optional. With an IMDb link the tracker will offer this request to the uploader of a matching torrent automatically.')) ?></div>
-                    </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_category']) ?></label>
-                            <select class="form-select rounded-3" name="category_id">
-                                <option value="0"><?= htmlspecialchars($lang->requests['opt_cat_any']) ?></option>
-                                <?php foreach ($cats as $cid => $cname): ?>
-                                <option value="<?= $cid ?>"><?= htmlspecialchars($cname) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_year']) ?></label>
-                            <input type="number" class="form-control rounded-3" name="year" min="1900" max="<?= date('Y') + 2 ?>" placeholder="2024">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_bounty']) ?></label>
-                            <input type="number" class="form-control rounded-3" name="bounty" min="0" step="0.1" value="0">
-                            <div class="form-text"><?= htmlspecialchars(ags_fmt($lang->requests['hint_balance'], number_format((float)$CURUSER['seedbonus'], 1))) ?></div>
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->requests['lbl_description']) ?></label>
-                        <?= $editor['toolbar'] ?>
-                        <textarea class="form-control rounded-3" name="description" id="description" rows="6" placeholder="<?= htmlspecialchars($lang->requests['ph_description']) ?>"><?= htmlspecialchars($mybb->get_input('description')) ?></textarea>
-                    </div>
-                    <div class="d-flex justify-content-end gap-2">
-                        <a href="requests.php" class="btn btn-outline-secondary rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->requests['btn_form_cancel']) ?></a>
-                        <button type="submit" class="btn btn-primary rounded-pill px-4 pulse-on-hover"><i class="fas fa-paper-plane me-1"></i><?= htmlspecialchars($lang->requests['btn_submit']) ?></button>
-                    </div>
-                </form>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="rq-imdb"><span class="rq-imdb me-1">IMDb</span><?= $h($rqL('lbl_imdb', 'IMDb link')) ?></label>
+                <input type="text" class="form-control" id="rq-imdb" name="imdb" maxlength="255" value="<?= $h($mybb->get_input('imdb')) ?>" placeholder="https://www.imdb.com/title/tt1234567/">
+                <div class="form-text"><?= $h($rqL('hint_imdb', 'Optional. With an IMDb link the tracker will offer this request to the uploader of a matching torrent automatically.')) ?></div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold" for="rq-cat"><?= $h($lang->requests['lbl_category']) ?></label>
+                    <select class="form-select" id="rq-cat" name="category_id">
+                        <option value="0"><?= $h($lang->requests['opt_cat_any']) ?></option>
+                        <?php foreach ($cats as $cid => $cname): ?>
+                            <option value="<?= (int)$cid ?>"<?= (int)$cid === $selCat ? ' selected' : '' ?>><?= $h($cname) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label fw-semibold" for="rq-year"><?= $h($lang->requests['lbl_year']) ?></label>
+                    <input type="number" class="form-control" id="rq-year" name="year" min="1900" max="<?= date('Y') + 2 ?>" placeholder="<?= date('Y') ?>" value="<?= $h($mybb->get_input('year')) ?>">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label fw-semibold" for="rq-bounty"><?= $h($lang->requests['lbl_bounty']) ?></label>
+                    <input type="number" class="form-control" id="rq-bounty" name="bounty" min="0" step="0.1" value="<?= $h($mybb->get_input('bounty') !== '' ? $mybb->get_input('bounty') : '0') ?>">
+                </div>
             </div>
         </div>
-    </div>
+        <div class="st-card__head rq-head-sep"><i class="fa-solid fa-align-left"></i><?= $h($lang->requests['lbl_description']) ?></div>
+        <div class="st-card__body">
+            <?= $editor['toolbar'] ?>
+            <textarea class="form-control" name="description" id="description" rows="7" placeholder="<?= $h($lang->requests['ph_description']) ?>"><?= $h($mybb->get_input('description')) ?></textarea>
+        </div>
+        <div class="st-toolbar st-toolbar--bottom justify-content-end">
+            <a href="requests.php" class="btn btn-outline-secondary st-pill"><?= $h($lang->requests['btn_form_cancel']) ?></a>
+            <button type="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-paper-plane me-1"></i><?= $h($lang->requests['btn_submit']) ?></button>
+        </div>
+    </form>
+</div>
     <?= $editor['modal'] ?>
     <?php
     stdfoot();
@@ -819,6 +608,7 @@ if ($action === 'create') {
 // ═══════════════════════════════════════════════════════════════════════════════
 $filter_status = in_array($mybb->get_input('status'), ['open','filled','cancelled','']) ? $mybb->get_input('status') : 'open';
 $filter_cat    = $mybb->get_input('cat', MyBB::INPUT_INT);
+$filter_mine   = $mybb->get_input('mine', MyBB::INPUT_INT) === 1;
 $sort          = in_array($mybb->get_input('sort'), ['votes','bounty','created_at']) ? $mybb->get_input('sort') : 'votes';
 $perpage       = 25;
 $page          = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -827,6 +617,7 @@ $where = [];
 $where_params = [];
 if ($filter_status) { $where[] = "r.status = ?"; $where_params[] = $filter_status; }
 if ($filter_cat)    { $where[] = "r.category_id = ?"; $where_params[] = $filter_cat; }
+if ($filter_mine)   { $where[] = "r.user_id = ?"; $where_params[] = (int)$CURUSER['id']; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $total = (int)$db->fetch_field(
@@ -836,137 +627,136 @@ $total = (int)$db->fetch_field(
 $offset  = ($page - 1) * $perpage;
 
 $requests_q = $db->sql_query_prepared(
-    "SELECT r.*, u.username, u.avatar
+    "SELECT r.*, u.username, u.avatar, u.usergroup
      FROM requests r
      LEFT JOIN users u ON u.id = r.user_id
      $where_sql
-     ORDER BY r.$sort DESC
+     ORDER BY r.$sort DESC, r.id DESC
      LIMIT ?, ?",
     [...$where_params, $offset, $perpage]
 );
 
+// KPI tiles: one query over the whole table
+$kpi = $db->fetch_array($db->sql_query_prepared(
+    "SELECT SUM(status = 'open') AS open_n,
+            SUM(status = 'filled') AS filled_n,
+            COALESCE(SUM(CASE WHEN status = 'open' THEN bounty END), 0) AS pool,
+            SUM(user_id = ? AND status = 'open') AS mine_n
+     FROM requests",
+    [(int)$CURUSER['id']]
+)) ?: [];
+
+$qs = static function (array $over = []) use ($filter_status, $filter_cat, $sort, $filter_mine): string {
+    $p = array_merge(['status' => $filter_status, 'cat' => $filter_cat ?: '', 'sort' => $sort, 'mine' => $filter_mine ? 1 : ''], $over);
+    $p = array_filter($p, static fn($v) => $v !== '' && $v !== null);
+    // empty status = "All" must stay in the URL, otherwise the default "open" comes back
+    if (($over['status'] ?? $filter_status) === '') $p = ['status' => ''] + $p;
+    return 'requests.php?' . http_build_query($p);
+};
+
 stdhead(htmlspecialchars($lang->requests['title_list']));
+$rq_assets();
 show_flash();
 ?>
-<style>
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-        100% { transform: scale(1); }
-    }
-    .animate-fade-in-up {
-        animation: fadeInUp 0.5s ease forwards;
-        opacity: 0;
-    }
-    .animate-fade-in-up:nth-child(1) { animation-delay: 0.03s; }
-    .animate-fade-in-up:nth-child(2) { animation-delay: 0.06s; }
-    .animate-fade-in-up:nth-child(3) { animation-delay: 0.09s; }
-    .animate-fade-in-up:nth-child(4) { animation-delay: 0.12s; }
-    .animate-fade-in-up:nth-child(5) { animation-delay: 0.15s; }
-    .animate-fade-in-up:nth-child(6) { animation-delay: 0.18s; }
-    .animate-fade-in-up:nth-child(7) { animation-delay: 0.21s; }
-    .animate-fade-in-up:nth-child(8) { animation-delay: 0.24s; }
-    .animate-fade-in-up:nth-child(9) { animation-delay: 0.27s; }
-    .animate-fade-in-up:nth-child(10) { animation-delay: 0.30s; }
-    .animate-fade-in-up:nth-child(11) { animation-delay: 0.33s; }
-    .animate-fade-in-up:nth-child(12) { animation-delay: 0.36s; }
-    .animate-fade-in-up:nth-child(13) { animation-delay: 0.39s; }
-    .animate-fade-in-up:nth-child(14) { animation-delay: 0.42s; }
-    .animate-fade-in-up:nth-child(15) { animation-delay: 0.45s; }
-    .animate-fade-in-up:nth-child(16) { animation-delay: 0.48s; }
-    .animate-fade-in-up:nth-child(17) { animation-delay: 0.51s; }
-    .animate-fade-in-up:nth-child(18) { animation-delay: 0.54s; }
-    .animate-fade-in-up:nth-child(19) { animation-delay: 0.57s; }
-    .animate-fade-in-up:nth-child(20) { animation-delay: 0.60s; }
-    .pulse-on-hover:hover {
-        animation: pulse 0.4s ease;
-    }
-    .req-row {
-        transition: all 0.2s ease;
-    }
-    .req-row:hover {
-        background: rgba(13,110,253,.04);
-        transform: translateX(4px);
-    }
-    .badge { font-weight: 500; }
-</style>
-<div class="container py-4">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in-up">
-        <div>
-            <h4 class="mb-0"><i class="fas fa-list-alt me-2 text-primary"></i><?= htmlspecialchars($lang->requests['sec_list']) ?></h4>
-            <small class="text-muted"><?= htmlspecialchars(ags_fmt($lang->requests['txt_total'], $total)) ?></small>
+<div class="container-md st-page rq-page py-3">
+
+    <!-- Header -->
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-list-check"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $h($lang->requests['sec_list']) ?></h1>
+            <div class="st-meta mt-1"><?= $h($rqL('hint_list', 'Ask for a release that is missing on the tracker. Vote for others and add bonus points: the uploader who fills a request gets its reward.')) ?></div>
         </div>
-        <a href="requests.php?action=create" class="btn btn-primary rounded-pill px-4 pulse-on-hover">
-            <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->requests['btn_new']) ?>
+        <a href="requests.php?action=create" class="btn btn-primary st-pill"><i class="fa-solid fa-plus me-1"></i><?= $h($lang->requests['btn_new']) ?></a>
+    </header>
+
+    <!-- KPI tiles -->
+    <div class="rq-kpis mb-3">
+        <?= $rq_kpi('fa-circle-dot', 'success', number_format((int)($kpi['open_n'] ?? 0)), $rqL('kpi_open', 'Open requests')) ?>
+        <?= $rq_kpi('fa-circle-check', 'primary', number_format((int)($kpi['filled_n'] ?? 0)), $rqL('kpi_filled', 'Filled')) ?>
+        <?= $rq_kpi('fa-coins', 'warning', number_format((float)($kpi['pool'] ?? 0), 1) . ' <small>' . $h($lang->requests['unit_bp']) . '</small>', $rqL('kpi_pool', 'Bounty waiting')) ?>
+        <a class="st-kpi st-kpi--muted" href="<?= $h($qs(['mine' => $filter_mine ? '' : 1, 'page' => ''])) ?>">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-user"></i></span>
+            <div class="min-w-0"><div class="st-kpi__val"><?= number_format((int)($kpi['mine_n'] ?? 0)) ?></div><div class="st-kpi__lbl"><?= $h($rqL('kpi_mine', 'My open requests')) ?></div></div>
+            <i class="fa-solid fa-user st-kpi__bg" aria-hidden="true"></i>
         </a>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 mb-4 animate-fade-in-up">
-        <?php foreach (['open' => $lang->requests['opt_status_open'], 'filled' => $lang->requests['opt_status_filled'], 'cancelled' => $lang->requests['opt_status_cancelled'], '' => $lang->requests['opt_status_all']] as $val => $label): ?>
-        <a href="?status=<?= $val ?>&cat=<?= $filter_cat ?>&sort=<?= $sort ?>" class="btn btn-sm <?= $filter_status === $val ? 'btn-primary' : 'btn-outline-secondary' ?> rounded-pill px-4 pulse-on-hover">
-            <?= htmlspecialchars($label) ?>
-        </a>
-        <?php endforeach; ?>
+    <!-- Filters -->
+    <div class="st-card mb-3">
+        <div class="st-toolbar rq-filters">
+            <nav class="rq-pills" aria-label="<?= $h($rqL('aria_status', 'Status')) ?>">
+                <?php foreach (['open' => ['fa-circle-dot', $lang->requests['opt_status_open']], 'filled' => ['fa-circle-check', $lang->requests['opt_status_filled']], 'cancelled' => ['fa-ban', $lang->requests['opt_status_cancelled']], '' => ['fa-layer-group', $lang->requests['opt_status_all']]] as $val => [$ico, $label]): ?>
+                    <a href="<?= $h($qs(['status' => $val, 'page' => ''])) ?>" class="<?= $filter_status === $val ? 'is-active' : '' ?>"><i class="fa-solid <?= $ico ?>"></i><?= $h($label) ?></a>
+                <?php endforeach; ?>
+            </nav>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <form method="get" action="requests.php" class="rq-catform">
+                    <input type="hidden" name="status" value="<?= $h($filter_status) ?>">
+                    <input type="hidden" name="sort" value="<?= $h($sort) ?>">
+                    <?php if ($filter_mine): ?><input type="hidden" name="mine" value="1"><?php endif; ?>
+                    <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="<?= $h($lang->requests['lbl_category']) ?>">
+                        <option value="0"><?= $h($lang->requests['lbl_category']) ?>: <?= $h($lang->requests['opt_cat_any']) ?></option>
+                        <?php foreach ($cats as $cid => $cname): ?>
+                            <option value="<?= (int)$cid ?>"<?= (int)$cid === $filter_cat ? ' selected' : '' ?>><?= $h($cname) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+                <nav class="rq-pills rq-pills--sm" aria-label="<?= $h($rqL('aria_sort', 'Sort')) ?>">
+                    <?php foreach (['votes' => ['fa-thumbs-up', $rqL('sort_votes', 'Votes')], 'bounty' => ['fa-coins', $rqL('sort_bounty', 'Bounty')], 'created_at' => ['fa-clock', $rqL('sort_new', 'New')]] as $val => [$ico, $label]): ?>
+                        <a href="<?= $h($qs(['sort' => $val, 'page' => ''])) ?>" class="<?= $sort === $val ? 'is-active' : '' ?>"><i class="fa-solid <?= $ico ?>"></i><?= $h($label) ?></a>
+                    <?php endforeach; ?>
+                </nav>
+            </div>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4">
+    <!-- List -->
+    <section class="st-card mb-3">
+        <div class="st-card__head"><i class="fa-solid fa-list"></i><?= $h($lang->requests['sec_list']) ?>
+            <span class="st-meta ms-auto"><?= $h(ags_fmt($lang->requests['txt_total'], number_format($total))) ?><?= $filter_mine ? ' &middot; ' . $h($rqL('kpi_mine', 'My open requests')) : '' ?></span>
+        </div>
         <?php
         $count = 0;
         while ($req = $db->fetch_array($requests_q)):
             $count++;
-            $status_badge = match($req['status']) {
-                'open'      => '<span class="badge bg-success bg-opacity-25 text-success">' . htmlspecialchars($lang->requests['status_open']) . '</span>',
-                'filled'    => '<span class="badge bg-primary bg-opacity-25 text-primary">' . htmlspecialchars($lang->requests['status_filled']) . '</span>',
-                'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary">' . htmlspecialchars($lang->requests['status_cancelled']) . '</span>',
-                default     => ''
-            };
+            $bounty = (float)$req['bounty'];
         ?>
-        <div class="d-flex align-items-center gap-3 p-3 <?= $count > 1 ? 'border-top' : '' ?> req-row animate-fade-in-up">
-            <div class="text-center flex-shrink-0" style="min-width:48px">
-                <div class="fw-bold text-primary fs-5"><?= (int)$req['votes'] ?></div>
-                <div class="text-muted" style="font-size:.65rem"><?= htmlspecialchars($lang->requests['lbl_votes']) ?></div>
-            </div>
-            <div class="flex-grow-1 min-w-0">
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <?= $status_badge ?>
-                    <a href="requests.php?action=view&rid=<?= $req['id'] ?>" class="fw-semibold text-truncate"><?= htmlspecialchars($req['title']) ?></a>
-                    <?php if ($req['year']): ?>
-                    <small class="text-muted">(<?= (int)$req['year'] ?>)</small>
-                    <?php endif; ?>
+            <a class="rq-row rq-row--<?= $h((string)$req['status']) ?>" href="requests.php?action=view&amp;rid=<?= (int)$req['id'] ?>">
+                <div class="rq-votes"><strong><?= (int)$req['votes'] ?></strong><span><?= $h($lang->requests['lbl_votes']) ?></span></div>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="rq-row__title">
+                        <?= $rq_status((string)$req['status']) ?>
+                        <span class="rq-row__name"><?= $h($req['title']) ?></span>
+                        <?php if ($req['year']): ?><span class="rq-year">(<?= (int)$req['year'] ?>)</span><?php endif; ?>
+                        <?php if (!empty($req['imdb_id'])): ?><span class="rq-imdb" title="<?= $h((string)$req['imdb_id']) ?>">IMDb</span><?php endif; ?>
+                    </div>
+                    <div class="rq-row__meta">
+                        <?php if (isset($cats[$req['category_id']])): ?><span><i class="fa-solid fa-tag"></i><?= $h($cats[$req['category_id']]) ?></span><?php endif; ?>
+                        <span><i class="fa-solid fa-user"></i><?= $h((string)$req['username']) ?></span>
+                        <span><i class="fa-regular fa-clock"></i><?= $h(ags_fmt($lang->requests['txt_ago'], mkprettytime(TIMENOW - (int)$req['created_at']))) ?></span>
+                    </div>
                 </div>
-                <div class="d-flex gap-3 mt-1 small text-muted flex-wrap">
-                    <?php if (isset($cats[$req['category_id']])): ?>
-                    <span><i class="fas fa-tag me-1"></i><?= htmlspecialchars($cats[$req['category_id']]) ?></span>
-                    <?php endif; ?>
-                    <span><i class="fas fa-user me-1"></i><?= htmlspecialchars($req['username']) ?></span>
-                    <span><i class="fas fa-clock me-1"></i><?= htmlspecialchars(ags_fmt($lang->requests['txt_ago'], mkprettytime(TIMENOW - $req['created_at']))) ?></span>
-                    <?php if ((float)$req['bounty'] > 0): ?>
-                    <span class="text-warning"><i class="fas fa-coins me-1"></i><?= number_format((float)$req['bounty'], 1) ?> <?= htmlspecialchars($lang->requests['unit_bp']) ?></span>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
+                <?php if ($bounty > 0): ?>
+                    <span class="rq-bounty"><i class="fa-solid fa-coins"></i><?= number_format($bounty, 1) ?> <?= $h($lang->requests['unit_bp']) ?></span>
+                <?php endif; ?>
+                <i class="fa-solid fa-chevron-right rq-row__go" aria-hidden="true"></i>
+            </a>
         <?php endwhile; ?>
 
         <?php if ($count === 0): ?>
-        <div class="text-center py-5 animate-fade-in-up">
-            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-            <h6 class="text-muted"><?= htmlspecialchars($lang->requests['txt_empty']) ?></h6>
-            <a href="requests.php?action=create" class="btn btn-primary btn-sm rounded-pill px-4 mt-2 pulse-on-hover">
-                <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->requests['btn_create_first']) ?>
-            </a>
-        </div>
+            <div class="st-empty">
+                <span class="st-ico st-soft-muted"><i class="fa-solid fa-inbox"></i></span>
+                <div class="mb-2"><?= $h($lang->requests['txt_empty']) ?></div>
+                <a href="requests.php?action=create" class="btn btn-primary btn-sm st-pill"><i class="fa-solid fa-plus me-1"></i><?= $h($lang->requests['btn_create_first']) ?></a>
+            </div>
         <?php endif; ?>
-    </div>
+    </section>
 
     <?php if ($total > $perpage): ?>
-    <div class="mt-4 d-flex justify-content-center animate-fade-in-up">
-        <?= multipage($total, $perpage, $page, 'requests.php?status=' . $filter_status . '&cat=' . $filter_cat . '&sort=' . $sort . '&page={page}') ?>
-    </div>
+        <div class="st-pager mb-3 d-flex justify-content-center">
+            <?= multipage($total, $perpage, $page, str_replace('%7Bpage%7D', '{page}', $qs(['page' => '{page}']))) ?>
+        </div>
     <?php endif; ?>
 </div>
 <?php

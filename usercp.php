@@ -2280,16 +2280,15 @@ if ($mybb->input['action'] === 'do_remove_files') {
         foreach ($mybb->input['file_ids'] as $raw_id) {
             $file_id = (int) $raw_id;
             $query   = $db->sql_query_prepared("
-                SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id, cf.chat_id,
+                SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
                        c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
-                       p.message AS post_message, pm.message AS pm_message, ch.message AS chat_message
+                       p.message AS post_message, pm.message AS pm_message
                 FROM comment_files cf
                 LEFT JOIN comments c ON c.id=cf.comment_id
                 LEFT JOIN news n ON n.id=cf.news_id
                 LEFT JOIN torrents t ON t.id=cf.torrent_id
                 LEFT JOIN posts p ON p.pid=cf.post_id
                 LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-                LEFT JOIN chat_messages ch ON ch.id=cf.chat_id
                 WHERE cf.id=? AND cf.user_id=?", [$file_id, (int) $CURUSER['id']]);
 
             if ($query && $db->num_rows($query) > 0) {
@@ -2299,7 +2298,7 @@ if ($mybb->input['action'] === 'do_remove_files') {
                 }
 
                 $filename      = basename($file['file_path']);
-                $image_pattern = '/\[img(?:=[^\]]*)?\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
+                $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
 
                 foreach ([
                     ['text',    'comments',        'id',  $file['comment_id'],  $file['comment_text']],
@@ -2307,15 +2306,11 @@ if ($mybb->input['action'] === 'do_remove_files') {
                     ['descr',   'torrents',         'id',  $file['torrent_id'],  $file['torrent_description']],
                     ['message', 'posts',        'pid', $file['post_id'],     $file['post_message']],
                     ['message', 'privatemessages',  'pmid',$file['messages_id'],$file['pm_message']],
-                    ['message', 'chat_messages',    'id',  $file['chat_id'],     $file['chat_message']],
                 ] as [$field, $table, $id_field, $id, $content]) {
                     if ($id) {
                         $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
                         if ($new_text !== $content) {
-                            // Chat: react_at = now makes open chat windows re-fetch the message on the next poll
-                            $db->sql_query_prepared($table === 'chat_messages'
-                                ? 'UPDATE chat_messages SET message = ?, react_at = ' . TIMENOW . ' WHERE id = ?'
-                                : "UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
+                            $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
                         }
                     }
                 }
@@ -2340,16 +2335,15 @@ if ($mybb->input['action'] === 'remove_all_files') {
 
     $uid   = (int) $CURUSER['id'];
     $query = $db->sql_query_prepared("
-        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id, cf.chat_id,
+        SELECT cf.id, cf.file_path, cf.comment_id, cf.news_id, cf.torrent_id, cf.post_id, cf.messages_id,
                c.text AS comment_text, n.body AS news_text, t.descr AS torrent_description,
-               p.message AS post_message, pm.message AS pm_message, ch.message AS chat_message
+               p.message AS post_message, pm.message AS pm_message
         FROM comment_files cf
         LEFT JOIN comments c ON c.id=cf.comment_id
         LEFT JOIN news n ON n.id=cf.news_id
         LEFT JOIN torrents t ON t.id=cf.torrent_id
         LEFT JOIN posts p ON p.pid=cf.post_id
         LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-        LEFT JOIN chat_messages ch ON ch.id=cf.chat_id
         WHERE cf.user_id=?", [$uid]);
 
     $deleted = 0;
@@ -2358,7 +2352,7 @@ if ($mybb->input['action'] === 'remove_all_files') {
             @unlink($file['file_path']);
         }
         $filename      = basename($file['file_path']);
-        $image_pattern = '/\[img(?:=[^\]]*)?\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
+        $image_pattern = '/\[img\][^\[]*' . preg_quote($filename, '/') . '[^\[]*\[\/img\]/i';
 
         foreach ([
             ['text',    'comments',       'id',   $file['comment_id'],  $file['comment_text']],
@@ -2366,15 +2360,11 @@ if ($mybb->input['action'] === 'remove_all_files') {
             ['descr',   'torrents',       'id',   $file['torrent_id'],  $file['torrent_description']],
             ['message', 'posts',      'pid',  $file['post_id'],     $file['post_message']],
             ['message', 'privatemessages','pmid',  $file['messages_id'],$file['pm_message']],
-            ['message', 'chat_messages',  'id',   $file['chat_id'],     $file['chat_message']],
         ] as [$field, $table, $id_field, $id, $content]) {
             if ($id) {
                 $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
                 if ($new_text !== $content) {
-                    // Chat: react_at = now makes open chat windows re-fetch the message on the next poll
-                    $db->sql_query_prepared($table === 'chat_messages'
-                        ? 'UPDATE chat_messages SET message = ?, react_at = ' . TIMENOW . ' WHERE id = ?'
-                        : "UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
+                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
                 }
             }
         }

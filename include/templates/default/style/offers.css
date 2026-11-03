@@ -1,0 +1,16 @@
+/* offers.php — layout comes from requests.css (.rq-page); this file only gives offers
+   their green accent. Scoped under .of-page. */
+
+.of-page .st-head {
+    background: linear-gradient(120deg, var(--bs-success-bg-subtle) 0%, var(--bs-body-bg) 65%);
+}
+.of-page .st-card__head > i { color: var(--bs-success); }
+
+.of-page .rq-pills a:hover { border-color: var(--bs-success); color: var(--bs-success); }
+.of-page .rq-pills a.is-active { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+
+.of-page .rq-row:hover { background: rgba(var(--bs-success-rgb), .05); }
+.of-page .rq-row:hover .rq-row__name { color: var(--bs-success); }
+.of-page .of-wants strong { color: var(--bs-success); }
+.of-page .rq-row--uploaded .rq-row__name,
+.of-page .rq-row--cancelled .rq-row__name { color: var(--bs-secondary-color); }

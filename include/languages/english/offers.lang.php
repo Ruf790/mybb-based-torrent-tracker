@@ -111,5 +111,21 @@ $language['offers'] = array
     'js_comment_error'      => 'Error adding comment',
     'js_server_error'       => 'Server error (HTTP {1}). Please try again.',
     'js_network_error'      => 'Network error. Please check your connection and try again.',
+
+    // ── New page layout ──────────────────────────────────────────────────────
+    'hint_list'             => 'Offer a release you can upload. If people want it, upload it and mark the offer as uploaded: everyone who asked gets a message.',
+    'kpi_open'              => 'Open offers',
+    'kpi_uploaded'          => 'Uploaded',
+    'kpi_wants'             => 'People waiting',
+    'kpi_mine'              => 'My open offers',
+    'kpi_age'               => 'Offer age',
+    'aria_status'           => 'Status',
+    'aria_sort'             => 'Sort',
+    'sort_wants'            => 'Most wanted',
+    'sort_new'              => 'New',
+    'sec_what'              => 'What you offer',
+    'txt_no_description'    => 'No description.',
+    'js_yes'                => 'Yes',
+    'js_no'                 => 'No',
 );
 ?>

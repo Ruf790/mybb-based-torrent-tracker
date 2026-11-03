@@ -45,9 +45,8 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
-// ── Flash helper ──────────────────────────────────────────────────────────────
+// ── Flash helper (SweetAlert2 via swal-notify.js, same showToast() API) ────────
 function show_flash(): void {
-    global $BASEURL;
     if (!empty($_SESSION['flash'])) {
         $f = $_SESSION['flash'];
         $type = match($f['type']) {
@@ -56,8 +55,10 @@ function show_flash(): void {
             'warning' => 'warning',
             default   => 'info',
         };
-        echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
-        echo '<script>document.addEventListener("DOMContentLoaded",function(){ showToast(' . json_encode($f['msg']) . ',' . json_encode($type) . '); });</script>';
+        $flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+        // Message as text, not HTML (it may contain an offer title)
+        echo '<script>document.addEventListener("DOMContentLoaded", function(){ var d = document.createElement("div"); d.textContent = '
+           . json_encode((string)$f['msg'], $flags) . '; showToast(d.innerHTML, ' . json_encode($type) . '); });</script>';
         unset($_SESSION['flash']);
     }
 }
@@ -167,6 +168,7 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
         header('Location: offers.php?action=view&oid=' . $id);
         exit();
     }
+    $action = 'create';   // show the form again with the errors and the typed values
 }
 
 // ── POST: Mark as Uploaded ────────────────────────────────────────────────────
@@ -249,6 +251,58 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Shared view helpers (new style: st-ui.css + requests.css layout, offers.css accent)
+// ═══════════════════════════════════════════════════════════════════════════════
+$ofL = static fn(string $k, string $fb): string => (string)($lang->offers[$k] ?? $fb);
+$h   = static fn(?string $s): string => htmlspecialchars((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+/** CSS/JS shared by all offer pages (after stdhead()). Layout = requests.css (.rq-page), green accent = offers.css */
+$of_assets = static function () use ($BASEURL): void {
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/requests.css?ver=1">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/offers.css?ver=1">'
+       . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+       . '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+       . '<script src="' . $BASEURL . '/scripts/swal-notify.js?ver=2"></script>';
+};
+
+$of_status = static function (string $status) use ($lang, $h): string {
+    return match ($status) {
+        'open'      => '<span class="st-badge st-soft-success"><i class="fa-solid fa-circle-dot"></i>' . $h($lang->offers['status_open']) . '</span>',
+        'uploaded'  => '<span class="st-badge st-soft-primary"><i class="fa-solid fa-upload"></i>' . $h($lang->offers['status_uploaded']) . '</span>',
+        'cancelled' => '<span class="st-badge st-soft-muted"><i class="fa-solid fa-ban"></i>' . $h($lang->offers['status_cancelled']) . '</span>',
+        default     => '',
+    };
+};
+
+$of_avatar = static function (?string $avatar, string $name, int $size = 36) use ($BASEURL, $h): string {
+    $avatar = trim((string)$avatar);
+    if ($avatar === '') {
+        return '<span class="rq-ava rq-ava--letter" style="width:' . $size . 'px;height:' . $size . 'px">' . $h(mb_strtoupper(mb_substr($name, 0, 1))) . '</span>';
+    }
+    $src = preg_match('#^https?://#i', $avatar) ? $avatar : $BASEURL . '/' . ltrim($avatar, '/');
+    return '<img class="rq-ava" src="' . $h($src) . '" width="' . $size . '" height="' . $size . '" alt="" loading="lazy">';
+};
+
+$of_kpi = static function (string $icon, string $tone, string $value, string $label) use ($h): string {
+    return '<div class="st-kpi st-kpi--muted">'
+         . '<span class="st-ico st-soft-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+         . '<div class="min-w-0"><div class="st-kpi__val">' . $value . '</div><div class="st-kpi__lbl">' . $h($label) . '</div></div>'
+         . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i></div>';
+};
+
+$of_crumbs = static function (array $items) use ($BASEURL, $lang, $h): string {
+    $out = '<nav aria-label="breadcrumb" class="mb-3"><ol class="breadcrumb rq-crumbs mb-0">'
+         . '<li class="breadcrumb-item"><a href="' . $BASEURL . '/index2.php" title="' . $h($lang->offers['nav_home']) . '" aria-label="' . $h($lang->offers['nav_home']) . '"><i class="fa-solid fa-house"></i></a></li>';
+    foreach ($items as [$label, $url]) {
+        $out .= $url !== ''
+            ? '<li class="breadcrumb-item"><a href="' . $h($url) . '">' . $h($label) . '</a></li>'
+            : '<li class="breadcrumb-item active text-truncate" aria-current="page">' . $h($label) . '</li>';
+    }
+    return $out . '</ol></nav>';
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // VIEW: Single Offer
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $oid) {
@@ -267,512 +321,248 @@ if ($action === 'view' && $oid) {
     )) > 0;
 
     $comments_q = $db->sql_query_prepared(
-        "SELECT oc.*, u.username, u.avatar
+        "SELECT oc.*, u.username, u.avatar, u.usergroup
          FROM offer_comments oc
          LEFT JOIN users u ON u.id = oc.user_id
          WHERE oc.offer_id = ?
          ORDER BY oc.created_at ASC",
         [$oid]
     );
+    $comments = [];
+    while ($c = $db->fetch_array($comments_q)) $comments[] = $c;
 
-    $status_badge = match($offer['status']) {
-        'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>' . htmlspecialchars($lang->offers['status_open']) . '</span>',
-        'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary"><i class="fas fa-upload me-1"></i>' . htmlspecialchars($lang->offers['status_uploaded']) . '</span>',
-        'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary"><i class="fas fa-times me-1"></i>' . htmlspecialchars($lang->offers['status_cancelled']) . '</span>',
-        default     => ''
-    };
+    $isOpen  = $offer['status'] === 'open';
+    $isOwner = (int)$offer['user_id'] === (int)$CURUSER['id'];
+    $tone    = match ($offer['status']) { 'open' => 'success', 'uploaded' => 'primary', default => 'muted' };
+    $icon    = match ($offer['status']) { 'open' => 'fa-gift', 'uploaded' => 'fa-circle-check', default => 'fa-ban' };
+    $author  = $offer['username'] !== null
+        ? '<a href="' . $h(get_profile_link((int)$offer['user_id'])) . '">' . format_name($h($offer['username']), (int)$offer['usergroup']) . '</a>'
+        : '#' . (int)$offer['user_id'];
 
     stdhead(htmlspecialchars(ags_fmt($lang->offers['title_view'], $offer['title'])));
+    $of_assets();
     show_flash();
     ?>
-    <style>
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes popIn {
-            0% { transform: scale(0.8); opacity: 0; }
-            70% { transform: scale(1.05); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.6s ease forwards;
-            opacity: 0;
-        }
-        .animate-fade-in-up:nth-child(1) { animation-delay: 0.05s; }
-        .animate-fade-in-up:nth-child(2) { animation-delay: 0.10s; }
-        .animate-fade-in-up:nth-child(3) { animation-delay: 0.15s; }
-        .animate-fade-in-up:nth-child(4) { animation-delay: 0.20s; }
-        .animate-fade-in-up:nth-child(5) { animation-delay: 0.25s; }
-        .animate-fade-in-up:nth-child(6) { animation-delay: 0.30s; }
-        .animate-fade-in-up:nth-child(7) { animation-delay: 0.35s; }
-        .animate-fade-in-up:nth-child(8) { animation-delay: 0.40s; }
-        .animate-fade-in-up:nth-child(9) { animation-delay: 0.45s; }
-        .animate-fade-in-up:nth-child(10) { animation-delay: 0.50s; }
-        .pulse-on-hover:hover {
-            animation: pulse 0.6s ease;
-        }
-        .loading-spinner {
-            display: inline-block;
-            width: 1.2rem;
-            height: 1.2rem;
-            border: 3px solid rgba(25,135,84,0.1);
-            border-top-color: #198754;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-        .want-number-pop {
-            animation: popIn 0.5s ease;
-        }
-        .comment-slide-in {
-            animation: slideDown 0.4s ease;
-        }
-        .btn-loading {
-            pointer-events: none;
-            opacity: 0.7;
-        }
-        .offer-row {
-            transition: all 0.2s ease;
-        }
-        .offer-row:hover {
-            background: rgba(25,135,84,.04);
-            transform: translateX(4px);
-        }
-        .badge { font-weight: 500; }
-    </style>
+<div class="container-md st-page rq-page of-page py-3">
 
-    <div class="container py-4">
-        <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->offers['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->offers['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['nav_offers']) ?></a></li>
-                <li class="breadcrumb-item active text-truncate" style="max-width:300px"><?= htmlspecialchars($offer['title']) ?></li>
-            </ol>
-        </nav>
+    <?= $of_crumbs([[$lang->offers['nav_offers'], 'offers.php'], [(string)$offer['title'], '']]) ?>
 
-        <div class="row g-4">
-            <!-- Main -->
-            <div class="col-lg-8">
-                <div class="card border-0 shadow-sm rounded-4 mb-4 animate-fade-in-up">
-                    <div class="card-header bg-transparent d-flex align-items-center justify-content-between gap-2 flex-wrap border-0 pb-0 pt-3">
-                        <div class="d-flex align-items-center gap-3">
-                            <?= $status_badge ?>
-                            <h5 class="mb-0 fw-bold"><?= htmlspecialchars($offer['title']) ?></h5>
-                        </div>
-                        <?php if ($offer['category_id'] && isset($cats[$offer['category_id']])): ?>
-                        <span class="badge bg-light text-dark border rounded-pill px-3">
-                            <i class="fas fa-tag me-1"></i><?= htmlspecialchars($cats[$offer['category_id']]) ?>
-                        </span>
-                        <?php endif; ?>
-                    </div>
-                    <div class="card-body">
-                        <?php if ($offer['description']): ?>
-                        <div class="mb-3 p-3 bg-light rounded-3"><?= $parser->parse_message($offer['description'], $parser_options) ?></div>
-                        <?php endif; ?>
-
-                        <div class="d-flex flex-wrap gap-3 small text-muted">
-                            <span><i class="fas fa-user me-1"></i><a href="<?= $BASEURL ?>/user-<?= $offer['user_id'] ?>.html" class="text-decoration-none"><?= htmlspecialchars($offer['username']) ?></a></span>
-                            <span><i class="fas fa-calendar me-1"></i><?= my_datee($dateformat, $offer['created_at']) ?> <?= my_datee($timeformat, $offer['created_at']) ?></span>
-                            <?php if ($offer['year']): ?>
-                            <span><i class="fas fa-film me-1"></i><?= (int)$offer['year'] ?></span>
-                            <?php endif; ?>
-                            <span><i class="fas fa-users me-1"></i><?= htmlspecialchars(ags_fmt($lang->offers['lbl_want_count'], (int)$offer['requests'])) ?></span>
-                        </div>
-
-                        <?php if ($offer['status'] === 'uploaded' && $offer['torrent_id']): ?>
-                        <div class="alert alert-success mt-4 mb-0 rounded-3 animate-fade-in-up">
-                            <i class="fas fa-check-circle me-2"></i>
-                            <?= htmlspecialchars($lang->offers['txt_uploaded']) ?> <a href="<?= get_torrent_link($offer['torrent_id']) ?>" class="alert-link fw-semibold"><?= htmlspecialchars($lang->offers['lnk_download']) ?></a>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php if ($offer['status'] === 'open'): ?>
-                    <div class="card-footer bg-transparent border-0 d-flex flex-wrap gap-2 align-items-center">
-                        <?php if (!$my_want && $offer['user_id'] != $CURUSER['id']): ?>
-                        <button class="btn btn-sm btn-outline-success rounded-pill px-4 pulse-on-hover" onclick="wantOffer(<?= $oid ?>)" id="wantBtn">
-                            <i class="fas fa-hand-paper me-1"></i><?= htmlspecialchars($lang->offers['btn_want']) ?> (<span id="want-count"><?= (int)$offer['requests'] ?></span>)
-                        </button>
-                        <?php else: ?>
-                        <span class="text-muted small"><i class="fas fa-check-circle text-success me-1"></i>
-                            <?= htmlspecialchars($offer['user_id'] == $CURUSER['id'] ? $lang->offers['txt_your_offer'] : $lang->offers['txt_you_requested']) ?>
-                        </span>
-                        <?php endif; ?>
-
-                        <?php if ($offer['user_id'] == $CURUSER['id'] || $is_mod): ?>
-                        <button class="btn btn-sm btn-primary rounded-pill px-4 ms-auto pulse-on-hover" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                            <i class="fas fa-upload me-1"></i><?= htmlspecialchars($lang->offers['btn_uploaded']) ?>
-                        </button>
-                        <form method="post" action="offers.php?action=cancel&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->offers['conf_cancel'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
-                            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover"><i class="fas fa-times me-1"></i><?= htmlspecialchars($lang->offers['btn_cancel_offer']) ?></button>
-                        </form>
-                        <?php if ($is_mod): ?>
-                        <form method="post" action="offers.php?action=delete&oid=<?= $oid ?>" class="d-inline" onsubmit="return confirm(<?= htmlspecialchars(json_encode($lang->offers['conf_delete'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>)">
-                            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                            <button class="btn btn-sm btn-outline-danger rounded-pill px-3 pulse-on-hover"><i class="fas fa-trash-alt me-1"></i><?= htmlspecialchars($lang->offers['btn_delete']) ?></button>
-                        </form>
-                        <?php endif; ?>
-                        <?php endif; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Comments -->
-                <div class="card border-0 shadow-sm rounded-4 animate-fade-in-up">
-                    <div class="card-header bg-transparent border-0">
-                        <h6 class="mb-0"><i class="fas fa-comments me-2"></i><?= htmlspecialchars($lang->offers['sec_comments']) ?></h6>
-                    </div>
-                    <div class="card-body p-0" id="commentsContainer">
-                        <?php
-                        $comment_count = 0;
-                        while ($c = $db->fetch_array($comments_q)):
-                            $comment_count++;
-                        ?>
-                        <div class="d-flex gap-3 p-3 <?= $comment_count > 1 ? 'border-top' : '' ?> comment-slide-in" style="animation-delay: <?= $comment_count * 0.05 ?>s">
-                            <div class="flex-shrink-0">
-                                <?php if ($c['avatar']): ?>
-                                <img src="<?= $BASEURL ?>/<?= htmlspecialchars($c['avatar']) ?>" class="rounded-circle" width="36" height="36" alt="">
-                                <?php else: ?>
-                                <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style="width:36px;height:36px;font-size:.8rem">
-                                    <?= strtoupper(substr($c['username'], 0, 1)) ?>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <a href="<?= $BASEURL ?>/user-<?= $c['user_id'] ?>.html" class="fw-semibold small text-decoration-none"><?= htmlspecialchars($c['username']) ?></a>
-                                    <small class="text-muted"><?= my_datee($dateformat, $c['created_at']) ?> <?= my_datee($timeformat, $c['created_at']) ?></small>
-                                </div>
-                                <p class="mb-0 small"><?= $parser->parse_message($c['message'], $parser_options) ?></p>
-                            </div>
-                        </div>
-                        <?php endwhile; ?>
-                        <?php if ($comment_count === 0): ?>
-                        <div class="text-center py-4 text-muted small"><?= htmlspecialchars($lang->offers['txt_no_comments']) ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <?php if ($offer['status'] === 'open'): ?>
-                    <div class="card-footer bg-transparent border-0">
-                        <div class="d-flex gap-2">
-                            <textarea class="form-control form-control-sm rounded-3" id="commentText" rows="2" placeholder="<?= htmlspecialchars($lang->offers['ph_comment']) ?>"></textarea>
-                            <button class="btn btn-sm btn-primary rounded-pill px-4 pulse-on-hover" onclick="addComment(<?= $oid ?>)" title="<?= htmlspecialchars($lang->offers['aria_send_comment']) ?>" aria-label="<?= htmlspecialchars($lang->offers['aria_send_comment']) ?>"><i class="fas fa-paper-plane"></i></button>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
+    <!-- Header -->
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-1"><?= $of_status((string)$offer['status']) ?>
+                <?php if ($offer['category_id'] && isset($cats[$offer['category_id']])): ?>
+                    <span class="st-badge st-soft-muted"><i class="fa-solid fa-tag"></i><?= $h($cats[$offer['category_id']]) ?></span>
+                <?php endif; ?>
             </div>
-
-            <!-- Sidebar -->
-            <div class="col-lg-4">
-                <div class="card border-0 shadow-sm rounded-4 text-center animate-fade-in-up">
-                    <div class="card-body">
-                        <div class="display-4 fw-bold text-success" id="want-count-sidebar"><?= (int)$offer['requests'] ?></div>
-                        <div class="text-muted small"><?= htmlspecialchars($lang->offers['lbl_people_want']) ?></div>
-                        <hr>
-                        <div class="small text-muted">
-                            <div class="mb-2"><i class="fas fa-user me-2"></i><?= htmlspecialchars($lang->offers['lbl_offered_by']) ?> <a href="<?= $BASEURL ?>/user-<?= $offer['user_id'] ?>.html" class="text-decoration-none"><?= htmlspecialchars($offer['username']) ?></a></div>
-                            <div class="mb-2"><i class="fas fa-clock me-2"></i><?= htmlspecialchars(ags_fmt($lang->offers['txt_ago'], mkprettytime(TIMENOW - $offer['created_at']))) ?></div>
-                            <?php if ($offer['year']): ?>
-                            <div><i class="fas fa-film me-2"></i><?= htmlspecialchars(ags_fmt($lang->offers['lbl_year_value'], (int)$offer['year'])) ?></div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
+            <h1 class="st-title"><?= $h($offer['title']) ?><?= $offer['year'] ? ' <span class="rq-year">(' . (int)$offer['year'] . ')</span>' : '' ?></h1>
+            <div class="st-head__meta">
+                <span><i class="fa-solid fa-user"></i><?= $h($lang->offers['lbl_offered_by']) ?> <?= $author ?></span>
+                <span><i class="fa-regular fa-calendar"></i><?= my_datee($dateformat, $offer['created_at']) ?> <?= my_datee($timeformat, $offer['created_at']) ?></span>
             </div>
         </div>
+    </header>
+
+    <!-- KPI tiles -->
+    <div class="rq-kpis rq-kpis--3 mb-3">
+        <?= $of_kpi('fa-hand', 'success', '<span id="want-count-sidebar">' . number_format((int)$offer['requests']) . '</span>', $lang->offers['lbl_people_want']) ?>
+        <?= $of_kpi('fa-comments', 'primary', number_format(count($comments)), $lang->offers['sec_comments']) ?>
+        <?= $of_kpi('fa-clock', 'info', $h(mkprettytime(TIMENOW - (int)$offer['created_at'])), $ofL('kpi_age', 'Offer age')) ?>
     </div>
 
-    <!-- Upload Modal -->
-    <div class="modal fade" id="uploadModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow rounded-4">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i><?= htmlspecialchars($lang->offers['pane_upload']) ?></h5>
-                    <button class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->offers['aria_close']) ?>"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small"><?= htmlspecialchars($lang->offers['hint_upload']) ?></p>
-                    <form method="post" action="offers.php?action=upload&oid=<?= $oid ?>">
+    <?php if ($offer['status'] === 'uploaded' && $offer['torrent_id']): ?>
+        <div class="rq-filled mb-3">
+            <span class="st-ico st-soft-success"><i class="fa-solid fa-circle-check"></i></span>
+            <div class="flex-grow-1 min-w-0">
+                <div class="fw-semibold"><?= $h($lang->offers['txt_uploaded']) ?></div>
+                <?php if (!empty($offer['uploaded_at'])): ?><div class="st-meta"><?= my_datee($dateformat, $offer['uploaded_at']) ?></div><?php endif; ?>
+            </div>
+            <a href="<?= $h(get_torrent_link((int)$offer['torrent_id'])) ?>" class="btn btn-sm btn-success st-pill"><i class="fa-solid fa-download me-1"></i><?= $h($lang->offers['lnk_download']) ?></a>
+        </div>
+    <?php endif; ?>
+
+    <!-- Description + actions -->
+    <section class="st-card mb-3">
+        <div class="st-card__head"><i class="fa-solid fa-align-left"></i><?= $h($lang->offers['lbl_description']) ?></div>
+        <div class="st-card__body">
+            <?php if (trim((string)$offer['description']) !== ''): ?>
+                <div class="rq-desc"><?= $parser->parse_message($offer['description'], $parser_options) ?></div>
+            <?php else: ?>
+                <div class="st-meta"><?= $h($ofL('txt_no_description', 'No description.')) ?></div>
+            <?php endif; ?>
+        </div>
+        <?php if ($isOpen): ?>
+        <div class="st-toolbar st-toolbar--bottom rq-actions">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <?php if (!$my_want && !$isOwner): ?>
+                    <button type="button" class="btn btn-sm btn-success st-pill" data-of-want="<?= $oid ?>" id="wantBtn">
+                        <i class="fa-solid fa-hand me-1"></i><?= $h($lang->offers['btn_want']) ?> (<span id="want-count"><?= (int)$offer['requests'] ?></span>)
+                    </button>
+                <?php else: ?>
+                    <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $h($isOwner ? $lang->offers['txt_your_offer'] : $lang->offers['txt_you_requested']) ?></span>
+                <?php endif; ?>
+            </div>
+            <?php if ($isOwner || $is_mod): ?>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-primary st-pill" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                    <i class="fa-solid fa-upload me-1"></i><?= $h($lang->offers['btn_uploaded']) ?>
+                </button>
+                <form method="post" action="offers.php?action=cancel&amp;oid=<?= $oid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->offers['conf_cancel']) ?>">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                    <button class="btn btn-sm btn-outline-secondary st-pill"><i class="fa-solid fa-xmark me-1"></i><?= $h($lang->offers['btn_cancel_offer']) ?></button>
+                </form>
+                <?php if ($is_mod): ?>
+                    <form method="post" action="offers.php?action=delete&amp;oid=<?= $oid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->offers['conf_delete']) ?>">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_torrent_id']) ?></label>
-                            <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="<?= htmlspecialchars($lang->offers['ph_torrent_id']) ?>">
-                        </div>
-                        <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal"><?= htmlspecialchars($lang->offers['btn_modal_cancel']) ?></button>
-                            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->offers['btn_confirm_upload']) ?></button>
-                        </div>
+                        <button class="btn btn-sm btn-outline-danger st-pill"><i class="fa-solid fa-trash-can me-1"></i><?= $h($lang->offers['btn_delete']) ?></button>
                     </form>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </section>
+
+    <!-- Comments -->
+    <section class="st-card mb-3" id="rq-comments">
+        <div class="st-card__head"><i class="fa-solid fa-comments"></i><?= $h($lang->offers['sec_comments']) ?>
+            <span class="st-badge st-soft-muted ms-auto"><?= count($comments) ?></span>
+        </div>
+        <div id="commentsContainer">
+            <?php foreach ($comments as $i => $c):
+                $cname = (string)($c['username'] ?? ('#' . (int)$c['user_id'])); ?>
+                <div class="rq-comment<?= $i > 0 ? ' border-top' : '' ?>">
+                    <?= $of_avatar($c['avatar'] ?? '', $cname) ?>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="rq-comment__head">
+                            <a href="<?= $h(get_profile_link((int)$c['user_id'])) ?>"><?= format_name($h($cname), (int)($c['usergroup'] ?? 1)) ?></a>
+                            <span class="st-meta"><?= my_datee($dateformat, $c['created_at']) ?> <?= my_datee($timeformat, $c['created_at']) ?></span>
+                        </div>
+                        <div class="rq-comment__text"><?= $parser->parse_message($c['message'], $parser_options) ?></div>
+                    </div>
                 </div>
+            <?php endforeach; ?>
+            <?php if (!$comments): ?>
+                <div class="st-empty"><span class="st-ico st-soft-muted"><i class="fa-regular fa-comment"></i></span><div><?= $h($lang->offers['txt_no_comments']) ?></div></div>
+            <?php endif; ?>
+        </div>
+        <?php if ($isOpen): ?>
+            <div class="st-toolbar st-toolbar--bottom rq-compose">
+                <textarea class="form-control" id="commentText" rows="2" placeholder="<?= $h($lang->offers['ph_comment']) ?>"></textarea>
+                <button type="button" class="btn btn-success st-pill" data-of-comment="<?= $oid ?>" id="commentBtn" title="<?= $h($lang->offers['aria_send_comment']) ?>" aria-label="<?= $h($lang->offers['aria_send_comment']) ?>"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        <?php endif; ?>
+    </section>
+</div>
+
+<!-- Upload modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="fa-solid fa-upload me-2"></i><?= $h($lang->offers['pane_upload']) ?></h5>
+                <button class="btn-close" data-bs-dismiss="modal" aria-label="<?= $h($lang->offers['aria_close']) ?>"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small"><?= $h($lang->offers['hint_upload']) ?></p>
+                <form method="post" action="offers.php?action=upload&amp;oid=<?= $oid ?>">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold"><?= $h($lang->offers['lbl_torrent_id']) ?></label>
+                        <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="<?= $h($lang->offers['ph_torrent_id']) ?>">
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal"><?= $h($lang->offers['btn_modal_cancel']) ?></button>
+                        <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4"><?= $h($lang->offers['btn_confirm_upload']) ?></button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
+</div>
 
     <?php
     $ags_js_lang = [];
     foreach ($lang->offers as $k => $v) {
         if (str_starts_with((string)$k, 'js_')) $ags_js_lang[substr((string)$k, 3)] = $v;
     }
+    $flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
     ?>
-    <script>
-    const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-
-    // Translation helper: t(key, fallback, ...args) — substitutes {1} and %1$s
-    function t(key, fallback, ...args) {
-        let s = (typeof AGS_LANG === 'object' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
-        args.forEach((a, i) => {
-            const n = i + 1;
-            s = s.split('{' + n + '}').join(String(a)).split('%' + n + '$s').join(String(a));
-        });
-        return s;
-    }
-
-    const postKey = '<?= $mybb->post_code ?>';
-    const oid = <?= $oid ?>;
-
-    function wantOffer(oid) {
-        const btn = document.getElementById('wantBtn');
-        if (!btn) {
-            console.error('Want button not found');
-            return;
-        }
-        
-        const originalHtml = btn.innerHTML;
-        btn.textContent = '';
-        const spinner = document.createElement('span');
-        spinner.className = 'loading-spinner me-1';
-        btn.appendChild(spinner);
-        btn.appendChild(document.createTextNode(' ' + t('loading', 'Loading...')));
-        btn.classList.add('btn-loading');
-        btn.disabled = true;
-        
-        fetch('offers.php?action=want&oid=' + oid, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: new URLSearchParams({my_post_key: postKey})
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                const countEl = document.getElementById('want-count');
-                const sidebarEl = document.getElementById('want-count-sidebar');
-                
-                if (countEl) {
-                    countEl.textContent = data.requests;
-                    countEl.classList.remove('want-number-pop');
-                    void countEl.offsetWidth;
-                    countEl.classList.add('want-number-pop');
-                }
-                
-                if (sidebarEl) {
-                    sidebarEl.textContent = data.requests;
-                    sidebarEl.classList.remove('want-number-pop');
-                    void sidebarEl.offsetWidth;
-                    sidebarEl.classList.add('want-number-pop');
-                }
-                
-                setTimeout(() => location.reload(), 600);
-            } else {
-                btn.innerHTML = originalHtml;
-                btn.classList.remove('btn-loading');
-                btn.disabled = false;
-                alert(data.error || t('want_error', 'Error processing request'));
-            }
-        })
-        .catch(error => {
-            console.error('Want error:', error);
-            btn.innerHTML = originalHtml;
-            btn.classList.remove('btn-loading');
-            btn.disabled = false;
-            
-            if (error.message.includes('HTTP')) {
-                alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
-            } else {
-                alert(t('network_error', 'Network error. Please check your connection and try again.'));
-            }
-        });
-    }
-
-    function addComment(oid) {
-        const msg = document.getElementById('commentText').value.trim();
-        if (!msg) {
-            alert(t('comment_empty', 'Please enter a comment.'));
-            return;
-        }
-        
-        const btn = document.querySelector('.card-footer .btn-primary');
-        if (btn) {
-            btn.innerHTML = '<span class="loading-spinner"></span>';
-            btn.disabled = true;
-        }
-        
-        fetch('offers.php?action=add_comment&oid=' + oid, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: new URLSearchParams({my_post_key: postKey, message: msg})
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                if (btn) {
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-                    btn.disabled = false;
-                }
-                alert(data.error || t('comment_error', 'Error adding comment'));
-            }
-        })
-        .catch(error => {
-            console.error('Comment error:', error);
-            if (btn) {
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-                btn.disabled = false;
-            }
-            if (error.message.includes('HTTP')) {
-                alert(t('server_error', 'Server error (HTTP {1}). Please try again.', error.message.replace('HTTP ', '')));
-            } else {
-                alert(t('network_error', 'Network error. Please check your connection and try again.'));
-            }
-        });
-    }
-
-    // Enter для комментариев
-    document.addEventListener('DOMContentLoaded', function() {
-        const commentText = document.getElementById('commentText');
-        if (commentText) {
-            commentText.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    addComment(oid);
-                }
-            });
-        }
-    });
-    </script>
+<script>
+const AGS_LANG = <?= json_encode($ags_js_lang, $flags) ?>;
+const OF_POST_KEY = <?= json_encode((string)$mybb->post_code, $flags) ?>;
+</script>
+<script src="<?= $BASEURL ?>/scripts/offers.js?ver=1"></script>
     <?php
     stdfoot();
     exit();
 }
 
-// ── VIEW: Create Form ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEW: Create Form
+// ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'create') {
     $editor = insert_bbcode_editor($smilies ?? [], $BASEURL, 'description');
+    $selCat = $mybb->get_input('category_id', MyBB::INPUT_INT);
     stdhead(htmlspecialchars($lang->offers['title_create']));
+    $of_assets();
     show_flash();
     ?>
-    <style>
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.6s ease forwards;
-            opacity: 0;
-        }
-        .pulse-on-hover:hover {
-            animation: pulse 0.4s ease;
-        }
-    </style>
-    <div class="container py-4">
-        <nav aria-label="breadcrumb" class="mb-4 animate-fade-in-up">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/index2.php" title="<?= htmlspecialchars($lang->offers['nav_home']) ?>" aria-label="<?= htmlspecialchars($lang->offers['nav_home']) ?>"><i class="fas fa-home"></i></a></li>
-                <li class="breadcrumb-item"><a href="offers.php"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['nav_offers']) ?></a></li>
-                <li class="breadcrumb-item active"><?= htmlspecialchars($lang->offers['nav_new']) ?></li>
-            </ol>
-        </nav>
+<div class="container-md st-page rq-page of-page py-3">
 
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-header bg-transparent border-0">
-                <h5 class="mb-0"><i class="fas fa-gift me-2 text-success"></i><?= htmlspecialchars($lang->offers['pane_create']) ?></h5>
-                <small class="text-muted"><?= htmlspecialchars($lang->offers['hint_create']) ?></small>
+    <?= $of_crumbs([[$lang->offers['nav_offers'], 'offers.php'], [$lang->offers['nav_new'], '']]) ?>
+
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-success"><i class="fa-solid fa-gift"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $h($lang->offers['pane_create']) ?></h1>
+            <div class="st-meta mt-1"><?= $h($lang->offers['hint_create']) ?></div>
+        </div>
+    </header>
+
+    <?php if (!empty($errors)): ?>
+        <div class="rq-errors mb-3" role="alert">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div><?= implode('<br>', array_map($h, $errors)) ?></div>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" action="offers.php?action=do_create" class="st-card">
+        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+        <div class="st-card__head"><i class="fa-solid fa-film"></i><?= $h($ofL('sec_what', 'What you offer')) ?></div>
+        <div class="st-card__body">
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="of-title"><?= $h($lang->offers['lbl_title']) ?> <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="of-title" name="title" maxlength="255" required value="<?= $h($mybb->get_input('title')) ?>" placeholder="<?= $h($lang->offers['ph_title']) ?>">
             </div>
-            <div class="card-body">
-                <?php if (!empty($errors)): ?>
-                <div class="alert alert-danger rounded-3"><?= implode('<br>', array_map('htmlspecialchars', $errors)) ?></div>
-                <?php endif; ?>
-
-                <form method="post" action="offers.php?action=do_create">
-                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_title']) ?> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control rounded-3" name="title" maxlength="255" required
-                               value="<?= htmlspecialchars($mybb->get_input('title')) ?>" placeholder="<?= htmlspecialchars($lang->offers['ph_title']) ?>">
-                    </div>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-8">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_category']) ?></label>
-                            <select class="form-select rounded-3" name="category_id">
-                                <option value="0"><?= htmlspecialchars($lang->offers['opt_cat_any']) ?></option>
-                                <?php foreach ($cats as $cid => $cname): ?>
-                                <option value="<?= $cid ?>"><?= htmlspecialchars($cname) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_year']) ?></label>
-                            <input type="number" class="form-control rounded-3" name="year" min="1900" max="<?= date('Y') + 2 ?>" placeholder="2024">
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold"><?= htmlspecialchars($lang->offers['lbl_description']) ?></label>
-                        <?= $editor['toolbar'] ?>
-                        <textarea class="form-control rounded-3" name="description" id="description" rows="6" placeholder="<?= htmlspecialchars($lang->offers['ph_description']) ?>"><?= htmlspecialchars($mybb->get_input('description')) ?></textarea>
-                    </div>
-
-                    <div class="d-flex justify-content-end gap-2">
-                        <a href="offers.php" class="btn btn-outline-secondary rounded-pill px-4 pulse-on-hover"><?= htmlspecialchars($lang->offers['btn_form_cancel']) ?></a>
-                        <button type="submit" class="btn btn-success rounded-pill px-4 pulse-on-hover"><i class="fas fa-gift me-1"></i><?= htmlspecialchars($lang->offers['btn_submit']) ?></button>
-                    </div>
-                </form>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label fw-semibold" for="of-cat"><?= $h($lang->offers['lbl_category']) ?></label>
+                    <select class="form-select" id="of-cat" name="category_id">
+                        <option value="0"><?= $h($lang->offers['opt_cat_any']) ?></option>
+                        <?php foreach ($cats as $cid => $cname): ?>
+                            <option value="<?= (int)$cid ?>"<?= (int)$cid === $selCat ? ' selected' : '' ?>><?= $h($cname) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold" for="of-year"><?= $h($lang->offers['lbl_year']) ?></label>
+                    <input type="number" class="form-control" id="of-year" name="year" min="1900" max="<?= date('Y') + 2 ?>" placeholder="<?= date('Y') ?>" value="<?= $h($mybb->get_input('year')) ?>">
+                </div>
             </div>
         </div>
-    </div>
+        <div class="st-card__head rq-head-sep"><i class="fa-solid fa-align-left"></i><?= $h($lang->offers['lbl_description']) ?></div>
+        <div class="st-card__body">
+            <?= $editor['toolbar'] ?>
+            <textarea class="form-control" name="description" id="description" rows="7" placeholder="<?= $h($lang->offers['ph_description']) ?>"><?= $h($mybb->get_input('description')) ?></textarea>
+        </div>
+        <div class="st-toolbar st-toolbar--bottom justify-content-end">
+            <a href="offers.php" class="btn btn-outline-secondary st-pill"><?= $h($lang->offers['btn_form_cancel']) ?></a>
+            <button type="submit" class="btn btn-success st-pill"><i class="fa-solid fa-gift me-1"></i><?= $h($lang->offers['btn_submit']) ?></button>
+        </div>
+    </form>
+</div>
     <?= $editor['modal'] ?>
     <?php
     stdfoot();
@@ -784,6 +574,7 @@ if ($action === 'create') {
 // ═══════════════════════════════════════════════════════════════════════════════
 $filter_status = in_array($mybb->get_input('status'), ['open','uploaded','cancelled','']) ? $mybb->get_input('status') : 'open';
 $filter_cat    = $mybb->get_input('cat', MyBB::INPUT_INT);
+$filter_mine   = $mybb->get_input('mine', MyBB::INPUT_INT) === 1;
 $sort          = in_array($mybb->get_input('sort'), ['requests','created_at']) ? $mybb->get_input('sort') : 'requests';
 $perpage       = 25;
 $page          = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -792,6 +583,7 @@ $where = [];
 $where_params = [];
 if ($filter_status) { $where[] = "o.status = ?"; $where_params[] = $filter_status; }
 if ($filter_cat)    { $where[] = "o.category_id = ?"; $where_params[] = $filter_cat; }
+if ($filter_mine)   { $where[] = "o.user_id = ?"; $where_params[] = (int)$CURUSER['id']; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $total = (int)$db->fetch_field(
@@ -805,130 +597,127 @@ $offers_q = $db->sql_query_prepared(
      FROM offers o
      LEFT JOIN users u ON u.id = o.user_id
      $where_sql
-     ORDER BY o.$sort DESC
+     ORDER BY o.$sort DESC, o.id DESC
      LIMIT ?, ?",
     [...$where_params, $offset, $perpage]
 );
 
+// KPI tiles: one query over the whole table
+$kpi = $db->fetch_array($db->sql_query_prepared(
+    "SELECT SUM(status = 'open') AS open_n,
+            SUM(status = 'uploaded') AS uploaded_n,
+            COALESCE(SUM(CASE WHEN status = 'open' THEN requests END), 0) AS wants,
+            SUM(user_id = ? AND status = 'open') AS mine_n
+     FROM offers",
+    [(int)$CURUSER['id']]
+)) ?: [];
+
+$qs = static function (array $over = []) use ($filter_status, $filter_cat, $sort, $filter_mine): string {
+    $p = array_merge(['status' => $filter_status, 'cat' => $filter_cat ?: '', 'sort' => $sort, 'mine' => $filter_mine ? 1 : ''], $over);
+    $p = array_filter($p, static fn($v) => $v !== '' && $v !== null);
+    // empty status = "All" must stay in the URL, otherwise the default "open" comes back
+    if (($over['status'] ?? $filter_status) === '') $p = ['status' => ''] + $p;
+    return 'offers.php?' . http_build_query($p);
+};
+
 stdhead(htmlspecialchars($lang->offers['title_list']));
+$of_assets();
 show_flash();
 ?>
-<style>
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-        100% { transform: scale(1); }
-    }
-    .animate-fade-in-up {
-        animation: fadeInUp 0.5s ease forwards;
-        opacity: 0;
-    }
-    .animate-fade-in-up:nth-child(1) { animation-delay: 0.03s; }
-    .animate-fade-in-up:nth-child(2) { animation-delay: 0.06s; }
-    .animate-fade-in-up:nth-child(3) { animation-delay: 0.09s; }
-    .animate-fade-in-up:nth-child(4) { animation-delay: 0.12s; }
-    .animate-fade-in-up:nth-child(5) { animation-delay: 0.15s; }
-    .animate-fade-in-up:nth-child(6) { animation-delay: 0.18s; }
-    .animate-fade-in-up:nth-child(7) { animation-delay: 0.21s; }
-    .animate-fade-in-up:nth-child(8) { animation-delay: 0.24s; }
-    .animate-fade-in-up:nth-child(9) { animation-delay: 0.27s; }
-    .animate-fade-in-up:nth-child(10) { animation-delay: 0.30s; }
-    .animate-fade-in-up:nth-child(11) { animation-delay: 0.33s; }
-    .animate-fade-in-up:nth-child(12) { animation-delay: 0.36s; }
-    .animate-fade-in-up:nth-child(13) { animation-delay: 0.39s; }
-    .animate-fade-in-up:nth-child(14) { animation-delay: 0.42s; }
-    .animate-fade-in-up:nth-child(15) { animation-delay: 0.45s; }
-    .animate-fade-in-up:nth-child(16) { animation-delay: 0.48s; }
-    .animate-fade-in-up:nth-child(17) { animation-delay: 0.51s; }
-    .animate-fade-in-up:nth-child(18) { animation-delay: 0.54s; }
-    .animate-fade-in-up:nth-child(19) { animation-delay: 0.57s; }
-    .animate-fade-in-up:nth-child(20) { animation-delay: 0.60s; }
-    .pulse-on-hover:hover {
-        animation: pulse 0.4s ease;
-    }
-    .offer-row {
-        transition: all 0.2s ease;
-    }
-    .offer-row:hover {
-        background: rgba(25,135,84,.04);
-        transform: translateX(4px);
-    }
-    .badge { font-weight: 500; }
-</style>
-<div class="container py-4">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in-up">
-        <div>
-            <h4 class="mb-0"><i class="fas fa-gift me-2 text-success"></i><?= htmlspecialchars($lang->offers['sec_list']) ?></h4>
-            <small class="text-muted"><?= htmlspecialchars(ags_fmt($lang->offers['txt_total'], $total)) ?></small>
+<div class="container-md st-page rq-page of-page py-3">
+
+    <!-- Header -->
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-success"><i class="fa-solid fa-gift"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $h($lang->offers['sec_list']) ?></h1>
+            <div class="st-meta mt-1"><?= $h($ofL('hint_list', 'Offer a release you can upload. If people want it, upload it and mark the offer as uploaded: everyone who asked gets a message.')) ?></div>
         </div>
-        <a href="offers.php?action=create" class="btn btn-success rounded-pill px-4 pulse-on-hover">
-            <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->offers['btn_new']) ?>
+        <a href="offers.php?action=create" class="btn btn-success st-pill"><i class="fa-solid fa-plus me-1"></i><?= $h($lang->offers['btn_new']) ?></a>
+    </header>
+
+    <!-- KPI tiles -->
+    <div class="rq-kpis mb-3">
+        <?= $of_kpi('fa-gift', 'success', number_format((int)($kpi['open_n'] ?? 0)), $ofL('kpi_open', 'Open offers')) ?>
+        <?= $of_kpi('fa-upload', 'primary', number_format((int)($kpi['uploaded_n'] ?? 0)), $ofL('kpi_uploaded', 'Uploaded')) ?>
+        <?= $of_kpi('fa-hand', 'warning', number_format((int)($kpi['wants'] ?? 0)), $ofL('kpi_wants', 'People waiting')) ?>
+        <a class="st-kpi st-kpi--muted" href="<?= $h($qs(['mine' => $filter_mine ? '' : 1, 'page' => ''])) ?>">
+            <span class="st-ico st-soft-info"><i class="fa-solid fa-user"></i></span>
+            <div class="min-w-0"><div class="st-kpi__val"><?= number_format((int)($kpi['mine_n'] ?? 0)) ?></div><div class="st-kpi__lbl"><?= $h($ofL('kpi_mine', 'My open offers')) ?></div></div>
+            <i class="fa-solid fa-user st-kpi__bg" aria-hidden="true"></i>
         </a>
     </div>
 
-    <!-- Quick status filters -->
-    <div class="d-flex flex-wrap gap-2 mb-4 animate-fade-in-up">
-        <?php foreach (['open' => $lang->offers['opt_status_open'], 'uploaded' => $lang->offers['opt_status_uploaded'], 'cancelled' => $lang->offers['opt_status_cancelled'], '' => $lang->offers['opt_status_all']] as $val => $label): ?>
-        <a href="?status=<?= $val ?>&cat=<?= $filter_cat ?>&sort=<?= $sort ?>" class="btn btn-sm <?= $filter_status === $val ? 'btn-success' : 'btn-outline-secondary' ?> rounded-pill px-4 pulse-on-hover">
-            <?= htmlspecialchars($label) ?>
-        </a>
-        <?php endforeach; ?>
+    <!-- Filters -->
+    <div class="st-card mb-3">
+        <div class="st-toolbar rq-filters">
+            <nav class="rq-pills" aria-label="<?= $h($ofL('aria_status', 'Status')) ?>">
+                <?php foreach (['open' => ['fa-circle-dot', $lang->offers['opt_status_open']], 'uploaded' => ['fa-upload', $lang->offers['opt_status_uploaded']], 'cancelled' => ['fa-ban', $lang->offers['opt_status_cancelled']], '' => ['fa-layer-group', $lang->offers['opt_status_all']]] as $val => [$ico, $label]): ?>
+                    <a href="<?= $h($qs(['status' => $val, 'page' => ''])) ?>" class="<?= $filter_status === $val ? 'is-active' : '' ?>"><i class="fa-solid <?= $ico ?>"></i><?= $h($label) ?></a>
+                <?php endforeach; ?>
+            </nav>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <form method="get" action="offers.php" class="rq-catform">
+                    <input type="hidden" name="status" value="<?= $h($filter_status) ?>">
+                    <input type="hidden" name="sort" value="<?= $h($sort) ?>">
+                    <?php if ($filter_mine): ?><input type="hidden" name="mine" value="1"><?php endif; ?>
+                    <select name="cat" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="<?= $h($lang->offers['lbl_category']) ?>">
+                        <option value="0"><?= $h($lang->offers['lbl_category']) ?>: <?= $h($lang->offers['opt_cat_any']) ?></option>
+                        <?php foreach ($cats as $cid => $cname): ?>
+                            <option value="<?= (int)$cid ?>"<?= (int)$cid === $filter_cat ? ' selected' : '' ?>><?= $h($cname) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+                <nav class="rq-pills rq-pills--sm" aria-label="<?= $h($ofL('aria_sort', 'Sort')) ?>">
+                    <?php foreach (['requests' => ['fa-hand', $ofL('sort_wants', 'Most wanted')], 'created_at' => ['fa-clock', $ofL('sort_new', 'New')]] as $val => [$ico, $label]): ?>
+                        <a href="<?= $h($qs(['sort' => $val, 'page' => ''])) ?>" class="<?= $sort === $val ? 'is-active' : '' ?>"><i class="fa-solid <?= $ico ?>"></i><?= $h($label) ?></a>
+                    <?php endforeach; ?>
+                </nav>
+            </div>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4">
+    <!-- List -->
+    <section class="st-card mb-3">
+        <div class="st-card__head"><i class="fa-solid fa-list"></i><?= $h($lang->offers['sec_list']) ?>
+            <span class="st-meta ms-auto"><?= $h(ags_fmt($lang->offers['txt_total'], number_format($total))) ?><?= $filter_mine ? ' &middot; ' . $h($ofL('kpi_mine', 'My open offers')) : '' ?></span>
+        </div>
         <?php
         $count = 0;
         while ($offer = $db->fetch_array($offers_q)):
             $count++;
-            $status_badge = match($offer['status']) {
-                'open'      => '<span class="badge bg-success bg-opacity-25 text-success">' . htmlspecialchars($lang->offers['status_open']) . '</span>',
-                'uploaded'  => '<span class="badge bg-primary bg-opacity-25 text-primary">' . htmlspecialchars($lang->offers['status_uploaded']) . '</span>',
-                'cancelled' => '<span class="badge bg-secondary bg-opacity-25 text-secondary">' . htmlspecialchars($lang->offers['status_cancelled']) . '</span>',
-                default     => ''
-            };
         ?>
-        <div class="d-flex align-items-center gap-3 p-3 <?= $count > 1 ? 'border-top' : '' ?> offer-row animate-fade-in-up">
-            <div class="text-center flex-shrink-0" style="min-width:48px">
-                <div class="fw-bold text-success fs-5"><?= (int)$offer['requests'] ?></div>
-                <div class="text-muted" style="font-size:.65rem"><?= htmlspecialchars($lang->offers['lbl_wants']) ?></div>
-            </div>
-            <div class="flex-grow-1 min-w-0">
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <?= $status_badge ?>
-                    <a href="offers.php?action=view&oid=<?= $offer['id'] ?>" class="fw-semibold text-truncate"><?= htmlspecialchars($offer['title']) ?></a>
-                    <?php if ($offer['year']): ?>
-                    <small class="text-muted">(<?= (int)$offer['year'] ?>)</small>
-                    <?php endif; ?>
+            <a class="rq-row rq-row--<?= $h((string)$offer['status']) ?>" href="offers.php?action=view&amp;oid=<?= (int)$offer['id'] ?>">
+                <div class="rq-votes of-wants"><strong><?= (int)$offer['requests'] ?></strong><span><?= $h($lang->offers['lbl_wants']) ?></span></div>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="rq-row__title">
+                        <?= $of_status((string)$offer['status']) ?>
+                        <span class="rq-row__name"><?= $h($offer['title']) ?></span>
+                        <?php if ($offer['year']): ?><span class="rq-year">(<?= (int)$offer['year'] ?>)</span><?php endif; ?>
+                    </div>
+                    <div class="rq-row__meta">
+                        <?php if (isset($cats[$offer['category_id']])): ?><span><i class="fa-solid fa-tag"></i><?= $h($cats[$offer['category_id']]) ?></span><?php endif; ?>
+                        <span><i class="fa-solid fa-user"></i><?= $h((string)$offer['username']) ?></span>
+                        <span><i class="fa-regular fa-clock"></i><?= $h(ags_fmt($lang->offers['txt_ago'], mkprettytime(TIMENOW - (int)$offer['created_at']))) ?></span>
+                    </div>
                 </div>
-                <div class="d-flex gap-3 mt-1 small text-muted flex-wrap">
-                    <?php if (isset($cats[$offer['category_id']])): ?>
-                    <span><i class="fas fa-tag me-1"></i><?= htmlspecialchars($cats[$offer['category_id']]) ?></span>
-                    <?php endif; ?>
-                    <span><i class="fas fa-user me-1"></i><?= htmlspecialchars($offer['username']) ?></span>
-                    <span><i class="fas fa-clock me-1"></i><?= htmlspecialchars(ags_fmt($lang->offers['txt_ago'], mkprettytime(TIMENOW - $offer['created_at']))) ?></span>
-                </div>
-            </div>
-        </div>
-        <?php endwhile; ?>
-        <?php if ($count === 0): ?>
-        <div class="text-center py-5 animate-fade-in-up">
-            <i class="fas fa-gift fa-3x text-muted mb-3"></i>
-            <h6 class="text-muted"><?= htmlspecialchars($lang->offers['txt_empty']) ?></h6>
-            <a href="offers.php?action=create" class="btn btn-success btn-sm rounded-pill px-4 mt-2 pulse-on-hover">
-                <i class="fas fa-plus me-1"></i><?= htmlspecialchars($lang->offers['btn_create_first']) ?>
+                <i class="fa-solid fa-chevron-right rq-row__go" aria-hidden="true"></i>
             </a>
-        </div>
+        <?php endwhile; ?>
+
+        <?php if ($count === 0): ?>
+            <div class="st-empty">
+                <span class="st-ico st-soft-muted"><i class="fa-solid fa-gift"></i></span>
+                <div class="mb-2"><?= $h($lang->offers['txt_empty']) ?></div>
+                <a href="offers.php?action=create" class="btn btn-success btn-sm st-pill"><i class="fa-solid fa-plus me-1"></i><?= $h($lang->offers['btn_create_first']) ?></a>
+            </div>
         <?php endif; ?>
-    </div>
+    </section>
 
     <?php if ($total > $perpage): ?>
-    <div class="mt-4 d-flex justify-content-center animate-fade-in-up">
-        <?= multipage($total, $perpage, $page, 'offers.php?status=' . $filter_status . '&cat=' . $filter_cat . '&sort=' . $sort . '&page={page}') ?>
-    </div>
+        <div class="st-pager mb-3 d-flex justify-content-center">
+            <?= multipage($total, $perpage, $page, str_replace('%7Bpage%7D', '{page}', $qs(['page' => '{page}']))) ?>
+        </div>
     <?php endif; ?>
 </div>
 <?php

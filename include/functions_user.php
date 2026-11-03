@@ -472,16 +472,24 @@ function get_pm_folder_name(int|string $fid, string $name = ''): string
 {
     global $lang;
 
-    if ($name !== '') {
+    // Built-in folders: name from the language file (usercpnav), English fallback
+    $builtin = [
+        0 => ['ucp_nav_folder_inbox',  'Inbox'],
+        1 => ['ucp_nav_folder_unread', 'Unread'],
+        2 => ['ucp_nav_folder_sent',   'Sent Items'],
+        3 => ['ucp_nav_folder_drafts', 'Drafts'],
+        4 => ['ucp_nav_folder_trash',  'Trash Can'],
+    ];
+    $fid = (int)$fid;
+
+    // A user's own folder name is shown as is; an old saved English default is translated
+    if ($name !== '' && (!isset($builtin[$fid]) || $name !== $builtin[$fid][1])) {
         return $name;
     }
 
-    return match ((int)$fid) {
-        0       => 'Inbox',
-        1       => 'Unread',
-        2       => 'Sent Items',
-        3       => 'Drafts',
-        4       => 'Trash Can',
-        default => 'folder_untitled',
-    };
+    if (!isset($lang->usercpnav) || !is_array($lang->usercpnav)) {
+        $lang->load('usercpnav');
+    }
+    [$key, $fallback] = $builtin[$fid] ?? ['ucp_nav_folder_untitled', 'Untitled folder'];
+    return (string)($lang->usercpnav[$key] ?? $fallback);
 }

@@ -3,14 +3,13 @@
 [![PHP](https://img.shields.io/badge/PHP-8.5-777bb3?logo=php&logoColor=white)](https://www.php.net/)
 [![MySQL](https://img.shields.io/badge/MySQL-9.7_LTS-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Composer](https://img.shields.io/badge/Composer-Required-885630?logo=composer&logoColor=white)](https://getcomposer.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](LICENSE)
 
 > ⚡ A private **BitTorrent tracker** with a forum, built on a heavily reworked MyBB 1.8 core:
 > announce with anti-cheat, torrent parser (BitTorrent v1 + v2), AJAX chat, reactions,
 > notifications, requests & offers, and a full staff panel.
 
-Running live at **[ArtCore Gangsta](https://artcore-gangsta.eu)**. Perfect for **private communities**,
-testing torrent workflows, or learning how trackers work under the hood.
+Perfect for **private communities**, testing torrent workflows, or learning how trackers work under the hood.
 
 ---
 
@@ -112,3 +111,12 @@ chmod 666 include/config.php
 chmod 666 include/settings.php
 chmod 666 include/config_announce.php
 ```
+
+---
+
+## 📄 License
+
+This project is licensed under the **GNU Lesser General Public License v3.0** — see [LICENSE](LICENSE) (LGPL v3) and [COPYING](COPYING) (GPL v3, which the LGPL builds on).
+
+The forum core is based on **[MyBB](https://mybb.com) 1.8** © MyBB Group, which is licensed under the LGPL v3.
+The original MyBB copyright notices are kept in the files that come from it.

@@ -5,9 +5,16 @@
    Всё под .iv-page — без глобальных переопределений.
    ============================================================================ */
 
-/* KPI: содержимое над иконкой в углу, цвет иконки под тему */
+/* Серые KPI-плитки с полупрозрачной иконкой в углу
+   (дублирует визуальный слой st-ui.css — работает и при старой/закешированной версии) */
+.iv-page .st-kpi { position: relative; overflow: hidden; }
+.iv-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
 .iv-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
-.iv-page .st-kpi__bg { color: var(--bs-emphasis-color); }
+.iv-page .st-kpi__bg {
+  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+  opacity: .07; transform: rotate(-12deg); pointer-events: none;
+  color: var(--bs-emphasis-color);
+}
 
 /* Сетка KPI-плиток: 4 в ряд, 2 на планшете/телефоне */
 .iv-page .iv-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }

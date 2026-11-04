@@ -1,389 +1,93 @@
-/* ============================================================================
-   browse.css — каталог раздач (browse.php)
-   Базовые компоненты (.st-card, .st-head, .st-ico, .st-badge, .st-kpi,
-   .st-toolbar, .st-empty, .st-pager) — из общего st-ui.css.
-   Здесь только своё, всё под .br-page — без глобальных переопределений.
-   Заменяет: старый browse.css, moderation-modal.css, browse-moderation.css,
-   autocomplete.css и inline-<style> из browse.php.
-   ============================================================================ */
+/* ===== MODERN TORRENT TABLE ===== */
+.table td, .table th { font-size: 1rem; }
+thead th { font-weight: 600; white-space: nowrap; vertical-align: middle; }
+thead th i { opacity: 0.75; }
 
-.br-page {
-  --br-purple: #8b5cf6;
-  --br-purple-soft: rgba(139, 92, 246, .14);
-  --br-purple-strong: #6d28d9;
-  --br-poster-w: 52px;
-  --br-poster-h: 74px;
-}
-[data-bs-theme="dark"] .br-page { --br-purple-strong: #c4b5fd; }
-.br-page .br-soft-purple { background: var(--br-purple-soft); color: var(--br-purple-strong); }
+/* Иконки Bootstrap Icons - выравнивание по базовой линии текста */
+.bi { vertical-align: -0.125em; }
 
-/* ── KPI-плитки (фолбэк, если визуального слоя ещё нет в st-ui.css) ───────── */
-.br-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
-.br-page .st-kpi { position: relative; overflow: hidden; }
-.br-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
-.br-page .st-kpi__bg {
-  position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
-  opacity: .07; transform: rotate(-12deg); pointer-events: none;
-  color: var(--bs-emphasis-color);
-}
-.br-page .br-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
-@media (max-width: 991.98px) { .br-page .br-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* ===== POSTER ===== */
+.torrent-poster-cell { width:85px; padding:8px 6px !important; text-align:center; vertical-align:middle; }
+.torrent-poster { width:60px; height:85px; object-fit:cover; border-radius:8px; display:block; margin:6px auto 0; box-shadow:0 4px 12px rgba(0,0,0,0.15); transition:all 0.3s cubic-bezier(0.4,0,0.2,1); cursor:pointer; }
+.torrent-poster:hover { transform:scale(1.08) translateY(-3px); box-shadow:0 8px 20px rgba(0,0,0,0.25); }
+.torrent-poster-placeholder { width:60px; height:85px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--bs-secondary-bg),var(--bs-dark-bg)); border-radius:8px; margin:6px auto 0; border:1px solid rgba(var(--bs-primary-rgb),0.2); }
 
-/* ── Акции (фрилич, день рождения) ───────────────────────────────────────── */
-.br-page .br-promo { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.1rem; }
-.br-page .br-promo--success { border-left: 3px solid var(--bs-success); }
-.br-page .br-promo--info    { border-left: 3px solid var(--bs-info); }
-.br-page .br-promo--warning { border-left: 3px solid var(--bs-warning); }
-.br-page .br-promo--purple  { border-left: 3px solid var(--br-purple); }
-.br-page .br-promo__title { font-weight: 700; color: var(--bs-emphasis-color); }
-.br-page .br-promo__text { font-size: .9em; color: var(--bs-secondary-color); }
-.br-page .br-promo__when { font-size: .9em; }
+/* ===== POSTER ZOOM ===== */
+.poster-zoom-overlay { position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; pointer-events:none; display:flex; align-items:center; justify-content:center; }
+.poster-zoom-img { max-width:280px; max-height:400px; object-fit:cover; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.5); opacity:0; transform:scale(0.85); transition:opacity 0.2s ease,transform 0.2s ease; pointer-events:none; }
+.poster-zoom-img.visible { opacity:1; transform:scale(1); }
 
-/* ── Сворачиваемые карточки ──────────────────────────────────────────────── */
-.br-page .br-collapse-btn i { transition: transform .2s ease; }
-.br-page .br-collapse-btn[aria-expanded="false"] i { transform: rotate(-90deg); }
-.br-page .st-card:has(> .collapse:not(.show)) > .st-card__head { border-bottom: 0; }
+/* ===== CATEGORY ===== */
+.category-icon-link { display:block; text-align:center; text-decoration:none; line-height:1; margin-bottom:6px; }
+.category-icon-small { font-size:20px; transition:all 0.2s ease; display:inline-block; }
+.category-icon-small:hover { transform:scale(1.2); filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2)); }
+.category-card:hover { border-color:#3b82f6 !important; background:rgba(59,130,246,0.05); transform:translateY(-2px); box-shadow:0 4px 12px rgba(59,130,246,0.12); }
 
-/* ── Лента свежих постеров ───────────────────────────────────────────────── */
-.br-page .br-recent { overflow: hidden; }
-.br-page .br-recent__strip {
-  display: flex; gap: .75rem; padding: .9rem 1.1rem;
-  overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
-}
-.br-page .br-recent__strip::-webkit-scrollbar { display: none; }
-.br-page .br-recent__item {
-  flex: 0 0 auto; width: 96px; text-decoration: none; scroll-snap-align: start;
-  color: var(--bs-body-color);
-}
-.br-page .br-recent__item img {
-  display: block; width: 96px; height: 136px; object-fit: cover;
-  border-radius: .6rem; border: 1px solid var(--bs-border-color);
-  transition: transform .2s ease, box-shadow .2s ease;
-}
-.br-page .br-recent__item:hover img { transform: translateY(-3px); box-shadow: 0 .5rem 1rem -.5rem rgba(0, 0, 0, .35); }
-.br-page .br-recent__name {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  margin-top: .35rem; font-size: .74em; line-height: 1.25; color: var(--bs-secondary-color);
-}
-.br-page .br-recent__item:hover .br-recent__name { color: var(--bs-primary-text-emphasis); }
+/* ===== TORRENT INFO ===== */
+.torrent-info-cell { vertical-align:middle !important; padding:10px 12px !important; }
+.torrent-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:6px; }
+.torrent-name-link { font-weight:700; font-size:1rem; color:var(--bs-body-color); text-decoration:none; flex:1; line-height:1.4; transition:all 0.2s ease; display:inline-block; }
+.torrent-name-link:hover { color:var(--bs-primary); transform:translateX(2px); }
+.torrent-actions-inline { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.torrent-actions-inline a { opacity:0.7; transition:all 0.2s ease; }
+.torrent-actions-inline a:hover { opacity:1; transform:scale(1.1); }
+.torrent-meta { margin-top:6px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.8rem; color:var(--bs-secondary-color); }
+.torrent-date { display:inline-flex; align-items:center; background:rgba(var(--bs-primary-rgb),0.08); padding:2px 8px; border-radius:12px; }
+.torrent-flags { display:inline-flex; gap:4px; }
 
-/* ── Категории ───────────────────────────────────────────────────────────── */
-.br-page .br-cats__grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: .6rem; padding: .9rem 1.1rem;
+/* ===== TAGS ===== */
+.torrent-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.torrent-tags .badge { font-size:0.7rem; padding:3px 10px; border-radius:20px; font-weight:600; background:linear-gradient(135deg,var(--bs-primary),var(--bs-info)); color:white; transition:all 0.2s ease; }
+.torrent-tags .badge:hover { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+
+/* Бейджи в ячейках размера/сидов/личей/сскачиваний (из старого инлайн-блока) */
+.size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
+    transition: all 0.2s ease;
+    min-width: 60px;
+    text-align: center;
 }
-.br-page .br-cat {
-  display: flex; align-items: flex-start; gap: .65rem; padding: .6rem .7rem;
-  border: 1px solid var(--bs-border-color); border-radius: .75rem;
-  transition: border-color .15s ease, background-color .15s ease;
+.size-badge:hover, .snatched-badge:hover, .seeders-badge:hover, .leechers-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-.br-page .br-cat:hover { border-color: var(--bs-primary-border-subtle); background: var(--bs-tertiary-bg); }
-.br-page .br-cat--active { border-color: var(--bs-primary); background: color-mix(in srgb, var(--bs-primary-bg-subtle) 55%, var(--bs-body-bg)); }
-.br-page .br-cat--notif { border-style: dashed; border-color: var(--bs-primary-border-subtle); }
-.br-page .br-cat__ico { text-decoration: none; }
-.br-page .br-cat__name {
-  display: block; font-weight: 600; color: var(--bs-emphasis-color);
-  text-decoration: none; line-height: 1.25; overflow-wrap: anywhere;
-}
-.br-page .br-cat__name:hover, .br-page .br-cat--active .br-cat__name { color: var(--bs-primary-text-emphasis); }
-.br-page .br-cat__subs { display: flex; flex-wrap: wrap; gap: .1rem .55rem; margin-top: .2rem; font-size: .8em; }
-.br-page .br-cat__sub { color: var(--bs-secondary-color); text-decoration: none; }
-.br-page .br-cat__sub:hover { color: var(--bs-primary-text-emphasis); }
-.br-page .br-cat__sub--active { color: var(--bs-primary-text-emphasis); font-weight: 700; }
-@media (max-width: 575.98px) {
-  .br-page .br-cats__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: .75rem; gap: .5rem; }
-  .br-page .br-cat { padding: .5rem; gap: .5rem; }
-  .br-page .br-cat .st-ico { width: 1.9rem; height: 1.9rem; font-size: .85rem; }
-  .br-page .br-cat__subs { display: none; }
+td div .badge {
+    margin-right: 4px;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
 }
 
-/* ── Поиск ───────────────────────────────────────────────────────────────── */
-.br-page .br-search .form-control,
-.br-page .br-search .form-select { border-radius: .65rem; }
-.br-page .br-q { min-height: 2.9rem; font-size: 1.02em; }
-.br-page #autocomplete-results {
-  position: absolute; top: 100%; left: 0; right: 0; z-index: 1050;
-  max-height: 22rem; overflow-y: auto; margin-top: .25rem;
-  border-radius: .75rem; box-shadow: 0 .75rem 1.5rem -.5rem rgba(0, 0, 0, .25);
-}
-.br-page #autocomplete-results:not(.show) { display: none; }
-.br-page #autocomplete-results .dropdown-item { gap: .6rem; white-space: normal; }
-.br-page #autocomplete-results img { width: 32px; height: 46px; object-fit: cover; border-radius: .35rem; flex: 0 0 auto; }
+/* ===== STAT CELLS ===== */
+.torrent-stat-cell { vertical-align:middle !important; white-space:nowrap; font-size:0.9rem; padding:8px 6px !important; text-align:center; font-weight:600; }
+.torrent-stat-cell a { text-decoration:none; font-weight:600; transition:all 0.2s ease; display:inline-flex; align-items:center; gap:4px; }
+.torrent-stat-cell a:hover { transform:translateY(-1px); }
+.torrent-stat-cell a.text-success:hover { text-shadow:0 0 8px rgba(40,167,69,0.3); }
+.torrent-stat-cell a.text-danger:hover  { text-shadow:0 0 8px rgba(220,53,69,0.3); }
 
-.br-page .br-active {
-  display: flex; flex-wrap: wrap; gap: .4rem; padding: .7rem 1.1rem;
-  border-top: 1px solid var(--bs-border-color);
-}
-.br-page .br-active__chip { text-decoration: none; font-size: .8em; transition: filter .15s ease; }
-.br-page .br-active__chip:hover { filter: brightness(.95); }
-.br-page .br-active__x { opacity: .6; margin-left: .15rem; }
-.br-page .br-active__chip:hover .br-active__x { opacity: 1; }
+/* ===== UPLOADER ===== */
+.torrent-uploader-cell { vertical-align:middle !important; font-size:0.85rem; padding:8px 8px !important; max-width:130px; font-weight:500; }
+.torrent-uploader-cell a { display:inline-flex; align-items:center; gap:4px; transition:all 0.2s ease; }
+.torrent-uploader-cell a:hover { color:var(--bs-primary) !important; transform:translateX(2px); }
 
-/* ── Быстрые фильтры ─────────────────────────────────────────────────────── */
-.br-page .br-qf__hint { font-weight: 400; font-size: .82em; color: var(--bs-secondary-color); }
-.br-page .br-qf__body { display: grid; gap: .7rem; }
-.br-page .br-qf__group { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); align-items: start; gap: .6rem; }
-.br-page .br-qf__label {
-  padding-top: .35rem; font-size: .7em; font-weight: 700; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--bs-secondary-color);
-}
-.br-page .br-qf__btns { display: flex; flex-wrap: wrap; gap: .4rem; }
-.br-page .br-qf__cnt { opacity: .65; font-size: .88em; }
-@media (max-width: 767.98px) {
-  .br-page .br-qf__group { grid-template-columns: 1fr; gap: .35rem; }
-  .br-page .br-qf__label { padding-top: 0; }
-  /* на телефоне - одна прокручиваемая свайпом строка на группу */
-  .br-page .br-qf__btns { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: .1rem; }
-  .br-page .br-qf__btns::-webkit-scrollbar { display: none; }
-  .br-page .br-qf__btns .btn { flex: 0 0 auto; white-space: nowrap; }
-}
+/* ===== ROW ===== */
+.torrent-row { transition:all 0.2s ease; border-left:3px solid transparent; }
+.torrent-row:hover { background:rgba(var(--bs-primary-rgb),0.05) !important; border-left-color:var(--bs-primary); transform:translateX(2px); }
+.torrent-row.is-dead { opacity:0.55; filter:grayscale(0.3); }
+.torrent-row.is-dead:hover { opacity:0.8; filter:none; }
 
-/* ── Результаты: шапка, вид, пагинация ───────────────────────────────────── */
-.br-page .br-results { overflow: hidden; }
-.br-page .br-results__head { flex-wrap: wrap; }
-.br-page .br-results__sub { font-weight: 400; color: var(--bs-secondary-color); font-size: .9em; }
-.br-page .br-view .btn[aria-pressed="true"] {
-  background: var(--bs-primary); border-color: var(--bs-primary); color: #fff;
-}
-.br-page .br-pager-top { border-bottom: 1px solid var(--bs-border-color); justify-content: flex-end; }
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+    .torrent-poster,.torrent-poster-placeholder { width:40px; height:55px; }
+    .torrent-name-link { font-size:0.9rem !important; }
+    .torrent-stat-cell { font-size:0.85rem !important; }
+    thead th i { font-size:1rem; }
+    thead th span { display: none; }
 
-/* ── Таблица ─────────────────────────────────────────────────────────────── */
-.br-page .br-table { color: var(--bs-body-color); }
-.br-page .br-table > :not(caption) > * > * {
-  padding: .65rem .6rem; background: transparent; vertical-align: middle;
-  border-bottom-color: var(--bs-border-color-translucent, var(--bs-border-color));
-}
-.br-page .br-table > :not(caption) > * > *:first-child { padding-left: 1.1rem; }
-.br-page .br-table > :not(caption) > * > *:last-child  { padding-right: 1.1rem; }
-.br-page .br-table thead th {
-  font-size: .74em; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-  white-space: nowrap; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg);
-}
-.br-page .br-table tbody tr:last-child > td { border-bottom: 0; }
-.br-page .br-table tbody tr > td { transition: background-color .12s ease; }
-.br-page .br-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
-.br-page .br-th-sep { margin: 0 .35rem; opacity: .5; }
-
-.br-page .br-sort { color: inherit; text-decoration: none; }
-.br-page .br-sort:hover { color: var(--bs-emphasis-color); }
-.br-page .br-sort--active { color: var(--bs-primary-text-emphasis); }
-
-/* Постер */
-.br-page .torrent-poster-cell { width: calc(var(--br-poster-w) + 1.7rem); }
-.br-page .torrent-poster-cell .poster-link { display: block; width: var(--br-poster-w); }
-.br-page .torrent-poster,
-.br-page .torrent-poster-placeholder {
-  display: grid; place-items: center; width: var(--br-poster-w); height: var(--br-poster-h);
-  border-radius: .5rem; border: 1px solid var(--bs-border-color); object-fit: cover;
-  background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-size: 1.15rem;
-  transition: transform .2s ease;
-}
-.br-page .torrent-poster.is-broken { visibility: hidden; }
-.br-page .poster-link:hover .torrent-poster { transform: scale(1.06); }
-
-/* Название и мета */
-.br-page .br-name-cell { min-width: 16rem; }
-.br-page .torrent-title { display: flex; align-items: flex-start; gap: .6rem; }
-.br-page .torrent-name-link {
-  flex: 1; min-width: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
-  color: var(--bs-emphasis-color); text-decoration: none;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.br-page .torrent-name-link:hover { color: var(--bs-primary-text-emphasis); }
-.br-page .torrent-name-link:visited { color: color-mix(in srgb, var(--bs-emphasis-color) 75%, var(--bs-secondary-color)); }
-.br-page .br-hl { padding: 0 .1em; border-radius: .2rem; background: var(--bs-warning-bg-subtle); color: inherit; }
-
-.br-page .torrent-actions-inline { display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
-.br-page .br-dl {
-  display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%;
-  background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); text-decoration: none;
-  transition: background-color .15s ease, color .15s ease;
-}
-.br-page .br-dl:hover { background: var(--bs-primary); color: #fff; }
-.br-page .br-bm a { text-decoration: none; }
-
-.br-page .torrent-meta {
-  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem;
-  margin-top: .35rem; font-size: .8em; color: var(--bs-secondary-color);
-}
-.br-page .torrent-meta i { margin-right: .3rem; opacity: .75; }
-.br-page .br-catchip {
-  display: inline-flex; align-items: center; padding: .1rem .55rem; border-radius: 999px;
-  background: var(--bs-tertiary-bg); color: var(--bs-body-color); text-decoration: none;
-}
-.br-page .br-catchip:hover { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
-.br-page .torrent-flags { display: inline-flex; flex-wrap: wrap; gap: .25rem; }
-
-.br-page .br-tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
-.br-page .br-tag {
-  padding: .05rem .5rem; border-radius: 999px; font-size: .72em; font-weight: 600;
-  color: var(--bs-info-text-emphasis); background: var(--bs-info-bg-subtle); text-decoration: none;
-}
-.br-page .br-tag:hover { background: var(--bs-info); color: #fff; }
-
-/* Мини-статистика под названием (на узких экранах вместо колонок) */
-.br-page .br-mstats { display: none; gap: .8rem; margin-top: .35rem; font-size: .8em; font-weight: 600; }
-.br-page .br-mstats i { margin-right: .3rem; }
-
-/* Цифры */
-.br-page .torrent-stat-cell { text-align: center; white-space: nowrap; font-weight: 600; }
-.br-page .br-size { color: var(--bs-body-color); }
-.br-page .br-stat { display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; color: var(--bs-secondary-color); }
-.br-page .br-stat:hover { color: var(--bs-emphasis-color); }
-.br-page .br-stat--seed  { color: var(--bs-success-text-emphasis); }
-.br-page .br-stat--leech { color: var(--bs-danger-text-emphasis); }
-.br-page .br-stat--zero  { color: var(--bs-secondary-color); opacity: .6; }
-
-.br-page .torrent-uploader-cell { font-size: .88em; max-width: 9rem; overflow-wrap: anywhere; }
-.br-page .torrent-uploader-cell a { text-decoration: none; }
-.br-page .br-anon { color: var(--bs-secondary-color); }
-.br-page .br-check-cell { width: 3.2rem; text-align: center; }
-
-/* Состояния строк */
-.br-page .torrent-row.is-dead .torrent-poster-cell,
-.br-page .torrent-row.is-dead .torrent-name-link { opacity: .6; }
-.br-page .torrent-row-snatched > td { background: color-mix(in srgb, var(--bs-primary-bg-subtle) 35%, transparent); }
-.br-page .torrent-row-snatched > td:first-child { box-shadow: inset 3px 0 0 var(--bs-primary); }
-.br-page .torrent-row.selected > td { background: color-mix(in srgb, var(--bs-warning-bg-subtle) 55%, transparent) !important; }
-.br-page .torrent-row.selected > td:first-child { box-shadow: inset 3px 0 0 var(--bs-warning); }
-
-/* Скрытие колонок по ширине */
-@media (max-width: 991.98px) { .br-page .br-col-lg { display: none; } }
-@media (max-width: 767.98px) {
-  .br-page .br-col-md { display: none; }
-  .br-page .br-mstats { display: flex; }
-  .br-page { --br-poster-w: 42px; --br-poster-h: 60px; }
-  .br-page .br-name-cell { min-width: 0; }
-}
-@media (max-width: 575.98px) {
-  .br-page .br-col-sm { display: none; }
-  .br-page .br-table > :not(caption) > * > *:first-child { padding-left: .75rem; }
-  .br-page .br-table > :not(caption) > * > *:last-child  { padding-right: .75rem; }
-}
-
-/* ── Вид «плитки» (собирается в browse.js из строк таблицы) ──────────────── */
-.br-page .br-cards {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: .75rem; padding: 1rem 1.1rem;
-}
-.br-page .br-cards[hidden], .br-page #smartTorrentTableWrap[hidden] { display: none !important; }
-.br-page .br-tcard {
-  display: flex; flex-direction: column; gap: .45rem; padding: .75rem;
-  border: 1px solid var(--bs-border-color); border-radius: .8rem; background: var(--bs-body-bg);
-  transition: border-color .15s ease, transform .15s ease;
-}
-.br-page .br-tcard:hover { border-color: var(--bs-primary-border-subtle); transform: translateY(-2px); }
-.br-page .br-tcard--snatched { box-shadow: inset 3px 0 0 var(--bs-primary); }
-.br-page .br-tcard .poster-link { width: 100%; }
-.br-page .br-tcard .torrent-poster,
-.br-page .br-tcard .torrent-poster-placeholder { width: 100%; height: 13rem; font-size: 2rem; }
-.br-page .br-tcard__stats { display: flex; flex-wrap: wrap; gap: .3rem .9rem; margin-top: auto; font-size: .85em; font-weight: 600; }
-.br-page .br-tcard__stats i { margin-right: .3rem; }
-
-/* ── Увеличенный постер ──────────────────────────────────────────────────── */
-.br-page .poster-zoom-overlay { position: fixed; inset: 0; z-index: 1080; pointer-events: none; }
-.br-page .poster-zoom-img {
-  position: fixed; max-width: 280px; max-height: 400px; border-radius: .9rem; object-fit: cover;
-  box-shadow: 0 1.25rem 3.5rem rgba(0, 0, 0, .5);
-  opacity: 0; transform: scale(.9); transition: opacity .18s ease, transform .18s ease;
-}
-.br-page .poster-zoom-img.visible { opacity: 1; transform: none; }
-.br-page .poster-zoom-img:not([src]), .br-page .poster-zoom-img[src=""] { display: none; }
-@media (hover: none) { .br-page .poster-zoom-overlay { display: none; } }
-
-/* ── Поповер скачивания (рендерится в body, но только для .br-pop) ───────── */
-.br-pop { min-width: 12rem; font-size: .88rem; }
-.br-pop__name { font-weight: 600; margin-bottom: .3rem; overflow-wrap: anywhere; }
-.br-pop__line { color: var(--bs-secondary-color); }
-.br-pop__line i { margin-right: .3rem; }
-.br-pop__hint { margin-top: .4rem; font-size: .8em; color: var(--bs-secondary-color); }
-
-/* ── Окно модерации ──────────────────────────────────────────────────────── */
-.br-page .mod-modal-content { border: 1px solid var(--bs-border-color); border-radius: var(--st-radius); overflow: hidden; }
-.br-page .mod-modal-header { background: linear-gradient(120deg, var(--bs-primary-bg-subtle) 0%, var(--bs-body-bg) 70%); }
-.br-page .mod-modal-header .modal-title { font-family: 'Oswald', sans-serif; font-weight: 600; color: var(--bs-emphasis-color); }
-.br-page .mod-modal-footer { background: var(--bs-tertiary-bg); }
-.br-page .mod-label {
-  display: block; margin: 1rem 0 .4rem; font-size: .72em; font-weight: 700;
-  letter-spacing: .08em; text-transform: uppercase; color: var(--bs-secondary-color);
-}
-.br-page .mod-select { border-radius: .65rem; }
-.br-page .mod-hint { display: flex; gap: .4rem; margin-top: 1rem; font-size: .82em; color: var(--bs-secondary-color); }
-
-.br-page .mod-poster-column { display: flex; }
-.br-page .mod-poster-container {
-  width: 100%; min-height: 260px; display: grid; place-items: center; position: relative; overflow: hidden;
-  border: 2px dashed var(--bs-border-color); border-radius: .8rem; background: var(--bs-tertiary-bg);
-}
-.br-page .mod-poster-container.has-poster { border-style: solid; border-color: var(--bs-primary-border-subtle); background: var(--bs-body-bg); }
-.br-page .mod-poster-placeholder { text-align: center; padding: 1.25rem; color: var(--bs-secondary-color); }
-.br-page .mod-poster-placeholder i { opacity: .5; }
-.br-page .mod-poster-wrapper { width: 100%; height: 100%; display: grid; place-items: center; position: relative; padding: .5rem; }
-.br-page .mod-poster-img { max-width: 100%; max-height: 340px; object-fit: contain; border-radius: .5rem; }
-.br-page .mod-poster-count {
-  position: absolute; right: .5rem; bottom: .5rem; padding: .15rem .55rem; border-radius: 999px;
-  font-size: .75em; font-weight: 700; background: var(--bs-emphasis-color); color: var(--bs-body-bg);
-}
-.br-page .mod-poster-count:empty { display: none; }
-.br-page .mod-poster-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: .4rem;
-  width: 100%; max-height: 340px; overflow-y: auto; padding: .5rem;
-}
-.br-page .mod-poster-thumb-wrap { position: relative; }
-.br-page .mod-poster-grid .mod-poster-thumb {
-  display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover;
-  border-radius: .4rem; border: 1px solid var(--bs-border-color);
-}
-.br-page .mod-poster-thumb-remove {
-  position: absolute; top: -.35rem; right: -.35rem; width: 1.3rem; height: 1.3rem;
-  display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
-  font-size: .65rem; background: var(--bs-danger); color: #fff; opacity: 0; transition: opacity .15s ease;
-}
-.br-page .mod-poster-thumb-wrap:hover .mod-poster-thumb-remove,
-.br-page .mod-poster-thumb-remove:focus-visible { opacity: 1; }
-
-.br-page .mod-summary-stats { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
-.br-page .mod-summary-stat {
-  flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: .4rem;
-  padding: .35rem .6rem; border-radius: .6rem; font-size: .82em; font-weight: 600; white-space: nowrap;
-  background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
-}
-.br-page .mod-progress-container { padding: .4rem .6rem; border-radius: .6rem; background: var(--bs-tertiary-bg); }
-.br-page .mod-progress-container .progress { height: 6px; border-radius: 999px; }
-.br-page .mod-restore-info {
-  margin-bottom: .6rem; padding: .45rem .8rem; border-radius: .6rem; font-size: .85em;
-  background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis);
-}
-.br-page .mod-move-block {
-  margin-top: .9rem; padding: .75rem .9rem; border-radius: .7rem;
-  border: 1px dashed var(--bs-primary-border-subtle); background: color-mix(in srgb, var(--bs-primary-bg-subtle) 40%, var(--bs-body-bg));
-}
-.br-page .mod-move-container { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.br-page .mod-move-container .form-select { width: auto; max-width: 100%; }
-.br-page .mod-move-label { margin: 0; font-size: .85em; font-weight: 600; color: var(--bs-primary-text-emphasis); white-space: nowrap; }
-.br-page .mod-move-mismatch-warning {
-  margin-top: .5rem; padding: .45rem .7rem; border-radius: .5rem; font-size: .85em;
-  background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis);
-}
-.br-page .mod-selected-list,
-.swal2-popup .mod-selected-list {
-  margin-top: .6rem; max-height: 160px; overflow-y: auto; padding: .5rem .8rem;
-  border-radius: .6rem; font-size: .82em; text-align: start;
-  background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
-}
-.br-page .mod-selected-list ul, .swal2-popup .mod-selected-list ul { margin: 0; padding-left: 1.1rem; }
-.br-page .mod-selected-list li, .swal2-popup .mod-selected-list li { padding: .1rem 0; }
-.br-page .mod-selected-list-more, .swal2-popup .mod-selected-list-more { color: var(--bs-secondary-color); font-style: italic; }
-@media (max-width: 767.98px) {
-  .br-page .mod-poster-container { min-height: 160px; }
-  .br-page .mod-poster-img { max-height: 200px; }
-}
-
-/* ── Плашка «восстановить фильтры» ───────────────────────────────────────── */
-.br-page .br-restore { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .65rem 1rem; }
-.br-page .br-restore__msg { flex: 1 1 14rem; color: var(--bs-secondary-color); }
-.br-page .br-restore__msg i { margin-right: .4rem; }
-
-@media (prefers-reduced-motion: reduce) {
-  .br-page *, .br-page *::before, .br-page *::after { transition: none !important; }
+    .size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
+        padding: 2px 6px;
+        font-size: 0.8rem;
+        min-width: 50px;
+    }
+    td div {
+        font-size: 0.85rem;
+    }
 }

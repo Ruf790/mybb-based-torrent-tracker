@@ -27,46 +27,6 @@
 }
 .fd-page .fd-btn { display: inline-flex; align-items: center; gap: .45rem; }
 
-/* ── Серые KPI-плитки (фоновая иконка в углу) ─────────────────────────── */
-.fd-page .fd-kpis {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .75rem;
-}
-.fd-page .fd-kpi {
-    position: relative;
-    overflow: hidden;
-    background: var(--bs-tertiary-bg);
-    border-color: var(--bs-border-color);
-}
-.fd-page .fd-kpi > .min-w-0 { position: relative; z-index: 1; }
-.fd-page .fd-kpi__bg {
-    position: absolute;
-    right: -.4rem;
-    bottom: -.7rem;
-    font-size: 4.2rem;
-    opacity: .07;
-    transform: rotate(-12deg);
-    pointer-events: none;
-    color: var(--bs-emphasis-color);
-}
-.fd-page a.fd-kpi { color: inherit; }
-.fd-page a.fd-kpi:hover { background: var(--bs-secondary-bg); }
-.fd-page .fd-kpi--date .st-kpi__val {
-    font-size: 1rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.fd-page .fd-kpi .st-kpi__lbl {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-@media (max-width: 991.98px) {
-    .fd-page .fd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 /* ── Подфорумы ────────────────────────────────────────────────────────── */
 .fd-page .fd-subforums { overflow: hidden; }
 .fd-page .fd-subforums__title { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 1.1rem; }

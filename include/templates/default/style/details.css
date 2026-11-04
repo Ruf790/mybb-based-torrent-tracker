@@ -1144,6 +1144,37 @@
     border-radius: 12px;
 }
 
+/* ── Заглушка: постер / скриншот не найден ─────────────────────── */
+.dt-img-missing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: 1rem;
+    border: 2px dashed var(--bs-border-color);
+    border-radius: 12px;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .875rem;
+    line-height: 1.25;
+    text-align: center;
+}
+.dt-img-missing i {
+    font-size: 2.25rem;
+    opacity: .6;
+}
+.dt-img-missing--poster {
+    width: 280px;
+    max-width: 100%;
+    aspect-ratio: 2 / 3;
+}
+.dt-img-missing--shot {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 1rem;
+}
+
 /* ── Manage icons ───────────────────────────────────────────────── */
 .manage-btn { transition: transform .18s ease; }
 .manage-btn:hover { transform: rotate(90deg); }

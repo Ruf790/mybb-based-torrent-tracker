@@ -598,6 +598,78 @@ window.updateImagePreviewFromUrl = function(url, previewContainerId) {
     img.src = url;
 }
 
+// Заглушка вместо битого постера (файл удалён, ссылка не открывается)
+window.utPosterFallback = function(img) {
+    if (!img || !img.parentNode || img.dataset.fallback) return;
+    img.dataset.fallback = '1';
+
+    const ph = document.createElement('div');
+    ph.className = 'preview-poster preview-poster--empty';
+    ph.setAttribute('role', 'img');
+
+    const icon = document.createElement('i');
+    icon.className = 'fa-regular fa-image';
+    const text = document.createElement('span');
+    text.textContent = ut('no_poster', 'No poster available.');
+    ph.append(icon, text);
+    ph.setAttribute('aria-label', text.textContent);
+
+    img.replaceWith(ph);
+};
+
+// Постеры, уже выведенные сервером (режим редактирования):
+// если картинка не загрузилась — меняем на заглушку (подстраховка к onerror в разметке)
+function utScanBrokenPosters() {
+    document.querySelectorAll('#imagePreview img.preview-poster, #imagePreview2 img.preview-poster').forEach(img => {
+        if (img.complete && img.naturalWidth === 0) {
+            utPosterFallback(img);
+        } else {
+            img.addEventListener('error', () => utPosterFallback(img), { once: true });
+        }
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', utScanBrokenPosters);
+} else {
+    utScanBrokenPosters();
+}
+
+// Заглушка вместо битого скриншота. Сам <img> не удаляем, а прячем:
+// окно удаления берёт из его src имя файла.
+window.utShotFallback = function(img) {
+    if (!img || !img.parentNode || img.dataset.fallback) return;
+    img.dataset.fallback = '1';
+    img.classList.add('is-broken');
+
+    const ph = document.createElement('div');
+    ph.className = 'preview-screenshot--empty';
+    ph.setAttribute('role', 'img');
+
+    const icon = document.createElement('i');
+    icon.className = 'fa-regular fa-image';
+    const text = document.createElement('span');
+    text.textContent = ut('shot_missing', 'Screenshot file not found.');
+    ph.append(icon, text);
+    ph.setAttribute('aria-label', text.textContent);
+
+    img.before(ph);
+};
+
+function utScanBrokenShots() {
+    document.querySelectorAll('#existingScreenshots img.preview-screenshot').forEach(img => {
+        if (img.complete && img.naturalWidth === 0) {
+            utShotFallback(img);
+        } else {
+            img.addEventListener('error', () => utShotFallback(img), { once: true });
+        }
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', utScanBrokenShots);
+} else {
+    utScanBrokenShots();
+}
+
 // Удаление изображения
 window.removeImage = function(previewContainerId, urlInputId = null, fileInputId = null) {
     const previewContainer = document.getElementById(previewContainerId);

@@ -357,6 +357,7 @@ $language['upload'] = [
     'js_ut_imdb_loaded'       => 'IMDb data loaded!',
     'js_ut_network_error'     => 'Network error: {1}',
     'js_ut_no_poster'         => 'No poster available.',
+    'js_ut_shot_missing'      => 'Screenshot file not found.',
     'js_ut_poster_main'       => 'Poster set as the main image!',
     'js_ut_poster_2nd'        => 'Poster set as the secondary image!',
     'js_ut_imdb_added'        => 'IMDb info added to the description!',

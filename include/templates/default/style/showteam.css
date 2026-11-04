@@ -1,0 +1,119 @@
+/* ============================================================================
+   showteam.css — команда трекера (showteam.php)
+   Базовые компоненты (.st-card, .st-head, .st-ico, .st-badge, .st-kpi,
+   .st-card__head/__body) — из общего st-ui.css.
+   Здесь только своё. Всё под .tm-page, только переменные Bootstrap.
+   ============================================================================ */
+
+.tm-page { padding-top: .75rem; padding-bottom: 2rem; }
+
+/* ── Серые KPI-плитки с иконкой в углу ───────────────────────────────────── */
+.tm-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
+.tm-page .st-kpi { position: relative; overflow: hidden; }
+.tm-page .st-kpi > :not(.st-kpi__bg) { position: relative; z-index: 1; }
+.tm-page .st-kpi__bg {
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none;
+    color: var(--bs-emphasis-color);
+}
+.tm-page .tm-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .75rem;
+}
+
+/* ── Вкладки-«пилюли» по группам ─────────────────────────────────────────── */
+.tm-page .tm-tabs-card { padding: .5rem; }
+.tm-page .tm-tabs {
+    display: flex; gap: .35rem; margin: 0; padding: 0; list-style: none;
+    overflow-x: auto; scrollbar-width: none;      /* скролл свайпом, без полосы */
+}
+.tm-page .tm-tabs::-webkit-scrollbar { display: none; }
+.tm-page .tm-tabs li { flex: 1 0 auto; }
+@media (min-width: 992px) {
+    /* на десктопе — всё в одну линию, вкладкам можно сжиматься */
+    .tm-page .tm-tabs { gap: .15rem; }
+    .tm-page .tm-tabs li { flex: 1 1 auto; min-width: 0; }
+    .tm-page .tm-tab { padding: .5rem .6rem; font-size: .84em; }
+    .tm-page .tm-tab__label { overflow: hidden; text-overflow: ellipsis; }
+}
+.tm-page .tm-tab {
+    display: flex; align-items: center; justify-content: center; gap: .45rem; height: 100%;
+    padding: .5rem .9rem; border-radius: 999px; font-size: .88em; font-weight: 600; white-space: nowrap;
+    color: var(--bs-secondary-color); text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+.tm-page .tm-tab:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.tm-page .tm-tab.active { background: var(--bs-primary); color: #fff; box-shadow: 0 6px 14px -8px var(--bs-primary); }
+.tm-page .tm-tab__count {
+    min-width: 1.4rem; padding: 0 .4rem; border-radius: 999px;
+    font-size: .8em; line-height: 1.4rem; text-align: center;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
+}
+.tm-page .tm-tab.active .tm-tab__count { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* ── Секция группы ────────────────────────────────────────────────────────── */
+.tm-page .tm-group { overflow: hidden; scroll-margin-top: 5rem; }
+.tm-page .tm-group__title {
+    font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 1.1rem;
+    color: var(--bs-emphasis-color);
+}
+
+/* ── Карточки участников ──────────────────────────────────────────────────── */
+.tm-page .tm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: .75rem;
+}
+.tm-page .tm-user {
+    display: flex; gap: .9rem; align-items: flex-start;
+    padding: .9rem 1rem;
+    transition: border-color .15s ease, transform .15s ease;
+}
+.tm-page .tm-user:hover { border-color: var(--bs-primary-border-subtle); transform: translateY(-1px); }
+.tm-page .tm-user--online { box-shadow: inset 3px 0 0 var(--bs-success); }
+
+.tm-page .tm-user__ava { position: relative; flex: 0 0 auto; display: block; }
+.tm-page .tm-user__ava img {
+    display: block; width: 3.6rem; height: 3.6rem;
+    border-radius: .85rem; object-fit: cover;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
+.tm-page .tm-user__dot {
+    position: absolute; right: -.2rem; bottom: -.2rem;
+    width: .85rem; height: .85rem; border-radius: 50%;
+    background: var(--bs-secondary-bg);
+    border: 2px solid var(--bs-body-bg);
+    box-shadow: 0 0 0 1px var(--bs-border-color);
+}
+.tm-page .tm-user__dot.is-online { background: var(--bs-success); box-shadow: none; }
+
+.tm-page .tm-user__body { flex: 1 1 auto; min-width: 0; }
+.tm-page .tm-user__name {
+    font-weight: 700; font-size: 1.05em; line-height: 1.2;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tm-page .tm-user__name a { text-decoration: none; }
+.tm-page .tm-user__title { font-size: .82em; color: var(--bs-secondary-color); margin-top: .1rem; }
+.tm-page .tm-user__meta {
+    display: inline-flex; align-items: center; gap: .35rem; margin-top: .4rem;
+    font-size: .8em; color: var(--bs-secondary-color);
+}
+.tm-page .tm-user__meta i { opacity: .75; }
+.tm-page .tm-user__actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .6rem; }
+.tm-page .tm-btn { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; }
+
+/* ── Адаптив ──────────────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .tm-page .tm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+    .tm-page .tm-grid { grid-template-columns: 1fr; }
+    .tm-page .tm-user__ava img { width: 3.2rem; height: 3.2rem; }
+    .tm-page .tm-tab__label { display: none; }
+    .tm-page .tm-tab.active .tm-tab__label { display: inline; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tm-page .tm-user, .tm-page .tm-tab { transition: none; }
+}

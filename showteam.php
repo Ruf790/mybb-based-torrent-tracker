@@ -1,5 +1,5 @@
 <?php
-
+declare(strict_types=1);
 
 define('IN_MYBB',    1);
 define('THIS_SCRIPT', 'showteam.php');
@@ -8,6 +8,9 @@ define('IN_FORUM', true);
 require_once 'global.php';
 
 $lang->load('showteam');
+
+$L = $lang->showteam;
+$e = static fn(string $s): string => htmlspecialchars_uni($s);
 
 /* ── Lang helper: {1}/{2}… and %1$s/%2$s… placeholders ──────────────── */
 if (!function_exists('ags_fmt')) {
@@ -23,285 +26,228 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
-add_breadcrumb($lang->showteam['nav_showteam']);
+add_breadcrumb($L['nav_showteam'] ?? 'Tracker Team');
 $plugins->run_hooks('showteam_start');
 
-$timecut = TIMENOW - $wolcutoffmins;
-$is_mod  = is_mod($usergroups);
-
-$teamgroups = [];
+// $wolcutoffmins — в минутах (раньше вычиталось как секунды: окно «в сети»
+// было 15 секунд, и вся команда почти всегда показывалась офлайн)
+$online_cut = TIMENOW - max(1, (int)($wolcutoffmins ?? 15)) * 60;
+$day_cut    = TIMENOW - 86400;
+$is_mod     = is_mod($usergroups);
+$my_id      = (int)($CURUSER['id'] ?? 0);
 
 /* ── Groups to show ─────────────────────────────────────────────────── */
 // Отдельный массив: $usergroups - это права текущего юзера, смешивать их
 // с ключами-gid нельзя (раньше в цикл вывода попадали поля прав)
+$teamgroups = [];
 $query = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE showforumteam=1 ORDER BY disporder");
 while ($query && ($ug = $db->fetch_array($query))) {
-    $teamgroups[(int)$ug['gid']] = $ug;
+    $teamgroups[(int)$ug['gid']] = $ug + ['user_list' => []];
 }
 
-if (empty($teamgroups)) stderr($lang->showteam['error_noteamstoshow']);
+if (empty($teamgroups)) {
+    stderr($L['error_noteamstoshow'] ?? 'There are no tracker staff to show.');
+}
 
 /* ── Fetch users: основная группа из списка команды ─────────────────────────
    Модераторы — это группа 6 (UC_MODERATOR) и показываются как обычная группа
    (таблицы moderators с модераторами отдельных форумов больше нет). */
-$group_ids = array_keys($teamgroups);
-$where     = 'usergroup IN (' . implode(',', array_fill(0, count($group_ids), '?')) . ')';
-$params    = $group_ids;
+$group_ids    = array_keys($teamgroups);
+$placeholders = implode(',', array_fill(0, count($group_ids), '?'));
 
 $query = $db->sql_query_prepared(
     "SELECT id, username, usergroup,
-     ignorelist, hideemail, receivepms, lastactive, lastvisit, invisible, avatar, avatardimensions
+            ignorelist, hideemail, receivepms, lastactive, lastvisit, invisible, avatar, avatardimensions
      FROM users
-     WHERE {$where}
+     WHERE usergroup IN ({$placeholders})
      ORDER BY username",
-    $params
+    $group_ids
 );
 
+$kpi_total  = 0;
+$kpi_online = 0;
+$kpi_day    = 0;
+
 while ($query && ($user = $db->fetch_array($query))) {
-    $uid   = (int)$user['id'];
-    $group = (int)$user['usergroup'];
-
-    // Своя (основная) группа, если она в списке команды
-    if (isset($teamgroups[$group])) {
-        $teamgroups[$group]['user_list'][$uid] = $user;
+    $gid = (int)$user['usergroup'];
+    if (!isset($teamgroups[$gid])) {
+        continue;
     }
+    $teamgroups[$gid]['user_list'][(int)$user['id']] = $user;
+
+    // KPI из той же выборки — без отдельных запросов.
+    // Невидимых считаем «в сети» только для модераторов, как и в карточках.
+    $visible = (int)$user['invisible'] === 0 || $is_mod;
+    $kpi_total++;
+    if ($visible && (int)$user['lastactive'] >= $online_cut) $kpi_online++;
+    if ($visible && (int)$user['lastactive'] >= $day_cut)    $kpi_day++;
 }
 
-/* ── Helper: build one member card ──────────────────────────────────── */
-function build_member_card(array $user, bool $online, string $emailcode,
-                            string $pmcode, string $lastvisit): string
+// Только группы, в которых кто-то есть
+$teamgroups = array_filter($teamgroups, static fn(array $g): bool => $g['user_list'] !== []);
+
+if (empty($teamgroups)) {
+    stderr($L['error_noteamstoshow'] ?? 'There are no tracker staff to show.');
+}
+
+/* ── Иконка и цвет группы ────────────────────────────────────────────── */
+function tm_group_style(int $gid): array
 {
-    global $lang;
-
-    // Avatar
-    $av = format_avatar($user['avatar'] ?? '', $user['avatardimensions'] ?? '');
-    $avatar_html = str_starts_with($av['image'], '<svg')
-        ? '<div class="team-avatar-svg">' . $av['image'] . '</div>'
-        : '<img src="' . htmlspecialchars($av['image']) . '" alt="" class="team-avatar">';
-
-    $lbl_online  = htmlspecialchars_uni($lang->showteam['lbl_online']);
-    $lbl_offline = htmlspecialchars_uni($lang->showteam['lbl_offline']);
-    $online_dot = $online
-        ? '<span class="online-dot" title="' . $lbl_online . '" aria-label="' . $lbl_online . '"></span>'
-        : '<span class="offline-dot" title="' . $lbl_offline . '" aria-label="' . $lbl_offline . '"></span>';
-
-    $tip_lastvisit = htmlspecialchars_uni($lang->showteam['tip_lastvisit']);
-
-    $actions = ($emailcode || $pmcode)
-        ? '<div class="mt-3 d-flex gap-2 flex-wrap">' . $emailcode . $pmcode . '</div>'
-        : '';
-
-    return <<<HTML
-<div class="col-xl-4 col-lg-6 col-md-6 mb-3">
-    <div class="team-card h-100">
-        <div class="team-card-inner">
-            <div class="team-avatar-wrap">
-                {$avatar_html}
-                {$online_dot}
-            </div>
-            <div class="team-info">
-                <div class="team-name"><a href="{$user['profilelink']}">{$user['username']}</a></div>
-                <div class="team-meta" title="{$tip_lastvisit}">
-                    <i class="fas fa-clock me-1" aria-hidden="true"></i>{$lastvisit}
-                </div>
-                {$actions}
-            </div>
-        </div>
-    </div>
-</div>
-HTML;
+    return match ($gid) {
+        8       => ['fa-crown',         'st-soft-danger'],   // Sysop
+        7       => ['fa-shield-halved', 'st-soft-warning'],  // Administrator
+        6       => ['fa-gavel',         'st-soft-success'],  // Moderator
+        5       => ['fa-upload',        'st-soft-info'],     // Uploader
+        4       => ['fa-gem',           'st-soft-primary'],  // VIP
+        default => ['fa-user-tie',      'st-soft-muted'],
+    };
 }
 
-/* ── Build group sections ────────────────────────────────────────────── */
-$grouplist = '';
+/* ── Карточка участника ──────────────────────────────────────────────── */
+function tm_member_card(array $user, string $group_title): string
+{
+    global $L, $e, $lang, $is_mod, $my_id, $online_cut;
 
-foreach ($teamgroups as $usergroup) {
-    if (!isset($usergroup['user_list'])) continue;
+    $uid       = (int)$user['id'];
+    $gid       = (int)$user['usergroup'];
+    $plainname = (string)$user['username'];
+    $profile   = get_profile_link($uid);
+    $name_html = format_name($e($plainname), $gid);
 
-    $rows = '';
+    $av = format_avatar((string)($user['avatar'] ?? ''), (string)($user['avatardimensions'] ?? ''));
 
-    foreach ($usergroup['user_list'] as $user) {
-        $plainname           = (string)$user['username'];
-        $user['username']    = format_name(htmlspecialchars_uni($user['username']), (int)$user['usergroup']);
-        $user['profilelink'] = get_profile_link($user['id']);
+    // Статус и последний визит (невидимых видят только модераторы и они сами)
+    $hidden    = (int)$user['invisible'] === 1 && !$is_mod && $uid !== $my_id;
+    $last_seen = max((int)$user['lastactive'], (int)$user['lastvisit']);
+    $online    = !$hidden && (int)$user['lastactive'] >= $online_cut;
 
-        // Online status
-        $online = $user['lastactive'] > $timecut
-               && $user['invisible'] == 0
-               && $user['lastvisit'] != $user['lastactive'];
-
-        // Last visit
-        if ($user['invisible'] == 1 && !$is_mod && $user['id'] != $CURUSER['id']) {
-            $lastvisit = $user['lastactive']
-                ? $lang->global['lastvisit_hidden']
-                : $lang->global['lastvisit_never'];
-        } else {
-            $lastvisit = my_datee('relative', $user['lastactive']);
-        }
-
-        // Email/PM buttons
-        $emailcode = $pmcode = '';
-        if (!$user['hideemail']) {
-            $emailcode = '<a href="member.php?action=emailuser&amp;id=' . $user['id']
-                . '" class="btn btn-sm btn-outline-secondary" title="'
-                . htmlspecialchars_uni(ags_fmt($lang->showteam['tip_email'], $plainname))
-                . '"><i class="fa-solid fa-at me-1" aria-hidden="true"></i>'
-                . htmlspecialchars_uni($lang->showteam['btn_email']) . '</a>';
-        }
-        if ($user['receivepms'] && my_strpos(',' . (string)$user['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false) {
-            $pmcode = '<a href="private.php?action=send&amp;uid=' . $user['id']
-                . '" class="btn btn-sm btn-outline-secondary" title="'
-                . htmlspecialchars_uni(ags_fmt($lang->showteam['tip_pm'], $plainname))
-                . '"><i class="fa-solid fa-envelope me-1" aria-hidden="true"></i>'
-                . htmlspecialchars_uni($lang->showteam['btn_pm']) . '</a>';
-        }
-
-        $plugins->run_hooks('showteam_user');
-
-        $rows .= build_member_card($user, $online, $emailcode, $pmcode, $lastvisit);
+    if ($hidden) {
+        $lastvisit = '<i class="fa-solid fa-eye-slash" aria-hidden="true"></i>' . $e($lang->global['lastvisit_hidden'] ?? '(Hidden)');
+    } elseif ($last_seen === 0) {
+        $lastvisit = '<i class="fa-solid fa-clock" aria-hidden="true"></i>' . $e($lang->global['lastvisit_never'] ?? 'Never');
+    } else {
+        $lastvisit = '<i class="fa-solid fa-clock" aria-hidden="true"></i>' . my_datee('relative', $last_seen);
     }
 
-    if (!$rows) continue;
+    $lbl_status = $online ? ($L['lbl_online'] ?? 'Online') : ($L['lbl_offline'] ?? 'Offline');
 
-    $section_title = htmlspecialchars_uni((string)$usergroup['title']);
+    // Кнопки связи
+    $actions = '';
+    if ((int)$user['hideemail'] === 0) {
+        $actions .= '<a href="member.php?action=emailuser&amp;id=' . $uid . '" class="btn btn-sm btn-outline-secondary st-pill tm-btn"'
+            . ' title="' . $e(ags_fmt($L['tip_email'] ?? 'Send {1} an email', $plainname)) . '">'
+            . '<i class="fa-solid fa-at" aria-hidden="true"></i>' . $e($L['btn_email'] ?? 'Email') . '</a>';
+    }
+    $ignored = my_strpos(',' . (string)($user['ignorelist'] ?? '') . ',', ',' . $my_id . ',') !== false;
+    if ((int)$user['receivepms'] === 1 && !$ignored && $uid !== $my_id) {
+        $actions .= '<a href="private.php?action=send&amp;uid=' . $uid . '" class="btn btn-sm btn-outline-primary st-pill tm-btn"'
+            . ' title="' . $e(ags_fmt($L['tip_pm'] ?? 'Send {1} a private message', $plainname)) . '">'
+            . '<i class="fa-solid fa-envelope" aria-hidden="true"></i>' . $e($L['btn_pm'] ?? 'PM') . '</a>';
+    }
 
-    $grouplist .= <<<HTML
-<div class="team-section">
-    <div class="team-section-title">{$section_title}</div>
-    <div class="row g-3">{$rows}</div>
-</div>
-HTML;
+    return '<article class="st-card tm-user' . ($online ? ' tm-user--online' : '') . '">'
+        . '<a href="' . $profile . '" class="tm-user__ava" tabindex="-1" aria-hidden="true">'
+        .   '<img src="' . $e((string)$av['image']) . '" alt="" loading="lazy">'
+        .   '<span class="tm-user__dot' . ($online ? ' is-online' : '') . '" title="' . $e($lbl_status) . '"></span>'
+        . '</a>'
+        . '<div class="tm-user__body">'
+        .   '<div class="tm-user__name"><a href="' . $profile . '">' . $name_html . '</a></div>'
+        .   '<div class="tm-user__title">' . $e($group_title) . '</div>'
+        .   '<div class="tm-user__meta" title="' . $e($L['tip_lastvisit'] ?? 'Last visit') . '">' . $lastvisit . '</div>'
+        .   ($actions !== '' ? '<div class="tm-user__actions">' . $actions . '</div>' : '')
+        . '</div>'
+        . '</article>';
 }
 
-if (empty($grouplist)) stderr($lang->showteam['error_noteamstoshow']);
+/* ── Секции групп + вкладки ──────────────────────────────────────────── */
+$sections = '';
+$tabs     = '';
+
+foreach ($teamgroups as $gid => $group) {
+    [$icon, $soft] = tm_group_style((int)$gid);
+    $title = (string)$group['title'];
+    $count = count($group['user_list']);
+
+    $cards = '';
+    foreach ($group['user_list'] as $user) {
+        $plugins->run_hooks('showteam_user');
+        $cards .= tm_member_card($user, $title);
+    }
+
+    $sections .= '<section class="st-card tm-group mb-3" id="tm-group-' . (int)$gid . '" data-group="' . (int)$gid . '">'
+        . '<div class="st-card__head">'
+        .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        .   '<span class="tm-group__title">' . $e($title) . '</span>'
+        .   '<span class="st-badge st-soft-muted ms-auto">' . ts_nf($count) . '</span>'
+        . '</div>'
+        . '<div class="st-card__body"><div class="tm-grid">' . $cards . '</div></div>'
+        . '</section>';
+
+    $tabs .= '<li><a class="tm-tab" href="#tm-group-' . (int)$gid . '" data-group="' . (int)$gid . '">'
+        . '<i class="fa-solid ' . $icon . '" aria-hidden="true"></i>'
+        . '<span class="tm-tab__label">' . $e($title) . '</span>'
+        . '<span class="tm-tab__count">' . ts_nf($count) . '</span>'
+        . '</a></li>';
+}
 
 $plugins->run_hooks('showteam_end');
 
 /* ── Output ──────────────────────────────────────────────────────────── */
-stdhead($lang->showteam['nav_showteam']);
+stdhead($L['nav_showteam'] ?? 'Tracker Team');
 build_breadcrumb();
+
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/showteam.css?ver=1">';
 ?>
-<style>
-/* ── Team page styles ───────────────────────────────────────────────── */
-.team-section {
-    margin-bottom: 2.5rem;
-}
+<div class="container-md st-page tm-page">
 
-.team-section-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--ts-text, #1e293b);
-    padding: .6rem 1rem;
-    border-left: 4px solid var(--bs-primary, #0d6efd);
-    background: rgba(13,110,253,.05);
-    border-radius: 0 .5rem .5rem 0;
-    margin-bottom: 1rem;
-}
+    <header class="st-card st-head mb-3">
+        <div class="st-head__icon st-soft-primary"><i class="fa-solid fa-user-shield"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="st-title"><?= $e($L['nav_showteam'] ?? 'Tracker Team') ?></h1>
+            <div class="st-meta mt-1"><?= $e($L['page_subtitle'] ?? 'The people who run and moderate the tracker') ?></div>
+        </div>
+    </header>
 
-.team-card {
-    background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 12px;
-    transition: transform .2s ease, box-shadow .2s ease;
-    overflow: hidden;
-}
+    <?php
+    $tiles = [
+        ['fa-users',       'st-soft-primary', $kpi_total,         $L['lbl_kpi_members'] ?? 'Team members'],
+        ['fa-signal',      'st-soft-success', $kpi_online,        $L['lbl_kpi_online'] ?? 'Online now'],
+        ['fa-clock',       'st-soft-info',    $kpi_day,           $L['lbl_kpi_active'] ?? 'Active in 24h'],
+        ['fa-layer-group', 'st-soft-warning', count($teamgroups), $L['lbl_kpi_groups'] ?? 'Groups'],
+    ];
+    ?>
+    <div class="tm-kpis mb-3">
+        <?php foreach ($tiles as [$icon, $soft, $val, $lbl]): ?>
+            <div class="st-kpi st-kpi--muted">
+                <span class="st-ico <?= $soft ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+                <div class="min-w-0">
+                    <div class="st-kpi__val"><?= ts_nf($val) ?></div>
+                    <div class="st-kpi__lbl"><?= $e($lbl) ?></div>
+                </div>
+                <i class="fa-solid <?= $icon ?> st-kpi__bg" aria-hidden="true"></i>
+            </div>
+        <?php endforeach; ?>
+    </div>
 
-.team-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0,0,0,.09);
-    border-color: #c8d8ff;
-}
+    <?php if (count($teamgroups) > 1): ?>
+    <nav class="st-card tm-tabs-card mb-3">
+        <ul class="tm-tabs">
+            <li><a class="tm-tab active" href="#" data-group="all" aria-current="true">
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                <span class="tm-tab__label"><?= $e($L['tab_all'] ?? 'All') ?></span>
+                <span class="tm-tab__count"><?= ts_nf($kpi_total) ?></span>
+            </a></li>
+            <?= $tabs ?>
+        </ul>
+    </nav>
+    <?php endif; ?>
 
-.team-card-inner {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1rem;
-}
+    <div class="tm-groups">
+        <?= $sections ?>
+    </div>
 
-/* Avatar */
-.team-avatar-wrap {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.team-avatar {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid #e9ecef;
-}
-
-.team-avatar-svg {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid #e9ecef;
-    background: #f1f5f9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.team-avatar-svg svg {
-    width: 40px;
-    height: 40px;
-}
-
-.online-dot,
-.offline-dot {
-    position: absolute;
-    bottom: 2px;
-    right: 2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid #fff;
-}
-
-.online-dot  { background: #22c55e; }
-.offline-dot { background: #94a3b8; }
-
-/* Info */
-.team-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.team-name {
-    font-weight: 600;
-    font-size: .95rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: .15rem;
-}
-
-.team-name a {
-    color: inherit;
-    text-decoration: none;
-}
-
-.team-name a:hover { color: var(--bs-primary); }
-
-.team-meta {
-    font-size: .8rem;
-    color: #64748b;
-    margin-top: .25rem;
-}
-
-/* Buttons */
-.team-card .btn-sm {
-    font-size: .75rem;
-    padding: .2rem .55rem;
-}
-</style>
-
-<div class="container-md py-4">
-    <?= $grouplist ?>
 </div>
-
+<script src="<?= $BASEURL ?>/scripts/showteam.js?ver=1" defer></script>
 <?php
 stdfoot();

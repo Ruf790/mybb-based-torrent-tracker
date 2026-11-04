@@ -9,6 +9,14 @@ $language['showteam'] = array
 'nav_showteam'        => 'Команда трекера',
 'error_noteamstoshow' => 'Сейчас в команде трекера некого показать.',
 
+// ── Header & KPI ──
+'page_subtitle'       => 'Те, кто ведёт и модерирует трекер',
+'lbl_kpi_members'     => 'В команде',
+'lbl_kpi_online'      => 'Сейчас на сайте',
+'lbl_kpi_active'      => 'Активны за 24 ч',
+'lbl_kpi_groups'      => 'Группы',
+'tab_all'             => 'Все',
+
 // ── Status ──
 'lbl_online'          => 'В сети',
 'lbl_offline'         => 'Не в сети',

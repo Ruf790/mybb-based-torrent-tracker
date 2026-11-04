@@ -190,6 +190,8 @@ class trackerlanguage
 	
 	public $claims_admin;
 	
+	public $requests;
+	
 	
 	
 	

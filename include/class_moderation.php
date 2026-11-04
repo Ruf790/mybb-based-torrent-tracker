@@ -614,6 +614,27 @@ if (count($groups) > 0) {
 
     // ── delete_thread ─────────────────────────────────────────────────────────
 
+    /**
+     * Reactions of posts that are deleted (include/functions_reactions.php). With $intoPid > 0 (merge)
+     * they move to that post first; a reaction the user already has there is dropped.
+     * Never breaks the deletion: skipped while reactions.sql is not installed.
+     */
+    private function delete_post_reactions(array $pids, int $intoPid = 0): void
+    {
+        global $db;
+        $pids = array_values(array_filter(array_map('intval', $pids), static fn(int $p): bool => $p > 0));
+        if (!$pids) return;
+        $ph = implode(',', array_fill(0, count($pids), '?'));
+        try {
+            if ($intoPid > 0) {
+                $db->sql_query_prepared("UPDATE IGNORE reactions SET item_id = ? WHERE type = 'post' AND item_id IN ({$ph})", [$intoPid, ...$pids]);
+            }
+            $db->sql_query_prepared("DELETE FROM reactions WHERE type = 'post' AND item_id IN ({$ph})", $pids);
+        } catch (\Throwable $e) {
+            error_log('moderation reactions: ' . $e->getMessage());
+        }
+    }
+
     public function delete_thread(int $tid): bool
     {
         global $db, $kpscomment;
@@ -672,6 +693,7 @@ if (count($groups) > 0) {
         }
 
         if (!empty($pids)) {
+            $this->delete_post_reactions($pids);
             [$ph, $params] = $this->inClause($pids);
             $db->sql_query_prepared("DELETE FROM posts WHERE pid IN ({$ph})", $params);
             [$ph, $params] = $this->inClause($pids);
@@ -764,6 +786,7 @@ if (count($groups) > 0) {
         }
         remove_attachments($pid);
 
+        $this->delete_post_reactions([$pid]);
         $db->sql_query_prepared("DELETE FROM posts WHERE pid = ?", [$pid]);
         $db->sql_query_prepared("DELETE FROM reports WHERE type = 'forumpost' AND reported_id = ?", [$pid]);
 
@@ -870,6 +893,9 @@ if (count($groups) > 0) {
         }
 
         $db->sql_query_prepared("UPDATE posts SET message = ? WHERE pid = ?", [$message, $masterpid]);
+
+        // Reactions of the merged posts move to the master post (a duplicate of the same person is dropped)
+        $this->delete_post_reactions(array_diff(array_map('intval', $pids), [(int)$masterpid]), (int)$masterpid);
 
         [$ph, $params] = $this->inClause($pids);
         $db->sql_query_prepared("DELETE FROM posts WHERE pid IN ({$ph}) AND pid != ?", [...$params, $masterpid]);

@@ -475,6 +475,37 @@ foreach ([$uploadDir, $imageDir, $screenshotDir, $nfoDir, $torrentDir] as $dir) 
 
 
 
+/**
+ * Проверяет, указывает ли ссылка на постер, лежащий на нашем сервере
+ * (при редактировании поле imageUrl заполнено текущим t_image).
+ * Такой постер не скачиваем заново: сервер не всегда достучится сам
+ * до себя по внешнему домену, а при неудачной проверке файл постера
+ * перезаписывался и удалялся.
+ *
+ * Возвращает:
+ *   'external' — внешняя ссылка, её нужно скачать;
+ *   'ok'       — свой постер, файл на месте, ничего делать не нужно;
+ *   'missing'  — свой постер, но файла нет (ссылку нужно очистить).
+ */
+function ags_own_poster_state(string $url, string $baseurl): string
+{
+    $url  = trim($url);
+    $path = (string)parse_url($url, PHP_URL_PATH);
+
+    $isOwn = str_starts_with($path, '/torrents/images/')
+        && strcasecmp((string)parse_url($url, PHP_URL_HOST),
+                      (string)parse_url($baseurl, PHP_URL_HOST)) === 0;
+
+    if (!$isOwn) {
+        return 'external';
+    }
+
+    // basename() — защита от ../ в пути
+    $file = __DIR__ . '/torrents/images/' . basename($path);
+
+    return is_file($file) ? 'ok' : 'missing';
+}
+
 
 function saveFile($file, $targetDir, $allowedTypes)
 {
@@ -1390,8 +1421,19 @@ if (!empty($_FILES['imagesUpload2']['tmp_name']))
 
 
 
+// Свой постер (при редактировании поле заполнено текущим t_image):
+// не скачиваем заново; если файла нет — чистим битую ссылку.
+$posterState1 = !empty($_POST['imageUrl'])
+    ? ags_own_poster_state((string)$_POST['imageUrl'], $BASEURL)
+    : 'external';
+
+if ($posterState1 === 'missing') {
+    // Только если в базе всё ещё эта ссылка (новый загруженный файл не трогаем)
+    $db->sql_query_prepared("UPDATE torrents SET t_image = '' WHERE id = ? AND t_image = ?", [$NewTID, trim((string)$_POST['imageUrl'])]);
+}
+
 // === IMAGE FROM URL 1 ===
-if (!empty($_POST['imageUrl'])) 
+if (!empty($_POST['imageUrl']) && $posterState1 === 'external') 
 {
     $imageUrl = filter_var($_POST['imageUrl'], FILTER_VALIDATE_URL);
 
@@ -1438,8 +1480,19 @@ if (!empty($_POST['imageUrl']))
     }
 }
 
+// Свой постер (при редактировании поле заполнено текущим t_image2):
+// не скачиваем заново; если файла нет — чистим битую ссылку.
+$posterState2 = !empty($_POST['imageUrl2'])
+    ? ags_own_poster_state((string)$_POST['imageUrl2'], $BASEURL)
+    : 'external';
+
+if ($posterState2 === 'missing') {
+    // Только если в базе всё ещё эта ссылка (новый загруженный файл не трогаем)
+    $db->sql_query_prepared("UPDATE torrents SET t_image2 = '' WHERE id = ? AND t_image2 = ?", [$NewTID, trim((string)$_POST['imageUrl2'])]);
+}
+
 // === IMAGE FROM URL 2 ===
-if (!empty($_POST['imageUrl2'])) 
+if (!empty($_POST['imageUrl2']) && $posterState2 === 'external') 
 {
     $imageUrl2 = filter_var($_POST['imageUrl2'], FILTER_VALIDATE_URL);
 

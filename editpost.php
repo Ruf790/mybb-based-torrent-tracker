@@ -146,7 +146,7 @@ if ((empty($_POST) && empty($_FILES)) && $mybb->get_input('processed', MyBB::INP
 }
 
 $attacherror = '';
-$enableattachments = "1";
+
 
 if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_input('updateattachment') || ((($mybb->input['action'] == "do_editpost" && isset($mybb->input['submitbutton'])) || ($mybb->input['action'] == "editpost" && isset($mybb->input['previewpost']))) && $_FILES['attachments']))) {
     // Verify incoming POST request

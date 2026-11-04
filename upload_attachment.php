@@ -84,6 +84,12 @@ if ($action === 'delete') {
 }
 
 // ── UPLOAD ────────────────────────────────────────────────────────────────────
+// Вложения выключены в настройках — загрузку не принимаем (удаление старых выше работает)
+if (!att_enabled()) {
+    echo json_encode(['error' => $UL['err_attachments_disabled'] ?? 'Attachments are currently disabled.']);
+    exit;
+}
+
 if (!isset($_FILES['attachment'])) {
     echo json_encode(['error' => $UL['err_no_file']]);
     exit;

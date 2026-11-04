@@ -14,6 +14,8 @@ $lang->load('chat');
 
 require_once INC_PATH . '/functions_chat.php';
 
+
+
 if (empty($CURUSER['id'])) {
     if (function_exists('loggedinorreturn')) {
         loggedinorreturn();

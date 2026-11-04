@@ -569,7 +569,7 @@ function handleGetMultiquoted(): void
  */
 function handleEditPost(): void
 {
-    global $mybb, $db, $charset, $plugins, $CURUSER, $lang;
+    global $mybb, $db, $charset, $plugins, $CURUSER, $lang, $enableattachments;
     
     $post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
 
@@ -662,7 +662,7 @@ function handleEditPost(): void
         $post['username'] = htmlspecialchars_uni($post['username']);
         $post['message'] = $parser->parse_message($message, $parser_options);
 
-        $enableattachments = "1";
+        
         if ($enableattachments != 0) {
             $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$post['pid']]);
             while ($query && ($attachment = $db->fetch_array($query))) {

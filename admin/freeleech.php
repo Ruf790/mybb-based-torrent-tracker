@@ -81,6 +81,11 @@ class TorrentManager
             $this->fail($this->t('err_csrf'));
         }
 
+        // How many torrents this switches, counted BEFORE the update: affected_rows() after a
+        // prepared UPDATE is not reliable on every driver, the chat bot must not depend on it
+        $q       = $this->db->sql_query_prepared('SELECT COUNT(*) AS c FROM torrents WHERE free = ?', [$target === 'yes' ? 'no' : 'yes']);
+        $toFlip  = (int)(($q ? $this->db->fetch_array($q) : [])['c'] ?? 0);
+
         $result = $this->db->sql_query_prepared($target === 'yes'
             ? "UPDATE torrents SET free = 'yes' WHERE free = 'no'"
             : "UPDATE torrents SET free = 'no' WHERE free = 'yes'");
@@ -90,11 +95,11 @@ class TorrentManager
                 : $this->t('err_db_restore'));
         }
 
-        $changed = (int)$this->db->affected_rows();
+        $changed = max((int)$this->db->affected_rows(), $toFlip);
 
         // Chat bot: "Global freeleech is ON / over" — only when something really changed
         // (switch: Settings → Cleanup → Chat bot; never breaks this action)
-        if ($changed > 0 && is_file(INC_PATH . '/functions_chat.php')) {
+        if ($toFlip > 0 && is_file(INC_PATH . '/functions_chat.php')) {
             try {
                 require_once INC_PATH . '/functions_chat.php';
                 chat_bot_post('freeleech', ['on' => $target === 'yes']);

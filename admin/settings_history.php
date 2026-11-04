@@ -279,7 +279,7 @@ stdhead($lang->managesettings['hist_page_title'] ?? 'Settings History');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings.css">
-<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings_history.css?ver=3">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings_history.css?ver=2">
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
 
 <?php flash_message(); ?>

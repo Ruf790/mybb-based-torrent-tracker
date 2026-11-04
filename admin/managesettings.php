@@ -733,6 +733,15 @@ match(true) {
                 "Type: {$old_type}, Start: {$old_start}, End: {$old_end}",
                 "Type: {$flstype}, Start: {$start}, End: {$end}"
             );
+            // Chat bot: if the period is running now (or just stopped), say so right away
+            if (is_file(INC_PATH . '/functions_chat.php')) {
+                try {
+                    require_once INC_PATH . '/functions_chat.php';
+                    chat_bot_freeleech_tick();
+                } catch (\Throwable $e) {
+                    error_log('chat bot (freeleech tick): ' . $e->getMessage());
+                }
+            }
             flash_message($lang->managesettings['flash_fl_saved'], "success");
             admin_redirect(AGS_SELF . "?saved=freeleech#freeleech-settings");
         }

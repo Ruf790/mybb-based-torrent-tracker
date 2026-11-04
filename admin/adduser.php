@@ -448,6 +448,16 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 
         // Обновление статистики
         update_stats(['numusers' => '+1']);
+		
+		// Бот чата: «Новый участник: …»
+        try {
+            require_once INC_PATH . '/functions_chat.php';
+            chat_bot_post('register', ['id' => (int)$user_id]);
+        } catch (\Throwable $e) {
+            error_log('chat bot (adduser): ' . $e->getMessage());
+        }
+		
+		
 
         // Приветственное сообщение
         require_once INC_PATH . '/functions_pm.php';

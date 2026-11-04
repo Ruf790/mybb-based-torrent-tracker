@@ -309,6 +309,25 @@ input:checked + .slider:before {
 }
 
 
+/* Заглушка вместо битого постера */
+.preview-poster--empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    padding: .5rem;
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: .8rem;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.preview-poster--empty i {
+    font-size: 2rem;
+    opacity: .55;
+}
+
 .preview-screenshot {
     width: 100%;
     height: 150px;

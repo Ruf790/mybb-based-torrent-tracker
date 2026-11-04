@@ -2180,7 +2180,7 @@ function copyAnnounceUrl() {
 
 
 <!-- Подключение стилей Upload -->
-<link rel="stylesheet" href="<?= $BASEURL; ?>/include/templates/default/style/upload_torrent.css" type="text/css" media="screen" />
+<link rel="stylesheet" href="<?= $BASEURL; ?>/include/templates/default/style/upload_torrent.css?ver=2" type="text/css" media="screen" />
 
 
 

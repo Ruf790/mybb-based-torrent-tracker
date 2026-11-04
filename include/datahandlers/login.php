@@ -153,7 +153,7 @@ class LoginDataHandler extends DataHandler
 
         $plugins->run_hooks('datahandler_login_complete_start', $this);
 
-        // Login to MyBB
+        // Login
         my_setcookie('loginattempts', "1");
 
         // Новая сессия для пользователя: старый sid (если был) удаляется,

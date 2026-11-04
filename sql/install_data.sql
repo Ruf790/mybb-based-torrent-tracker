@@ -424,4 +424,4 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (130, 'exams', 'Ecams Test', 'exams.php', '[8]'),
 (132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]'),
 (133, 'check_update', 'Update check (GitHub)', 'check_update.php', '[8]'),
-(134, 'claims', 'Claims: keepers and monthly norm', 'claims.php', '[6],[7],[8]');
+(136, 'claims', 'Claims: keepers and monthly norm', 'claims.php', '[6],[7],[8]');

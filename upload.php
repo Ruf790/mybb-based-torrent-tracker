@@ -2266,7 +2266,7 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
   
   <script>var existingScreenshotsCount = <?= count($screenshots ?? []) ?>;</script>
   <script src="<?= $BASEURL; ?>/scripts/Sortable.min.js"></script>
-<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js?ver=72"></script>
+<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js?ver=73"></script>
   
  
 <!-- Torrent File -->
@@ -3376,7 +3376,8 @@ https://example.com/screen3.webp"></textarea>
                             <input type="checkbox" class="form-check-input screenshot-select-checkbox position-absolute" data-id="<?= $shot['id'] ?>">
                             <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>"
                                  class="preview-screenshot"
-                                 alt="Screenshot">
+                                 alt="Screenshot"
+                                 onerror="window.utShotFallback && utShotFallback(this)">
                             <button type="button"
                                     class="delete-btn"
                                     title="Delete screenshot">

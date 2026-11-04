@@ -634,6 +634,42 @@ if (document.readyState === 'loading') {
     utScanBrokenPosters();
 }
 
+// Заглушка вместо битого скриншота. Сам <img> не удаляем, а прячем:
+// окно удаления берёт из его src имя файла.
+window.utShotFallback = function(img) {
+    if (!img || !img.parentNode || img.dataset.fallback) return;
+    img.dataset.fallback = '1';
+    img.classList.add('is-broken');
+
+    const ph = document.createElement('div');
+    ph.className = 'preview-screenshot--empty';
+    ph.setAttribute('role', 'img');
+
+    const icon = document.createElement('i');
+    icon.className = 'fa-regular fa-image';
+    const text = document.createElement('span');
+    text.textContent = ut('shot_missing', 'Screenshot file not found.');
+    ph.append(icon, text);
+    ph.setAttribute('aria-label', text.textContent);
+
+    img.before(ph);
+};
+
+function utScanBrokenShots() {
+    document.querySelectorAll('#existingScreenshots img.preview-screenshot').forEach(img => {
+        if (img.complete && img.naturalWidth === 0) {
+            utShotFallback(img);
+        } else {
+            img.addEventListener('error', () => utShotFallback(img), { once: true });
+        }
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', utScanBrokenShots);
+} else {
+    utScanBrokenShots();
+}
+
 // Удаление изображения
 window.removeImage = function(previewContainerId, urlInputId = null, fileInputId = null) {
     const previewContainer = document.getElementById(previewContainerId);

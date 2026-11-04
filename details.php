@@ -85,6 +85,40 @@ define('D_VERSION', '3.5.5');
 define("IN_ARCHIVE", true);
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+/**
+ * Состояние картинки по ссылке: свой файл в /torrents/images/ или
+ * /torrents/screens/ проверяем на диске, внешнюю ссылку — нет.
+ * Возвращает 'ok', 'missing' или 'external'.
+ */
+function dt_local_image_state(string $url): string
+{
+    global $BASEURL;
+
+    $path = (string)parse_url($url, PHP_URL_PATH);
+    $host = (string)parse_url($url, PHP_URL_HOST);
+
+    if ($host !== '' && strcasecmp($host, (string)parse_url((string)$BASEURL, PHP_URL_HOST)) !== 0) {
+        return 'external';
+    }
+
+    foreach (['/torrents/images/', '/torrents/screens/'] as $dir) {
+        if (str_starts_with($path, $dir)) {
+            return is_file(__DIR__ . $dir . basename($path)) ? 'ok' : 'missing';
+        }
+    }
+
+    return 'external';
+}
+
+/** Заглушка вместо отсутствующего постера / скриншота. */
+function dt_img_missing_html(string $kind, string $text): string
+{
+    $text = htmlspecialchars($text, ENT_QUOTES);
+
+    return '<div class="dt-img-missing dt-img-missing--' . $kind . '" role="img" aria-label="' . $text . '">'
+         . '<i class="fa-light fa-image" aria-hidden="true"></i><span>' . $text . '</span></div>';
+}
+
 function get_comment($pid)
 {
     global $db;
@@ -448,7 +482,7 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=26">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=27">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
@@ -465,7 +499,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=2"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=3"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -1029,17 +1063,29 @@ if ($res) {
 }
 
 $ags_t_screenshot = htmlspecialchars($lang->details['lbl_screenshot'], ENT_QUOTES);
+$ags_t_shot_miss  = (string)($lang->details['lbl_screenshot_missing'] ?? 'Screenshot file not found.');
 $screensHtml      = '<div class="row g-3">';
 foreach ($screenshots as $shot) {
     $filename      = htmlspecialchars($shot['filename']);
     $screenshotUrl = '/torrents/screens/' . $filename;
+
+    // Файла скриншота нет на диске — заглушка вместо битой картинки
+    if (!is_file(__DIR__ . '/torrents/screens/' . basename((string)$shot['filename']))) {
+        $screensHtml .= '
+    <div class="col-6 col-md-4 col-lg-3">
+        ' . dt_img_missing_html('shot', $ags_t_shot_miss) . '
+    </div>';
+        continue;
+    }
 
     $screensHtml .= '
     <div class="col-6 col-md-4 col-lg-3">
         <a href="#" class="screenshot-wrapper d-block position-relative overflow-hidden rounded-4"
            data-bs-toggle="modal" data-bs-target="#universalImageModal"
            data-img-src="' . $screenshotUrl . '" data-title="' . $ags_t_screenshot . '">
-            <img src="' . $screenshotUrl . '" class="img-fluid rounded-4 transition-scale" alt="' . $ags_t_screenshot . '">
+            <img src="' . $screenshotUrl . '" class="img-fluid rounded-4 transition-scale" alt="' . $ags_t_screenshot . '"
+                 data-kind="shot" data-missing="' . htmlspecialchars($ags_t_shot_miss, ENT_QUOTES) . '"
+                 onerror="window.dtImgMissing && dtImgMissing(this)">
         </a>
     </div>';
 }
@@ -1047,17 +1093,26 @@ $screensHtml .= '</div>';
 
 $modal_images = '';
 $images       = [];
+$ags_t_poster_miss = (string)($lang->details['lbl_poster_missing'] ?? 'No poster available.');
 
 if (!empty($Torrent['t_image']))  $images[] = $Torrent['t_image'];
 if (!empty($Torrent['t_image2'])) $images[] = $Torrent['t_image2'];
 
 foreach ($images as $img) {
+    // Файла постера нет на сервере — заглушка, без открытия в модалке
+    if (dt_local_image_state((string)$img) === 'missing') {
+        $modal_images .= dt_img_missing_html('poster', $ags_t_poster_miss);
+        continue;
+    }
+
     $modal_images .= '
     <a href="#" data-bs-toggle="modal" data-bs-target="#universalImageModal"
        data-img-src="' . htmlspecialchars_uni($img) . '"
        data-title="' . htmlspecialchars_uni($Torrent['name']) . '">
         <img src="' . htmlspecialchars_uni($img) . '" class="rounded" width="400"
-             alt="' . htmlspecialchars_uni($Torrent['name']) . '">
+             alt="' . htmlspecialchars_uni($Torrent['name']) . '"
+             data-kind="poster" data-missing="' . htmlspecialchars($ags_t_poster_miss, ENT_QUOTES) . '"
+             onerror="window.dtImgMissing && dtImgMissing(this)">
     </a>';
 }
 

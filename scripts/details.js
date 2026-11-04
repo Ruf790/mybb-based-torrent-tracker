@@ -538,3 +538,28 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 });
+
+// Заглушка вместо картинки, которая не загрузилась (постер / скриншот).
+// Ссылку-обёртку (открытие в модалке) заменяем целиком — открывать нечего.
+window.dtImgMissing = function (img) {
+    if (!img || img.dataset.fallback) return;
+    img.dataset.fallback = '1';
+
+    const box  = img.closest('a') || img;
+    const kind = img.dataset.kind === 'poster' ? 'poster' : 'shot';
+    const text = img.dataset.missing || '';
+
+    const ph = document.createElement('div');
+    ph.className = 'dt-img-missing dt-img-missing--' + kind;
+    ph.setAttribute('role', 'img');
+    ph.setAttribute('aria-label', text);
+
+    const icon = document.createElement('i');
+    icon.className = 'fa-light fa-image';
+    icon.setAttribute('aria-hidden', 'true');
+    const span = document.createElement('span');
+    span.textContent = text;
+    ph.append(icon, span);
+
+    box.replaceWith(ph);
+};

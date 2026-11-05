@@ -60,7 +60,6 @@ $language['details'] = array
 	'sec_tags'					=> 'Теги',
 
 	// ── Manage tools ──────────────────────────────────────────────────────────
-	'menu_quick_edit'			=> 'Быстрое редактирование',
 	'menu_full_edit'			=> 'Полное редактирование',
 	'btn_delete'				=> 'Удалить',
 	'tip_hitrun'				=> 'Hit & Run',
@@ -75,8 +74,6 @@ $language['details'] = array
 	'btn_collapse_all'			=> 'Свернуть всё',
 	'err_torrent_file_missing'	=> 'Торрент-файл отсутствует',
 	'lbl_screenshot'			=> 'Скриншот',
-	'lbl_screenshot_missing'	=> 'Файл скриншота не найден.',
-	'lbl_poster_missing'		=> 'Постер недоступен.',
 	'sec_nfo_file'				=> 'NFO-файл',
 	'btn_copy'					=> 'Копировать',
 	'description'				=> 'Описание',
@@ -537,19 +534,9 @@ $language['details'] = array
     'tip_nuked' => 'Раздача нюкнута: изменить причину / снять',
 	
 	
-	// ── Подходящие запросы ──
-	'sec_req_match'				=> 'Эта раздача может закрыть запросы',
-	'hint_req_match'			=> 'Видите только вы и стафф. Закрыв запрос, вы получите его награду.',
-	'btn_req_fill'				=> 'Закрыть',
-	'lbl_req_match_imdb'		=> 'Совпадение по IMDb',
-	'lbl_req_match_title'		=> 'Название совпадает на {1}%',
-	'lbl_req_votes'				=> 'Голосов: {1}',
-	'lbl_req_bounty'			=> '{1} BP',
-	'conf_req_fill'				=> 'Закрыть этот запрос текущей раздачей?',
-
-    // ── Реакции на комментарии (include/functions_reactions.php, scripts/reactions.js) ──
+	
+	// ── Реакции на комментарии и посты (include/functions_reactions.php, scripts/reactions.js) ──
     'react_add'        => 'Добавить реакцию',
-    'react_btn'        => 'Реакция',
     'react_all'        => 'Все смайлы',
     'react_more'       => 'и ещё {1}',
     'react_remove'     => 'Нажмите, чтобы убрать свою',
@@ -558,5 +545,28 @@ $language['details'] = array
     'react_err_login'  => 'Войдите, чтобы ставить реакции.',
     'react_err_gone'   => 'Это сообщение уже удалено.',
     'react_err_token'  => 'Ключ безопасности устарел. Обновите страницу.',
+	
+	'react_btn'        => 'Реакция',
+	
+	
+	
+	'sec_req_match'        => 'Эта раздача может закрыть запросы',
+	'hint_req_match'       => 'Видите только вы и стафф. Закрыв запрос, вы получите его награду.',
+	'btn_req_fill'         => 'Закрыть',
+	'lbl_req_match_imdb'   => 'Совпадение по IMDb',
+	'lbl_req_match_title'  => 'Название совпадает на {1}%',
+	'lbl_req_votes'        => 'Голосов: {1}',
+	'lbl_req_bounty'       => '{1} BP',
+	'conf_req_fill'        => 'Закрыть этот запрос текущей раздачей?',
+	
+	'lbl_screenshot_missing'	=> 'Файл скриншота не найден.',
+	'lbl_poster_missing'		=> 'Постер недоступен.',
+	
+	
+	
+	
+	
+	
+	
 );
 ?>

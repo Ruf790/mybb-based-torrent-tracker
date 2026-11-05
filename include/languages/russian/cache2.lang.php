@@ -59,7 +59,6 @@ $language['cache2'] = array (
 	'desc_usergroups'          => 'Группы пользователей и их права',
 	'desc_forums'              => 'Список и структура форумов',
 	'desc_forumpermissions'    => 'Права групп в отдельных форумах',
-	'desc_moderators'          => 'Модераторы форумов',
 	'desc_attachtypes'         => 'Разрешённые типы вложений',
 	'desc_smilies'             => 'Список смайлов',
 	'desc_badwords'            => 'Фильтр слов',

@@ -719,10 +719,6 @@ $language['managesettings'] = array
 'hint_chat_bot_request_filled' => "Запрос и раздача, которой он выполнен.",
 'hint_chat_bot_offer'          => "Название и категория нового предложения.",
 'hint_chat_bot_offer_uploaded' => "Предложение и раздача, под которой оно залито.",
-'lbl_chat_bot_register'        => "Новые участники",
-'hint_chat_bot_register'       => "Приветствие каждого нового пользователя и кто его пригласил.",
-'lbl_chat_bot_freeleech'       => "Глобальный фрилич",
-'hint_chat_bot_freeleech'      => "Когда стафф включает или выключает фрилич для всех раздач (Стафф-панель → Freeleech).",
 'hint_notify_keep_read_days'   => "Прочитанные уведомления старше этого срока удаляются.",
 'hint_notify_keep_all_days'    => "Любые уведомления старше этого срока удаляются, даже непрочитанные. Не меньше, чем «Хранить прочитанные».",
 'hint_notify_max_per_user'     => "У каждого пользователя хранятся только N самых новых уведомлений.",
@@ -763,6 +759,15 @@ $language['managesettings'] = array
 	'hint_claim_warn_days'           => 'Колокольчик тем, у кого claims под угрозой; 0 = не напоминать',
 	'hint_claim_keeper_max_seeders'  => 'Раздачи с таким числом сидов или меньше предлагаются на странице claims пользователя',
 	'flash_claims_saved'             => 'Настройки Claims сохранены!',
+	
+	
+'lbl_chat_bot_register'        => "Новые участники",
+'hint_chat_bot_register'       => "Приветствие каждого нового пользователя и кто его пригласил.",
+'lbl_chat_bot_freeleech'       => "Глобальный фрилич",
+'hint_chat_bot_freeleech'      => "Когда начинается или заканчивается глобальный фрилич, сильверлич или двойная отдача (Настройки → Freeleech или Стафф-панель → Freeleech).",
+	
+	
+	
 
 );
 ?>

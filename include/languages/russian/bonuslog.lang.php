@@ -13,6 +13,7 @@ $language['bonuslog'] = array (
 
     // ── Tabs ──
     'tab_all'         => 'Все',
+	
 
     // ── Table ──
     'th_date'         => 'Дата',
@@ -28,7 +29,7 @@ $language['bonuslog'] = array (
     'type_gift'       => 'Подарки',
     'type_exam'       => 'Экзамены и задания',
     'type_request'    => 'Запросы',
-    'type_claim'      => 'Претензии',
+    'type_claim'      => 'Claims',
     'type_staff'      => 'Администрация',
     'type_kps'        => 'Активность',
     'type_other'      => 'Прочее',

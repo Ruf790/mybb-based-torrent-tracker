@@ -201,10 +201,6 @@ $language['chat'] = array(
     'bot_request_filled' => '[b]Request filled:[/b] {1}',
     'bot_offer'          => '[b]New offer:[/b] {1}',
     'bot_offer_uploaded' => '[b]Offer uploaded:[/b] {1}',
-    'bot_register'       => '[b]New member:[/b] {1} — welcome!',
-    'bot_invited_by'     => 'invited by {1}',
-    'bot_freeleech_on'   => '[b]Global freeleech is ON![/b] Every torrent is free — downloads do not count against your ratio.',
-    'bot_freeleech_off'  => '[b]Global freeleech is over.[/b] Torrents are back to normal.',
     'bot_bounty'         => 'bounty {1} BP',
     'bot_promo_free'     => 'Free',
     'bot_promo_silver'   => 'Silver',
@@ -218,5 +214,27 @@ $language['chat'] = array(
     'js_react_all'       => 'All smilies',
     'js_react_more'      => 'and {1} more',
     'js_react_remove'    => 'Click to remove yours',
+	
+	
+	 'bot_register'       => '[b]New member:[/b] {1} — welcome!',
+    'bot_invited_by'     => 'invited by {1}',
+    'bot_freeleech_on'   => '[b]Global freeleech is ON![/b] Every torrent is free — downloads do not count against your ratio.',
+    'bot_freeleech_off'  => '[b]Global freeleech is over.[/b] Torrents are back to normal.',
+    'bot_fl_on_freeleech'    => '[b]Global freeleech is ON![/b] Downloads do not count against your ratio — until {1}.',
+    'bot_fl_on_silverleech'  => '[b]Global silver leech is ON![/b] Only half of what you download counts — until {1}.',
+    'bot_fl_on_doubleupload' => '[b]Global 2x upload is ON![/b] Everything you upload counts double — until {1}.',
+    'bot_fl_off'             => '[b]Global {1} is over.[/b] Torrents are back to normal.',
+    'bot_fl_name_freeleech'    => 'freeleech',
+    'bot_fl_name_silverleech'  => 'silver leech',
+    'bot_fl_name_doubleupload' => '2x upload',
+	
+	
+	
+	
+	
+	
+	
+	
+	
 );
 ?>

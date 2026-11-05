@@ -718,10 +718,6 @@ $language['managesettings'] = array
 'hint_chat_bot_request_filled' => "Request and the torrent that filled it.",
 'hint_chat_bot_offer'          => "Title and category of a new offer.",
 'hint_chat_bot_offer_uploaded' => "Offer and the torrent it was uploaded as.",
-'lbl_chat_bot_register'        => "New members",
-'hint_chat_bot_register'       => "Welcome message for each new user, with who invited them.",
-'lbl_chat_bot_freeleech'       => "Global freeleech",
-'hint_chat_bot_freeleech'      => "When staff turns global freeleech on or off (Staff Panel → Freeleech).",
 'hint_notify_keep_read_days'   => "Read notifications older than this are removed.",
 'hint_notify_keep_all_days'    => "Any notification older than this is removed, unread too. Not less than 'Keep read'.",
 'hint_notify_max_per_user'     => "Only the newest N notifications are kept for each user.",
@@ -762,6 +758,18 @@ $language['managesettings'] = array
 	'hint_claim_warn_days'           => 'Bell to users whose claims are at risk; 0 = no reminder',
 	'hint_claim_keeper_max_seeders'  => 'Torrents with this many seeders or fewer are offered on the user\'s claims page',
 	'flash_claims_saved'             => 'Claims settings saved successfully!',
+	
+	
+	
+	'lbl_chat_bot_register'        => "New members",
+'hint_chat_bot_register'       => "Welcome message for each new user, with who invited them.",
+'lbl_chat_bot_freeleech'       => "Global freeleech",
+'hint_chat_bot_freeleech'      => "When global freeleech / silver / 2x upload starts or ends (Settings → Freeleech or Staff Panel → Freeleech).",
+	
+	
+	
+	
+	
 
 );
 ?>

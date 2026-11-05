@@ -60,7 +60,6 @@ $language['details'] = array
 	'sec_tags'					=> 'Tags',
 
 	// ── Manage tools ──────────────────────────────────────────────────────────
-	'menu_quick_edit'			=> 'Quick Edit',
 	'menu_full_edit'			=> 'Full Edit',
 	'btn_delete'				=> 'Delete',
 	'tip_hitrun'				=> 'Hit & Run',
@@ -75,8 +74,6 @@ $language['details'] = array
 	'btn_collapse_all'			=> 'Collapse All',
 	'err_torrent_file_missing'	=> 'Torrent file is missing',
 	'lbl_screenshot'			=> 'Screenshot',
-	'lbl_screenshot_missing'	=> 'Screenshot file not found.',
-	'lbl_poster_missing'		=> 'No poster available.',
 	'sec_nfo_file'				=> 'NFO File',
 	'btn_copy'					=> 'Copy',
 	'description'				=> 'Description',
@@ -535,21 +532,8 @@ $language['details'] = array
     'tip_nuked' => 'Nuked: change reason / unnuke',
 	
 	
-	
-	
-	// ── Matching requests ──
-	'sec_req_match'				=> 'This torrent may fill open requests',
-	'hint_req_match'			=> 'Only you and staff see this. Filling a request closes it and gives you its bounty.',
-	'btn_req_fill'				=> 'Fill',
-	'lbl_req_match_imdb'		=> 'IMDb match',
-	'lbl_req_match_title'		=> 'Title match {1}%',
-	'lbl_req_votes'				=> 'Votes: {1}',
-	'lbl_req_bounty'			=> '{1} BP',
-	'conf_req_fill'				=> 'Fill this request with the current torrent?',
-
-    // ── Comment reactions (include/functions_reactions.php, scripts/reactions.js) ──
+	// ── Comment / post reactions (include/functions_reactions.php, scripts/reactions.js) ──
     'react_add'        => 'Add a reaction',
-    'react_btn'        => 'React',
     'react_all'        => 'All smilies',
     'react_more'       => 'and {1} more',
     'react_remove'     => 'Click to remove yours',
@@ -558,5 +542,28 @@ $language['details'] = array
     'react_err_login'  => 'Log in to react.',
     'react_err_gone'   => 'This message no longer exists.',
     'react_err_token'  => 'Security token expired. Reload the page.',
+	
+	'react_btn'        => 'React',
+	
+	
+	
+	'sec_req_match'        => 'This torrent may fill open requests',
+	'hint_req_match'       => 'Only you and staff see this. Filling a request closes it and gives you its bounty.',
+	'btn_req_fill'         => 'Fill',
+	'lbl_req_match_imdb'   => 'IMDb match',
+	'lbl_req_match_title'  => 'Title match {1}%',
+	'lbl_req_votes'        => 'Votes: {1}',
+	'lbl_req_bounty'       => '{1} BP',
+	'conf_req_fill'        => 'Fill this request with the current torrent?',
+	
+	
+	'lbl_screenshot_missing'	=> 'Screenshot file not found.',
+	'lbl_poster_missing'		=> 'No poster available.',
+	
+	
+	
+	
+	
+	
 );
 ?>

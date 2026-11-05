@@ -309,11 +309,12 @@ $language['browse'] = array
 'bday_sl_text'  => 'Only half of what you download today counts toward your ratio.',
 'bday_du_badge' => 'Double upload',
 'bday_du_text'  => 'Everything you upload today counts twice.',
-
-	// ── Page header, tiles, view switch (new style) ──
-	'lbl_kpi_found'              => 'Found',
-	'btn_view_table'             => 'Table',
-	'btn_view_cards'             => 'Cards',
-
+	
+	
+	
+	
+	
+	
+	
 );
 ?>

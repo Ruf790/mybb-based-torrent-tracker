@@ -208,6 +208,13 @@ $language['staffpanel'] = array (
 	'chk_httponly_fail'         => 'Set <code>session.cookie_httponly=1</code>.',
 	'chk_securecookie'          => 'Secure Session Cookies',
 	'chk_securecookie_fail'     => 'Set <code>session.cookie_secure=1</code>.',
+	
+'msg_no_tools_found'    => 'No tools match your search',
+'hint_filename_auto'    => 'Generated from the tool name — the file must already exist in admin/.',
+'err_tool_name_invalid' => 'Tool name may contain only latin letters, digits and _.',
+'badge_file_missing'    => 'File missing',
+'lbl_kpi_staff_groups'  => 'Staff groups',
+'lbl_kpi_missing'       => 'Missing files',
 
 	// ── Dashboard ──
 	'dash_welcome'         => 'Welcome to {1} Staff Panel',

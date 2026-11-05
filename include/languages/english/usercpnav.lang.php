@@ -43,23 +43,19 @@ $language['usercpnav'] = array
 'ucp_nav_attachments' => "Manage Attachments",
 'ucp_nav_uploads' => "My Uploads",
 
-// ── User CP tabs (usercp.php new style) ──
-'tab_overview' => "Overview",
-'tab_profile' => "Profile",
-'tab_security' => "Account & security",
-'tab_friends' => "Friends",
-'tab_subscriptions' => "Subscriptions",
-'tab_content' => "Content & files",
-'tab_messages' => "Messages",
 
-// PM folders
 'ucp_nav_folder_inbox' => "Inbox",
 'ucp_nav_folder_unread' => "Unread",
 'ucp_nav_folder_sent' => "Sent Items",
 'ucp_nav_folder_drafts' => "Drafts",
 'ucp_nav_folder_trash' => "Trash Can",
 'ucp_nav_folder_untitled' => "Untitled folder",
+
+
 'ucp_nav_2fa' => "Two-Factor Authentication",
 'ucp_nav_sessions' => "Active Sessions",
 'ucp_nav_my_files' => "My Files",
+
+
+
 );

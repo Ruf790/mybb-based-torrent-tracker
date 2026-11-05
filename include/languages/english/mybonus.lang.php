@@ -250,34 +250,39 @@ $language['mybonus'] = array (
 'f_promo'            => 'Promo (Free / Silver / x2)',
 'hint_scaled_mul'    => 'Already includes the torrent-count factor ×{1}.',
 'hint_scaled_cap'    => 'Your total is over the hour cap of {1} pts/h, so every torrent is scaled down by the same share.',
-	
-	
-	
-	
 
-	// ── Restyle: tabs, KPI, shop ──
-	'lbl_need_more' => 'Need {1} more',
-	'kpi_balance' => 'Balance',
-	'tab_shop' => 'Shop',
-	'tab_earn' => 'My earnings',
-	'tab_how' => 'How it works',
-	'txt_shop_empty' => 'The shop is empty right now.',
 
-	// ── Shop items (by art, {1} = amount) ──
-	'item_traffic' => '{1} Uploaded',
-	'item_traffic_desc' => 'Exchange your bonus points for upload credit: {1} is added to your total uploaded amount.',
-	'item_invite' => 'Get Invites',
-	'item_invite_desc' => 'Exchange your bonus points for invites ({1}) to bring your friends to the tracker.',
-	'item_title' => 'Custom Title',
-	'item_title_desc' => 'Set your own custom title, shown under your username across the tracker.',
-	'item_gift_1' => 'Give A Karma Gift',
-	'item_gift_1_desc' => 'Send part of your bonus points to another member as a gift.',
-	'item_warning' => 'Remove Warning',
-	'item_warning_desc' => 'Remove a warning from your account ({1}).',
-	'item_ratiofix' => 'Fix Torrent Ratio',
-	'item_ratiofix_desc' => 'Get a 1:1 ratio on one torrent of your choice.',
-	'item_class' => 'VIP Status',
-	'item_class_desc' => 'Buy VIP status for one month.',
+'lbl_need_more' => 'Need {1} more',
+'kpi_balance' => 'Balance',
+'tab_shop' => 'Shop',
+'tab_earn' => 'My earnings',
+'tab_how' => 'How it works',
+'txt_shop_empty' => 'The shop is empty right now.',
+
+
+
+
+
+
+
+'item_traffic' => '{1} Uploaded',
+'item_traffic_desc' => 'Exchange your bonus points for upload credit: {1} is added to your total uploaded amount.',
+'item_invite' => 'Get Invites',
+'item_invite_desc' => 'Exchange your bonus points for invites ({1}) to bring your friends to the tracker.',
+'item_title' => 'Custom Title',
+'item_title_desc' => 'Set your own custom title, shown under your username across the tracker.',
+'item_gift_1' => 'Give A Karma Gift',
+'item_gift_1_desc' => 'Send part of your bonus points to another member as a gift.',
+'item_warning' => 'Remove Warning',
+'item_warning_desc' => 'Remove a warning from your account ({1}).',
+'item_ratiofix' => 'Fix Torrent Ratio',
+'item_ratiofix_desc' => 'Get a 1:1 ratio on one torrent of your choice.',
+'item_class' => 'VIP Status',
+'item_class_desc' => 'Buy VIP status for one month.',
+	
+	
+	
+	
 
 );
 ?>

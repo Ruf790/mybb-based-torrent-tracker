@@ -11,6 +11,9 @@ $language['usercp'] = array
 
 'confirm_deletion'	=>	 'Confirm Delete',
 
+'tab_uploads' => 'Uploads',
+'tab_attachments' => 'Attachments',
+'lbl_badge_chat' => 'Chat #{1}',
 
 'email_changeemail' => "{1},
 
@@ -704,7 +707,6 @@ Thank you,
     'lbl_badge_torrent'              => 'Torrent #{1}',
     'lbl_badge_post'                 => 'Post #{1}',
     'lbl_badge_message'              => 'Message #{1}',
-    'lbl_badge_chat'                 => 'Chat #{1}',
     'lbl_no_files'                   => 'No files uploaded yet',
     'hint_no_files'                  => 'You haven\'t uploaded any files yet.',
     'hint_confirm_delete_files'      => 'Are you sure you want to delete the selected files? This action cannot be undone.',
@@ -807,11 +809,4 @@ Thank you,
     'js_confirm_delete_draft'   => 'Delete this draft? This cannot be undone.',
     'js_confirm_delete_drafts'  => 'Delete {1} selected draft(s)? This cannot be undone.',
 
-    // ── New style (usercp.php) ──
-    'hint_home_sub'                  => 'Your account at a glance',
-    'hint_options_sub'               => 'Notifications, date and time, page display',
-
-    // My files: tabs
-    'tab_uploads' => 'Uploads',
-    'tab_attachments' => 'Attachments',
 );

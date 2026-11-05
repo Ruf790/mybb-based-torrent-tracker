@@ -64,7 +64,6 @@ $language['search'] = array
 'display_all'              => "Показывать всё",
 'display_only_approved'    => "Показывать только одобренное",
 'display_only_unapproved'  => "Показывать только неодобренное",
-'display_only_softdeleted' => "Показывать только скрытое (мягкое удаление)",
 'results'                  => "в результатах",
 
 // ── Results: header (HTML, output as is) ──

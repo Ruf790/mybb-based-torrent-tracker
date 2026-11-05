@@ -241,10 +241,8 @@ $language['modcp'] = array
 'redirect_attachmentsmoderated' => "Выбранные вложения были промодерированы.",
 'multi_approve_posts' => "Выбранные сообщения одобрены",
 'multi_delete_posts' => "Выбранные сообщения удалены навсегда",
-'multi_soft_delete_posts' => "Выбранные сообщения удалены (мягкое удаление)",
 'multi_approve_threads' => "Выбранные темы одобрены",
 'multi_delete_threads' => "Выбранные темы удалены навсегда",
-'multi_soft_delete_threads' => "Выбранные темы удалены (мягкое удаление)",
 'edited_user' => "Отредактирован профиль пользователя",
 
 'edited_user_info' => "<strong>Пользователь:</strong> <a href=\"{2}\">{1}</a>",

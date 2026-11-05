@@ -208,6 +208,13 @@ $language['staffpanel'] = array (
 	'chk_httponly_fail'         => 'Установите <code>session.cookie_httponly=1</code>.',
 	'chk_securecookie'          => 'Secure для сессионных cookie',
 	'chk_securecookie_fail'     => 'Установите <code>session.cookie_secure=1</code>.',
+	
+'msg_no_tools_found'    => 'Ничего не найдено',
+'hint_filename_auto'    => 'Берётся из названия инструмента — файл уже должен лежать в admin/.',
+'err_tool_name_invalid' => 'Название может содержать только латинские буквы, цифры и _.',
+'badge_file_missing'    => 'Нет файла',
+'lbl_kpi_staff_groups'  => 'Группы персонала',
+'lbl_kpi_missing'       => 'Нет файла',
 
 	// ── Dashboard ──
 	'dash_welcome'         => 'Добро пожаловать в панель администрации {1}',

@@ -37,25 +37,20 @@ $language['usercpnav'] = array
 'ucp_nav_usergroups' => "Участие в группах",
 'ucp_nav_attachments' => "Управление вложениями",
 
-'ucp_nav_uploads' => "Мои загрузки",
 
-// ── User CP tabs (usercp.php new style) ──
-'tab_overview' => "Обзор",
-'tab_profile' => "Профиль",
-'tab_security' => "Аккаунт и безопасность",
-'tab_friends' => "Друзья",
-'tab_subscriptions' => "Подписки",
-'tab_content' => "Контент и файлы",
-'tab_messages' => "Сообщения",
-
-// PM folders
 'ucp_nav_folder_inbox' => "Входящие",
 'ucp_nav_folder_unread' => "Непрочитанные",
 'ucp_nav_folder_sent' => "Отправленные",
 'ucp_nav_folder_drafts' => "Черновики",
 'ucp_nav_folder_trash' => "Корзина",
 'ucp_nav_folder_untitled' => "Папка без названия",
+
 'ucp_nav_2fa' => "Двухфакторная аутентификация",
 'ucp_nav_sessions' => "Активные сессии",
 'ucp_nav_my_files' => "Мои файлы",
+
+
+
+
+
 );

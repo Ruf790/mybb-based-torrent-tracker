@@ -40,8 +40,6 @@ $language['showthread'] = array
 'open_close_thread' => "Открыть / Закрыть тему",
 'approve_thread' => "Одобрить тему",
 'unapprove_thread' => "Снять одобрение темы",
-'soft_delete_thread' => "Мягкое удаление темы",
-'restore_thread' => "Восстановить тему",
 'delete_thread' => "Удалить тему навсегда",
 'delete_posts' => "Удалить выбранные сообщения",
 'move_thread' => "Переместить / Копировать тему",
@@ -87,8 +85,6 @@ $language['showthread'] = array
 'users_browsing_thread_guests' => "{1} Гость(ей)",
 'users_browsing_thread_invis' => "{1} Невидимый(е) пользователь(и)",
 'users_browsing_thread_reading' => "Читают&hellip;",
-'inline_soft_delete_posts' => "Мягкое удаление сообщений",
-'inline_restore_posts' => "Восстановить сообщения",
 'inline_delete_posts' => "Удалить сообщения навсегда",
 'inline_merge_posts' => "Объединить сообщения",
 'inline_split_posts' => "Разделить сообщения",
@@ -119,9 +115,6 @@ $language['showthread'] = array
 'quick_delete_error' => 'Произошла ошибка при удалении вашего ответа:',
 'quick_delete_success' => 'Сообщение успешно удалено.',
 'quick_delete_thread_success' => 'Тема успешно удалена.',
-'quick_restore_error' => 'Произошла ошибка при восстановлении вашего ответа:',
-'quick_restore_success' => 'Сообщение успешно восстановлено.',
-'post_deleted_error' => 'Вы не можете выполнить это действие с удаленным сообщением.',
 
 
 
@@ -289,7 +282,6 @@ $language['showthread'] = array
 'pb_edit_note' => 'Последнее редактирование: %s, автор:',
 'pb_unapproved_own' => 'Ваше сообщение находится на модерации и пока не видно другим пользователям. Оно появится после одобрения модератором.',
 'pb_ignored' => 'Содержимое сообщения скрыто, потому что %s находится в вашем <a href="usercp.php?action=editlists">списке игнорируемых</a>.',
-'pb_post_deleted' => 'Это сообщение удалено',
 
 
 
@@ -310,7 +302,6 @@ $language['showthread'] = array
 'js_err_no_post_data' => "Данные сообщения не получены",
 
 // ── JS: Multi-quote ──
-'js_err_post_deleted' => "Это сообщение удалено",
 'js_ok_mq_added' => "Сообщение добавлено в мультицитату",
 'js_info_mq_removed' => "Сообщение убрано из мультицитаты",
 'js_err_mq_load' => "Не удалось загрузить мультицитату",

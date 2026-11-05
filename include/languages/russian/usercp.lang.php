@@ -5,6 +5,12 @@ if(!defined('IN_TRACKER'))
 
 $language['usercp'] = array(
 
+
+'tab_uploads' => 'Загрузки',
+'tab_attachments' => 'Вложения',
+'lbl_badge_chat' => 'Чат #{1}',
+
+
 'email_changeemail' => "{1},
 
 Мы получили запрос на {2} об изменении вашего адреса электронной почты (подробности ниже).
@@ -665,7 +671,6 @@ $language['usercp'] = array(
     'lbl_badge_torrent'              => 'Раздача #{1}',
     'lbl_badge_post'                 => 'Сообщение #{1}',
     'lbl_badge_message'              => 'ЛС #{1}',
-    'lbl_badge_chat'                 => 'Чат #{1}',
     'lbl_no_files'                   => 'Файлов пока нет',
     'hint_no_files'                  => 'Вы ещё не загрузили ни одного файла.',
     'hint_confirm_delete_files'      => 'Удалить выбранные файлы? Это действие нельзя отменить.',
@@ -768,11 +773,4 @@ $language['usercp'] = array(
     'js_confirm_delete_draft'   => 'Удалить этот черновик? Это действие нельзя отменить.',
     'js_confirm_delete_drafts'  => 'Удалить выбранные черновики ({1})? Это действие нельзя отменить.',
 
-    // ── New style (usercp.php) ──
-    'hint_home_sub'                  => 'Ваш аккаунт коротко',
-    'hint_options_sub'               => 'Уведомления, дата и время, отображение страниц',
-
-    // My files: tabs
-    'tab_uploads' => 'Загрузки',
-    'tab_attachments' => 'Вложения',
 );

@@ -85,20 +85,20 @@
 .sh-kpi {
     position: relative; overflow: hidden;
     display: flex; align-items: center; gap: .8rem;
-    padding: 1rem 1.1rem; border-radius: .8rem;
+    padding: .85rem 1rem; border-radius: .8rem;
     background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
 }
 .sh-kpi > :not(.sh-kpi__bg) { position: relative; z-index: 1; }
 .sh-kpi__ico {
     flex: 0 0 auto; display: grid; place-items: center;
-    width: 3.1rem; height: 3.1rem; border-radius: .85rem; font-size: 1.4rem;
+    width: 2.4rem; height: 2.4rem; border-radius: .7rem; font-size: 1rem;
 }
 .sh-kpi__txt { min-width: 0; }
 .sh-kpi__val { font-size: 1.45rem; font-weight: 700; line-height: 1.1; color: var(--bs-emphasis-color); }
-.sh-kpi__lbl { font-size: .8rem; color: var(--bs-secondary-color); line-height: 1.25; overflow-wrap: anywhere; }
+.sh-kpi__lbl { font-size: .8rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sh-kpi__bg {
-    position: absolute; right: -.5rem; bottom: -1rem; font-size: 5.6rem;
-    opacity: .08; transform: rotate(-12deg); pointer-events: none; color: var(--bs-emphasis-color);
+    position: absolute; right: -.4rem; bottom: -.7rem; font-size: 4.2rem;
+    opacity: .07; transform: rotate(-12deg); pointer-events: none; color: var(--bs-emphasis-color);
 }
 .sh-tone-info    { background: var(--bs-info-bg-subtle);    color: var(--bs-info-text-emphasis); }
 .sh-tone-warning { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }

@@ -2268,6 +2268,31 @@ HTML;
     exit;
 }
 
+/**
+ * Deleted upload: replace its [img] in the uploader's chat messages with [Image Deleted].
+ * Searched by the file name (32 hex chars, unique) in the user's own messages, so it also
+ * works for pictures whose comment_files.chat_id was never set. react_at = now makes open
+ * chat windows re-fetch those messages on the next poll (no "edited" mark).
+ */
+$ucp_strip_chat_image = static function (string $filename, string $pattern, int $uid): void {
+    global $db;
+    if ($filename === '') return;
+    try {
+        $q = $db->sql_query_prepared(
+            'SELECT id, message FROM chat_messages WHERE uid = ? AND deleted = 0 AND message LIKE ? LIMIT 50',
+            [$uid, '%' . addcslashes($filename, '%_\\') . '%']
+        );
+        while ($q && ($m = $db->fetch_array($q))) {
+            $new = preg_replace($pattern, '[Image Deleted]', (string)$m['message']);
+            if ($new !== null && $new !== $m['message']) {
+                $db->sql_query_prepared('UPDATE chat_messages SET message = ?, react_at = ? WHERE id = ?', [$new, TIMENOW, (int)$m['id']]);
+            }
+        }
+    } catch (\Throwable $e) {
+        error_log('ucp_strip_chat_image: ' . $e->getMessage());   // no chat table: deleting the file is still fine
+    }
+};
+
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: do_remove_files
 // ══════════════════════════════════════════════════════════════════════════
@@ -2315,6 +2340,7 @@ if ($mybb->input['action'] === 'do_remove_files') {
                     }
                 }
 
+                $ucp_strip_chat_image($filename, $image_pattern, (int) $CURUSER['id']);
                 $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, (int)$CURUSER['id']]);
                 $deleted++;
             }
@@ -2369,6 +2395,7 @@ if ($mybb->input['action'] === 'remove_all_files') {
             }
         }
 
+        $ucp_strip_chat_image($filename, $image_pattern, (int) $CURUSER['id']);
         $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file['id'], $uid]);
         $deleted++;
     }

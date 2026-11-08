@@ -961,13 +961,14 @@ function renderStatisticsTab(): string
     $can = eu_can_edit_stats();
     $dis = $can ? '' : ' disabled';
 
-    $num = fn(string $name, string $val, string $label, string $hint, string $icon): string =>
-        eu_field($label, '<input type="number" class="form-control" name="' . $name . '" value="' . htmlspecialchars($val) . '" min="0" step="any"' . $dis . '>', $hint, $icon);
+    // Для seedbonus минимума нет: отрицательный баланс — норма
+    $num = fn(string $name, string $val, string $label, string $hint, string $icon, bool $negative = false): string =>
+        eu_field($label, '<input type="number" class="form-control" name="' . $name . '" value="' . htmlspecialchars($val) . '"' . ($negative ? '' : ' min="0"') . ' step="any"' . $dis . '>', $hint, $icon);
 
     $traffic = $num('uploaded', (string)(int)$userdata['uploaded'], $L['lbl_uploaded_amount'], ags_fmt($L['hint_current'], mksize($userdata['uploaded'])), 'fa-arrow-up')
              . $num('downloaded', (string)(int)$userdata['downloaded'], $L['lbl_downloaded_amount'], ags_fmt($L['hint_current'], mksize($userdata['downloaded'])), 'fa-arrow-down');
 
-    $bonus = $num('seedbonus', (string)(float)$userdata['seedbonus'], $L['stat_bonus'], ags_fmt($L['hint_current_points'], ts_nf((float)$userdata['seedbonus'])), 'fa-coins')
+    $bonus = $num('seedbonus', (string)(float)$userdata['seedbonus'], $L['stat_bonus'], ags_fmt($L['hint_current_points'], ts_nf((float)$userdata['seedbonus'])), 'fa-coins', true)
            . $num('invites', (string)(int)$userdata['invites'], $L['lbl_invite_count'], $L['hint_invites_available'], 'fa-ticket');
 
     $notice = $can ? '' :
@@ -1430,10 +1431,6 @@ function renderQuickBanModal(bool $is_banned): string
         ' . eu_field($L['ban_reason'],
               '<textarea name="ban_reason" class="form-control" rows="3" maxlength="500" required placeholder="' . htmlspecialchars((string)$L['ph_ban_reason']) . '">'
               . htmlspecialchars_uni((string)($current['reason'] ?? '')) . '</textarea>', '', 'fa-comment', true) . '
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="ban_send_pm" value="1" id="banSendPM"' . ($is_banned ? '' : ' checked') . '>
-          <label class="form-check-label" for="banSendPM">' . $L['ban_send_pm'] . '</label>
-        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>' . $L['cancel'] . '</button>
@@ -2327,8 +2324,9 @@ function processUserUpdateData(): array
             if ($v === null || trim($v) === '' || !is_numeric($v)) {
                 continue;
             }
-            $new = $type === 'float' ? max(0.0, round((float)$v, 2)) : max(0, (int)$v);
             $old = $type === 'float' ? round((float)$userdata[$f], 2) : (int)$userdata[$f];
+            // float — только seedbonus, он может быть отрицательным; invites/uploaded/downloaded — от нуля
+            $new = $type === 'float' ? round((float)$v, 2) : max(0, (int)$v);
             if ($new !== $old) {
                 $updateData[$f] = $new;
                 modcomment(ucfirst($f) . " changed from '{$old}' to '{$new}'");
@@ -2487,18 +2485,6 @@ function processUserUpdateData(): array
                 flash_message($L['msg_user_banned'] ?? 'User banned.', 'success');
             }
 
-            if ($post('ban_send_pm') === '1') {
-                require_once INC_PATH . '/functions_pm.php';
-                $reasonPm = str_replace(['[', ']'], ['(', ')'], $reason);
-                send_pm([
-                    'subject'       => ['msg_ban_pm_subject'],
-                    'message'       => $lifted > 0 ? ['msg_ban_pm_body', my_datee((string)$dateformat, $lifted), $reasonPm] : ['msg_ban_pm_body_perm', $reasonPm],
-                    'touid'         => $uid,
-                    'language'      => $userdata['language'] ?? null,
-                    'language_file' => 'edituser',
-                    'sender'        => ['uid' => -1],
-                ], -1, true);
-            }
         }
     }
 

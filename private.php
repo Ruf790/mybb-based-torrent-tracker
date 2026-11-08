@@ -43,7 +43,7 @@ $pm_short_date = static function (int $ts): string {
 };
 
 if ($enablepms == 0) {
-    error($lang->private['pms_disabled']);
+    stderr($lang->private['pms_disabled']);
 }
 
 if ($CURUSER['id'] == '/' || $CURUSER['id'] == 0 || $usergroups['canusepms'] == 0) {
@@ -815,7 +815,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
                 $db->sql_query_prepared("UPDATE privatemessages SET folder = ? WHERE pmid IN ({$ph}) AND uid = ?", [$fid_move, ...$pms, $CURUSER['id']]);
                 update_pm_count();
             } else {
-                error($lang->private['error_invalidmovefid']);
+                stderr($lang->private['error_invalidmovefid']);
             }
         }
         redirect(!empty($mybb->input['fromfid'])
@@ -828,7 +828,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
 
         $pmid_list = array_values(array_unique(array_filter(array_map('intval', array_keys($check)))));
         if (empty($pmid_list)) {
-            error($lang->private['err_no_pms_selected'] ?? 'You did not select any messages.');
+            stderr($lang->private['err_no_pms_selected'] ?? 'You did not select any messages.');
         }
 
         $ph = implode(',', array_fill(0, count($pmid_list), '?'));
@@ -843,7 +843,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
         }
 
         if (empty($found)) {
-            error($lang->private['err_pms_not_found'] ?? 'The selected messages were not found.');
+            stderr($lang->private['err_pms_not_found'] ?? 'The selected messages were not found.');
         }
 
         $in_trash = array_keys(array_filter($found, fn(int $f): bool => $f === 4));
@@ -868,7 +868,7 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
 
         if ($errors) {
             write_log('private.php: PM delete failed for uid ' . $uid . ' — ' . implode(' | ', $errors));
-            error(($lang->private['err_pms_delete_failed'] ?? 'Could not delete the selected messages. Database error:')
+            stderr(($lang->private['err_pms_delete_failed'] ?? 'Could not delete the selected messages. Database error:')
                 . '<br><code>' . htmlspecialchars_uni(implode(' | ', $errors)) . '</code>');
         }
 

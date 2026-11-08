@@ -46,6 +46,8 @@ header("Pragma: no-cache");
 require_once INC_PATH."/class_session.php";
 $session = new session;
 $session->init();
+enforce_account_status();
+
 
 require_once INC_PATH . '/flood_check.php';
 

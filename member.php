@@ -1187,10 +1187,10 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
     $numusers = $query ? $db->num_rows($query) : 0;
 
     if ($numusers < 1) {
-        error($lang->member['error_invalidemail']);
+        stderr($lang->member['error_invalidemail']);
     } else {
         while ($user = $db->fetch_array($query)) {
-            if ($user['type'] === 'b' && $user['validated'] == 1) { error($lang->member['error_activated_by_admin']); }
+            if ($user['type'] === 'b' && $user['validated'] == 1) { stderr($lang->member['error_activated_by_admin']); }
             if ($user['ustatus'] === 'pending') {
                 
 				if (!$user['code']) {
@@ -1215,11 +1215,11 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'resendactivation') {
     $plugins->run_hooks('member_resendactivation');
-    if ($mybb->user['uid'] && ($mybb->user['ustatus'] ?? '') !== 'pending') { error($lang->member['error_alreadyactivated']); }
+    if ($mybb->user['id'] && ($mybb->user['ustatus'] ?? '') !== 'pending') { stderr($lang->member['error_alreadyactivated']); }
 
-    $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND type='b'", [$mybb->user['uid']]);
+    $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND type='b'", [$mybb->user['id']]);
     $activation = $query ? $db->fetch_array($query) : null;
-    if ($activation && $activation['validated'] == 1) { error($lang->member['error_activated_by_admin']); }
+    if ($activation && $activation['validated'] == 1) { stderr($lang->member['error_activated_by_admin']); }
 
     $errors = isset($errors) && count($errors) > 0 ? inline_error($errors) : '';
     $email  = $errors ? htmlspecialchars_uni($mybb->get_input('email')) : '';
@@ -1781,6 +1781,46 @@ if ($mybb->input['action'] === 'logout') {
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: profile
 // ══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// ACTION: staff_activate (кнопка в профиле неактивированного пользователя)
+// ═══════════════════════════════════════
+if ($mybb->input['action'] === 'staff_activate' && $mybb->request_method === 'post') {
+    if (!is_mod($usergroups)) {
+        print_no_permission(true);
+    }
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        stderr($lang->member['err_invalid_request'] ?? 'Invalid security token. Please refresh the page and try again.');
+    }
+
+    $target = get_user($mybb->get_input('id', MyBB::INPUT_INT));
+    if (!$target) {
+        stderr($lang->member['error_nomember'], $SITENAME . ' - ' . $lang->member['sec_member_not_found'], 404, 'user');
+    }
+    $target_id = (int)$target['id'];
+
+    $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus = 'pending' AND enabled = 'yes'", [$target_id]);
+    if ((int)$db->affected_rows() < 1) {
+        stderr($lang->member['err_activate_failed'] ?? 'This account cannot be activated: it is already active or disabled.');
+    }
+
+    $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND (type = 'r' OR type = 'b')", [$target_id]);
+    $cache->update_awaitingactivation();
+
+    require_once INC_PATH . '/functions_pm.php';
+    send_pm([
+        'subject'       => ['welcomepmsubject', $SITENAME],
+        'message'       => ['welcomepmbody', $target['username'], $SITENAME, $BASEURL],
+        'touid'         => $target_id,
+        'language'      => $target['language'] ?? null,
+        'language_file' => 'member',
+        'sender'        => ['uid' => -1],
+    ], -1, true);
+
+    write_log('User ' . $target['username'] . ' (' . $target_id . ') was activated by ' . $CURUSER['username']);
+
+    redirect(get_profile_link($target_id), $lang->member['redirect_user_activated'] ?? 'The account has been activated.');
+}
+
 if ($mybb->input['action'] === 'profile') {
     if (!isset($CURUSER) || $CURUSER['id'] == 0) { print_no_permission(); }
 
@@ -1811,7 +1851,7 @@ if ($mybb->input['action'] === 'profile') {
 	
    
 	
-	if ($memprofile['ustatus'] === 'pending') 
+	if ($memprofile['ustatus'] === 'pending' && !$IsStaff) 
 	{    
         stderr($lang->member['pendinguser'], $SITENAME . ' - ' . $lang->member['sec_access_denied'], 403, '403'); 
 	}
@@ -2013,7 +2053,44 @@ if ($mybb->input['action'] === 'profile') {
     
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
-    $usertitle = $memperms['image'] ?? '';
+    // Неактивированный пользователь (его видит только стафф): иконка ожидания вместо иконки класса
+    $pending_banner = '';
+    if ($memprofile['ustatus'] === 'pending') {
+        $L_pending = $lang->member;
+        $usertitle = '<div class="d-flex align-items-center gap-2">'
+            . '<div class="icon-compact pending" style="--color: #fbbf24" data-tooltip="' . hsafe($L_pending['pendinguser']) . '"><i class="bi bi-hourglass-split" style="color: #fbbf24"></i></div>'
+            . '<span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle">' . hsafe($L_pending['lbl_pending_status'] ?? 'Awaiting activation') . '</span>'
+            . '</div>';
+
+        $pending_days = max(0, (int)floor((TIMENOW - (int)$memprofile['added']) / 86400));
+        $pending_note = sprintf($L_pending['lbl_pending_notice'] ?? 'This account has not been activated. Registered %1$s day(s) ago.', ts_nf($pending_days));
+        $pending_js   = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+
+        $pending_banner = '
+  <form method="post" action="member.php" id="pendingActivateForm" class="alert alert-warning d-flex flex-wrap align-items-center gap-3 mb-4" role="alert">
+    <input type="hidden" name="action" value="staff_activate">
+    <input type="hidden" name="id" value="' . (int)$uid . '">
+    <input type="hidden" name="my_post_key" value="' . hsafe((string)$mybb->post_code) . '">
+    <i class="bi bi-hourglass-split fs-5"></i>
+    <div class="flex-grow-1">' . hsafe($pending_note) . '</div>
+    <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-circle me-1"></i>' . hsafe($L_pending['btn_activate_user'] ?? 'Activate') . '</button>
+  </form>
+  <script>
+  document.getElementById("pendingActivateForm").addEventListener("submit", function (e) {
+    if (this.dataset.confirmed) { return; }
+    e.preventDefault();
+    var form = this, text = ' . json_encode((string)($L_pending['confirm_activate_user'] ?? 'Activate this account?'), $pending_js) . ';
+    var go = function () { form.dataset.confirmed = "1"; form.submit(); };
+    if (window.Swal) {
+      Swal.fire({ icon: "question", text: text, showCancelButton: true }).then(function (r) { if (r.isConfirmed) { go(); } });
+    } else if (confirm(text)) {
+      go();
+    }
+  });
+  </script>';
+    } else {
+        $usertitle = $memperms['image'] ?? '';
+    }
 
     // Online status
     $timesearch = TIMENOW - $wolcutoffmins * 60;
@@ -2569,6 +2646,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     </div>
 </div>
 
+  '.$pending_banner.'
   <div class="row g-4">
     <!-- LEFT -->
     <div class="col-12 col-lg-8">

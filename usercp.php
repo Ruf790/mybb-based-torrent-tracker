@@ -1053,7 +1053,7 @@ if ($mybb->input['action'] === 'do_addsubscription' && $mybb->get_input('type') 
 
     $thread = get_thread($mybb->get_input('tid'));
     if (!$thread || $thread['visible'] == -1) {
-        error('error_invalidthread');
+        stderr($lang->global['error_invalidthread']);
     }
 
     $forumpermissions = forum_permissions($thread['fid']);
@@ -1090,7 +1090,7 @@ if ($mybb->input['action'] === 'addsubscription') {
 
     if ($mybb->get_input('type') === 'forum') {
         $forum = get_forum($mybb->get_input('fid', MyBB::INPUT_INT));
-        if (!$forum) { error('error_invalidforum'); }
+        if (!$forum) { stderr($lang->usercp['error_invalidforum'] ?? 'Invalid forum'); }
 
         $forumpermissions = forum_permissions($forum['fid']);
         if ($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0) {
@@ -1105,7 +1105,7 @@ if ($mybb->input['action'] === 'addsubscription') {
         redirect($url, $lang->usercp['redirect_forumsubscriptionadded']);
     } else {
         $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
-        if (!$thread || $thread['visible'] == -1) { error('error_invalidthread'); }
+        if (!$thread || $thread['visible'] == -1) { stderr($lang->global['error_invalidthread']); }
 
         add_breadcrumb('nav_subthreads', 'usercp.php?action=subscriptions');
         add_breadcrumb('nav_addsubscription');
@@ -1408,7 +1408,7 @@ if ($mybb->input['action'] === 'do_subscriptions') {
     verify_post_check($mybb->get_input('my_post_key'));
 
     if (!isset($mybb->input['check']) || !is_array($mybb->input['check'])) {
-        error($lang->usercp['no_subscriptions_selected']);
+        stderr($lang->usercp['no_subscriptions_selected']);
     }
 
     $plugins->run_hooks('usercp_do_subscriptions_start');
@@ -1718,14 +1718,14 @@ if ($mybb->input['action'] === 'removesubscription'
 
     if ($mybb->get_input('type') === 'forum') {
         $forum = get_forum($mybb->get_input('fid', MyBB::INPUT_INT));
-        if (!$forum) { error('error_invalidforum'); }
+        if (!$forum) { stderr($lang->usercp['error_invalidforum'] ?? 'Invalid forum'); }
         $plugins->run_hooks('usercp2_removesubscription_forum');
         remove_subscribed_forum($forum['fid']);
         $url = ($server_http_referer && $mybb->request_method !== 'post') ? $server_http_referer : 'usercp.php?action=forumsubscriptions';
         redirect($url, $lang->usercp['redirect_forumsubscriptionremoved']);
     } else {
         $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
-        if (!$thread) { error('error_invalidthread'); }
+        if (!$thread) { stderr($lang->global['error_invalidthread']); }
         $plugins->run_hooks('usercp2_removesubscription_thread');
         remove_subscribed_thread($thread['tid']);
         $url = ($server_http_referer && $mybb->request_method !== 'post') ? $server_http_referer : 'usercp.php?action=subscriptions';
@@ -2268,31 +2268,6 @@ HTML;
     exit;
 }
 
-/**
- * Deleted upload: replace its [img] in the uploader's chat messages with [Image Deleted].
- * Searched by the file name (32 hex chars, unique) in the user's own messages, so it also
- * works for pictures whose comment_files.chat_id was never set. react_at = now makes open
- * chat windows re-fetch those messages on the next poll (no "edited" mark).
- */
-$ucp_strip_chat_image = static function (string $filename, string $pattern, int $uid): void {
-    global $db;
-    if ($filename === '') return;
-    try {
-        $q = $db->sql_query_prepared(
-            'SELECT id, message FROM chat_messages WHERE uid = ? AND deleted = 0 AND message LIKE ? LIMIT 50',
-            [$uid, '%' . addcslashes($filename, '%_\\') . '%']
-        );
-        while ($q && ($m = $db->fetch_array($q))) {
-            $new = preg_replace($pattern, '[Image Deleted]', (string)$m['message']);
-            if ($new !== null && $new !== $m['message']) {
-                $db->sql_query_prepared('UPDATE chat_messages SET message = ?, react_at = ? WHERE id = ?', [$new, TIMENOW, (int)$m['id']]);
-            }
-        }
-    } catch (\Throwable $e) {
-        error_log('ucp_strip_chat_image: ' . $e->getMessage());   // no chat table: deleting the file is still fine
-    }
-};
-
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: do_remove_files
 // ══════════════════════════════════════════════════════════════════════════
@@ -2340,7 +2315,6 @@ if ($mybb->input['action'] === 'do_remove_files') {
                     }
                 }
 
-                $ucp_strip_chat_image($filename, $image_pattern, (int) $CURUSER['id']);
                 $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, (int)$CURUSER['id']]);
                 $deleted++;
             }
@@ -2395,7 +2369,6 @@ if ($mybb->input['action'] === 'remove_all_files') {
             }
         }
 
-        $ucp_strip_chat_image($filename, $image_pattern, (int) $CURUSER['id']);
         $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file['id'], $uid]);
         $deleted++;
     }
@@ -2412,12 +2385,12 @@ if ($mybb->input['action'] === 'acceptrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { stderr($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_acceptrequest_start');
 
     $user = get_user((int)$request['uid']);
-    if (empty($user)) { error('user_doesnt_exist'); }
+    if (empty($user)) { stderr($lang->usercp['user_doesnt_exist']); }
 
     // Add current user to the requestor's buddy list
     $requester_buddylist   = array_filter(explode(',', $user['buddylist']));
@@ -2450,11 +2423,11 @@ if ($mybb->input['action'] === 'declinerequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { stderr($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_declinerequest_start');
     $user = get_user($request['uid']);
-    if (empty($user)) { error('user_doesnt_exist'); }
+    if (empty($user)) { stderr($lang->usercp['user_doesnt_exist']); }
 
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_declinerequest_end');
@@ -2466,7 +2439,7 @@ if ($mybb->input['action'] === 'cancelrequest') {
 
     $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND uid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
     $request = $query ? $db->fetch_array($query) : null;
-    if (empty($request)) { error('invalid_request'); }
+    if (empty($request)) { stderr($lang->usercp['invalid_request']); }
 
     $plugins->run_hooks('usercp_cancelrequest_start');
     $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
@@ -2992,7 +2965,7 @@ if ($mybb->input['action'] === 'do_drafts' && $mybb->request_method === 'post') 
     verify_post_check($mybb->get_input('my_post_key'));
 
     $mybb->input['deletedraft'] = $mybb->get_input('deletedraft', MyBB::INPUT_ARRAY);
-    if (empty($mybb->input['deletedraft'])) { error($lang->usercp['no_drafts_selected']); }
+    if (empty($mybb->input['deletedraft'])) { stderr($lang->usercp['no_drafts_selected']); }
 
     $plugins->run_hooks('usercp_do_drafts_start');
 
@@ -3244,7 +3217,7 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
 
     require_once INC_PATH . '/functions_upload.php';
     if (!isset($mybb->input['attachments']) || !is_array($mybb->input['attachments'])) {
-        error($lang->usercp['no_attachments_selected']);
+        stderr($lang->usercp['no_attachments_selected']);
     }
 
     $plugins->run_hooks('usercp_do_attachments_start');
@@ -3285,7 +3258,7 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
 if ($mybb->input['action'] === 'attachments') {
     require_once INC_PATH . '/functions_upload.php';
 
-    if ((int) ($enableattachments ?? 1) === 0) { error($lang->usercp['err_attachments_disabled']); }
+    if ((int) ($enableattachments ?? 1) === 0) { stderr($lang->usercp['err_attachments_disabled']); }
 
     $plugins->run_hooks('usercp_attachments_start');
 

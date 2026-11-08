@@ -97,7 +97,7 @@ if (
 
 $forum = get_forum($fid);
 if (!$forum || $forum['type'] !== "f") {
-    error('error_invalidforum');
+    stderr($lang->global['error_invalidforum'] ?? 'Invalid forum');
 }
 
 $threadnoteslink = '';

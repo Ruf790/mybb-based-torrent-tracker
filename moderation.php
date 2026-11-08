@@ -45,7 +45,7 @@ if ($CURUSER['id'] === 0) {
 if ($pid) {
     $post = get_post($pid);
     if (!$post) {
-        error($lang->moderation['error_invalidpost'], $lang->moderation['error']);
+        stderr($lang->moderation['error_invalidpost'], $lang->moderation['error']);
     }
     $tid = $post['tid'];
 }
@@ -53,7 +53,7 @@ if ($pid) {
 if ($tid) {
     $thread = get_thread($tid);
     if (!$thread) {
-        error($lang->moderation['error_invalidthread'], $lang->moderation['error']);
+        stderr($lang->moderation['error_invalidthread'], $lang->moderation['error']);
     }
     $fid = $thread['fid'];
 }
@@ -68,7 +68,7 @@ if ($pmid > 0) {
     $query = $db->sql_query_prepared("SELECT uid, subject, ipaddress, fromid FROM privatemessages WHERE pmid = ?", [$pmid]);
     $pm = $query ? $db->fetch_array($query) : null;
     if (!$pm) {
-        error($lang->moderation['error_invalidpm'], $lang->moderation['error']);
+        stderr($lang->moderation['error_invalidpm'], $lang->moderation['error']);
     }
 }
 
@@ -1050,7 +1050,7 @@ switch ($action) {
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->open_threads($threads);
@@ -1069,7 +1069,7 @@ switch ($action) {
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->close_threads($threads);
@@ -1088,7 +1088,7 @@ switch ($action) {
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->approve_threads($threads, $fid);
@@ -1108,7 +1108,7 @@ switch ($action) {
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_threads($threads, $fid);
@@ -1500,14 +1500,14 @@ switch ($action) {
             $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$ph})", $plist);
             while ($query && ($p = $db->fetch_field($query, 'pid'))) $posts[] = $p;
         }
-        if (empty($posts)) error($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
+        if (empty($posts)) stderr($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
 
         $placeholders = implode(',', array_fill(0, count($posts), '?'));
 
         $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
-            if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
+            if ((int)$tcheck['count'] <= 1) stderr($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
             $pcheck[] = $tcheck['tid'];
         }
 
@@ -1516,11 +1516,11 @@ switch ($action) {
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
         }
-        if (count($pcheck2) !== count($pcheck)) error($lang->moderation['error_cantsplitall'], $lang->moderation['error']);
+        if (count($pcheck2) !== count($pcheck)) stderr($lang->moderation['error_cantsplitall'], $lang->moderation['error']);
 
         $moveto   = isset($mybb->input['moveto']) ? $mybb->get_input('moveto', MyBB::INPUT_INT) : $fid;
         $newforum = get_forum($moveto);
-        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') error($lang->moderation['error_invalidforum'], $lang->moderation['error']);
+        if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr($lang->moderation['error_invalidforum'], $lang->moderation['error']);
 
         $newtid = $moderation->split_posts($posts, $tid, $moveto, $mybb->get_input('newsubject'));
         log_moderator_action($modlogdata, 'Split posts (PIDs: ' . implode(', ', $posts) . ') to thread (TID: ' . $newtid . ')');
@@ -1544,7 +1544,7 @@ switch ($action) {
         $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
-            if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
+            if ((int)$tcheck['count'] <= 1) stderr($lang->moderation['error_cantsplitonepost'], $lang->moderation['error']);
             $pcheck[] = $tcheck['tid'];
         }
 
@@ -1553,7 +1553,7 @@ switch ($action) {
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
         }
-        if (count($pcheck2) !== count($pcheck)) error($lang->moderation['error_cantmoveall'], $lang->moderation['error']);
+        if (count($pcheck2) !== count($pcheck)) stderr($lang->moderation['error_cantmoveall'], $lang->moderation['error']);
 
         $inlineids  = implode('|', $posts);
         $post_count = count($posts);
@@ -1708,7 +1708,7 @@ switch ($action) {
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($tid, 'thread');
 
-        if (count($posts) < 1) error($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
+        if (count($posts) < 1) stderr($lang->moderation['error_inline_nopostsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_posts(array_map('intval', $posts));

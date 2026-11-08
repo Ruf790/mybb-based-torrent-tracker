@@ -61,7 +61,7 @@ $tid = $post['tid'];
 $thread = get_thread($tid);
 
 if (!$thread) {
-    error($lang->global['error_invalidthread']);
+    stderr($lang->global['error_invalidthread']);
 }
 
 $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
@@ -75,7 +75,7 @@ $showownunapproved = "0";
 
 if ($thread['visible'] == 0 && !$is_mod || $thread['visible'] == -1 && $is_mod || ($thread['visible'] < -1 && $thread['uid'] != $CURUSER['id'])) {
     if ($thread['visible'] == 0 && !($showownunapproved && $thread['uid'] == $CURUSER['id'])) {
-        error($lang->global['error_invalidthread']);
+        stderr($lang->global['error_invalidthread']);
     }
 }
 
@@ -125,7 +125,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     }
 
     if (!$is_mod && $thread['closed'] == 1) {
-        error($lang->editpost['flash_thread_closed']);
+        stderr($lang->editpost['flash_thread_closed']);
     }
 
     // User can't delete unapproved post unless allowed for own
@@ -134,7 +134,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     }
 
     if ($post['visible'] == -1) {
-        error($lang->editpost['flash_already_deleted']);
+        stderr($lang->editpost['flash_already_deleted']);
     }
 }
 
@@ -142,7 +142,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
 check_forum_password($forum['fid']);
 
 if ((empty($_POST) && empty($_FILES)) && $mybb->get_input('processed', MyBB::INPUT_INT) == '1') {
-    error($lang->editpost['flash_empty_post_input']);
+    stderr($lang->editpost['flash_empty_post_input']);
 }
 
 $attacherror = '';
@@ -246,13 +246,13 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
         print_no_permission();
     }
     if (!$is_mod && $thread['closed'] == 1) {
-        error($lang->editpost['flash_thread_closed']);
+        stderr($lang->editpost['flash_thread_closed']);
     }
     if (!$is_mod && $post['visible'] == 0 && !($showownunapproved && $post['uid'] == $CURUSER['id'])) {
         print_no_permission();
     }
     if ($post['visible'] == -1) {
-        error($lang->editpost['flash_already_deleted']);
+        stderr($lang->editpost['flash_already_deleted']);
     }
     // ── конец проверки ──
 
@@ -299,7 +299,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             }
         }
     } else {
-        error($lang->editpost['flash_nodelete']);
+        stderr($lang->editpost['flash_nodelete']);
     }
 }
 

@@ -37,7 +37,7 @@ if ($mybb->input['action'] === 'editdraft'
     $post   = $db->fetch_array($query);
 
     if (!$thread || !$post || $thread['visible'] != -2 || $thread['uid'] != $CURUSER['id']) {
-        stderr('invalidthread');
+        stderr($lang->global['error_invalidthread']);
     }
 
     $pid = $post['pid'];
@@ -124,7 +124,7 @@ if (!$mybb->get_input('posthash') && !$pid) {
 }
 
 if (empty($_POST) && empty($_FILES) && $mybb->get_input('processed', MyBB::INPUT_INT) == 1) {
-    error('error_empty_post_input');
+    stderr($lang->newthread['error_empty_post_input'] ?? 'Your request was rejected because no data was received. This usually happens when the total size of the uploaded files exceeds the server limit.');
 }
 
 $errors = [];
@@ -224,7 +224,7 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
                 TIMENOW - 600,
             ])
         );
-        if ($db->num_rows($query) > 0) stderr('error_post_already_submitted');
+        if ($db->num_rows($query) > 0) stderr($lang->newthread['error_post_already_submitted']);
     }
 
     

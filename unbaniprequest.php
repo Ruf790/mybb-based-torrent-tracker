@@ -33,7 +33,7 @@ $query = $db->sql_query_prepared(
     "SELECT id FROM loginattempts WHERE ip = ? AND banned = 'yes' LIMIT 1",
     [$userip]
 );
-if ($db->num_rows($query) < 1) {
+if ($db->num_rows($query) < 1 && !is_banned_ip(get_ip())) {
     stderr($lang->unbaniprequest['error'] ?? 'Your IP is not banned.');
 }
 
@@ -138,10 +138,6 @@ if (is_banned_email($email, true)) {
             }
 
             // Success page
-            stdhead($lang->unbaniprequest["title"]);
-            
-			
-			
 stdok(
     $lang->unbaniprequest['saved']  ?? 'Your request has been saved.',
     $lang->unbaniprequest['title']  ?? 'Unban IP Request',

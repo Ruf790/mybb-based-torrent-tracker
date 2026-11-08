@@ -1458,7 +1458,7 @@ if ($foruminfo['type'] !== 'c') {
         . $inline_edit_js;
 } else {
     if (empty($forums)) {
-        error($lang->forumdisplay['err_contains_no_forums']);
+        stderr($lang->forumdisplay['err_contains_no_forums']);
     }
 }
 

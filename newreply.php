@@ -39,8 +39,8 @@ if (in_array($mybb->input['action'], ['editdraft', 'do_newreply'], true)
     $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
     $post = get_post($pid);
 
-    if (!$post)                         error('error_invalidpost');
-    if ($CURUSER['id'] != $post['uid']) error('error_post_noperms');
+    if (!$post)                         stderr($lang->global['error_invalidpost']);
+    if ($CURUSER['id'] != $post['uid']) stderr($lang->newreply['error_post_noperms']);
 
     $pid          = (int)$post['pid'];
     $tid          = (int)$post['tid'];
@@ -49,11 +49,11 @@ if (in_array($mybb->input['action'], ['editdraft', 'do_newreply'], true)
 
 // ── Thread / forum ────────────────────────────────────────────────────────────
 $thread = get_thread($tid);
-if (!$thread) error('error_invalidthread');
+if (!$thread) stderr($lang->global['error_invalidthread']);
 
 $fid   = (int)$thread['fid'];
 $forum = get_forum($fid);
-if (!$forum) error('error_invalidforum');
+if (!$forum) stderr($lang->newreply['error_invalidforum'] ?? 'Invalid forum');
 
 build_forum_breadcrumb($fid);
 $thread_subject    = $thread['subject'];
@@ -108,7 +108,7 @@ if (!$mybb->get_input('posthash') && !$pid) {
 }
 
 if ((empty($_POST) && empty($_FILES)) && $mybb->get_input('processed', MyBB::INPUT_INT) == 1) {
-    error('error_empty_post_input');
+    stderr($lang->newreply['error_empty_post_input'] ?? 'Your message could not be processed: the submitted data is empty or too large.');
 }
 
 $errors = [];
@@ -216,7 +216,7 @@ if ($mybb->input['action'] === 'do_newreply' && $mybb->request_method === 'post'
             ])
         );
 
-        if ($db->num_rows($query) > 0) error('error_post_already_submitted');
+        if ($db->num_rows($query) > 0) stderr($lang->newreply['error_post_already_submitted']);
     }
 
    

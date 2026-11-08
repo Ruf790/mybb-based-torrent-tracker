@@ -75,6 +75,7 @@ require_once INC_PATH . '/class_session.php';
 $session = new session();
 $session->init();
 $mybb->session = $session;
+enforce_account_status();
 
 // --- Generate post key ---
 $mybb->post_code = generate_post_check();

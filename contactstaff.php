@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once 'global.php';
 $lang->load('contactstaff');
 
+require_once INC_PATH . '/flood_check.php';
 require_once 'cache/smilies.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/editor.php';
@@ -68,7 +69,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
     );
     if ($db->num_rows($q) > 0) {
         $row = $db->fetch_array($q);
-        flood_check($L['txt_flood_what'], (string)$row['added']);
+        $floodMsg = flood_check($L['txt_flood_what'], (string)$row['added'], true);
+        if ($floodMsg !== null) {
+            echo json_encode(['success' => false, 'message' => strip_tags($floodMsg)], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
     }
 
     // Prepared statement — no escape_string() needed (would double-escape)

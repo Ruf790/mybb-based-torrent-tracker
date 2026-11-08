@@ -873,13 +873,10 @@ function updateProgress() {
 
         const badge = document.getElementById('totalSelectedBadge');
         if (badge) {
-            if (count > 0) {
-                badge.className = 'badge bg-success rounded-pill px-3 py-2';
-                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', count));
-            } else {
-                badge.className = 'badge bg-primary rounded-pill px-3 py-2';
-                setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', 0));
-            }
+            // st-ui: мягкие цвета вместо bg-success / bg-primary
+            badge.classList.toggle('st-soft-success', count > 0);
+            badge.classList.toggle('st-soft-primary', count === 0);
+            setIconText(badge, '<i class="fas fa-check-circle me-1"></i> ', t('selected_count', '{1} selected', count));
         }
 
         const applyBtn = document.getElementById(settings.applyBtnId);

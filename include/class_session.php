@@ -240,18 +240,6 @@ class Session
         $GLOBALS['CURUSER']    = $mybb->user;
         $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
 
-        // Validate user access
-        $script_name   = basename((string)($_SERVER['PHP_SELF'] ?? ''));
-        $is_activation = $mybb->get_input('action') === 'activate' && $script_name === 'member.php';
-
-        if (
-            ($mybb->usergroup['isbannedgroup'] ?? 0) == '1'
-            || ($mybb->user['enabled'] ?? '') === 'no'
-            || (($mybb->user['ustatus'] ?? '') === 'pending' && !$is_activation)
-        ) {
-            print_no_permission(false, true, $mybb->user['notifs'] ?? '');
-            exit();
-        }
 
         // Update or create the session
         if (!defined('NO_ONLINE') && !defined('IN_UPGRADE')) {

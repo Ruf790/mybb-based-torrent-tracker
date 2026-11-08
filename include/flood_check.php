@@ -20,7 +20,7 @@ function flood_check(string $type = '', ?string $last = null, bool $shoutbox = f
         $remaining_time = $floodlimit - (TIMENOW - $last);
 
         if (!$shoutbox) {
-            stderr(sprintf($lang->global['flooderror'], $floodlimit, $type, $remaining_time), false);
+            stderr(sprintf($lang->global['flooderror'], $floodlimit, $type, $remaining_time));
             return null;
         }
 

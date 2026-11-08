@@ -129,7 +129,15 @@ function get_thread(int|string $tid, bool $recache = false): array|false
 /////////////Functions.php////////////////////////////////////////////////////////////
 function stdhead(string $title = '', bool $msgalert = true, string $script = '', string $script2 = '', string $incCSS = ''): void
 {
-    global $CURUSER, $SITEONLINE, $SITENAME, $SITEEMAIL, $session, $mail_handler, $header, $showownunapproved, $enableattachments, $templates, $templatelist, $date_formats, $f_threadsperpage, $f_postsperpage, $use_xmlhttprequest, $time_formats, $offline_minutes, $parser, $plugins, $cache, $BASEURL, $db, $mybb, $jumptopagemultipage, $maxmultipagelinks, $offlinemsg, $disablerightclick, $autorefreshtime, $autorefresh, $leftmenu, $gzipcompress, $delay, $url, $cookiedomain, $cookiepath, $cookieprefix, $cookiesamesiteflag, $cookiesecureflag, $rootpath, $pic_base_url, $charset, $metadesc, $metakeywords, $lang, $slogan, $groupscache, $usergroups, $leechwarn_remove_ratio, $cache, $dateformat, $timeformat, $cachetime, $checkconnectable, $timezoneoffset;
+    global $CURUSER, $SITEONLINE, $SITENAME, $SITEEMAIL, $session, $mail_handler, $header, $showownunapproved, 
+	$enableattachments, $templates, $templatelist, $date_formats, $f_threadsperpage, 
+	$f_postsperpage, $use_xmlhttprequest, $time_formats, $offline_minutes, $parser, 
+	$plugins, $cache, $BASEURL, $db, $mybb, $jumptopagemultipage, $maxmultipagelinks, 
+	$offlinemsg, $disablerightclick, $autorefreshtime, $autorefresh, $leftmenu, 
+	$gzipcompress, $delay, $cookiedomain, $cookiepath, $cookieprefix, 
+	$cookiesamesiteflag, $cookiesecureflag, $rootpath, $pic_base_url, 
+	$charset, $metadesc, $metakeywords, $lang, $slogan, $groupscache, $usergroups, 
+	$leechwarn_remove_ratio, $cache, $dateformat, $timeformat, $cachetime, $checkconnectable, $timezoneoffset;
 
     // Проверка автоматического включения сайта
     if ($SITEONLINE === 'no' && isset($offline_minutes)) {
@@ -162,6 +170,12 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
     // Для unlimited-режима ничего не делаем - остается в оффлайне
     }
 	
+	if (!defined('STDHEAD_STARTED')) {
+       define('STDHEAD_STARTED', true);
+    }
+	
+	
+	
     if ($SITEONLINE != 'yes' && $CURUSER) {
         if ($usergroups['canviewboardclosed'] != '1') {
             require_once INC_PATH . '/maintenance_page.php';
@@ -178,8 +192,9 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
     $ts_tzoffset = $CURUSER['timezone'] ?? $timezoneoffset;
 
     
-	$title = $SITENAME.' :: '.($title != '' ? htmlspecialchars_uni($title) : TS_MESSAGE);
-
+	$title = $title !== '' ? $SITENAME . ' :: ' . $title : $SITENAME;
+	
+	
     if ($CURUSER) {
         include_once(INC_PATH.'/functions_ratio.php');
       
@@ -289,6 +304,240 @@ function redirect(string $url, string $message = '', string $title = '', bool $f
 
 
 
+
+
+
+
+function error_no_permission(bool $log = false, string $extra = ''): never
+{
+    global $mybb, $db, $lang, $plugins, $session, $charset, $CURUSER, $BASEURL, $SITENAME;
+
+    if ($log) {
+        write_log(sprintf(
+            $lang->global['permissionlogmessage'],
+            htmlspecialchars_uni($_SERVER['SCRIPT_NAME'] ?? ''),
+            htmlspecialchars_uni($_SERVER['QUERY_STRING'] ?? ''),
+            '<a href="' . $BASEURL . '/userdetails.php?id=' . (int)($CURUSER['id'] ?? 0) . '">'
+                . htmlspecialchars_uni($CURUSER['username'] ?? 'Guest') . '</a>',
+            $CURUSER['ip'] ?? get_ip()
+        ));
+    }
+
+    $plugins->run_hooks('no_permission');
+
+    $db->sql_query_prepared(
+        'UPDATE sessions SET nopermission = ?, location1 = ?, location2 = ? WHERE sid = ?',
+        ['1', 0, 0, $session->sid]
+    );
+
+    if (!headers_sent()) {
+        http_response_code(403);
+    }
+
+    // AJAX
+    if (
+        $mybb->get_input('ajax', MyBB::INPUT_INT)
+        || basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'xmlhttp.php'
+    ) {
+        if (!headers_sent()) {
+            header('Content-type: application/json; charset=' . ($charset ?? 'UTF-8'));
+        }
+        $msg = $lang->error_nopermission_user_ajax
+            ?? ($lang->global['error_nopermission_user_ajax'] ?? 'You do not have permission to access this page.');
+        echo json_encode(['errors' => [$msg]], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /* ---------------------------- helpers ---------------------------- */
+    $h  = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $gr = static fn(string $k, string $fb = ''): string => (string)($lang->global[$k] ?? $fb);   // trusted lang string, raw HTML allowed
+    $g  = static fn(string $k, string $fb = ''): string => $h($lang->global[$k] ?? $fb);         // escaped label
+    $hd = static fn(string $k, string $fb = ''): string => $h($lang->header[$k] ?? $fb);         // escaped label
+
+    $base = $h($BASEURL ?? '');
+    $css  = $base . '/include/templates/default/style/';
+
+    /* ---------------------------- content ---------------------------- */
+    $isUser = !empty($CURUSER['id'] ?? 0);
+
+    if ($isUser) {
+        $intro = $gr('error_nopermission_user_1');
+        $items = [
+            $gr('error_nopermission_user_2'),
+            $gr('error_nopermission_user_3'),
+            $gr('error_nopermission_user_4')
+                . ' (<a href="' . $base . '/member.php?action=resendactivation">'
+                . $gr('error_nopermission_user_resendactivation') . '</a>)',
+            $gr('error_nopermission_user_5'),
+        ];
+
+        // Как в оригинальном MyBB: подставляем имя в строку ланга (там %1$s после $lang->load())
+        $rawLabel  = (string)($lang->global['error_nopermission_user_username'] ?? 'You are currently logged in with the username: %1$s');
+        $userLabel = sprintf(
+            $h($rawLabel),
+            '<strong class="chip-value">' . $h($CURUSER['username'] ?? '') . '</strong>'
+        );
+    } else {
+        $intro = $gr('error_nopermission_guest_1');
+        $items = [
+            $gr('error_nopermission_guest_2'),
+            $gr('error_nopermission_guest_3'),
+            $gr('error_nopermission_guest_4'),
+            $gr('error_nopermission_guest_5'),
+        ];
+        $userLabel = '';
+    }
+
+    $list = '';
+    foreach ($items as $li) {
+        $list .= '<li class="mb-1">' . $li . '</li>';
+    }
+
+    // Блок canview в header.php вызывает эту функцию, когда stdhead() уже выполняется
+    // При бане по IP — форма запроса на разбан
+    $helpPage = is_banned_ip((string)($session->ipaddress ?? ''))
+    ? 'unbaniprequest.php'
+    : ($isUser ? 'contactstaff.php' : 'member.php?action=login');
+	
+	if (!defined('STDHEAD_STARTED')) {
+        define('ACCESS_DENIED', true);
+        stdhead($gr('error_nopermission_title', 'Access Denied'));
+    }
+	
+	
+?>
+<link rel="stylesheet" href="<?= $css ?>errorss.css?ver=130">
+    <div class="container">
+        <div class="card error-card222 stderr-card">
+            <div class="card-header22">
+                <div class="stderr-icon-wrap">
+                    <div class="stderr-icon-circle"><i class="bi bi-lock-fill error-icon2"></i></div>
+                    <span class="stderr-pulse"></span>
+                </div>
+                <div>
+                    <h2 class="mb-0">403 &middot; <?= $g('error_nopermission_title', 'Access Denied') ?></h2>
+                    <p class="mb-0 opacity-75"><i class="bi bi-info-circle me-1"></i><?= $hd('hdr_access_restricted', 'Access Restricted') ?></p>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-danger d-flex align-items-start gap-3 mb-3 stderr-reasons" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                    <div>
+<?php if ($extra !== ''): ?>
+                        <p class="fw-bold mb-2"><?= $h($extra) ?></p>
+<?php endif; ?>
+                        
+						
+						<?php if ($extra === ''): ?>
+    <?= $intro ?>
+    <ol><?= $list ?></ol>
+<?php endif; ?>
+						
+						
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mb-3">
+<?php if ($isUser): ?>
+                    <div class="stderr-chip">
+                        <i class="bi bi-person-circle text-danger"></i>
+                        <div><?= $userLabel ?></div>
+                    </div>
+<?php endif; ?>
+                    <div class="stderr-chip">
+                        <i class="bi bi-clock-history text-danger"></i>
+                        <div><small class="text-muted d-block"><?= $g('stderr_request_time', 'Request Time') ?></small><strong><?= date('H:i:s') ?></strong></div>
+                    </div>
+                    <div class="stderr-chip">
+                        <i class="bi bi-calendar-check text-danger"></i>
+                        <div><small class="text-muted d-block"><?= $g('stderr_request_date', 'Request Date') ?></small><strong><?= date('Y-m-d') ?></strong></div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <button type="button" onclick="history.back()" class="btn btn-outline-danger">
+                        <i class="bi bi-arrow-left me-1"></i><?= $hd('hdr_go_back', 'Go Back') ?>
+                    </button>
+<?php if ($isUser): ?>
+                    <a href="<?= $base ?>/" class="btn btn-danger">
+                        <i class="bi bi-house-door me-1"></i><?= $hd('hdr_home_page', 'Home Page') ?>
+                    </a>
+<?php else: ?>
+                    <a href="<?= $base ?>/member.php?action=login" class="btn btn-danger">
+                        <i class="bi bi-box-arrow-in-right me-1"></i><?= $hd('nav_login', 'Login') ?>
+                    </a>
+                    <a href="<?= $base ?>/member.php?action=register" class="btn btn-outline-secondary">
+                        <i class="bi bi-person-plus me-1"></i><?= $hd('nav_register', 'Register') ?>
+                    </a>
+<?php endif; ?>
+                </div>
+
+              <?php if ($isUser || $helpPage === 'unbaniprequest.php'): ?>
+                <small class="text-muted d-block pt-3 border-top">
+                    <i class="bi bi-envelope me-1"></i><?= $hd('hdr_need_help', 'Need help? Contact') ?>
+                    <a href="<?= $base ?>/<?= $helpPage ?>"><?= $hd('hdr_support_team', 'Support Team') ?></a>
+                </small>
+<?php endif; ?>
+            </div>
+        </div>
+    </div>
+<?php
+    stdfoot();
+    exit;
+}
+
+function print_no_permission(bool $log = false, bool $stdhead = true, string $extra = ''): never
+{
+    error_no_permission($log, $extra);
+}
+
+
+
+function enforce_account_status(): void
+{
+    global $mybb;
+
+    if (empty($mybb->user['id'])) {
+        return;
+    }
+
+    $action    = $mybb->get_input('action');
+    $script    = basename(SCRIPTNAME);
+    $is_member = $script === 'member.php';
+
+    
+	// Заблокированный может написать администрации
+    if ($script === 'contactstaff.php') {
+        return;
+    }
+	
+	if ($is_member && $action === 'logout') {
+        return;
+    }
+
+    // Забаненный может написать администрации
+    if ($script === 'contactstaff.php' && ($mybb->usergroup['isbannedgroup'] ?? 0) == 1) {
+        return;
+    }
+
+    if (
+        ($mybb->usergroup['isbannedgroup'] ?? 0) == 1
+        || ($mybb->user['enabled'] ?? '') === 'no'
+        || (($mybb->user['ustatus'] ?? '') === 'pending' && !($is_member && in_array($action, ['activate', 'resendactivation', 'do_resendactivation'], true)))
+    ) {
+        print_no_permission();
+    }
+}
+
+
+
+
+
+
+
+
+
 function stderr(string $error = "", string $title = "", int $errorCode = 400, string $errorType = "general"): void
 {
     global $SITENAME, $BASEURL, $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins;
@@ -307,6 +556,18 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
     if (empty($title)) {
         $title = $SITENAME . ' - ' . $t('stderr_title_suffix', 'Error');
     }
+	
+	
+	// AJAX: JSON вместо HTML-страницы (как было в error())
+    if (is_object($mybb) && $mybb->get_input('ajax', MyBB::INPUT_INT)) {
+        if (!headers_sent()) {
+            header('Content-type: application/json; charset=UTF-8');
+        }
+        echo json_encode(['errors' => [$error]], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+	
+	
 
     // Маппинг типов ошибок на иконки и заголовки
     $errorTypes = [
@@ -419,7 +680,7 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
     $htmlLang = (is_object($lang) && ($lang->language ?? '') === 'russian') ? 'ru' : 'en';
 
     // «…свяжитесь с {1}» — {1} и %1$s (в него {1} превращает $lang->load())
-    $support = '<a href="' . $BASEURL . '/contact.php" class="text-danger text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
+    $support = '<a href="' . $BASEURL . '/contactstaff.php" class="text-danger text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
     $footerText = strtr($t('stderr_footer', 'If you believe this is a mistake, please contact {1}'), ['{1}' => $support, '%1$s' => $support]);
 
     // Формируем страницу ошибки
@@ -430,109 +691,68 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>' . htmlspecialchars($title) . '</title>
-    <link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
-	<link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
+    <link href="' . $BASEURL . '/include/templates/default/style/errorss.css?ver=130" rel="stylesheet">
 </head>
 <body>
     <div class="container">
-        <div class="error-card-wrapper">
-            <div class="error-card card border-0 shadow-lg overflow-hidden">
-                <div class="error-bg-pattern"></div>
-                <div class="gradient-line"></div>
+        <div class="card error-card222 stderr-card">
+            <div class="card-header22">
+                <div class="stderr-icon-wrap">
+                    <div class="stderr-icon-circle"><i class="bi ' . $type['icon'] . ' error-icon2"></i></div>
+                    <span class="stderr-pulse"></span>
+                </div>
+                <div>
+                    <h2 class="mb-0">' . $type['code'] . ' &middot; ' . $type['title'] . '</h2>
+                    <p class="mb-0 opacity-75"><i class="bi bi-info-circle me-1"></i>' . $type['description'] . '</p>
+                </div>
+            </div>
 
-                <div class="card-body p-4 p-md-5 position-relative">
-                    <div class="error-icon-wrapper mb-4 text-center">
-                        <div class="error-icon-circle mx-auto">
-                            <i class="bi ' . $type['icon'] . ' error-icon"></i>
-                        </div>
-                        <div class="error-pulse"></div>
-                    </div>
-
-                    <div class="text-center mb-4">
-                        <h1 class="error-title display-4 fw-bold mb-2">' . $type['code'] . '</h1>
-                        <h2 class="error-subtitle h3 mb-2">' . $type['title'] . '</h2>
-                        <p class="error-description text-muted mb-0">
-                            <i class="bi bi-info-circle me-2"></i>
-                            ' . $type['description'] . '
-                        </p>
-                    </div>
-
-                    <div class="error-message-box mb-4">
-                        <div class="d-flex align-items-start">
-                            <div class="message-icon me-3">
-                                <i class="bi ' . $type['messageIcon'] . '"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <h5 class="mb-2">' . $error . '</h5>
-                                <p class="text-muted mb-0 small">
-                                    ' . $type['hint'] . '
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="error-details mb-4">
-                        <div class="row g-3">
-                            <div class="col-6">
-                                <div class="detail-item p-3 rounded-3">
-                                    <i class="bi bi-clock-history text-danger mb-2"></i>
-                                    <h6 class="mb-1">' . $t('stderr_request_time', 'Request Time') . '</h6>
-                                    <small class="text-muted">' . date('H:i:s') . '</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="detail-item p-3 rounded-3">
-                                    <i class="bi bi-calendar-check text-danger mb-2"></i>
-                                    <h6 class="mb-1">' . $t('stderr_request_date', 'Request Date') . '</h6>
-                                    <small class="text-muted">' . date('Y-m-d') . '</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="actions-wrapper">
-                        <div class="d-flex flex-column flex-sm-row gap-3">
-                            <button onclick="history.back()" class="btn btn-outline-danger btn-lg flex-grow-1 hover-lift">
-                                <i class="bi bi-arrow-left me-2"></i>
-                                <span>' . $t('stderr_btn_back', 'Go Back') . '</span>
-                            </button>
-                            <a href="' . $BASEURL . '/" class="btn btn-danger btn-lg flex-grow-1 hover-lift">
-                                <i class="bi bi-house-door me-2"></i>
-                                <span>' . $t('stderr_btn_home', 'Home Page') . '</span>
-                            </a>
-                        </div>
-
-                        <div class="quick-links mt-4 pt-3 border-top">
-                            <small class="text-muted d-block mb-2">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
-                            <div class="d-flex flex-wrap gap-2">
-                                <a href="' . $BASEURL . '/browse.php" class="quick-link">
-                                    <i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '
-                                </a>
-                                <a href="' . $BASEURL . '/search.php" class="quick-link">
-                                    <i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '
-                                </a>
-                                <a href="' . $BASEURL . '/upload.php" class="quick-link">
-                                    <i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '
-                                </a>
-                                <a href="' . $BASEURL . '/index2.php" class="quick-link">
-                                    <i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '
-                                </a>
-                            </div>
-                        </div>
+            <div class="card-body">
+                <div class="alert alert-danger d-flex align-items-start gap-3 mb-3" role="alert">
+                    <i class="bi ' . $type['messageIcon'] . ' fs-4"></i>
+                    <div>
+                        <strong>' . $error . '</strong>
+                        <div class="small opacity-75 mt-1">' . $type['hint'] . '</div>
                     </div>
                 </div>
 
-                <div class="card-footer bg-transparent border-0 text-center py-3">
-                    <small class="text-muted">
-                        <i class="bi bi-bug me-1"></i>
-                        ' . $footerText . '
-                    </small>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <div class="stderr-chip">
+                        <i class="bi bi-clock-history text-danger"></i>
+                        <div><small class="text-muted d-block">' . $t('stderr_request_time', 'Request Time') . '</small><strong>' . date('H:i:s') . '</strong></div>
+                    </div>
+                    <div class="stderr-chip">
+                        <i class="bi bi-calendar-check text-danger"></i>
+                        <div><small class="text-muted d-block">' . $t('stderr_request_date', 'Request Date') . '</small><strong>' . date('Y-m-d') . '</strong></div>
+                    </div>
                 </div>
+
+                <div class="d-flex gap-2 mb-3">
+                    <button onclick="history.back()" class="btn btn-outline-danger">
+                        <i class="bi bi-arrow-left me-1"></i>' . $t('stderr_btn_back', 'Go Back') . '
+                    </button>
+                    <a href="' . $BASEURL . '/" class="btn btn-danger">
+                        <i class="bi bi-house-door me-1"></i>' . $t('stderr_btn_home', 'Home Page') . '
+                    </a>
+                </div>
+
+                <div class="quick-links pt-3 border-top d-flex flex-wrap align-items-center gap-2">
+                    <small class="text-muted me-1">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
+                    <a href="' . $BASEURL . '/browse.php" class="quick-link"><i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '</a>
+                    <a href="' . $BASEURL . '/search.php" class="quick-link"><i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '</a>
+                    <a href="' . $BASEURL . '/upload.php" class="quick-link"><i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '</a>
+                    <a href="' . $BASEURL . '/index2.php" class="quick-link"><i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '</a>
+                </div>
+
+                <small class="text-muted d-block mt-3">
+                    <i class="bi bi-bug me-1"></i>' . $footerText . '
+                </small>
             </div>
         </div>
     </div>
 </body>
 </html>';
+
 
     echo $errorpage;
 
@@ -577,109 +797,73 @@ function stdok(string $message = "", string $title = "", string $subtitle = ""):
 
     // «…загляните в {1} или обратитесь в {2}» — {n} и %n$s (в него {n} превращает $lang->load())
     $faq     = '<a href="' . $e($BASEURL) . '/faq.php" class="text-success text-decoration-none">' . $t('stdok_faq', 'FAQ') . '</a>';
-    $support = '<a href="' . $e($BASEURL) . '/contact.php" class="text-success text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
+    $support = '<a href="' . $e($BASEURL) . '/contactstaff.php" class="text-success text-decoration-none">' . $t('stderr_support', 'support') . '</a>';
     $footerText = strtr($t('stdok_footer', 'Need help? Visit our {1} or contact {2}'),
         ['{1}' => $faq, '%1$s' => $faq, '{2}' => $support, '%2$s' => $support]);
 
+    // the message is escaped (possibly twice); restore only <strong> and </strong>
+    $message = preg_replace('~&(?:amp;)*lt;(/?)strong&(?:amp;)*gt;~i', '<$1strong>', (string)$message);
+
     $okpage = '
-<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">
+<link href="' . $BASEURL . '/include/templates/default/style/errorss.css?ver=130" rel="stylesheet">
 
 <div class="container">
-    <div class="error-card-wrapper">
-        <div class="error-card-ok card border-0 overflow-hidden">
-            <div class="error-bg-pattern-ok"></div>
-            <div class="gradient-line-ok"></div>
+    <div class="card error-card222 stdok-card">
+        <div class="card-header22 success">
+            <div class="stdok-icon-wrap">
+                <div class="stdok-icon-circle"><i class="bi bi-check-lg"></i></div>
+                <span class="stdok-pulse"></span>
+            </div>
+            <div>
+                <h2 class="mb-0">' . $t('stdok_heading', 'Success') . ' &middot; ' . $title . '</h2>
+                <p class="mb-0 opacity-75"><i class="bi bi-info-circle me-1"></i>' . $subtitle . '</p>
+            </div>
+        </div>
 
-            <div class="card-body p-4 p-md-5 position-relative">
-
-                <div class="error-icon-wrapper mb-4 text-center">
-                    <div class="ok-icon-circle mx-auto">
-                        <i class="bi bi-check-lg ok-icon"></i>
-                    </div>
-                    <div class="ok-pulse"></div>
-                </div>
-
-                <div class="text-center mb-4">
-                    <h1 class="ok-title display-4 fw-bold mb-2">' . $t('stdok_heading', 'Success') . '</h1>
-                    <h2 class="ok-subtitle h3 mb-2">' . $title . '</h2>
-                    <p class="ok-description text-muted mb-0">
-                        <i class="bi bi-info-circle me-2"></i>
-                        ' . $subtitle . '
-                    </p>
-                </div>
-
-                <div class="ok-message-box mb-4">
-                    <div class="d-flex align-items-start">
-                        <div class="ok-message-icon me-3">
-                            <i class="bi bi-check-circle-fill"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-2">' . $message . '</h5>
-                            <p class="text-muted mb-0 small">' . $t('stdok_no_action', 'No further action is required.') . '</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="ok-details mb-4">
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <div class="ok-detail-item p-3 rounded-3">
-                                <i class="bi bi-clock-history text-success mb-2"></i>
-                                <h6 class="mb-1">' . $t('stdok_completed_at', 'Completed at') . '</h6>
-                                <small class="text-muted">' . $time . '</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="ok-detail-item p-3 rounded-3">
-                                <i class="bi bi-calendar-check text-success mb-2"></i>
-                                <h6 class="mb-1">' . $t('stdok_date', 'Date') . '</h6>
-                                <small class="text-muted">' . $date . '</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="actions-wrapper">
-                    <div class="d-flex flex-column flex-sm-row gap-3">
-                        <button onclick="history.back()" class="btn btn-outline-success btn-lg flex-grow-1 hover-lift-ok">
-                            <i class="bi bi-arrow-left me-2"></i>
-                            <span>' . $t('stderr_btn_back', 'Go Back') . '</span>
-                        </button>
-                        <a href="' . $e($BASEURL) . '/" class="btn btn-success btn-lg flex-grow-1 hover-lift-ok">
-                            <i class="bi bi-house-door me-2"></i>
-                            <span>' . $t('stderr_btn_home', 'Home Page') . '</span>
-                        </a>
-                    </div>
-
-                    <div class="quick-links-ok mt-4 pt-3 border-top">
-                        <small class="text-muted d-block mb-2">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
-                        <div class="d-flex flex-wrap gap-2">
-                            <a href="' . $e($BASEURL) . '/browse.php" class="quick-link-ok">
-                                <i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '
-                            </a>
-                            <a href="' . $e($BASEURL) . '/search.php" class="quick-link-ok">
-                                <i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '
-                            </a>
-                            <a href="' . $e($BASEURL) . '/upload.php" class="quick-link-ok">
-                                <i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '
-                            </a>
-                            <a href="' . $e($BASEURL) . '/index2.php" class="quick-link-ok">
-                                <i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '
-                            </a>
-                        </div>
-                    </div>
+        <div class="card-body">
+            <div class="alert alert-success d-flex align-items-start gap-3 mb-3" role="alert">
+                <i class="bi bi-check-circle-fill fs-4"></i>
+                <div>
+                    <strong>' . $message . '</strong>
+                    <div class="small opacity-75 mt-1">' . $t('stdok_no_action', 'No further action is required.') . '</div>
                 </div>
             </div>
 
-            <div class="card-footer bg-transparent border-0 text-center py-3">
-                <small class="text-muted">
-                    <i class="bi bi-question-circle me-1"></i>
-                    ' . $footerText . '
-                </small>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <div class="stdok-chip">
+                    <i class="bi bi-clock-history text-success"></i>
+                    <div><small class="text-muted d-block">' . $t('stdok_completed_at', 'Completed at') . '</small><strong>' . $time . '</strong></div>
+                </div>
+                <div class="stdok-chip">
+                    <i class="bi bi-calendar-check text-success"></i>
+                    <div><small class="text-muted d-block">' . $t('stdok_date', 'Date') . '</small><strong>' . $date . '</strong></div>
+                </div>
             </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button onclick="history.back()" class="btn btn-outline-success">
+                    <i class="bi bi-arrow-left me-1"></i>' . $t('stderr_btn_back', 'Go Back') . '
+                </button>
+                <a href="' . $e($BASEURL) . '/" class="btn btn-success">
+                    <i class="bi bi-house-door me-1"></i>' . $t('stderr_btn_home', 'Home Page') . '
+                </a>
+            </div>
+
+            <div class="quick-links-ok pt-3 border-top d-flex flex-wrap align-items-center gap-2">
+                <small class="text-muted me-1">' . $t('stderr_quick_links', 'Quick Links:') . '</small>
+                <a href="' . $e($BASEURL) . '/browse.php" class="quick-link-ok"><i class="bi bi-grid"></i> ' . $t('stderr_link_browse', 'Browse') . '</a>
+                <a href="' . $e($BASEURL) . '/search.php" class="quick-link-ok"><i class="bi bi-search"></i> ' . $t('stderr_link_search', 'Forum search') . '</a>
+                <a href="' . $e($BASEURL) . '/upload.php" class="quick-link-ok"><i class="bi bi-cloud-upload"></i> ' . $t('stderr_link_upload', 'Upload') . '</a>
+                <a href="' . $e($BASEURL) . '/index2.php" class="quick-link-ok"><i class="bi bi-chat"></i> ' . $t('stderr_link_forum', 'Forum') . '</a>
+            </div>
+
+            <small class="text-muted d-block mt-3">
+                <i class="bi bi-question-circle me-1"></i>' . $footerText . '
+            </small>
         </div>
     </div>
 </div>';
+
 
     echo $okpage;
 
@@ -689,6 +873,11 @@ function stdok(string $message = "", string $title = "", string $subtitle = ""):
 
     exit;
 }
+
+
+
+
+
 
 
 
@@ -2962,167 +3151,11 @@ function is_valid_id(mixed $id): bool
 
 
 
-function error(string $error = "", string $title = ""): void
-{
-    global $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins, $charset, $BASEURL, $SITENAME;
-
-    $error = $plugins->run_hooks("error", $error);
-    if(!$error) {
-        $error = 'unknown_error';
-    }
-
-    // AJAX error message?
-    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
-        @header("Content-type: application/json; charset={$charset}");
-        echo json_encode(["errors" => [$error]]);
-        exit;
-    }
-
-    if(!$title) {
-        $title = $SITENAME;
-    }
-
-    $timenow = my_datee('relative', TIMENOW);
-	
-	$current_time = date('H:i:s');
-    $current_date = date('Y-m-d');
-	
-    
-    $errorpage = '<html>
-<head>
-  <title>{$title}</title>
-  
-  <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
-
-</head>
-<body>
-    <div class="container mt-3">
-	
-	<div class="card error-card222">
-      <div class="card-header22">
-        <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
-        <div>
-          <h2 class="mb-0">Error</h2>
-          <p class="mb-0 opacity-75">A problem occurred while processing your request</p>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="alert alert-danger" role="alert">
-          '.$error.'
-        </div>
-
-        <div class="d-flex flex-column flex-sm-row gap-3">
-          <button onclick="history.back()" class="btn btn-outline-danger flex-grow-1">
-            <i class="bi bi-arrow-left me-2"></i> Go Back
-          </button>
-          <a href="'.$BASEURL.'/" class="btn btn-danger flex-grow-1">
-            <i class="bi bi-house me-2"></i> Home Page
-          </a>
-        </div>
-      </div>
-    </div>
-	 </div>
-</body>
-</html>';
-
-    
-    echo $errorpage;
-    exit;
-}
-
-
-
-function error_no_permission(): void
-{
-    global $mybb, $theme, $templates, $db, $lang, $plugins, $session, $charset, $CURUSER;
-    $time = TIMENOW;
-    $plugins->run_hooks("no_permission");
-    $noperm_array = [
-        "nopermission" => '1',
-        "location1" => 0,
-        "location2" => 0
-    ];
-    $db->sql_query_prepared(
-        "UPDATE sessions SET nopermission=?, location1=?, location2=? WHERE sid=?",
-        [$noperm_array['nopermission'], $noperm_array['location1'], $noperm_array['location2'], $session->sid]
-    );
-    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
-        header("Content-type: application/json; charset={$charset}");
-        echo json_encode(["errors" => [$lang->error_nopermission_user_ajax]]);
-        exit;
-    }
-    if (!empty($CURUSER['id'] ?? 0)) 
-	{
-        $error_nopermission_user_username = sprintf('You are currently logged in with the username: '.htmlspecialchars_uni($CURUSER['username'] ?? '').'');
-        
-		
-		$errorpage = ''.$lang->global['error_nopermission_user_1'].'
-<ol>
-	<li>'.$lang->global['error_nopermission_user_2'].'</li>
-	<li>'.$lang->global['error_nopermission_user_3'].'</li>
-	<li>'.$lang->global['error_nopermission_user_4'].' (<a href="member.php?action=resendactivation">'.$lang->global['error_nopermission_user_resendactivation'].'</a>)</li>
-	<li>'.$lang->global['error_nopermission_user_5'].'</li>
-</ol>
-<br />
-'.$error_nopermission_user_username.'';
-		
-		
-    } else {
-        $redirect_url = $_SERVER['PHP_SELF'] ?? '';
-        if($_SERVER['QUERY_STRING'] ?? '') {
-            $redirect_url .= '?'.$_SERVER['QUERY_STRING'];
-        }
-        $redirect_url = htmlspecialchars_uni($redirect_url);
-
-		$errorpage = ''.$lang->global['error_nopermission_guest_1'].'<br /><br />
-<ol>
-<li class="mb-2">'.$lang->global['error_nopermission_guest_2'].'</li>
-<li class="mb-2">'.$lang->global['error_nopermission_guest_3'].'</li>
-<li class="mb-2">'.$lang->global['error_nopermission_guest_4'].'</li>
-<li class="mb-2">'.$lang->global['error_nopermission_guest_5'].'</li>
-</ol>';
-		
-		
-    }
-    
-	error($errorpage);
-}
 
 
 
 
-function print_no_permission(bool $log = false, bool $stdhead = true, string $extra = ''): void
-{
-    global $lang, $SITENAME, $BASEURL, $CURUSER;
-    
-    if ($log) {
-        $page = htmlspecialchars_uni($_SERVER['SCRIPT_NAME'] ?? '');
-        $query = htmlspecialchars_uni($_SERVER['QUERY_STRING'] ?? '');
-        //$message = sprintf($lang->global['permissionlogmessage'], $page, $query, '<a href="' . $BASEURL . '/userdetails.php?id=' . $CURUSER['id'] . '">' . $CURUSER['username'] . '</a>', $CURUSER['ip'] ?? '');
-		
-		
-		$message = sprintf($lang->global['permissionlogmessage'],
-          $page,
-          $query,
-          '<a href="' . $BASEURL . '/userdetails.php?id=' . ($CURUSER['id'] ?? 0) . '">' . htmlspecialchars_uni($CURUSER['username'] ?? 'Guest') . '</a>',
-          $CURUSER['ip'] ?? get_ip()
-        );
-		
-		
-		
-        write_log($message);
-    }
 
-    if ($stdhead) {
-        stderr(sprintf($lang->global['print_no_permission'], $SITENAME, ($extra != '' ? '<b>' . $extra . '</b>' : $lang->global['print_no_permission_i'])));
-        stdfoot();
-    } else {
-        stderr(sprintf($lang->global['print_no_permission'], $SITENAME, ($extra != '' ? '<b>' . $extra . '</b>' : $lang->global['print_no_permission_i'])));
-        stdfoot();
-    }
-
-    exit();
-}
 
 
 

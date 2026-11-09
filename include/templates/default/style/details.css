@@ -41,6 +41,15 @@
 /* ── Предупреждение H&R ────────────────────────────────────────────────── */
 .dt-page .dt-alert p:last-child { margin-bottom: 0; }
 
+/* ── Акция на весь сайт ────────────────────────────────────────────────── */
+.dt-page .dt-event {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; padding: .65rem 1rem;
+    border-color: var(--bs-success-border-subtle);
+    background: color-mix(in srgb, var(--bs-success-bg-subtle) 45%, var(--bs-body-bg));
+}
+.dt-page .dt-event__title { font-weight: 600; color: var(--bs-emphasis-color); }
+.dt-page .dt-timer { white-space: nowrap; }
+
 /* ── Шапка ─────────────────────────────────────────────────────────────── */
 .dt-page .dt-head__body { flex: 1 1 auto; min-width: 0; }
 .dt-page .dt-head__tags {   /* размер как в старой шапке (h3) */

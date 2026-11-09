@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=35">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=36">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -498,7 +498,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=8"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=9"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -1303,6 +1303,76 @@ foreach ($dt_kpi_tiles as [$kpi_icon, $kpi_soft, $kpi_val, $kpi_lbl, $kpi_attrs,
 
 // Для шапки и липкой полоски
 $dt_torrent_tags = GetTorrentTags($Torrent);
+
+// ── Сроки акций ──────────────────────────────────────────────────────────
+// Единицы для счётчика (сервер и details.js): «2 д 5 ч»
+$dt_units = [
+    $lang->details['lbl_unit_d'] ?? 'd',
+    $lang->details['lbl_unit_h'] ?? 'h',
+    $lang->details['lbl_unit_m'] ?? 'm',
+];
+$dt_left = static function (int $secs) use ($dt_units): string {
+    $secs = max(60, $secs);
+    $d = intdiv($secs, 86400);
+    $h = intdiv($secs % 86400, 3600);
+    $m = intdiv($secs % 3600, 60);
+    return $d > 0 ? $d . ' ' . $dt_units[0] . ($h ? ' ' . $h . ' ' . $dt_units[1] : '')
+         : ($h > 0 ? $h . ' ' . $dt_units[1] . ($m ? ' ' . $m . ' ' . $dt_units[2] : '') : $m . ' ' . $dt_units[2]);
+};
+$dt_timer = static function (int $until, string $text, string $class) use ($dt_left, $dt_units, $dateformat, $timeformat): string {
+    return '<span class="st-badge ' . $class . ' dt-timer" data-until="' . $until . '"'
+         . ' data-units="' . htmlspecialchars(implode('|', $dt_units), ENT_QUOTES) . '"'
+         . ' data-text="' . htmlspecialchars($text, ENT_QUOTES) . '"'
+         . ' title="' . htmlspecialchars(my_datee($dateformat, $until) . ' ' . my_datee($timeformat, $until), ENT_QUOTES) . '">'
+         . '<i class="fa-solid fa-hourglass-half"></i><span class="dt-timer__txt">'
+         . htmlspecialchars(ags_fmt($text, $dt_left($until - TIMENOW))) . '</span></span>';
+};
+
+// Акция на раздаче: cron/torrentspromo.php снимает её через N дней после заливки
+// (настройки expire* в admin/torrents_promo.php). promotion_time_type != 0 — бессрочная.
+$dt_promo_badge = '';
+if ((int)($Torrent['promotion_time_type'] ?? 0) === 0) {
+    $dt_f = $Torrent['free'] === 'yes';
+    $dt_s = $Torrent['silver'] === 'yes';
+    $dt_2 = $Torrent['doubleupload'] === 'yes';
+    $dt_3 = $Torrent['thirtypercent'] === 'yes';
+    $dt_promo_days = match (true) {
+        $dt_3 && !$dt_f && !$dt_s && !$dt_2 => $expirethirtypercentleech ?? 0,
+        $dt_f && $dt_2 && !$dt_3            => $expiretwoupfree ?? 0,
+        $dt_f && !$dt_3                     => $expirefree ?? 0,
+        $dt_s && $dt_2 && !$dt_f && !$dt_3  => $expiretwouphalfleech ?? 0,
+        $dt_s && !$dt_f && !$dt_2 && !$dt_3 => $expirehalfleech ?? 0,
+        $dt_2 && !$dt_f && !$dt_s && !$dt_3 => $expiretwoup ?? 0,
+        default                             => 0,
+    };
+    $dt_promo_until = (int)$Torrent['added'] + (int)round((float)$dt_promo_days * 86400);
+    if ((float)$dt_promo_days > 0 && $dt_promo_until > TIMENOW) {
+        $dt_promo_badge = $dt_timer($dt_promo_until, $lang->details['lbl_promo_left'] ?? 'Promo ends in {1}', 'st-soft-warning');
+    }
+}
+
+// Акция на весь сайт (cache/freeleech.php из admin/managesettings.php)
+$dt_event = '';
+$__FLSTYPE = $__F_START = $__F_END = '';
+@include TSDIR . '/cache/freeleech.php';
+$dt_ev_from  = is_numeric($__F_START) ? (int)$__F_START : (int)strtotime((string)$__F_START);
+$dt_ev_until = is_numeric($__F_END)   ? (int)$__F_END   : (int)strtotime((string)$__F_END);
+if ($__FLSTYPE !== '' && $dt_ev_from > 0 && TIMENOW >= $dt_ev_from && TIMENOW <= $dt_ev_until) {
+    $dt_ev_names = [
+        'freeleech'          => $lang->details['lbl_event_freeleech']   ?? 'Freeleech on all torrents',
+        'silverleech'        => $lang->details['lbl_event_silverleech'] ?? '50% leech on all torrents',
+        'thirtypercentleech' => $lang->details['lbl_event_thirty']      ?? '30% leech on all torrents',
+        'doubleupload'       => $lang->details['lbl_event_double']      ?? '2x upload on all torrents',
+    ];
+    if (isset($dt_ev_names[$__FLSTYPE])) {
+        $dt_event = '
+    <div class="st-card dt-event">
+        <span class="st-ico st-soft-success"><i class="fa-solid fa-gift"></i></span>
+        <span class="dt-event__title">' . htmlspecialchars($dt_ev_names[$__FLSTYPE]) . '</span>
+        ' . $dt_timer($dt_ev_until, $lang->details['lbl_event_left'] ?? 'ends in {1}', 'st-soft-success') . '
+    </div>';
+    }
+}
 $dt_sticky_poster = '<span class="dt-sticky__poster dt-sticky__poster--ico"><i class="' . ($torrent2['icon'] ?: 'fa-solid fa-layer-group') . '"></i></span>';
 foreach ($images as $dt_img) {
     if (dt_local_image_state((string)$dt_img) !== 'missing') {
@@ -1358,6 +1428,7 @@ $details = '
     </nav>
 
     ' . $warning_message . '
+    ' . $dt_event . '
 
     <!-- Header -->
     <header class="st-card st-head dt-head">
@@ -1370,6 +1441,7 @@ $details = '
             </h1>
 
             <div class="st-head__meta">
+                ' . $dt_promo_badge . '
                 <span class="st-badge st-soft-muted" title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '"><i class="fa-solid fa-hashtag"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '</span>
                 <span class="st-badge dt-soft-purple" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '"><i class="fa-solid fa-hard-drive"></i>' . mksize($Torrent['size']) . '</span>
                 <span class="st-badge st-soft-warning" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '"><i class="fa-solid fa-file"></i>' . $ags_files_lbl . '</span>

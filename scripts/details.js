@@ -773,3 +773,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     modal.addEventListener('hidden.bs.modal', () => { img.src = 'data:,'; });
 });
+
+// ===== Счётчики акций: «ещё 2 д 5 ч», обновляются раз в минуту =====
+document.addEventListener('DOMContentLoaded', function () {
+    const timers = document.querySelectorAll('.dt-timer[data-until]');
+    if (!timers.length) return;
+
+    const fmt = function (secs, u) {
+        secs = Math.max(60, secs);
+        const d = Math.floor(secs / 86400), h = Math.floor(secs % 86400 / 3600), m = Math.floor(secs % 3600 / 60);
+        if (d > 0) return d + ' ' + u[0] + (h ? ' ' + h + ' ' + u[1] : '');
+        if (h > 0) return h + ' ' + u[1] + (m ? ' ' + m + ' ' + u[2] : '');
+        return m + ' ' + u[2];
+    };
+
+    const tick = function () {
+        const now = Math.floor(Date.now() / 1000);
+        timers.forEach(el => {
+            const left = parseInt(el.dataset.until, 10) - now;
+            if (left <= 0) {
+                el.remove();      // акция закончилась — плашку убираем
+                return;
+            }
+            const txt = el.querySelector('.dt-timer__txt');
+            if (txt) txt.textContent = t('', el.dataset.text, fmt(left, el.dataset.units.split('|')));
+        });
+    };
+
+    tick();
+    setInterval(tick, 60000);
+});
+

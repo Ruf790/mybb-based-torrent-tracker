@@ -307,7 +307,8 @@ function mi_sum_data(array $rows): array
                 }
             }
             $a['codec'] = trim($codec . ($commercial !== '' ? ' ' . $commercial : ''));
-            $a['title'] = implode(' · ', $rest);
+            // Название озвучки обычно последнее поле; остальное — неизвестные куски, их не показываем
+            $a['title'] = (string)end($rest);
             $a['atmos'] = stripos($value, 'atmos') !== false;
             $d['audio'][] = $a;
         } elseif ($type === 'subs') {
@@ -572,5 +573,14 @@ function mi_render(array $d, string $raw): string
          .   '<div class="dt-mi__grid">' . $cols . '</div>'
          .   '<div class="collapse" id="dtMiRaw"><pre class="dt-mi__raw">' . $e(trim($raw)) . '</pre></div>'
          . '</div>'
+         . '</section>';
+}
+
+/** Текст, который не удалось разобрать: показываем как есть */
+function mi_render_raw(string $raw): string
+{
+    return '<section class="st-card dt-mi">'
+         . '<div class="st-card__head"><span class="st-ico st-soft-success"><i class="fa-solid fa-circle-info"></i></span>MediaInfo</div>'
+         . '<div class="st-card__body"><pre class="dt-mi__raw mt-0">' . htmlspecialchars(trim($raw), ENT_QUOTES, 'UTF-8') . '</pre></div>'
          . '</section>';
 }

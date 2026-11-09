@@ -822,13 +822,11 @@ if (empty($description))
 // MediaInfo (необязательно): отдельная таблица torrents_mediainfo, карточка на details.php
 $mediainfoPosted = isset($_POST['mediainfo']);
 $mediainfo       = trim(str_replace("\r\n", "\n", (string)($_POST['mediainfo'] ?? '')));
-if ($mediainfo !== '') {
-    require_once INC_PATH . '/functions_mediainfo.php';
-    if (mb_strlen($mediainfo) > 200000 || mi_find($mediainfo) === null) {
-        http_response_code(400);
-        echo json_encode(["success" => false, "error" => $ue('mediainfo_invalid', 'This does not look like MediaInfo output. Paste the text report (it starts with "General").')]);
-        exit;
-    }
+// Формат у всех разный: сохраняем любой текст. Разобрали — карточка, нет — показываем как есть.
+if (mb_strlen($mediainfo) > 200000) {
+    http_response_code(400);
+    echo json_encode(["success" => false, "error" => $ue('mediainfo_too_long', 'MediaInfo text is too long.')]);
+    exit;
 }
 
 // Torrent Name

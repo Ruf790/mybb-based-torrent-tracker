@@ -1052,9 +1052,11 @@ $dt_descr_raw = (string)$Torrent['descr'];
 
 // Сначала поле MediaInfo из формы заливки (torrents_mediainfo), иначе ищем в описании
 $dt_mi_found = null;
+$dt_mi_text  = '';
 $dt_mi_res   = $db->sql_query_prepared("SELECT mediainfo FROM torrents_mediainfo WHERE torrent_id = ?", [(int)$id]);
 if ($dt_mi_res && ($dt_mi_row = $db->fetch_array($dt_mi_res))) {
-    $dt_mi_found = mi_find((string)$dt_mi_row['mediainfo']);
+    $dt_mi_text  = trim((string)$dt_mi_row['mediainfo']);
+    $dt_mi_found = mi_find($dt_mi_text);
 }
 $dt_mi_in_descr = $dt_mi_found === null ? mi_find($dt_descr_raw) : null;
 $dt_mi_found  ??= $dt_mi_in_descr;
@@ -1066,6 +1068,10 @@ if ($dt_mi_found !== null) {
     if ($dt_mi_in_descr !== null) {
         $dt_descr_raw = mi_strip($dt_descr_raw, $dt_mi_in_descr);
     }
+}
+// Поле заполнено, но формат незнакомый — блок с исходным текстом
+if ($dt_mi_found === null && $dt_mi_text !== '') {
+    $dt_mi_card = mi_render_raw($dt_mi_text);
 }
 
 $descr = trim($dt_descr_raw) !== '' ? $parser->parse_message($dt_descr_raw, $parser_options) : '';

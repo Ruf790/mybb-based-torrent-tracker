@@ -52,7 +52,11 @@
 }
 .dt-page .dt-head__tags:empty { display: none; }
 .dt-page .st-head__meta { align-items: center; }
-.dt-page .st-head__meta .st-badge { font-size: .85em; }
+.dt-page { --dt-purple-soft: rgba(139, 92, 246, .14); --dt-purple-strong: #6d28d9; }
+[data-bs-theme="dark"] .dt-page { --dt-purple-strong: #c4b5fd; }
+.dt-page .dt-soft-purple { background: var(--dt-purple-soft); color: var(--dt-purple-strong); }
+.dt-page .st-head__meta { gap: .4rem; }
+.dt-page .st-head__meta .st-badge { font-size: .85em; border: 1px solid var(--bs-border-color-translucent); }
 .dt-page .st-head__meta .st-badge .fa-solid { margin-right: 0; }
 .dt-page .dt-head__actions { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; }
 .dt-page .dt-btn-ico { padding-left: .8rem; padding-right: .8rem; }

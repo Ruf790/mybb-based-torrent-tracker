@@ -459,7 +459,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=28">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=29">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -1271,11 +1271,11 @@ $details = '
             </h1>
 
             <div class="st-head__meta">
-                <span title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '"><i class="fa-solid fa-hashtag"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '</span>
-                <span title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '"><i class="fa-solid fa-hard-drive"></i>' . mksize($Torrent['size']) . '</span>
-                <span title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '"><i class="fa-solid fa-file"></i>' . $ags_files_lbl . '</span>
-                <span title="' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '"><i class="fa-solid fa-calendar-check"></i>' . my_datee('relative', $Torrent['added']) . '</span>
-                <span class="st-badge st-soft-' . $ags_health_c . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '"><i class="fa-solid fa-heart-pulse"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '</span>
+                <span class="st-badge st-soft-muted" title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '"><i class="fa-solid fa-hashtag"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '</span>
+                <span class="st-badge dt-soft-purple" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '"><i class="fa-solid fa-hard-drive"></i>' . mksize($Torrent['size']) . '</span>
+                <span class="st-badge st-soft-warning" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '"><i class="fa-solid fa-file"></i>' . $ags_files_lbl . '</span>
+                <span class="st-badge st-soft-muted" title="' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '"><i class="fa-solid fa-calendar-check"></i>' . my_datee('relative', $Torrent['added']) . '</span>
+                <span class="st-badge text-bg-' . $ags_health_c . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '"><i class="fa-solid fa-heart-pulse"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '</span>
                 ' . ($already_snatched ? '
                 <span class="st-badge st-soft-info" title="' . htmlspecialchars($lang->details['tip_snatched_by_you'], ENT_QUOTES) . '"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars($lang->details['badge_already_downloaded'], ENT_QUOTES) . '</span>' : '') . '
             </div>

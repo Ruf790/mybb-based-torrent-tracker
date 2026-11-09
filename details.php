@@ -1328,10 +1328,6 @@ $details = '
 
     ' . $RequestMatches . '
 
-    <!-- KPI tiles -->
-    <div class="dt-kpis">' . $dt_kpis . '
-    </div>
-
     <!-- Claim / posters / health -->
     <section class="st-card dt-overview">
         ' . $claimBox . '
@@ -1346,6 +1342,10 @@ $details = '
             <span class="dt-health__val">' . $ags_health . '%</span>
         </div>
     </section>
+
+    <!-- KPI tiles -->
+    <div class="dt-kpis">' . $dt_kpis . '
+    </div>
 
     <!-- Tabs -->
     <section class="st-card">

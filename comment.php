@@ -488,7 +488,9 @@ function displayRecentComments(int $torrentid): void
             </div>
         </div>
 HTML;
+        echo '<div class="container-md">';
         commenttable($allrows);
+        echo '</div>';
     }
 }
 

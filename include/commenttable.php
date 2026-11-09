@@ -2,6 +2,17 @@
 
 declare(strict_types=1);
 
+/* =============================================================================
+   Комментарии к торрентам в «новом стиле» — та же карточка, что у постов форума
+   (build_postbit() в functions_post.php): классы pb-* из postbit.css + ct-* из
+   comments.css (только то, что есть у комментариев: выбор модератором, шапка-тулбар).
+   Id/классы, на которые опираются скрипты, сохранены:
+     #comment-{id} (+ .comment-selected), #pid{id}, #post_{id}, #pid_{id}, #edited_by_{id},
+     .comment-checkbox (value, data-tid), #selectAllCheckbox, #mergeCommentsButton,
+     #massDeleteButton, .edit-comment-btn + data-*, .postbit_qdelete + data-*,
+     .report-comment-btn + data-*, .author_avatar img, #ajax_comment_preview(2)
+   ============================================================================= */
+
 // ── Lang helpers (same as in details.php; whichever file loads first defines them)
 // $lang->load() turns {1} into %1$s, so both forms are substituted.
 if (!function_exists('ags_fmt')) {
@@ -17,14 +28,49 @@ if (!function_exists('ags_fmt')) {
     }
 }
 
+/** CSS и скрипты комментариев — один раз за запрос (в AJAX-ответах тоже: вставляются в страницу) */
+function commenttable_assets(): string
+{
+    static $done = false;
+    global $BASEURL;
+
+    if ($done) {
+        return '';
+    }
+    $done = true;
+
+    $b = htmlspecialchars((string)$BASEURL, ENT_QUOTES);
+    return '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/comment_attachments.css">'
+         . '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/postbit.css?ver=302">'
+         . '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/comments.css?ver=2">'
+         . '<script src="' . $b . '/scripts/edit_delete_comment.js?ver=2"></script>'
+         . '<script src="' . $b . '/scripts/commenttable.js?ver=2"></script>';
+}
+
+/** Аватар автора комментария (.author_avatar — на ней core.js подменяет битые картинки) */
+function commenttable_avatar(array $row, string $profile_url, string $mod = ''): string
+{
+    $cls = 'pb-avatar author_avatar' . ($mod !== '' ? ' pb-avatar--' . $mod : '');
+
+    if (empty($row['user']) || empty($row['username'])) {
+        return '<span class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></span>';
+    }
+
+    $av = format_avatar((string)($row['useravatar'] ?? ''), (string)($row['avatardimensions'] ?? ''));
+    if (!empty($av['is_html'])) {
+        return '<a href="' . $profile_url . '" class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></a>';
+    }
+
+    return '<a href="' . $profile_url . '" class="' . $cls . (!empty($av['is_placeholder']) ? ' pb-avatar--ph' : '') . '">'
+         . '<img src="' . $av['image'] . '" alt="" loading="lazy"></a>';
+}
+
 function commenttable(array $rows, string $type = '', string $edit = '', bool $lc = false, bool $quote = false, bool $return = false): string
 {
     global $CURUSER, $BASEURL, $rootpath, $pic_base_url, $lang, $usergroups;
     global $timeformat, $dateformat, $Torrent, $regdateformat;
     global $parser, $plugins, $db, $postcounter, $wolcutoffmins;
     global $mybb;
-
-    $is_mod = is_mod($usergroups);
 
     // Strings live in the 'details' lang; other pages that render comments may not have loaded it
     if (empty($lang->details)) {
@@ -34,7 +80,6 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     require_once(INC_PATH . '/class_parser.php');
     $parser = new postParser;
 
-   
     $torrentEmbedIds = [];
     foreach ($rows as $row) {
         if (preg_match_all('#\[torrent=(\d+)\]#i', $row['text'] ?? '', $m)) {
@@ -48,49 +93,23 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     }
 
     $parser_options = [
-        "allow_html" => 0,
-        "allow_mycode" => 1,
-        "allow_smilies" => 1,
-        "allow_imgcode" => 1,
+        "allow_html"      => 0,
+        "allow_mycode"    => 1,
+        "allow_smilies"   => 1,
+        "allow_imgcode"   => 1,
         "allow_videocode" => 1,
         "filter_badwords" => 1,
-		"nofollow_on" => 1
+        "nofollow_on"     => 1,
     ];
 
-    $moderator = is_mod($usergroups);
-    
-    $totalrows = count($rows);
-    $quickmenu = '';
-    $showcommentstable = '';
-
-    $ajax_quick_edit_loaded = false;
-    $ajax_quick_report_loaded = false;
-    $QuickVoteLoaded = false;
-
-    ob_start();
-?>
-
-
-<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js?ver=2"></script>
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/commenttable.js?ver=3"></script>
-
-
-
-
-
-<?php
-    $modals_html = ob_get_clean();
-    $showcommentstable = ct_postbit_css_link() . $modals_html;
-	
+    $moderator    = is_mod($usergroups);
     $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
-    // Шапка со списком — только там, где известна раздача (не в AJAX-ответах с одним комментарием)
-    if ($torrent_name !== '') {
-        $showcommentstable .= generateHeaderSection($torrent_name, $moderator);
-    }
+    $timecut      = TIMENOW - (int)$wolcutoffmins;
 
-    // Reactions (include/functions_reactions.php): all comments of the page in one query,
-    // CSS + config + JS once per page. Without reactions.sql the comments simply show none.
+    $showcommentstable = commenttable_assets() . generateHeaderSection($torrent_name, $moderator);
+
+    // Реакции (include/functions_reactions.php): все комментарии страницы одним запросом,
+    // CSS + конфиг + JS один раз. Без reactions.sql комментарии просто выводятся без них.
     require_once INC_PATH . '/functions_reactions.php';
     $reactSum = [];
     try {
@@ -102,246 +121,166 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         && !(defined('UC_BANNED') && (int)($CURUSER['usergroup'] ?? 0) === UC_BANNED);
     $showcommentstable .= react_assets();
 
-
-
     foreach ($rows as $row) {
-        $p_commenthistory = $p_edit = $p_delete = $p_text = $p_report = $p_quote = '';
-
-        $QuoteTag = htmlspecialchars($db->escape_string(
-            '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]'
-        ));
-        
-        $p_quote .= '<a href="javascript:void(0);" onclick="quote(\'message\', \'comment\', \'' . $QuoteTag . '\');" class="postbit_multiquote postbit_mirage pb-act">
-        <i class="fa-solid fa-quote-left"></i>' . htmlspecialchars($lang->details['ct_quote']) . '</a>';
-
-        // Process post data
-        $post = processPostData($row, $parser, $parser_options, $moderator, (int)$wolcutoffmins);
-        
         $pid = (int)$row['id'];
         $tid = (int)$row['torrentid'];
-        $postlink = get_comment_link($pid, $tid);
+        $uid = (int)($row['user'] ?? 0);
 
-        // Reactions: pills under the text, the "React" button in the footer next to "Quote"
-        // (react_bar() returns '' for a guest when there are none)
+        $postlink    = get_comment_link($pid, $tid);
+        $profile_url = get_profile_link($uid);
+
+        // ── Текст ─────────────────────────────────────────────────────────
+        $post    = processPostData($row, $parser, $parser_options, $moderator, (int)$wolcutoffmins);
+        $message = $post['message'];
+
+        // Реакции: плашки под текстом, кнопка в подвале рядом с «Цитировать»
         $reactions_html = react_bar('comment', $pid, $reactSum[$pid] ?? [], $canReact, false);
         $react_button   = $canReact ? react_trigger('comment', $pid, 'pb-act') : '';
 
-        // Attachments from bulk pre-fetched array (no extra DB query)
-       
-$comment_attachments_html = '';
-$att_bulk = $GLOBALS['all_attachments'] ?? [];
-if (!empty($att_bulk[$pid])) {
-    $atts_html = render_comment_attachments_from_array($att_bulk[$pid]);
-    $comment_attachments_html = '
-    <div class="pb-atts">
-        <div class="pb-atts__lbl"><i class="fa-solid fa-paperclip"></i>' . $lang->global['postbit_attachments'] . '</div>
-        ' . $atts_html . '
-    </div>';
-}
-		
-		
-		
+        // Вложения из заранее собранного массива (без лишних запросов)
+        $attachments = '';
+        $att_bulk    = $GLOBALS['all_attachments'] ?? [];
+        if (!empty($att_bulk[$pid])) {
+            $attachments = '<div class="pb-atts att-section">'
+                . '<div class="pb-atts__lbl"><i class="fa-solid fa-paperclip"></i>' . $lang->global['postbit_attachments'] . '</div>'
+                . render_comment_attachments_from_array($att_bulk[$pid])
+                . '</div>';
+        }
 
-        // Process signature
+        // Подпись — только если она есть (раньше пустой блок с <hr> выводился всегда)
+        $signature    = '';
         $signatureRaw = isset($row['signature']) && is_string($row['signature']) ? $row['signature'] : '';
-        $sig_parser = [
-            "allow_html" => 0,
-            "allow_mycode" => 1,
-            "allow_smilies" => 1,
-            "allow_imgcode" => 1,
-            "me_username" => 1,
-            "filter_badwords" => 1
-        ];
-        
-        $post['signature'] = $signatureRaw !== '' ? $parser->parse_message($signatureRaw, $sig_parser) : '';
-        
-		
-        $post['signature'] = $post['signature'] !== ''
-            ? '<div class="signature scaleimages pb-sig">' . $post['signature'] . '</div>'
-            : '';
-
-        // User data
-        $post['username'] = $row['username'];
-        $post['profilelink_plain'] = get_profile_link($row['user']);
-        $post['username_formatted'] = format_name((string)$post['username'], (int)($row['usergroup'] ?? 1));
-        $post['profilelink'] = build_profile_link($post['username_formatted'], $row['user']);
-        $post['postdate'] = my_datee('relative', $row['dateline']);
-
-        // Поля для разметки постбита (классы pb-* из postbit.css)
-        $post['pid']              = $pid;
-        $post['userusername']     = htmlspecialchars_uni((string)($row['username'] ?? ''));
-        $post['avatar']           = $row['useravatar'] ?? '';
-        $post['avatardimensions'] = $row['avatardimensions'] ?? '';
-        $usertitle                = trim((string)($row['usertitle'] ?? ''));
-        $post['usertitle']        = htmlspecialchars_uni($usertitle !== '' ? $usertitle : (string)($row['grouptitle'] ?? ''));
-        $post['attachments']      = $comment_attachments_html;
-        $post['reactions']        = $reactions_html;
-        $post['button_react']     = $react_button;
-    
-			
-			
-			
-			
-			
-        
-
-        // Initialize empty post elements
-        $emptyElements = [
-            'input_editreason', 'button_edit', 'button_quickdelete', 'button_quote',
-            'button_report', 'poststatus', 'iplogged', 'editreason'
-        ];
-        
-        foreach ($emptyElements as $element) {
-            $post[$element] = '';
-        }
-
-        // Edited message
-        $post['editedmsg'] = '';
-        if ($row['editedby'] != 0 && $row['editedat'] != 0 && $row['editedbyuname'] != "") {
-            $post['editedat'] = my_datee('relative', $row['editedat']);
-            $post['editedbyuname'] = htmlspecialchars_uni($row['editedbyuname']);
-            $post['editedprofilelink'] = build_profile_link($row['editedbyuname'], $row['editedby']);
-            $post['editnote'] = ags_fmt(htmlspecialchars($lang->details['ct_edited_note']), $post['editedat'], $post['editedprofilelink']);
-            
-            $editreason = "";
-            if ($row['editreason'] != "") {
-                $post['editreason'] = $parser->parse_badwords($row['editreason']);
-                $post['editreason'] = htmlspecialchars_uni($row['editreason']);
-                $editreason = ' ' . ags_fmt(htmlspecialchars($lang->details['ct_edit_reason']), $post['editreason']);
+        if ($signatureRaw !== '') {
+            $sig = $parser->parse_message($signatureRaw, [
+                "allow_html"      => 0,
+                "allow_mycode"    => 1,
+                "allow_smilies"   => 1,
+                "allow_imgcode"   => 1,
+                "me_username"     => 1,
+                "filter_badwords" => 1,
+            ]);
+            if (trim($sig) !== '') {
+                $signature = '<div class="signature scaleimages pb-sig">' . $sig . '</div>';
             }
-            
-            $post['editedmsg'] = '<div class="pb-edited"><i class="fa-regular fa-pen-to-square"></i><span>' . $post['editnote'] . $editreason . '</span></div>';
         }
 
-        $post['input_editreason'] = '
-		
-		
-		<div class="editreason" id="editreason_'.$pid.'_original" style="display: none;">
-	        <input type="text" class="form-control border mb-2" style="margin: 6px 0;" name="editreason" size="40" maxlength="150" id="quickedit_'.$pid.'_editreason_original" placeholder="'.$lang->global['postbit_editreason'].'..." value="'.$post['editreason'].'" />
-	        </div>
-		
-		';
-		
-		
-		
-		
-		
+        // ── Автор ─────────────────────────────────────────────────────────
+        $username_raw = (string)($row['username'] ?? '');
+        $profilelink  = build_profile_link(format_name(htmlspecialchars_uni($username_raw), (int)($row['usergroup'] ?? 1)), $uid);
+        $postdate     = my_datee('relative', $row['dateline']);
+        $usertitle    = trim((string)($row['usertitle'] ?? '')) !== '' ? (string)$row['usertitle'] : (string)($row['grouptitle'] ?? '');
+        $usertitle    = $usertitle !== '' ? '<span class="pb-utitle">' . htmlspecialchars_uni($usertitle) . '</span>' : '';
 
-        // Edit button
-        if ($row['user'] == $CURUSER['id'] || $moderator) {
-            $post['button_edit'] = generateEditButton($pid, $row, $lang);
+        $is_online = $row['lastactive'] > $timecut
+            && ($row['invisible'] != 1 || $moderator)
+            && $row['lastvisit'] != $row['lastactive'];
+        $onlinestatus = $is_online
+            ? '<a href="online.php" class="pb-dot pb-dot--on" title="' . $lang->global['postbit_status_online'] . '"></a>'
+            : '<span class="pb-dot" title="' . $lang->global['postbit_status_offline'] . '"></span>';
+
+        // ── Изменено ──────────────────────────────────────────────────────
+        $editedmsg  = '';
+        $editreason = '';
+        if ($row['editedby'] != 0 && $row['editedat'] != 0 && $row['editedbyuname'] != "") {
+            $editedat     = my_datee('relative', $row['editedat']);
+            $editedby     = build_profile_link(htmlspecialchars_uni($row['editedbyuname']), $row['editedby']);
+            $editnote     = ags_fmt(htmlspecialchars($lang->details['ct_edited_note']), $editedat, $editedby);
+            $reason_html  = '';
+            if ($row['editreason'] != "") {
+                // раньше parse_badwords() тут же перетирался сырой строкой
+                $editreason  = htmlspecialchars_uni($parser->parse_badwords($row['editreason']));
+                $reason_html = ' ' . ags_fmt(htmlspecialchars($lang->details['ct_edit_reason']), $editreason);
+            }
+            $editedmsg = '<div class="pb-edited"><i class="fa-regular fa-pen-to-square"></i><span>' . $editnote . $reason_html . '</span></div>';
         }
 
-        // Delete button for moderators
-        if ($row['user'] == $CURUSER['id'] || $moderator) {
-            $postbit_qdelete = $lang->global['postbit_qdelete_post'];
-            $post['button_quickdelete'] = generateDeleteButton($row);
-        }
+        $input_editreason = '<div class="editreason" id="editreason_' . $pid . '_original" style="display: none;">'
+            . '<input type="text" class="form-control mb-2" name="editreason" size="40" maxlength="150" id="quickedit_' . $pid . '_editreason_original"'
+            . ' placeholder="' . $lang->global['postbit_editreason'] . '..." value="' . $editreason . '" />'
+            . '</div>';
 
+        // ── Кнопки ────────────────────────────────────────────────────────
+        $can_manage  = $uid === (int)$CURUSER['id'] || $moderator;
+        $button_edit = $can_manage ? generateEditButton($pid, $row, $lang) : '';
+        $button_del  = $can_manage ? generateDeleteButton($row) : '';
 
-		$QuoteTagRaw = '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]';
-		
-		// Quote button
-        $post['button_quote'] = '
-            <a href="comment.php?action=add&tid=' . $tid . '&quote=' . urlencode($QuoteTagRaw) . '" class="dropdown-item">
-                 <i class="fa-solid fa-reply"></i> &nbsp;' . htmlspecialchars($lang->details['ct_reply']) . '
-            </a>';
+        // Цитата в форму быстрого комментария (quote() из commenttable.js)
+        $QuoteTag = htmlspecialchars($db->escape_string(
+            '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]'
+        ));
+        $button_quote = '<a href="javascript:void(0);" onclick="quote(\'message\', \'comment\', \'' . $QuoteTag . '\');" class="pb-act postbit_multiquote">'
+            . '<i class="fa-solid fa-quote-left"></i>' . htmlspecialchars($lang->details['ct_quote']) . '</a>';
 
-        
-        $post['button_multiquote'] = $p_quote;
-		
-		
-        $post['button_report'] = '
-           <a class="dropdown-item report-comment-btn" 
-           href="#reportCommentModal" 
-           data-bs-toggle="modal"
-           data-comment-id="' . $row['id'] . '"
-           data-comment-author-id="' . $row['user'] . '"
-           data-comment-text="' . htmlspecialchars($row['text'], ENT_QUOTES) . '"
-           data-comment-author="' . htmlspecialchars($row['username']) . '"
-           data-comment-date="' . date('Y-m-d H:i', $row['dateline']) . '"
-           data-parent-id="' . $row['torrentid'] . '">
-             <i class="fa-solid fa-flag"></i> &nbsp;' . htmlspecialchars($lang->details['report']) . '
-           </a>';
-		
-		
+        $QuoteTagRaw  = '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]';
+        $menu_reply   = '<a href="comment.php?action=add&amp;tid=' . $tid . '&amp;quote=' . urlencode($QuoteTagRaw) . '" class="dropdown-item">'
+            . '<i class="fa-solid fa-reply"></i> &nbsp;' . htmlspecialchars($lang->details['ct_reply']) . '</a>';
+        $menu_report  = '<a class="dropdown-item report-comment-btn" href="#reportCommentModal" data-bs-toggle="modal"'
+            . ' data-comment-id="' . $pid . '"'
+            . ' data-comment-author-id="' . $uid . '"'
+            . ' data-comment-text="' . htmlspecialchars($row['text'], ENT_QUOTES) . '"'
+            . ' data-comment-author="' . htmlspecialchars($username_raw) . '"'
+            . ' data-comment-date="' . date('Y-m-d H:i', (int)$row['dateline']) . '"'
+            . ' data-parent-id="' . $tid . '">'
+            . '<i class="fa-solid fa-flag"></i> &nbsp;' . htmlspecialchars($lang->details['report']) . '</a>';
 
+        $menu = '<div class="dropdown pb-menu">'
+            . '<button type="button" class="pb-more" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More">'
+            . '<i class="fa-solid fa-ellipsis-vertical"></i></button>'
+            . '<div class="dropdown-menu dropdown-menu-end">' . $menu_reply . $button_del . $menu_report . '</div>'
+            . '</div>';
+
+        // ── Номер + выбор модератором ─────────────────────────────────────
         $postcounter++;
-        $post_number = ts_nf($postcounter);
-       
-        
-        $post['posturl'] = ($moderator ? '
-            <span class="form-check form-switch pb-switch">
-                <input class="form-check-input comment-checkbox" type="checkbox" role="switch"
-                       name="comment_ids[]"
-                       value="'.$row['id'].'"
-                       data-tid="'.$row['torrentid'].'"
-                       data-post-id="'.$pid.'"
-                       onchange="toggleCommentSelect(this)"
-                       id="comment-checkbox-'.$row['id'].'"
-                       title="'.htmlspecialchars($lang->details['ct_select_for_deletion'], ENT_QUOTES).'">
-            </span>' : '')
-            . '<a href="'.$postlink.'#pid'.$pid.'" title="'.$torrent_name.'" class="pb-numlink">#'.$post_number.'</a>';
-		
-		
-		
-		
-		
-		
-
-        // Online status
-        $timecut = TIMENOW - (int)$wolcutoffmins;
-        if ($row['lastactive'] > $timecut && ($row['invisible'] != 1 || $moderator) && $row['lastvisit'] != $row['lastactive']) {
-            $post['onlinestatus'] = '<a href="online.php" class="pb-dot pb-dot--on" title="'.$lang->global['postbit_status_online'].'"></a>';
-        } else {
-            $post['onlinestatus'] = '<span class="pb-dot" title="'.$lang->global['postbit_status_offline'].'"></span>';
-        }
-
-        // Разметка как у постов форума (build_postbit()), стили — postbit.css
-        $usertitle_html = ($post['usertitle'] !== '' && $post['userusername'] !== '')
-            ? '<span class="pb-utitle">' . $post['usertitle'] . '</span>'
+        $select = $moderator
+            ? '<span class="form-check form-switch pb-switch">'
+              . '<input class="form-check-input comment-checkbox" type="checkbox" role="switch" name="comment_ids[]"'
+              . ' value="' . $pid . '" data-tid="' . $tid . '" data-post-id="' . $pid . '"'
+              . ' onchange="toggleCommentSelect(this)" id="cmtsel-' . $pid . '"'
+              . ' title="' . htmlspecialchars($lang->details['ct_select_for_deletion'], ENT_QUOTES) . '"></span>'
             : '';
+        // id чекбокса раньше был comment-checkbox-N: он попадал в [id^="comment-"],
+        // и скрипты удаления неверно считали число комментариев на странице
+        $posturl = $select
+            . '<a href="' . $postlink . '#pid' . $pid . '" class="pb-numlink" title="' . $torrent_name . '">#' . ts_nf($postcounter) . '</a>';
 
-        $post['commentstables'] = '
-        <div class="container mt-3">
-            <a name="pid'.$pid.'" id="pid'.$pid.'"></a>
-            <div class="pb-post" id="post_'.$pid.'">
-                <div class="pb-side">'.ct_postbit_avatar($post).'</div>
-                <article class="pb-card inline_row">
-                    <div class="pb-head">
-                        <div class="pb-head__av">'.ct_postbit_avatar($post, 'sm').'</div>
-                        <div class="pb-who">
-                            <div class="pb-author card-title">'.$post['profilelink'].$post['onlinestatus'].'</div>
-                            <div class="pb-meta">'.$usertitle_html.'<span class="pb-date"><i class="fa-regular fa-clock"></i>'.$post['postdate'].'</span></div>
-                        </div>
-                        <div class="pb-num">'.$post['posturl'].'</div>
-                    </div>
-                    <div class="pb-body">
-                        <div class="post_body scaleimages" id="pid_'.$pid.'">'.$post['message'].$post['attachments'].'</div>
-                        '.$post['reactions'].'
-                        <span class="post_edit pb-edited-wrap" id="edited_by_'.$pid.'">'.$post['editedmsg'].'</span>
-                        '.$post['signature'].$post['poststatus'].$post['input_editreason'].$post['iplogged'].'
-                    </div>
-                    <div class="pb-foot">
-                        '.$post['button_multiquote'].$post['button_react'].'
-                        <span class="pb-foot__sp"></span>
-                        '.$post['button_edit'].'
-                        <div class="dropdown pb-menu">
-                            <button type="button" class="pb-more" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                            <div class="dropdown-menu dropdown-menu-end">'.$post['button_quote'].$post['button_quickdelete'].$post['button_report'].'</div>
-                        </div>
-                    </div>
-                </article>
-            </div>
-        </div>';
-
-        // Build comment table
-        $showcommentstable .= '<div class="closest" id="comment-' . $row['id'] . '">'
-                            . $post['commentstables']
-                            . '</div>';
+        // ── Карточка ──────────────────────────────────────────────────────
+        $showcommentstable .= '<div class="closest ct-item" id="comment-' . $pid . '">'
+            . '<a name="pid' . $pid . '" id="pid' . $pid . '"></a>'
+            . '<div class="pb-post" id="post_' . $pid . '">'
+            .   '<div class="pb-side">' . commenttable_avatar($row, $profile_url) . '</div>'
+            .   '<article class="pb-card inline_row">'
+            .     '<div class="pb-head">'
+            .       '<div class="pb-head__av">' . commenttable_avatar($row, $profile_url, 'sm') . '</div>'
+            .       '<div class="pb-who">'
+            .         '<div class="pb-author card-title">' . $profilelink . $onlinestatus . '</div>'
+            .         '<div class="pb-meta">' . $usertitle . '<span class="pb-date"><i class="fa-regular fa-clock"></i>' . $postdate . '</span></div>'
+            .       '</div>'
+            .       '<div class="pb-num">' . $posturl . '</div>'
+            .     '</div>'
+            .     '<div class="pb-body">'
+            .       '<div class="post_body scaleimages" id="pid_' . $pid . '">' . $message . '</div>'
+            .       $attachments
+            .       $reactions_html
+            .       '<span class="post_edit pb-edited-wrap" id="edited_by_' . $pid . '">' . $editedmsg . '</span>'
+            .       $signature
+            .       $input_editreason
+            .     '</div>'
+            .     '<div class="pb-foot">'
+            .       $button_quote
+            .       $react_button
+            .       '<span class="pb-foot__sp"></span>'
+            .       $button_edit
+            .       $menu
+            .     '</div>'
+            .   '</article>'
+            . '</div>'
+            . '</div>';
     }
 
-    $showcommentstable .= '<div style="display: block;" id="ajax_comment_preview"></div><div style="display: block;" id="ajax_comment_preview2"></div>';
+    // Контейнеры быстрого комментария — только на странице раздачи, не в AJAX-ответах
+    if ($torrent_name !== '') {
+        $showcommentstable .= '<div id="ajax_comment_preview"></div><div id="ajax_comment_preview2"></div>';
+    }
 
     if ($return) {
         return $showcommentstable;
@@ -351,142 +290,86 @@ if (!empty($att_bulk[$pid])) {
     return '';
 }
 
-/** <link> на postbit.css — один раз за запрос, не в AJAX-ответах xmlhttp.php */
-function ct_postbit_css_link(): string
-{
-    static $done = false;
-    global $BASEURL;
-
-    if ($done || (defined('SCRIPTNAME') && SCRIPTNAME === 'xmlhttp.php')) {
-        return '';
-    }
-    $done = true;
-
-    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=302">';
-}
-
-/** Аватар автора комментария: боковой или маленький ('sm') для шапки на телефоне */
-function ct_postbit_avatar(array $post, string $mod = ''): string
-{
-    $cls = 'pb-avatar' . ($mod !== '' ? ' pb-avatar--' . $mod : '');
-
-    if ($post['userusername'] === '') {
-        return '<span class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></span>';
-    }
-
-    $av   = format_avatar($post['avatar'], $post['avatardimensions']);
-    $link = $post['profilelink_plain'];
-
-    if (!empty($av['is_html'])) {
-        return '<a href="' . $link . '" class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></a>';
-    }
-
-    return '<a href="' . $link . '" class="' . $cls . (!empty($av['is_placeholder']) ? ' pb-avatar--ph' : '') . '">'
-         . '<img src="' . $av['image'] . '" alt="" loading="lazy"></a>';
-}
-
 /**
  * Process post data for display
  */
 function processPostData(array $row, postParser $parser, array $parser_options, bool $moderator, int $wolcutoffmins): array
 {
-    $post = [];
-    
-    $post['editedat'] = my_datee('relative', $row['editedat']);
-    $post['editnote'] = 'Last edited: ' . $post['editedat'] . ' by';
-    $post['editedbyuname'] = htmlspecialchars_uni($row['editedbyuname']);
-    $post['editedprofilelink'] = build_profile_link($row['editedbyuname'], $row['editedby']);
-    $post['message'] = $parser->parse_message($row['text'], $parser_options);
-    
-    return $post;
+    return [
+        'message' => $parser->parse_message($row['text'], $parser_options),
+    ];
 }
 
 /**
- * Generate edit button HTML
+ * Кнопка «Изменить»: на десктопе меню (быстрая правка / полная), на телефоне — ссылка на полную правку
  */
 function generateEditButton(int $pid, array $row, object $lang): string
 {
-    return '
-<div class="dropdown pb-only-lg">
-  <button type="button" class="pb-act" id="editDropdown' . $pid . '" data-bs-toggle="dropdown" aria-expanded="false">
-    <i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '<i class="fa-solid fa-chevron-down pb-act__caret"></i>
-  </button>
-  <div class="dropdown-menu dropdown-menu-end" aria-labelledby="editDropdown' . $pid . '">
-    <a href="#"
-       class="popup_item dropdown-item edit-comment-btn"
-       data-commentid="' . $row['id'] . '"
-       data-torrentid="' . $row['torrentid'] . '"
-       data-commenttext="' . htmlspecialchars($row['text'], ENT_QUOTES) . '">
-      <i class="fa-solid fa-clock"></i> &nbsp;' . $lang->global['postbit_quick_edit'] . '
-    </a>
-    <a href="comment.php?action=edit&amp;pid=' . $pid . '" class="dropdown-item">
-      <i class="fa-solid fa-pen-to-square"></i> &nbsp;' . $lang->global['postbit_full_edit'] . '
-    </a>
-  </div>
-</div>
-<a href="comment.php?action=edit&amp;pid=' . $pid . '" class="pb-act pb-only-sm">
-  <i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '
-</a>';
+    return '<div class="dropdown pb-only-lg">'
+         . '<button type="button" class="pb-act" id="editDropdown' . $pid . '" data-bs-toggle="dropdown" aria-expanded="false">'
+         . '<i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '<i class="fa-solid fa-chevron-down pb-act__caret"></i>'
+         . '</button>'
+         . '<div class="dropdown-menu dropdown-menu-end" aria-labelledby="editDropdown' . $pid . '">'
+         . '<a href="#" class="popup_item dropdown-item edit-comment-btn"'
+         . ' data-commentid="' . (int)$row['id'] . '"'
+         . ' data-torrentid="' . (int)$row['torrentid'] . '"'
+         . ' data-commenttext="' . htmlspecialchars($row['text'], ENT_QUOTES) . '">'
+         . '<i class="fa-solid fa-clock"></i> &nbsp;' . $lang->global['postbit_quick_edit'] . '</a>'
+         . '<a href="comment.php?action=edit&amp;pid=' . $pid . '" class="dropdown-item">'
+         . '<i class="fa-solid fa-pen-to-square"></i> &nbsp;' . $lang->global['postbit_full_edit'] . '</a>'
+         . '</div></div>'
+         . '<a href="comment.php?action=edit&amp;pid=' . $pid . '" class="pb-act pb-only-sm">'
+         . '<i class="fa-solid fa-pencil"></i>' . $lang->global['postbit_button_edit'] . '</a>';
 }
 
 /**
- * Generate delete button HTML
+ * Пункт «Удалить» в меню «⋮» (модалка #deleteCommentModal, edit_delete_comment.js)
  */
 function generateDeleteButton(array $row): string
 {
     global $lang;
 
-    // Оставляем HTML как есть — strip_tags убираем
-    $preview = htmlspecialchars($row['text'] ?? '');
-
-    return '
-  <a href="#" 
-     class="postbit_qdelete postbit_mirage dropdown-item text-danger" 
-     data-commentid="' . $row['id'] . '" 
-     data-torrentid="' . $row['torrentid'] . '"
-     data-author="' . htmlspecialchars($row['username'] ?? $lang->details['unknown']) . '"
-     data-date="' . (isset($row['dateline']) ? date('d M Y, H:i', $row['dateline']) : '') . '"
-     data-preview="' . $preview . '"
-     data-bs-toggle="modal" data-bs-target="#deleteCommentModal">
-     <i class="fa-solid fa-trash"></i>&nbsp;' . htmlspecialchars($lang->details['btn_delete']) . '
-  </a>';
+    return '<a href="#" class="postbit_qdelete dropdown-item text-danger"'
+         . ' data-commentid="' . (int)$row['id'] . '"'
+         . ' data-torrentid="' . (int)$row['torrentid'] . '"'
+         . ' data-author="' . htmlspecialchars($row['username'] ?? $lang->details['unknown']) . '"'
+         . ' data-date="' . (isset($row['dateline']) ? date('d M Y, H:i', (int)$row['dateline']) : '') . '"'
+         . ' data-preview="' . htmlspecialchars($row['text'] ?? '') . '"'
+         . ' data-bs-toggle="modal" data-bs-target="#deleteCommentModal">'
+         . '<i class="fa-solid fa-trash"></i> &nbsp;' . htmlspecialchars($lang->details['btn_delete']) . '</a>';
 }
 
 /**
- * Generate header section HTML
+ * Панель над списком: название торрента + (модератору) выбрать все / объединить / удалить
  */
 function generateHeaderSection(string $torrent_name, bool $moderator): string
 {
     global $mybb, $lang;
 
-    $moderator_html = $moderator ? '
-    <script>window.CS_POST_CODE = ' . json_encode($mybb->post_code ?? '') . ';</script>
-    <div class="d-flex align-items-center gap-3">
-        <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" role="switch" id="selectAllCheckbox" onchange="toggleSelectAll(this)" style="cursor:pointer;">
-            <label class="form-check-label small text-black fw-normal" for="selectAllCheckbox">' . htmlspecialchars($lang->details['ct_select_all']) . '</label>
-        </div>
-        <button id="mergeCommentsButton" class="btn btn-sm btn-primary d-none" onclick="mergeComments()">
-            <i class="fa-solid fa-code-merge me-1"></i>' . htmlspecialchars($lang->details['ct_merge_selected']) . '
-        </button>
-        <button id="massDeleteButton" class="btn btn-sm btn-danger d-none" onclick="massDeleteComments()">
-            <i class="fa-solid fa-trash me-1"></i>' . htmlspecialchars($lang->details['ct_delete_selected']) . '
-        </button>
-    </div>' : '';
+    // Без названия раздачи (AJAX-ответы, comment.php) панель не нужна
+    if ($torrent_name === '') {
+        return '';
+    }
 
-    return '
-    </br>
-    <div class="container-md">
-      <div class="card border-0 mb-4">
-        <div class="card-header rounded-bottom text-19 fw-bold d-flex justify-content-between align-items-center">
-            ' . $torrent_name . '
-            ' . $moderator_html . '
-        </div>
-      </div>
-    </div>';
+    $moderator_html = $moderator
+        ? '<script>window.CS_POST_CODE = ' . json_encode($mybb->post_code ?? '') . ';</script>'
+          . '<div class="ct-bar__mod">'
+          . '<label class="form-check form-switch ct-bar__all mb-0" for="selectAllCheckbox">'
+          . '<input class="form-check-input" type="checkbox" role="switch" id="selectAllCheckbox" onchange="toggleSelectAll(this)">'
+          . '<span class="form-check-label">' . htmlspecialchars($lang->details['ct_select_all']) . '</span></label>'
+          . '<button type="button" id="mergeCommentsButton" class="btn btn-sm btn-primary d-none" onclick="mergeComments()">'
+          . '<i class="fa-solid fa-code-merge me-1"></i>' . htmlspecialchars($lang->details['ct_merge_selected']) . '</button>'
+          . '<button type="button" id="massDeleteButton" class="btn btn-sm btn-danger d-none" onclick="massDeleteComments()">'
+          . '<i class="fa-solid fa-trash me-1"></i>' . htmlspecialchars($lang->details['ct_delete_selected']) . '</button>'
+          . '</div>'
+        : '';
+
+    return '<div class="ct-bar">'
+         . ($torrent_name !== '' ? '<span class="ct-bar__title"><i class="fa-solid fa-magnet"></i>' . $torrent_name . '</span>' : '')
+         . $moderator_html
+         . '</div>';
 }
 
 if (!defined('IN_TRACKER')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
-?>

@@ -327,22 +327,7 @@
 /* ── Комментарии (разметка из include/commenttable.php) ────────────────── */
 .dt-page .dt-comments > * + * { margin-top: 1rem; }
 .dt-page .dt-comments > br { display: none; }
-.dt-page .dt-comments .container,
-.dt-page .dt-comments .container-md {
-    max-width: none; padding-left: 0; padding-right: 0; margin-top: 0 !important;
-}
-.dt-page .dt-comments > .container-md > .card { margin-bottom: 0 !important; background: none; }
-.dt-page .dt-comments > .container-md > .card > .card-header {
-    padding: .8rem 1.1rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--st-radius) !important;
-    background: var(--bs-tertiary-bg);
-    font-weight: 600; color: var(--bs-emphasis-color);
-    overflow-wrap: anywhere;
-    flex-wrap: wrap; gap: .5rem;
-}
 .dt-page .dt-comments .form-check-label { white-space: nowrap; }
-.dt-page .dt-comments .text-black { color: var(--bs-body-color) !important; }
 .dt-page .closest .pb-post { margin-bottom: 0; }
 .dt-page #ajax_comment_preview > * + * { margin-top: 1rem; }
 .dt-page #ajax_comment_preview:empty,

@@ -27,13 +27,11 @@ function agsEsc(str) {
     });
 }
 
-// Подсветка выбранного комментария: тот же класс, что у постов форума (postbit.css)
-function markCommentSelected(id, selected) {
-    document.querySelector('#comment-' + id + ' .pb-card')?.classList.toggle('trow_selected', selected);
-}
-
 function toggleCommentSelect(checkbox) {
-    markCommentSelected(checkbox.value, checkbox.checked);
+    const wrapper = document.getElementById('comment-' + checkbox.value);
+    if (wrapper) {
+        wrapper.classList.toggle('comment-selected', checkbox.checked);
+    }
     toggleMassDeleteButton();
     toggleMergeButton();
 }
@@ -41,7 +39,10 @@ function toggleCommentSelect(checkbox) {
 function toggleSelectAll(masterSwitch) {
     document.querySelectorAll('.comment-checkbox').forEach(cb => {
         cb.checked = masterSwitch.checked;
-        markCommentSelected(cb.value, masterSwitch.checked);
+        const wrapper = document.getElementById('comment-' + cb.value);
+        if (wrapper) {
+            wrapper.classList.toggle('comment-selected', masterSwitch.checked);
+        }
     });
     toggleMassDeleteButton();
     toggleMergeButton();

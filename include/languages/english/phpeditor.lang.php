@@ -76,6 +76,7 @@ $language['phpeditor'] = array (
     'err_empty_content'     => 'Content cannot be empty',
     'err_php_syntax'        => 'PHP syntax error: {1}',
     'err_save_failed'       => 'Failed to save the file',
+    'err_file_changed'      => 'The file was changed while you were editing it. Reload the page and apply your edits again.',
     'err_backup_failed'     => 'Failed to create a backup',
     'err_invalid_filename'  => 'Invalid file name',
     'err_backup_not_found'  => 'Backup file not found',

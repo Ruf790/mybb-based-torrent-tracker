@@ -41,12 +41,14 @@ function scanPhpFiles(string $baseDir): array
     $result = [];
     $exts   = '{' . implode(',', PHP_ALLOWED_EXTENSIONS) . '}';
 
+    $root = rtrim($baseDir, '/\\');
     foreach (PHP_ALLOWED_DIRS as $dir) {
-        $path  = rtrim($baseDir . $dir, DIRECTORY_SEPARATOR);
+        $path  = rtrim($baseDir . $dir, '/\\');
         $files = glob($path . DIRECTORY_SEPARATOR . '*.' . $exts, GLOB_BRACE) ?: [];
         foreach ($files as $file) {
             if (str_contains($file, DIRECTORY_SEPARATOR . 'backup' . DIRECTORY_SEPARATOR)) continue;
-            $relative      = ltrim(str_replace($baseDir, '', $file), DIRECTORY_SEPARATOR);
+            // Всегда admin/file.php: на Windows иначе получалось admin/\file.php
+            $relative      = str_replace('\\', '/', ltrim(substr($file, strlen($root)), '/\\'));
             $result[$relative] = $relative;
         }
     }
@@ -66,10 +68,24 @@ class PhpEditor
 
     public function __construct(string $baseDir, array $allowedFiles)
     {
-        $this->baseDir      = rtrim($baseDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        $this->backupDir    = $this->baseDir . 'backup_php' . DIRECTORY_SEPARATOR;
+        $this->baseDir      = rtrim($baseDir, '/\\') . DIRECTORY_SEPARATOR;
+        $this->backupDir    = $this->resolveBackupDir();
         $this->allowedFiles = $allowedFiles;
         $this->initDirs();
+        $this->migrateOldBackups();
+    }
+
+    /**
+     * В копиях PHP-файлов могут быть пароли (include/config.php), а .bak веб-сервер отдаёт как текст.
+     * Поэтому копии лежат вне корня сайта, а если туда нет доступа — в cache/, закрытом через .htaccess.
+     */
+    private function resolveBackupDir(): string
+    {
+        $outside = rtrim(dirname(rtrim($this->baseDir, '/\\')), '/\\') . DIRECTORY_SEPARATOR . 'backup_php' . DIRECTORY_SEPARATOR;
+        if ((@is_dir($outside) || @mkdir($outside, 0755, true)) && @is_writable($outside)) {
+            return $outside;
+        }
+        return $this->baseDir . 'cache' . DIRECTORY_SEPARATOR . 'backup_php' . DIRECTORY_SEPARATOR;
     }
 
     private function initDirs(): void
@@ -77,9 +93,26 @@ class PhpEditor
         foreach (['daily', 'history'] as $sub) {
             $path = $this->backupDir . $sub;
             if (!is_dir($path)) {
-                mkdir($path, 0755, true);
+                @mkdir($path, 0755, true);
             }
         }
+    }
+
+    /** Переносит копии из старой папки в корне сайта */
+    private function migrateOldBackups(): void
+    {
+        $old = $this->baseDir . 'backup_php' . DIRECTORY_SEPARATOR;
+        if (!is_dir($old)) return;
+
+        foreach (['daily', 'history'] as $sub) {
+            foreach (glob($old . $sub . DIRECTORY_SEPARATOR . '*') ?: [] as $file) {
+                // На Windows старые имена были вида admin____file.php
+                $name = str_replace('____', '__', basename($file));
+                @rename($file, $this->backupDir . $sub . DIRECTORY_SEPARATOR . $name);
+            }
+            @rmdir($old . $sub);
+        }
+        @rmdir($old);
     }
 
     public function getFileContent(string $filename): string
@@ -93,7 +126,7 @@ class PhpEditor
         return file_get_contents($path) ?: '';
     }
 
-    public function saveFile(string $filename, string $content, bool $makeBackup = true): void
+    public function saveFile(string $filename, string $content, bool $makeBackup = true, string $expectedHash = ''): void
     {
         global $lang;
         $this->assertAllowed($filename);
@@ -106,25 +139,92 @@ class PhpEditor
             throw new RuntimeException($lang->phpeditor['err_empty_content']);
         }
 
-        // Проверка синтаксиса PHP
-        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-        if ($ext === 'php') {
-            $tmpFile = tempnam(sys_get_temp_dir(), 'phpcheck_');
-            file_put_contents($tmpFile, $content);
-            exec('php -l ' . escapeshellarg($tmpFile) . ' 2>&1', $output, $code);
-            unlink($tmpFile);
-            if ($code !== 0) {
-                throw new RuntimeException(ags_fmt($lang->phpeditor['err_php_syntax'], implode(' ', $output)));
-            }
-        }
-
-        if ($makeBackup) {
-            $this->createBackup($filename);
-        }
-        if (file_put_contents($path, $content) === false) {
+        $lock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ag_php_editor.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
             throw new RuntimeException($lang->phpeditor['err_save_failed']);
         }
-        $this->logHistory($filename, $content);
+
+        try {
+            $current = file_get_contents($path);
+            if ($current === false) {
+                throw new RuntimeException($lang->phpeditor['err_save_failed']);
+            }
+            if ($expectedHash !== '' && !hash_equals(sha1($current), $expectedHash)) {
+                throw new RuntimeException($lang->phpeditor['err_file_changed'] ?? 'The file was changed while you were editing it. Reload the page and apply your edits again.');
+            }
+
+            $content = $this->matchLineEndings($content, $current);
+
+            if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'php') {
+                $this->assertPhpSyntax($content);
+            }
+
+            if ($makeBackup) {
+                $this->createBackup($filename);
+            }
+            if (!$this->writeAtomic($path, $content)) {
+                throw new RuntimeException($lang->phpeditor['err_save_failed']);
+            }
+            $this->logHistory($filename, $content);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /** CodeMirror отдаёт \n: возвращаем файлу его переводы строк, иначе diff покажет изменёнными все строки */
+    private function matchLineEndings(string $content, string $current): string
+    {
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
+        $crlf    = substr_count($current, "\r\n");
+        return $crlf > substr_count($current, "\n") - $crlf ? str_replace("\n", "\r\n", $content) : $content;
+    }
+
+    /** TOKEN_PARSE работает всегда и на той же версии PHP; php -l дополняет его, если запускается */
+    private function assertPhpSyntax(string $content): void
+    {
+        global $lang;
+
+        try {
+            token_get_all($content, TOKEN_PARSE);
+        } catch (\ParseError $e) {
+            throw new RuntimeException(ags_fmt($lang->phpeditor['err_php_syntax'], $e->getMessage() . ' (line ' . $e->getLine() . ')'));
+        }
+
+        if (!function_exists('exec')) return;
+        $tmpFile = tempnam(sys_get_temp_dir(), 'phpcheck_');
+        if ($tmpFile === false) return;
+
+        try {
+            file_put_contents($tmpFile, $content);
+            @exec('php -l ' . escapeshellarg($tmpFile) . ' 2>&1', $output, $code);
+        } finally {
+            @unlink($tmpFile);
+        }
+
+        // «php не найден» — не ошибка в коде, такой ответ не должен мешать сохранению
+        $text = implode(' ', $output);
+        if ($code !== 0 && preg_match('/Parse error|Fatal error|Errors parsing/i', $text)) {
+            throw new RuntimeException(ags_fmt($lang->phpeditor['err_php_syntax'], $text));
+        }
+    }
+
+    private function writeAtomic(string $path, string $content): bool
+    {
+        $tmp = $path . '.tmp' . bin2hex(random_bytes(4));
+        $ok  = file_put_contents($tmp, $content, LOCK_EX) !== false;
+        if ($ok && !@rename($tmp, $path)) {
+            // Windows может не дать заменить открытый файл — тогда прямая запись
+            @unlink($tmp);
+            $ok = file_put_contents($path, $content, LOCK_EX) !== false;
+        } elseif (!$ok) {
+            @unlink($tmp);
+        }
+        if ($ok) {
+            clearstatcache(true, $path);
+            if (function_exists('opcache_invalidate')) @opcache_invalidate($path, true);
+        }
+        return $ok;
     }
 
     public function getBackups(string $filename): array
@@ -169,11 +269,14 @@ class PhpEditor
         $this->assertAllowed($filename);
         $path = $this->baseDir . $filename;
         if (!file_exists($path)) return [];
+        clearstatcache(true, $path);
+        $source = file_get_contents($path) ?: '';
         return [
             'size'     => (int)filesize($path),
             'modified' => date('Y-m-d H:i:s', (int)filemtime($path)),
-            'lines'    => substr_count(file_get_contents($path) ?: '', "\n") + 1,
+            'lines'    => substr_count($source, "\n") + 1,
             'writable' => is_writable($path),
+            'hash'     => sha1($source),
         ];
     }
 
@@ -183,16 +286,17 @@ class PhpEditor
         $source  = $this->baseDir . $filename;
         $safe    = str_replace(['/', '\\'], '__', $filename);
         $bakFile = $this->backupDir . 'daily' . DIRECTORY_SEPARATOR
-                 . $safe . '.' . date('Y-m-d_His') . '.bak';
-        if (!copy($source, $bakFile)) {
+                 . $safe . '.' . date('Y-m-d_His') . '-' . bin2hex(random_bytes(2)) . '.bak';
+        if (!@copy($source, $bakFile)) {
             throw new RuntimeException($lang->phpeditor['err_backup_failed']);
         }
-        $this->cleanupOldBackups();
+        $this->cleanupOldBackups($safe);
     }
 
-    private function cleanupOldBackups(): void
+    /** Лимит на каждый файл: чужие правки не должны вытеснять его копии */
+    private function cleanupOldBackups(string $safe): void
     {
-        $pattern = $this->backupDir . 'daily' . DIRECTORY_SEPARATOR . '*.bak';
+        $pattern = $this->backupDir . 'daily' . DIRECTORY_SEPARATOR . $safe . '.*.bak';
         $files   = glob($pattern) ?: [];
         if (count($files) <= PHP_MAX_BACKUPS) return;
         usort($files, fn($a, $b) => filemtime($a) - filemtime($b));
@@ -202,15 +306,16 @@ class PhpEditor
 
     private function logHistory(string $filename, string $content): void
     {
+        global $CURUSER;
         $safe        = str_replace(['/', '\\'], '__', $filename);
         $historyFile = $this->backupDir . 'history' . DIRECTORY_SEPARATOR . $safe . '.log';
         $entry       = json_encode([
             'date' => date('Y-m-d H:i:s'),
-            'user' => $_SESSION['username'] ?? 'anonymous',
+            'user' => (string)($CURUSER['username'] ?? ''),
             'size' => strlen($content),
             'hash' => md5($content),
         ]);
-        file_put_contents($historyFile, $entry . PHP_EOL, FILE_APPEND);
+        @file_put_contents($historyFile, $entry . PHP_EOL, FILE_APPEND | LOCK_EX);
         $this->cleanupOldHistory($historyFile);
     }
 
@@ -224,7 +329,7 @@ class PhpEditor
             if (!is_array($data) || !isset($data['date'])) return false;
             return strtotime($data['date']) >= $cutoff;
         });
-        file_put_contents($historyFile, implode('', $filtered));
+        @file_put_contents($historyFile, implode('', $filtered), LOCK_EX);
     }
 
     private function assertAllowed(string $filename): void
@@ -272,24 +377,28 @@ if (!in_array($currentFile, $allowedList, true)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
 
-    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         http_response_code(403);
         echo json_encode(['status' => 'error', 'message' => $lang->phpeditor['err_invalid_token']], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     try {
-        $action   = $_POST['action']   ?? '';
-        $filename = $_POST['file']     ?? '';
+        // Прислать могут и массив (content[]=x), поэтому только строки
+        $post = static fn(string $key): string => is_string($_POST[$key] ?? null) ? $_POST[$key] : '';
+
+        $action   = $post('action');
+        $filename = $post('file');
 
         // Нормализуем путь
         $filename = ltrim(str_replace(['..', "\0"], '', $filename), '/\\');
 
         switch ($action) {
             case 'save':
-                $content    = $_POST['content'] ?? '';
-                $makeBackup = ($_POST['backup'] ?? '0') === '1';
-                $editor->saveFile($filename, $content, $makeBackup);
+                $content    = $post('content');
+                $makeBackup = $post('backup') === '1';
+                $editor->saveFile($filename, $content, $makeBackup, $post('hash'));
+                write_log(sprintf('PHP editor: %s saved%s', $filename, $makeBackup ? '' : ' (without backup)'), 'settings', 1);
                 echo json_encode([
                     'status'  => 'success',
                     'message' => $makeBackup ? $lang->phpeditor['flash_saved_backup'] : $lang->phpeditor['flash_saved'],
@@ -306,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
                 break;
 
             case 'get_backup_content':
-                $content = $editor->getBackupContent($_POST['backup_file'] ?? '');
+                $content = $editor->getBackupContent($post('backup_file'));
                 echo json_encode(['status' => 'success', 'content' => $content]);
                 break;
 
@@ -317,7 +426,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
             default:
                 throw new RuntimeException(ags_fmt($lang->phpeditor['err_unknown_action'], $action));
         }
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
@@ -329,7 +438,7 @@ try {
     $currentContent  = $editor->getFileContent($currentFile);
     $backups         = $editor->getBackups($currentFile);
     $fileInfo        = $editor->getFileInfo($currentFile);
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     die(htmlspecialchars(ags_fmt($lang->phpeditor['err_page'], $e->getMessage())));
 }
 
@@ -393,7 +502,7 @@ stdhead($lang->phpeditor['page_title']);
 
         <div class="card-body">
             <input type="hidden" id="myPostKey" value="<?= htmlspecialchars($mybb->post_code) ?>">
-            <textarea id="codeEditor" data-file="<?= htmlspecialchars($currentFile) ?>" data-cm-mode="<?= $h($cmMode) ?>"><?= htmlspecialchars($currentContent) ?></textarea>
+            <textarea id="codeEditor" data-file="<?= htmlspecialchars($currentFile) ?>" data-cm-mode="<?= $h($cmMode) ?>" data-hash="<?= $h((string)($fileInfo['hash'] ?? '')) ?>"><?= htmlspecialchars($currentContent) ?></textarea>
 
             <div class="d-flex justify-content-between align-items-center mt-3">
                 <div class="d-flex gap-3">
@@ -597,6 +706,6 @@ stdhead($lang->phpeditor['page_title']);
 <script>
 const AGS_LANG = <?= json_encode($jsLang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
-<script src="<?= $h((string)$BASEURL) ?>/admin/scripts/phpeditor.js?ver=1"></script>
+<script src="<?= $h((string)$BASEURL) ?>/admin/scripts/phpeditor.js?ver=2"></script>
 
 <?php stdfoot(); ?>

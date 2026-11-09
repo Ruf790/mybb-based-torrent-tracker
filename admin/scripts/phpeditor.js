@@ -78,15 +78,20 @@ function ajaxPost(data) {
 }
 
 // ── Сохранение ────────────────────────────────────────────
+let fileHash = document.getElementById('codeEditor').dataset.hash || '';
+
 function saveFile() {
     const content = editor.getValue();
     const backup  = document.getElementById('backupCheck').checked;
 
-    ajaxPost({ action: 'save', content, backup: backup ? '1' : '0' })
+    ajaxPost({ action: 'save', content, backup: backup ? '1' : '0', hash: fileHash })
         .then(d => {
             if (d.status === 'success') {
                 showAlert('success', d.message);
-                if (d.info) updateFileInfoBar(d.info);
+                if (d.info) {
+                    updateFileInfoBar(d.info);
+                    fileHash = d.info.hash || fileHash;
+                }
                 updateStats();
             } else {
                 showAlert('error', d.message);

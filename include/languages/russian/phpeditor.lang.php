@@ -76,6 +76,7 @@ $language['phpeditor'] = array (
     'err_empty_content'     => 'Содержимое не может быть пустым',
     'err_php_syntax'        => 'Синтаксическая ошибка PHP: {1}',
     'err_save_failed'       => 'Не удалось сохранить файл',
+    'err_file_changed'      => 'Пока вы редактировали, файл изменился. Обновите страницу и внесите правки заново.',
     'err_backup_failed'     => 'Не удалось создать бэкап',
     'err_invalid_filename'  => 'Недопустимое имя файла',
     'err_backup_not_found'  => 'Файл бэкапа не найден',

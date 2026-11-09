@@ -744,6 +744,14 @@ document.addEventListener('DOMContentLoaded', function () {
         show(links.indexOf(link));
     });
 
+    // Лента превью над вкладками: открываем тот же просмотр с нужного скриншота
+    document.querySelector('.dt-strip')?.addEventListener('click', function (e) {
+        const item = e.target.closest('.dt-strip__item');
+        if (!item) return;
+        const links = pane.querySelectorAll('.screenshot-wrapper');
+        links[+item.dataset.shot]?.click();
+    });
+
     prev.addEventListener('click', () => show(index - 1));
     next.addEventListener('click', () => show(index + 1));
     img.addEventListener('click', () => { if (shots.length > 1) show(index + 1); });

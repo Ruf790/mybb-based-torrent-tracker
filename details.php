@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=34">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=35">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -498,7 +498,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=7"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=8"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -1058,6 +1058,8 @@ if ($res) {
 $ags_t_screenshot = htmlspecialchars($lang->details['lbl_screenshot'], ENT_QUOTES);
 $ags_t_shot_miss  = (string)($lang->details['lbl_screenshot_missing'] ?? 'Screenshot file not found.');
 $screensHtml      = '<div class="row g-3">';
+$dt_shot_strip    = '';   // лента превью над вкладками
+$dt_shot_n        = 0;
 foreach ($screenshots as $shot) {
     $filename      = htmlspecialchars($shot['filename']);
     $screenshotUrl = '/torrents/screens/' . $filename;
@@ -1070,6 +1072,9 @@ foreach ($screenshots as $shot) {
     </div>';
         continue;
     }
+
+    $dt_shot_strip .= '<button type="button" class="dt-strip__item" data-shot="' . $dt_shot_n++ . '" aria-label="' . $ags_t_screenshot . ' ' . $dt_shot_n . '">'
+                    . '<img src="' . $screenshotUrl . '" alt="" loading="lazy" onerror="this.parentNode.remove()"></button>';
 
     $screensHtml .= '
     <div class="col-6 col-md-4 col-lg-3">
@@ -1117,7 +1122,7 @@ if (!empty($screenshots)) {
         <button class="nav-link" id="screen-tab" data-bs-toggle="tab"
                 data-bs-target="#screen" type="button" role="tab"
                 aria-controls="screen" aria-selected="false">
-            <i class="fa-solid fa-images"></i>' . htmlspecialchars($lang->details['tab_screens']) . '
+            <i class="fa-solid fa-images"></i>' . htmlspecialchars($lang->details['tab_screens']) . ' (' . count($screenshots) . ')
         </button>
     </li>';
 
@@ -1441,6 +1446,13 @@ $details = '
     <!-- KPI tiles -->
     <div class="dt-kpis">' . $dt_kpis . '
     </div>
+
+    ' . ($dt_shot_strip !== '' ? '
+    <!-- Лента скриншотов: клик открывает просмотр (details.js) -->
+    <section class="st-card dt-strip">
+        <span class="dt-strip__head"><i class="fa-solid fa-images"></i>' . htmlspecialchars($lang->details['tab_screens'], ENT_QUOTES) . ' <b>' . $dt_shot_n . '</b></span>
+        <div class="dt-strip__list">' . $dt_shot_strip . '</div>
+    </section>' : '') . '
 
     <!-- Tabs -->
     <section class="st-card">

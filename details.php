@@ -1338,14 +1338,15 @@ if ((int)($Torrent['promotion_time_type'] ?? 0) === 0) {
     $dt_3 = $Torrent['thirtypercent'] === 'yes';
     $dt_promo_days = match (true) {
         $dt_3 && !$dt_f && !$dt_s && !$dt_2 => $expirethirtypercentleech ?? 0,
-        $dt_f && $dt_2 && !$dt_3            => $expiretwoupfree ?? 0,
+        // «фрилич + ×2» подходит и под условие фрилича (free='yes'), снимается по меньшему сроку
+        $dt_f && $dt_2 && !$dt_3            => min(array_filter([(float)($expirefree ?? 0), (float)($expiretwoupfree ?? 0)]) ?: [0]),
         $dt_f && !$dt_3                     => $expirefree ?? 0,
         $dt_s && $dt_2 && !$dt_f && !$dt_3  => $expiretwouphalfleech ?? 0,
         $dt_s && !$dt_f && !$dt_2 && !$dt_3 => $expirehalfleech ?? 0,
         $dt_2 && !$dt_f && !$dt_s && !$dt_3 => $expiretwoup ?? 0,
         default                             => 0,
     };
-    $dt_promo_until = (int)$Torrent['added'] + (int)round((float)$dt_promo_days * 86400);
+    $dt_promo_until = (int)$Torrent['added'] + (int)((float)$dt_promo_days * 86400);   // как в cron/torrentspromo.php
     if ((float)$dt_promo_days > 0 && $dt_promo_until > TIMENOW) {
         $dt_promo_badge = $dt_timer($dt_promo_until, $lang->details['lbl_promo_left'] ?? 'Promo ends in {1}', 'st-soft-warning');
     }

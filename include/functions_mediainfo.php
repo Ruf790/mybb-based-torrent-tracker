@@ -47,7 +47,7 @@ const MI_KEYS = [
 function mi_section_type(string $line): ?string
 {
     $line = trim(preg_replace('#\[/?[a-z*]+(?:=[^\]]*)?\]#i', '', $line));
-    if (!preg_match('/^([\p{L}]+)(?:\s*#\s*\d+)?$/u', $line, $m)) {
+    if (!preg_match('/^([\p{L}]+)(?:\s*#\s*\d+)?\s*:?$/u', $line, $m)) {
         return null;
     }
     return MI_SECTIONS[mb_strtolower($m[1])] ?? null;
@@ -58,7 +58,7 @@ function mi_key_line(string $line): ?array
 {
     // Ключ может содержать «:» — главы в секции Menu: «00:00:00.000   : Chapter 01»
     $line = preg_replace('#(\[/[a-z*]+\])+\s*$#i', '', $line);   // «… : Yes[/code]»
-    return preg_match('/^\s*([^\[\]]{1,60}?)\s+:\s?(.*)$/u', $line, $m)
+    return preg_match('/^\s*([^\[\]]{1,60}?)\s*:\s?(.*)$/u', $line, $m)
         ? [mb_strtolower(trim($m[1])), trim($m[2])]
         : null;
 }

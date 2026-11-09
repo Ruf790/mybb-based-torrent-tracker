@@ -1852,7 +1852,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=1">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=2">
 
 <div class="container-md st-page up-page">
 
@@ -1923,518 +1923,515 @@ if ($isEdit) {
     <!-- Скрытый контейнер для добавления file_ids -->
     <div id="fileIdsContainer"></div>
 
-    <div class="row g-3">
+    <div class="d-flex flex-column gap-3">
 
-        <!-- ═══ Основная колонка ═══════════════════════════════════════════ -->
-        <div class="col-lg-8 d-flex flex-column gap-3">
+    <!-- Torrent -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnet"></i></span>
+            <?= $lang->upload['torrent_info'] ?>
+        </div>
+        <div class="st-card__body">
 
-            <!-- Torrent -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnet"></i></span>
-                    <?= $lang->upload['torrent_info'] ?>
+            <!-- Name -->
+            <div class="mb-3">
+                <label for="formName" class="form-label fw-semibold">
+                    <?= $lang->upload['torrent_name'] ?> <span class="text-danger">*</span>
+                </label>
+                <div class="input-group has-validation st-subject">
+                    <span class="input-group-text"><i class="fa-solid fa-heading"></i></span>
+                    <input class="form-control" type="text" id="formName" name="formName"
+                           placeholder="<?= $lang->upload['torrent_name_hint'] ?>"
+                           required minlength="3" maxlength="255"
+                           value="<?= isset($torrent['name']) ? htmlspecialchars($torrent['name']) : '' ?>" />
+                    <div class="invalid-feedback"><?= $lang->upload['torrent_name_invalid'] ?></div>
                 </div>
-                <div class="st-card__body">
+                <div class="d-flex justify-content-end mt-1">
+                    <small class="st-meta"><span id="formNameCharCount">0</span>/255</small>
+                </div>
+            </div>
 
-                    <!-- Name -->
-                    <div class="mb-3">
-                        <label for="formName" class="form-label fw-semibold">
-                            <?= $lang->upload['torrent_name'] ?> <span class="text-danger">*</span>
-                        </label>
-                        <div class="input-group has-validation st-subject">
-                            <span class="input-group-text"><i class="fa-solid fa-heading"></i></span>
-                            <input class="form-control" type="text" id="formName" name="formName"
-                                   placeholder="<?= $lang->upload['torrent_name_hint'] ?>"
-                                   required minlength="3" maxlength="255"
-                                   value="<?= isset($torrent['name']) ? htmlspecialchars($torrent['name']) : '' ?>" />
-                            <div class="invalid-feedback"><?= $lang->upload['torrent_name_invalid'] ?></div>
-                        </div>
-                        <div class="d-flex justify-content-end mt-1">
-                            <small class="st-meta"><span id="formNameCharCount">0</span>/255</small>
+            <!-- Torrent file -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">
+                    <?= $lang->upload['torrent_file'] ?>
+                    <?php if (!$isEdit): ?><span class="text-danger">*</span><?php endif; ?>
+                </label>
+
+                <div id="torrentDropZone" class="up-drop">
+                    <div id="torrentDropContent">
+                        <span class="st-ico st-soft-muted up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                        <div class="fw-semibold mb-1"><?= $lang->upload['torrent_drop_title'] ?></div>
+                        <div class="st-meta mb-2"><?= $lang->upload['torrent_drop_sub'] ?></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary st-pill">
+                            <i class="fa-solid fa-folder-open me-1"></i><?= $lang->upload['torrent_browse'] ?>
+                        </button>
+                    </div>
+
+                    <div id="torrentFileSelected" style="display:none;">
+                        <div class="d-flex align-items-center justify-content-center gap-3">
+                            <span class="st-ico st-soft-primary"><i class="fa-solid fa-file-lines"></i></span>
+                            <div class="text-start min-w-0">
+                                <div class="fw-bold up-break" id="torrentSelectedName">filename.torrent</div>
+                                <div class="st-meta" id="torrentSelectedSize">0 KB</div>
+                                <span class="st-badge st-soft-success mt-1" id="torrentFileBadge">
+                                    <i class="fa-solid fa-check"></i><?= $lang->upload['torrent_ready'] ?>
+                                </span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger st-pill" id="torrentRemoveBtn" onclick="removeTorrentFile()">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Torrent file -->
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">
-                            <?= $lang->upload['torrent_file'] ?>
-                            <?php if (!$isEdit): ?><span class="text-danger">*</span><?php endif; ?>
-                        </label>
+                    <input class="d-none" type="file" id="torrentFile" name="torrentFile" accept=".torrent" />
+                </div>
 
-                        <div id="torrentDropZone" class="up-drop">
-                            <div id="torrentDropContent">
-                                <span class="st-ico st-soft-muted up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
-                                <div class="fw-semibold mb-1"><?= $lang->upload['torrent_drop_title'] ?></div>
-                                <div class="st-meta mb-2"><?= $lang->upload['torrent_drop_sub'] ?></div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary st-pill">
-                                    <i class="fa-solid fa-folder-open me-1"></i><?= $lang->upload['torrent_browse'] ?>
+                <div class="text-danger small mt-1" id="torrentFileError" style="display:none;"><?= $lang->upload['torrent_file_required'] ?></div>
+
+                <div id="torrentUploadProgress" class="mt-2" style="display:none;">
+                    <div class="progress up-progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%;"></div>
+                    </div>
+                    <small class="st-meta"><?= $lang->upload['torrent_validating'] ?></small>
+                </div>
+
+                <div class="st-meta mt-1">
+                    <?= $isEdit ? $lang->upload['torrent_file_hint_edit'] : $lang->upload['torrent_file_hint'] ?>
+                    <span id="torrentFileInfo"></span>
+                </div>
+                <div class="mt-2" id="torrentFilePreview"></div>
+            </div>
+
+            <!-- Метаданные торрента -->
+            <div id="torrentMetaInfo" class="up-sub mb-3" style="display:none;">
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <span class="st-badge st-soft-primary"><i class="fa-solid fa-hard-drive"></i><?= $lang->upload['torrent_size'] ?>: <strong id="torrentMetaSize">—</strong></span>
+                    <span class="st-badge st-soft-info"><i class="fa-solid fa-file"></i><?= $lang->upload['torrent_files'] ?>: <strong id="torrentMetaFiles">—</strong></span>
+                    <span class="st-badge st-soft-muted"><i class="fa-solid fa-fingerprint"></i><?= $lang->upload['torrent_hash'] ?>: <strong id="torrentMetaHash">—</strong></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="fw-semibold st-meta"><i class="fa-solid fa-list me-1"></i><?= $lang->upload['torrent_file_list'] ?></small>
+                    <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="toggleTorrentFileList()">
+                        <i class="fa-solid fa-eye me-1" id="torrentFileListToggleIcon"></i>
+                        <span id="torrentFileListToggleText" data-show="<?= htmlspecialchars($lang->upload['torrent_show']) ?>" data-hide="<?= htmlspecialchars($lang->upload['torrent_hide']) ?>"><?= $lang->upload['torrent_show'] ?></span>
+                    </button>
+                </div>
+                <div id="torrentFileList" class="up-filelist mt-2" style="display:none;"></div>
+            </div>
+
+            <!-- NFO -->
+            <div>
+                <label for="nfoFile" class="form-label fw-semibold">
+                    <?= $lang->upload['nfofile'] ?>
+                    <span class="st-meta fw-normal"><?= $lang->upload['nfofile_optional'] ?></span>
+                </label>
+                <div class="input-group">
+                    <input class="form-control" type="file" id="nfoFile" name="nfoFile" accept=".nfo,text/plain" />
+                    <button type="button" class="btn btn-outline-secondary" id="nfoPreviewBtn" style="display:none;" onclick="toggleNfoPreview()">
+                        <i class="fas fa-eye me-1"></i><?= $lang->upload['nfofile_preview'] ?>
+                    </button>
+                </div>
+                <div class="st-meta mt-1"><?= $lang->upload['nfofile_hint'] ?></div>
+
+                <div id="nfoPreviewContainer" class="up-sub p-0 mt-2" style="display:none;">
+                    <div class="up-nfo-head">
+                        <span class="st-meta up-break"><i class="fa-solid fa-file-lines me-1"></i><span id="nfoPreviewFilename">file.nfo</span></span>
+                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                            <span class="st-badge st-soft-muted" id="nfoPreviewSize"></span>
+                            <span class="st-badge st-soft-muted" id="nfoPreviewLines"></span>
+                            <button type="button" class="st-icon-btn border-0" onclick="toggleNfoPreview()"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <pre id="nfoPreviewText" class="up-nfo"></pre>
+                </div>
+
+                <?php if ($isEdit):
+                    $existingNfoQ = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ?", [$EditTorrentID]);
+                    $existingNfoRow = $existingNfoQ ? $db->fetch_array($existingNfoQ) : null;
+                    if ($existingNfoRow): ?>
+                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+                            <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $lang->upload['nfofile_uploaded'] ?></span>
+                            <small class="st-meta"><?= $lang->upload['nfofile_replace'] ?></small>
+                        </div>
+                <?php endif; endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Description -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
+            <?= $lang->upload['description'] ?> <span class="text-danger">*</span>
+        </div>
+        <div class="st-card__body">
+            <?= $editor['toolbar'] ?>
+            <textarea class="form-control st-editor-text" id="description" name="description" rows="10" required
+                      placeholder="<?= $lang->upload['description_placeholder'] ?>"><?= isset($torrent['descr']) ? htmlspecialchars($torrent['descr']) : '' ?></textarea>
+            <div class="st-meta text-end mt-1"><span id="charCount2">0 / 500</span></div>
+            <div class="invalid-feedback"><?= $lang->upload['description_invalid'] ?></div>
+        </div>
+    </section>
+
+    <!-- Category -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-table-cells-large"></i></span>
+            <?= $lang->upload['category'] ?> <span class="text-danger">*</span>
+        </div>
+        <div class="st-card__body">
+            <?php
+            $category = isset($torrent['category']) ? intval($torrent['category']) : 0;
+
+            if (!isset($_categoriesC) || !is_array($_categoriesC)) {
+                require_once TSDIR . '/cache/categories.php';
+            }
+
+            $activeCatName = '';
+            foreach ($_categoriesC as $c) {
+                if ((int)$c['id'] === $category) {
+                    $activeCatName = $c['name'];
+                    break;
+                }
+            }
+            ?>
+            <input type="hidden" name="category" id="categorySelected" value="<?= $category ?>">
+
+            <div class="category-icon-picker" id="categoryPicker">
+                <?php foreach ($_categoriesC as $cat):
+                    $isActive = ($category === (int)$cat['id']) ? 'active' : '';
+                ?>
+                <button type="button" class="cat-pick-btn <?= $isActive ?>"
+                        data-id="<?= (int)$cat['id'] ?>"
+                        data-name="<?= htmlspecialchars($cat['name']) ?>"
+                        title="<?= htmlspecialchars($cat['name']) ?>"
+                        onclick="selectCategory(this)">
+                    <i class="<?= htmlspecialchars($cat['icon']) ?>"></i>
+                    <span><?= htmlspecialchars($cat['name']) ?></span>
+                </button>
+                <?php endforeach; ?>
+            </div>
+
+            <div id="categoryLabel" class="mt-2 small">
+                <?php if ($category && $activeCatName): ?>
+                    <i class="fas fa-check-circle text-success me-1"></i>
+                    <strong><?= htmlspecialchars($activeCatName) ?></strong>
+                <?php else: ?>
+                    <span class="st-meta"><i class="fa-solid fa-hand-pointer me-1"></i><?= htmlspecialchars($lang->upload['category_click_select'] ?? 'Click a category to select') ?></span>
+                <?php endif; ?>
+            </div>
+
+            <div class="text-danger small mt-1" id="categoryError" style="display:none;"><?= $lang->upload['category_invalid'] ?></div>
+        </div>
+    </section>
+
+    <!-- Tags -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-tags"></i></span>
+            <?= $lang->upload['tags'] ?>
+            <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
+        </div>
+        <div class="st-card__body">
+            <div class="input-group input-group-sm mb-2">
+                <input type="text" class="form-control" id="tags" name="tags"
+                       placeholder="<?= $lang->upload['tags_placeholder'] ?>"
+                       value="<?= htmlspecialchars($torrent['tags'] ?? '') ?>">
+                <button type="button" class="btn btn-outline-secondary" onclick="clearAllTags()" title="<?= htmlspecialchars($lang->upload['tags_clear']) ?>">
+                    <i class="fa-solid fa-eraser"></i>
+                </button>
+            </div>
+
+            <div class="d-flex flex-wrap gap-1 mb-2" id="genreButtons">
+                <?php
+                $genres = [
+                    ['Action',      'fa-bolt'],
+                    ['Adventure',   'fa-compass'],
+                    ['Animation',   'fa-film'],
+                    ['Biography',   'fa-user-graduate'],
+                    ['Comedy',      'fa-face-laugh-squint'],
+                    ['Crime',       'fa-gavel'],
+                    ['Documentary', 'fa-video'],
+                    ['Drama',       'fa-masks-theater'],
+                    ['Family',      'fa-users'],
+                    ['Fantasy',     'fa-dragon'],
+                    ['History',     'fa-landmark'],
+                    ['Horror',      'fa-ghost'],
+                    ['Music',       'fa-music'],
+                    ['Mystery',     'fa-magnifying-glass'],
+                    ['Romance',     'fa-heart'],
+                    ['Sci-Fi',      'fa-rocket'],
+                    ['Sport',       'fa-trophy'],
+                    ['Thriller',    'fa-skull'],
+                    ['War',         'fa-hand-fist'],
+                    ['Western',     'fa-horse-head'],
+                ];
+
+                $currentTags = array_map('trim', explode(',', $torrent['tags'] ?? ''));
+
+                foreach ($genres as [$label, $genreIcon]):
+                    // $label stays English (it is what goes into the tags field); $shown is the translated name
+                    $shown  = $lang->upload['genre_' . strtolower(str_replace('-', '_', $label))] ?? $label;
+                    $active = in_array($label, $currentTags, true) ? 'genre-active' : '';
+                ?>
+                <button type="button" class="genre-tag-btn <?= $active ?>"
+                        data-genre="<?= htmlspecialchars($label) ?>"
+                        data-label="<?= htmlspecialchars($shown) ?>"
+                        onclick="toggleGenreTag(this)">
+                    <i class="fa-solid <?= $genreIcon ?>"></i><span><?= htmlspecialchars($shown) ?></span>
+                </button>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="st-meta">
+                <?= $lang->upload['tags_hint'] ?>
+                <?php $fetchBtn = '<strong>' . $lang->upload['imdb_fetch'] . '</strong>'; // {1} (or %1$s after $lang->load()) = the button name ?>
+                <?= strtr($lang->upload['tags_hint_imdb'] ?? 'Tags will be automatically filled from IMDb when you click the {1} button.',
+                          ['{1}' => $fetchBtn, '%1$s' => $fetchBtn]) ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Media & Images -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-images"></i></span>
+            <?= $lang->upload['media_section'] ?>
+        </div>
+        <div class="st-card__body">
+
+            <!-- IMDb -->
+            <div class="mb-3">
+                <label for="imdbUrl" class="form-label fw-semibold">
+                    <i class="fa-brands fa-imdb me-1"></i><?= $lang->upload['imdb_link'] ?>
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
+                    <input type="url" class="form-control" id="imdbUrl" name="imdbUrl"
+                           value="<?= htmlspecialchars($t_link) ?>"
+                           placeholder="<?= $lang->upload['imdb_placeholder'] ?>">
+                    <button type="button" class="btn btn-warning" id="imdbFetchBtn" onclick="fetchImdbData()">
+                        <i class="fa-brands fa-imdb me-1"></i><?= $lang->upload['imdb_fetch'] ?>
+                    </button>
+                </div>
+                <div class="st-meta mt-1"><?= $lang->upload['imdb_hint'] ?></div>
+
+                <div id="imdbPreview" class="up-sub mt-2" style="display:none;">
+                    <div class="d-flex gap-3 align-items-start">
+                        <div id="imdbPosterPreview" class="up-imdb-poster" style="display:none;">
+                            <img id="imdbPosterImg" src="" alt="">
+                            <div class="d-grid gap-1 mt-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbPoster('main')" title="<?= $lang->upload['imdb_set_main'] ?>">
+                                    <i class="fa-solid fa-image me-1"></i><?= $lang->upload['imdb_poster_main'] ?>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbPoster('secondary')" title="<?= $lang->upload['imdb_set_secondary'] ?>">
+                                    <i class="fa-solid fa-images me-1"></i><?= $lang->upload['imdb_poster_secondary'] ?>
                                 </button>
                             </div>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="fw-bold mb-1 up-break" id="imdbPreviewTitle">—</div>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <span class="st-badge st-soft-warning" id="imdbPreviewYear" style="display:none;"></span>
+                                <span class="st-badge st-soft-muted" id="imdbPreviewGenre" style="display:none;"></span>
+                                <span class="st-badge st-soft-success" id="imdbPreviewRating" style="display:none;"><i class="fa-solid fa-star"></i><span></span></span>
+                            </div>
+                            <p class="st-meta mb-2" id="imdbPreviewPlot"></p>
+                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbToDescription()">
+                                <i class="fa-solid fa-paste me-1"></i><?= $lang->upload['imdb_add_description'] ?>
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-                            <div id="torrentFileSelected" style="display:none;">
-                                <div class="d-flex align-items-center justify-content-center gap-3">
-                                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-file-lines"></i></span>
-                                    <div class="text-start min-w-0">
-                                        <div class="fw-bold up-break" id="torrentSelectedName">filename.torrent</div>
-                                        <div class="st-meta" id="torrentSelectedSize">0 KB</div>
-                                        <span class="st-badge st-soft-success mt-1" id="torrentFileBadge">
-                                            <i class="fa-solid fa-check"></i><?= $lang->upload['torrent_ready'] ?>
-                                        </span>
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-outline-danger st-pill" id="torrentRemoveBtn" onclick="removeTorrentFile()">
+                <div id="imdbLoading" class="mt-2" style="display:none;">
+                    <div class="d-flex align-items-center gap-2 st-meta">
+                        <div class="spinner-border spinner-border-sm"></div>
+                        <?= $lang->upload['imdb_fetching'] ?>
+                    </div>
+                </div>
+
+                <div id="imdbError" class="alert alert-warning mt-2 small py-2 mb-0" style="display:none;">
+                    <i class="fa-solid fa-triangle-exclamation me-1"></i><span id="imdbErrorText"></span>
+                </div>
+            </div>
+
+            <!-- Posters -->
+            <div class="row g-3">
+                <?php foreach ([
+                    1 => ['imageUrl',  'imagesUpload',  'imagePreview',  't_image',  'fa-image',  $lang->upload['image_main']],
+                    2 => ['imageUrl2', 'imagesUpload2', 'imagePreview2', 't_image2', 'fa-images', $lang->upload['image_secondary']],
+                ] as $slot => [$urlId, $fileId, $previewId, $column, $slotIcon, $slotTitle]): ?>
+                <div class="col-md-6">
+                    <div class="up-sub h-100">
+                        <div class="fw-semibold mb-2"><i class="fa-solid <?= $slotIcon ?> me-2 opacity-75"></i><?= $slotTitle ?></div>
+
+                        <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
+                            <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByUrl<?= $slot ?>" value="url" checked>
+                            <label class="btn btn-outline-secondary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
+                            <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByFile<?= $slot ?>" value="file">
+                            <label class="btn btn-outline-secondary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
+                        </div>
+
+                        <div id="uploadUrlGroup<?= $slot ?>">
+                            <label for="<?= $urlId ?>" class="form-label small mb-1"><?= $lang->upload['image_url_label'] ?></label>
+                            <input type="url" class="form-control form-control-sm" id="<?= $urlId ?>" name="<?= $urlId ?>"
+                                   value="<?= htmlspecialchars($torrent[$column] ?? '') ?>"
+                                   placeholder="<?= $lang->upload['image_url_placeholder'] ?>"
+                                   oninput="updateImagePreviewFromUrl(this.value, '<?= $previewId ?>')">
+                            <div class="st-meta mt-1"><?= $lang->upload['image_url_hint'] ?></div>
+                        </div>
+
+                        <div class="d-none" id="uploadFileGroup<?= $slot ?>">
+                            <div class="upload-zone-sm" data-input="<?= $fileId ?>" data-preview="<?= $previewId ?>" data-radio="uploadByFile<?= $slot ?>" onclick="document.getElementById('<?= $fileId ?>').click()">
+                                <i class="fa-solid fa-cloud-arrow-up mb-1"></i>
+                                <div class="fw-semibold small"><?= $lang->upload['image_click_upload'] ?></div>
+                                <div class="st-meta"><?= $lang->upload['image_drag_drop'] ?></div>
+                                <input type="file" class="d-none" id="<?= $fileId ?>" name="<?= $fileId ?>" accept="image/*"
+                                       onclick="event.stopPropagation()"
+                                       onchange="handleImageUpload(this, '<?= $previewId ?>')">
+                            </div>
+                            <div class="st-meta mt-1"><?= $lang->upload['image_file_hint'] ?></div>
+                        </div>
+
+                        <div id="<?= $previewId ?>" class="preview-container">
+                            <?php if (!empty($torrent[$column])): ?>
+                                <div class="preview-item">
+                                    <img src="<?= htmlspecialchars($torrent[$column]) ?>" class="preview-poster" alt="<?= htmlspecialchars($slotTitle) ?>"
+                                         onerror="window.utPosterFallback && utPosterFallback(this)">
+                                    <button type="button" class="delete-btn2" onclick="removeImagePreview('<?= $previewId ?>', '<?= $urlId ?>', '<?= $fileId ?>')"
+                                            title="<?= htmlspecialchars($lang->upload['js_ut_image_remove']) ?>">
                                         <i class="fa-solid fa-xmark"></i>
                                     </button>
                                 </div>
-                            </div>
-
-                            <input class="d-none" type="file" id="torrentFile" name="torrentFile" accept=".torrent" />
+                            <?php endif; ?>
                         </div>
-
-                        <div class="text-danger small mt-1" id="torrentFileError" style="display:none;"><?= $lang->upload['torrent_file_required'] ?></div>
-
-                        <div id="torrentUploadProgress" class="mt-2" style="display:none;">
-                            <div class="progress up-progress">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%;"></div>
-                            </div>
-                            <small class="st-meta"><?= $lang->upload['torrent_validating'] ?></small>
-                        </div>
-
-                        <div class="st-meta mt-1">
-                            <?= $isEdit ? $lang->upload['torrent_file_hint_edit'] : $lang->upload['torrent_file_hint'] ?>
-                            <span id="torrentFileInfo"></span>
-                        </div>
-                        <div class="mt-2" id="torrentFilePreview"></div>
-                    </div>
-
-                    <!-- Метаданные торрента -->
-                    <div id="torrentMetaInfo" class="up-sub mb-3" style="display:none;">
-                        <div class="d-flex flex-wrap gap-2 mb-2">
-                            <span class="st-badge st-soft-primary"><i class="fa-solid fa-hard-drive"></i><?= $lang->upload['torrent_size'] ?>: <strong id="torrentMetaSize">—</strong></span>
-                            <span class="st-badge st-soft-info"><i class="fa-solid fa-file"></i><?= $lang->upload['torrent_files'] ?>: <strong id="torrentMetaFiles">—</strong></span>
-                            <span class="st-badge st-soft-muted"><i class="fa-solid fa-fingerprint"></i><?= $lang->upload['torrent_hash'] ?>: <strong id="torrentMetaHash">—</strong></span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <small class="fw-semibold st-meta"><i class="fa-solid fa-list me-1"></i><?= $lang->upload['torrent_file_list'] ?></small>
-                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="toggleTorrentFileList()">
-                                <i class="fa-solid fa-eye me-1" id="torrentFileListToggleIcon"></i>
-                                <span id="torrentFileListToggleText" data-show="<?= htmlspecialchars($lang->upload['torrent_show']) ?>" data-hide="<?= htmlspecialchars($lang->upload['torrent_hide']) ?>"><?= $lang->upload['torrent_show'] ?></span>
-                            </button>
-                        </div>
-                        <div id="torrentFileList" class="up-filelist mt-2" style="display:none;"></div>
-                    </div>
-
-                    <!-- NFO -->
-                    <div>
-                        <label for="nfoFile" class="form-label fw-semibold">
-                            <?= $lang->upload['nfofile'] ?>
-                            <span class="st-meta fw-normal"><?= $lang->upload['nfofile_optional'] ?></span>
-                        </label>
-                        <div class="input-group">
-                            <input class="form-control" type="file" id="nfoFile" name="nfoFile" accept=".nfo,text/plain" />
-                            <button type="button" class="btn btn-outline-secondary" id="nfoPreviewBtn" style="display:none;" onclick="toggleNfoPreview()">
-                                <i class="fas fa-eye me-1"></i><?= $lang->upload['nfofile_preview'] ?>
-                            </button>
-                        </div>
-                        <div class="st-meta mt-1"><?= $lang->upload['nfofile_hint'] ?></div>
-
-                        <div id="nfoPreviewContainer" class="up-sub p-0 mt-2" style="display:none;">
-                            <div class="up-nfo-head">
-                                <span class="st-meta up-break"><i class="fa-solid fa-file-lines me-1"></i><span id="nfoPreviewFilename">file.nfo</span></span>
-                                <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                                    <span class="st-badge st-soft-muted" id="nfoPreviewSize"></span>
-                                    <span class="st-badge st-soft-muted" id="nfoPreviewLines"></span>
-                                    <button type="button" class="st-icon-btn border-0" onclick="toggleNfoPreview()"><i class="fa-solid fa-xmark"></i></button>
-                                </div>
-                            </div>
-                            <pre id="nfoPreviewText" class="up-nfo"></pre>
-                        </div>
-
-                        <?php if ($isEdit):
-                            $existingNfoQ = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ?", [$EditTorrentID]);
-                            $existingNfoRow = $existingNfoQ ? $db->fetch_array($existingNfoQ) : null;
-                            if ($existingNfoRow): ?>
-                                <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
-                                    <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $lang->upload['nfofile_uploaded'] ?></span>
-                                    <small class="st-meta"><?= $lang->upload['nfofile_replace'] ?></small>
-                                </div>
-                        <?php endif; endif; ?>
                     </div>
                 </div>
-            </section>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
 
-            <!-- Description -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
-                    <?= $lang->upload['description'] ?> <span class="text-danger">*</span>
+    <!-- Settings -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-sliders"></i></span>
+            <?= $lang->upload['settings_section'] ?>
+        </div>
+        <div class="st-card__body">
+            <div class="up-opts">
+                <?php
+                // [name/id, value, отмечено?, иконка, подпись, подсказка]
+                $upFlag = static fn(string $col): bool => ($torrent[$col] ?? '') === 'yes';
+                $upOptions = [
+                    ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint']],
+                    ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint']],
+                    ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint']],
+                    ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint']],
+                    ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint']],
+                    ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.'],
+                    ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint']],
+                    ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint']],
+                    ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint']],
+                ];
+                foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint]): ?>
+                    <label class="st-check form-switch" for="<?= $optName ?>">
+                        <input class="form-check-input" type="checkbox" role="switch" id="<?= $optName ?>" name="<?= $optName ?>" value="<?= $optValue ?>"<?= $optOn ? ' checked' : '' ?><?= $optName === 'isnuked' ? ' onclick="ShowHideField(\'nukereason\');"' : '' ?>>
+                        <span class="min-w-0">
+                            <span class="fw-semibold d-block"><i class="fa-solid <?= $optIcon ?> me-1 opacity-75"></i><?= $optLabel ?></span>
+                            <span class="st-meta d-block"><?= $optHint ?></span>
+                        </span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="mt-2" id="nukereason" style="<?= $upFlag('isnuked') ? '' : 'display:none;' ?>">
+                <label for="WhyNuked" class="form-label small fw-semibold mb-1"><?= $lang->upload['nuke_reason'] ?></label>
+                <input type="text" class="form-control form-control-sm" id="WhyNuked" name="WhyNuked"
+                       placeholder="<?= $lang->upload['nuke_reason_placeholder'] ?>"
+                       value="<?= isset($torrent['WhyNuked']) ? htmlspecialchars($torrent['WhyNuked']) : '' ?>" />
+                <div class="st-meta mt-1"><?= $lang->upload['nuke_reason_hint'] ?></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-camera"></i></span>
+            <?= $lang->upload['screenshots'] ?>
+        </div>
+        <div class="st-card__body">
+            <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
+                <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
+                <label class="btn btn-outline-secondary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
+                <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
+                <label class="btn btn-outline-secondary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
+            </div>
+
+            <div id="screenshotFileGroup">
+                <div class="upload-zone" onclick="document.getElementById('screenshotsUpload').click()">
+                    <i class="fa-solid fa-cloud-arrow-up mb-1"></i>
+                    <div class="fw-semibold"><?= $lang->upload['screenshots_drop'] ?></div>
+                    <div class="st-meta"><?= $lang->upload['screenshots_multiple'] ?></div>
+                    <input type="file" class="d-none" id="screenshotsUpload" name="screenshotsUpload[]" multiple accept="image/*"
+                           onclick="event.stopPropagation()" data-max="<?= (int)$max_screenshots ?>">
                 </div>
-                <div class="st-card__body">
-                    <?= $editor['toolbar'] ?>
-                    <textarea class="form-control st-editor-text" id="description" name="description" rows="10" required
-                              placeholder="<?= $lang->upload['description_placeholder'] ?>"><?= isset($torrent['descr']) ? htmlspecialchars($torrent['descr']) : '' ?></textarea>
-                    <div class="st-meta text-end mt-1"><span id="charCount2">0 / 500</span></div>
-                    <div class="invalid-feedback"><?= $lang->upload['description_invalid'] ?></div>
-                </div>
-            </section>
+                <div id="screenshotsPreview" class="preview-container"></div>
+            </div>
 
-            <!-- Media & Images -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-images"></i></span>
-                    <?= $lang->upload['media_section'] ?>
-                </div>
-                <div class="st-card__body">
-
-                    <!-- IMDb -->
-                    <div class="mb-3">
-                        <label for="imdbUrl" class="form-label fw-semibold">
-                            <i class="fa-brands fa-imdb me-1"></i><?= $lang->upload['imdb_link'] ?>
-                        </label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
-                            <input type="url" class="form-control" id="imdbUrl" name="imdbUrl"
-                                   value="<?= htmlspecialchars($t_link) ?>"
-                                   placeholder="<?= $lang->upload['imdb_placeholder'] ?>">
-                            <button type="button" class="btn btn-warning" id="imdbFetchBtn" onclick="fetchImdbData()">
-                                <i class="fa-brands fa-imdb me-1"></i><?= $lang->upload['imdb_fetch'] ?>
-                            </button>
-                        </div>
-                        <div class="st-meta mt-1"><?= $lang->upload['imdb_hint'] ?></div>
-
-                        <div id="imdbPreview" class="up-sub mt-2" style="display:none;">
-                            <div class="d-flex gap-3 align-items-start">
-                                <div id="imdbPosterPreview" class="up-imdb-poster" style="display:none;">
-                                    <img id="imdbPosterImg" src="" alt="">
-                                    <div class="d-grid gap-1 mt-1">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbPoster('main')" title="<?= $lang->upload['imdb_set_main'] ?>">
-                                            <i class="fa-solid fa-image me-1"></i><?= $lang->upload['imdb_poster_main'] ?>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbPoster('secondary')" title="<?= $lang->upload['imdb_set_secondary'] ?>">
-                                            <i class="fa-solid fa-images me-1"></i><?= $lang->upload['imdb_poster_secondary'] ?>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="flex-grow-1 min-w-0">
-                                    <div class="fw-bold mb-1 up-break" id="imdbPreviewTitle">—</div>
-                                    <div class="d-flex flex-wrap gap-2 mb-2">
-                                        <span class="st-badge st-soft-warning" id="imdbPreviewYear" style="display:none;"></span>
-                                        <span class="st-badge st-soft-muted" id="imdbPreviewGenre" style="display:none;"></span>
-                                        <span class="st-badge st-soft-success" id="imdbPreviewRating" style="display:none;"><i class="fa-solid fa-star"></i><span></span></span>
-                                    </div>
-                                    <p class="st-meta mb-2" id="imdbPreviewPlot"></p>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="applyImdbToDescription()">
-                                        <i class="fa-solid fa-paste me-1"></i><?= $lang->upload['imdb_add_description'] ?>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="imdbLoading" class="mt-2" style="display:none;">
-                            <div class="d-flex align-items-center gap-2 st-meta">
-                                <div class="spinner-border spinner-border-sm"></div>
-                                <?= $lang->upload['imdb_fetching'] ?>
-                            </div>
-                        </div>
-
-                        <div id="imdbError" class="alert alert-warning mt-2 small py-2 mb-0" style="display:none;">
-                            <i class="fa-solid fa-triangle-exclamation me-1"></i><span id="imdbErrorText"></span>
-                        </div>
-                    </div>
-
-                    <!-- Posters -->
-                    <div class="row g-3">
-                        <?php foreach ([
-                            1 => ['imageUrl',  'imagesUpload',  'imagePreview',  't_image',  'fa-image',  $lang->upload['image_main']],
-                            2 => ['imageUrl2', 'imagesUpload2', 'imagePreview2', 't_image2', 'fa-images', $lang->upload['image_secondary']],
-                        ] as $slot => [$urlId, $fileId, $previewId, $column, $slotIcon, $slotTitle]): ?>
-                        <div class="col-md-6">
-                            <div class="up-sub h-100">
-                                <div class="fw-semibold mb-2"><i class="fa-solid <?= $slotIcon ?> me-2 opacity-75"></i><?= $slotTitle ?></div>
-
-                                <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
-                                    <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByUrl<?= $slot ?>" value="url" checked>
-                                    <label class="btn btn-outline-secondary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
-                                    <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByFile<?= $slot ?>" value="file">
-                                    <label class="btn btn-outline-secondary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
-                                </div>
-
-                                <div id="uploadUrlGroup<?= $slot ?>">
-                                    <label for="<?= $urlId ?>" class="form-label small mb-1"><?= $lang->upload['image_url_label'] ?></label>
-                                    <input type="url" class="form-control form-control-sm" id="<?= $urlId ?>" name="<?= $urlId ?>"
-                                           value="<?= htmlspecialchars($torrent[$column] ?? '') ?>"
-                                           placeholder="<?= $lang->upload['image_url_placeholder'] ?>"
-                                           oninput="updateImagePreviewFromUrl(this.value, '<?= $previewId ?>')">
-                                    <div class="st-meta mt-1"><?= $lang->upload['image_url_hint'] ?></div>
-                                </div>
-
-                                <div class="d-none" id="uploadFileGroup<?= $slot ?>">
-                                    <div class="upload-zone-sm" data-input="<?= $fileId ?>" data-preview="<?= $previewId ?>" data-radio="uploadByFile<?= $slot ?>" onclick="document.getElementById('<?= $fileId ?>').click()">
-                                        <i class="fa-solid fa-cloud-arrow-up mb-1"></i>
-                                        <div class="fw-semibold small"><?= $lang->upload['image_click_upload'] ?></div>
-                                        <div class="st-meta"><?= $lang->upload['image_drag_drop'] ?></div>
-                                        <input type="file" class="d-none" id="<?= $fileId ?>" name="<?= $fileId ?>" accept="image/*"
-                                               onclick="event.stopPropagation()"
-                                               onchange="handleImageUpload(this, '<?= $previewId ?>')">
-                                    </div>
-                                    <div class="st-meta mt-1"><?= $lang->upload['image_file_hint'] ?></div>
-                                </div>
-
-                                <div id="<?= $previewId ?>" class="preview-container">
-                                    <?php if (!empty($torrent[$column])): ?>
-                                        <div class="preview-item">
-                                            <img src="<?= htmlspecialchars($torrent[$column]) ?>" class="preview-poster" alt="<?= htmlspecialchars($slotTitle) ?>"
-                                                 onerror="window.utPosterFallback && utPosterFallback(this)">
-                                            <button type="button" class="delete-btn2" onclick="removeImagePreview('<?= $previewId ?>', '<?= $urlId ?>', '<?= $fileId ?>')"
-                                                    title="<?= htmlspecialchars($lang->upload['js_ut_image_remove']) ?>">
-                                                <i class="fa-solid fa-xmark"></i>
-                                            </button>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-
-                    <!-- Screenshots -->
-                    <hr class="my-3">
-                    <div class="fw-semibold mb-2"><i class="fa-solid fa-camera me-2 opacity-75"></i><?= $lang->upload['screenshots'] ?></div>
-
-                    <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
-                        <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
-                        <label class="btn btn-outline-secondary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
-                        <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
-                        <label class="btn btn-outline-secondary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
-                    </div>
-
-                    <div id="screenshotFileGroup">
-                        <div class="upload-zone" onclick="document.getElementById('screenshotsUpload').click()">
-                            <i class="fa-solid fa-cloud-arrow-up mb-1"></i>
-                            <div class="fw-semibold"><?= $lang->upload['screenshots_drop'] ?></div>
-                            <div class="st-meta"><?= $lang->upload['screenshots_multiple'] ?></div>
-                            <input type="file" class="d-none" id="screenshotsUpload" name="screenshotsUpload[]" multiple accept="image/*"
-                                   onclick="event.stopPropagation()" data-max="<?= (int)$max_screenshots ?>">
-                        </div>
-                        <div id="screenshotsPreview" class="preview-container"></div>
-                    </div>
-
-                    <div id="screenshotUrlGroup" class="d-none">
-                        <label for="screenshotUrlsInput" class="form-label small mb-1">
-                            <?= $lang->upload['screenshots_url_label'] ?>
-                            <span class="st-meta"><?= $lang->upload['screenshots_url_hint'] ?></span>
-                        </label>
-                        <textarea id="screenshotUrlsInput" class="form-control font-monospace small" rows="6"
-                                  placeholder="https://example.com/screen1.jpg
+            <div id="screenshotUrlGroup" class="d-none">
+                <label for="screenshotUrlsInput" class="form-label small mb-1">
+                    <?= $lang->upload['screenshots_url_label'] ?>
+                    <span class="st-meta"><?= $lang->upload['screenshots_url_hint'] ?></span>
+                </label>
+                <textarea id="screenshotUrlsInput" class="form-control font-monospace small" rows="6"
+                          placeholder="https://example.com/screen1.jpg
 https://example.com/screen2.png
 https://example.com/screen3.webp"></textarea>
-                        <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
-                            <small class="st-meta"><?= $lang->upload['screenshots_url_supported'] ?></small>
-                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="loadScreenshotUrls()">
-                                <i class="fa-solid fa-eye me-1"></i><?= $lang->upload['screenshots_load_preview'] ?>
+                <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
+                    <small class="st-meta"><?= $lang->upload['screenshots_url_supported'] ?></small>
+                    <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="loadScreenshotUrls()">
+                        <i class="fa-solid fa-eye me-1"></i><?= $lang->upload['screenshots_load_preview'] ?>
+                    </button>
+                </div>
+                <div id="screenshotUrlPreview" class="preview-container"></div>
+                <div id="screenshotUrlInputs"></div>
+            </div>
+
+            <?php if (!empty($screenshots)): ?>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                    <div class="fw-semibold">
+                        <?= $lang->upload['screenshots_existing'] ?>
+                        <span class="st-badge st-soft-muted ms-1"><span id="upShotsBadge"><?= count($screenshots) ?> / <?= (int)$max_screenshots ?></span></span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="form-check mb-0">
+                            <input type="checkbox" class="form-check-input" id="selectAllScreenshotsCheckbox">
+                            <label class="form-check-label small" for="selectAllScreenshotsCheckbox"><?= $lang->upload['screenshots_select_all'] ?? 'Select all' ?></label>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger st-pill d-none" id="deleteSelectedScreenshotsBtn">
+                            <i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_selected'] ?? 'Delete selected' ?> (<span id="selectedScreenshotsCount">0</span>)
+                        </button>
+                    </div>
+                </div>
+                <div id="existingScreenshots" class="preview-container">
+                    <?php foreach ($screenshots as $shot): ?>
+                        <div class="screenshot-item" data-id="<?= (int)$shot['id'] ?>">
+                            <input type="checkbox" class="form-check-input screenshot-select-checkbox position-absolute" data-id="<?= (int)$shot['id'] ?>">
+                            <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>" class="preview-screenshot" alt=""
+                                 onerror="window.utShotFallback && utShotFallback(this)">
+                            <button type="button" class="delete-btn" title="<?= htmlspecialchars($lang->upload['screenshots_delete_title']) ?>">
+                                <i class="fa-solid fa-xmark"></i>
                             </button>
                         </div>
-                        <div id="screenshotUrlPreview" class="preview-container"></div>
-                        <div id="screenshotUrlInputs"></div>
-                    </div>
-
-                    <?php if (!empty($screenshots)): ?>
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
-                            <div class="fw-semibold">
-                                <?= $lang->upload['screenshots_existing'] ?>
-                                <span class="st-badge st-soft-muted ms-1"><span id="upShotsBadge"><?= count($screenshots) ?> / <?= (int)$max_screenshots ?></span></span>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="form-check mb-0">
-                                    <input type="checkbox" class="form-check-input" id="selectAllScreenshotsCheckbox">
-                                    <label class="form-check-label small" for="selectAllScreenshotsCheckbox"><?= $lang->upload['screenshots_select_all'] ?? 'Select all' ?></label>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-danger st-pill d-none" id="deleteSelectedScreenshotsBtn">
-                                    <i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_selected'] ?? 'Delete selected' ?> (<span id="selectedScreenshotsCount">0</span>)
-                                </button>
-                            </div>
-                        </div>
-                        <div id="existingScreenshots" class="preview-container">
-                            <?php foreach ($screenshots as $shot): ?>
-                                <div class="screenshot-item" data-id="<?= (int)$shot['id'] ?>">
-                                    <input type="checkbox" class="form-check-input screenshot-select-checkbox position-absolute" data-id="<?= (int)$shot['id'] ?>">
-                                    <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>" class="preview-screenshot" alt=""
-                                         onerror="window.utShotFallback && utShotFallback(this)">
-                                    <button type="button" class="delete-btn" title="<?= htmlspecialchars($lang->upload['screenshots_delete_title']) ?>">
-                                        <i class="fa-solid fa-xmark"></i>
-                                    </button>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                    <?php endforeach; ?>
                 </div>
-            </section>
+            <?php endif; ?>
         </div>
-
-        <!-- ═══ Боковая колонка ════════════════════════════════════════════ -->
-        <div class="col-lg-4 d-flex flex-column gap-3">
-
-            <!-- Category -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-table-cells-large"></i></span>
-                    <?= $lang->upload['category'] ?> <span class="text-danger">*</span>
-                </div>
-                <div class="st-card__body">
-                    <?php
-                    $category = isset($torrent['category']) ? intval($torrent['category']) : 0;
-
-                    if (!isset($_categoriesC) || !is_array($_categoriesC)) {
-                        require_once TSDIR . '/cache/categories.php';
-                    }
-
-                    $activeCatName = '';
-                    foreach ($_categoriesC as $c) {
-                        if ((int)$c['id'] === $category) {
-                            $activeCatName = $c['name'];
-                            break;
-                        }
-                    }
-                    ?>
-                    <input type="hidden" name="category" id="categorySelected" value="<?= $category ?>">
-
-                    <div class="category-icon-picker" id="categoryPicker">
-                        <?php foreach ($_categoriesC as $cat):
-                            $isActive = ($category === (int)$cat['id']) ? 'active' : '';
-                        ?>
-                        <button type="button" class="cat-pick-btn <?= $isActive ?>"
-                                data-id="<?= (int)$cat['id'] ?>"
-                                data-name="<?= htmlspecialchars($cat['name']) ?>"
-                                title="<?= htmlspecialchars($cat['name']) ?>"
-                                onclick="selectCategory(this)">
-                            <i class="<?= htmlspecialchars($cat['icon']) ?>"></i>
-                            <span><?= htmlspecialchars($cat['name']) ?></span>
-                        </button>
-                        <?php endforeach; ?>
-                    </div>
-
-                    <div id="categoryLabel" class="mt-2 small">
-                        <?php if ($category && $activeCatName): ?>
-                            <i class="fas fa-check-circle text-success me-1"></i>
-                            <strong><?= htmlspecialchars($activeCatName) ?></strong>
-                        <?php else: ?>
-                            <span class="st-meta"><i class="fa-solid fa-hand-pointer me-1"></i><?= htmlspecialchars($lang->upload['category_click_select'] ?? 'Click a category to select') ?></span>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="text-danger small mt-1" id="categoryError" style="display:none;"><?= $lang->upload['category_invalid'] ?></div>
-                </div>
-            </section>
-
-            <!-- Tags -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-tags"></i></span>
-                    <?= $lang->upload['tags'] ?>
-                    <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
-                </div>
-                <div class="st-card__body">
-                    <div class="input-group input-group-sm mb-2">
-                        <input type="text" class="form-control" id="tags" name="tags"
-                               placeholder="<?= $lang->upload['tags_placeholder'] ?>"
-                               value="<?= htmlspecialchars($torrent['tags'] ?? '') ?>">
-                        <button type="button" class="btn btn-outline-secondary" onclick="clearAllTags()" title="<?= htmlspecialchars($lang->upload['tags_clear']) ?>">
-                            <i class="fa-solid fa-eraser"></i>
-                        </button>
-                    </div>
-
-                    <div class="d-flex flex-wrap gap-1 mb-2" id="genreButtons">
-                        <?php
-                        $genres = [
-                            ['Action',      'fa-bolt'],
-                            ['Adventure',   'fa-compass'],
-                            ['Animation',   'fa-film'],
-                            ['Biography',   'fa-user-graduate'],
-                            ['Comedy',      'fa-face-laugh-squint'],
-                            ['Crime',       'fa-gavel'],
-                            ['Documentary', 'fa-video'],
-                            ['Drama',       'fa-masks-theater'],
-                            ['Family',      'fa-users'],
-                            ['Fantasy',     'fa-dragon'],
-                            ['History',     'fa-landmark'],
-                            ['Horror',      'fa-ghost'],
-                            ['Music',       'fa-music'],
-                            ['Mystery',     'fa-magnifying-glass'],
-                            ['Romance',     'fa-heart'],
-                            ['Sci-Fi',      'fa-rocket'],
-                            ['Sport',       'fa-trophy'],
-                            ['Thriller',    'fa-skull'],
-                            ['War',         'fa-hand-fist'],
-                            ['Western',     'fa-horse-head'],
-                        ];
-
-                        $currentTags = array_map('trim', explode(',', $torrent['tags'] ?? ''));
-
-                        foreach ($genres as [$label, $genreIcon]):
-                            // $label stays English (it is what goes into the tags field); $shown is the translated name
-                            $shown  = $lang->upload['genre_' . strtolower(str_replace('-', '_', $label))] ?? $label;
-                            $active = in_array($label, $currentTags, true) ? 'genre-active' : '';
-                        ?>
-                        <button type="button" class="genre-tag-btn <?= $active ?>"
-                                data-genre="<?= htmlspecialchars($label) ?>"
-                                data-label="<?= htmlspecialchars($shown) ?>"
-                                onclick="toggleGenreTag(this)">
-                            <i class="fa-solid <?= $genreIcon ?>"></i><span><?= htmlspecialchars($shown) ?></span>
-                        </button>
-                        <?php endforeach; ?>
-                    </div>
-
-                    <div class="st-meta">
-                        <?= $lang->upload['tags_hint'] ?>
-                        <?php $fetchBtn = '<strong>' . $lang->upload['imdb_fetch'] . '</strong>'; // {1} (or %1$s after $lang->load()) = the button name ?>
-                        <?= strtr($lang->upload['tags_hint_imdb'] ?? 'Tags will be automatically filled from IMDb when you click the {1} button.',
-                                  ['{1}' => $fetchBtn, '%1$s' => $fetchBtn]) ?>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Settings -->
-            <section class="st-card">
-                <div class="st-card__head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-sliders"></i></span>
-                    <?= $lang->upload['settings_section'] ?>
-                </div>
-                <div class="st-card__body">
-                    <div class="up-opts">
-                        <?php
-                        // [name/id, value, отмечено?, иконка, подпись, подсказка]
-                        $upFlag = static fn(string $col): bool => ($torrent[$col] ?? '') === 'yes';
-                        $upOptions = [
-                            ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint']],
-                            ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint']],
-                            ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint']],
-                            ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint']],
-                            ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint']],
-                            ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.'],
-                            ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint']],
-                            ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint']],
-                            ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint']],
-                        ];
-                        foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint]): ?>
-                            <label class="st-check form-switch" for="<?= $optName ?>">
-                                <input class="form-check-input" type="checkbox" role="switch" id="<?= $optName ?>" name="<?= $optName ?>" value="<?= $optValue ?>"<?= $optOn ? ' checked' : '' ?><?= $optName === 'isnuked' ? ' onclick="ShowHideField(\'nukereason\');"' : '' ?>>
-                                <span class="min-w-0">
-                                    <span class="fw-semibold d-block"><i class="fa-solid <?= $optIcon ?> me-1 opacity-75"></i><?= $optLabel ?></span>
-                                    <span class="st-meta d-block"><?= $optHint ?></span>
-                                </span>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
-
-                    <div class="mt-2" id="nukereason" style="<?= $upFlag('isnuked') ? '' : 'display:none;' ?>">
-                        <label for="WhyNuked" class="form-label small fw-semibold mb-1"><?= $lang->upload['nuke_reason'] ?></label>
-                        <input type="text" class="form-control form-control-sm" id="WhyNuked" name="WhyNuked"
-                               placeholder="<?= $lang->upload['nuke_reason_placeholder'] ?>"
-                               value="<?= isset($torrent['WhyNuked']) ? htmlspecialchars($torrent['WhyNuked']) : '' ?>" />
-                        <div class="st-meta mt-1"><?= $lang->upload['nuke_reason_hint'] ?></div>
-                    </div>
-                </div>
-            </section>
-        </div>
+    </section>
     </div>
 
     <?php if ($isEdit): ?>

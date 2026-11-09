@@ -177,7 +177,8 @@
 .up-page .screenshot-drag-active { cursor: grabbing !important; }
 
 /* Настройки */
-.up-page .up-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .4rem; }
+.up-page .up-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; }
+@media (max-width: 575.98px) { .up-page .up-opts { grid-template-columns: minmax(0, 1fr); } }
 .up-page .up-opts .st-check { margin: 0; }
 
 /* Модалки */

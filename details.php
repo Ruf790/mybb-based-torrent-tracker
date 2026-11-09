@@ -498,7 +498,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=6"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=7"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';

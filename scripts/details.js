@@ -647,6 +647,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const top = siteHeader ? Math.max(0, siteHeader.getBoundingClientRect().bottom) : 0;
         const on  = head.getBoundingClientRect().bottom < top;
         bar.style.top = top + 'px';
+        if (siteHeader) {
+            // Ширина как у шапки сайта: шире неё полоска торчала бы за колонку страницы
+            const box = siteHeader.getBoundingClientRect();
+            bar.style.left  = box.left + 'px';
+            bar.style.right = 'auto';
+            bar.style.width = box.width + 'px';
+        }
         bar.classList.toggle('is-on', on);
         bar.setAttribute('aria-hidden', on ? 'false' : 'true');
     };

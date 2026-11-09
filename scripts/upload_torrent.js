@@ -28,6 +28,16 @@ function escapeHtml(str) {
     });
 }
 
+// Tile and badge "N / max": shown only in edit mode
+function utSyncShotCounters() {
+    if (typeof existingScreenshotsCount === 'undefined' || typeof maxScreenshotsLimit === 'undefined') return;
+    const text = existingScreenshotsCount + ' / ' + maxScreenshotsLimit;
+    ['upKpiShots', 'upShotsBadge'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    });
+}
+
 let deleteId = null;
 let deleteImageSrc = null;
 let deleteFilename = null;
@@ -176,6 +186,7 @@ if (confirmBtn) {
         // и может заблокировать загрузку новых, хотя место уже освободилось.
         if (typeof existingScreenshotsCount !== 'undefined') {
           existingScreenshotsCount = Math.max(0, existingScreenshotsCount - 1);
+          utSyncShotCounters();
         }
         
         // Показываем toast с успехом
@@ -286,13 +297,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 const img = item ? item.querySelector('img') : null;
                 const src = img ? img.src : '';
                 return src
-                    ? '<img src="' + src + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6;">'
+                    ? '<img src="' + escapeHtml(src) + '" alt="" class="up-thumb">'
                     : '';
             }).join('');
 
             if (extra > 0) {
-                previewEl.innerHTML += '<div class="d-flex align-items-center justify-content-center text-muted small fw-semibold" ' +
-                    'style="width:64px;height:64px;border-radius:6px;border:1px dashed #adb5bd;">+' + extra + '</div>';
+                previewEl.innerHTML += '<div class="up-thumb up-thumb--more">+' + extra + '</div>';
             }
         }
 
@@ -350,6 +360,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const actualDeleted = (typeof data.deleted === 'number') ? data.deleted : removed;
                 if (typeof existingScreenshotsCount !== 'undefined') {
                     existingScreenshotsCount = Math.max(0, existingScreenshotsCount - actualDeleted);
+                    utSyncShotCounters();
                 }
 
                 if (typeof showToast === 'function') {
@@ -446,13 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Находим родительский элемент screenshot-item
     const screenshotItem = deleteBtn.closest('.screenshot-item');
-    if (!screenshotItem) {
-      console.error('Could not find screenshot item');
-      if (typeof showToast === 'function') {
-        showToast(ut('item_missing', 'Screenshot not found on the page'), 'error');
-      }
-      return;
-    }
+    if (!screenshotItem) return;
     
     // Получаем ID из data-атрибута
     const id = screenshotItem.dataset.id;
@@ -558,14 +563,14 @@ function updateImagePreview(imageSrc, previewContainerId) {
     
     previewContainer.innerHTML = `
         <div class="preview-item">
-            <img src="${imageSrc}" 
+            <img src="${escapeHtml(imageSrc)}"
                  class="preview-poster" 
                  alt="${utH('image_preview', 'Image preview')}">
-            <button type="button" 
-                    class="delete-btn" 
+            <button type="button"
+                    class="delete-btn2"
                     onclick="removeImage('${previewContainerId}', '${previewContainerId === 'imagePreview' ? 'imageUrl' : 'imageUrl2'}', '${previewContainerId === 'imagePreview' ? 'imagesUpload' : 'imagesUpload2'}')"
                     title="${escapeHtml(ut('image_remove', 'Remove image'))}">
-                <i class="fas fa-times"></i>
+                <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
     `;
@@ -579,7 +584,7 @@ window.updateImagePreviewFromUrl = function(url, previewContainerId) {
     }
     
     const previewContainer = document.getElementById(previewContainerId);
-    previewContainer.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> ' + escapeHtml(ut('loading', 'Loading...')) + '</div>';
+    previewContainer.innerHTML = '<div class="st-meta text-center py-3"><i class="fas fa-spinner fa-spin"></i> ' + escapeHtml(ut('loading', 'Loading...')) + '</div>';
     
     const img = new Image();
     img.onload = function() {
@@ -588,7 +593,7 @@ window.updateImagePreviewFromUrl = function(url, previewContainerId) {
     
     img.onerror = function() {
         previewContainer.innerHTML = `
-            <div class="alert alert-warning p-2">
+            <div class="alert alert-warning small p-2 mb-0">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 ${escapeHtml(ut('image_url_fail', 'Cannot load the image from this link'))}
             </div>
@@ -688,50 +693,68 @@ window.removeImage = function(previewContainerId, urlInputId = null, fileInputId
 }
 
 // Drag & Drop для зон загрузки
-document.querySelectorAll('.upload-zone-sm').forEach(zone => {
+function utBindDropZone(zone, onFiles) {
     zone.addEventListener('dragover', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        this.style.borderColor = '#4f46e5';
-        this.style.backgroundColor = '#e0e7ff';
+        this.classList.add('dragover');
     });
-    
+
     zone.addEventListener('dragleave', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        this.style.borderColor = '';
-        this.style.backgroundColor = '';
+        this.classList.remove('dragover');
     });
-    
+
     zone.addEventListener('drop', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        this.style.borderColor = '';
-        this.style.backgroundColor = '';
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            const file = files[0];
-            const card = this.closest('.card');
-            const isFirstImage = card.querySelector('h6').textContent.includes('Main');
-            const inputId = isFirstImage ? 'imagesUpload' : 'imagesUpload2';
-            const previewId = isFirstImage ? 'imagePreview' : 'imagePreview2';
-            
-            // Выбираем загрузку файлом
-            const radioId = isFirstImage ? 'uploadByFile1' : 'uploadByFile2';
-            document.getElementById(radioId).checked = true;
-            document.getElementById(radioId).dispatchEvent(new Event('change'));
-            
-            // Устанавливаем файл в input
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            document.getElementById(inputId).files = dataTransfer.files;
-            
-            // Обрабатываем файл
-            setTimeout(() => {
-                handleImageUpload(document.getElementById(inputId), previewId);
-            }, 100);
+        this.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) onFiles(e.dataTransfer.files);
+    });
+}
+
+// Постеры: куда класть файл, написано в data-атрибутах зоны
+document.querySelectorAll('.upload-zone-sm').forEach(zone => {
+    utBindDropZone(zone, files => {
+        const input = document.getElementById(zone.dataset.input);
+        const radio = document.getElementById(zone.dataset.radio);
+
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change'));
+
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(files[0]);
+        input.files = dataTransfer.files;
+
+        handleImageUpload(input, zone.dataset.preview);
+    });
+});
+
+// Скриншоты: дальше работает обычный обработчик change у #screenshotsUpload
+document.querySelectorAll('.upload-zone').forEach(zone => {
+    utBindDropZone(zone, files => {
+        const input = document.getElementById('screenshotsUpload');
+        input.files = files;
+        input.dispatchEvent(new Event('change'));
+    });
+});
+
+// Копирование Announce URL
+document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('announceCopyBtn');
+    const url = document.getElementById('announceUrl');
+    if (!btn || !url) return;
+
+    btn.addEventListener('click', function() {
+        if (!navigator.clipboard) {
+            showToast(escapeHtml(btn.dataset.fail), 'error');
+            return;
         }
+        navigator.clipboard.writeText(url.textContent).then(
+            () => showToast(escapeHtml(btn.dataset.ok), 'success'),
+            err => showToast(escapeHtml(btn.dataset.fail + err), 'error')
+        );
     });
 });
 
@@ -756,7 +779,7 @@ function showErrorModal(message) {
             .split('\n')
             .map(line => {
                 let s = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                s = s.replace(/(SQL Error|Unknown column|Failed Query|Error)/gi, '<strong style="color:#b91c1c">$1</strong>');
+                s = s.replace(/(SQL Error|Unknown column|Failed Query|Error)/gi, '<strong>$1</strong>');
                 return `<div class="error-line">${s}</div>`;
             })
             .join('');
@@ -935,12 +958,10 @@ function validateForm() {
     // Torrent File validation
     const torrentFileInput = document.getElementById("torrentFile");
     const isEdit = document.querySelector('input[name="EditTorrent"]') !== null;
-    if (!isEdit && !torrentFileInput.files.length) {
-        torrentFileInput.classList.add("is-invalid");
-        valid = false;
-    } else {
-        torrentFileInput.classList.remove("is-invalid");
-    }
+    const torrentMissing = !isEdit && !torrentFileInput.files.length;
+    document.getElementById("torrentDropZone").classList.toggle("is-invalid", torrentMissing);
+    document.getElementById("torrentFileError").style.display = torrentMissing ? 'block' : 'none';
+    if (torrentMissing) valid = false;
 
     // Form Name validation
     const formNameInput = document.getElementById("formName");
@@ -964,25 +985,14 @@ function validateForm() {
     // ── Category validation ──────────────────────────────
     const categoryInput = document.getElementById("categorySelected");
     const categoryError = document.getElementById("categoryError");
-    const categoryLabel = document.getElementById("categoryLabel");
 
     if (!categoryInput.value || categoryInput.value === '0') {
         categoryError.style.display = 'block';
-        categoryLabel.innerHTML =
-            '<span class="text-danger">' +
-            '<i class="fas fa-exclamation-circle me-1"></i>' + escapeHtml(ut('select_category', 'Please select a category')) +
-            '</span>';
-        // Подсвечиваем все кнопки красной рамкой
-        document.querySelectorAll('.cat-pick-btn').forEach(btn => {
-            btn.style.borderColor = '#dc3545';
-        });
+        document.getElementById('categoryPicker').classList.add('is-invalid');
         valid = false;
     } else {
         categoryError.style.display = 'none';
-        // Убираем красную рамку
-        document.querySelectorAll('.cat-pick-btn').forEach(btn => {
-            btn.style.borderColor = '';
-        });
+        document.getElementById('categoryPicker').classList.remove('is-invalid');
     }
 
     return valid;
@@ -1052,8 +1062,11 @@ document.getElementById("torrent-upload-form").addEventListener("submit", async 
     e.preventDefault();
 
     if (!validateForm()) {
-        const firstInvalid = document.querySelector('.is-invalid');
-        if (firstInvalid) firstInvalid.focus();
+        const firstInvalid = document.querySelector('#torrent-upload-form .is-invalid');
+        if (firstInvalid) {
+            firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstInvalid.focus({ preventScroll: true });
+        }
         return;
     }
 
@@ -1171,10 +1184,10 @@ function showUploadResult(data, isEdit) {
             seconds: 10,
             link:    data.link,
             buttons: `
-                <a href="${escapeHtml(data.download)}" class="btn btn-primary me-2">
+                <a href="${escapeHtml(data.download)}" class="btn btn-primary st-pill me-2">
                     <i class="fa fa-download me-2"></i>${utH('download', 'Download torrent')}
                 </a>
-                <a href="${escapeHtml(data.link)}" class="btn btn-outline-primary">
+                <a href="${escapeHtml(data.link)}" class="btn btn-outline-secondary st-pill">
                     <i class="fa fa-info-circle me-2"></i>${utH('view_details', 'View details')}
                 </a>`
         });
@@ -1191,20 +1204,30 @@ function showUploadResult(data, isEdit) {
             seconds: 3,
             link:    data.link,
             buttons: `
-                <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
+                <button type="button" class="btn btn-outline-secondary st-pill me-2" data-bs-dismiss="modal">
                     <i class="fas fa-times me-2"></i>${utH('stay', 'Stay here')}
                 </button>
-                <a href="${escapeHtml(data.link)}" class="btn btn-success">
+                <a href="${escapeHtml(data.link)}" class="btn btn-primary st-pill">
                     <i class="fas fa-eye me-2"></i>${utH('view_torrent', 'View torrent')}
                 </a>`
         });
         return;
     }
 
-    // Plain new upload: static modal from upload.php
+    // Plain new upload: static modal from upload.php. "Stay here" cancels the redirect.
+    uploadDoneLink = data.link;
+    const redirect = setTimeout(redirectToTorrent, 3000);
     const completeEl = document.getElementById('uploadCompleteModal');
-    if (completeEl) new bootstrap.Modal(completeEl).show();
-    setTimeout(() => { window.location.href = data.link; }, 3000);
+    if (completeEl) {
+        completeEl.addEventListener('hidden.bs.modal', () => clearTimeout(redirect), { once: true });
+        new bootstrap.Modal(completeEl).show();
+    }
+}
+
+// Link of the torrent that was just uploaded (button in #uploadCompleteModal)
+let uploadDoneLink = '';
+function redirectToTorrent() {
+    if (uploadDoneLink) window.location.href = uploadDoneLink;
 }
 
 /**
@@ -1217,35 +1240,29 @@ function showRedirectModal(opts) {
     if (old) old.remove();
 
     const tone = opts.tone;
-    document.body.insertAdjacentHTML('beforeend', `
+    // Inside .up-page: the page styles are scoped to it
+    (document.querySelector('.up-page') || document.body).insertAdjacentHTML('beforeend', `
         <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content shadow-lg border-0">
-                    <div class="modal-header bg-${tone} text-white border-0">
-                        <div class="d-flex align-items-center w-100">
-                            <i class="fas ${opts.icon} fa-2x me-3"></i>
-                            <h5 class="modal-title mb-0" id="uploadSuccessModalLabel">${escapeHtml(opts.title)}</h5>
-                        </div>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-content">
+                    <div class="modal-header up-modal-head">
+                        <span class="st-ico st-soft-${tone}"><i class="fas ${opts.icon}"></i></span>
+                        <h5 class="modal-title" id="uploadSuccessModalLabel">${escapeHtml(opts.title)}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body text-center py-4">
-                        <div class="success-animation mb-3">
-                            <i class="fas fa-check-circle text-${tone}" style="font-size: 3.5rem;"></i>
+                        ${opts.heading ? `<div class="fw-semibold fs-5 mb-1">${escapeHtml(opts.heading)}</div>` : ''}
+                        <p class="st-meta mb-3">${escapeHtml(opts.text)}</p>
+                        <div class="d-flex align-items-center justify-content-center gap-2">
+                            <span class="st-meta">${utH('redirect_in', 'Redirecting in')}</span>
+                            <span id="redirectCountdown" class="st-badge st-soft-${tone}">${opts.seconds}</span>
+                            <span class="st-meta">${utH('seconds', 'seconds')}</span>
                         </div>
-                        ${opts.heading ? `<h4 class="text-${tone} mb-2">${escapeHtml(opts.heading)}</h4>` : ''}
-                        <p class="mb-2">${escapeHtml(opts.text)}</p>
-                        <div class="redirect-timer mt-3">
-                            <div class="d-flex align-items-center justify-content-center gap-2">
-                                <span class="text-muted">${utH('redirect_in', 'Redirecting in')}</span>
-                                <span id="redirectCountdown" class="badge bg-${tone} fs-5 px-3 py-2 rounded-pill">${opts.seconds}</span>
-                                <span class="text-muted">${utH('seconds', 'seconds')}</span>
-                            </div>
-                            <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
-                                <div id="redirectProgress" class="progress-bar bg-${tone}" style="width: 0%; transition: width 1s linear;"></div>
-                            </div>
+                        <div class="progress up-progress mt-3 mx-auto" style="max-width: 200px;">
+                            <div id="redirectProgress" class="progress-bar" style="width: 0%; transition: width 1s linear;"></div>
                         </div>
                     </div>
-                    <div class="modal-footer border-0 justify-content-center pb-4">${opts.buttons}</div>
+                    <div class="modal-footer justify-content-center">${opts.buttons}</div>
                 </div>
             </div>
         </div>`);
@@ -1264,8 +1281,6 @@ function showRedirectModal(opts) {
             left--;
             if (countdown) {
                 countdown.textContent = Math.max(0, left);
-                countdown.style.transform = 'scale(1.1)';
-                setTimeout(() => { countdown.style.transform = 'scale(1)'; }, 200);
             }
             if (progress) progress.style.width = ((total - left) / total * 100) + '%';
             if (left <= 0) clearInterval(iv);
@@ -1285,6 +1300,7 @@ function showRedirectModal(opts) {
 
 // Счетчик символов для названия торрента
 document.getElementById('formName').addEventListener('input', function() {
+    this.classList.remove('is-invalid');
     const charCount = this.value.length;
     const counter = document.getElementById('formNameCharCount');
     
@@ -1308,9 +1324,8 @@ document.getElementById('formName').addEventListener('input', function() {
 document.getElementById('formName').addEventListener('blur', function() {
     this.classList.remove('is-invalid');
     
-    if (this.value.length < 3) {
+    if (this.value.length > 0 && this.value.length < 3) {
         this.classList.add('is-invalid');
-        this.focus();
     }
 });
 
@@ -1433,6 +1448,34 @@ dropZone.addEventListener('click', function(e) {
     document.addEventListener('drop',      function(e) { e.preventDefault(); });
 });
 
+// Colour of the .torrent drop zone: '' | 'is-ok' | 'is-warn' | 'is-bad'
+function utDropState(state) {
+    const zone = document.getElementById('torrentDropZone');
+    if (!zone) return;
+    zone.classList.remove('is-ok', 'is-warn', 'is-bad');
+    if (state) zone.classList.add(state);
+}
+
+// Status badge next to the chosen file
+function utFileBadge(tone, icon, text) {
+    const badge = document.getElementById('torrentFileBadge');
+    if (!badge) return;
+    badge.className = 'st-badge st-soft-' + tone + ' mt-1';
+    badge.innerHTML = '<i class="fa-solid ' + icon + '"></i>' + escapeHtml(text);
+}
+
+// Drops the duplicate / passkey block from the submit button
+function utUnblockSubmit() {
+    var warning = document.getElementById('torrentDuplicateWarning');
+    if (warning) warning.remove();
+
+    var submitBtn = document.querySelector('#torrent-upload-form button[type="submit"]');
+    if (submitBtn && submitBtn.dataset.blockedByDuplicate) {
+        submitBtn.disabled = false;
+        delete submitBtn.dataset.blockedByDuplicate;
+    }
+}
+
 function handleTorrentFile(file) {
     if (!file.name.toLowerCase().endsWith('.torrent')) {
         showTorrentDropError(ut('only_torrent', 'Only .torrent files are accepted!'));
@@ -1447,16 +1490,11 @@ function handleTorrentFile(file) {
         return;
     }
 
-    // Убираем старое предупреждение о дубликате если есть
-    var oldWarning = document.getElementById('torrentDuplicateWarning');
-    if (oldWarning) oldWarning.remove();
+    // Убираем старое предупреждение о дубликате и разблокируем кнопку
+    utUnblockSubmit();
 
-    // Разблокируем кнопку
-    var submitBtn = document.querySelector('#torrent-upload-form button[type="submit"]');
-    if (submitBtn && submitBtn.dataset.blockedByDuplicate) {
-        submitBtn.disabled = false;
-        delete submitBtn.dataset.blockedByDuplicate;
-    }
+    document.getElementById('torrentDropZone').classList.remove('is-invalid');
+    document.getElementById('torrentFileError').style.display = 'none';
 
     // Показываем инфо о файле
     document.getElementById('torrentDropContent').style.display  = 'none';
@@ -1464,8 +1502,8 @@ function handleTorrentFile(file) {
     document.getElementById('torrentSelectedName').textContent   = file.name;
     document.getElementById('torrentSelectedSize').textContent   = formatFileSize(file.size);
 
-    document.getElementById('torrentDropZone').style.background  = '#f0fff4';
-    document.getElementById('torrentDropZone').style.borderColor = '#198754';
+    utDropState('is-ok');
+    utFileBadge('success', 'fa-check', ut('ready', 'Ready to upload'));
 
     // Запускаем проверку дубликата + автозаполнение названия
     checkTorrentDuplicate(file);
@@ -1476,7 +1514,6 @@ function handleTorrentFile(file) {
 
 function removeTorrentFile() {
     const fileInput = document.getElementById('torrentFile');
-    const dropZone  = document.getElementById('torrentDropZone');
 
     // Сбрасываем input
     fileInput.value = '';
@@ -1484,8 +1521,12 @@ function removeTorrentFile() {
     // Возвращаем исходное состояние
     document.getElementById('torrentDropContent').style.display  = 'block';
     document.getElementById('torrentFileSelected').style.display = 'none';
-    dropZone.style.background  = '#f8f9ff';
-    dropZone.style.borderColor = '#0d6efd';
+    utDropState('');
+
+    // Предупреждение о дубликате и список файлов относились к убранному файлу
+    utUnblockSubmit();
+    var metaEl = document.getElementById('torrentMetaInfo');
+    if (metaEl) metaEl.style.display = 'none';
 }
 
 function showTorrentDropError(message) {
@@ -1683,16 +1724,8 @@ async function checkTorrentPasskey(file) {
             }
 
             // Помечаем зону как невалидную
-            var badge = document.querySelector('#torrentFileSelected .badge');
-            if (badge) {
-                badge.className = 'badge bg-danger mt-1';
-                badge.innerHTML = '<i class="fas fa-times-circle me-1"></i>' + escapeHtml(result.error || ut('bad_passkey', 'Invalid passkey'));
-            }
-            var dropZone = document.getElementById('torrentDropZone');
-            if (dropZone) {
-                dropZone.style.background  = '#fff5f5';
-                dropZone.style.borderColor = '#dc3545';
-            }
+            utFileBadge('danger', 'fa-circle-xmark', result.error || ut('bad_passkey', 'Invalid passkey'));
+            utDropState('is-bad');
         }
     } catch (e) {
         console.error('Passkey check error:', e);
@@ -1724,6 +1757,7 @@ async function checkTorrentDuplicate(file) {
             const torrentName = getTorrentName(data);
             if (torrentName) {
                 nameInput.value = torrentName;
+                nameInput.classList.remove('is-invalid');
                 var nameCountEl = document.getElementById('formNameCharCount');
                 if (nameCountEl) nameCountEl.textContent = torrentName.length;
             }
@@ -1739,12 +1773,9 @@ async function checkTorrentDuplicate(file) {
 
         if (data_json.exists) {
             showTorrentDuplicateWarning(data_json);
-        } else {
-            var badge = document.querySelector('#torrentFileSelected .badge');
-            if (badge) {
-                badge.className = 'badge bg-success mt-1';
-                badge.innerHTML = '<i class="fas fa-check me-1"></i>' + escapeHtml(ut('no_dupes', 'Ready to upload — no duplicates found'));
-            }
+        } else if (!dropZone.classList.contains('is-bad')) {
+            // is-bad: passkey check answered first, its message must stay
+            utFileBadge('success', 'fa-check', ut('no_dupes', 'Ready to upload — no duplicates found'));
         }
 
     } catch (e) {
@@ -1754,19 +1785,9 @@ async function checkTorrentDuplicate(file) {
 }
 
 function showTorrentDuplicateWarning(data) {
-    // Меняем badge на предупреждение
-    var badge = document.querySelector('#torrentFileSelected .badge');
-    if (badge) {
-        badge.className = 'badge bg-warning text-dark mt-1';
-        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + escapeHtml(ut('dupe', 'Duplicate detected!'));
-    }
-
-    // Меняем фон зоны
-    var dropZone = document.getElementById('torrentDropZone');
-    if (dropZone) {
-        dropZone.style.background  = '#fffbf0';
-        dropZone.style.borderColor = '#ffc107';
-    }
+    // Меняем badge и цвет зоны на предупреждение
+    utFileBadge('warning', 'fa-triangle-exclamation', ut('dupe', 'Duplicate detected!'));
+    utDropState('is-warn');
 
     // Показываем предупреждение под зоной
     var existingWarning = document.getElementById('torrentDuplicateWarning');
@@ -1774,7 +1795,7 @@ function showTorrentDuplicateWarning(data) {
 
     var warning = document.createElement('div');
     warning.id  = 'torrentDuplicateWarning';
-    warning.className = 'alert alert-warning d-flex align-items-start gap-3 mt-2';
+    warning.className = 'alert alert-warning d-flex align-items-start gap-3 mt-2 mb-0';
     warning.innerHTML =
         '<i class="fas fa-exclamation-triangle fa-lg mt-1 text-warning"></i>' +
         '<div>' +
@@ -1783,10 +1804,10 @@ function showTorrentDuplicateWarning(data) {
             '<a href="' + escapeHtml(data.link) + '" target="_blank" class="fw-bold">' + escapeHtml(data.name) + '</a>' +
             '<span class="text-muted small ms-2">' + utH('dupe_uploaded', 'uploaded {1}', data.added) + '</span>' +
             '<div class="mt-2">' +
-                '<button type="button" class="btn btn-sm btn-outline-warning me-2" onclick="ignoreDuplicateWarning()">' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary st-pill me-2" onclick="ignoreDuplicateWarning()">' +
                     '<i class="fas fa-upload me-1"></i>' + utH('dupe_upload_anyway', 'Upload anyway') +
                 '</button>' +
-                '<a href="' + escapeHtml(data.link) + '" target="_blank" class="btn btn-sm btn-outline-secondary">' +
+                '<a href="' + escapeHtml(data.link) + '" target="_blank" class="btn btn-sm btn-outline-secondary st-pill">' +
                     '<i class="fas fa-eye me-1"></i>' + utH('dupe_view', 'View existing') +
                 '</a>' +
             '</div>' +
@@ -1805,20 +1826,8 @@ function showTorrentDuplicateWarning(data) {
 
 function ignoreDuplicateWarning() {
     // Убираем предупреждение и разблокируем кнопку
-    var warning = document.getElementById('torrentDuplicateWarning');
-    if (warning) warning.remove();
-
-    var submitBtn = document.querySelector('#torrent-upload-form button[type="submit"]');
-    if (submitBtn && submitBtn.dataset.blockedByDuplicate) {
-        submitBtn.disabled = false;
-        delete submitBtn.dataset.blockedByDuplicate;
-    }
-
-    var badge = document.querySelector('#torrentFileSelected .badge');
-    if (badge) {
-        badge.className = 'badge bg-warning text-dark mt-1';
-        badge.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + escapeHtml(ut('dupe_anyway', 'Duplicate — uploading anyway'));
-    }
+    utUnblockSubmit();
+    utFileBadge('warning', 'fa-triangle-exclamation', ut('dupe_anyway', 'Duplicate — uploading anyway'));
 
     showToast(ut('dupe_ignored', 'Duplicate warning ignored. You can now upload.'), 'warning');
 }
@@ -1905,10 +1914,9 @@ function loadScreenshotUrls() {
     var total    = validUrls.length;
 
     // Показываем счётчик загрузки
-    previewEl.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>' + escapeHtml(ut('loading_images', 'Loading {1} image(s)...', total)) + '</div>';
+    previewEl.innerHTML = '<div class="st-meta text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>' + escapeHtml(ut('loading_images', 'Loading {1} image(s)...', total)) + '</div>';
 
-    var tempContainer = document.createElement('div');
-    tempContainer.className = 'preview-container';
+    var tempContainer = document.createDocumentFragment();
 
     validUrls.forEach(function(url, index) {
         var img = new Image();
@@ -1918,16 +1926,14 @@ function loadScreenshotUrls() {
 
             // Создаём превью
             var item = document.createElement('div');
-            item.className = 'screenshot-url-item position-relative d-inline-block me-2 mb-2';
+            item.className = 'screenshot-url-item';
             item.dataset.url = url;
             item.innerHTML =
-                '<img src="' + url + '" class="preview-screenshot" alt="Screenshot ' + (index + 1) + '" style="width:120px;height:90px;object-fit:cover;border-radius:6px;">' +
-                '<button type="button" class="delete-btn position-absolute top-0 end-0" onclick="removeScreenshotUrl(this, \'' + url.replace(/'/g, "\\'") + '\')" title="' + escapeHtml(ut('remove', 'Remove')) + '">' +
-                    '<i class="fas fa-times"></i>' +
+                '<img src="' + escapeHtml(url) + '" class="preview-screenshot" alt="">' +
+                '<button type="button" class="delete-btn2" onclick="removeScreenshotUrl(this)" title="' + escapeHtml(ut('remove', 'Remove')) + '">' +
+                    '<i class="fa-solid fa-xmark"></i>' +
                 '</button>' +
-                '<div class="text-center mt-1">' +
-                    '<small class="text-muted" style="font-size:10px;">#' + (index + 1) + '</small>' +
-                '</div>';
+                '<div class="screenshot-order-badge position-absolute bottom-0 start-0 badge bg-dark bg-opacity-75 m-1">#' + (index + 1) + '</div>';
 
             tempContainer.appendChild(item);
 
@@ -1963,10 +1969,12 @@ function loadScreenshotUrls() {
     }
 }
 
-function removeScreenshotUrl(btn, url) {
+function removeScreenshotUrl(btn) {
     // Удаляем превью
     var item = btn.closest('.screenshot-url-item');
-    if (item) item.remove();
+    if (!item) return;
+    var url = item.dataset.url;
+    item.remove();
 
     // Удаляем скрытый input
     var inputsEl = document.getElementById('screenshotUrlInputs');
@@ -2157,7 +2165,7 @@ function toggleTorrentFileList() {
 
     list.style.display = isHidden ? 'block' : 'none';
     icon.className     = isHidden ? 'fas fa-eye-slash me-1' : 'fas fa-eye me-1';
-    text.textContent   = isHidden ? 'Hide' : 'Show';
+    text.textContent   = isHidden ? text.dataset.hide : text.dataset.show;
 }
 
 function renderTorrentMeta(files, infoHash) {
@@ -2428,21 +2436,21 @@ function renderImdbPreview(data) {
     var yearEl = document.getElementById('imdbPreviewYear');
     if (data.year) {
         yearEl.textContent    = data.year;
-        yearEl.style.display  = 'inline-block';
+        yearEl.style.display  = 'inline-flex';
     }
 
     // Жанр
     var genreEl = document.getElementById('imdbPreviewGenre');
     if (data.genre) {
         genreEl.textContent   = data.genre;
-        genreEl.style.display = 'inline-block';
+        genreEl.style.display = 'inline-flex';
     }
 
     // Рейтинг
     var ratingEl = document.getElementById('imdbPreviewRating');
     if (data.rating) {
         ratingEl.querySelector('span').textContent = data.rating + '/10';
-        ratingEl.style.display = 'inline-block';
+        ratingEl.style.display = 'inline-flex';
     }
 
     // Описание
@@ -2576,7 +2584,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (previewText)  previewText.textContent  = content;
             if (previewName)  previewName.textContent  = file.name;
             if (previewSize)  previewSize.textContent  = formatFileSize(file.size);
-            if (previewLines) previewLines.textContent = lines.length + ' lines';
+            if (previewLines) previewLines.textContent = ut('lines', '{1} lines', lines.length);
         };
         reader.readAsText(file, 'UTF-8');
     });

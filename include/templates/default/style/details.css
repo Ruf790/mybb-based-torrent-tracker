@@ -207,6 +207,8 @@
 .dt-page .user-star.active { color: var(--bs-warning); }
 
 /* ── Файлы ─────────────────────────────────────────────────────────────── */
+.dt-page .dt-fbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .85rem; }
+.dt-page .dt-fbar__search { flex: 1 1 15rem; width: auto; border-radius: 999px; }
 .dt-page .file-tree .accordion {
     --bs-accordion-bg: transparent;
     --bs-accordion-border-width: 0;
@@ -250,42 +252,103 @@
     color: var(--bs-body-color);
 }
 
-/* ── Пиры (разметка и <style> — из functions_getagent.php) ─────────────── */
-.dt-page .peers-grid::-webkit-scrollbar-track { background: var(--bs-tertiary-bg); }
-.dt-page .peers-grid::-webkit-scrollbar-thumb { background: var(--bs-border-color); }
-.dt-page .peers-grid::-webkit-scrollbar-thumb:hover { background: var(--bs-secondary-color); }
-.dt-page .peers-header h4 { font-size: 1.1rem; font-weight: 600; color: var(--bs-emphasis-color); }
+/* ── Пиры (разметка — include/functions_getagent.php) ─────────────────── */
 .dt-page #peers .peers-header:not(:first-child) { margin-top: 1.5rem; }
-.dt-page .peers-header .badge { border-radius: 999px !important; }
-.dt-page #peers .text-center.py-5[style] { background: var(--bs-tertiary-bg) !important; border-radius: .8rem !important; }
-.dt-page .anonymous-avatar-wrapper { background: var(--bs-tertiary-bg); }
-.dt-page .avatar-image-custom { border-color: var(--bs-body-bg); }
-.dt-page .peer-card.bg-white { background: var(--bs-body-bg) !important; border-color: var(--bs-border-color) !important; }
-.dt-page .peer-card .bg-light { background: var(--bs-tertiary-bg) !important; }
-.dt-page .peer-card .text-dark { color: var(--bs-body-color) !important; }
+.dt-page .dt-ph { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-bottom: .6rem; }
+.dt-page .dt-ph__title { margin: 0; font-weight: 600; color: var(--bs-emphasis-color); }
+.dt-page .dt-ph__speed { font-size: .82em; color: var(--bs-secondary-color); margin-left: .6rem; }
+.dt-page .dt-ph__speed:first-of-type { margin-left: auto; }
+.dt-page .dt-ph__speed i { margin-right: .3rem; }
+.dt-page .dt-ph__speed b { color: var(--bs-emphasis-color); }
+.dt-page .dt-ph__search { border-radius: 999px; margin-bottom: .6rem; }
+.dt-page .peers-grid {
+    max-height: 640px; overflow-y: auto;
+    border: 1px solid var(--bs-border-color); border-radius: .8rem;
+}
+.dt-page .dt-peer {
+    display: grid; align-items: center; gap: .75rem;
+    grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, .55fr) 1.4rem;
+    padding: .55rem .9rem; font-size: .92em;
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+.dt-page .dt-peer:hover { background: var(--bs-tertiary-bg); }
+.dt-page .dt-peer--head {
+    position: sticky; top: 0; z-index: 2; border-top: 0;
+    background: var(--bs-tertiary-bg);
+    font-size: .76em; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--bs-secondary-color);
+}
+.dt-page .dt-peer--me { background: var(--bs-primary-bg-subtle); }
+.dt-page .dt-peer--cheat { box-shadow: inset 3px 0 0 var(--bs-danger); }
+.dt-page .dt-peer__who { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.dt-page .dt-peer__av { position: relative; flex: 0 0 auto; }
+.dt-page .avatar-image-custom,
+.dt-page .avatar-placeholder-custom,
+.dt-page .dt-peer__av .avatar-ring2 {
+    display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; object-fit: cover;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
+}
+.dt-page .dt-peer__you {
+    position: absolute; right: -.35rem; bottom: -.2rem; padding: 0 .3rem; border-radius: 999px;
+    font-size: .62em; font-weight: 700; color: #fff; background: var(--bs-primary);
+}
+.dt-page .dt-peer__name { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .4rem; }
+.dt-page .dt-peer__age { font-size: .72em; padding: .05rem .4rem; }
+.dt-page .dt-peer__ip { display: block; font-size: .78em; color: var(--bs-secondary-color); }
+.dt-page .dt-peer__ip i { margin-right: .3rem; opacity: .7; }
+.dt-page .dt-peer__times { display: flex; flex-wrap: wrap; gap: 0 .75rem; font-size: .78em; color: var(--bs-secondary-color); }
+.dt-page .dt-peer__times b { font-weight: 600; }
+.dt-page .dt-peer__client { color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.dt-page .dt-peer__num b { display: block; font-weight: 600; white-space: nowrap; }
+.dt-page .dt-peer__up { color: var(--bs-success-text-emphasis); }
+.dt-page .dt-peer__dn { color: var(--bs-danger-text-emphasis); }
+.dt-page .dt-peer__num small { color: var(--bs-secondary-color); font-size: .8em; white-space: nowrap; }
+.dt-page .dt-peer__prog { display: flex; align-items: center; gap: .45rem; }
+.dt-page .dt-peer__prog .progress { flex: 1 1 auto; height: .4rem; border-radius: 999px; }
+.dt-page .dt-peer__prog b { font-size: .82em; font-weight: 600; white-space: nowrap; }
+.dt-page .dt-peer__st { text-align: right; }
+.dt-page .dt-peers-empty { border: 1px dashed var(--bs-border-color); border-radius: .8rem; }
+.dt-page .peers-no-results { display: none; margin: 0; padding: 1.5rem; text-align: center; color: var(--bs-secondary-color); }
 
 /* ── Описание и IMDb ───────────────────────────────────────────────────── */
 .dt-page .dt-descr { overflow-wrap: anywhere; }
 .dt-page .dt-descr img { max-width: 100%; height: auto; }
 .dt-page #imdbdetails { overflow-wrap: anywhere; }
-/* IMDb-блок приходит со своим встроенным <style>, поэтому !important */
-[data-bs-theme="dark"] .dt-page .block-titled {
-    background: var(--bs-body-bg) !important;
-    border-color: var(--bs-border-color) !important;
-    color: var(--bs-body-color) !important;
+/* Карточка IMDb (include/functions_imdb_card.php) */
+.dt-page .dt-imdb-card > .st-card__head { background: var(--bs-tertiary-bg); }
+.dt-page .dt-chips { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-top: .5rem; }
+.dt-page .dt-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .12rem .6rem; border-radius: 999px;
+    font-size: .8em; font-weight: 600; text-decoration: none;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
 }
-[data-bs-theme="dark"] .dt-page .movie-title,
-[data-bs-theme="dark"] .dt-page .block-titled a { color: var(--bs-primary-text-emphasis) !important; }
-[data-bs-theme="dark"] .dt-page .movie-plot { color: var(--bs-secondary-color) !important; }
-[data-bs-theme="dark"] .dt-page .badge-extra {
-    background: var(--bs-tertiary-bg) !important;
-    color: var(--bs-body-color) !important;
-}
-[data-bs-theme="dark"] .dt-page .movie-info div { color: var(--bs-body-color) !important; }
-[data-bs-theme="dark"] .dt-page .section-title {
-    color: var(--bs-emphasis-color) !important;
-    border-bottom-color: var(--bs-border-color) !important;
-}
+.dt-page .dt-chip--imdb { background: #f5c518; color: #000; font-weight: 700; }
+.dt-page a.dt-chip--imdb:hover { background: #e3b512; color: #000; }
+.dt-page .dt-imdb { display: flex; align-items: flex-start; gap: 1.1rem; }
+.dt-page .dt-imdb__poster { flex: 0 0 150px; display: block; line-height: 0; border-radius: .75rem; overflow: hidden; }
+.dt-page .dt-imdb__poster img { display: block; width: 100%; height: auto; }
+.dt-page .dt-imdb__main { flex: 1 1 auto; min-width: 0; }
+.dt-page .dt-imdb__title { margin: 0; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.35rem; color: var(--bs-emphasis-color); }
+.dt-page .dt-imdb__title a { color: inherit; text-decoration: none; }
+.dt-page .dt-imdb__title a:hover { color: var(--bs-primary-text-emphasis); }
+.dt-page .dt-imdb__title span { font-weight: 400; color: var(--bs-secondary-color); }
+.dt-page .dt-imdb__tagline { font-size: .92em; font-style: italic; color: var(--bs-secondary-color); }
+.dt-page .dt-imdb__score { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem 1rem; margin-top: .5rem; }
+.dt-page .dt-imdb__num { font-family: 'Oswald', sans-serif; font-size: 1.7rem; font-weight: 600; line-height: 1.1; color: var(--bs-emphasis-color); }
+.dt-page .dt-imdb__num small { font-size: .85rem; margin-left: .2rem; color: var(--bs-secondary-color); }
+.dt-page .dt-imdb__votes { font-size: .85em; color: var(--bs-secondary-color); }
+.dt-page .dt-imdb__votes i { margin-right: .35rem; opacity: .7; }
+.dt-page .dt-imdb__plot { margin: .7rem 0; line-height: 1.55; }
+.dt-page .dt-imdb__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem 1.5rem; font-size: .9em; }
+.dt-page .dt-imdb__fact { display: flex; gap: .5rem; min-width: 0; }
+.dt-page .dt-imdb__fact > span { flex: 0 0 auto; color: var(--bs-secondary-color); }
+.dt-page .dt-imdb__fact > div { min-width: 0; overflow-wrap: anywhere; }
+.dt-page .dt-imdb__toggle { margin-top: .8rem; }
+.dt-page .dt-imdb__toggle i { transition: transform .15s ease; }
+.dt-page .dt-imdb__toggle[aria-expanded="true"] i { transform: rotate(180deg); }
+.dt-page .dt-imdb__sec { margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--bs-border-color-translucent); }
+.dt-page .dt-imdb__sec-title { margin-bottom: .45rem; font-weight: 600; color: var(--bs-emphasis-color); }
 
 /* ── Похожие раздачи ───────────────────────────────────────────────────── */
 .dt-page .dt-sim-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
@@ -364,21 +427,57 @@
     gap: .5rem; margin-top: .75rem;
 }
 
+/* ── Липкая полоска ────────────────────────────────────────────────────── */
+.dt-page .dt-sticky {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 1019; margin: 0;
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .08);
+    transform: translateY(-120%); visibility: hidden;
+    transition: transform .2s ease, visibility .2s;
+}
+.dt-page .dt-sticky.is-on { transform: none; visibility: visible; }
+.dt-page .dt-sticky__in { display: flex; align-items: center; gap: .8rem; padding-top: .45rem; padding-bottom: .45rem; }
+.dt-page .dt-sticky__title {
+    flex: 1 1 auto; min-width: 0;
+    font-family: 'Oswald', sans-serif; font-weight: 600; color: var(--bs-emphasis-color);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dt-page .dt-sticky__in .btn { flex: 0 0 auto; white-space: nowrap; }
+.dt-page .dt-sticky__stat { font-size: .88em; font-weight: 600; white-space: nowrap; }
+.dt-page .dt-sticky__stat i { margin-right: .25rem; }
+
 /* ── Адаптив ───────────────────────────────────────────────────────────── */
 @media (max-width: 991.98px) {
     .dt-page .dt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .dt-page .dt-sim-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .dt-page .dt-head { flex-wrap: wrap; }
     .dt-page .dt-head__body { flex-basis: calc(100% - 4.2rem); width: calc(100% - 4.2rem); }
     .dt-page .dt-head__actions { width: 100%; }
 }
 @media (max-width: 767.98px) {
     .dt-page .dt-info { grid-template-columns: minmax(0, 1fr); }
+    .dt-page .dt-imdb__facts { grid-template-columns: minmax(0, 1fr); }
+    .dt-page .dt-ph__speed:first-of-type { margin-left: 0; }
+    .dt-page .dt-peer { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem .75rem; padding: .7rem .8rem; align-items: start; }
+    .dt-page .dt-peer--head { display: none; }
+    .dt-page .dt-peer__who { grid-column: 1 / -1; }
+    .dt-page .dt-peer__st { position: absolute; }
+    .dt-page .dt-peer { position: relative; }
+    .dt-page .dt-peer__st { top: .7rem; right: .8rem; }
+    .dt-page .dt-peer > [data-label]::before {
+        content: attr(data-label); display: block;
+        font-size: .76em; font-weight: 600; color: var(--bs-secondary-color);
+    }
+    .dt-page .dt-peer__prog { flex-wrap: wrap; }
+    .dt-page .dt-peer__prog::before { flex: 0 0 100%; }
     .dt-page .dt-sim-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dt-page .dt-rate__mine { margin-left: 0; width: 100%; }
 }
 @media (max-width: 575.98px) {
     .dt-page .dt-head__body { flex-basis: 100%; width: 100%; }
+    .dt-page .dt-imdb { flex-direction: column; }
+    .dt-page .dt-imdb__poster { flex: 0 0 auto; width: 130px; }
+    .dt-page .dt-sticky__stat { display: none; }
     .dt-page .dt-head__actions .btn-primary { flex: 1 1 auto; }
     .dt-page .dt-claim__actions { width: 100%; }
     .dt-page .dt-health { flex-wrap: wrap; }
@@ -393,6 +492,31 @@
 @media (prefers-reduced-motion: reduce) {
     .dt-page .dt-posters > a, .dt-page .screenshot-wrapper img,
     .dt-page .dt-sim, .dt-page .user-star { transition: none; }
+}
+
+/* ── Скриншоты: просмотр с листанием (#dtGallery, вне .dt-page) ─────────── */
+.dt-gallery .modal-content { display: flex; flex-direction: column; border: 0; border-radius: 0; color: #fff; background: rgba(8, 10, 14, .95); }
+.dt-gallery__top { display: flex; justify-content: space-between; align-items: center; padding: .8rem 1.2rem; font-weight: 600; }
+.dt-gallery__btn {
+    flex: 0 0 auto; width: 2.8rem; height: 2.8rem; border-radius: 50%; border: 0;
+    display: grid; place-items: center; font-size: 1.1rem;
+    color: #fff; background: rgba(255, 255, 255, .12); transition: background-color .15s ease;
+}
+.dt-gallery__btn:hover { background: rgba(255, 255, 255, .25); }
+.dt-gallery__stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 0 1.2rem; }
+#dtGalleryImg { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 8rem); max-height: 100%; object-fit: contain; border-radius: .6rem; cursor: pointer; }
+.dt-gallery__thumbs { display: flex; gap: .5rem; padding: 1rem; overflow-x: auto; scrollbar-width: none; }
+.dt-gallery__thumbs::-webkit-scrollbar { display: none; }
+.dt-gallery__thumbs button { flex: 0 0 auto; padding: 0; border: 0; border-radius: .4rem; background: none; opacity: .55; transition: opacity .15s ease; }
+.dt-gallery__thumbs button:first-child { margin-left: auto; }
+.dt-gallery__thumbs button:last-child { margin-right: auto; }
+.dt-gallery__thumbs button:hover { opacity: .85; }
+.dt-gallery__thumbs button.is-on { opacity: 1; outline: 2px solid #fff; outline-offset: 2px; }
+.dt-gallery__thumbs img { display: block; width: 96px; height: 54px; object-fit: cover; border-radius: .4rem; }
+@media (max-width: 575.98px) {
+    .dt-gallery__stage { padding: 0 .4rem; gap: .25rem; }
+    #dtGalleryImg { max-width: calc(100% - 6rem); }
+    .dt-gallery__btn { width: 2.3rem; height: 2.3rem; }
 }
 
 /* =============================================================================

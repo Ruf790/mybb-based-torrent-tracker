@@ -506,15 +506,11 @@ function TS_IMDB(torrentId) {
             updateButton.textContent = t('dt_updated', 'Updated');
             updateButton.disabled = false;
 
-            // Visual feedback
-            const parentContainer = imdbDetails.parentElement;
-            parentContainer.classList.add('bg-warning');
-            parentContainer.classList.remove('bg-light');
-
-            // Simple fade effect
-            parentContainer.style.opacity = '0';
+            // Простая подсветка обновления
+            imdbDetails.style.transition = 'opacity .25s ease';
+            imdbDetails.style.opacity = '0';
             setTimeout(() => {
-                parentContainer.style.opacity = '1';
+                imdbDetails.style.opacity = '1';
             }, 200);
         }
     })
@@ -565,3 +561,190 @@ window.dtImgMissing = function (img) {
 
     box.replaceWith(ph);
 };
+
+// ===== Пиры: фильтр по нику или IP =====
+function filterPeers(input) {
+    const q = input.value.toLowerCase().trim();
+    const grid = input.closest('.peers-header').nextElementSibling;
+    if (!grid) return;
+
+    let visible = 0;
+    grid.querySelectorAll('.peer-card').forEach(card => {
+        const show = !q || (card.dataset.user || '').includes(q) || (card.dataset.ip || '').includes(q);
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    let noRes = grid.querySelector('.peers-no-results');
+    if (!noRes) {
+        noRes = document.createElement('p');
+        noRes.className = 'peers-no-results';
+        noRes.textContent = t('pl_no_match', 'No peers match your filter.');
+        grid.appendChild(noRes);
+    }
+    noRes.style.display = (!visible && q) ? 'block' : 'none';
+}
+
+// ===== Файлы: поиск по дереву =====
+// Папки с совпадениями на время поиска раскрываются, при очистке всё возвращается как было.
+function dtFilterFiles(input) {
+    const tree = document.querySelector('.file-tree');
+    if (!tree) return;
+    const q = input.value.toLowerCase().trim();
+
+    let found = 0;
+    tree.querySelectorAll('.dt-file').forEach(file => {
+        const name = (file.querySelector('.dt-file__name')?.textContent || '').toLowerCase();
+        const show = !q || name.includes(q);
+        file.classList.toggle('d-none', !show);
+        if (show) found++;
+    });
+
+    tree.querySelectorAll('.accordion-item').forEach(item => {
+        const collapse = item.querySelector(':scope > .accordion-collapse');
+        const button   = item.querySelector(':scope > .accordion-header .accordion-button');
+        const hasMatch = !!item.querySelector('.dt-file:not(.d-none)');
+
+        item.classList.toggle('d-none', !hasMatch);
+        if (!collapse || !button) return;
+
+        if (q) {
+            if (collapse.dataset.dtWasOpen === undefined) {
+                collapse.dataset.dtWasOpen = collapse.classList.contains('show') ? '1' : '0';
+            }
+            collapse.classList.toggle('show', hasMatch);
+            button.classList.toggle('collapsed', !hasMatch);
+        } else if (collapse.dataset.dtWasOpen !== undefined) {
+            const open = collapse.dataset.dtWasOpen === '1';
+            collapse.classList.toggle('show', open);
+            button.classList.toggle('collapsed', !open);
+            delete collapse.dataset.dtWasOpen;
+        }
+    });
+
+    let empty = document.getElementById('dtFilesEmpty');
+    if (!empty) {
+        empty = document.createElement('div');
+        empty.id = 'dtFilesEmpty';
+        empty.className = 'st-empty d-none';
+        empty.textContent = t('dt_no_files', 'No files found');
+        tree.after(empty);
+    }
+    empty.classList.toggle('d-none', found > 0 || !q);
+}
+
+// ===== Липкая полоска: показываем, когда шапка раздачи скрылась под шапкой сайта =====
+document.addEventListener('DOMContentLoaded', function () {
+    const bar  = document.getElementById('dtSticky');
+    const head = document.querySelector('.dt-head');
+    if (!bar || !head) return;
+
+    const siteHeader = document.querySelector('header.sticky-top');
+    let ticking = false;
+
+    const update = function () {
+        ticking = false;
+        const top = siteHeader ? Math.max(0, siteHeader.getBoundingClientRect().bottom) : 0;
+        const on  = head.getBoundingClientRect().bottom < top;
+        bar.style.top = top + 'px';
+        bar.classList.toggle('is-on', on);
+        bar.setAttribute('aria-hidden', on ? 'false' : 'true');
+    };
+    const request = function () {
+        if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(update);
+        }
+    };
+
+    window.addEventListener('scroll', request, { passive: true });
+    window.addEventListener('resize', request);
+    update();
+});
+
+// ===== Скриншоты: просмотр с листанием (стрелки, клавиши, свайп, миниатюры) =====
+document.addEventListener('DOMContentLoaded', function () {
+    const pane  = document.getElementById('screen');
+    const modal = document.getElementById('dtGallery');
+    if (!pane || !modal || typeof bootstrap === 'undefined') return;
+
+    const img    = document.getElementById('dtGalleryImg');
+    const count  = document.getElementById('dtGalleryCount');
+    const thumbs = document.getElementById('dtGalleryThumbs');
+    const prev   = document.getElementById('dtGalleryPrev');
+    const next   = document.getElementById('dtGalleryNext');
+
+    let shots = [];
+    let index = 0;
+
+    const show = function (i) {
+        index = (i + shots.length) % shots.length;
+        const shot = shots[index];
+        img.src = shot.src;
+        img.alt = shot.title;
+        count.textContent = (index + 1) + ' / ' + shots.length;
+
+        thumbs.querySelectorAll('button').forEach((b, n) => {
+            b.classList.toggle('is-on', n === index);
+            if (n === index) b.scrollIntoView({ block: 'nearest', inline: 'center' });
+        });
+
+        // заранее подгружаем соседние
+        [index + 1, index - 1].forEach(n => {
+            new Image().src = shots[(n + shots.length) % shots.length].src;
+        });
+    };
+
+    pane.addEventListener('click', function (e) {
+        const link = e.target.closest('.screenshot-wrapper');
+        if (!link) return;
+        e.preventDefault();
+
+        // Собираем при открытии: не загрузившиеся скриншоты уже заменены заглушкой
+        const links = [...pane.querySelectorAll('.screenshot-wrapper')];
+        shots = links.map(a => ({ src: a.dataset.imgSrc, title: a.dataset.title || '' }));
+
+        thumbs.textContent = '';
+        shots.forEach((shot, n) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('aria-label', (n + 1) + ' / ' + shots.length);
+            const t = document.createElement('img');
+            t.src = shot.src;
+            t.alt = '';
+            t.loading = 'lazy';
+            b.appendChild(t);
+            b.addEventListener('click', () => show(n));
+            thumbs.appendChild(b);
+        });
+
+        const single = shots.length < 2;
+        prev.classList.toggle('invisible', single);
+        next.classList.toggle('invisible', single);
+        thumbs.classList.toggle('d-none', single);
+
+        bootstrap.Modal.getOrCreateInstance(modal).show();
+        show(links.indexOf(link));
+    });
+
+    prev.addEventListener('click', () => show(index - 1));
+    next.addEventListener('click', () => show(index + 1));
+    img.addEventListener('click', () => { if (shots.length > 1) show(index + 1); });
+
+    document.addEventListener('keydown', function (e) {
+        if (!modal.classList.contains('show') || shots.length < 2) return;
+        if (e.key === 'ArrowLeft')  show(index - 1);
+        if (e.key === 'ArrowRight') show(index + 1);
+    });
+
+    let touchX = null;
+    modal.addEventListener('touchstart', e => { touchX = e.changedTouches[0].clientX; }, { passive: true });
+    modal.addEventListener('touchend', e => {
+        if (touchX === null || shots.length < 2) return;
+        const dx = e.changedTouches[0].clientX - touchX;
+        touchX = null;
+        if (Math.abs(dx) > 50) show(index + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+
+    modal.addEventListener('hidden.bs.modal', () => { img.src = 'data:,'; });
+});

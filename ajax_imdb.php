@@ -49,5 +49,7 @@ $t_link = $imdblink[1] ?? '';
 if ($t_link) {
     include_once INC_PATH . '/imdb_parser.php';
     $db->sql_query_prepared('UPDATE torrents SET t_link = ? WHERE id = ?', [$t_link, $id]);
-    show_msg($t_link);
+    include_once INC_PATH . '/functions_imdb_card.php';
+    $lang->load('details');
+    show_msg(imdb_card_html($t_link));
 }

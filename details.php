@@ -163,14 +163,10 @@ $is_mod = is_mod($usergroups);
 
 function getHealthColor(mixed $seeders, mixed $leechers): string
 {
-    $seeders  = (int)$seeders;
-    $leechers = (int)$leechers;
-
     return match (true) {
-        $seeders === 0 => 'danger',
-        $seeders >= 10 => 'success',
-        $seeders >= 3  => 'warning',
-        default        => 'danger',
+        getHealthPercentage($seeders, $leechers) >= 70 => 'success',
+        getHealthPercentage($seeders, $leechers) >= 40 => 'warning',
+        default                                        => 'danger',
     };
 }
 
@@ -192,7 +188,7 @@ function getLeecherPercentage(mixed $seeders, mixed $leechers): int
     return $total === 0 ? 0 : (int)round(($leechers / $total) * 100);
 }
 
-function getFileIcon($filename)
+function dtFileType(string $filename): string
 {
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
@@ -200,16 +196,44 @@ function getFileIcon($filename)
         'video'   => ['mp4','mkv','avi','mov','wmv','flv','webm','mpeg','mpg','3gp','m4v','vob','ts','m2ts','ogv','rm','rmvb'],
         'audio'   => ['mp3','flac','wav','ogg','m4a','aac'],
         'image'   => ['jpg','jpeg','png','gif','bmp','webp','svg','tiff'],
+        'subs'    => ['srt','ass','ssa','sub','idx','vtt','sup'],
         'archive' => ['zip','rar','7z','tar','gz','bz2'],
         'doc'     => ['nfo','txt','md','log','pdf','doc','docx','xls','xlsx','ppt','pptx'],
         'code'    => ['php','html','css','js','json','xml','py','java','c','cpp','sh','bat'],
         'exec'    => ['exe','iso','apk','bin','dll','app','deb','rpm'],
     ];
 
+    foreach ($icons as $key => $exts) {
+        if (in_array($ext, $exts, true)) {
+            return $key;
+        }
+    }
+    return 'default';
+}
+
+/** Сколько файлов каждого типа в дереве: ['video' => 2, ...] */
+function dtFileStats(array $tree, array $stats = []): array
+{
+    foreach ($tree as $name => $content) {
+        if (is_array($content)) {
+            $stats = dtFileStats($content, $stats);
+        } else {
+            $type = dtFileType((string)$name);
+            $stats[$type] = ($stats[$type] ?? 0) + 1;
+        }
+    }
+    return $stats;
+}
+
+function getFileIcon($filename)
+{
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
     $colors = [
         'video'   => 'st-soft-danger',
         'audio'   => 'st-soft-primary',
         'image'   => 'st-soft-success',
+        'subs'    => 'st-soft-info',
         'archive' => 'st-soft-warning',
         'doc'     => 'st-soft-muted',
         'code'    => 'st-soft-info',
@@ -221,6 +245,7 @@ function getFileIcon($filename)
         'video'   => 'fa-solid fa-file-video',
         'audio'   => 'fa-solid fa-file-audio',
         'image'   => 'fa-solid fa-file-image',
+        'subs'    => 'fa-solid fa-closed-captioning',
         'archive' => 'fa-solid fa-file-zipper',
         'doc'     => 'fa-solid fa-file-lines',
         'code'    => 'fa-solid fa-file-code',
@@ -228,13 +253,7 @@ function getFileIcon($filename)
         'default' => 'fa-solid fa-file',
     ];
 
-    $type = 'default';
-    foreach ($icons as $key => $exts) {
-        if (in_array($ext, $exts, true)) {
-            $type = $key;
-            break;
-        }
-    }
+    $type = dtFileType((string)$filename);
 
     $colorClass = $colors[$type]     ?? $colors['default'];
     $iconClass  = $iconClasses[$type] ?? $iconClasses['default'];
@@ -344,7 +363,7 @@ if ($ft !== '') {
           AND t.banned = 'no'
         HAVING score > 1
         ORDER BY score DESC
-        LIMIT 12
+        LIMIT 8
     ";
 
     $query_result = $db->sql_query_prepared($query, [$ft, $ft, $id]);
@@ -354,7 +373,11 @@ if ($query_result && $db->num_rows($query_result) > 0) {
     $FoundSMTQ   = '';
     $found_count = 0;
 
-    while ($SMTQ = $db->fetch_array($query_result)) {
+    // Ровные ряды по 4: лишние карточки неполного ряда не выводим
+    $sim_total = (int)$db->num_rows($query_result);
+    $sim_limit = $sim_total >= 4 ? $sim_total - $sim_total % 4 : $sim_total;
+
+    while ($found_count < $sim_limit && ($SMTQ = $db->fetch_array($query_result))) {
         $SEOLink  = get_torrent_link($SMTQ['id']);
         $SEOLinkC = get_category_link($SMTQ['category']);
 
@@ -459,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=32">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=33">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -475,7 +498,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=4"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=5"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -872,11 +895,28 @@ if ($Torrent['anonymous'] == 'yes' AND $Torrent['owner'] != $CURUSER['id'] AND !
 // ── IMDb ────────────────────────────────────────────────────────────────────
 $ShowTLINK = '';
 
+// IMDb: разбираем сохранённый HTML для карточки и чипов в шапке
+$imdb_data = null;
+$imdb_chips = '';
 if (!empty($Torrent['t_link'])) {
+    require_once INC_PATH . '/functions_imdb_card.php';
+    $imdb_data = imdb_card_parse((string)$Torrent['t_link']);
+
+    if ($imdb_data !== null) {
+        if ($imdb_data['rating'] !== '') {
+            $imdb_chips .= '<a class="dt-chip dt-chip--imdb" href="' . htmlspecialchars($imdb_data['url'], ENT_QUOTES) . '" target="_blank" rel="noopener"><i class="fa-solid fa-star"></i>IMDb ' . htmlspecialchars($imdb_data['rating']) . '</a>';
+        }
+        foreach (array_slice($imdb_data['genres'], 0, 3) as $imdb_genre) {
+            $imdb_chips .= '<span class="dt-chip">' . htmlspecialchars($imdb_genre) . '</span>';
+        }
+        if ($imdb_data['year'] !== '') {
+            $imdb_chips .= '<span class="dt-chip">' . htmlspecialchars($imdb_data['year']) . '</span>';
+        }
+    }
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
 
     $ShowTLINK = '
-    <section class="st-card">
+    <section class="st-card dt-imdb-card">
         <div class="st-card__head">
             <span class="st-ico st-soft-warning"><i class="fa-solid fa-film"></i></span>
             ' . $lang->details['t_link'] . '
@@ -884,7 +924,7 @@ if (!empty($Torrent['t_link'])) {
                 <a href="#" class="btn btn-sm btn-outline-secondary st-pill" onclick="TS_IMDB(' . $id . '); return false;"><i class="fa-solid fa-rotate me-1"></i>' . $refresh . '</a>
             </div>' : '') . '
         </div>
-        <div class="st-card__body"><div id="imdbdetails">' . $Torrent['t_link'] . '</div></div>
+        <div class="st-card__body"><div id="imdbdetails">' . ($imdb_data !== null ? imdb_card_render($imdb_data) : $Torrent['t_link']) . '</div></div>
     </section>';
 }
 
@@ -1018,7 +1058,6 @@ foreach ($screenshots as $shot) {
     $screensHtml .= '
     <div class="col-6 col-md-4 col-lg-3">
         <a href="#" class="screenshot-wrapper"
-           data-bs-toggle="modal" data-bs-target="#universalImageModal"
            data-img-src="' . $screenshotUrl . '" data-title="' . $ags_t_screenshot . '">
             <img src="' . $screenshotUrl . '" class="img-fluid" alt="' . $ags_t_screenshot . '" loading="lazy"
                  data-kind="shot" data-missing="' . htmlspecialchars($ags_t_shot_miss, ENT_QUOTES) . '"
@@ -1241,6 +1280,32 @@ foreach ($dt_kpi_tiles as [$kpi_icon, $kpi_soft, $kpi_val, $kpi_lbl, $kpi_attrs,
         </a>';
 }
 
+// Файлы: поиск и сводка по типам
+$dt_files_bar = '';
+if (isset($tree) && is_array($tree) && $ags_numfiles > 1) {
+    $dt_ft_stats = dtFileStats($tree);
+    $dt_ft_other = ($dt_ft_stats['code'] ?? 0) + ($dt_ft_stats['exec'] ?? 0) + ($dt_ft_stats['default'] ?? 0);
+    $dt_ft_list  = [
+        ['video',   'fa-film',              'st-soft-danger',  $dt_ft_stats['video']   ?? 0, $lang->details['lbl_ft_video']   ?? 'Video'],
+        ['audio',   'fa-music',             'st-soft-primary', $dt_ft_stats['audio']   ?? 0, $lang->details['lbl_ft_audio']   ?? 'Audio'],
+        ['subs',    'fa-closed-captioning', 'st-soft-info',    $dt_ft_stats['subs']    ?? 0, $lang->details['lbl_ft_subs']    ?? 'Subtitles'],
+        ['image',   'fa-image',             'st-soft-success', $dt_ft_stats['image']   ?? 0, $lang->details['lbl_ft_image']   ?? 'Images'],
+        ['archive', 'fa-file-zipper',       'st-soft-warning', $dt_ft_stats['archive'] ?? 0, $lang->details['lbl_ft_archive'] ?? 'Archives'],
+        ['doc',     'fa-file-lines',        'st-soft-muted',   $dt_ft_stats['doc']     ?? 0, $lang->details['lbl_ft_doc']     ?? 'Documents'],
+        ['other',   'fa-file',              'st-soft-muted',   $dt_ft_other,                 $lang->details['lbl_ft_other']   ?? 'Other'],
+    ];
+    $dt_files_bar = '<div class="dt-fbar">'
+                  . '<input type="search" class="form-control form-control-sm dt-fbar__search" id="dtFileSearch" oninput="dtFilterFiles(this)"'
+                  . ' placeholder="' . htmlspecialchars($lang->details['ph_file_search'] ?? 'Search files…', ENT_QUOTES) . '">';
+    foreach ($dt_ft_list as [, $dt_ft_icon, $dt_ft_soft, $dt_ft_n, $dt_ft_lbl]) {
+        if ($dt_ft_n > 0) {
+            $dt_files_bar .= '<span class="st-badge ' . $dt_ft_soft . '"><i class="fa-solid ' . $dt_ft_icon . '"></i>'
+                           . htmlspecialchars($dt_ft_lbl) . ': ' . (int)$dt_ft_n . '</span>';
+        }
+    }
+    $dt_files_bar .= '</div>';
+}
+
 $details = '
 <div id="torrent_details" class="container-md st-page dt-page">
 
@@ -1282,6 +1347,7 @@ $details = '
                 ' . ($already_snatched ? '
                 <span class="st-badge st-soft-info" title="' . htmlspecialchars($lang->details['tip_snatched_by_you'], ENT_QUOTES) . '"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars($lang->details['badge_already_downloaded'], ENT_QUOTES) . '</span>' : '') . '
             </div>
+            ' . ($imdb_chips !== '' ? '<div class="dt-chips">' . $imdb_chips . '</div>' : '') . '
         </div>
 
         <div class="dt-head__actions">
@@ -1460,6 +1526,7 @@ $details = '
                             </button>
                         </div>
                     </div>
+                    ' . $dt_files_bar . '
                     ' . (isset($tree) && $tree !== null
                         ? '<div class="file-tree">' . renderAccordion($tree) . '</div>'
                         : '<div class="alert alert-danger mb-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($lang->details['err_torrent_file_missing'], ENT_QUOTES) . '</div>') . '
@@ -1492,9 +1559,36 @@ $details = '
     <div class="dt-comments" id="dt-comments">
         ' . $showcommenttable . '
     </div>
+
+    <!-- Липкая полоска: появляется, когда шапка ушла за экран (details.js) -->
+    <div class="dt-sticky" id="dtSticky" aria-hidden="true">
+        <div class="container-md dt-sticky__in">
+            <span class="dt-sticky__title">' . htmlspecialchars_uni($Torrent['name']) . '</span>
+            <span class="dt-sticky__stat text-success"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($Torrent['seeders']) . '</span>
+            <span class="dt-sticky__stat text-danger"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($Torrent['leechers']) . '</span>
+            <a href="' . get_download_link($id) . '" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-cloud-arrow-down me-1"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '</a>
+        </div>
+    </div>
 </div>
 
-' . ($magnetModal ?? '') . '';
+' . ($magnetModal ?? '') . '
+' . ($screenTab !== '' ? '
+<div class="modal fade dt-gallery" id="dtGallery" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen m-0">
+        <div class="modal-content">
+            <div class="dt-gallery__top">
+                <span id="dtGalleryCount" aria-live="polite"></span>
+                <button type="button" class="dt-gallery__btn" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->details['comment_not_found_close'] ?? 'Close', ENT_QUOTES) . '"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="dt-gallery__stage">
+                <button type="button" class="dt-gallery__btn" id="dtGalleryPrev" aria-label="' . htmlspecialchars($lang->global['previous'] ?? 'Previous', ENT_QUOTES) . '"><i class="fa-solid fa-chevron-left"></i></button>
+                <img id="dtGalleryImg" src="data:," alt="">
+                <button type="button" class="dt-gallery__btn" id="dtGalleryNext" aria-label="' . htmlspecialchars($lang->global['next'] ?? 'Next', ENT_QUOTES) . '"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+            <div class="dt-gallery__thumbs" id="dtGalleryThumbs"></div>
+        </div>
+    </div>
+</div>' : '') . '';
 
 
 echo '

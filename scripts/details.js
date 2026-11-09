@@ -660,6 +660,16 @@ document.addEventListener('DOMContentLoaded', function () {
     window.addEventListener('scroll', request, { passive: true });
     window.addEventListener('resize', request);
     update();
+
+    // Звезда в полоске: нажимает основную закладку и повторяет её вид
+    const mainBm  = head.querySelector('.bookmark-toggle');
+    const stickyBm = document.getElementById('dtStickyBm');
+    if (mainBm && stickyBm) {
+        const sync = () => { stickyBm.innerHTML = mainBm.innerHTML; };
+        sync();
+        new MutationObserver(sync).observe(mainBm, { childList: true, subtree: true });
+        stickyBm.addEventListener('click', () => mainBm.click());
+    }
 });
 
 // ===== Скриншоты: просмотр с листанием (стрелки, клавиши, свайп, миниатюры) =====

@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=33">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=34">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -498,7 +498,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=5"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=6"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -1280,6 +1280,16 @@ foreach ($dt_kpi_tiles as [$kpi_icon, $kpi_soft, $kpi_val, $kpi_lbl, $kpi_attrs,
         </a>';
 }
 
+// Для шапки и липкой полоски
+$dt_torrent_tags = GetTorrentTags($Torrent);
+$dt_sticky_poster = '<span class="dt-sticky__poster dt-sticky__poster--ico"><i class="' . ($torrent2['icon'] ?: 'fa-solid fa-layer-group') . '"></i></span>';
+foreach ($images as $dt_img) {
+    if (dt_local_image_state((string)$dt_img) !== 'missing') {
+        $dt_sticky_poster = '<img class="dt-sticky__poster" src="' . htmlspecialchars_uni($dt_img) . '" alt="" loading="lazy">';
+        break;
+    }
+}
+
 // Файлы: поиск и сводка по типам
 $dt_files_bar = '';
 if (isset($tree) && is_array($tree) && $ags_numfiles > 1) {
@@ -1334,7 +1344,7 @@ $details = '
 
         <div class="dt-head__body">
             <h1 class="st-title">
-                <span class="dt-head__tags">' . GetTorrentTags($Torrent) . '</span>
+                <span class="dt-head__tags">' . $dt_torrent_tags . '</span>
                 ' . htmlspecialchars_uni($Torrent['name']) . '
             </h1>
 
@@ -1563,10 +1573,37 @@ $details = '
     <!-- Липкая полоска: появляется, когда шапка ушла за экран (details.js) -->
     <div class="dt-sticky" id="dtSticky" aria-hidden="true">
         <div class="container-md dt-sticky__in">
-            <span class="dt-sticky__title">' . htmlspecialchars_uni($Torrent['name']) . '</span>
-            <span class="dt-sticky__stat text-success"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($Torrent['seeders']) . '</span>
-            <span class="dt-sticky__stat text-danger"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($Torrent['leechers']) . '</span>
-            <a href="' . get_download_link($id) . '" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-cloud-arrow-down me-1"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '</a>
+            ' . $dt_sticky_poster . '
+            <div class="dt-sticky__main">
+                <div class="dt-sticky__title">
+                    <span class="dt-sticky__tags">' . $dt_torrent_tags . '</span>' . htmlspecialchars_uni($Torrent['name']) . '
+                </div>
+                ' . ($imdb_chips !== '' ? '<div class="dt-chips">' . $imdb_chips . '</div>' : '') . '
+                <div class="dt-sticky__meta">
+                    <span><i class="fa-solid fa-hard-drive"></i>' . mksize($Torrent['size']) . '</span>
+                    <span>' . $torrent2['categoryname'] . '</span>
+                    <span><i class="fa-solid fa-file"></i>' . $ags_files_lbl . '</span>
+                </div>
+            </div>
+            <div class="dt-sticky__side">
+                <div class="dt-sticky__by">
+                    ' . htmlspecialchars($lang->details['uppedby'], ENT_QUOTES) . ': ' . $username . ' · ' . my_datee('relative', $Torrent['added']) . '
+                </div>
+                <div class="dt-sticky__actions">
+                    <span class="dt-sticky__stat text-success"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($Torrent['seeders']) . '</span>
+                    <span class="dt-sticky__stat text-danger"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($Torrent['leechers']) . '</span>
+                    <button type="button" class="dt-sticky__ico report-btn"
+                            data-bs-toggle="modal" data-bs-target="#reportModal"
+                            data-report-type="torrent"
+                            data-report-id="' . $id . '"
+                            data-report-userid="' . $Torrent['owner'] . '"
+                            data-report-name="' . htmlspecialchars($Torrent['name'] ?? $lang->details['lbl_torrent_fallback']) . '"
+                            title="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '"
+                            aria-label="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '"><i class="fa-solid fa-flag"></i></button>
+                    <button type="button" class="dt-sticky__ico" id="dtStickyBm" aria-label="' . htmlspecialchars($lang->details['bm_title_off'] ?? 'Bookmark', ENT_QUOTES) . '"></button>
+                    <a href="' . get_download_link($id) . '" class="btn btn-sm btn-primary st-pill"><i class="fa-solid fa-cloud-arrow-down me-1"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '</a>
+                </div>
+            </div>
         </div>
     </div>
 </div>

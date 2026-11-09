@@ -74,3 +74,48 @@
 .lc .lc-keys code.lc-orphan { background: rgba(var(--bs-warning-rgb), .15); color: var(--bs-warning-text-emphasis); }
 .lc .lc-report, .lc-report { font-family: var(--bs-font-monospace); font-size: .8rem; margin-top: .75rem; white-space: pre; }
 #lcCopy.is-done { background: rgba(var(--bs-success-rgb), .12); border-color: rgba(var(--bs-success-rgb), .35); color: var(--bs-success-text-emphasis); }
+
+/* Редактор (show=editor) */
+.lc .lce-tools { padding: 1rem 1.25rem; display: grid; gap: .75rem; }
+.lc .lce-search { position: relative; }
+.lc .lce-search > i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--bs-secondary-color); }
+.lc .lce-search .form-control { padding-left: 2.4rem; border-radius: 50rem; }
+.lc .lce-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.lc .lce-file-row .form-select { flex: 1 1 16rem; width: auto; border-radius: 50rem; }
+.lc .lce-file-row .form-control { flex: 1 1 14rem; width: auto; border-radius: 50rem; }
+.lc .lce-results { max-height: 22rem; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: .75rem; }
+.lc .lce-res-count { padding: .5rem .85rem; border-bottom: 1px solid var(--bs-border-color); }
+.lc .lce-hit { display: block; width: 100%; text-align: left; padding: .5rem .85rem; background: transparent; border: 0; border-bottom: 1px solid var(--bs-border-color); color: var(--bs-body-color); }
+.lc .lce-hit:last-child { border-bottom: 0; }
+.lc .lce-hit:hover { background: var(--bs-tertiary-bg); }
+.lc .lce-hit-where { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .15rem; }
+.lc .lce-hit-where code { font-size: .78em; padding: .05rem .4rem; border-radius: .4rem; background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.lc .lce-hit-text { color: var(--bs-secondary-color); font-size: .9em; overflow-wrap: anywhere; }
+
+.lc .lce-row { display: grid; grid-template-columns: minmax(9rem, .65fr) repeat(var(--lce-langs), minmax(0, 1fr)); border-bottom: 1px solid var(--bs-border-color); }
+.lc .lce-row:last-child { border-bottom: 0; }
+.lc .lce-row[hidden], .lc .lce-sec[hidden] { display: none; }
+.lc .lce-row.is-focus { box-shadow: inset 3px 0 0 var(--bs-primary); background: rgba(var(--bs-primary-rgb), .06); }
+.lc .lce-head { font-weight: 600; background: var(--bs-tertiary-bg); }
+.lc .lce-sec { padding: .4rem 1.25rem; font-size: .82em; font-weight: 700; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border-bottom: 1px solid var(--bs-border-color); }
+.lc .lce-key { padding: .55rem .75rem .55rem 1.25rem; min-width: 0; overflow-wrap: anywhere; }
+.lc .lce-key code { font-size: .8em; color: var(--bs-body-color); }
+.lc .lce-cell { padding: .55rem .75rem; min-width: 0; border-left: 1px solid var(--bs-border-color); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lc .lce-cell[role="button"] { cursor: text; }
+.lc .lce-cell[role="button"]:hover, .lc .lce-cell[role="button"]:focus-visible { background: var(--bs-tertiary-bg); outline: 0; }
+.lc .lce-cell.is-ro { color: var(--bs-secondary-color); }
+.lc .lce-cell.is-editing { background: rgba(var(--bs-primary-rgb), .05); white-space: normal; }
+.lc .lce-tag { font-size: .78em; padding: .1rem .5rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.lc .lce-tag.is-bad { background: rgba(var(--bs-danger-rgb), .12); color: var(--bs-danger-text-emphasis); }
+.lc .lce-area { font-size: .95em; resize: vertical; }
+.lc .lce-actions { display: flex; gap: .4rem; margin-top: .45rem; }
+.lc .lce-error { margin-top: .4rem; font-size: .88em; color: var(--bs-danger-text-emphasis); }
+.lc .lce-note { padding: 1.25rem; color: var(--bs-secondary-color); }
+.lc .lce-note.is-bad { color: var(--bs-danger-text-emphasis); }
+@media (max-width: 767.98px) {
+    .lc .lce-row { grid-template-columns: 1fr; }
+    .lc .lce-head { display: none; }
+    .lc .lce-key { padding: .55rem 1.25rem .15rem; }
+    .lc .lce-cell { border-left: 0; padding: .35rem 1.25rem; }
+    .lc .lce-cell[data-lang]::before { content: attr(data-lang); display: block; font-size: .72em; color: var(--bs-secondary-color); }
+}

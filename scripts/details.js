@@ -60,16 +60,9 @@ function copyNfo() {
     });
 }
 
-// ===== Torrent page init: progress bar animation, fade-in on scroll =====
+// ===== Torrent page init: progress bar animation =====
 document.addEventListener('DOMContentLoaded', function() {
-    initTorrentPage();
-    initAnimations();
-});
-
-function initTorrentPage() {
-    // Initialize progress animations
-    const progressBars = document.querySelectorAll('.progress-bar');
-    progressBars.forEach(bar => {
+    document.querySelectorAll('.progress-bar').forEach(bar => {
         const width = bar.style.width;
         bar.style.width = '0%';
         setTimeout(() => {
@@ -78,27 +71,36 @@ function initTorrentPage() {
         }, 500);
     });
 
-    // Add intersection observer for animations
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('animate__animated', 'animate__fadeInUp');
-            }
-        });
-    }, { threshold: 0.1 });
+    // Ссылка на несуществующий комментарий: показываем плашку
+    document.getElementById('comment-not-found')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
 
-    document.querySelectorAll('.card, .stat-card').forEach(el => {
-        observer.observe(el);
-    });
-}
+// ===== Claims: подтверждение формы (подписи кнопок — в data-атрибутах .dt-claim) =====
+document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!form.matches('form[data-claim-confirm]') || form.dataset.ok === '1') return;
+    e.preventDefault();
 
-function initAnimations() {
-    // Add staggered animations to elements
-    const elements = document.querySelectorAll('.stat-card, .info-item, .nav-item');
-    elements.forEach((el, index) => {
-        el.style.animationDelay = (index * 0.1) + 's';
-    });
-}
+    const go = function () {
+        form.dataset.ok = '1';
+        form.querySelector('button').disabled = true;
+        form.submit();
+    };
+    const box = form.closest('.dt-claim');
+
+    if (window.Swal) {
+        window.Swal.fire({
+            icon: 'question',
+            text: form.dataset.claimConfirm,
+            showCancelButton: true,
+            confirmButtonText: box ? box.dataset.claimYes : 'OK',
+            cancelButtonText: box ? box.dataset.claimCancel : 'Cancel',
+            reverseButtons: true
+        }).then(function (r) { if (r.isConfirmed) go(); });
+    } else if (window.confirm(form.dataset.claimConfirm)) {
+        go();
+    }
+});
 
 // ===== File tree expand/collapse all =====
 function expandAllFiles() {

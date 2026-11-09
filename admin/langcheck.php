@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Lang Checker — сверка ключей из кода с ланг-файлами всех языков.
- * Только чтение файлов: в БД ничего не пишет, ничего не меняет.
+ * Сверка только читает файлы. Вкладка «Редактор» (Sysop) правит значения: admin/include/functions_langcheck_editor.php.
  */
 
 if (!defined('STAFF_PANEL')) {
@@ -39,7 +39,7 @@ if (is_array($lang->langcheck)) {
 
 use function htmlspecialchars as e;
 
-const LC_VERSION  = '3.9';
+const LC_VERSION  = '4.4';
 const LC_REF_LANG = 'english';
 /** Сканируется весь проект рекурсивно; пропускаются только папки без кода (по имени, на любом уровне) */
 /** Hard-coded tab: folders with third-party code / installers (by name, at any level) */
@@ -563,6 +563,15 @@ $root  = lc_root();
 $langDir = lc_lang_dir($root);
 $langs   = lc_langs($langDir);
 $ref   = in_array(LC_REF_LANG, $langs, true) ? LC_REF_LANG : ($langs[0] ?? LC_REF_LANG);
+
+// Редактор не сканирует весь проект: у него своя страница и свои AJAX-запросы
+if (($_GET['show'] ?? '') === 'editor') {
+    require_once __DIR__ . '/include/functions_langcheck_editor.php';
+    lce_run($langDir, $langs, $ref, (string)$_this_script_);
+    return;
+}
+$canEdit = (int)($CURUSER['usergroup'] ?? 0) === UC_SYSOP;
+
 $php   = lc_scan_php($root, $langDir);
 
 // Какие файлы грузят какую страницу
@@ -883,6 +892,7 @@ stdhead($lang->langcheck['page_title']);
                     <summary>
                         <span class="lc-badge is-<?= $pg['status'] ?>"><?= e($badgeTxt[$pg['status']]) ?></span>
                         <code class="lc-page"><?= e($pg['page']) ?></code>
+                        <?php if ($canEdit && array_filter($pg['counts'], fn($c) => $c !== null)): ?><a class="lc-muted" href="<?= e($url('editor') . '&page=' . rawurlencode($pg['page'])) ?>" title="<?= e($lang->langcheck['opt_show_editor'] ?? 'Editor') ?>" aria-label="<?= e($lang->langcheck['opt_show_editor'] ?? 'Editor') ?>"><i class="fa-solid fa-pen-to-square"></i></a><?php endif; ?>
                         <span class="lc-counts">
                             <?php foreach ($pg['counts'] as $l => $c): ?>
                             <span class="lc-chip<?= $c === null ? ' is-bad' : '' ?>"><?= e($l) ?> <b><?= $c === null ? '—' : (int)$c ?></b></span>
@@ -937,6 +947,7 @@ stdhead($lang->langcheck['page_title']);
             <a href="<?= e($url('problems')) ?>" class="btn btn-sm lc-pill<?= $show === 'problems' ? ' active' : '' ?>"><?= e($lang->langcheck['opt_show_problems']) ?> <b><?= $stat['warn'] + $stat['error'] ?></b></a>
             <a href="<?= e($url('unused')) ?>" class="btn btn-sm lc-pill<?= $show === 'unused' ? ' active' : '' ?>"><i class="fa-solid fa-box-archive me-1"></i><?= e($lang->langcheck['opt_show_unused']) ?> <b><?= $unusedN ?></b></a>
             <a href="<?= e($url('hardcoded')) ?>" class="btn btn-sm lc-pill<?= $show === 'hardcoded' ? ' active' : '' ?>"><i class="fa-solid fa-quote-left me-1"></i><?= e($lang->langcheck['opt_show_hardcoded']) ?><?= $show === 'hardcoded' ? ' <b>' . $hardN . '</b>' : '' ?></a>
+            <?php if ($canEdit): ?><a href="<?= e($url('editor')) ?>" class="btn btn-sm lc-pill"><i class="fa-solid fa-pen-to-square me-1"></i><?= e($lang->langcheck['opt_show_editor'] ?? 'Editor') ?></a><?php endif; ?>
             <?php if ($shown && $show !== 'unused' && $show !== 'hardcoded'): ?>
             <button type="button" class="btn btn-sm lc-pill" id="lcToggleAll" data-expand="<?= e($lang->langcheck['btn_expand_all']) ?>" data-collapse="<?= e($lang->langcheck['btn_collapse_all']) ?>"><i class="fa-solid fa-up-right-and-down-left-from-center me-1"></i><span><?= e($lang->langcheck['btn_expand_all']) ?></span></button>
             <?php endif; ?>

@@ -43,13 +43,13 @@
 
 /* ── Шапка ─────────────────────────────────────────────────────────────── */
 .dt-page .dt-head__body { flex: 1 1 auto; min-width: 0; }
-.dt-page .dt-head__tags {
+.dt-page .dt-head__tags {   /* размер как в старой шапке (h3) */
     font-family: var(--bs-body-font-family);
-    font-size: .55em;
-    font-weight: 500;
+    font-size: calc(1.3rem + .6vw);
     letter-spacing: 0;
-    vertical-align: .2em;
+    margin-right: .5rem;
 }
+@media (min-width: 1200px) { .dt-page .dt-head__tags { font-size: 1.75rem; } }
 .dt-page .dt-head__tags:empty { display: none; }
 .dt-page .st-head__meta { align-items: center; }
 .dt-page { --dt-purple-soft: rgba(139, 92, 246, .14); --dt-purple-strong: #6d28d9; }

@@ -111,6 +111,15 @@
 .lc .lce-actions { display: flex; gap: .4rem; margin-top: .45rem; }
 .lc .lce-error { margin-top: .4rem; font-size: .88em; color: var(--bs-danger-text-emphasis); }
 .lc [hidden] { display: none !important; }
+.lc .lce-hrow { display: flex; align-items: center; gap: .75rem; padding: .5rem .85rem; border-bottom: 1px solid var(--bs-border-color); }
+.lc .lce-hrow:last-child { border-bottom: 0; }
+.lc .lce-hinfo { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.lc .lce-hmeta { display: flex; flex-wrap: wrap; gap: .6rem; font-size: .85em; }
+.lc .lce-hmeta code { color: var(--bs-body-color); }
+.lce-diff { text-align: left; max-height: 40vh; overflow-y: auto; font-size: .9rem; }
+.lce-diff-row { padding: .4rem 0; border-top: 1px solid var(--bs-border-color); overflow-wrap: anywhere; }
+.lce-diff-from { color: var(--bs-danger-text-emphasis); text-decoration: line-through; white-space: pre-wrap; }
+.lce-diff-to { color: var(--bs-success-text-emphasis); white-space: pre-wrap; }
 .lc .lce-raw-head { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bs-border-color); }
 .lc .lce-raw-error { margin: 0; padding: .6rem 1.25rem; background: rgba(var(--bs-danger-rgb), .08); overflow-wrap: anywhere; }
 .lc .lce-raw-text { min-height: 70vh; border: 0; border-radius: 0 0 1rem 1rem; font-family: var(--bs-font-monospace); font-size: .85rem; }

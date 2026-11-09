@@ -22,6 +22,7 @@ use function htmlspecialchars as e;
 const LCE_MAX_VALUE    = 65535;
 const LCE_SEARCH_LIMIT = 200;
 const LCE_MAX_FILE     = 4194304;
+const LCE_HISTORY_KEEP = 30;          // версий на файл и язык
 
 /** Значение строкового литерала PHP (токен T_CONSTANT_ENCAPSED_STRING) */
 function lce_decode(string $raw): string
@@ -285,6 +286,68 @@ function lce_write(string $path, string $content): bool
     return $ok;
 }
 
+/** История лежит в cache/ — туда закрыт доступ из веба (cache/.htaccess), сканер проекта её не читает */
+function lce_history_dir(string $l): string
+{
+    return TSDIR . '/cache/lang_history/' . $l;
+}
+
+function lce_history_read(string $l, string $page): array
+{
+    $file = lce_history_dir($l) . "/{$page}.json";
+    if (!is_file($file)) return [];
+    $list = json_decode((string)@file_get_contents($file), true);
+    return is_array($list) ? $list : [];
+}
+
+/**
+ * Копия файла перед записью. false — копию сделать не удалось, запись тогда отменяется:
+ * правка без возможности отката хуже, чем сообщение об ошибке.
+ * $what описывает правку, которая идёт следом.
+ */
+function lce_snapshot(string $l, string $page, string $src, array $what): bool
+{
+    global $CURUSER;
+
+    $dir = lce_history_dir($l);
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) return false;
+
+    $id = time() . '-' . bin2hex(random_bytes(4));
+    if (@file_put_contents("{$dir}/{$page}.{$id}.bak", $src, LOCK_EX) === false) return false;
+
+    $list = lce_history_read($l, $page);
+    array_unshift($list, ['id' => $id, 't' => time(), 'user' => (string)($CURUSER['username'] ?? ''), 'what' => $what]);
+    foreach (array_splice($list, LCE_HISTORY_KEEP) as $old) {
+        if (preg_match('/^\d+-[0-9a-f]{8}$/', (string)($old['id'] ?? ''))) @unlink("{$dir}/{$page}.{$old['id']}.bak");
+    }
+    return lce_write("{$dir}/{$page}.json", (string)json_encode($list, JSON_UNESCAPED_UNICODE));
+}
+
+function lce_history_src(string $l, string $page, string $id): ?string
+{
+    if (preg_match('/^\d+-[0-9a-f]{8}$/', $id) !== 1) return null;
+    $file = lce_history_dir($l) . "/{$page}.{$id}.bak";
+    if (!is_file($file)) return null;
+    $src = @file_get_contents($file);
+    return $src === false ? null : $src;
+}
+
+/** Что изменится при откате: текущее значение → значение этой версии */
+function lce_history_diff(string $current, string $version): ?array
+{
+    $cur = lce_parse($current);
+    $ver = lce_parse($version);
+    if ($cur === null || $ver === null) return null;
+
+    $out = [];
+    foreach ($cur['items'] + $ver['items'] as $k => $unused) {
+        $from = $cur['items'][$k]['value'] ?? null;
+        $to   = $ver['items'][$k]['value'] ?? null;
+        if ($from !== $to) $out[] = ['k' => (string)$k, 'from' => $from, 'to' => $to];
+    }
+    return $out;
+}
+
 /** Список страниц (объединение всех языков) */
 function lce_pages(string $langDir, array $langs): array
 {
@@ -422,6 +485,9 @@ function lce_save(string $langDir, array $langs, string $ref, string $page, stri
             return ['ok' => false, 'code' => 'err_ed_write'];
         }
 
+        if (!lce_snapshot($l, $page, $src, ['t' => $item === null ? 'add' : 'key', 'k' => $key])) {
+            return ['ok' => false, 'code' => 'err_ed_history'];
+        }
         if (!lce_write($path, $new)) return ['ok' => false, 'code' => 'err_ed_write'];
 
         return ['ok' => true, 'rev' => lce_rev($literal), 'value' => $value, 'added' => $item === null];
@@ -440,8 +506,9 @@ function lce_line(string $src, int $offset): int
  * Сохранение файла целиком. Записать можно только то, что безопасно исполнять:
  * начало и конец файла как были, внутри только 'ключ' => 'текст' и комментарии.
  * $confirmRemoved — пользователь подтвердил удаление (или переименование) ключей.
+ * $restoring — id версии при откате: тексты тогда не сверяются с другим языком, он мог уйти вперёд.
  */
-function lce_save_raw(string $langDir, array $langs, string $page, string $l, string $src, string $hash, bool $confirmRemoved): array
+function lce_save_raw(string $langDir, array $langs, string $page, string $l, string $src, string $hash, bool $confirmRemoved, ?string $restoring = null): array
 {
     $path = lce_path($langDir, $l, $page);
     if (!is_file($path)) return ['ok' => false, 'code' => 'err_ed_unsupported'];
@@ -487,6 +554,7 @@ function lce_save_raw(string $langDir, array $langs, string $page, string $l, st
             if ($p !== null) $others[] = $p['items'];
         }
 
+        $changed = 0;
         foreach ($new['items'] as $key => $item) {
             $key  = (string)$key;
             $old  = $cur['items'][$key] ?? null;
@@ -498,10 +566,13 @@ function lce_save_raw(string $langDir, array $langs, string $page, string $l, st
             }
             if ($item['ro']) continue;
 
+            if ($restoring !== null) continue;
+
             if ($old === null && preg_match('/^[A-Za-z0-9_]+$/', $key) !== 1) {
                 return ['ok' => false, 'code' => 'err_ed_bad_key', 'args' => [$line, $key], 'line' => $line];
             }
             if ($old !== null && $old['value'] === $item['value']) continue;
+            if ($old !== null) $changed++;
 
             $bases = [$old['value'] ?? null];
             foreach ($others as $items) $bases[] = $items[$key]['value'] ?? null;
@@ -521,6 +592,11 @@ function lce_save_raw(string $langDir, array $langs, string $page, string $l, st
         if ($crlf > substr_count($current, "\n") - $crlf) {
             $src = str_replace("\n", "\r\n", $src);
         }
+        $added = count(array_diff_key($new['items'], $cur['items']));
+        $what  = $restoring !== null
+            ? ['t' => 'restore']
+            : ['t' => 'file', 'c' => $changed, 'a' => $added, 'r' => count($removed)];
+        if (!lce_snapshot($l, $page, $current, $what)) return ['ok' => false, 'code' => 'err_ed_history'];
         if (!lce_write($path, $src)) return ['ok' => false, 'code' => 'err_ed_write'];
 
         return ['ok' => true, 'hash' => sha1($src), 'saved' => true, 'removed' => count($removed), 'added' => count(array_diff_key($new['items'], $cur['items']))];
@@ -582,7 +658,27 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             lce_json(['ok' => true, 'src' => $src, 'hash' => sha1($src)]);
         }
 
-        if ($ajax === 'save' || $ajax === 'saveraw') {
+        if ($ajax === 'history') {
+            if (!$pageOk) lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 400);
+            $entries = [];
+            foreach ($langs as $l) {
+                foreach (lce_history_read($l, $page) as $row) $entries[] = $row + ['lang' => $l];
+            }
+            usort($entries, static fn(array $a, array $b): int => (int)$b['t'] <=> (int)$a['t']);
+            lce_json(['ok' => true, 'entries' => $entries]);
+        }
+
+        if ($ajax === 'histdiff') {
+            $l  = (string)($_GET['lang'] ?? '');
+            $id = (string)($_GET['id'] ?? '');
+            $version = $pageOk && in_array($l, $langs, true) ? lce_history_src($l, $page, $id) : null;
+            $current = $version !== null ? @file_get_contents(lce_path($langDir, $l, $page)) : false;
+            $diff = $current !== false && $version !== null ? lce_history_diff($current, $version) : null;
+            if ($diff === null) lce_json(['ok' => false, 'error' => $L['err_ed_version'] ?? 'This version is no longer available.']);
+            lce_json(['ok' => true, 'total' => count($diff), 'changes' => array_slice($diff, 0, 10)]);
+        }
+
+        if ($ajax === 'save' || $ajax === 'saveraw' || $ajax === 'restore') {
             if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
                 lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 405);
             }
@@ -594,6 +690,7 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             $value = (string)($_POST['value'] ?? '');
             $rev   = (string)($_POST['rev'] ?? '');
             $bad   = !$pageOk || !in_array($l, $langs, true);
+            $id    = (string)($_POST['id'] ?? '');
             if ($bad || ($ajax === 'save' && ($key === '' || strlen($key) > 255))) {
                 lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 400);
             }
@@ -612,9 +709,23 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
                 'err_ed_structure'    => $L['err_ed_structure']    ?? 'Line {1}: only \'key\' => \'text\' entries are allowed here.',
                 'err_ed_structure_file' => $L['err_ed_structure_file'] ?? 'The beginning or the end of the file was changed. Only the entries of the array can be edited.',
                 'err_ed_bad_key'      => $L['err_ed_bad_key']      ?? 'Line {1}: invalid key name "{2}". Use a-z, 0-9 and _.',
+                'err_ed_history'      => $L['err_ed_history']      ?? 'Could not keep a copy of the file, so nothing was changed. Check that cache/ is writable.',
+                'err_ed_version'      => $L['err_ed_version']      ?? 'This version is no longer available.',
+                'conflict_file'       => $L['err_ed_changed']      ?? 'The file has just been changed. Try again.',
             ];
 
-            if ($ajax === 'saveraw') {
+            if ($ajax === 'restore') {
+                $version = lce_history_src($l, $page, $id);
+                $path    = lce_path($langDir, $l, $page);
+                if ($version === null || !is_file($path)) {
+                    $res = ['ok' => false, 'code' => 'err_ed_version'];
+                } else {
+                    $res = lce_save_raw($langDir, $langs, $page, $l, $version, sha1((string)file_get_contents($path)), true, $id);
+                }
+                if ($res['ok'] && isset($res['saved'])) {
+                    write_log(sprintf('Lang editor: %s.lang.php [%s] rolled back to version %s', $page, $l, $id), 'settings', 1);
+                }
+            } elseif ($ajax === 'saveraw') {
                 $res = lce_save_raw($langDir, $langs, $page, $l, (string)($_POST['src'] ?? ''), (string)($_POST['hash'] ?? ''), ($_POST['confirm_removed'] ?? '') === '1');
                 if ($res['ok'] && isset($res['saved'])) {
                     write_log(sprintf('Lang editor: %s.lang.php [%s] file saved (%d keys added, %d removed)', $page, $l, $res['added'], $res['removed']), 'settings', 1);
@@ -625,7 +736,8 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
                     write_log(sprintf('Lang editor: %s.lang.php [%s] key "%s" %s', $page, $l, $key, $res['added'] ? 'added' : 'changed'), 'settings', 1);
                 }
             }
-            if (!$res['ok'] && !in_array($res['code'], ['conflict', 'conflict_file', 'confirm_removed'], true)) {
+            $handledByJs = $ajax === 'restore' ? [] : ['conflict', 'conflict_file', 'confirm_removed'];
+            if (!$res['ok'] && !in_array($res['code'], $handledByJs, true)) {
                 $msg = $messages[$res['code']] ?? $res['code'];
                 foreach ($res['args'] ?? [] as $i => $arg) {
                     $msg = strtr($msg, ['{' . ($i + 1) . '}' => (string)$arg, '%' . ($i + 1) . '$s' => (string)$arg]);
@@ -690,6 +802,7 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
                    aria-label="<?= e($L['lbl_ed_search'] ?? 'Search all files by text or key…') ?>">
         </div>
         <div class="lce-results" id="lceResults" hidden></div>
+        <div class="lce-results lce-history" id="lceHistory" hidden></div>
         <div class="lce-file-row">
             <div class="d-flex gap-1" role="group" aria-label="<?= e($L['lbl_ed_view'] ?? 'View') ?>">
                 <button type="button" class="btn btn-sm lc-pill" id="lceViewTable"><i class="fa-solid fa-table-list me-1"></i><?= e($L['lbl_ed_view_table'] ?? 'Table') ?></button>
@@ -707,6 +820,7 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             <select class="form-select lce-raw-lang" id="lceRawLang" aria-label="<?= e($L['lbl_ed_lang'] ?? 'Language') ?>" hidden>
                 <?php foreach ($langs as $l): ?><option value="<?= e($l) ?>"><?= e($l) ?></option><?php endforeach; ?>
             </select>
+            <button type="button" class="btn btn-sm lc-pill" id="lceHistoryBtn" aria-expanded="false"><i class="fa-solid fa-clock-rotate-left me-1"></i><?= e($L['btn_ed_history'] ?? 'History') ?></button>
             <div class="form-check form-switch mb-0" id="lceProblemsWrap">
                 <input class="form-check-input" type="checkbox" role="switch" id="lceProblems">
                 <label class="form-check-label" for="lceProblems"><?= e($L['lbl_ed_problems'] ?? 'Empty and missing only') ?></label>

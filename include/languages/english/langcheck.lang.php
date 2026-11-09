@@ -159,6 +159,21 @@ $language['langcheck'] = array (
 	'js_ed_removed_title' => 'Keys will disappear',
 	'js_ed_removed' => 'These keys are removed or renamed, pages that use them may break: {1}',
 	'js_ed_removed_confirm' => 'Save anyway',
+	'btn_ed_history' => 'History',
+	'err_ed_history' => 'Could not keep a copy of the file, so nothing was changed. Check that cache/ is writable.',
+	'err_ed_version' => 'This version is no longer available.',
+	'err_ed_changed' => 'The file has just been changed. Try again.',
+	'js_ed_hist_key' => 'Changed: {1}',
+	'js_ed_hist_add' => 'Added: {1}',
+	'js_ed_hist_restore_entry' => 'Rollback',
+	'js_ed_hist_file' => 'Whole file: {1} changed, {2} added, {3} removed',
+	'js_ed_hist_empty' => 'No saved edits for this file yet.',
+	'js_ed_hist_restore' => 'Roll back',
+	'js_ed_hist_none' => '(no key)',
+	'js_ed_hist_more' => 'and {1} more',
+	'js_ed_hist_same' => 'The file already matches this version.',
+	'js_ed_hist_confirm' => 'Return {1} to the state before this edit? Later edits of this file are undone too.',
+	'js_ed_hist_done' => 'Rolled back',
 	
 	
 

@@ -202,6 +202,7 @@
                     row.c[lang].r = data.rev;
                     updateKpi();
                     close();
+                    loadHistory();
                     return;
                 }
                 if (data.code === 'conflict') { await resolveConflict(data); return; }
@@ -399,6 +400,7 @@
             if (data.ok) {
                 rawHash = data.hash;
                 rawOriginal = src;
+                loadHistory();
                 if (window.Swal) Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: t('ed_saved', 'Saved'), timer: 1800, showConfirmButton: false });
             } else if (data.code === 'conflict_file') {
                 reload = await ask('warning', t('ed_file_changed_title', 'File changed'),
@@ -480,6 +482,106 @@
     filterEl.addEventListener('input', applyFilter);
     problemsEl.addEventListener('change', applyFilter);
     window.addEventListener('beforeunload', e => { if (openEditors || rawDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+    /* ── История ── */
+    const historyBtn = document.getElementById('lceHistoryBtn'), historyEl = document.getElementById('lceHistory');
+
+    function historyText(w) {
+        if (w.t === 'key') return t('ed_hist_key', 'Changed: {1}', w.k);
+        if (w.t === 'add') return t('ed_hist_add', 'Added: {1}', w.k);
+        if (w.t === 'restore') return t('ed_hist_restore_entry', 'Rollback');
+        return t('ed_hist_file', 'Whole file: {1} changed, {2} added, {3} removed', w.c, w.a, w.r);
+    }
+
+    async function loadHistory() {
+        if (historyEl.hidden) return;
+        try {
+            const data = await getJson({ ajax: 'history', page: fileSel.value });
+            if (!data.ok) { historyEl.replaceChildren(el('div', 'lce-note is-bad', data.error || '')); return; }
+            if (!data.entries.length) {
+                historyEl.replaceChildren(el('div', 'lce-note', t('ed_hist_empty', 'No saved edits for this file yet.')));
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            data.entries.forEach(h => {
+                const row = el('div', 'lce-hrow');
+                const info = el('div', 'lce-hinfo');
+                const meta = el('div', 'lc-muted lce-hmeta');
+                meta.append(el('span', '', new Date(h.t * 1000).toLocaleString()), el('span', '', h.user), el('code', '', h.lang));
+                info.append(meta, el('div', 'lce-hwhat', historyText(h.what)));
+                const b = el('button', 'btn btn-sm lc-pill', t('ed_hist_restore', 'Roll back'));
+                b.type = 'button';
+                b.addEventListener('click', () => restore(h));
+                row.append(info, b);
+                frag.appendChild(row);
+            });
+            historyEl.replaceChildren(frag);
+        } catch (e) {
+            historyEl.replaceChildren(el('div', 'lce-note is-bad', t('ed_load_failed', 'Could not load the file.')));
+        }
+    }
+
+    function diffNode(data) {
+        const box = el('div', 'lce-diff');
+        data.changes.forEach(c => {
+            const line = el('div', 'lce-diff-row');
+            line.append(el('code', '', c.k));
+            line.append(el('div', 'lce-diff-from', c.from === null ? t('ed_hist_none', '(no key)') : c.from));
+            line.append(el('div', 'lce-diff-to', c.to === null ? t('ed_hist_none', '(no key)') : c.to));
+            box.appendChild(line);
+        });
+        if (data.total > data.changes.length) box.appendChild(el('div', 'lc-muted', t('ed_hist_more', 'and {1} more', data.total - data.changes.length)));
+        return box;
+    }
+
+    async function restore(h) {
+        if (!confirmDiscard()) return;
+        const page = fileSel.value;
+        try {
+            const diff = await getJson({ ajax: 'histdiff', page, lang: h.lang, id: h.id });
+            if (!diff.ok) { showHistoryError(diff.error); return; }
+            if (!diff.total) {
+                if (window.Swal) Swal.fire({ icon: 'info', text: t('ed_hist_same', 'The file already matches this version.') });
+                else window.alert(t('ed_hist_same', 'The file already matches this version.'));
+                return;
+            }
+            const title = t('ed_hist_confirm', 'Return {1} to the state before this edit? Later edits of this file are undone too.', page + ' [' + h.lang + ']');
+            let ok;
+            if (window.Swal) {
+                const box = el('div');
+                box.append(el('p', '', title), diffNode(diff));
+                const r = await Swal.fire({ icon: 'warning', html: box, width: 640, showCancelButton: true,
+                    confirmButtonText: t('ed_hist_restore', 'Roll back'), cancelButtonText: t('ed_cancel', 'Cancel') });
+                ok = r.isConfirmed;
+            } else {
+                ok = window.confirm(title);
+            }
+            if (!ok) return;
+            const body = new URLSearchParams({ my_post_key: csrf, page, lang: h.lang, id: h.id });
+            const res = await fetch(url + '&ajax=restore', { method: 'POST', credentials: 'same-origin', body });
+            const data = await res.json();
+            if (!data.ok) { showHistoryError(data.error); return; }
+            rawLoaded = false;
+            reload('');
+            loadHistory();
+            if (window.Swal) Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: t('ed_hist_done', 'Rolled back'), timer: 1800, showConfirmButton: false });
+        } catch (e) {
+            showHistoryError(t('ed_save_failed', 'Could not save.'));
+        }
+    }
+    function showHistoryError(text) {
+        if (window.Swal) Swal.fire({ icon: 'error', text: text || t('ed_save_failed', 'Could not save.') });
+        else window.alert(text || t('ed_save_failed', 'Could not save.'));
+    }
+
+    historyBtn.addEventListener('click', () => {
+        historyEl.hidden = !historyEl.hidden;
+        historyBtn.classList.toggle('active', !historyEl.hidden);
+        historyBtn.setAttribute('aria-expanded', String(!historyEl.hidden));
+        if (!historyEl.hidden) historyEl.replaceChildren(el('div', 'lce-note', t('ed_loading', 'Loading…')));
+        loadHistory();
+    });
+    fileSel.addEventListener('change', loadHistory);
 
     /* ── Поиск по всем файлам ── */
     function renderResults(data) {

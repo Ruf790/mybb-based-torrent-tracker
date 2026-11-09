@@ -83,7 +83,7 @@ class trackerlanguage
     public $user_awaiting_activation;
     public $usercp;
     public $usercpnav;
-    public $userdetails;
+    public $userhistory;
     public $usersearch;
     public $viewsnatches;
     public $watch_list;

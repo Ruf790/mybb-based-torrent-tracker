@@ -207,14 +207,14 @@ function getFileIcon($filename)
     ];
 
     $colors = [
-        'video'   => 'bg-danger',
-        'audio'   => 'bg-primary',
-        'image'   => 'bg-success',
-        'archive' => 'bg-warning',
-        'doc'     => 'bg-secondary',
-        'code'    => 'bg-info',
-        'exec'    => 'bg-dark',
-        'default' => 'bg-secondary',
+        'video'   => 'st-soft-danger',
+        'audio'   => 'st-soft-primary',
+        'image'   => 'st-soft-success',
+        'archive' => 'st-soft-warning',
+        'doc'     => 'st-soft-muted',
+        'code'    => 'st-soft-info',
+        'exec'    => 'st-soft-muted',
+        'default' => 'st-soft-muted',
     ];
 
     $iconClasses = [
@@ -239,10 +239,10 @@ function getFileIcon($filename)
     $colorClass = $colors[$type]     ?? $colors['default'];
     $iconClass  = $iconClasses[$type] ?? $iconClasses['default'];
 
-    return '<span class="badge rounded-pill d-inline-flex align-items-center px-2 py-1 ' . $colorClass . ' text-white" '
-         . 'aria-label="' . htmlspecialchars(strtoupper($ext)) . '" title="' . htmlspecialchars(strtoupper($ext)) . '">'
-         . '<i class="' . $iconClass . ' me-1" style="font-size: 1em;"></i>'
-         . '<small style="line-height:1;">' . htmlspecialchars(strtoupper($ext)) . '</small>'
+    $label = htmlspecialchars(strtoupper($ext));
+
+    return '<span class="st-badge dt-ext ' . $colorClass . '" aria-label="' . $label . '" title="' . $label . '">'
+         . '<i class="' . $iconClass . '"></i>' . $label
          . '</span>';
 }
 
@@ -264,7 +264,7 @@ function renderAccordion($tree, $parentId = 'root', $level = 0)
                     <button class="accordion-button ' . $buttonCollapsed . '" type="button"
                             data-bs-toggle="collapse" data-bs-target="#collapse-' . $accordionId . '"
                             aria-expanded="' . $ariaExpanded . '" aria-controls="collapse-' . $accordionId . '">
-                        <i class="bi bi-folder-fill text-warning me-2"></i>' . htmlspecialchars((string)$name) . '
+                        <i class="fa-solid fa-folder text-warning me-2"></i>' . htmlspecialchars((string)$name) . '
                     </button>
                 </h2>
                 <div id="collapse-' . $accordionId . '" class="accordion-collapse collapse ' . $showClass . '"
@@ -276,10 +276,10 @@ function renderAccordion($tree, $parentId = 'root', $level = 0)
             </div>';
         } else {
             $icon = getFileIcon($name);
-            $html .= '<div class="ms-3 py-1 d-flex align-items-center gap-2">'
+            $html .= '<div class="dt-file">'
                    . $icon
-                   . '<span class="text-truncate">' . htmlspecialchars($name) . '</span>'
-                   . '<span class="badge bg-secondary ms-auto">' . mksize($content) . '</span>'
+                   . '<span class="dt-file__name" title="' . htmlspecialchars((string)$name, ENT_QUOTES) . '">' . htmlspecialchars((string)$name) . '</span>'
+                   . '<span class="st-badge st-soft-muted ms-auto">' . mksize($content) . '</span>'
                    . '</div>';
         }
     }
@@ -363,74 +363,50 @@ if ($query_result && $db->num_rows($query_result) > 0) {
             : $BASEURL . '/include/templates/default/images/no_image.png';
 
         $uploaderHtml = (!$is_mod && $SMTQ['owner'] != $CURUSER['id'] && $SMTQ['anonymous'] == 'yes')
-            ? '<span class="text-muted small"><i class="bi bi-eye-slash me-1"></i>' . $lang->global['anonymous'] . '</span>'
-            : '<a href="' . get_profile_link($SMTQ['owner']) . '" class="text-decoration-none small">'
+            ? '<span><i class="fa-solid fa-user-secret me-1"></i>' . $lang->global['anonymous'] . '</span>'
+            : '<a href="' . get_profile_link($SMTQ['owner']) . '" class="text-decoration-none">'
               . format_name($SMTQ['username'], $SMTQ['usergroup']) . '</a>'
-              . ($SMTQ['anonymous'] == 'yes' ? ' <span class="text-muted small">(' . $lang->global['anonymous'] . ')</span>' : '');
+              . ($SMTQ['anonymous'] == 'yes' ? ' <span>(' . $lang->global['anonymous'] . ')</span>' : '');
 
         $FoundSMTQ .= '
-        <div class="col-6 col-md-4 col-lg-3">
-            <div class="card h-100 border-0 shadow-sm similar-torrent-card">
-                <a href="' . $SEOLink . '" class="text-decoration-none">
-                    <div class="position-relative overflow-hidden" style="height:160px;">
-                        <img src="' . $poster . '"
-                             class="card-img-top w-100 h-100"
-                             style="object-fit:cover; transition: transform 0.3s ease;"
-                             alt="' . htmlspecialchars_uni($SMTQ['name']) . '"
-                             onerror="this.src=\'' . $BASEURL . '/include/templates/default/images/no_image.png\'">
-                        <div class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center similar-overlay">
-                            <i class="bi bi-play-circle-fill text-white" style="font-size:2.5rem; opacity:0.9;"></i>
-                        </div>
-                        <a href="' . $SEOLinkC . '" class="position-absolute top-0 end-0 m-2">
-                            <span class="badge bg-dark bg-opacity-75">
-                                <i class="' . $SMTQ['catimage'] . '"></i>
-                            </span>
-                        </a>
-                        <div class="position-absolute bottom-0 start-0 m-2 d-flex gap-1">
-                            <span class="badge bg-success bg-opacity-90">
-                                <i class="bi bi-arrow-up-circle me-1"></i>' . ts_nf($SMTQ['seeders']) . '
-                            </span>
-                            <span class="badge bg-danger bg-opacity-90">
-                                <i class="bi bi-arrow-down-circle me-1"></i>' . ts_nf($SMTQ['leechers']) . '
-                            </span>
-                        </div>
-                    </div>
-                </a>
-                <div class="card-body p-2">
-                    <a href="' . $SEOLink . '" class="text-decoration-none text-dark">
-                        <h6 class="card-title mb-1 text-truncate small fw-semibold"
-                            title="' . htmlspecialchars_uni($SMTQ['name']) . '">
-                            ' . htmlspecialchars_uni($SMTQ['name']) . '
-                        </h6>
-                    </a>
-                    <div class="d-flex justify-content-between align-items-center">
-                        ' . $uploaderHtml . '
-                        <span class="text-muted small">' . mksize($SMTQ['size']) . '</span>
-                    </div>
+        <article class="dt-sim">
+            <a href="' . $SEOLink . '" class="dt-sim__poster" title="' . htmlspecialchars_uni($SMTQ['name']) . '">
+                <img src="' . $poster . '" loading="lazy"
+                     alt="' . htmlspecialchars_uni($SMTQ['name']) . '"
+                     onerror="this.src=\'' . $BASEURL . '/include/templates/default/images/no_image.png\'">
+                <span class="dt-sim__stats">
+                    <span class="dt-sim__stat dt-sim__stat--up"><i class="fa-solid fa-arrow-up"></i>' . ts_nf($SMTQ['seeders']) . '</span>
+                    <span class="dt-sim__stat dt-sim__stat--down"><i class="fa-solid fa-arrow-down"></i>' . ts_nf($SMTQ['leechers']) . '</span>
+                </span>
+            </a>
+            <a href="' . $SEOLinkC . '" class="dt-sim__cat" title="' . htmlspecialchars_uni((string)$SMTQ['catname']) . '">
+                <i class="' . $SMTQ['catimage'] . '"></i>
+            </a>
+            <div class="dt-sim__body">
+                <a href="' . $SEOLink . '" class="dt-sim__title" title="' . htmlspecialchars_uni($SMTQ['name']) . '">'
+                    . htmlspecialchars_uni($SMTQ['name']) . '</a>
+                <div class="dt-sim__meta">
+                    <span class="min-w-0 text-truncate">' . $uploaderHtml . '</span>
+                    <span class="text-nowrap">' . mksize($SMTQ['size']) . '</span>
                 </div>
             </div>
-        </div>';
+        </article>';
 
         $found_count++;
     }
 
     if ($FoundSMTQ) {
         $SimilarTorrents = '
-        <div class="container mt-4">
-            <div class="card border-0 shadow-sm similar-wrapper">
-                <div class="card-header similar-header d-flex align-items-center justify-content-between">
-                    <h5 class="mb-0 fw-semibold">
-                        <i class="bi bi-collection-fill me-2"></i>' . $lang->details['smililartorrents'] . '
-                    </h5>
-                    <span class="badge bg-primary rounded-pill">' . $found_count . '</span>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        ' . $FoundSMTQ . '
-                    </div>
-                </div>
+        <section class="st-card">
+            <div class="st-card__head">
+                <span class="st-ico st-soft-primary"><i class="fa-solid fa-layer-group"></i></span>
+                ' . $lang->details['smililartorrents'] . '
+                <span class="st-badge st-soft-muted ms-auto">' . $found_count . '</span>
             </div>
-        </div>';
+            <div class="st-card__body">
+                <div class="dt-sim-grid">' . $FoundSMTQ . '</div>
+            </div>
+        </section>';
     }
 }
 
@@ -443,7 +419,7 @@ if (empty($Torrent["tags"])) {
     foreach ($tags as $tag) {
         $tagSafe   = htmlspecialchars_uni(trim($tag));
         $keywords .= '<a href="' . $BASEURL . '/browse.php?do=search&keywords=' . urlencode($tag) . '&search_type=t_tags" '
-                   . 'title="' . $tagSafe . '" class="badge tag-badge"><i class="bi bi-hash me-1"></i>' . $tagSafe . '</a> ';
+                   . 'title="' . $tagSafe . '" class="dt-tag"><i class="fa-solid fa-hashtag"></i>' . $tagSafe . '</a> ';
     }
     $keywords = rtrim($keywords);
 }
@@ -463,7 +439,7 @@ if ($torrent2['type'] == 's') {
         $seolink  = get_category_link($parentcatid);
         $seolink2 = get_category_link($torrent2['categoryid']);
         $torrent2["categoryname"] = '<a href="' . $seolink . '" target="_self" alt="' . htmlspecialchars_uni($parentcategory) . '" title="' . htmlspecialchars_uni($parentcategory) . '">' . htmlspecialchars_uni($parentcategory) . '</a>'
-                                  . ' <i class="bi bi-chevron-right small text-muted"></i> '
+                                  . ' <i class="fa-solid fa-chevron-right small text-body-secondary"></i> '
                                   . '<a href="' . $seolink2 . '" target="_self" alt="' . htmlspecialchars_uni($torrent2['categoryname']) . '" title="' . htmlspecialchars_uni($torrent2['categoryname']) . '">' . htmlspecialchars_uni($torrent2['categoryname']) . '</a>';
     }
 } else {
@@ -482,9 +458,9 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=27">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=32">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
 $ags_js_lang = [];
@@ -499,15 +475,19 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=3"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=4"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
+
+// Быстрый комментарий приходит по AJAX: стили и скрипты нужны сразу, даже без комментариев
+echo commenttable_assets();
 
 
 
 // ── Hit & Run warning ───────────────────────────────────────────────────────
 $gigs = $CURUSER['downloaded'] / (1024 * 1024 * 1024);
+$warning_message = '';
 
 if ($hitrun == 'yes') {
     $ratio      = ($CURUSER['downloaded'] > 0 ? $CURUSER['uploaded'] / $CURUSER['downloaded'] : 0);
@@ -516,17 +496,12 @@ if ($hitrun == 'yes') {
     if ($Torrent['free'] != 'yes' && $usergroups['isvipgroup'] != 'yes' && $ratio <= ($hitrun_ratio + 0.4)
         && $Torrent['owner'] != $CURUSER['id'] && !$is_mod && $CURUSER['downloaded'] <> 0) {
 
-        $warning_message = '<div class="container mt-3">
-           <div class="hitrun-alert mb-3" role="alert">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                ' . ags_fmt($lang->details['downloadwarning'], number_format($ratio, 2), mksize($percentage), (string)$hitrun_ratio) . '
-           </div>
-        </div>';
+        $warning_message = '
+    <div class="st-card st-danger-box dt-alert" role="alert">
+        <span class="st-ico st-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <div class="min-w-0">' . ags_fmt($lang->details['downloadwarning'], number_format($ratio, 2), number_format($percentage, 0) . '%', (string)$hitrun_ratio) . '</div>
+    </div>';
     }
-}
-
-if (isset($warning_message)) {
-    echo $warning_message;
 }
 
 $sratio = $Torrent['leechers'] > 0 ? $Torrent['seeders'] / $Torrent['leechers'] : 1;
@@ -578,43 +553,28 @@ if ($CURUSER['id']) {
         $user_stars_html .= '<i class="bi bi-star-fill user-star ' . $active . '" data-value="' . $i . '" onclick="rateTorrent(' . $i . ')"></i>';
     }
     $user_section = '
-        <div class="d-flex align-items-center gap-2">
-            <div class="user-stars d-flex gap-1" id="user-stars">' . $user_stars_html . '</div>
-            <span class="small text-muted" id="rating-hint">'
-                . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : htmlspecialchars($lang->details['hint_rate'])) .
-            '</span>
-        </div>';
+        <div class="user-stars" id="user-stars">' . $user_stars_html . '</div>
+        <span class="st-badge st-soft-muted" id="rating-hint">'
+            . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : htmlspecialchars($lang->details['hint_rate'])) .
+        '</span>';
 } else {
-    $user_section = '<a href="login.php" class="btn btn-sm btn-outline-primary rounded-pill"><i class="bi bi-box-arrow-in-right me-1"></i>' . htmlspecialchars($lang->details['btn_login_to_rate']) . '</a>';
+    $user_section = '<a href="login.php" class="btn btn-sm btn-outline-primary st-pill"><i class="fa-solid fa-right-to-bracket me-1"></i>' . htmlspecialchars($lang->details['btn_login_to_rate']) . '</a>';
 }
 
 $ags_votes_label = ags_fmt(ags_plural($rating_data['count'], $lang->details['lbl_votes']), number_format($rating_data['count']));
 
 $rating_html = '
-<div class="rating-panel mt-4">
-    <div class="rating-panel-header">
-        <i class="bi bi-star-fill text-warning"></i>
-        <span>' . htmlspecialchars($lang->details['sec_user_rating']) . '</span>
-        <span class="badge bg-warning text-dark ms-auto">' . htmlspecialchars($ags_votes_label) . '</span>
+<div class="dt-rate">
+    <span class="st-ico st-soft-warning dt-rate__ico"><i class="fa-solid fa-star"></i></span>
+    <div class="dt-rate__avg">
+        <div class="dt-rate__score"><span class="rating-score">' . ($rating_data['count'] > 0 ? number_format($rating_data['avg'], 1) : '—') . '</span><small>/ 10</small></div>
+        <div class="dt-rate__votes">' . htmlspecialchars($ags_votes_label) . '</div>
     </div>
-    <div class="row g-4 align-items-center mt-2">
-        <div class="col-auto">
-            <div class="rating-score-wrap">
-                <div class="rating-score">' . ($rating_data['count'] > 0 ? number_format($rating_data['avg'], 1) : '—') . '</div>
-                <div class="rating-score-max">/ 10</div>
-                <div class="rating-votes text-muted small mt-1">
-                    <i class="bi bi-people-fill me-1"></i>
-                    ' . htmlspecialchars($ags_votes_label) . '
-                </div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="rating-stars-wrap">
-                <div class="rating-stars mb-2" id="rating-display">' . $avg_stars_html . '</div>
-                ' . $user_section . '
-            </div>
-        </div>
+    <div class="min-w-0">
+        <div class="dt-rate__title">' . htmlspecialchars($lang->details['sec_user_rating']) . '</div>
+        <div class="rating-stars dt-rate__stars" id="rating-display">' . $avg_stars_html . '</div>
     </div>
+    <div class="dt-rate__mine">' . $user_section . '</div>
 </div>
 <script src="' . $BASEURL . '/scripts/rating.js?ver=121"></script>
 <script>ratingInit(' . (int)$rating_data['user_rating'] . ', ' . (int)$id . ', "' . $BASEURL . '", "' . htmlspecialchars((string)$mybb->post_code, ENT_QUOTES) . '");</script>';
@@ -646,22 +606,7 @@ if (!empty($mybb->input['pid'])) {
         }
 
         $showcommenttable .= '
-    <style>
-    .cnf-card{position:relative;display:flex;align-items:center;gap:1rem;padding:1rem 1.25rem;
-        border:1px solid rgba(var(--bs-warning-rgb),.35);border-left:4px solid var(--bs-warning);
-        border-radius:.75rem;background:linear-gradient(135deg,rgba(var(--bs-warning-rgb),.10),rgba(var(--bs-warning-rgb),.03));
-        box-shadow:0 8px 20px rgba(16,24,40,.06),0 2px 8px rgba(16,24,40,.04);animation:cnf-in .35s ease-out}
-    .cnf-icon{flex:0 0 auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
-        background:rgba(var(--bs-warning-rgb),.18);color:var(--bs-warning-text-emphasis);font-size:1.15rem}
-    .cnf-title{font-weight:700;margin:0;color:var(--bs-emphasis-color)}
-    .cnf-desc{margin:.15rem 0 0;font-size:.9rem;color:var(--bs-secondary-color)}
-    .cnf-pid{font-size:.75rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;margin-left:.4rem;
-        background:var(--bs-secondary-bg);color:var(--bs-secondary-color);vertical-align:.1em}
-    .cnf-close{position:absolute;top:.5rem;right:.6rem}
-    @keyframes cnf-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-    @media (max-width:575.98px){.cnf-card{flex-direction:column;align-items:flex-start;padding-right:2.5rem}}
-    </style>
-    <div class="container-md mt-4" id="comment-not-found">
+    <div id="comment-not-found">
         <div class="cnf-card" role="alert">
             <span class="cnf-icon"><i class="fa-solid fa-comment-slash"></i></span>
             <div class="flex-grow-1 me-sm-3">
@@ -669,30 +614,27 @@ if (!empty($mybb->input['pid'])) {
                 <p class="cnf-desc">' . $cnf_desc . '</p>
             </div>
 
-            ' . ($cnf_last !== '' ? '<a href="' . htmlspecialchars($cnf_last) . '" class="btn btn-sm btn-warning px-3 text-nowrap">
+            ' . ($cnf_last !== '' ? '<a href="' . htmlspecialchars($cnf_last) . '" class="btn btn-sm btn-warning st-pill text-nowrap">
                 <i class="fa-solid fa-arrow-down-wide-short me-1"></i>' . $cnf_btn . '
             </a>' : '') . '
 
             <button type="button" class="btn-close cnf-close" aria-label="' . $cnf_close . '"
                     onclick="this.closest(\'#comment-not-found\').remove()"></button>
         </div>
-    </div>
-    <script>document.addEventListener("DOMContentLoaded", () => document.getElementById("comment-not-found")?.scrollIntoView({block: "center", behavior: "smooth"}));</script>';
+    </div>';
     }
 }
 
 if (!$threadcount) {
     $showcommenttable .= '
-    <div class="container mt-3">
-       <div class="card border-0 mb-4 comments-empty-card">
-          <div class="card-header rounded-bottom text-19 fw-bold">
-              <div style="display: block;" id="ajax_comment_preview">
-                  <i class="bi bi-chat-dots me-2"></i>' . $lang->details['nocommentsyet'] . '
-              </div>
-              <div style="display: block;" id="ajax_comment_preview2"></div>
-          </div>
-       </div>
-    </div>';
+    <section class="st-card dt-comments-empty">
+        <div class="st-empty">
+            <span class="st-ico st-soft-muted"><i class="fa-solid fa-comments"></i></span>
+            <div>' . $lang->details['nocommentsyet'] . '</div>
+        </div>
+    </section>
+    <div id="ajax_comment_preview"></div>
+    <div id="ajax_comment_preview2"></div>';
 } else {
     $multipage = '';
     $page      = 1;
@@ -793,9 +735,11 @@ if (!$threadcount) {
     }
     $GLOBALS['all_attachments'] = $all_attachments;
 
-    $showcommenttable .= '<div class="container mt-3">' . $multipage . '</div>'
+    $dt_pager = $multipage !== '' ? '<div class="st-pager dt-pager">' . $multipage . '</div>' : '';
+
+    $showcommenttable .= $dt_pager
                        . commenttable($allrows, '', '', false, true, true)
-                       . '<div class="container mt-3">' . $multipage . '</div>';
+                       . $dt_pager;
 }
 
 $rowspan = 9;
@@ -877,10 +821,13 @@ $posthash = bin2hex(random_bytes(16));
 $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
 
 $showcommenttable .= '
-<br />
-<div class="container mt-4">
-    <h2 class="mb-3"><i class="bi bi-pencil-square me-2 text-primary"></i>' . htmlspecialchars($lang->details['sec_quick_comment']) . '</h2>
-    ' . (!empty($cerror) ? '<div class="error">' . $cerror . '</div>' : '') . '
+<section class="st-card dt-quick">
+    <div class="st-card__head">
+        <span class="st-ico st-soft-primary"><i class="fa-solid fa-pen-to-square"></i></span>
+        ' . htmlspecialchars($lang->details['sec_quick_comment']) . '
+    </div>
+    <div class="st-card__body">
+    ' . (!empty($cerror) ? '<div class="alert alert-danger py-2">' . $cerror . '</div>' : '') . '
     ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=72"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
@@ -890,7 +837,7 @@ $showcommenttable .= '
         <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
         <div id="fileIdsContainer"></div>
         <div class="mb-3">
-            <label for="message" class="form-label"><i class="bi bi-chat-left-text me-1"></i>' . htmlspecialchars($lang->details['lbl_your_comment']) . ' <small class="text-muted">' . htmlspecialchars(ags_fmt($lang->details['hint_max_chars'], 500)) . '</small></label>
+            <label for="message" class="form-label"><i class="fa-solid fa-comment me-1"></i>' . htmlspecialchars($lang->details['lbl_your_comment']) . ' <small class="text-body-secondary">' . htmlspecialchars(ags_fmt($lang->details['hint_max_chars'], 500)) . '</small></label>
             <textarea class="form-control" id="message" name="message" rows="6"
                       placeholder="' . htmlspecialchars($lang->details['ph_comment'], ENT_QUOTES) . '" maxlength="500"
                       aria-describedby="charCount" required></textarea>
@@ -899,22 +846,23 @@ $showcommenttable .= '
         <div id="message_preview" class="form-control mt-3 d-none"></div>
         ' . $uploader . '
         ' . ($use_xmlhttprequest == '1' ? '
-        <div class="d-flex align-items-center justify-content-center mb-3">
-            <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin" aria-label="' . htmlspecialchars($lang->details['aria_loading'], ENT_QUOTES) . '" style="display:none; color: #0b59e0; width:24px; height:24px; margin-right: 10px;"></i>
-            <button type="button" class="btn btn-primary me-2" id="quickcomment" onclick="TSajaxquickcomment(\'' . $id . '\');"><i class="bi bi-send me-1"></i>' . $lang->global['buttonsubmit'] . '</button>
-            <a href="comment.php?action=add&tid=' . $id . '" class="btn btn-secondary"><i class="bi bi-gear me-1"></i>' . $lang->global['advancedbutton'] . '</a>
+        <div class="dt-quick__actions">
+            <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin text-primary" aria-label="' . htmlspecialchars($lang->details['aria_loading'], ENT_QUOTES) . '" style="display:none;"></i>
+            <button type="button" class="btn btn-primary st-pill" id="quickcomment" onclick="TSajaxquickcomment(\'' . $id . '\');"><i class="fa-solid fa-paper-plane me-1"></i>' . $lang->global['buttonsubmit'] . '</button>
+            <a href="comment.php?action=add&tid=' . $id . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-gear me-1"></i>' . $lang->global['advancedbutton'] . '</a>
         </div>' : '
-        <div class="d-flex gap-2 justify-content-center mb-3">
-            <button type="submit" name="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>' . $lang->global['buttonsubmit'] . '</button>
-            <a href="comment.php?action=add&tid=' . $id . '" class="btn btn-secondary"><i class="bi bi-gear me-1"></i>' . $lang->global['advancedbutton'] . '</a>
+        <div class="dt-quick__actions">
+            <button type="submit" name="submit" class="btn btn-primary st-pill"><i class="fa-solid fa-paper-plane me-1"></i>' . $lang->global['buttonsubmit'] . '</button>
+            <a href="comment.php?action=add&tid=' . $id . '" class="btn btn-outline-secondary st-pill"><i class="fa-solid fa-gear me-1"></i>' . $lang->global['advancedbutton'] . '</a>
         </div>') . '
     </form>
     ' . $editor['modal'] . '
-</div>';
+    </div>
+</section>';
 
 // ── Uploader name ───────────────────────────────────────────────────────────
 if ($Torrent['anonymous'] == 'yes' AND $Torrent['owner'] != $CURUSER['id'] AND !$is_mod) {
-    $username = '<i class="bi bi-eye-slash display-6 opacity-50 mb-2 d-block"></i>';
+    $username = '<span class="text-body-secondary"><i class="fa-solid fa-user-secret me-1"></i>' . $lang->global['anonymous'] . '</span>';
 } else {
     $username = '<a href="' . get_profile_link($Torrent['owner']) . '" class="text-decoration-none">'
               . format_name($torrent2['username'], $torrent2['usergroup']) . '</a>'
@@ -925,23 +873,19 @@ if ($Torrent['anonymous'] == 'yes' AND $Torrent['owner'] != $CURUSER['id'] AND !
 $ShowTLINK = '';
 
 if (!empty($Torrent['t_link'])) {
-    $html    = $Torrent['t_link'];
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
 
     $ShowTLINK = '
-    <div class="container mt-3">
-        <div class="card">
-            <div class="card-header rounded-bottom text-19 fw-bold">
-                <span style="float: right;">
-                    <div id="imdbupdatebutton" name="imdbupdatebutton">
-                        <a href="#" onclick="TS_IMDB(' . $id . '); return false;"><b><u><i>' . $refresh . '</i></u></b></a>
-                    </div>
-                </span>' . $lang->details['t_link'] . '
-            </div>
-            <div class="card-body"><div id="imdbdetails" name="imdbdetails">' . $Torrent['t_link'] . '</div></div>
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-warning"><i class="fa-solid fa-film"></i></span>
+            ' . $lang->details['t_link'] . '
+            ' . ($refresh !== '' ? '<div id="imdbupdatebutton" class="ms-auto">
+                <a href="#" class="btn btn-sm btn-outline-secondary st-pill" onclick="TS_IMDB(' . $id . '); return false;"><i class="fa-solid fa-rotate me-1"></i>' . $refresh . '</a>
+            </div>' : '') . '
         </div>
-    </div>
-    <br />';
+        <div class="st-card__body"><div id="imdbdetails">' . $Torrent['t_link'] . '</div></div>
+    </section>';
 }
 
 // ── Manage dropdown ─────────────────────────────────────────────────────────
@@ -949,28 +893,25 @@ $show_manage = '';
 
 if ((int)$CURUSER['id'] === (int)$torrent2['owner'] || $is_mod) {
     $show_manage .= '
-    <div class="dropdown d-inline-block">
-        <a href="#" class="btn btn-light btn-icon rounded-circle p-2 shadow-sm manage-btn"
-           role="button" id="manageCompactDropdown" data-bs-toggle="dropdown"
-           aria-expanded="false" data-bs-toggle="tooltip" title="' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '">
-            <i class="bi bi-three-dots-vertical text-primary"></i>
+    <div class="dropdown">
+        <a href="#" class="st-icon-btn" role="button" id="manageCompactDropdown" data-bs-toggle="dropdown"
+           aria-expanded="false" title="' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '"
+           aria-label="' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '">
+            <i class="fa-solid fa-ellipsis-vertical"></i>
         </a>
-        <ul class="dropdown-menu shadow border-0 rounded-2 p-1" aria-labelledby="manageCompactDropdown">
+        <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="manageCompactDropdown">
             <li>
-                <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1"
-                   href="upload.php?id=' . $id . '">
-                    <i class="bi bi-file-earmark-text text-info me-2"></i>
-                    <span>' . htmlspecialchars($lang->details['menu_full_edit']) . '</span>
+                <a class="dropdown-item" href="upload.php?id=' . $id . '">
+                    <i class="fa-solid fa-file-pen text-info me-2"></i>' . htmlspecialchars($lang->details['menu_full_edit']) . '
                 </a>
             </li>
-            <li><hr class="dropdown-divider my-1"></li>
+            <li><hr class="dropdown-divider"></li>
             <li>
-                <a class="dropdown-item d-flex align-items-center py-2 px-3 rounded-1 text-danger"
+                <a class="dropdown-item text-danger"
                    href="#" data-bs-toggle="modal" data-bs-target="#deleteTorrentModal"
                    data-torrent-id="' . $id . '"
                    data-torrent-name="' . htmlspecialchars_uni($Torrent['name']) . '">
-                    <i class="bi bi-trash3 me-2"></i>
-                    <span>' . htmlspecialchars($lang->details['btn_delete']) . '</span>
+                    <i class="fa-solid fa-trash-can me-2"></i>' . htmlspecialchars($lang->details['btn_delete']) . '
                 </a>
             </li>
         </ul>
@@ -981,7 +922,6 @@ if ($is_mod) {
     $ags_t_hitrun     = htmlspecialchars($lang->details['tip_hitrun'], ENT_QUOTES);
     $ags_t_open       = htmlspecialchars($lang->details['open'], ENT_QUOTES);
     $ags_t_close      = htmlspecialchars($lang->details['close'], ENT_QUOTES);
-    $ags_t_status     = htmlspecialchars(addslashes($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']), ENT_QUOTES);
     $ags_t_info       = htmlspecialchars($lang->details['torrentinfo'], ENT_QUOTES);
 
     $ags_t_nuke = htmlspecialchars(
@@ -991,27 +931,24 @@ if ($is_mod) {
         ENT_QUOTES
     );
 
-    $show_manage .= '
-    <a href="' . $BASEURL . '/admin/index.php?act=hit_and_run&torrentid=' . $id . '" class="manage-icon-btn">
-        <i class="fa-solid fa-person-running" alt="' . $ags_t_hitrun . '" title="' . $ags_t_hitrun . '"></i></a>
+    $ags_t_comments = $Torrent['allowcomments'] != 'yes' ? $ags_t_open : $ags_t_close;
 
-    <form method="post" action="' . $BASEURL . '/comment.php?tid=' . $id . '&action=' . ($Torrent['allowcomments'] != 'yes' ? 'open' : 'close') . '" style="display:inline;">
+    $show_manage .= '
+    <a href="' . $BASEURL . '/admin/index.php?act=hit_and_run&torrentid=' . $id . '" class="st-icon-btn" title="' . $ags_t_hitrun . '" aria-label="' . $ags_t_hitrun . '">
+        <i class="fa-solid fa-person-running"></i></a>
+
+    <form method="post" action="' . $BASEURL . '/comment.php?tid=' . $id . '&action=' . ($Torrent['allowcomments'] != 'yes' ? 'open' : 'close') . '" class="d-inline-flex m-0">
         <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-        <button type="submit" class="manage-icon-btn"
-                onmouseout="window.status=\'\'; return true;"
-                onMouseOver="window.status=\'' . $ags_t_status . '\'; return true;">'
-        . ($Torrent['allowcomments'] != 'yes'
-            ? '<i class="fa-solid fa-comment-slash" style="color: #e91b0c;" alt="' . $ags_t_open . '" title="' . $ags_t_open . '"></i>'
-            : '<i class="fa-solid fa-comment-slash" style="color: #08e74b;" alt="' . $ags_t_close . '" title="' . $ags_t_close . '"></i>')
-        . '</button>
+        <button type="submit" class="st-icon-btn border-0" title="' . $ags_t_comments . '" aria-label="' . $ags_t_comments . '">
+            <i class="fa-solid fa-comment-slash ' . ($Torrent['allowcomments'] != 'yes' ? 'text-danger' : 'text-success') . '"></i>
+        </button>
     </form>
 
-    <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="manage-icon-btn">
-        <i class="fa-sharp fa-solid fa-info" style="color: #94b4eb;" alt="' . $ags_t_info . '" title="' . $ags_t_info . '"></i></a>
+    <a href="' . $BASEURL . '/admin/index.php?act=torrent_info&amp;id=' . $id . '" class="st-icon-btn" title="' . $ags_t_info . '" aria-label="' . $ags_t_info . '">
+        <i class="fa-solid fa-circle-info text-info"></i></a>
 
-    <a href="' . $BASEURL . '/admin/nuketorrent.php?id=' . $id . '" class="manage-icon-btn">
-        <i class="fa-solid fa-radiation" style="color: ' . (($Torrent['isnuked'] ?? 'no') === 'yes' ? '#eb0f0f' : '#f0a020') . ';"
-           title="' . $ags_t_nuke . '"></i></a>';
+    <a href="' . $BASEURL . '/admin/nuketorrent.php?id=' . $id . '" class="st-icon-btn" title="' . $ags_t_nuke . '" aria-label="' . $ags_t_nuke . '">
+        <i class="fa-solid fa-radiation ' . (($Torrent['isnuked'] ?? 'no') === 'yes' ? 'text-danger' : 'text-warning') . '"></i></a>';
 }
 
 // ── Torrent file tree ───────────────────────────────────────────────────────
@@ -1080,10 +1017,10 @@ foreach ($screenshots as $shot) {
 
     $screensHtml .= '
     <div class="col-6 col-md-4 col-lg-3">
-        <a href="#" class="screenshot-wrapper d-block position-relative overflow-hidden rounded-4"
+        <a href="#" class="screenshot-wrapper"
            data-bs-toggle="modal" data-bs-target="#universalImageModal"
            data-img-src="' . $screenshotUrl . '" data-title="' . $ags_t_screenshot . '">
-            <img src="' . $screenshotUrl . '" class="img-fluid rounded-4 transition-scale" alt="' . $ags_t_screenshot . '"
+            <img src="' . $screenshotUrl . '" class="img-fluid" alt="' . $ags_t_screenshot . '" loading="lazy"
                  data-kind="shot" data-missing="' . htmlspecialchars($ags_t_shot_miss, ENT_QUOTES) . '"
                  onerror="window.dtImgMissing && dtImgMissing(this)">
         </a>
@@ -1109,7 +1046,7 @@ foreach ($images as $img) {
     <a href="#" data-bs-toggle="modal" data-bs-target="#universalImageModal"
        data-img-src="' . htmlspecialchars_uni($img) . '"
        data-title="' . htmlspecialchars_uni($Torrent['name']) . '">
-        <img src="' . htmlspecialchars_uni($img) . '" class="rounded" width="400"
+        <img src="' . htmlspecialchars_uni($img) . '" width="400"
              alt="' . htmlspecialchars_uni($Torrent['name']) . '"
              data-kind="poster" data-missing="' . htmlspecialchars($ags_t_poster_miss, ENT_QUOTES) . '"
              onerror="window.dtImgMissing && dtImgMissing(this)">
@@ -1122,18 +1059,16 @@ $screenContent = '';
 if (!empty($screenshots)) {
     $screenTab = '
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-semibold" id="screen-tab" data-bs-toggle="tab"
+        <button class="nav-link" id="screen-tab" data-bs-toggle="tab"
                 data-bs-target="#screen" type="button" role="tab"
                 aria-controls="screen" aria-selected="false">
-            <i class="bi bi-images me-2"></i>' . htmlspecialchars($lang->details['tab_screens']) . '
+            <i class="fa-solid fa-images"></i>' . htmlspecialchars($lang->details['tab_screens']) . '
         </button>
     </li>';
 
     $screenContent = '
     <div class="tab-pane fade" id="screen" role="tabpanel" aria-labelledby="screen-tab">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            ' . $screensHtml . '
-        </div>
+        ' . $screensHtml . '
     </div>';
 }
 
@@ -1143,43 +1078,30 @@ $nfoContent = '';
 if (!empty($torrent2['nfo'])) {
     $nfoTab = '
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-semibold" id="nfo-tab" data-bs-toggle="tab"
+        <button class="nav-link" id="nfo-tab" data-bs-toggle="tab"
                 data-bs-target="#nfo" type="button" role="tab">
-            <i class="bi bi-file-earmark-text-fill me-2"></i>' . htmlspecialchars($lang->details['tab_nfo']) . '
+            <i class="fa-solid fa-file-lines"></i>' . htmlspecialchars($lang->details['tab_nfo']) . '
         </button>
     </li>';
 
     $nfoContent = '
     <div class="tab-pane fade" id="nfo" role="tabpanel" aria-labelledby="nfo-tab">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>' . htmlspecialchars($lang->details['sec_nfo_file']) . '</h6>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyNfo()">
-                <i class="bi bi-clipboard me-1"></i>' . htmlspecialchars($lang->details['btn_copy']) . '
+        <div class="dt-pane-head">
+            <h6 class="dt-pane-title"><i class="fa-solid fa-file-lines"></i>' . htmlspecialchars($lang->details['sec_nfo_file']) . '</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="copyNfo()">
+                <i class="fa-solid fa-copy me-1"></i>' . htmlspecialchars($lang->details['btn_copy']) . '
             </button>
         </div>
-        <div class="card border-0" style="border: 1px solid #dee2e6 !important;">
-            <div class="card-header d-flex justify-content-between align-items-center py-2"
-                 style="background:#f1f3f5; border-bottom: 1px solid #dee2e6;">
-                <span class="text-dark small">
-                    <i class="fas fa-file-alt me-1 text-primary"></i>
-                    ' . htmlspecialchars($Torrent['name']) . '.nfo
-                </span>
-            </div>
-            <div class="card-body p-0">
-                <pre id="nfoText"
-                     style="background:#f8f9fa; color:#212529; font-family:\'Courier New\',monospace;
-                            font-size:0.75rem; padding:1rem; margin:0; max-height:500px;
-                            overflow-y:auto; white-space:pre; border-radius:0 0 8px 8px;">'
-                . htmlspecialchars($torrent2['nfo']) .
-                '</pre>
-            </div>
+        <div class="dt-nfo">
+            <div class="dt-nfo__head"><i class="fa-solid fa-file-lines me-1"></i>' . htmlspecialchars($Torrent['name']) . '.nfo</div>
+            <pre id="nfoText">' . htmlspecialchars($torrent2['nfo']) . '</pre>
         </div>
     </div>';
 }
 
 // ── Magnet button ───────────────────────────────────────────────────────────
 $magnetButton = ($TorrentObj !== null && !$TorrentObj->isPrivate())
-    ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>' . htmlspecialchars($lang->details['menu_magnet']) . '</a></li>'
+    ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="fa-solid fa-magnet me-2"></i>' . htmlspecialchars($lang->details['menu_magnet']) . '</a></li><li><hr class="dropdown-divider"></li>'
     : '';
 
 // ── Claim box (port of NexusPHP "claim block" in details.php) ───────────────
@@ -1196,49 +1118,40 @@ if (claim_enabled() && claim_torrent_old_enough($Torrent)) {
              . '<input type="hidden" name="action" value="' . $action . '">'
              . '<input type="hidden" name="torrent_id" value="' . (int)$id . '">'
              . '<input type="hidden" name="returnto" value="details.php?id=' . (int)$id . '">'
-             . '<button class="btn ' . $btnClass . ' btn-sm"><i class="bi ' . $icon . ' me-1"></i>' . htmlspecialchars($label) . '</button></form>';
+             . '<button class="btn ' . $btnClass . ' btn-sm st-pill"><i class="fa-solid ' . $icon . ' me-1"></i>' . htmlspecialchars($label) . '</button></form>';
     };
 
     if ($myClaim) {
         $text = ags_fmt($lang->details['claim_mine'], date('d.m.Y', (int)$myClaim['added']), claim_cfg('seed_hours'), claim_cfg('upload_times'));
-        $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-list-check me-1"></i>' . htmlspecialchars($lang->details['claim_btn_my']) . '</a>'
-              . $claimForm('remove', 'btn-outline-danger', 'bi-x-lg', $lang->details['claim_btn_give_up'],
+        $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm st-pill"><i class="fa-solid fa-list-check me-1"></i>' . htmlspecialchars($lang->details['claim_btn_my']) . '</a>'
+              . $claimForm('remove', 'btn-outline-danger', 'fa-xmark', $lang->details['claim_btn_give_up'],
                     ags_fmt($lang->details['claim_confirm_give_up'], number_format(claim_cfg('give_up_deduct'))));
     } else {
         try {
             claim_check_can((int)$CURUSER['id'], (int)$id);
             $text = ags_fmt($lang->details['claim_offer'], claim_cfg('seed_hours'));
-            $btn  = $claimForm('add', 'btn-success', 'bi-hand-thumbs-up', $lang->details['claim_btn_claim'],
+            $btn  = $claimForm('add', 'btn-success', 'fa-thumbs-up', $lang->details['claim_btn_claim'],
                     ags_fmt($lang->details['claim_confirm_add'], claim_cfg('seed_hours'), number_format(claim_cfg('remove_deduct'))));
         } catch (ClaimException $ex) {
-            $text = '<span class="text-muted">' . htmlspecialchars($ex->getMessage(), ENT_QUOTES) . '</span>';
+            $text = '<span class="text-body-secondary">' . htmlspecialchars($ex->getMessage(), ENT_QUOTES) . '</span>';
             $btn  = '';
         }
     }
 
+    // Подтверждение формы — в scripts/details.js (подписи кнопок берутся из data-атрибутов)
     $claimBox = '
-            <div class="claim-box mt-4">
-                <i class="bi bi-heart-pulse fs-4 text-success"></i>
-                <div class="claim-box__text">' . $text . '
-                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">' . htmlspecialchars(ags_fmt($lang->details['claim_by'], (int)$claimCount, claim_cfg('max_per_torrent'))) . '</a></div>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">' . $btn . '</div>
+        <div class="claim-box dt-claim"
+             data-claim-yes="' . htmlspecialchars($lang->details['claim_yes'], ENT_QUOTES) . '"
+             data-claim-cancel="' . htmlspecialchars($lang->details['claim_cancel'], ENT_QUOTES) . '">
+            <span class="st-ico st-soft-success"><i class="fa-solid fa-heart-pulse"></i></span>
+            <div class="claim-box__text">' . $text . '
+                <div class="st-meta mt-1"><a href="' . $claimersUrl . '">' . htmlspecialchars(ags_fmt($lang->details['claim_by'], (int)$claimCount, claim_cfg('max_per_torrent'))) . '</a></div>
             </div>
-            <script>
-            document.addEventListener("submit", function (e) {
-                var f = e.target;
-                if (!f.matches("form[data-claim-confirm]") || f.dataset.ok === "1") return;
-                e.preventDefault();
-                var go = function () { f.dataset.ok = "1"; f.querySelector("button").disabled = true; f.submit(); };
-                if (window.Swal) {
-                    window.Swal.fire({ icon: "question", text: f.dataset.claimConfirm, showCancelButton: true, confirmButtonText: ' . json_encode($lang->details['claim_yes'], $ags_json_flags) . ',
-                        cancelButtonText: ' . json_encode($lang->details['claim_cancel'], $ags_json_flags) . ', reverseButtons: true }).then(function (r) { if (r.isConfirmed) go(); });
-                } else if (window.confirm(f.dataset.claimConfirm)) { go(); }
-            });
-            </script>';
+            <div class="dt-claim__actions">' . $btn . '</div>
+        </div>';
 }
 
-$act = '<span id="bookmark' . $Torrent['id'] . '">'
+$act = '<span id="bookmark' . $Torrent['id'] . '" class="dt-bm">'
      . get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id'])
      . '</span>';
 
@@ -1282,22 +1195,22 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
                 <form method="post" action="requests.php?action=fill&amp;rid=' . $rm_rid . '" class="rm-item__form" onsubmit="return confirm(' . $rm_conf . ')">
                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                     <input type="hidden" name="torrent_id" value="' . (int)$id . '">
-                    <button type="submit" class="btn btn-sm btn-success rounded-pill px-3"><i class="fa-solid fa-check me-1"></i>' . htmlspecialchars($lang->details['btn_req_fill']) . '</button>
+                    <button type="submit" class="btn btn-sm btn-success st-pill"><i class="fa-solid fa-check me-1"></i>' . htmlspecialchars($lang->details['btn_req_fill']) . '</button>
                 </form>
             </div>';
         }
 
         $RequestMatches = '
-    <div class="rm-panel mb-5 animate__animated animate__fadeIn">
-        <div class="rm-panel__head">
-            <span class="rm-panel__icon"><i class="fa-solid fa-hand-holding-heart"></i></span>
-            <div>
-                <div class="rm-panel__title">' . htmlspecialchars($lang->details['sec_req_match']) . '</div>
-                <div class="rm-panel__hint">' . htmlspecialchars($lang->details['hint_req_match']) . '</div>
+    <section class="st-card dt-rm">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-success"><i class="fa-solid fa-hand-holding-heart"></i></span>
+            <div class="min-w-0">
+                <div>' . htmlspecialchars($lang->details['sec_req_match']) . '</div>
+                <div class="dt-rm__hint">' . htmlspecialchars($lang->details['hint_req_match']) . '</div>
             </div>
         </div>
-        <div class="rm-panel__list">' . $rm_rows . '</div>
-    </div>';
+        <div class="st-card__body rm-list">' . $rm_rows . '</div>
+    </section>';
     }
 }
 
@@ -1307,367 +1220,278 @@ $ags_health_c  = getHealthColor($Torrent['seeders'], $Torrent['leechers']);
 $ags_numfiles  = (int)$Torrent['numfiles'];
 $ags_files_lbl = htmlspecialchars(ags_fmt(ags_plural($ags_numfiles, $lang->details['lbl_files']), ts_nf($ags_numfiles)));
 
+// Плитки: все цифры уже есть в строке раздачи — лишних запросов нет.
+// [иконка, цвет, значение, подпись, атрибуты ссылки, доп. класс]
+$dt_kpi_tiles = [
+    ['fa-arrow-up',     'st-soft-success', ts_nf($Torrent['seeders']),         $lang->details['stat_seeders'],  'href="#peers" data-scroll-tab="peers"', ' scroll-to-tab'],
+    ['fa-arrow-down',   'st-soft-danger',  ts_nf($Torrent['leechers']),        $lang->details['stat_leechers'], 'href="#peers" data-scroll-tab="peers"', ' scroll-to-tab'],
+    ['fa-circle-check', 'st-soft-info',    ts_nf($Torrent['times_completed']), $lang->details['snatched'],      'href="viewsnatches.php?id=' . $id . '"', ''],
+    ['fa-comments',     'st-soft-primary', ts_nf($Torrent['comments']),        $lang->details['comments'],      'href="#dt-comments"', ''],
+];
+$dt_kpis = '';
+foreach ($dt_kpi_tiles as [$kpi_icon, $kpi_soft, $kpi_val, $kpi_lbl, $kpi_attrs, $kpi_class]) {
+    $dt_kpis .= '
+        <a ' . $kpi_attrs . ' class="st-kpi st-kpi--muted' . $kpi_class . '">
+            <span class="st-ico ' . $kpi_soft . '"><i class="fa-solid ' . $kpi_icon . '"></i></span>
+            <div class="min-w-0">
+                <div class="st-kpi__val">' . $kpi_val . '</div>
+                <div class="st-kpi__lbl">' . htmlspecialchars($kpi_lbl, ENT_QUOTES) . '</div>
+            </div>
+            <i class="fa-solid ' . $kpi_icon . ' st-kpi__bg" aria-hidden="true"></i>
+        </a>';
+}
+
 $details = '
-<div id="torrent_details" class="container mt-5">
+<div id="torrent_details" class="container-md st-page dt-page">
 
     <!-- Breadcrumb -->
-    <nav aria-label="breadcrumb" class="mb-4 animate__animated animate__fadeIn">
-        <ol class="breadcrumb torrent-breadcrumb p-3 rounded-3 shadow-sm">
+    <nav aria-label="breadcrumb" class="dt-crumbs">
+        <ol class="breadcrumb">
             <li class="breadcrumb-item">
-                <a href="/" class="text-decoration-none">
-                    <i class="bi bi-house-door-fill me-1"></i> ' . htmlspecialchars($lang->details['nav_home'], ENT_QUOTES) . '
-                </a>
+                <a href="/"><i class="fa-solid fa-house me-1"></i>' . htmlspecialchars($lang->details['nav_home'], ENT_QUOTES) . '</a>
             </li>
             <li class="breadcrumb-item">
-                <a href="browse.php" class="text-decoration-none">
-                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> ' . htmlspecialchars($lang->details['nav_browse'], ENT_QUOTES) . '
-                </a>
+                <a href="browse.php"><i class="fa-solid fa-table-cells-large me-1"></i>' . htmlspecialchars($lang->details['nav_browse'], ENT_QUOTES) . '</a>
             </li>
-            <li class="breadcrumb-item active text-truncate" style="max-width: 400px;"
-                aria-current="page" title="' . htmlspecialchars_uni($Torrent['name']) . '">
-                <i class="bi bi-file-earmark-zip-fill me-1"></i>
-                ' . htmlspecialchars_uni(mb_strlen($Torrent['name']) > 60
+            <li class="breadcrumb-item active text-truncate" aria-current="page" title="' . htmlspecialchars_uni($Torrent['name']) . '">'
+                . htmlspecialchars_uni(mb_strlen($Torrent['name']) > 60
                     ? mb_substr($Torrent['name'], 0, 60) . '…'
                     : $Torrent['name']) . '
             </li>
         </ol>
     </nav>
 
+    ' . $warning_message . '
+
     <!-- Header -->
-    <div class="torrent-header mb-5">
-        <div class="d-flex align-items-start gap-4 flex-wrap">
-            <div class="torrent-hero-icon">
-                <i class="' . ($torrent2['icon'] ?? 'bi bi-collection-fill') . '"></i>
-            </div>
+    <header class="st-card st-head dt-head">
+        <div class="st-head__icon st-soft-primary"><i class="' . ($torrent2['icon'] ?: 'fa-solid fa-layer-group') . '"></i></div>
 
-            <div class="flex-grow-1">
-                <h1 class="h3 mb-3 fw-bold text-dark animate__animated animate__fadeInDown">
-                    <span class="status-badges me-2">' . GetTorrentTags($Torrent) . '</span>
-                    ' . htmlspecialchars_uni($Torrent['name']) . '
-                </h1>
+        <div class="dt-head__body">
+            <h1 class="st-title">
+                <span class="dt-head__tags">' . GetTorrentTags($Torrent) . '</span>
+                ' . htmlspecialchars_uni($Torrent['name']) . '
+            </h1>
 
-                <div class="d-flex flex-wrap gap-2 align-items-center torrent-meta-badges">
-                    <span class="badge meta-badge meta-badge-id" title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '">
-                        <i class="bi bi-hash me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '
-                    </span>
-                    <span class="badge meta-badge meta-badge-size" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '">
-                        <i class="bi bi-hdd-fill me-1"></i>' . mksize($Torrent['size']) . '
-                    </span>
-                    <span class="badge meta-badge meta-badge-health bg-' . $ags_health_c . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '">
-                        <i class="bi bi-activity me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '
-                    </span>
-                    <span class="badge meta-badge meta-badge-files" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '">
-                        <i class="bi bi-file-earmark-fill me-1"></i>' . $ags_files_lbl . '
-                    </span>
-                    <span class="badge meta-badge meta-badge-date" title="' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '">
-                        <i class="bi bi-calendar-check-fill me-1"></i>' . my_datee('relative', $Torrent['added']) . '
-                    </span>
-                    ' . ($already_snatched ? '
-                    <span class="badge meta-badge meta-badge-snatched" title="' . htmlspecialchars($lang->details['tip_snatched_by_you'], ENT_QUOTES) . '">
-                        <i class="bi bi-check2-circle me-1"></i>' . htmlspecialchars($lang->details['badge_already_downloaded'], ENT_QUOTES) . '
-                    </span>' : '') . '
-                    ' . $act . '
-                </div>
+            <div class="st-head__meta">
+                <span class="st-badge st-soft-muted" title="' . htmlspecialchars($lang->details['tip_torrent_id'], ENT_QUOTES) . '"><i class="fa-solid fa-hashtag"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_id'], (int)$id)) . '</span>
+                <span class="st-badge dt-soft-purple" title="' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '"><i class="fa-solid fa-hard-drive"></i>' . mksize($Torrent['size']) . '</span>
+                <span class="st-badge st-soft-warning" title="' . htmlspecialchars($lang->details['tip_numfiles'], ENT_QUOTES) . '"><i class="fa-solid fa-file"></i>' . $ags_files_lbl . '</span>
+                <span class="st-badge st-soft-muted" title="' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '"><i class="fa-solid fa-calendar-check"></i>' . my_datee('relative', $Torrent['added']) . '</span>
+                <span class="st-badge text-bg-' . $ags_health_c . '" title="' . htmlspecialchars($lang->details['tip_health'], ENT_QUOTES) . '"><i class="fa-solid fa-heart-pulse"></i>' . htmlspecialchars(ags_fmt($lang->details['lbl_health'], $ags_health)) . '</span>
+                ' . ($already_snatched ? '
+                <span class="st-badge st-soft-info" title="' . htmlspecialchars($lang->details['tip_snatched_by_you'], ENT_QUOTES) . '"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars($lang->details['badge_already_downloaded'], ENT_QUOTES) . '</span>' : '') . '
             </div>
         </div>
-    </div>
+
+        <div class="dt-head__actions">
+            ' . $act . '
+            <a href="' . get_download_link($id) . '" class="btn btn-primary st-pill"
+               title="' . htmlspecialchars($lang->details['dltorrent'], ENT_QUOTES) . '">
+                <i class="fa-solid fa-cloud-arrow-down me-2"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '
+            </a>
+            <button type="button" class="btn btn-outline-secondary st-pill dt-btn-ico report-btn"
+                    data-bs-toggle="modal" data-bs-target="#reportModal"
+                    data-report-type="torrent"
+                    data-report-id="' . $id . '"
+                    data-report-userid="' . $Torrent['owner'] . '"
+                    data-report-name="' . htmlspecialchars($Torrent['name'] ?? $lang->details['lbl_torrent_fallback']) . '"
+                    title="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '"
+                    aria-label="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '">
+                <i class="fa-solid fa-flag"></i>
+            </button>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary st-pill dt-btn-ico"
+                        data-bs-toggle="dropdown" aria-expanded="false"
+                        title="' . htmlspecialchars($lang->details['tip_more_options'], ENT_QUOTES) . '"
+                        aria-label="' . htmlspecialchars($lang->details['tip_more_options'], ENT_QUOTES) . '">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow">
+                    ' . $magnetButton . '
+                    <li>
+                        <a class="dropdown-item scroll-to-tab" href="#info" data-scroll-tab="info">
+                            <i class="fa-solid fa-circle-info me-2"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item scroll-to-tab" href="#files" data-scroll-tab="files">
+                            <i class="fa-solid fa-folder me-2"></i>' . htmlspecialchars($lang->details['menu_filelist'], ENT_QUOTES) . '
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item scroll-to-tab" href="#peers" data-scroll-tab="peers">
+                            <i class="fa-solid fa-users me-2"></i>' . htmlspecialchars($lang->details['menu_peers'], ENT_QUOTES) . '
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </header>
 
     ' . $RequestMatches . '
 
-    <!-- Action-card -->
-    <div class="card shadow-sm border-0 mb-5 action-card animate__animated animate__zoomIn">
-        <div class="card-body p-4">
-            <div class="row align-items-center g-4">
-                <div class="col-md-7">
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="action-icon">
-                            <i class="bi bi-cloud-download"></i>
-                        </div>
-                        <div>
-                            <h5 class="mb-1 fw-bold">' . htmlspecialchars($lang->details['dltorrent'], ENT_QUOTES) . '</h5>
-                            <div class="text-muted small">
-                                <i class="bi bi-hdd me-1"></i>' . mksize($Torrent['size']) . '
-                                <span class="mx-2">•</span>
-                                <i class="bi bi-file-earmark me-1"></i>' . $ags_files_lbl . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-5 text-md-end">
-                    <div class="d-flex gap-2 justify-content-md-end flex-wrap align-items-center">
-                        <a href="' . get_download_link($id) . '"
-                           class="btn btn-primary btn-lg btn-download-pulse"
-                           title="' . htmlspecialchars($lang->details['dltorrent'], ENT_QUOTES) . '">
-                            <i class="bi bi-cloud-arrow-down-fill me-2"></i>' . htmlspecialchars($lang->details['download'], ENT_QUOTES) . '
-                        </a>
-                        <button type="button" class="btn btn-outline-secondary btn-lg report-btn"
-                                data-bs-toggle="modal" data-bs-target="#reportModal"
-                                data-report-type="torrent"
-                                data-report-id="' . $id . '"
-                                data-report-userid="' . $Torrent['owner'] . '"
-                                data-report-name="' . htmlspecialchars($Torrent['name'] ?? $lang->details['lbl_torrent_fallback']) . '"
-                                title="' . htmlspecialchars($lang->details['tip_report_torrent'], ENT_QUOTES) . '">
-                            <i class="bi bi-flag-fill"></i>
-                        </button>
-                        <div class="btn-group">
-                            <button type="button" class="btn btn-outline-primary btn-lg dropdown-toggle"
-                                    data-bs-toggle="dropdown" aria-expanded="false" title="' . htmlspecialchars($lang->details['tip_more_options'], ENT_QUOTES) . '">
-                                <i class="bi bi-three-dots-vertical"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end shadow">
-                                ' . $magnetButton . '
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <a class="dropdown-item scroll-to-tab" href="#info" data-scroll-tab="info">
-                                        <i class="bi bi-info-circle me-2"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item scroll-to-tab" href="#files" data-scroll-tab="files">
-                                        <i class="bi bi-folder me-2"></i>' . htmlspecialchars($lang->details['menu_filelist'], ENT_QUOTES) . '
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item scroll-to-tab" href="#peers" data-scroll-tab="peers">
-                                        <i class="bi bi-people me-2"></i>' . htmlspecialchars($lang->details['menu_peers'], ENT_QUOTES) . '
-                                    </a>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
+    <!-- Claim / posters / health -->
+    <section class="st-card dt-overview">
+        ' . $claimBox . '
+        ' . ($modal_images ? '
+        <div class="dt-posters">' . $modal_images . '</div>' : '') . '
+        <div class="dt-health">
+            <span class="dt-health__lbl"><i class="fa-solid fa-heart-pulse"></i>' . htmlspecialchars($lang->details['lbl_torrent_health'], ENT_QUOTES) . '</span>
+            <div class="progress dt-health__bar" role="progressbar" aria-valuenow="' . $ags_health . '" aria-valuemin="0" aria-valuemax="100"
+                 aria-label="' . htmlspecialchars($lang->details['lbl_torrent_health'], ENT_QUOTES) . '">
+                <div class="progress-bar bg-' . $ags_health_c . '" style="width: ' . $ags_health . '%"></div>
             </div>
-
-            ' . $claimBox . '
-
-            ' . ($modal_images ? '
-            <!-- Posters -->
-            <div class="poster-strip mt-4">
-                ' . $modal_images . '
-            </div>
-            ' : '') . '
-
-            <!-- Health progress -->
-            <div class="health-progress-wrap mt-4">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="small fw-semibold text-muted">
-                        <i class="bi bi-heart-pulse-fill me-1 text-danger"></i>' . htmlspecialchars($lang->details['lbl_torrent_health'], ENT_QUOTES) . '
-                    </span>
-                    <span class="small fw-bold">' . $ags_health . '%</span>
-                </div>
-                <div class="progress health-progress" role="progressbar"
-                     aria-valuenow="' . $ags_health . '"
-                     aria-valuemin="0" aria-valuemax="100">
-                    <div class="progress-bar bg-' . $ags_health_c . '"
-                         style="width: ' . $ags_health . '%"></div>
-                </div>
-            </div>
-
-            <!-- Stat tiles -->
-            <div class="row g-3 mt-4">
-                <div class="col-6 col-md-3">
-                    <div class="stat-tile stat-tile-success">
-                        <div class="stat-tile-icon"><i class="bi bi-arrow-up-circle-fill"></i></div>
-                        <div class="stat-tile-body">
-                            <div class="stat-tile-value">' . ts_nf($Torrent['seeders']) . '</div>
-                            <div class="stat-tile-label">
-                                <i class="bi bi-broadcast me-1"></i>' . htmlspecialchars($lang->details['stat_seeders'], ENT_QUOTES) . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-tile stat-tile-warning">
-                        <div class="stat-tile-icon"><i class="bi bi-arrow-down-circle-fill"></i></div>
-                        <div class="stat-tile-body">
-                            <div class="stat-tile-value">' . ts_nf($Torrent['leechers']) . '</div>
-                            <div class="stat-tile-label">
-                                <i class="bi bi-download me-1"></i>' . htmlspecialchars($lang->details['stat_leechers'], ENT_QUOTES) . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-tile stat-tile-info">
-                        <div class="stat-tile-icon"><i class="bi bi-cloud-download-fill"></i></div>
-                        <div class="stat-tile-body">
-                            <div class="stat-tile-value">' . ts_nf($Torrent['times_completed']) . '</div>
-                            <div class="stat-tile-label">
-                                <i class="bi bi-check2-all me-1"></i>' . htmlspecialchars($lang->details['snatched'], ENT_QUOTES) . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-tile stat-tile-secondary">
-                        <div class="stat-tile-icon"><i class="bi bi-chat-square-text-fill"></i></div>
-                        <div class="stat-tile-body">
-                            <div class="stat-tile-value">' . ts_nf($Torrent['comments']) . '</div>
-                            <div class="stat-tile-label">
-                                <i class="bi bi-chat-dots me-1"></i>' . htmlspecialchars($lang->details['comments'], ENT_QUOTES) . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <span class="dt-health__val">' . $ags_health . '%</span>
         </div>
+    </section>
+
+    <!-- KPI tiles -->
+    <div class="dt-kpis">' . $dt_kpis . '
     </div>
 
     <!-- Tabs -->
-    <div class="card shadow-sm border-0 mb-5 animate__animated animate__fadeInUp">
-        <div class="card-header bg-light p-0">
-            <ul class="nav nav-tabs nav-tabs-scrollable" id="torrentTabs" role="tablist">
+    <section class="st-card">
+        <div class="dt-tabs-wrap">
+            <ul class="nav dt-tabs" id="torrentTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active fw-semibold" id="info-tab" data-bs-toggle="tab"
+                    <button class="nav-link active" id="info-tab" data-bs-toggle="tab"
                             data-bs-target="#info" type="button" role="tab">
-                        <i class="bi bi-info-square-fill me-2"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
+                        <i class="fa-solid fa-circle-info"></i>' . htmlspecialchars($lang->details['tab_info'], ENT_QUOTES) . '
                     </button>
                 </li>
                 ' . $screenTab . '
                 ' . $nfoTab . '
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link fw-semibold" id="files-tab" data-bs-toggle="tab"
+                    <button class="nav-link" id="files-tab" data-bs-toggle="tab"
                             data-bs-target="#files" type="button" role="tab">
-                        <i class="bi bi-folder-fill me-2"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_files'], ts_nf($Torrent['numfiles']))) . '
+                        <i class="fa-solid fa-folder"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_files'], ts_nf($Torrent['numfiles']))) . '
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link fw-semibold" id="peers-tab" data-bs-toggle="tab"
+                    <button class="nav-link" id="peers-tab" data-bs-toggle="tab"
                             data-bs-target="#peers" type="button" role="tab">
-                        <i class="bi bi-people-fill me-2"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_peers'], ts_nf($Torrent['seeders'] + $Torrent['leechers']))) . '
+                        <i class="fa-solid fa-users"></i>' . htmlspecialchars(ags_fmt($lang->details['tab_peers'], ts_nf($Torrent['seeders'] + $Torrent['leechers']))) . '
                     </button>
                 </li>
                 ' . ((int)$Torrent['seeders'] === 0 && $CURUSER ? '
-                <li class="nav-item align-self-center ms-2">
-                    <form method="post" action="' . $BASEURL . '/takereseed.php" class="d-inline"
+                <li class="nav-item ms-auto">
+                    <form method="post" action="' . $BASEURL . '/takereseed.php" class="m-0"
                           onsubmit="return confirm(' . htmlspecialchars(json_encode($lang->details['confirm_reseed'], $ags_json_flags), ENT_QUOTES) . ')">
                         <input type="hidden" name="my_post_key" value="' . htmlspecialchars((string)($mybb->post_code ?? ''), ENT_QUOTES) . '">
                         <input type="hidden" name="reseedid" value="' . (int)$Torrent['id'] . '">
-                        <button type="submit" class="btn btn-sm btn-outline-warning">
-                            <i class="bi bi-megaphone-fill me-1"></i> ' . htmlspecialchars($lang->details['btn_request_reseed'], ENT_QUOTES) . '
+                        <button type="submit" class="btn btn-sm btn-outline-warning st-pill text-nowrap">
+                            <i class="fa-solid fa-bullhorn me-1"></i>' . htmlspecialchars($lang->details['btn_request_reseed'], ENT_QUOTES) . '
                         </button>
                     </form>
                 </li>' : '') . '
             </ul>
         </div>
 
-        <div class="card-body p-4">
+        <div class="st-card__body">
             <div class="tab-content" id="torrentTabsContent">
 
-                <!-- Вкладка информации -->
+                <!-- Info -->
                 <div class="tab-pane fade show active" id="info" role="tabpanel">
-                    <div class="row g-4">
-                        <!-- Левая колонка -->
-                        <div class="col-md-6">
-                            <div class="info-grid">
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-calendar me-1"></i>' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '</span>
-                                    <span class="fw-bold text-end">
-                                        ' . my_datee($dateformat, $Torrent['added']) . '
-                                        <small class="text-muted ms-2">' . my_datee($timeformat, $Torrent['added']) . '</small>
-                                    </span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-tag me-1"></i>' . htmlspecialchars($lang->details['lbl_category'], ENT_QUOTES) . '</span>
-                                    <span class="fw-bold text-end">' . $torrent2['categoryname'] . '</span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-hdd me-1"></i>' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '</span>
-                                    <span class="fw-bold text-end">' . mksize($Torrent['size']) . '</span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-hash me-1"></i>' . htmlspecialchars($lang->details['infohash'], ENT_QUOTES) . '</span>
-                                    <span class="font-monospace small text-end text-break">' . htmlspecialchars($Torrent['info_hash'] ?? $lang->details['na']) . '</span>
-                                </div>
+                    <div class="dt-info">
+                        <div class="st-rows">
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-calendar"></i>' . htmlspecialchars($lang->details['lbl_uploaded'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . my_datee($dateformat, $Torrent['added']) . ' <small class="text-body-secondary ms-1">' . my_datee($timeformat, $Torrent['added']) . '</small></span>
+                            </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-tag"></i>' . htmlspecialchars($lang->details['lbl_category'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . $torrent2['categoryname'] . '</span>
+                            </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-hard-drive"></i>' . htmlspecialchars($lang->details['size'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . mksize($Torrent['size']) . '</span>
+                            </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-fingerprint"></i>' . htmlspecialchars($lang->details['infohash'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val dt-hash">' . htmlspecialchars($Torrent['info_hash'] ?? $lang->details['na']) . '</span>
                             </div>
                         </div>
 
-                        <!-- Правая колонка -->
-                        <div class="col-md-6">
-                            <div class="info-grid">
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-download me-1"></i>' . htmlspecialchars($lang->details['snatched'], ENT_QUOTES) . '</span>
-                                    <span class="badge bg-light text-dark">
-                                        <a href="viewsnatches.php?id=' . $id . '" class="text-decoration-none text-dark">
-                                            ' . ts_nf($Torrent['times_completed']) . '
-                                        </a>
-                                    </span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-eye me-1"></i>' . htmlspecialchars($lang->details['views'], ENT_QUOTES) . '</span>
-                                    <span class="badge bg-light text-dark">' . ts_nf($Torrent['hits']) . '</span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-chat me-1"></i>' . htmlspecialchars($lang->details['comments'], ENT_QUOTES) . '</span>
-                                    <span class="badge bg-light text-dark">' . ts_nf($Torrent['comments']) . '</span>
-                                </div>
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-person me-1"></i>' . htmlspecialchars($lang->details['uppedby'], ENT_QUOTES) . '</span>
-                                    <span class="fw-bold text-end">' . $username . '</span>
-                                </div>
-                                ' . ($show_manage != '' ? '
-                                <div class="info-item d-flex justify-content-between border-bottom py-3">
-                                    <span class="text-muted"><i class="bi bi-gear me-1"></i>' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '</span>
-                                    <span class="fw-bold text-end">' . $show_manage . '</span>
-                                </div>' : '') . '
+                        <div class="st-rows">
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-circle-check"></i>' . htmlspecialchars($lang->details['snatched'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val"><a href="viewsnatches.php?id=' . $id . '">' . ts_nf($Torrent['times_completed']) . '</a></span>
                             </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-eye"></i>' . htmlspecialchars($lang->details['views'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . ts_nf($Torrent['hits']) . '</span>
+                            </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-comments"></i>' . htmlspecialchars($lang->details['comments'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . ts_nf($Torrent['comments']) . '</span>
+                            </div>
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-user"></i>' . htmlspecialchars($lang->details['uppedby'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val">' . $username . '</span>
+                            </div>
+                            ' . ($show_manage != '' ? '
+                            <div class="st-row">
+                                <span class="st-row__lbl"><i class="fa-solid fa-gear"></i>' . htmlspecialchars($lang->details['lbl_manage'], ENT_QUOTES) . '</span>
+                                <span class="st-row__val"><div class="dt-manage">' . $show_manage . '</div></span>
+                            </div>' : '') . '
                         </div>
                     </div>
 
-                    <!-- Tags -->
                     ' . ($keywords ? '
-                    <div class="mt-4 tag-section">
-                        <h6 class="fw-semibold mb-3">
-                            <i class="bi bi-tags me-2"></i>' . htmlspecialchars($lang->details['sec_tags'], ENT_QUOTES) . '
-                        </h6>
-                        <div class="d-flex flex-wrap gap-2">' . $keywords . '</div>
+                    <div class="dt-tags">
+                        <h6 class="dt-pane-title"><i class="fa-solid fa-tags"></i>' . htmlspecialchars($lang->details['sec_tags'], ENT_QUOTES) . '</h6>
+                        <div class="dt-tags__list">' . $keywords . '</div>
                     </div>' : '') . '
 
-                    <!-- Rating -->
                     ' . $rating_html . '
                 </div>
 
-                <!-- Files tab -->
+                <!-- Files -->
                 <div class="tab-pane fade" id="files" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="mb-0 fw-semibold"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>' . htmlspecialchars($lang->details['sec_file_structure'], ENT_QUOTES) . '</h6>
-                        <div class="btn-group btn-group-sm">
-                            <button type="button" class="btn btn-primary rounded-2 d-flex align-items-center gap-2" onclick="expandAllFiles()">
-                                <i class="bi bi-plus-circle"></i><span>' . htmlspecialchars($lang->details['btn_expand_all'], ENT_QUOTES) . '</span>
+                    <div class="dt-pane-head">
+                        <h6 class="dt-pane-title"><i class="fa-solid fa-folder-tree"></i>' . htmlspecialchars($lang->details['sec_file_structure'], ENT_QUOTES) . '</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-sm btn-primary st-pill" onclick="expandAllFiles()">
+                                <i class="fa-solid fa-plus me-1"></i>' . htmlspecialchars($lang->details['btn_expand_all'], ENT_QUOTES) . '
                             </button>
-                            <button type="button" class="btn btn-outline-primary rounded-2 d-flex align-items-center gap-2" onclick="collapseAllFiles()">
-                                <i class="bi bi-dash-circle"></i><span>' . htmlspecialchars($lang->details['btn_collapse_all'], ENT_QUOTES) . '</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" onclick="collapseAllFiles()">
+                                <i class="fa-solid fa-minus me-1"></i>' . htmlspecialchars($lang->details['btn_collapse_all'], ENT_QUOTES) . '
                             </button>
                         </div>
                     </div>
                     ' . (isset($tree) && $tree !== null
                         ? '<div class="file-tree">' . renderAccordion($tree) . '</div>'
-                        : '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($lang->details['err_torrent_file_missing'], ENT_QUOTES) . '</div>') . '
+                        : '<div class="alert alert-danger mb-0"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($lang->details['err_torrent_file_missing'], ENT_QUOTES) . '</div>') . '
                 </div>
 
                 ' . $screenContent . '
                 ' . $nfoContent . '
 
-                <!-- Peers tab -->
+                <!-- Peers -->
                 <div class="tab-pane fade" id="peers" role="tabpanel">
                     ' . $peerstable . '
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
     <!-- Description -->
-    <div class="card shadow-sm border-0 mt-5 animate__animated animate__fadeInUp">
-        <div class="card-header bg-light">
-            <h5 class="mb-0 fw-semibold"><i class="bi bi-card-text me-2 text-primary"></i>' . htmlspecialchars($lang->details['description'], ENT_QUOTES) . '</h5>
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
+            ' . htmlspecialchars($lang->details['description'], ENT_QUOTES) . '
         </div>
-        <div class="card-body p-4">' . $descr . '</div>
-    </div>
+        <div class="st-card__body dt-descr">' . $descr . '</div>
+    </section>
 
-    <!-- Extra sections -->
     ' . $ShowTLINK . '
     ' . $SimilarTorrents . '
-    ' . $showcommenttable . '
+
+    <!-- Comments -->
+    <div class="dt-comments" id="dt-comments">
+        ' . $showcommenttable . '
+    </div>
 </div>
 
 ' . ($magnetModal ?? '') . '';

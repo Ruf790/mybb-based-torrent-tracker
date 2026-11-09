@@ -22,7 +22,7 @@ function postbit_css_link(): string
     }
     $done = true;
 
-    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=301">';
+    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=302">';
 }
 
 /** PM sent by the system (fromid = 0), not by a user */

@@ -152,17 +152,25 @@ const MI_SUM_KEYS = [
     'other'     => ['тип релиза', 'release type', 'release', 'качество', 'quality', 'перевод', 'translation'],
 ];
 
-/** «[b]Аудио 2:[/b] …» → ['audio', '…'] или null */
+/** «[b]Аудио 2:[/b] …» / «Аудио Rus: …» → ['audio', '…', 'Rus'] или null */
 function mi_sum_line(string $line): ?array
 {
     $line = trim(preg_replace('#\[/?[a-z*]+(?:=[^\]]*)?\]#i', '', $line));
-    if (!preg_match('/^([\p{L} ]{3,20}?)\s*(?:#?\s*\d{1,2})?\s*:\s*(.*)$/u', $line, $m)) {
+    if (!preg_match('/^([\p{L} ]{3,24}?)\s*(?:#?\s*\d{1,2})?\s*:\s*(.*)$/u', $line, $m)) {
         return null;
     }
     $key = mb_strtolower(trim($m[1]));
     foreach (MI_SUM_KEYS as $type => $names) {
         if (in_array($key, $names, true)) {
-            return [$type, trim($m[2])];
+            return [$type, trim($m[2]), ''];
+        }
+        // «Аудио Rus», «Audio ENG», «Субтитры Eng» — короткая метка языка после ключа
+        foreach ($names as $name) {
+            if (preg_match('/^' . preg_quote($name, '/') . '\s+(\p{L}{2,4})$/u', $key, $lm)
+                && in_array($type, ['audio', 'subs', 'video'], true)) {
+                $lang = (string)preg_replace('/^.*?\s+/u', '', trim($m[1]));
+                return [$type, trim($m[2]), mb_convert_case($lang, MB_CASE_TITLE)];
+            }
         }
     }
     return null;
@@ -231,14 +239,22 @@ function mi_find_summary(string $descr): ?array
 /** Значения через «|» → массив непустых частей */
 function mi_sum_parts(string $v): array
 {
-    return array_values(array_filter(array_map('trim', explode('|', $v)), static fn(string $p): bool => $p !== ''));
+    $out = [];
+    foreach (preg_split('/\||,\s+(?![^()]*\))/u', $v) as $p) {
+        // «pic» — остаток картинки-иконки из BBCode, «~» — приблизительный битрейт
+        $p = trim((string)preg_replace('/^(?:pic|img|icon)\s+|^~\s*/iu', '', trim($p)));
+        if ($p !== '') {
+            $out[] = $p;
+        }
+    }
+    return $out;
 }
 
 function mi_sum_data(array $rows): array
 {
     $d = ['general' => ['format' => '', 'duration' => '', 'size' => '', 'bitrate' => ''], 'video' => [], 'audio' => [], 'text' => []];
 
-    foreach ($rows as [$type, $value]) {
+    foreach ($rows as [$type, $value, $klang]) {
         $parts = mi_sum_parts($value);
 
         if ($type === 'container') {
@@ -251,8 +267,11 @@ function mi_sum_data(array $rows): array
             $v = ['res' => '', 'size' => '', 'format' => '', 'codec' => '', 'hevc' => false, 'bitrate' => '', 'fps' => '', 'depth' => '', 'hdr' => '', 'aspect' => ''];
             $hdr = [];
             foreach ($parts as $p) {
-                if (preg_match('/^(\d{3,4})\s*[x×]\s*(\d{3,4})/u', $p, $m)) {
+                if (preg_match('/^(\d{3,4})\s*[x×]\s*(\d{3,4})(?:\s*\((\d+(?:[.,]\d+)?:\d+)\))?/u', $p, $m)) {
                     [$w, $h] = [(int)$m[1], (int)$m[2]];
+                    if (!empty($m[3])) {
+                        $v['aspect'] = $m[3];
+                    }
                     $v['size'] = $w . '×' . $h;
                     $v['res']  = match (true) {
                         $w >= 3800 || $h >= 2100 => '2160p',
@@ -296,6 +315,11 @@ function mi_sum_data(array $rows): array
                     continue;
                 } elseif (preg_match('/^(\d)[.,](\d)(?:\s*ch)?$/i', $p, $m)) {
                     $a['channels'] = $m[1] . '.' . $m[2];
+                } elseif (preg_match('/^(\d{1,2})\s*(?:ch|channels?|кан)/iu', $p, $m)) {
+                    $a['channels'] = match ((int)$m[1]) {
+                        1 => '1.0', 2 => '2.0', 3 => '2.1', 6 => '5.1', 8 => '7.1',
+                        default => $m[1] . ' ch',
+                    };
                 } elseif (preg_match('/^[\d.,\s]+\s*(?:kbps|kb\/s|кбит)/iu', $p)) {
                     $a['bitrate'] = $p;
                 } elseif ($codec === '' && preg_match('/^(e-?ac-?3|ac-?3|aac|dts(?:-hd)?(?:\s*ma)?|truehd|flac|opus|mp3|pcm|lpcm|ddp?)$/i', $p)) {
@@ -307,6 +331,7 @@ function mi_sum_data(array $rows): array
                 }
             }
             $a['codec'] = trim($codec . ($commercial !== '' ? ' ' . $commercial : ''));
+            $a['lang']  = $klang;
             // Название озвучки обычно последнее поле; остальное — неизвестные куски, их не показываем
             $a['title'] = (string)end($rest);
             $a['atmos'] = stripos($value, 'atmos') !== false;

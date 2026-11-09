@@ -1,4 +1,4 @@
-/* Lang Checker — вкладка «Редактор» (admin/include/langcheck_editor.php) */
+/* Lang Checker — вкладка «Редактор» (admin/include/functions_langcheck_editor.php) */
 (function () {
     'use strict';
     const L = (typeof AGS_LANG === 'object' && AGS_LANG) ? AGS_LANG : {};

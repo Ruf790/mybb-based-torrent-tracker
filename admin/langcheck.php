@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Lang Checker — сверка ключей из кода с ланг-файлами всех языков.
- * Сверка только читает файлы. Вкладка «Редактор» (Sysop) правит значения: admin/include/langcheck_editor.php.
+ * Сверка только читает файлы. Вкладка «Редактор» (Sysop) правит значения: admin/include/functions_langcheck_editor.php.
  */
 
 if (!defined('STAFF_PANEL')) {
@@ -566,7 +566,7 @@ $ref   = in_array(LC_REF_LANG, $langs, true) ? LC_REF_LANG : ($langs[0] ?? LC_RE
 
 // Редактор не сканирует весь проект: у него своя страница и свои AJAX-запросы
 if (($_GET['show'] ?? '') === 'editor') {
-    require_once __DIR__ . '/include/langcheck_editor.php';
+    require_once __DIR__ . '/include/functions_langcheck_editor.php';
     lce_run($langDir, $langs, $ref, (string)$_this_script_);
     return;
 }

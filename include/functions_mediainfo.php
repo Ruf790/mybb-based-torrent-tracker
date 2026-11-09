@@ -69,6 +69,12 @@ function mi_key_line(string $line): ?array
  */
 function mi_find(string $descr): ?array
 {
+    return mi_find_report($descr) ?? mi_find_summary($descr);
+}
+
+/** Полный отчёт MediaInfo (General / Video / Audio …) */
+function mi_find_report(string $descr): ?array
+{
     if ($descr === '' || !preg_match('/(general|общее|общие)/iu', $descr)) {
         return null;
     }
@@ -131,6 +137,199 @@ function mi_find(string $descr): ?array
     return null;
 }
 
+/* ── Краткая сводка, как на русских трекерах ──────────────────────────────
+   Видео: MPEG-H HEVC Video | 24,4 Mbps | 3840x2160 | 23,976 fps | … | SDR
+   Аудио 1: 48 kHz | AC3 | Dolby Digital | 5,1 | 384 kbps | | MovieDalen
+   Строки «Ключ: значение», значения через «|». Нужны «Видео» и хотя бы одно «Аудио». */
+
+const MI_SUM_KEYS = [
+    'video'     => ['видео', 'video'],
+    'audio'     => ['аудио', 'audio', 'звук'],
+    'subs'      => ['субтитры', 'subtitles', 'subs'],
+    'container' => ['контейнер', 'container', 'формат', 'format'],
+    'duration'  => ['продолжительность', 'длительность', 'duration', 'runtime'],
+    'size'      => ['размер', 'size'],
+    'other'     => ['тип релиза', 'release type', 'release', 'качество', 'quality', 'перевод', 'translation'],
+];
+
+/** «[b]Аудио 2:[/b] …» → ['audio', '…'] или null */
+function mi_sum_line(string $line): ?array
+{
+    $line = trim(preg_replace('#\[/?[a-z*]+(?:=[^\]]*)?\]#i', '', $line));
+    if (!preg_match('/^([\p{L} ]{3,20}?)\s*(?:#?\s*\d{1,2})?\s*:\s*(.*)$/u', $line, $m)) {
+        return null;
+    }
+    $key = mb_strtolower(trim($m[1]));
+    foreach (MI_SUM_KEYS as $type => $names) {
+        if (in_array($key, $names, true)) {
+            return [$type, trim($m[2])];
+        }
+    }
+    return null;
+}
+
+function mi_find_summary(string $descr): ?array
+{
+    if ($descr === '' || !preg_match('/(видео|video)\s*:/iu', $descr)) {
+        return null;
+    }
+
+    $lines  = preg_split('/(?<=\n)/', $descr);
+    $starts = [];
+    $off    = 0;
+    foreach ($lines as $i => $l) {
+        $starts[$i] = $off;
+        $off       += strlen($l);
+    }
+    $n = count($lines);
+
+    for ($i = 0; $i < $n; $i++) {
+        $vline = mi_sum_line($lines[$i]);
+        // Строка «Видео» должна быть технической: разрешение, кодек или битрейт
+        if (($vline[0] ?? '') !== 'video'
+            || !preg_match('/\d{3,4}\s*[x×]\s*\d{3,4}|hevc|h\.?26[45]|x26[45]|avc|av1|xvid|divx|mpeg|[\d.,]+\s*(?:[kmg]bps|[кмг]бит)/iu', $vline[1])) {
+            continue;
+        }
+        // Расширяем блок вверх и вниз по строкам-ключам (пустые строки внутри допустимы)
+        $first = $i;
+        while ($first > 0 && mi_sum_line($lines[$first - 1]) !== null) {
+            $first--;
+        }
+        $last = $i;
+        for ($j = $i + 1; $j < $n; $j++) {
+            if (trim($lines[$j]) === '') {
+                continue;
+            }
+            if (mi_sum_line($lines[$j]) === null) {
+                break;
+            }
+            $last = $j;
+        }
+
+        $rows = [];
+        for ($j = $first; $j <= $last; $j++) {
+            if (($r = mi_sum_line($lines[$j])) !== null) {
+                $rows[] = $r;
+            }
+        }
+        if (!in_array('audio', array_column($rows, 0), true)) {
+            continue;
+        }
+
+        $start = $starts[$first];
+        $end   = $starts[$last] + strlen(rtrim($lines[$last], "\r\n"));
+        return [
+            'start' => $start,
+            'end'   => $end,
+            'raw'   => substr($descr, $start, $end - $start),
+            'data'  => mi_sum_data($rows),
+        ];
+    }
+    return null;
+}
+
+/** Значения через «|» → массив непустых частей */
+function mi_sum_parts(string $v): array
+{
+    return array_values(array_filter(array_map('trim', explode('|', $v)), static fn(string $p): bool => $p !== ''));
+}
+
+function mi_sum_data(array $rows): array
+{
+    $d = ['general' => ['format' => '', 'duration' => '', 'size' => '', 'bitrate' => ''], 'video' => [], 'audio' => [], 'text' => []];
+
+    foreach ($rows as [$type, $value]) {
+        $parts = mi_sum_parts($value);
+
+        if ($type === 'container') {
+            $d['general']['format'] = $parts[0] ?? '';
+        } elseif ($type === 'duration') {
+            $d['general']['duration'] = $parts[0] ?? '';
+        } elseif ($type === 'size') {
+            $d['general']['size'] = $parts[0] ?? '';
+        } elseif ($type === 'video') {
+            $v = ['res' => '', 'size' => '', 'format' => '', 'codec' => '', 'hevc' => false, 'bitrate' => '', 'fps' => '', 'depth' => '', 'hdr' => '', 'aspect' => ''];
+            $hdr = [];
+            foreach ($parts as $p) {
+                if (preg_match('/^(\d{3,4})\s*[x×]\s*(\d{3,4})/u', $p, $m)) {
+                    [$w, $h] = [(int)$m[1], (int)$m[2]];
+                    $v['size'] = $w . '×' . $h;
+                    $v['res']  = match (true) {
+                        $w >= 3800 || $h >= 2100 => '2160p',
+                        $w >= 1900 || $h >= 1000 => '1080p',
+                        $w >= 1260 || $h >= 700  => '720p',
+                        default                  => $h . 'p',
+                    };
+                } elseif (preg_match('/^[\d.,]+\s*(?:[kmg]bps|[кмг]бит)/iu', $p)) {
+                    $v['bitrate'] = $p;
+                } elseif (preg_match('/^([\d.,]+)\s*(?:fps|кадр)/iu', $p, $m)) {
+                    $v['fps'] = $m[1];
+                } elseif (preg_match('/^\d+\s*(?:bits?|бит)/iu', $p)) {
+                    $v['depth'] = $p;
+                } elseif (preg_match('/^\d+:\d+$|^\d[.,]\d+:1$/', $p) && $v['aspect'] === '' && !str_starts_with($p, '4:')) {
+                    $v['aspect'] = $p;
+                } elseif (preg_match('/^(main|high|baseline)/i', $p)) {
+                    $v['format'] = trim($v['format'] . ' ' . $p);
+                } elseif (preg_match('/dolby\s*vision|^dv$|hdr10\+|hdr10|^hdr$|hlg/i', $p)) {
+                    $hdr[] = $p;
+                } elseif ($v['codec'] === '' && preg_match('/hevc|h\.?265|x265|avc|h\.?264|x264|av1|vp9|mpeg-?4|xvid|divx/i', $p)) {
+                    $v['codec'] = match (true) {
+                        (bool)preg_match('/x265/i', $p)          => 'x265',
+                        (bool)preg_match('/x264/i', $p)          => 'x264',
+                        (bool)preg_match('/hevc|h\.?265/i', $p)  => 'HEVC',
+                        (bool)preg_match('/avc|h\.?264/i', $p)   => 'AVC',
+                        (bool)preg_match('/av1/i', $p)           => 'AV1',
+                        default                                  => $p,
+                    };
+                    $v['hevc'] = $v['codec'] === 'HEVC' || $v['codec'] === 'x265';
+                }
+            }
+            $v['format'] = trim($v['codec'] . ' ' . $v['format']);
+            $v['hdr']    = implode(', ', $hdr);
+            $d['video'][] = $v;
+        } elseif ($type === 'audio') {
+            $a = ['lang' => '', 'codec' => '', 'channels' => '', 'bitrate' => '', 'title' => '', 'default' => false, 'atmos' => false];
+            $codec = $commercial = '';
+            $rest  = [];
+            foreach ($parts as $p) {
+                if (preg_match('/^[\d.,]+\s*k?hz$/i', $p) || preg_match('/^[\d.,]+\s*кгц$/iu', $p)) {
+                    continue;
+                } elseif (preg_match('/^(\d)[.,](\d)(?:\s*ch)?$/i', $p, $m)) {
+                    $a['channels'] = $m[1] . '.' . $m[2];
+                } elseif (preg_match('/^[\d.,\s]+\s*(?:kbps|kb\/s|кбит)/iu', $p)) {
+                    $a['bitrate'] = $p;
+                } elseif ($codec === '' && preg_match('/^(e-?ac-?3|ac-?3|aac|dts(?:-hd)?(?:\s*ma)?|truehd|flac|opus|mp3|pcm|lpcm|ddp?)$/i', $p)) {
+                    $codec = $p;
+                } elseif (preg_match('/^(dolby|dts)/i', $p)) {
+                    $commercial = $p;
+                } elseif (!preg_match('/^audio coding$/i', $p)) {
+                    $rest[] = $p;
+                }
+            }
+            $a['codec'] = trim($codec . ($commercial !== '' ? ' ' . $commercial : ''));
+            $a['title'] = implode(' · ', $rest);
+            $a['atmos'] = stripos($value, 'atmos') !== false;
+            $d['audio'][] = $a;
+        } elseif ($type === 'subs') {
+            // «Русские (Forced, Full), English (SDH)» — запятые внутри скобок не делим
+            foreach (preg_split('/,(?![^()]*\))|\|/u', $value) as $sub) {
+                $sub = trim($sub);
+                if ($sub === '') {
+                    continue;
+                }
+                $d['text'][] = [
+                    'lang'   => trim(preg_replace('/\s*\(.*\)$/u', '', $sub)),
+                    'format' => '',
+                    'title'  => preg_match('/\((.*)\)$/u', $sub, $m) ? $m[1] : '',
+                    'forced' => (bool)preg_match('/forced|форс/iu', $sub),
+                ];
+            }
+        }
+    }
+
+    return $d;
+}
+
 /** Первое значение по ключу из MI_KEYS */
 function mi_get(array $section, string $key): string
 {
@@ -156,6 +355,10 @@ function mi_yes(string $v): bool
 /** Разобранные данные для карточки и чипов */
 function mi_data(array $found): array
 {
+    if (isset($found['data'])) {
+        return $found['data'];   // краткая сводка уже разобрана
+    }
+
     $d = ['general' => [], 'video' => [], 'audio' => [], 'text' => []];
 
     foreach ($found['sections'] as $s) {
@@ -329,11 +532,11 @@ function mi_render(array $d, string $raw): string
         $audio .= '<li class="dt-mi__track">'
                 . '<span class="dt-mi__num">' . ($i + 1) . '</span>'
                 . '<div class="min-w-0">'
-                .   '<div class="dt-mi__tline"><b>' . $e($a['lang'] !== '' ? $a['lang'] : '—') . '</b>'
+                .   '<div class="dt-mi__tline"><b>' . $e($a['lang'] !== '' ? $a['lang'] : ($a['title'] !== '' ? $a['title'] : '—')) . '</b>'
                 .     ($a['default'] ? '<span class="st-badge st-soft-primary">' . $L('lbl_mi_default', 'Default') . '</span>' : '')
                 .   '</div>'
                 .   '<div class="dt-mi__tmeta">' . $e($nb(implode(' · ', array_filter([$a['codec'], $a['channels'], $a['bitrate']])))) . '</div>'
-                .   ($a['title'] !== '' ? '<div class="dt-mi__ttitle">' . $e($a['title']) . '</div>' : '')
+                .   ($a['title'] !== '' && $a['lang'] !== '' ? '<div class="dt-mi__ttitle">' . $e($a['title']) . '</div>' : '')
                 . '</div>'
                 . '</li>';
     }

@@ -459,7 +459,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=29">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=30">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -479,6 +479,10 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ve
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
+
+// Быстрый комментарий приходит по AJAX без стилей — postbit.css нужен сразу, даже без комментариев
+require_once INC_PATH . '/functions_post.php';
+echo postbit_css_link();
 
 
 

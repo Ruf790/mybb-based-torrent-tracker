@@ -343,27 +343,11 @@
 }
 .dt-page .dt-comments .form-check-label { white-space: nowrap; }
 .dt-page .dt-comments .text-black { color: var(--bs-body-color) !important; }
-.dt-page .closest .row.mb-4 { margin-bottom: 0 !important; }
-.dt-page .closest .card {
-    border-radius: var(--st-radius);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
-    overflow: hidden;
-}
-/* в commenttable.php левая граница прозрачная и с !important */
-.dt-page .closest:not(.comment-selected) .card { border: 1px solid var(--bs-border-color) !important; }
-.dt-page .closest .card-footer { background: var(--bs-tertiary-bg); }
-.dt-page .closest .dropdown-menu { z-index: 1030; }
-.dt-page .closest .card:has(.dropdown-menu.show) { overflow: visible; }
-.dt-page .post_body { overflow-wrap: anywhere; }
+.dt-page .closest .pb-post { margin-bottom: 0; }
+.dt-page #ajax_comment_preview > * + * { margin-top: 1rem; }
 .dt-page #ajax_comment_preview:empty,
 .dt-page #ajax_comment_preview2:empty { display: none; }
 .dt-page:has(#ajax_comment_preview:not(:empty)) .dt-comments-empty { display: none; }
-
-.dt-page .avatar-ring {
-    position: relative; display: inline-block; padding: 6px; border-radius: 50%;
-    background: conic-gradient(from 140deg, var(--bs-body-bg) 0 20%, var(--bs-border-color) 20% 70%, var(--bs-body-bg) 70% 100%);
-}
-.dt-page .avatar-ring > * { display: block; border-radius: 50%; }
 
 /* Комментарий по ссылке не найден */
 .dt-page .cnf-card {

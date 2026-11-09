@@ -121,6 +121,11 @@ $h_script   = $h($_SERVER['SCRIPT_NAME']);
 $h_base     = $h((string)$BASEURL);
 $editor     = insert_bbcode_editor($smilies, $BASEURL, 'staffMessage');
 $prefill    = is_string($_POST['msgtext'] ?? null) ? $_POST['msgtext'] : '';
+
+// Banned and disabled accounts cannot use the FAQ/forum links from the tips card
+$showTips   = ($mybb->usergroup['isbannedgroup'] ?? 0) != 1
+    && ($mybb->user['enabled'] ?? '') !== 'no'
+    && ($mybb->user['ustatus'] ?? '') !== 'pending';
 ?>
 
 <style>
@@ -203,7 +208,7 @@ $prefill    = is_string($_POST['msgtext'] ?? null) ? $_POST['msgtext'] : '';
     <div class="row g-3">
 
         <!-- Form -->
-        <div class="col-lg-8 order-2 order-lg-1">
+        <div class="<?= $showTips ? 'col-lg-8 order-2 order-lg-1' : 'col-12' ?>">
             <div class="ags-card">
                 <h2 class="ags-sec">
                     <i class="fa-solid fa-pen-to-square text-primary" aria-hidden="true"></i>
@@ -259,6 +264,7 @@ $prefill    = is_string($_POST['msgtext'] ?? null) ? $_POST['msgtext'] : '';
             </div>
         </div>
 
+        <?php if ($showTips): ?>
         <!-- Tips -->
         <div class="col-lg-4 order-1 order-lg-2">
             <div class="ags-card">
@@ -307,6 +313,7 @@ $prefill    = is_string($_POST['msgtext'] ?? null) ? $_POST['msgtext'] : '';
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
     </div>
 </div>

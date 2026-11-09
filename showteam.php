@@ -40,7 +40,7 @@ $my_id      = (int)($CURUSER['id'] ?? 0);
 // Отдельный массив: $usergroups - это права текущего юзера, смешивать их
 // с ключами-gid нельзя (раньше в цикл вывода попадали поля прав)
 $teamgroups = [];
-$query = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE showforumteam=1 ORDER BY disporder");
+$query = $db->sql_query_prepared("SELECT gid, title, image FROM usergroups WHERE showforumteam=1 ORDER BY disporder");
 while ($query && ($ug = $db->fetch_array($query))) {
     $teamgroups[(int)$ug['gid']] = $ug + ['user_list' => []];
 }
@@ -168,6 +168,11 @@ foreach ($teamgroups as $gid => $group) {
     $title = (string)$group['title'];
     $count = count($group['user_list']);
 
+    // Иконка класса из usergroups.image; во вкладке — только сам значок, без карточки
+    $class_icon = trim((string)($group['image'] ?? ''));
+    $tab_icon   = preg_match('~<i\b[^>]*></i>~i', $class_icon, $m) ? $m[0] : '<i class="fa-solid ' . $icon . '" aria-hidden="true"></i>';
+    $head_icon  = $class_icon !== '' ? $class_icon : '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>';
+
     $cards = '';
     foreach ($group['user_list'] as $user) {
         $plugins->run_hooks('showteam_user');
@@ -176,7 +181,7 @@ foreach ($teamgroups as $gid => $group) {
 
     $sections .= '<section class="st-card tm-group mb-3" id="tm-group-' . (int)$gid . '" data-group="' . (int)$gid . '">'
         . '<div class="st-card__head">'
-        .   '<span class="st-ico ' . $soft . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        .   $head_icon
         .   '<span class="tm-group__title">' . $e($title) . '</span>'
         .   '<span class="st-badge st-soft-muted ms-auto">' . ts_nf($count) . '</span>'
         . '</div>'
@@ -184,7 +189,7 @@ foreach ($teamgroups as $gid => $group) {
         . '</section>';
 
     $tabs .= '<li><a class="tm-tab" href="#tm-group-' . (int)$gid . '" data-group="' . (int)$gid . '">'
-        . '<i class="fa-solid ' . $icon . '" aria-hidden="true"></i>'
+        . $tab_icon
         . '<span class="tm-tab__label">' . $e($title) . '</span>'
         . '<span class="tm-tab__count">' . ts_nf($count) . '</span>'
         . '</a></li>';
@@ -197,6 +202,7 @@ stdhead($L['nav_showteam'] ?? 'Tracker Team');
 build_breadcrumb();
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/showteam.css?ver=1">';
 ?>
 <div class="container-md st-page tm-page">

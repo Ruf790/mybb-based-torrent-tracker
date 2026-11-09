@@ -110,6 +110,13 @@
 .lc .lce-area { font-size: .95em; resize: vertical; }
 .lc .lce-actions { display: flex; gap: .4rem; margin-top: .45rem; }
 .lc .lce-error { margin-top: .4rem; font-size: .88em; color: var(--bs-danger-text-emphasis); }
+.lc [hidden] { display: none !important; }
+.lc .lce-raw-head { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bs-border-color); }
+.lc .lce-raw-error { margin: 0; padding: .6rem 1.25rem; background: rgba(var(--bs-danger-rgb), .08); overflow-wrap: anywhere; }
+.lc .lce-raw-text { min-height: 70vh; border: 0; border-radius: 0 0 1rem 1rem; font-family: var(--bs-font-monospace); font-size: .85rem; }
+.lc .lce-raw .CodeMirror { height: 70vh; font-size: .85rem; border-radius: 0 0 1rem 1rem; }
+.lc .lce-bad-line { background: rgba(var(--bs-danger-rgb), .25); }
+.lc .lce-file-row .lce-raw-lang { flex: 0 1 11rem; }
 .lc .lce-note { padding: 1.25rem; color: var(--bs-secondary-color); }
 .lc .lce-note.is-bad { color: var(--bs-danger-text-emphasis); }
 @media (max-width: 767.98px) {

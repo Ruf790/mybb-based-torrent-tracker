@@ -39,7 +39,7 @@ if (is_array($lang->langcheck)) {
 
 use function htmlspecialchars as e;
 
-const LC_VERSION  = '4.0';
+const LC_VERSION  = '4.1';
 const LC_REF_LANG = 'english';
 /** Сканируется весь проект рекурсивно; пропускаются только папки без кода (по имени, на любом уровне) */
 /** Hard-coded tab: folders with third-party code / installers (by name, at any level) */

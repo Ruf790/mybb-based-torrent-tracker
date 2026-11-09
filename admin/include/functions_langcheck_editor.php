@@ -21,6 +21,7 @@ use function htmlspecialchars as e;
 
 const LCE_MAX_VALUE    = 65535;
 const LCE_SEARCH_LIMIT = 200;
+const LCE_MAX_FILE     = 4194304;
 
 /** Значение строкового литерала PHP (токен T_CONSTANT_ENCAPSED_STRING) */
 function lce_decode(string $raw): string
@@ -53,7 +54,8 @@ function lce_rev(string $raw): string
 /**
  * Разбор ланг-файла без исполнения.
  * null — формат не поддерживается (нет ровно одного $language['x'] = array(...)).
- * items[key] = value, raw, off, len (литерал значения), ro, key_off, after, comma, sec.
+ * items[key] = value, raw, off, len (литерал значения), ro, expr, key_off, after, comma, sec.
+ * head / tail — токены до и после массива, name — имя массива, bad — смещения элементов не вида 'ключ' => значение.
  */
 function lce_parse(string $src): ?array
 {
@@ -79,6 +81,8 @@ function lce_parse(string $src): ?array
 
     $n = count($sig);
     $starts = [];
+    $stmt   = 0;
+    $name   = '';
     for ($i = 0; $i + 6 < $n; $i++) {
         if ($sig[$i][0] !== T_VARIABLE || $sig[$i][1] !== '$language' || $sig[$i + 1][1] !== '['
             || $sig[$i + 2][0] !== T_CONSTANT_ENCAPSED_STRING || $sig[$i + 3][1] !== ']' || $sig[$i + 4][1] !== '=') {
@@ -88,11 +92,16 @@ function lce_parse(string $src): ?array
             $starts[] = $i + 7;
         } elseif ($sig[$i + 5][1] === '[') {
             $starts[] = $i + 6;
+        } else {
+            continue;
         }
+        $stmt = $i;
+        $name = lce_decode($sig[$i + 2][1]);
     }
     if (count($starts) !== 1) return null;
 
     $items = [];
+    $bad   = [];
     $sec   = null;
     $open  = [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES, '(', '[', '{'];
     $i     = $starts[0];
@@ -129,18 +138,31 @@ function lce_parse(string $src): ?array
                 'off'     => $lit[2] ?? 0,
                 'len'     => $lit !== null ? strlen($lit[1]) : 0,
                 'ro'      => $lit === null,
+                'expr'    => $lit === null ? substr($src, $sig[$start + 2][2], $last[2] + strlen($last[1]) - $sig[$start + 2][2]) : '',
                 'key_off' => $sig[$start][2],
                 'after'   => $comma ? $sig[$i][2] + 1 : $last[2] + strlen($last[1]),
                 'comma'   => $comma,
                 'sec'     => $sec,
             ];
             $sec = null;
+        } elseif ($count > 0) {
+            $bad[] = $sig[$start][2];
         }
         if (!$comma) break;
         $i++;
     }
 
-    return $close === null ? null : ['items' => $items, 'close' => $close];
+    if ($close === null) return null;
+
+    $join = static fn(array $part): string => implode('', array_column($part, 1));
+    return [
+        'items' => $items,
+        'close' => $close,
+        'bad'   => $bad,
+        'name'  => $name,
+        'head'  => $join(array_slice($sig, 0, $stmt)),
+        'tail'  => $join(array_slice($sig, $i + 1)),
+    ];
 }
 
 /** Вставка нового ключа: после ближайшего предыдущего ключа эталонного порядка, иначе в конец массива */
@@ -409,6 +431,105 @@ function lce_save(string $langDir, array $langs, string $ref, string $page, stri
     }
 }
 
+function lce_line(string $src, int $offset): int
+{
+    return substr_count($src, "\n", 0, $offset) + 1;
+}
+
+/**
+ * Сохранение файла целиком. Записать можно только то, что безопасно исполнять:
+ * начало и конец файла как были, внутри только 'ключ' => 'текст' и комментарии.
+ * $confirmRemoved — пользователь подтвердил удаление (или переименование) ключей.
+ */
+function lce_save_raw(string $langDir, array $langs, string $page, string $l, string $src, string $hash, bool $confirmRemoved): array
+{
+    $path = lce_path($langDir, $l, $page);
+    if (!is_file($path)) return ['ok' => false, 'code' => 'err_ed_unsupported'];
+    if (strlen($src) > LCE_MAX_FILE) return ['ok' => false, 'code' => 'err_ed_too_long', 'args' => [LCE_MAX_FILE]];
+    if (!mb_check_encoding($src, 'UTF-8')) return ['ok' => false, 'code' => 'err_ed_control'];
+
+    $lock = @fopen(sys_get_temp_dir() . '/ag_lang_editor.lock', 'c');
+    if ($lock === false || !flock($lock, LOCK_EX)) return ['ok' => false, 'code' => 'err_ed_write'];
+
+    try {
+        $current = (string)file_get_contents($path);
+        if (sha1($current) !== $hash) return ['ok' => false, 'code' => 'conflict_file'];
+
+        $cur = lce_parse($current);
+        if ($cur === null) return ['ok' => false, 'code' => 'err_ed_unsupported'];
+
+        $src = str_replace(["\r\n", "\r"], "\n", $src);
+        if ($src === str_replace(["\r\n", "\r"], "\n", $current)) {
+            return ['ok' => true, 'hash' => $hash];
+        }
+
+        try {
+            token_get_all($src, TOKEN_PARSE);
+        } catch (\ParseError $ex) {
+            return ['ok' => false, 'code' => 'err_ed_syntax', 'args' => [$ex->getLine(), $ex->getMessage()], 'line' => $ex->getLine()];
+        }
+
+        $new   = lce_parse($src);
+        $strip = static fn(string $s): string => (string)preg_replace('/\s+/', '', $s);
+        if ($new === null || $new['name'] !== $cur['name']
+            || $strip($new['head']) !== $strip($cur['head']) || $strip($new['tail']) !== $strip($cur['tail'])) {
+            return ['ok' => false, 'code' => 'err_ed_structure_file'];
+        }
+        if ($new['bad']) {
+            $line = lce_line($src, $new['bad'][0]);
+            return ['ok' => false, 'code' => 'err_ed_structure', 'args' => [$line], 'line' => $line];
+        }
+
+        $others = [];
+        foreach ($langs as $other) {
+            if ($other === $l) continue;
+            $p = lce_read(lce_path($langDir, $other, $page));
+            if ($p !== null) $others[] = $p['items'];
+        }
+
+        foreach ($new['items'] as $key => $item) {
+            $key  = (string)$key;
+            $old  = $cur['items'][$key] ?? null;
+            $line = lce_line($src, $item['key_off']);
+
+            // Выражения PHP можно только оставить как есть
+            if ($item['ro'] && ($old === null || !$old['ro'] || $strip($old['expr']) !== $strip($item['expr']))) {
+                return ['ok' => false, 'code' => 'err_ed_structure', 'args' => [$line], 'line' => $line];
+            }
+            if ($item['ro']) continue;
+
+            if ($old === null && preg_match('/^[A-Za-z0-9_]+$/', $key) !== 1) {
+                return ['ok' => false, 'code' => 'err_ed_bad_key', 'args' => [$line, $key], 'line' => $line];
+            }
+            if ($old !== null && $old['value'] === $item['value']) continue;
+
+            $bases = [$old['value'] ?? null];
+            foreach ($others as $items) $bases[] = $items[$key]['value'] ?? null;
+            $bad = lce_validate($item['value'], $bases);
+            if ($bad !== null) {
+                return ['ok' => false, 'code' => $bad[0], 'args' => $bad[1], 'line' => $line, 'key' => $key];
+            }
+        }
+
+        $removed = array_map('strval', array_keys(array_diff_key($cur['items'], $new['items'])));
+        if ($removed && !$confirmRemoved) {
+            return ['ok' => false, 'code' => 'confirm_removed', 'removed' => $removed];
+        }
+
+        // Переводы строк — как были у файла
+        $crlf = substr_count($current, "\r\n");
+        if ($crlf > substr_count($current, "\n") - $crlf) {
+            $src = str_replace("\n", "\r\n", $src);
+        }
+        if (!lce_write($path, $src)) return ['ok' => false, 'code' => 'err_ed_write'];
+
+        return ['ok' => true, 'hash' => sha1($src), 'saved' => true, 'removed' => count($removed), 'added' => count(array_diff_key($new['items'], $cur['items']))];
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
 function lce_json(array $data, int $status = 200): never
 {
     while (ob_get_level() > 0) ob_end_clean();
@@ -450,7 +571,18 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             lce_json(lce_search($langDir, $langs, $q));
         }
 
-        if ($ajax === 'save') {
+        if ($ajax === 'raw') {
+            $l = (string)($_GET['lang'] ?? '');
+            if (!$pageOk || !in_array($l, $langs, true)) lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 400);
+            $path = lce_path($langDir, $l, $page);
+            $src  = is_file($path) ? @file_get_contents($path) : false;
+            if ($src === false || lce_parse($src) === null) {
+                lce_json(['ok' => false, 'error' => $L['err_ed_unsupported'] ?? 'This file has a different format and can only be edited by hand.']);
+            }
+            lce_json(['ok' => true, 'src' => $src, 'hash' => sha1($src)]);
+        }
+
+        if ($ajax === 'save' || $ajax === 'saveraw') {
             if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
                 lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 405);
             }
@@ -461,7 +593,8 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             $key   = (string)($_POST['key'] ?? '');
             $value = (string)($_POST['value'] ?? '');
             $rev   = (string)($_POST['rev'] ?? '');
-            if (!$pageOk || !in_array($l, $langs, true) || $key === '' || strlen($key) > 255) {
+            $bad   = !$pageOk || !in_array($l, $langs, true);
+            if ($bad || ($ajax === 'save' && ($key === '' || strlen($key) > 255))) {
                 lce_json(['ok' => false, 'error' => $L['err_ed_bad_request'] ?? 'Bad request.'], 400);
             }
 
@@ -475,17 +608,31 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
                 'err_ed_unsupported'  => $L['err_ed_unsupported']  ?? 'This file has a different format and can only be edited by hand.',
                 'err_ed_no_key'       => $L['err_ed_no_key']       ?? 'This key does not exist in any language. New keys are added in code.',
                 'err_ed_empty_new'    => $L['err_ed_empty_new']    ?? 'Enter the text for the new key.',
+                'err_ed_syntax'       => $L['err_ed_syntax']       ?? 'Syntax error on line {1}: {2}',
+                'err_ed_structure'    => $L['err_ed_structure']    ?? 'Line {1}: only \'key\' => \'text\' entries are allowed here.',
+                'err_ed_structure_file' => $L['err_ed_structure_file'] ?? 'The beginning or the end of the file was changed. Only the entries of the array can be edited.',
+                'err_ed_bad_key'      => $L['err_ed_bad_key']      ?? 'Line {1}: invalid key name "{2}". Use a-z, 0-9 and _.',
             ];
 
-            $res = lce_save($langDir, $langs, $ref, $page, $l, $key, $value, $rev);
-
-            if ($res['ok'] && isset($res['added'])) {
-                write_log(sprintf('Lang editor: %s.lang.php [%s] key "%s" %s', $page, $l, $key, $res['added'] ? 'added' : 'changed'), 'settings', 1);
+            if ($ajax === 'saveraw') {
+                $res = lce_save_raw($langDir, $langs, $page, $l, (string)($_POST['src'] ?? ''), (string)($_POST['hash'] ?? ''), ($_POST['confirm_removed'] ?? '') === '1');
+                if ($res['ok'] && isset($res['saved'])) {
+                    write_log(sprintf('Lang editor: %s.lang.php [%s] file saved (%d keys added, %d removed)', $page, $l, $res['added'], $res['removed']), 'settings', 1);
+                }
+            } else {
+                $res = lce_save($langDir, $langs, $ref, $page, $l, $key, $value, $rev);
+                if ($res['ok'] && isset($res['added'])) {
+                    write_log(sprintf('Lang editor: %s.lang.php [%s] key "%s" %s', $page, $l, $key, $res['added'] ? 'added' : 'changed'), 'settings', 1);
+                }
             }
-            if (!$res['ok'] && $res['code'] !== 'conflict') {
+            if (!$res['ok'] && !in_array($res['code'], ['conflict', 'conflict_file', 'confirm_removed'], true)) {
                 $msg = $messages[$res['code']] ?? $res['code'];
                 foreach ($res['args'] ?? [] as $i => $arg) {
                     $msg = strtr($msg, ['{' . ($i + 1) . '}' => (string)$arg, '%' . ($i + 1) . '$s' => (string)$arg]);
+                }
+                if (isset($res['key'])) {
+                    $where = $L['lbl_ed_at_key'] ?? 'Line {1}, key {2}';
+                    $msg = strtr($where, ['{1}' => (string)$res['line'], '%1$s' => (string)$res['line'], '{2}' => $res['key'], '%2$s' => $res['key']]) . ': ' . $msg;
                 }
                 $res['error'] = $msg;
             }
@@ -512,7 +659,8 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
      data-url="<?= e($self . '&show=editor') ?>"
      data-key="<?= e((string)($mybb->post_code ?? '')) ?>"
      data-langs="<?= e(implode(',', $langs)) ?>"
-     data-focus-key="<?= e((string)($_GET['key'] ?? '')) ?>">
+     data-focus-key="<?= e((string)($_GET['key'] ?? '')) ?>"
+     data-ui-lang="<?= e((string)$lang->language) ?>">
 
     <div class="lc-card mb-3"><div class="lc-head">
         <span class="lc-head-icon"><i class="fa-solid fa-pen-to-square"></i></span>
@@ -543,6 +691,10 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
         </div>
         <div class="lce-results" id="lceResults" hidden></div>
         <div class="lce-file-row">
+            <div class="d-flex gap-1" role="group" aria-label="<?= e($L['lbl_ed_view'] ?? 'View') ?>">
+                <button type="button" class="btn btn-sm lc-pill" id="lceViewTable"><i class="fa-solid fa-table-list me-1"></i><?= e($L['lbl_ed_view_table'] ?? 'Table') ?></button>
+                <button type="button" class="btn btn-sm lc-pill" id="lceViewRaw"><i class="fa-solid fa-code me-1"></i><?= e($L['lbl_ed_view_raw'] ?? 'Whole file') ?></button>
+            </div>
             <label class="lc-muted" for="lceFile"><?= e($L['lbl_ed_file'] ?? 'File') ?></label>
             <select class="form-select" id="lceFile">
                 <?php foreach ($pages as $p): ?>
@@ -552,7 +704,10 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
             <input type="search" class="form-control" id="lceFilter" autocomplete="off"
                    placeholder="<?= e($L['lbl_ed_filter'] ?? 'Filter this file…') ?>"
                    aria-label="<?= e($L['lbl_ed_filter'] ?? 'Filter this file…') ?>">
-            <div class="form-check form-switch mb-0">
+            <select class="form-select lce-raw-lang" id="lceRawLang" aria-label="<?= e($L['lbl_ed_lang'] ?? 'Language') ?>" hidden>
+                <?php foreach ($langs as $l): ?><option value="<?= e($l) ?>"><?= e($l) ?></option><?php endforeach; ?>
+            </select>
+            <div class="form-check form-switch mb-0" id="lceProblemsWrap">
                 <input class="form-check-input" type="checkbox" role="switch" id="lceProblems">
                 <label class="form-check-label" for="lceProblems"><?= e($L['lbl_ed_problems'] ?? 'Empty and missing only') ?></label>
             </div>
@@ -563,8 +718,17 @@ function lce_run(?string $langDir, array $langs, string $ref, string $self): voi
         <div class="lce-table" id="lceTable" style="--lce-langs: <?= max(1, count($langs)) ?>"></div>
     </div>
 
+    <div class="lc-card mb-3 lce-raw" id="lceRaw" hidden>
+        <div class="lce-raw-head">
+            <div class="lc-muted"><i class="fa-solid fa-shield-halved me-1"></i><?= e($L['hint_ed_raw'] ?? 'Only entries and comments can be saved here: PHP code and syntax errors are rejected.') ?></div>
+            <button type="button" class="btn btn-sm lc-pill lc-go ms-auto" id="lceRawSave"><i class="fa-solid fa-floppy-disk me-1"></i><?= e($L['btn_ed_save_file'] ?? 'Save file') ?></button>
+        </div>
+        <div class="lce-error lce-raw-error" id="lceRawError" role="alert" hidden></div>
+        <textarea class="form-control lce-raw-text" id="lceRawText" spellcheck="false" aria-label="<?= e($L['lbl_ed_view_raw'] ?? 'Whole file') ?>"></textarea>
+    </div>
+
     <div class="lc-bar">
-        <div class="lc-muted d-none d-md-block"><i class="fa-solid fa-circle-info me-1"></i><?= e($L['hint_ed_rules'] ?? 'Click a value to edit it. Ctrl+Enter saves, Esc cancels. Keep numbers in curly braces unchanged.') ?></div>
+        <div class="lc-muted d-none d-md-block" id="lceTableHint"><i class="fa-solid fa-circle-info me-1"></i><?= e($L['hint_ed_rules'] ?? 'Click a value to edit it. Ctrl+Enter saves, Esc cancels. Keep numbers in curly braces unchanged.') ?></div>
         <a href="<?= e($self) ?>" class="btn btn-sm lc-pill ms-auto"><i class="fa-solid fa-arrow-left me-1"></i><?= e($L['btn_ed_back'] ?? 'Back to checker') ?></a>
     </div>
 </div>

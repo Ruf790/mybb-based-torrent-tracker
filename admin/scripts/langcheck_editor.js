@@ -12,11 +12,19 @@
     const table = document.getElementById('lceTable'), fileSel = document.getElementById('lceFile');
     const filterEl = document.getElementById('lceFilter'), problemsEl = document.getElementById('lceProblems');
     const searchEl = document.getElementById('lceSearch'), resultsEl = document.getElementById('lceResults');
+    const tableCard = table.parentElement, rawCard = document.getElementById('lceRaw'), rawText = document.getElementById('lceRawText');
+    const rawLangEl = document.getElementById('lceRawLang'), rawSave = document.getElementById('lceRawSave'), rawError = document.getElementById('lceRawError');
+    const viewTable = document.getElementById('lceViewTable'), viewRaw = document.getElementById('lceViewRaw'), problemsWrap = document.getElementById('lceProblemsWrap');
     const kpi = { keys: document.getElementById('lceKpiKeys'), empty: document.getElementById('lceKpiEmpty'), missing: document.getElementById('lceKpiMissing') };
 
     let current = null;                 // { page, state, rows }
     let openEditors = 0;
     let loadToken = 0, searchToken = 0, searchTimer;
+
+    const startQs = new URLSearchParams(location.search);
+    let view = startQs.get('view') === 'raw' ? 'raw' : 'table';
+    let cm = null, cmReady = null, cmMark = null;
+    let rawOriginal = '', rawHash = '', rawLoaded = false, rawToken = 0;
 
     function el(tag, cls, text) {
         const n = document.createElement(tag);
@@ -269,6 +277,8 @@
         const qs = new URLSearchParams(location.search);
         qs.set('page', page);
         if (key) qs.set('key', key); else qs.delete('key');
+        qs.delete('view');
+        qs.delete('rawlang');
         history.replaceState(null, '', location.pathname + '?' + qs.toString());
         try {
             const data = await getJson({ ajax: 'file', page });
@@ -287,19 +297,189 @@
         }
     }
 
-    function confirmDiscard() {
-        return !openEditors || window.confirm(t('ed_unsaved', 'You have unsaved edits. Discard them?'));
+    /* ── Весь файл ── */
+    const CM_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/';
+    const isDark = () => (document.documentElement.getAttribute('data-bs-theme') || document.body.getAttribute('data-bs-theme')) === 'dark';
+
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src; s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    function loadCss(href) {
+        const l = document.createElement('link');
+        l.rel = 'stylesheet'; l.href = href;
+        document.head.appendChild(l);
+    }
+    /** CodeMirror грузится только при первом открытии вкладки; не загрузился — работает обычное поле */
+    function ensureEditor() {
+        if (cmReady) return cmReady;
+        cmReady = (async () => {
+            try {
+                ['codemirror.min.css', 'addon/dialog/dialog.min.css', 'theme/eclipse.min.css', 'theme/material-darker.min.css'].forEach(f => loadCss(CM_BASE + f));
+                await loadScript(CM_BASE + 'codemirror.min.js');
+                for (const f of ['mode/xml/xml', 'mode/javascript/javascript', 'mode/css/css', 'mode/htmlmixed/htmlmixed', 'mode/clike/clike', 'mode/php/php',
+                                 'addon/dialog/dialog', 'addon/search/searchcursor', 'addon/search/search']) {
+                    await loadScript(CM_BASE + f + '.min.js');
+                }
+                cm = CodeMirror.fromTextArea(rawText, {
+                    mode: 'application/x-httpd-php', lineNumbers: true, lineWrapping: true, indentUnit: 4,
+                    indentWithTabs: true, theme: isDark() ? 'material-darker' : 'eclipse',
+                    extraKeys: { 'Ctrl-S': () => saveRaw(false), 'Cmd-S': () => saveRaw(false) },
+                });
+                cm.on('change', clearRawError);
+            } catch (e) {
+                cm = null;
+            }
+        })();
+        return cmReady;
+    }
+    const getRaw = () => (cm ? cm.getValue() : rawText.value).replace(/\r\n?/g, '\n');
+    function setRaw(text) {
+        if (cm) { cm.setValue(text); cm.clearHistory(); cm.refresh(); } else { rawText.value = text; }
+    }
+    const rawDirty = () => view === 'raw' && rawLoaded && getRaw() !== rawOriginal;
+
+    function clearRawError() {
+        rawError.hidden = true;
+        if (cm && cmMark !== null) { cm.removeLineClass(cmMark, 'background', 'lce-bad-line'); cmMark = null; }
+    }
+    function showRawError(text, line) {
+        rawError.textContent = text;
+        rawError.hidden = false;
+        if (cm && line) {
+            if (cmMark !== null) cm.removeLineClass(cmMark, 'background', 'lce-bad-line');
+            cmMark = cm.addLineClass(line - 1, 'background', 'lce-bad-line');
+            cm.setCursor({ line: line - 1, ch: 0 });
+            cm.scrollIntoView({ line: line - 1, ch: 0 }, 120);
+        }
     }
 
-    let lastPage = fileSel.value;
+    async function ask(icon, title, text, confirmText, cancelText) {
+        if (window.Swal) {
+            const r = await Swal.fire({ icon, title, text, showCancelButton: true, confirmButtonText: confirmText, cancelButtonText: cancelText });
+            return r.isConfirmed;
+        }
+        return window.confirm(title + '\n\n' + text);
+    }
+
+    async function loadRaw() {
+        const token = ++rawToken;
+        rawLoaded = false;
+        clearRawError();
+        rawSave.disabled = true;
+        await ensureEditor();
+        try {
+            const data = await getJson({ ajax: 'raw', page: fileSel.value, lang: rawLangEl.value });
+            if (token !== rawToken) return;
+            if (!data.ok) { setRaw(''); showRawError(data.error || t('ed_load_failed', 'Could not load the file.')); return; }
+            rawOriginal = data.src.replace(/\r\n?/g, '\n');
+            rawHash = data.hash;
+            setRaw(rawOriginal);
+            rawLoaded = true;
+            rawSave.disabled = false;
+            clearRawError();
+        } catch (e) {
+            if (token === rawToken) showRawError(t('ed_load_failed', 'Could not load the file.'));
+        }
+    }
+
+    async function saveRaw(confirmRemoved) {
+        if (!rawLoaded || rawSave.disabled) return;
+        rawSave.disabled = true;
+        clearRawError();
+        let reload = false, retry = false;
+        const src = getRaw();
+        try {
+            const body = new URLSearchParams({ my_post_key: csrf, page: fileSel.value, lang: rawLangEl.value, src, hash: rawHash, confirm_removed: confirmRemoved ? '1' : '0' });
+            const res = await fetch(url + '&ajax=saveraw', { method: 'POST', credentials: 'same-origin', body });
+            const data = await res.json();
+            if (data.ok) {
+                rawHash = data.hash;
+                rawOriginal = src;
+                if (window.Swal) Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: t('ed_saved', 'Saved'), timer: 1800, showConfirmButton: false });
+            } else if (data.code === 'conflict_file') {
+                reload = await ask('warning', t('ed_file_changed_title', 'File changed'),
+                    t('ed_file_changed', 'Someone changed this file while you were editing. Reload it? Your edits will be lost.'),
+                    t('ed_reload', 'Reload'), t('ed_keep', 'Keep editing'));
+            } else if (data.code === 'confirm_removed') {
+                const names = data.removed.slice(0, 30).join(', ') + (data.removed.length > 30 ? ' …' : '');
+                retry = await ask('warning', t('ed_removed_title', 'Keys will disappear'),
+                    t('ed_removed', 'These keys are removed or renamed, pages that use them may break: {1}', names),
+                    t('ed_removed_confirm', 'Save anyway'), t('ed_cancel', 'Cancel'));
+            } else {
+                showRawError(data.error || t('ed_save_failed', 'Could not save.'), data.line);
+            }
+        } catch (e) {
+            showRawError(t('ed_save_failed', 'Could not save.'));
+        } finally {
+            rawSave.disabled = false;
+        }
+        if (reload) await loadRaw();
+        if (retry) await saveRaw(true);
+    }
+
+    function syncUrl() {
+        const qs = new URLSearchParams(location.search);
+        qs.set('page', fileSel.value);
+        if (view === 'raw') { qs.set('view', 'raw'); qs.set('rawlang', rawLangEl.value); qs.delete('key'); }
+        else { qs.delete('view'); qs.delete('rawlang'); }
+        history.replaceState(null, '', location.pathname + '?' + qs.toString());
+    }
+    function applyView() {
+        const raw = view === 'raw';
+        tableCard.hidden = raw;
+        rawCard.hidden = !raw;
+        rawLangEl.hidden = !raw;
+        filterEl.hidden = raw;
+        problemsWrap.hidden = raw;
+        document.getElementById('lceTableHint').hidden = raw;
+        // Счётчики относятся к таблице: во «Всём файле» они бы показывали прошлый файл
+        if (raw) { kpi.keys.textContent = kpi.empty.textContent = kpi.missing.textContent = '—'; }
+        viewTable.classList.toggle('active', !raw);
+        viewRaw.classList.toggle('active', raw);
+    }
+    function reload(key) {
+        if (view === 'raw') { syncUrl(); loadRaw(); } else { loadFile(fileSel.value, key || ''); }
+    }
+
+    function confirmDiscard() {
+        if (!openEditors && !rawDirty()) return true;
+        if (!window.confirm(t('ed_unsaved', 'You have unsaved edits. Discard them?'))) return false;
+        openEditors = 0;
+        rawLoaded = false;
+        return true;
+    }
+    function setView(next) {
+        if (next === view || !confirmDiscard()) return;
+        view = next;
+        applyView();
+        reload('');
+    }
+    viewTable.addEventListener('click', () => setView('table'));
+    viewRaw.addEventListener('click', () => setView('raw'));
+    rawSave.addEventListener('click', () => saveRaw(false));
+    rawText.addEventListener('input', clearRawError);
+    rawText.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRaw(false); }
+    });
+
+    let lastPage = fileSel.value, lastRawLang;
     fileSel.addEventListener('change', () => {
         if (!confirmDiscard()) { fileSel.value = lastPage; return; }
         lastPage = fileSel.value;
-        loadFile(lastPage, '');
+        reload('');
+    });
+    rawLangEl.addEventListener('change', () => {
+        if (!confirmDiscard()) { rawLangEl.value = lastRawLang; return; }
+        lastRawLang = rawLangEl.value;
+        reload('');
     });
     filterEl.addEventListener('input', applyFilter);
     problemsEl.addEventListener('change', applyFilter);
-    window.addEventListener('beforeunload', e => { if (openEditors) { e.preventDefault(); e.returnValue = ''; } });
+    window.addEventListener('beforeunload', e => { if (openEditors || rawDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
     /* ── Поиск по всем файлам ── */
     function renderResults(data) {
@@ -324,6 +504,8 @@
                 problemsEl.checked = false;
                 fileSel.value = h.page;
                 lastPage = h.page;
+                view = 'table';
+                applyView();
                 loadFile(h.page, h.key);
             });
             frag.appendChild(b);
@@ -350,6 +532,10 @@
         }, 300);
     });
 
-    if (fileSel.value) loadFile(fileSel.value, app.dataset.focusKey || '');
+    const wantedLang = startQs.get('rawlang') || app.dataset.uiLang;
+    if (langs.includes(wantedLang)) rawLangEl.value = wantedLang;
+    lastRawLang = rawLangEl.value;
+    applyView();
+    if (fileSel.value) reload(app.dataset.focusKey || '');
     else notice('is-bad', t('ed_load_failed', 'Could not load the file.'));
 })();

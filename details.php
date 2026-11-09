@@ -716,7 +716,7 @@ if (!$threadcount) {
 
     $allrows = [];
 
-    $query = "
+    $comment_sql = "
         SELECT
             c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat,
             uu.username AS editedbyuname, gg.namestyle AS editbynamestyle,
@@ -729,10 +729,8 @@ if (!$threadcount) {
         LEFT JOIN usergroups gg ON (uu.usergroup = gg.gid)
         LEFT JOIN users u ON (c.user = u.id)
         LEFT JOIN usergroups g ON (u.usergroup = g.gid)
-        WHERE c.torrent = ?
-        ORDER BY c.id
-        LIMIT ?, ?
     ";
+    $query = $comment_sql . " WHERE c.torrent = ? ORDER BY c.id LIMIT ?, ?";
 
     $params = [(int)$id, (int)$start, (int)$perpage];
     $subres = $db->sql_query_prepared($query, $params);
@@ -742,6 +740,24 @@ if (!$threadcount) {
             $allrows[] = $subrow;
         }
         $db->free_result($subres);
+    }
+
+    // Закреплённый комментарий — первым на каждой странице. На своём месте в списке
+    // не показываем, но он остаётся в нумерации и постраничности.
+    $dt_pinned_id = (int)($Torrent['pinned_comment'] ?? 0);
+    if ($dt_pinned_id > 0) {
+        $dt_pin_res = $db->sql_query_prepared($comment_sql . " WHERE c.id = ? AND c.torrent = ?", [$dt_pinned_id, (int)$id]);
+        $dt_pin_row = $dt_pin_res ? $db->fetch_array($dt_pin_res) : null;
+
+        if ($dt_pin_row) {
+            foreach ($allrows as $dt_i => $dt_r) {
+                if ((int)$dt_r['id'] === $dt_pinned_id) {
+                    $allrows[$dt_i]['pin_skip'] = true;
+                }
+            }
+            $dt_pin_row['is_pinned'] = true;
+            array_unshift($allrows, $dt_pin_row);
+        }
     }
 
     $all_attachments = [];

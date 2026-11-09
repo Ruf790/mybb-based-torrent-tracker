@@ -42,7 +42,7 @@ function commenttable_assets(): string
     $b = htmlspecialchars((string)$BASEURL, ENT_QUOTES);
     return '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/comment_attachments.css">'
          . '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/postbit.css?ver=302">'
-         . '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/comments.css?ver=2">'
+         . '<link rel="stylesheet" href="' . $b . '/include/templates/default/style/comments.css?ver=3">'
          . '<script src="' . $b . '/scripts/edit_delete_comment.js?ver=2"></script>'
          . '<script src="' . $b . '/scripts/commenttable.js?ver=2"></script>';
 }
@@ -122,6 +122,13 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     $showcommentstable .= react_assets();
 
     foreach ($rows as $row) {
+        // Закреплённый уже выведен первым: тут только считаем его в нумерации
+        if (!empty($row['pin_skip'])) {
+            $postcounter++;
+            continue;
+        }
+        $is_pinned = !empty($row['is_pinned']);
+
         $pid = (int)$row['id'];
         $tid = (int)$row['torrentid'];
         $uid = (int)($row['user'] ?? 0);
@@ -223,14 +230,25 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
             . ' data-parent-id="' . $tid . '">'
             . '<i class="fa-solid fa-flag"></i> &nbsp;' . htmlspecialchars($lang->details['report']) . '</a>';
 
+        // Закрепить / открепить (только на странице раздачи)
+        $menu_pin = ($moderator && $torrent_name !== '')
+            ? '<form method="post" action="comment.php?action=pin&amp;cid=' . $pid . '" class="m-0">'
+              . '<input type="hidden" name="my_post_key" value="' . htmlspecialchars((string)($mybb->post_code ?? ''), ENT_QUOTES) . '">'
+              . '<button type="submit" class="dropdown-item"><i class="fa-solid fa-thumbtack"></i> &nbsp;'
+              . htmlspecialchars($is_pinned ? ($lang->details['ct_unpin'] ?? 'Unpin') : ($lang->details['ct_pin'] ?? 'Pin to top'))
+              . '</button></form>'
+            : '';
+
         $menu = '<div class="dropdown pb-menu">'
             . '<button type="button" class="pb-more" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More">'
             . '<i class="fa-solid fa-ellipsis-vertical"></i></button>'
-            . '<div class="dropdown-menu dropdown-menu-end">' . $menu_reply . $button_del . $menu_report . '</div>'
+            . '<div class="dropdown-menu dropdown-menu-end">' . $menu_reply . $menu_pin . $button_del . $menu_report . '</div>'
             . '</div>';
 
         // ── Номер + выбор модератором ─────────────────────────────────────
-        $postcounter++;
+        if (!$is_pinned) {
+            $postcounter++;
+        }
         $select = $moderator
             ? '<span class="form-check form-switch pb-switch">'
               . '<input class="form-check-input comment-checkbox" type="checkbox" role="switch" name="comment_ids[]"'
@@ -240,11 +258,12 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
             : '';
         // id чекбокса раньше был comment-checkbox-N: он попадал в [id^="comment-"],
         // и скрипты удаления неверно считали число комментариев на странице
-        $posturl = $select
-            . '<a href="' . $postlink . '#pid' . $pid . '" class="pb-numlink" title="' . $torrent_name . '">#' . ts_nf($postcounter) . '</a>';
+        $posturl = $select . ($is_pinned
+            ? '<a href="' . $postlink . '#pid' . $pid . '" class="pb-tag pb-soft-warning text-decoration-none"><i class="fa-solid fa-thumbtack"></i>' . htmlspecialchars($lang->details['ct_pinned'] ?? 'Pinned') . '</a>'
+            : '<a href="' . $postlink . '#pid' . $pid . '" class="pb-numlink" title="' . $torrent_name . '">#' . ts_nf($postcounter) . '</a>');
 
         // ── Карточка ──────────────────────────────────────────────────────
-        $showcommentstable .= '<div class="closest ct-item" id="comment-' . $pid . '">'
+        $showcommentstable .= '<div class="closest ct-item' . ($is_pinned ? ' ct-item--pinned' : '') . '" id="comment-' . $pid . '">'
             . '<a name="pid' . $pid . '" id="pid' . $pid . '"></a>'
             . '<div class="pb-post" id="post_' . $pid . '">'
             .   '<div class="pb-side">' . commenttable_avatar($row, $profile_url) . '</div>'

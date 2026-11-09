@@ -3167,6 +3167,7 @@ CREATE TABLE IF NOT EXISTS `torrents` (
   `thirtypercent` enum('yes','no') NOT NULL DEFAULT 'no',
   `sticky` enum('yes','no') NOT NULL DEFAULT 'no',
   `allowcomments` enum('yes','no') NOT NULL DEFAULT 'yes',
+  `pinned_comment` int unsigned NOT NULL DEFAULT '0',
   `t_image` varchar(255) NOT NULL DEFAULT '',
   `t_image2` varchar(255) NOT NULL DEFAULT '',
   `t_link` text NOT NULL,

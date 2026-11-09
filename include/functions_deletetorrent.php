@@ -415,7 +415,8 @@ function delete_torrent_database_records(int $id): void
         "bookmarks"       => "torrentid",
         "snatched"        => "torrentid",
         "torrents"        => "id",
-        "torrents_nfo"    => "id",
+        "torrents_nfo"    => "torrent_id",   // было "id": удалялся чужой NFO
+        "torrents_mediainfo" => "torrent_id",
         "reports"         => "reported_id",
         "cheat_attempts"  => "torrentid",
         "hit_and_run"     => "torrentid",

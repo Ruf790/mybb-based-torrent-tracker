@@ -1049,12 +1049,23 @@ require_once INC_PATH . '/functions_mediainfo.php';
 $dt_mi_card  = '';
 $dt_mi_chips = [];
 $dt_descr_raw = (string)$Torrent['descr'];
-$dt_mi_found  = mi_find($dt_descr_raw);
+
+// Сначала поле MediaInfo из формы заливки (torrents_mediainfo), иначе ищем в описании
+$dt_mi_found = null;
+$dt_mi_res   = $db->sql_query_prepared("SELECT mediainfo FROM torrents_mediainfo WHERE torrent_id = ?", [(int)$id]);
+if ($dt_mi_res && ($dt_mi_row = $db->fetch_array($dt_mi_res))) {
+    $dt_mi_found = mi_find((string)$dt_mi_row['mediainfo']);
+}
+$dt_mi_in_descr = $dt_mi_found === null ? mi_find($dt_descr_raw) : null;
+$dt_mi_found  ??= $dt_mi_in_descr;
+
 if ($dt_mi_found !== null) {
     $dt_mi_data   = mi_data($dt_mi_found);
     $dt_mi_card   = mi_render($dt_mi_data, $dt_mi_found['raw']);
     $dt_mi_chips  = mi_chips($dt_mi_data);
-    $dt_descr_raw = mi_strip($dt_descr_raw, $dt_mi_found);
+    if ($dt_mi_in_descr !== null) {
+        $dt_descr_raw = mi_strip($dt_descr_raw, $dt_mi_in_descr);
+    }
 }
 
 $descr = trim($dt_descr_raw) !== '' ? $parser->parse_message($dt_descr_raw, $parser_options) : '';

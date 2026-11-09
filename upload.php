@@ -819,6 +819,18 @@ if (empty($description))
     exit;
 }
 
+// MediaInfo (необязательно): отдельная таблица torrents_mediainfo, карточка на details.php
+$mediainfoPosted = isset($_POST['mediainfo']);
+$mediainfo       = trim(str_replace("\r\n", "\n", (string)($_POST['mediainfo'] ?? '')));
+if ($mediainfo !== '') {
+    require_once INC_PATH . '/functions_mediainfo.php';
+    if (mb_strlen($mediainfo) > 200000 || mi_find($mediainfo) === null) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "error" => $ue('mediainfo_invalid', 'This does not look like MediaInfo output. Paste the text report (it starts with "General").')]);
+        exit;
+    }
+}
+
 // Torrent Name
 $torrentName = trim($_POST['formName'] ?? '');
 if (empty($torrentName)) 
@@ -1648,6 +1660,19 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
 
 
 
+// MediaInfo — сохраняем в БД (пустое поле при редактировании = удалить)
+if ($mediainfoPosted) {
+    if ($mediainfo !== '') {
+        $db->sql_query_prepared(
+            "INSERT INTO torrents_mediainfo (`torrent_id`,`mediainfo`,`updated_at`) VALUES (?,?,?)
+             ON DUPLICATE KEY UPDATE `mediainfo` = VALUES(`mediainfo`), `updated_at` = VALUES(`updated_at`)",
+            [(int)$NewTID, $mediainfo, TIMENOW]
+        );
+    } elseif ($isEdit) {
+        $db->sql_query_prepared("DELETE FROM torrents_mediainfo WHERE torrent_id = ?", [(int)$NewTID]);
+    }
+}
+
 // NFO файл — сохраняем в БД
 if ($nfoContentRaw !== null && strlen($nfoContentRaw) > 0) {
     // Пробуем определить кодировку только из поддерживаемых
@@ -1783,6 +1808,13 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
 	
 	
 	
+	// MediaInfo для формы редактирования
+    $torrent_mediainfo = '';
+    $miRes = $db->sql_query_prepared("SELECT mediainfo FROM torrents_mediainfo WHERE torrent_id = ?", [$EditTorrentID]);
+    if ($miRes && ($miRow = $db->fetch_array($miRes))) {
+        $torrent_mediainfo = (string)$miRow['mediainfo'];
+    }
+
 	// Получить все скрины торрента
     $screenshots = [];
     $res = $db->sql_query_prepared("SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY sort_order ASC, id ASC", [$EditTorrentID]);
@@ -2491,6 +2523,18 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
    
    
    
+<!-- MediaInfo (необязательно) -->
+<div class="mb-4">
+  <label for="mediainfo" class="form-label fw-semibold">
+    <i class="fas fa-circle-info me-1 text-primary"></i>MediaInfo
+    <span class="text-muted fw-normal small"><?= $lang->upload['nfofile_optional'] ?></span>
+  </label>
+  <textarea class="form-control font-monospace" id="mediainfo" name="mediainfo" rows="6" spellcheck="false"
+            style="font-size:.8rem"
+            placeholder="General&#10;Format                                   : Matroska&#10;..."><?= htmlspecialchars($torrent_mediainfo ?? '') ?></textarea>
+  <div class="form-text"><?= htmlspecialchars($lang->upload['mediainfo_hint'] ?? 'Optional: paste the MediaInfo text report (View → Text). It is shown as a neat card on the torrent page.') ?></div>
+</div>
+
 <!-- Category Picker -->
 <div class="mb-4">
     <label class="form-label fw-semibold">

@@ -161,7 +161,8 @@ function delete_batch(array $batch): array
     $db->sql_query_prepared("DELETE FROM bookmarks WHERE torrentid IN ({$ids_ph})", $batch);
     $db->sql_query_prepared("DELETE FROM snatched WHERE torrentid IN ({$ids_ph})", $batch);
     $db->sql_query_prepared("DELETE FROM torrents WHERE id IN ({$ids_ph})", $batch);
-    $db->sql_query_prepared("DELETE FROM torrents_nfo WHERE id IN ({$ids_ph})", $batch);
+    $db->sql_query_prepared("DELETE FROM torrents_nfo WHERE torrent_id IN ({$ids_ph})", $batch);   // было id
+    $db->sql_query_prepared("DELETE FROM torrents_mediainfo WHERE torrent_id IN ({$ids_ph})", $batch);
 
     return ['deleted' => $deleted_ids, 'screenshots' => $deleted_screenshots];
 }

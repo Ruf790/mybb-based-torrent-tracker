@@ -3186,6 +3186,13 @@ CREATE TABLE IF NOT EXISTS `torrents` (
   FULLTEXT KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `torrents_mediainfo` (
+  `torrent_id` int unsigned NOT NULL,
+  `mediainfo` mediumtext NOT NULL,
+  `updated_at` int unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`torrent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `torrents_nfo` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `torrent_id` int unsigned NOT NULL,

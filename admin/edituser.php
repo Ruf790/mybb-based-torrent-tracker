@@ -2028,6 +2028,10 @@ function handleEditUser(): void
        .     '<button type="button" class="btn btn-sm btn-outline-primary st-pill" data-bs-toggle="modal" data-bs-target="#sendPMModal"><i class="fa-solid fa-paper-plane me-1"></i>' . $L['btn_send_pm'] . '</button>'
        .     '<button type="button" class="btn btn-sm btn-danger st-pill" data-bs-toggle="modal" data-bs-target="#quickBanModal"><i class="fa-solid fa-ban me-1"></i>'
        .       ($is_banned ? $L['ban_btn_update'] : $L['btn_quick_ban']) . '</button>'
+       .     ($is_banned
+              ? '<button type="button" class="btn btn-sm btn-success st-pill" data-eu-action="unban_user" data-eu-confirm="' . htmlspecialchars((string)($L['js_confirm_unban'] ?? 'Remove the ban from this user?')) . '"><i class="fa-solid fa-unlock me-1"></i>'
+                . ($L['btn_unban'] ?? 'Unban') . '</button>'
+              : '')
        .   '</div>'
        . '</section>';
 
@@ -2485,6 +2489,26 @@ function processUserUpdateData(): array
                 flash_message($L['msg_user_banned'] ?? 'User banned.', 'success');
             }
 
+        }
+    }
+
+    // ── Снятие бана
+    if ($post('unban_user') === '1') {
+        $bq  = $db->sql_query_prepared('SELECT oldgroup FROM banned WHERE uid = ? LIMIT 1', [$uid]);
+        $ban = $bq ? $db->fetch_array($bq) : null;
+
+        if ($ban) {
+            $ug       = $cache->read('usergroups') ?: [];
+            $oldgroup = (int)$ban['oldgroup'];
+            if ($oldgroup <= 0 || !isset($ug[$oldgroup]) || !empty($ug[$oldgroup]['isbannedgroup'])) {
+                $oldgroup = defined('UC_USER') ? (int)UC_USER : 2;
+            }
+
+            $db->sql_query_prepared('DELETE FROM banned WHERE uid = ?', [$uid]);
+            $updateData['usergroup'] = $oldgroup;
+            modcomment('Unbanned. Group restored to ' . $oldgroup);
+            write_log("User {$userdata['username']} ({$uid}) unbanned by {$CURUSER['username']}");
+            flash_message($L['msg_user_unbanned'] ?? 'The ban has been removed.', 'success');
         }
     }
 

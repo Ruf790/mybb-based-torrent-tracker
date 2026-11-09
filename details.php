@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=36">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=37">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -1044,7 +1044,30 @@ if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent")) {
 }
 
 // ── Description / Screens / Images ──────────────────────────────────────────
-$descr = $parser->parse_message($Torrent['descr'], $parser_options);
+// MediaInfo в описании → отдельная карточка, из описания блок убираем
+require_once INC_PATH . '/functions_mediainfo.php';
+$dt_mi_card  = '';
+$dt_mi_chips = [];
+$dt_descr_raw = (string)$Torrent['descr'];
+$dt_mi_found  = mi_find($dt_descr_raw);
+if ($dt_mi_found !== null) {
+    $dt_mi_data   = mi_data($dt_mi_found);
+    $dt_mi_card   = mi_render($dt_mi_data, $dt_mi_found['raw']);
+    $dt_mi_chips  = mi_chips($dt_mi_data);
+    $dt_descr_raw = mi_strip($dt_descr_raw, $dt_mi_found);
+}
+
+$descr = trim($dt_descr_raw) !== '' ? $parser->parse_message($dt_descr_raw, $parser_options) : '';
+
+// Карточка описания: если в описании был только MediaInfo, её не выводим
+$dt_descr_card = $descr === '' ? '' : '
+    <section class="st-card">
+        <div class="st-card__head">
+            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
+            ' . htmlspecialchars($lang->details['description'], ENT_QUOTES) . '
+        </div>
+        <div class="st-card__body dt-descr">' . $descr . '</div>
+    </section>';
 
 $screenshots = [];
 $res = $db->sql_query_prepared("SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY sort_order ASC, id ASC", [$id]);
@@ -1303,6 +1326,13 @@ foreach ($dt_kpi_tiles as [$kpi_icon, $kpi_soft, $kpi_val, $kpi_lbl, $kpi_attrs,
 
 // Для шапки и липкой полоски
 $dt_torrent_tags = GetTorrentTags($Torrent);
+
+// Технические чипы из MediaInfo (2160p, HDR, HEVC, Atmos) — перед чипами IMDb
+$dt_tech_chips = '';
+foreach ($dt_mi_chips as $dt_chip) {
+    $dt_tech_chips .= '<span class="dt-chip dt-chip--tech">' . htmlspecialchars($dt_chip) . '</span>';
+}
+$imdb_chips = $dt_tech_chips . $imdb_chips;
 
 // ── Сроки акций ──────────────────────────────────────────────────────────
 // Единицы для счётчика (сервер и details.js): «2 д 5 ч»
@@ -1654,14 +1684,9 @@ $details = '
         </div>
     </section>
 
-    <!-- Description -->
-    <section class="st-card">
-        <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
-            ' . htmlspecialchars($lang->details['description'], ENT_QUOTES) . '
-        </div>
-        <div class="st-card__body dt-descr">' . $descr . '</div>
-    </section>
+    ' . $dt_mi_card . '
+
+    ' . $dt_descr_card . '
 
     ' . $ShowTLINK . '
     ' . $SimilarTorrents . '

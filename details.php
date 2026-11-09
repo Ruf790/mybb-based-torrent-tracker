@@ -481,8 +481,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver
 require_once INC_PATH . '/modals.php';
 
 // Быстрый комментарий приходит по AJAX без стилей — postbit.css нужен сразу, даже без комментариев
-require_once INC_PATH . '/functions_post.php';
-echo postbit_css_link();
+echo ct_postbit_css_link();
 
 
 

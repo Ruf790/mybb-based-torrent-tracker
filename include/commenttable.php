@@ -31,7 +31,6 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $lang->load('details');
     }
 
-    require_once INC_PATH . '/functions_post.php';   // постбит: postbit_css_link(), postbit_avatar(), build_postbit_*()
     require_once(INC_PATH . '/class_parser.php');
     $parser = new postParser;
 
@@ -82,7 +81,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 
 <?php
     $modals_html = ob_get_clean();
-    $showcommentstable = postbit_css_link() . $modals_html;
+    $showcommentstable = ct_postbit_css_link() . $modals_html;
 	
     $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
     // Шапка со списком — только там, где известна раздача (не в AJAX-ответах с одним комментарием)
@@ -168,7 +167,7 @@ if (!empty($att_bulk[$pid])) {
         $post['profilelink'] = build_profile_link($post['username_formatted'], $row['user']);
         $post['postdate'] = my_datee('relative', $row['dateline']);
 
-        // Поля, которые читают общие функции постбита (include/functions_post.php)
+        // Поля для разметки постбита (классы pb-* из postbit.css)
         $post['pid']              = $pid;
         $post['userusername']     = htmlspecialchars_uni((string)($row['username'] ?? ''));
         $post['avatar']           = $row['useravatar'] ?? '';
@@ -188,10 +187,8 @@ if (!empty($att_bulk[$pid])) {
 
         // Initialize empty post elements
         $emptyElements = [
-            'input_editreason', 'button_edit', 'button_quickdelete', 'button_quickrestore', 
-            'button_quote', 'button_quickquote', 'button_report', 'button_reply_pm',
-            'button_replyall_pm', 'button_forward_pm', 'button_delete_pm', 'poststatus',
-            'iplogged', 'button_rep', 'button_warn', 'button_purgespammer', 'editreason'
+            'input_editreason', 'button_edit', 'button_quickdelete', 'button_quote',
+            'button_report', 'poststatus', 'iplogged', 'editreason'
         ];
         
         foreach ($emptyElements as $element) {
@@ -300,15 +297,40 @@ if (!empty($att_bulk[$pid])) {
             $post['onlinestatus'] = '<span class="pb-dot" title="'.$lang->global['postbit_status_offline'].'"></span>';
         }
 
-        // Та же разметка, что у постов форума: шапка, текст и подвал строят функции постбита
+        // Разметка как у постов форума (build_postbit()), стили — postbit.css
+        $usertitle_html = ($post['usertitle'] !== '' && $post['userusername'] !== '')
+            ? '<span class="pb-utitle">' . $post['usertitle'] . '</span>'
+            : '';
+
         $post['commentstables'] = '
         <div class="container mt-3">
             <a name="pid'.$pid.'" id="pid'.$pid.'"></a>
             <div class="pb-post" id="post_'.$pid.'">
-                <div class="pb-side">'.postbit_avatar($post).'</div>
-                <article class="pb-card inline_row">'
-                    . build_postbit_body($post, '')
-                    . build_postbit_footer($post) . '
+                <div class="pb-side">'.ct_postbit_avatar($post).'</div>
+                <article class="pb-card inline_row">
+                    <div class="pb-head">
+                        <div class="pb-head__av">'.ct_postbit_avatar($post, 'sm').'</div>
+                        <div class="pb-who">
+                            <div class="pb-author card-title">'.$post['profilelink'].$post['onlinestatus'].'</div>
+                            <div class="pb-meta">'.$usertitle_html.'<span class="pb-date"><i class="fa-regular fa-clock"></i>'.$post['postdate'].'</span></div>
+                        </div>
+                        <div class="pb-num">'.$post['posturl'].'</div>
+                    </div>
+                    <div class="pb-body">
+                        <div class="post_body scaleimages" id="pid_'.$pid.'">'.$post['message'].$post['attachments'].'</div>
+                        '.$post['reactions'].'
+                        <span class="post_edit pb-edited-wrap" id="edited_by_'.$pid.'">'.$post['editedmsg'].'</span>
+                        '.$post['signature'].$post['poststatus'].$post['input_editreason'].$post['iplogged'].'
+                    </div>
+                    <div class="pb-foot">
+                        '.$post['button_multiquote'].$post['button_react'].'
+                        <span class="pb-foot__sp"></span>
+                        '.$post['button_edit'].'
+                        <div class="dropdown pb-menu">
+                            <button type="button" class="pb-more" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                            <div class="dropdown-menu dropdown-menu-end">'.$post['button_quote'].$post['button_quickdelete'].$post['button_report'].'</div>
+                        </div>
+                    </div>
                 </article>
             </div>
         </div>';
@@ -327,6 +349,40 @@ if (!empty($att_bulk[$pid])) {
 
     echo $showcommentstable;
     return '';
+}
+
+/** <link> на postbit.css — один раз за запрос, не в AJAX-ответах xmlhttp.php */
+function ct_postbit_css_link(): string
+{
+    static $done = false;
+    global $BASEURL;
+
+    if ($done || (defined('SCRIPTNAME') && SCRIPTNAME === 'xmlhttp.php')) {
+        return '';
+    }
+    $done = true;
+
+    return '<link rel="stylesheet" href="' . htmlspecialchars((string)$BASEURL) . '/include/templates/default/style/postbit.css?ver=302">';
+}
+
+/** Аватар автора комментария: боковой или маленький ('sm') для шапки на телефоне */
+function ct_postbit_avatar(array $post, string $mod = ''): string
+{
+    $cls = 'pb-avatar' . ($mod !== '' ? ' pb-avatar--' . $mod : '');
+
+    if ($post['userusername'] === '') {
+        return '<span class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></span>';
+    }
+
+    $av   = format_avatar($post['avatar'], $post['avatardimensions']);
+    $link = $post['profilelink_plain'];
+
+    if (!empty($av['is_html'])) {
+        return '<a href="' . $link . '" class="' . $cls . ' pb-avatar--guest"><i class="fa-solid fa-user"></i></a>';
+    }
+
+    return '<a href="' . $link . '" class="' . $cls . (!empty($av['is_placeholder']) ? ' pb-avatar--ph' : '') . '">'
+         . '<img src="' . $av['image'] . '" alt="" loading="lazy"></a>';
 }
 
 /**

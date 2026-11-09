@@ -70,7 +70,6 @@
 .pb-card.unapproved_post .pb-foot { background: rgba(var(--bs-warning-rgb), .08); }
 /* выбран чекбоксом модерации (inline_moderation.js → .trow_selected) */
 .pb-card.trow_selected {
-  color: var(--bs-body-color);
   border-color: var(--bs-danger);
   box-shadow: 0 0 0 .2rem rgba(var(--bs-danger-rgb), .12);
 }

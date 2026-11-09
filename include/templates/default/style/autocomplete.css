@@ -1,0 +1,33 @@
+#autocomplete-results {
+      position: absolute;
+      z-index: 1000;
+      width: 100%;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      display: none;
+}
+    
+#autocomplete-results.show {
+      display: block;
+}
+
+
+.category-container {
+  padding: 15px;
+  margin: 10px 0;
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  background-color: #f9f9f9;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+  cursor: pointer;
+}
+
+.category-container:hover {
+  border-color: #999;
+}
+
+.category-highlight {
+  border-color: #007BFF;
+  background-color: #D0E7FF;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}

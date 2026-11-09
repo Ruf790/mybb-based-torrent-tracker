@@ -241,7 +241,7 @@
 		
 		
 		
-/////////////////////////////////////////////
+/* ===== OK (success) ===== */
 
 .error-card-ok {
     position: relative;
@@ -483,4 +483,115 @@
     .ok-detail-item { padding: 0.75rem !important; }
     .quick-link-ok { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
     .error-card-ok .card-body { padding: 1.5rem 1.25rem; }
+}
+
+
+/* =====================================================================
+   stderr() / error_no_permission()  —  вынесено из inline <style>
+   ===================================================================== */
+.stderr-card { max-width: 1100px; margin: 1.5rem auto; animation: slideUp .5s ease-out, stderrGlow 2.5s ease-in-out .5s infinite; }
+.stderr-card .card-body { padding: 1rem 1.25rem; }
+[data-bs-theme="dark"] .stderr-card { background-color: var(--bs-body-bg); }
+
+@keyframes stderrGlow {
+    0%, 100% { box-shadow: 0 10px 30px rgba(220, 53, 69, .20); }
+    50%      { box-shadow: 0 14px 40px rgba(220, 53, 69, .45); }
+}
+
+/* круглая иконка в шапке + расходящееся кольцо */
+.stderr-icon-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+.stderr-icon-circle {
+    position: relative; z-index: 2; width: 100%; height: 100%;
+    border-radius: 50%; background: rgba(255, 255, 255, .22);
+    display: flex; align-items: center; justify-content: center;
+}
+.stderr-icon-circle .error-icon2 {
+    font-size: 2rem; line-height: 1; display: inline-block;
+    animation: stderrShake 2.5s ease-in-out infinite; transform-origin: 50% 80%;
+}
+.stderr-pulse {
+    position: absolute; inset: 0; z-index: 1; border-radius: 50%;
+    background: rgba(255, 255, 255, .35); animation: stderrRipple 2s ease-out infinite;
+}
+@keyframes stderrRipple { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.7); opacity: 0; } }
+@keyframes stderrShake {
+    0%, 60%, 100% { transform: rotate(0); }
+    68% { transform: rotate(-10deg); } 76% { transform: rotate(10deg); }
+    84% { transform: rotate(-6deg); }  92% { transform: rotate(4deg); }
+}
+
+/* плитки времени и даты */
+.stderr-chip {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .9rem; border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, .25); background: var(--bs-tertiary-bg, #f8f9fa);
+    transition: background .25s, border-color .25s;
+}
+.stderr-chip i { font-size: 1.4rem; transition: color .25s; }
+.stderr-chip .chip-value { overflow-wrap: anywhere; }
+.stderr-chip:hover { background: #dc3545; border-color: #dc3545; }
+.stderr-chip:hover i, .stderr-chip:hover small, .stderr-chip:hover strong { color: #fff !important; }
+
+/* кнопки и быстрые ссылки */
+.stderr-card .btn { transition: transform .2s ease, box-shadow .2s ease; }
+.stderr-card .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(220, 53, 69, .25); }
+[data-bs-theme="dark"] .stderr-card .quick-link { background: var(--bs-tertiary-bg); border-color: rgba(128,128,128,.3); color: var(--bs-secondary-color); }
+
+/* список причин (error_no_permission) */
+.stderr-reasons ol { margin: .5rem 0 0; padding-left: 1.25rem; }
+
+@media (prefers-reduced-motion: reduce) {
+    .stderr-card, .stderr-icon-circle .error-icon2, .stderr-pulse { animation: none; }
+}
+
+
+/* =====================================================================
+   stdok()  —  вынесено из inline <style>
+   ===================================================================== */
+.stdok-card { max-width: 1100px; margin: 1.5rem auto; animation: slideUp .5s ease-out, stdokGlow 2.5s ease-in-out .5s infinite; }
+.stdok-card .card-body { padding: 1rem 1.25rem; }
+[data-bs-theme="dark"] .stdok-card { background-color: var(--bs-body-bg); }
+
+@keyframes stdokGlow {
+    0%, 100% { box-shadow: 0 10px 30px rgba(40, 167, 69, .20); }
+    50%      { box-shadow: 0 14px 40px rgba(40, 167, 69, .45); }
+}
+
+/* круглая иконка в шапке + расходящееся кольцо */
+.stdok-icon-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+.stdok-icon-circle {
+    position: relative; z-index: 2; width: 100%; height: 100%;
+    border-radius: 50%; background: rgba(255, 255, 255, .22);
+    display: flex; align-items: center; justify-content: center;
+}
+.stdok-icon-circle i { font-size: 2rem; line-height: 1; display: inline-block; animation: stdokPop 2.5s ease-in-out infinite; }
+.stdok-pulse {
+    position: absolute; inset: 0; z-index: 1; border-radius: 50%;
+    background: rgba(255, 255, 255, .35); animation: stdokRipple 2s ease-out infinite;
+}
+@keyframes stdokRipple { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.7); opacity: 0; } }
+@keyframes stdokPop {
+    0%, 60%, 100% { transform: scale(1); }
+    72% { transform: scale(1.25); }
+    84% { transform: scale(.95); }
+}
+
+/* плитки времени и даты */
+.stdok-chip {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .9rem; border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, .25); background: var(--bs-tertiary-bg, #f8f9fa);
+    transition: background .25s, border-color .25s;
+}
+.stdok-chip i { font-size: 1.4rem; transition: color .25s; }
+.stdok-chip:hover { background: #28a745; border-color: #28a745; }
+.stdok-chip:hover i, .stdok-chip:hover small, .stdok-chip:hover strong { color: #fff !important; }
+
+/* кнопки */
+.stdok-card .btn { transition: transform .2s ease, box-shadow .2s ease; }
+.stdok-card .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(40, 167, 69, .25); }
+[data-bs-theme="dark"] .stdok-card .quick-link-ok { background: var(--bs-tertiary-bg); border-color: rgba(128,128,128,.3); color: var(--bs-secondary-color); }
+
+@media (prefers-reduced-motion: reduce) {
+    .stdok-card, .stdok-icon-circle i, .stdok-pulse { animation: none; }
 }

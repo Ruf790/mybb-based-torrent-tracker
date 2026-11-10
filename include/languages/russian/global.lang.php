@@ -5,6 +5,8 @@ if(!defined('IN_TRACKER'))
 
 $language['global'] = array(
 
+'error_invalidforum' => 'Неверный форум',
+
 
 'img_unavailable'   => 'Изображение недоступно',
 'img_open_original' => 'Открыть оригинал',
@@ -313,6 +315,8 @@ $language['global'] = array(
 'error_nopermission_user_5' => "Вы открыли эту страницу напрямую, а не через соответствующие формы или ссылки.",
 'error_nopermission_user_resendactivation' => "Повторно отправить код активации",
 'error_nopermission_user_username' => "Вы вошли под именем пользователя: '{1}'",
+
+'error_nopermission_title' => 'Доступ запрещён',
 
 'error_nopermission_guest_1' => "Вы не вошли в систему или у вас нет прав для просмотра этой страницы. Возможные причины:",
 'error_nopermission_guest_2' => "Вы не вошли в систему или не зарегистрированы. Пожалуйста, войдите и попробуйте снова.",

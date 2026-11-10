@@ -562,6 +562,31 @@ $language['details'] = array
 	'lbl_screenshot_missing'	=> 'Файл скриншота не найден.',
 	'lbl_poster_missing'		=> 'Постер недоступен.',
 	
+	'ct_pin'    => 'Закрепить',
+    'ct_unpin'  => 'Открепить',
+    'ct_pinned' => 'Закреплён',
+	
+	'ph_file_search' => 'Поиск по файлам…',
+    'lbl_ft_video'   => 'Видео',
+    'lbl_ft_audio'   => 'Аудио',
+    'lbl_ft_subs'    => 'Субтитры',
+    'lbl_ft_image'   => 'Картинки',
+    'lbl_ft_archive' => 'Архивы',
+    'lbl_ft_doc'     => 'Документы',
+    'lbl_ft_other'   => 'Прочее',
+    'btn_imdb_more'  => 'Подробнее',
+    'js_dt_no_files' => 'Файлы не найдены',
+	
+	'lbl_unit_d'            => 'д',
+    'lbl_unit_h'            => 'ч',
+    'lbl_unit_m'            => 'м',
+    'lbl_promo_left'        => 'Акция ещё {1}',
+    'lbl_event_left'        => 'ещё {1}',
+    'lbl_event_freeleech'   => 'Фрилич для всех раздач',
+    'lbl_event_silverleech' => '50% лич для всех раздач',
+    'lbl_event_thirty'      => '30% лич для всех раздач',
+    'lbl_event_double'      => 'Двойная отдача на всех раздачах',
+	
 	
 	
 	

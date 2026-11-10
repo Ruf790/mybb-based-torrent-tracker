@@ -227,194 +227,76 @@ $filter_params = [
     'log_type' => $log_type
 ];
 
-$where_conditions_sitelog = [];
-$where_conditions_modlog = [];
-$where_params_sitelog = [];
-$where_params_modlog = [];
+// Everything is in sitelog now: category 'admin' / 'moderator' = admin / moderator actions
+sitelog_upgrade();
 
+$where  = [];
+$params = [];
 
-$where_conditions_adminlog = [];
-$where_params_adminlog = [];
+$where[] = match ($log_type) {
+    'site'      => "s.category NOT IN ('admin', 'moderator')",
+    'moderator' => "s.category = 'moderator'",
+    'admin'     => "s.category = 'admin'",
+    default     => '1=1',
+};
+
 if ($searchstr !== '') {
     $search_like = "%{$searchstr}%";
-    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ? OR a.data LIKE ?)";
-    array_push($where_params_adminlog, $search_like, $search_like, $search_like);
+    $where[] = "(s.txt LIKE ? OR s.module LIKE ? OR s.data LIKE ?)";
+    array_push($params, $search_like, $search_like, $search_like);
 }
+
 if ($event_filter !== 'all') {
-    $event_like = "%{$event_filter}%";
-    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ?)";
-    array_push($where_params_adminlog, $event_like, $event_like);
-}
-if ($date_filter !== '') {
-    $where_conditions_adminlog[] = "DATE(FROM_UNIXTIME(a.dateline)) = ?";
-    $where_params_adminlog[] = $date_filter;
-}
-$where_adminlog = !empty($where_conditions_adminlog) 
-    ? "WHERE " . implode(" AND ", $where_conditions_adminlog) 
-    : "";
-
-
-
-
-
-if ($searchstr !== '') 
-{
-    $search_like = "%{$searchstr}%";
-    $where_conditions_sitelog[] = "s.txt LIKE ?";
-    $where_params_sitelog[] = $search_like;
-    $where_conditions_modlog[] = "(m.action LIKE ? OR m.data LIKE ?)";
-    array_push($where_params_modlog, $search_like, $search_like);
-}
-
-
-
-
-
-
-
-
-if ($event_filter !== 'all') 
-{
-    if ($event_filter === 'Screenshot') 
-	{
-        $where_conditions_sitelog[] = "(s.txt LIKE '%Screenshot uploaded:%' OR s.txt LIKE '%Screenshot deleted:%' OR s.txt LIKE '%Screenshot updated:%' OR s.txt LIKE '%Screenshot error%')";
-        $where_conditions_modlog[] = "(m.action LIKE '%Screenshot%' OR m.data LIKE '%Screenshot%')";
-    } 
-	
-	elseif ($event_filter === 'Delete Comment') 
-    {
-        $where_conditions_sitelog[] = "(
-        s.txt LIKE '%Comment Delete%' 
-        OR s.txt LIKE '%Mass Comment Delete%' 
-        OR s.txt LIKE '%deleted a comment%' 
-        OR s.txt LIKE '%deleted comments%' 
-        OR s.txt LIKE '%User % deleted a comment (CID%' 
-        )";
-    
-        $where_conditions_modlog[] = "(
-        m.action LIKE '%Comment Delete%' 
-        OR m.action LIKE '%Mass Comment Delete%' 
-        OR m.action LIKE '%deleted a comment%' 
-        OR m.action LIKE '%deleted comments%' 
-        OR m.action LIKE '%User % deleted a comment (CID%' 
-        )";
-    }
-	
-	elseif ($event_filter === 'Torrent Upload') 
-	{
-        $where_conditions_sitelog[] = "(s.txt LIKE '%has been uploaded%' OR s.txt LIKE '%torrent uploaded%')";
-        $where_conditions_modlog[] = "(m.action LIKE '%has been uploaded%' OR m.action LIKE '%torrent uploaded%')";
-    } 
-	else 
-	{
-        $event_like = "%{$event_filter}%";
-        $where_conditions_sitelog[] = "s.txt LIKE ?";
-        $where_params_sitelog[] = $event_like;
-        $where_conditions_modlog[] = "m.action LIKE ?";
-        $where_params_modlog[] = $event_like;
+    if ($event_filter === 'Screenshot') {
+        $where[] = "(s.txt LIKE '%Screenshot uploaded:%' OR s.txt LIKE '%Screenshot deleted:%' OR s.txt LIKE '%Screenshot updated:%' OR s.txt LIKE '%Screenshot error%' OR s.data LIKE '%Screenshot%')";
+    } elseif ($event_filter === 'Delete Comment') {
+        $where[] = "(s.txt LIKE '%Comment Delete%' OR s.txt LIKE '%deleted a comment%' OR s.txt LIKE '%deleted comments%')";
+    } elseif ($event_filter === 'Torrent Upload') {
+        $where[] = "(s.txt LIKE '%has been uploaded%' OR s.txt LIKE '%torrent uploaded%')";
+    } else {
+        $where[] = "(s.txt LIKE ? OR s.module LIKE ?)";
+        array_push($params, "%{$event_filter}%", "%{$event_filter}%");
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 if ($date_filter !== '') {
-    $where_conditions_sitelog[] = "DATE(FROM_UNIXTIME(s.added)) = ?";
-    $where_params_sitelog[] = $date_filter;
-    $where_conditions_modlog[] = "DATE(FROM_UNIXTIME(m.dateline)) = ?";
-    $where_params_modlog[] = $date_filter;
+    // index-friendly range instead of DATE(FROM_UNIXTIME(...))
+    $day0 = strtotime($date_filter . ' 00:00:00');
+    if ($day0 !== false) {
+        $where[] = "s.added >= ? AND s.added < ?";
+        array_push($params, $day0, $day0 + 86400);
+    }
 }
-$where_sitelog = !empty($where_conditions_sitelog) ? "WHERE " . implode(" AND ", $where_conditions_sitelog) : "";
-$where_modlog = !empty($where_conditions_modlog) ? "WHERE " . implode(" AND ", $where_conditions_modlog) : "";
 
-// Считаем общее количество записей
-$count_union = [];
-$union_params = [];
-if ($log_type === 'both' || $log_type === 'site') {
-    $count_union[] = "SELECT COUNT(*) as count FROM sitelog s $where_sitelog";
-    array_push($union_params, ...$where_params_sitelog);
-}
-if ($log_type === 'both' || $log_type === 'moderator') {
-    $count_union[] = "SELECT COUNT(*) as count FROM moderatorlog m $where_modlog";
-    array_push($union_params, ...$where_params_modlog);
-}
-if ($log_type === 'both' || $log_type === 'admin') {
-    $count_union[] = "SELECT COUNT(*) as count FROM adminlog a $where_adminlog";
-    array_push($union_params, ...$where_params_adminlog);
-}
-$count_sql = "SELECT SUM(count) as total FROM (" . implode(" UNION ALL ", $count_union) . ") as counts";
-$result = $db->sql_query_prepared($count_sql, $union_params);
+$where_sql = 'WHERE ' . implode(' AND ', $where);
+
+$result = $db->sql_query_prepared("SELECT COUNT(*) AS total FROM sitelog s $where_sql", $params);
 if (!$result) {
     die(ags_fmt($lang->log['err_count_query'], (string)$db->error()));
 }
 $row = $db->fetch_array($result);
 $total_count = (int)$row['total'];
 
-
 // Пагинация
 $perpage = 50;
-$pages = $total_count > 0 ? ceil($total_count / $perpage) : 1;
+$pages = $total_count > 0 ? (int)ceil($total_count / $perpage) : 1;
 if ($page > $pages && $pages > 0) {
     $page = $pages;
 }
 $start = max(0, ($page - 1) * $perpage);
 
-
-
-
-// Формируем UNION запрос
-$union_queries = [];
-if ($log_type === 'both' || $log_type === 'site') {
-    $union_queries[] = "SELECT s.id, s.added as timestamp, s.txt as content,
-                        'site' as log_type, s.uid, u.username, u.usergroup,
-                        NULL as fid, NULL as tid, NULL as pid,
-                        s.ipaddress, NULL as data, NULL as module
-                        FROM sitelog s
-                        LEFT JOIN users u ON (s.uid = u.id)
-                        $where_sitelog";
-}
-if ($log_type === 'both' || $log_type === 'moderator') {
-    $union_queries[] = "SELECT NULL as id, m.dateline as timestamp, m.action as content,
-                        'moderator' as log_type, m.uid, u.username, u.usergroup,
-                        m.fid, m.tid, m.pid, m.ipaddress, m.data, NULL as module
-                        FROM moderatorlog m
-                        LEFT JOIN users u ON (m.uid = u.id)
-                        $where_modlog";
-}
-if ($log_type === 'both' || $log_type === 'admin') {
-    $union_queries[] = "SELECT NULL as id, a.dateline as timestamp, a.action as content,
-                        'admin' as log_type, a.uid, u.username, u.usergroup,
-                        NULL as fid, NULL as tid, NULL as pid,
-                        a.ipaddress, a.data, a.module
-                        FROM adminlog a
-                        LEFT JOIN users u ON (a.uid = u.id)
-                        $where_adminlog";
-}
-if (empty($union_queries)) {
-    $union_queries[] = "SELECT '0' as id, 0 as timestamp, 'No logs selected' as content,
-                        'none' as log_type, NULL as uid, NULL as username, NULL as usergroup,
-                        NULL as fid, NULL as tid, NULL as pid, NULL as ipaddress,
-                        NULL as data, NULL as module
-                        WHERE 1=0";
-}
-$main_query = "(" . implode(") UNION ALL (", $union_queries) . ") ORDER BY timestamp DESC";
-$main_params = $union_params;
-if ($total_count > 0) {
-    $main_query .= " LIMIT ?, ?";
-    $main_params[] = $start;
-    $main_params[] = $perpage;
-}
-
-
-//error_log("Main query: $main_query"); // Логируем запрос для отладки
-$res = $db->sql_query_prepared($main_query, $main_params);
+$res = $db->sql_query_prepared(
+    "SELECT s.id, s.added AS timestamp, s.txt AS content,
+            CASE s.category WHEN 'admin' THEN 'admin' WHEN 'moderator' THEN 'moderator' ELSE 'site' END AS log_type,
+            s.category, s.uid, u.username, u.usergroup,
+            s.fid, s.tid, s.pid, s.ipaddress, s.data, s.module
+       FROM sitelog s
+       LEFT JOIN users u ON (s.uid = u.id)
+     $where_sql
+     ORDER BY s.added DESC, s.id DESC
+     LIMIT ?, ?",
+    array_merge($params, [$start, $perpage])
+);
 if (!$res) {
     die(ags_fmt($lang->log['err_main_query'], (string)$db->error()));
 }
@@ -724,7 +606,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit(htmlspecialchars($lang->log['err_invalid_token']));
         }
 
-        $result = $db->sql_query_prepared('TRUNCATE TABLE sitelog');
+        // Admin / moderator actions stay (audit trail) — clears site events only
+        $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE category NOT IN ('admin', 'moderator')");
         if ($result) {
             flash_message($lang->log['flash_cleared'], 'success');
         } else {

@@ -1088,7 +1088,7 @@ function getRecentActivity(int $limit = 5): string
     $r = $db->sql_query_prepared(
         "SELECT l.*, u.username FROM sitelog l
          LEFT JOIN users u ON l.uid=u.id
-         ORDER BY l.id DESC LIMIT ?", [$limit]);
+         ORDER BY l.added DESC, l.id DESC LIMIT ?", [$limit]);
 
     if (!$r || $db->num_rows($r) === 0) {
         return '<div class="st-empty"><div class="st-ico st-soft-muted"><i class="fa-solid fa-clock-rotate-left"></i></div>'
@@ -1099,6 +1099,12 @@ function getRecentActivity(int $limit = 5): string
     while ($row = $db->fetch_array($r)) {
         $user   = htmlspecialchars($row['username'] ?? $lang->staffpanel['user_system']);
         $action = htmlspecialchars($row['txt']      ?? '');
+        // Admin actions keep a short code in txt (edit, delete …) — show the module with it
+        if (($row['category'] ?? '') === 'admin' && !empty($row['module'])) {
+            $action = '<span class="st-badge st-soft-danger me-1">' . htmlspecialchars((string)$row['module']) . '</span>' . $action;
+        } elseif (($row['category'] ?? '') === 'moderator') {
+            $action = '<span class="st-badge st-soft-success me-1"><i class="fa-solid fa-user-shield"></i></span>' . $action;
+        }
         $time   = date('d.m H:i', (int)($row['added'] ?? 0));
         $html  .= '<li class="sp-log__item">'
                 . '<span class="sp-log__dot" aria-hidden="true"></span>'

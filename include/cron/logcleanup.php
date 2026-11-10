@@ -15,10 +15,20 @@ $log_pruning = array_merge([
     'user_mail_logs' => 180,
 ], array_map('intval', (array)($config['log_pruning'] ?? [])));
 
+// Admin / moderator actions are in sitelog (category admin / moderator)
+foreach (['admin_logs' => 'admin', 'mod_logs' => 'moderator'] as $key => $category) {
+    $days = (int)($log_pruning[$key] ?? 0);
+    if ($days > 0) {
+        $db->sql_query_prepared(
+            "DELETE FROM sitelog WHERE category = ? AND added < ?",
+            [$category, TIMENOW - $days * DAY_IN_SECONDS]
+        );
+        ++$CQueryCount;
+    }
+}
+
 // log key => table
 $log_tables = [
-    'admin_logs'     => 'adminlog',
-    'mod_logs'       => 'moderatorlog',
     'mail_logs'      => 'mailerrors',
     'user_mail_logs' => 'maillogs',
 ];
@@ -36,4 +46,4 @@ foreach ($log_tables as $key => $table) {
     ++$CQueryCount;
 }
 
-unset($log_pruning, $log_tables, $key, $table, $days);
+unset($log_pruning, $log_tables, $key, $table, $days, $category);

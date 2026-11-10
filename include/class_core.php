@@ -42,10 +42,8 @@ class MyBB
     ];
 
     public array $binary_fields = [
-        'adminlog'      => ['ipaddress' => true],
         'adminsessions' => ['ip' => true],
         'maillogs'      => ['ipaddress' => true],
-        'moderatorlog'  => ['ipaddress' => true],
         'sitelog'       => ['ipaddress' => true],
         'pollvotes'     => ['ipaddress' => true],
         'posts'         => ['ipaddress' => true],

@@ -311,38 +311,8 @@ function get_forum(int|string $fid, bool $active_override = false): array|false
 // ── log_moderator_action ──────────────────────────────────────────────────────
 function log_moderator_action(array $data, string $action = ''): void
 {
-    global $db, $CURUSER, $session;
-
-    $fid  = (int)($data['fid'] ?? 0);  unset($data['fid']);
-    $tid  = (int)($data['tid'] ?? 0);  unset($data['tid']);
-    $pid  = (int)($data['pid'] ?? 0);  unset($data['pid']);
-    $tids = (array)($data['tids'] ?? []); unset($data['tids']);
-
-    $serialized = is_array($data) ? my_serialize($data) : $data;
-
-    $uid       = (int)$CURUSER['id'];
-    $dateline  = TIMENOW;
-    $ipaddress = $session->packedip;
-
-    $tid_list = $tids ?: [$tid];
-
-    $placeholders = [];
-    $params       = [];
-
-    foreach ($tid_list as $t) {
-        $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?)';
-        array_push($params, $uid, $dateline, $fid, (int)$t, $pid, $action, $serialized, $ipaddress);
-    }
-
-    $sql = "INSERT INTO moderatorlog (`uid`,`dateline`,`fid`,`tid`,`pid`,`action`,`data`,`ipaddress`)
-            VALUES " . implode(', ', $placeholders);
-
-    $db->sql_query_prepared($sql, $params);
+    sitelog_moderator_action($data, $action);   // include/functions.php
 }
-
-
-
-
 
 function log_admin_action(mixed ...$args): void
 {
@@ -379,17 +349,7 @@ function log_admin_action(mixed ...$args): void
         'attachments'   => 'forum-attachments',
     ];
 
-    $db->sql_query_prepared(
-        "INSERT INTO adminlog (`uid`,`ipaddress`,`dateline`,`module`,`action`,`data`) VALUES (?,?,?,?,?,?)",
-        [
-            !empty($CURUSER['id']) ? (int)$CURUSER['id'] : (int)($mybb->user['id'] ?? 0),
-            my_inet_pton(get_ip()),
-            TIMENOW,
-            $act_map[$act] ?? $act,
-            $action,
-            my_serialize($data),
-        ]
-    );
+    sitelog_admin_action((string)($act_map[$act] ?? $act), $action, $data);   // include/functions.php
 }
 
 

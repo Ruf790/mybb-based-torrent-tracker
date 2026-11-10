@@ -393,7 +393,55 @@ $language['upload'] = [
 	'notify_upload_pm_message'    => "В категории [b]{1}[/b], на которую вы подписаны, появилась новая раздача:\n\n[url={2}][b]{3}[/b][/url]\n\nУправление подписками: [url={4}/usercp.php?action=options]Панель пользователя[/url]",
 	'notify_upload_email_subject' => 'Новая раздача в категории {1}: {3}',
 	'notify_upload_email_message' => "В категории {1}, на которую вы подписаны, появилась новая раздача:\n\n{3}\n{2}\n\nУправление подписками: {4}/usercp.php?action=options\n\n— {5}",
+	
+	
+'btn_mi_builder'    => 'Заполнить по шаблону',
+'mi_builder_hint'   => 'Заполните поля — текст выше сформируется сам и всегда покажется карточкой.',
+'lbl_mib_quality'   => 'Качество',
+'lbl_mib_container' => 'Контейнер',
+'lbl_mib_duration'  => 'Продолжительность',
+'lbl_mib_size'      => 'Размер',
+'lbl_mib_codec'     => 'Кодек',
+'lbl_mib_resolution'=> 'Разрешение',
+'lbl_mib_aspect'    => 'Соотношение',
+'lbl_mib_bitrate'   => 'Битрейт',
+'lbl_mib_depth'     => 'Битность',
+'lbl_mib_lang'      => 'Язык',
+'lbl_mib_channels'  => 'Каналы',
+'lbl_mib_voice'     => 'Озвучка / название',
+'ph_mib_voice'      => 'напр. Дубляж, Оригинал',
+'btn_mib_remove'    => 'Удалить',
+'btn_mib_add_audio' => 'Добавить аудиодорожку',
+'ph_mib_subs'       => 'Русские (Forced, Full), Английские (SDH)',
+'lbl_mi_video'      => 'Видео',
+'lbl_mi_audio'      => 'Аудио',
+'lbl_mi_subs'       => 'Субтитры',
+'js_mib_replace'    => 'Шаблон заменит текущий текст MediaInfo. Продолжить?',
+'lbl_mib_format'  => 'Формат',
+'btn_mib_add_sub' => 'Добавить субтитры',
+'opt_mib_auto' => 'Авто',
+	
+	
+	
+  // ── Upload page: tiles and buttons ──
+    'kpi_my_torrents'               => 'Мои раздачи',
+    'kpi_my_size'                   => 'Общий объём',
+    'kpi_upload_bonus'              => 'Бонус за раздачу',
+    'kpi_torrent_limit'             => 'Макс. размер .torrent',
+    'kpi_shots_limit'               => 'Лимит скриншотов',
+    'screenshots_select_all'        => 'Выбрать все',
+    'screenshots_delete_selected'   => 'Удалить выбранные',
+    'screenshots_bulk_delete_title' => 'Удалить скриншоты?',
+    'screenshots_confirm'           => 'Подтвердить',
+    'js_ut_lines'                   => 'Строк: {1}',	
 
+'mediainfo_hint'     => 'Необязательно: вставьте текстовый отчёт MediaInfo (Вид → Текст) или заполните по шаблону. На странице раздачи он покажется аккуратной карточкой.',
+'mediainfo_too_long' => 'Текст MediaInfo слишком длинный.',	
+
+'nfofile_delete'      => 'Удалить NFO',
+'nfofile_will_delete' => 'NFO будет удалён при сохранении',
+'nfofile_undo'        => 'Отменить',
+	
 	
 	
 	

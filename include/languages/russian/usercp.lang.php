@@ -5,6 +5,7 @@ if(!defined('IN_TRACKER'))
 
 $language['usercp'] = array(
 
+'error_invalidforum' => 'Неверный форум',
 
 'tab_uploads' => 'Загрузки',
 'tab_attachments' => 'Вложения',

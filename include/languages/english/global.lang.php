@@ -18,7 +18,7 @@ $language['global'] = array
 
 'lastseen'			=>'Last Seen: ',
 
-
+'error_invalidforum' => 'Invalid forum',
 
 
 
@@ -273,6 +273,8 @@ $language['global'] = array
 'error_nopermission_user_5' => "You have accessed this page directly rather than using appropriate forms or link.",
 'error_nopermission_user_resendactivation' => "Resend Activation Code",
 'error_nopermission_user_username' => "You are currently logged in with the username: '{1}'",	
+
+'error_nopermission_title' => 'Access Denied',
 
 
 

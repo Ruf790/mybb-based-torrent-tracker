@@ -712,4 +712,13 @@ Thank you,
 'hint_language' => "Site interface and e-mails will be in this language.",
 
 
+'lbl_pending_status' => 'Awaiting activation',
+'lbl_pending_notice' => 'This account has not been activated. Registered {1} day(s) ago.',
+'btn_activate_user' => 'Activate',
+'confirm_activate_user' => 'Activate this account?',
+'redirect_user_activated' => 'The account has been activated.',
+'err_activate_failed' => 'This account cannot be activated: it is already active or disabled.',
+'err_invalid_request' => 'Invalid security token. Please refresh the page and try again.',
+
+
 );

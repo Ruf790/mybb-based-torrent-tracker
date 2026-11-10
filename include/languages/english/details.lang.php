@@ -560,6 +560,31 @@ $language['details'] = array
 	'lbl_screenshot_missing'	=> 'Screenshot file not found.',
 	'lbl_poster_missing'		=> 'No poster available.',
 	
+	'ct_pin'    => 'Pin to top',
+    'ct_unpin'  => 'Unpin',
+    'ct_pinned' => 'Pinned',
+	
+	'ph_file_search' => 'Search files…',
+    'lbl_ft_video'   => 'Video',
+    'lbl_ft_audio'   => 'Audio',
+    'lbl_ft_subs'    => 'Subtitles',
+    'lbl_ft_image'   => 'Images',
+    'lbl_ft_archive' => 'Archives',
+    'lbl_ft_doc'     => 'Documents',
+    'lbl_ft_other'   => 'Other',
+    'btn_imdb_more'  => 'More details',
+    'js_dt_no_files' => 'No files found',
+	
+	'lbl_unit_d'            => 'd',
+    'lbl_unit_h'            => 'h',
+    'lbl_unit_m'            => 'm',
+    'lbl_promo_left'        => 'Promo ends in {1}',
+    'lbl_event_left'        => 'ends in {1}',
+    'lbl_event_freeleech'   => 'Freeleech on all torrents',
+    'lbl_event_silverleech' => '50% leech on all torrents',
+    'lbl_event_thirty'      => '30% leech on all torrents',
+    'lbl_event_double'      => '2x upload on all torrents',
+	
 	
 	
 	

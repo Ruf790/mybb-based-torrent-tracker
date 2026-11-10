@@ -5,6 +5,11 @@ if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
 $language['edituser'] = array (
 
+	
+	'btn_unban' => 'Unban',
+    'js_confirm_unban' => 'Remove the ban from this user?',
+    'msg_user_unbanned' => 'The ban has been removed.',
+	
 	// ── Common ──
 	'yes'             => 'Yes',
 	'no'              => 'No',

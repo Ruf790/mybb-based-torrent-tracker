@@ -2090,7 +2090,7 @@ if ($isEdit) {
     </section>
 
     <!-- Description -->
-    <section class="st-card up-sec" style="--c: #6366f1">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-align-left"></i></span>
             <?= $lang->upload['description'] ?> <span class="text-danger">*</span>
@@ -2105,7 +2105,7 @@ if ($isEdit) {
     </section>
 
     <!-- MediaInfo (необязательно) -->
-    <section class="st-card up-sec" style="--c: #14b8a6">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-circle-info"></i></span>
             MediaInfo
@@ -2276,7 +2276,7 @@ if ($isEdit) {
     </section>
 
     <!-- Category -->
-    <section class="st-card up-sec" style="--c: #f59e0b">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-table-cells-large"></i></span>
             <?= $lang->upload['category'] ?> <span class="text-danger">*</span>
@@ -2328,7 +2328,7 @@ if ($isEdit) {
     </section>
 
     <!-- Tags -->
-    <section class="st-card up-sec" style="--c: #ec4899">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-tags"></i></span>
             <?= $lang->upload['tags'] ?>
@@ -2396,7 +2396,7 @@ if ($isEdit) {
     </section>
 
     <!-- Media & Images -->
-    <section class="st-card up-sec" style="--c: #8b5cf6">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-images"></i></span>
             <?= $lang->upload['media_section'] ?>
@@ -2517,7 +2517,7 @@ if ($isEdit) {
     </section>
 
     <!-- Settings -->
-    <section class="st-card up-sec" style="--c: #10b981">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-sliders"></i></span>
             <?= $lang->upload['settings_section'] ?>
@@ -2560,7 +2560,7 @@ if ($isEdit) {
     </section>
 
     <!-- Screenshots -->
-    <section class="st-card up-sec" style="--c: #06b6d4">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
             <span class="st-ico up-sec__ico"><i class="fa-solid fa-camera"></i></span>
             <?= $lang->upload['screenshots'] ?>

@@ -87,28 +87,33 @@
 .up-page .cat-pick-btn:hover { color: var(--bs-emphasis-color); border-color: var(--bs-border-color); }
 .up-page .cat-pick-btn.active { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); border-color: var(--bs-primary); }
 
-/* Жанры: у каждой кнопки свой цвет в --g (style="--g: #…" в upload.php) */
+/* Жанры: у каждой кнопки свой цвет в --g (style="--g: #…" в upload.php).
+   Обычная — белая с цветным текстом и рамкой, выбранная — залита цветом. */
 .up-page .genre-tag-btn {
   --g: var(--bs-secondary-color);
-  display: inline-flex; align-items: center; gap: .35rem;
-  padding: .22rem .65rem; border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--g) 35%, transparent);
-  background: color-mix(in srgb, var(--g) 10%, transparent);
-  color: var(--bs-body-color);
-  font-size: .78em; font-weight: 600;
-  transition: background-color .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .5rem 1.2rem; border-radius: 40px;
+  border: 1.5px solid color-mix(in srgb, var(--g) 50%, transparent);
+  background: var(--bs-body-bg); color: var(--g);
+  font-size: .85rem; font-weight: 500; letter-spacing: .3px;
+  transition: all .3s cubic-bezier(.4, 0, .2, 1);
 }
-.up-page .genre-tag-btn i { color: var(--g); transition: color .15s ease; }
-.up-page .genre-tag-btn:hover {
-  border-color: var(--g);
-  background: color-mix(in srgb, var(--g) 18%, transparent);
+.up-page .genre-tag-btn i { font-size: 1.1rem; transition: transform .2s ease; }
+.up-page .genre-tag-btn::before {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 0; height: 0;
+  border-radius: 50%; background: rgba(255, 255, 255, .3);
+  transform: translate(-50%, -50%); transition: width .4s, height .4s; pointer-events: none;
 }
-.up-page .genre-tag-btn:active { transform: scale(.96); }
+.up-page .genre-tag-btn:hover::before { width: 120%; height: 120%; }
+.up-page .genre-tag-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, .15); }
 .up-page .genre-tag-btn.genre-active {
-  background: var(--g); border-color: var(--g); color: #fff;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--g) 35%, transparent);
+  background: linear-gradient(135deg, var(--g) 0%, color-mix(in srgb, var(--g) 80%, transparent) 100%);
+  border-color: transparent; color: #fff;
+  transform: scale(1.05); box-shadow: 0 4px 15px rgba(0, 0, 0, .2);
 }
-.up-page .genre-tag-btn.genre-active i { color: #fff; }
+.up-page .genre-tag-btn.genre-active i { animation: up-genre-bounce .3s ease; }
+@keyframes up-genre-bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
 
 /* MediaInfo */
 .up-page .up-mi-text { font-size: .8rem; }

@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=3">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=4">
 
 <div class="container-md st-page up-page">
 
@@ -2346,27 +2346,27 @@ if ($isEdit) {
 
             <div class="d-flex flex-wrap gap-1 mb-2" id="genreButtons">
                 <?php
-                // [тег (англ.), иконка, цвет] — цвета подобраны так, чтобы читались и в светлой, и в тёмной теме
+                // [тег (англ.), иконка, цвет]
                 $genres = [
                     ['Action',      'fa-bolt',              '#ff4757'],
                     ['Adventure',   'fa-compass',           '#ffa502'],
-                    ['Animation',   'fa-film',              '#2ed573'],
+                    ['Animation',   'fa-film',              '#7bed9f'],
                     ['Biography',   'fa-user-graduate',     '#70a1ff'],
                     ['Comedy',      'fa-face-laugh-squint', '#ff6b81'],
-                    ['Crime',       'fa-gavel',             '#747d8c'],
-                    ['Documentary', 'fa-video',             '#8395a7'],
-                    ['Drama',       'fa-masks-theater',     '#a55eea'],
+                    ['Crime',       'fa-gavel',             '#2f3542'],
+                    ['Documentary', 'fa-video',             '#a4b0be'],
+                    ['Drama',       'fa-masks-theater',     '#57606f'],
                     ['Family',      'fa-users',             '#ff7f50'],
-                    ['Fantasy',     'fa-dragon',            '#6c5ce7'],
+                    ['Fantasy',     'fa-dragon',            '#dfe6e9'],
                     ['History',     'fa-landmark',          '#cd84f1'],
-                    ['Horror',      'fa-ghost',             '#eb3b5a'],
+                    ['Horror',      'fa-ghost',             '#ff4d4d'],
                     ['Music',       'fa-music',             '#1e90ff'],
                     ['Mystery',     'fa-magnifying-glass',  '#8e44ad'],
-                    ['Romance',     'fa-heart',             '#fd79a8'],
-                    ['Sci-Fi',      'fa-rocket',            '#00b8b4'],
-                    ['Sport',       'fa-trophy',            '#f0b429'],
+                    ['Romance',     'fa-heart',             '#ff6b6b'],
+                    ['Sci-Fi',      'fa-rocket',            '#00cec9'],
+                    ['Sport',       'fa-trophy',            '#fdcb6e'],
                     ['Thriller',    'fa-skull',             '#e17055'],
-                    ['War',         'fa-hand-fist',         '#7f8c8d'],
+                    ['War',         'fa-hand-fist',         '#636e72'],
                     ['Western',     'fa-horse-head',        '#f39c12'],
                 ];
 

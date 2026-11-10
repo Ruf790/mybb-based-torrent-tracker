@@ -261,3 +261,99 @@ function sbe_render(array $est): string
          . '<a class="dt-bp__more" href="' . $e(rtrim((string)$BASEURL, '/') . '/mybonus.php') . '" title="' . $e($L('lbl_bp_more', 'My bonus')) . '"><i class="fa-solid fa-chevron-right"></i></a>'
          . '</div>';
 }
+
+/**
+ * Сколько пользователь зарабатывает сейчас, BP в час — по всем раздачам, которые
+ * он сидирует (та же формула, что в кроне: сумма множителей раздач × base_bonus ×
+ * множитель количества, не больше hour_cap, плюс эвристика).
+ * null — бонусы выключены; 0 — сейчас ничего не сидирует.
+ *
+ * @return array{hourly: float, daily: float, torrents: int, capped: bool}|null
+ */
+function sbe_user_hourly(int $uid): ?array
+{
+    global $db;
+
+    $cfg = sbe_settings();
+    if (empty($cfg['enabled']) || $uid <= 0) {
+        return null;
+    }
+    $f = static fn(string $k, float $d): float => max(0.0, (float)($cfg[$k] ?? $d));
+
+    $res = $db->sql_query_prepared(
+        "SELECT t.id, t.size, t.added, t.seeders, t.leechers, t.free, t.silver, t.doubleupload,
+                (SELECT MAX(s.seedtime) FROM snatched s WHERE s.userid = ? AND s.torrentid = t.id) AS seedtime
+           FROM torrents t
+          WHERE t.id IN (SELECT DISTINCT p.torrent FROM peers p
+                          WHERE p.userid = ? AND p.seeder = 'yes' AND p.last_action >= UNIX_TIMESTAMP() - 2700)
+            AND t.visible = 'yes' AND t.banned = 'no' AND t.isnuked = 'no'",
+        [$uid, $uid]
+    );
+
+    $raw = 0.0;
+    $n   = 0;
+    while ($res && ($t = $db->fetch_array($res))) {
+        $n++;
+        $leech = (int)$t['leechers'];
+        $seed  = (int)$t['seeders'];
+        $size  = (float)$t['size'];
+        $st    = (int)$t['seedtime'];
+        $age   = TIMENOW - (int)$t['added'];
+
+        $mul = match (true) {
+            $leech === 0 => $f('leech_none', 1.2),
+            $leech <= 2  => $f('leech_few', 1.5),
+            default      => $f('leech_many', 1.8),
+        };
+        $mul *= match (true) {
+            $size < 536870912   => $f('size_small', 1.0),
+            $size < 2147483648  => $f('size_medium', 1.2),
+            $size < 8589934592  => $f('size_large', 1.5),
+            $size < 21474836480 => $f('size_xlarge', 1.8),
+            default             => $f('size_huge', 2.0),
+        };
+        $mul *= match (true) {
+            $seed > 100 => $f('seeders_many', 0.9),
+            $seed > 50  => $f('seeders_medium', 0.95),
+            $seed <= 1  => $f('rare_1', 1.0),
+            $seed <= 3  => $f('rare_3', 1.0),
+            $seed <= 5  => $f('rare_5', 1.0),
+            default     => 1.0,
+        };
+        $mul *= match (true) {
+            $st >= 15552000 => $f('loyal_180', 1.0),
+            $st >= 7776000  => $f('loyal_90', 1.0),
+            $st >= 2592000  => $f('loyal_30', 1.0),
+            default         => 1.0,
+        };
+        $mul *= match (true) {
+            $age > 15552000 => $f('age_old', 1.5),
+            $age > 5184000  => $f('age_medium', 1.3),
+            default         => 1.0,
+        };
+        $mul *= 1.0
+            + (($t['free'] ?? 'no') === 'yes' ? $f('promo_free', 0.7) : 0.0)
+            + (($t['silver'] ?? 'no') === 'yes' ? $f('promo_silver', 0.5) : 0.0)
+            + (($t['doubleupload'] ?? 'no') === 'yes' ? $f('promo_double', 0.5) : 0.0);
+        $raw += $mul;
+    }
+
+    if ($n === 0) {
+        return ['hourly' => 0.0, 'daily' => 0.0, 'torrents' => 0, 'capped' => false];
+    }
+
+    $capMul = sbe_count_multiplier($n, (string)($cfg['torrent_multiplier_type'] ?? 'penalty'), (float)($cfg['flat_multiplier'] ?? 1.0));
+    $cap    = $f('hour_cap', 500.0);
+    $theory = $raw * $f('base_bonus', 10.0) * $capMul;
+    $hourly = min($theory, $cap);
+    if (!empty($cfg['enable_heuristic'])) {
+        $hourly *= max(1.0, sbe_heuristic_hours($n, $cfg) / 24);
+    }
+
+    return [
+        'hourly'   => round($hourly, 1),
+        'daily'    => round($hourly * 24),
+        'torrents' => $n,
+        'capped'   => $theory > $cap,
+    ];
+}

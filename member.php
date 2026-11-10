@@ -28,6 +28,8 @@ require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_ratio.php';
 require_once INC_PATH . '/functions_icons.php';
+require_once INC_PATH . '/functions_profile_extra.php';
+require_once INC_PATH . '/functions_seedbonus_estimate.php';
 require_once INC_PATH . '/functions_loginattemptcheck.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/class_parser.php';
@@ -2100,8 +2102,9 @@ $modoptions = '<section class="st-card mb-3">'
              . '<div class="min-w-0 flex-grow-1"><div class="st-kpi__val">' . $value . '</div><div class="st-kpi__lbl">' . $label . '</div>' . $extra . '</div>'
              . '<i class="fa-solid ' . $icon . ' st-kpi__bg" aria-hidden="true"></i></div>';
     };
-    $pf_bar = static fn(int $pct, string $tone): string =>
-        '<div class="pf-bar"><span class="bg-' . $tone . '" style="width:' . $pct . '%"></span></div>';
+    $pf_bar = static fn(int $pct, string $tone): string => ($up + $down) > 0
+        ? '<div class="pf-bar"><span class="bg-' . $tone . '" style="width:' . $pct . '%"></span></div>'
+        : '';
 
     $ratio_tone = match ($ratio_class) { 'ratio-ok' => 'success', 'ratio-warn' => 'warning', default => 'danger' };
     $ratio_text = match ($ratio_class) { 'ratio-ok' => $lang->member['lbl_ratio_good'], 'ratio-warn' => $lang->member['lbl_ratio_fair'], default => $lang->member['lbl_ratio_poor'] };
@@ -2127,9 +2130,27 @@ $modoptions = '<section class="st-card mb-3">'
         . '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-earth-europe"></i>' . rtrim($lang->member['local_time'], ':') . '</span><span class="st-row__val">' . $localtime . '</span></div>'
         . ($invs !== '' ? '<div class="st-row"><span class="st-row__lbl"><i class="fa-solid fa-ticket"></i>' . trim(str_replace(['{1}', '%1$s'], '', $lang->member['iby']), ' :') . '</span><span class="st-row__val">' . $invs . '</span></div>' : '');
 
+    // Cover colour, activity map, posters, feed, BP/h
+    $pfx_anon   = $is_own_profile || $IsStaff;
+    $pf_color   = pfx_group_color((string)($memperms['namestyle'] ?? ''));
+    $pf_group   = trim(strip_tags((string)($memperms['title'] ?? '')));
+    $pf_heatmap = pfx_heatmap_html((int)$uid, $pfx_anon);
+    $pf_posters = pfx_posters_html((int)$uid, $pfx_anon, 6);
+    $pf_feed    = pfx_feed_html((int)$uid, $pfx_anon, 8);
+    $pf_bp_chip = '';
+    $pf_bp      = sbe_user_hourly((int)$uid);
+    if ($pf_bp !== null && $pf_bp['torrents'] > 0) {
+        $bp_num = number_format($pf_bp['hourly'], 1, '.', ' ');
+        $bp_tip = ags_fmt($pfL('bp_hour_tip', 'About {1} BP a day from {2} seeding torrents'), number_format($pf_bp['daily'], 0, '.', ' '), $pf_bp['torrents']);
+        $bp_in  = '<i class="fa-solid fa-coins text-warning"></i>' . ags_fmt($pfL('bp_hour', 'Earning ≈ {1} BP/h'), '<strong>' . $bp_num . '</strong>');
+        $pf_bp_chip = $is_own_profile
+            ? '<a class="pf-chip pf-chip--bp" href="' . $BASEURL . '/mybonus.php" title="' . $bp_tip . '">' . $bp_in . '</a>'
+            : '<span class="pf-chip pf-chip--bp" title="' . $bp_tip . '">' . $bp_in . '</span>';
+    }
+
     $profile = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=1">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=2">
 <script src="' . $BASEURL . '/scripts/toast.js"></script>
 ' . $ags_lang_script . '
 <script src="' . $BASEURL . '/scripts/report_user.js?ver=3"></script>
@@ -2137,7 +2158,8 @@ $modoptions = '<section class="st-card mb-3">'
 <div class="container-md st-page pf-page py-3">
 
   <!-- Header -->
-  <header class="st-card st-head pf-head mb-3">
+  <header class="st-card st-head pf-head mb-3" style="--pf-c:' . hsafe($pf_color) . '">
+    <div class="pf-cover" aria-hidden="true">' . ($pf_group !== '' ? '<span class="pf-cover__grp">' . hsafe($pf_group) . '</span>' : '') . '</div>
     <div class="pf-ava-wrap">
       <div class="pf-ava" id="avatar-container" data-uid="' . (int)$memprofile['id'] . '" data-can-change="' . $can_change_avatar . '"
            data-max-mb="' . round($avatarsize / 1024) . '" title="' . hsafe($lang->member['tip_avatar']) . '">
@@ -2162,6 +2184,7 @@ $modoptions = '<section class="st-card mb-3">'
         <span class="pf-chip"><i class="fa-solid fa-arrow-up text-success"></i>' . hsafe(rtrim($lang->member['lbl_seeding'], ':')) . ' <strong>' . $active_seeds . '</strong></span>
         <span class="pf-chip"><i class="fa-solid fa-arrow-down text-danger"></i>' . hsafe(rtrim($lang->member['lbl_leeching'], ':')) . ' <strong>' . $active_leeches . '</strong></span>
         <span class="pf-chip"><i class="fa-regular fa-calendar"></i>' . hsafe(rtrim($lang->member['joined'], ':')) . ' <strong>' . $memregdate . '</strong></span>
+        ' . $pf_bp_chip . '
       </div>
     </div>
 
@@ -2194,6 +2217,12 @@ $modoptions = '<section class="st-card mb-3">'
         <!-- About -->
         <div class="tab-pane fade show active" id="pf-about" role="tabpanel">
           ' . $bannedbit . '
+          ' . $pf_heatmap . '
+          ' . $pf_posters . '
+          <section class="st-card mb-3">
+            <div class="st-card__head"><i class="fa-solid fa-bolt"></i>' . $pfL('sec_feed', 'Recent activity') . '</div>
+            ' . $pf_feed . '
+          </section>
           <section class="st-card mb-3">
             <div class="st-card__head"><i class="fa-solid fa-id-card"></i>' . hsafe($lang->member['tab_about']) . '</div>
             <div class="st-card__body"><div class="st-rows">' . $about_rows . '</div></div>
@@ -2275,6 +2304,15 @@ document.addEventListener("DOMContentLoaded", function () {
   if (!btns.length || !window.bootstrap) return;
   var h = location.hash && document.querySelector(".pf-tabs [data-bs-target=\"" + location.hash.replace(/"/g, "") + "\"]");
   if (h) bootstrap.Tab.getOrCreateInstance(h).show();
+  document.querySelectorAll("[data-pf-tab]").forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      var b = document.querySelector(".pf-tabs [data-bs-target=\"" + a.getAttribute("data-pf-tab") + "\"]");
+      if (!b) return;
+      e.preventDefault();
+      bootstrap.Tab.getOrCreateInstance(b).show();
+      b.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  });
   btns.forEach(function (b) { b.addEventListener("shown.bs.tab", function () { history.replaceState(null, "", b.getAttribute("data-bs-target")); }); });
 });
 </script>';

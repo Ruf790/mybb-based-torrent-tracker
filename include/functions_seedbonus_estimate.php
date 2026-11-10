@@ -64,6 +64,73 @@ function sbe_heuristic_hours(int $n, array $cfg): float
 }
 
 /**
+ * Множители одной раздачи — та же формула, что в кроне (sbc_buildMainQuery).
+ * $t: size, leechers, seeders, added, free, silver, doubleupload; $seedtime — snatched.seedtime.
+ * key — для подписи на details.php ('' = обычный случай, множитель 1.0).
+ *
+ * @return array{leech: array{key: string, mul: float}, size: array{key: string, mul: float}, seed: array{key: string, mul: float}, loyal: array{key: string, mul: float}, age: array{key: string, mul: float}, promo: array{key: string, mul: float}}
+ */
+function sbe_factors(array $t, int $seedtime, ?array $cfg = null): array
+{
+    $cfg ??= sbe_settings();
+    $f = static fn(string $k, float $d): float => max(0.0, (float)($cfg[$k] ?? $d));
+    $x = static fn(string $key, float $mul): array => ['key' => $key, 'mul' => $mul];
+
+    $leech = (int)$t['leechers'];
+    $seed  = (int)$t['seeders'];
+    $size  = (float)$t['size'];
+    $age   = TIMENOW - (int)$t['added'];
+
+    return [
+        'leech' => match (true) {
+            $leech === 0 => $x('leech_none', $f('leech_none', 1.2)),
+            $leech <= 2  => $x('leech_few', $f('leech_few', 1.5)),
+            default      => $x('leech_many', $f('leech_many', 1.8)),
+        },
+        'size' => match (true) {
+            $size < 536870912   => $x('size_small', $f('size_small', 1.0)),
+            $size < 2147483648  => $x('size_medium', $f('size_medium', 1.2)),
+            $size < 8589934592  => $x('size_large', $f('size_large', 1.5)),
+            $size < 21474836480 => $x('size_xlarge', $f('size_xlarge', 1.8)),
+            default             => $x('size_huge', $f('size_huge', 2.0)),
+        },
+        'seed' => match (true) {
+            $seed > 100 => $x('seeders_many', $f('seeders_many', 0.9)),
+            $seed > 50  => $x('seeders_medium', $f('seeders_medium', 0.95)),
+            $seed <= 1  => $x('rare_1', $f('rare_1', 1.0)),
+            $seed <= 3  => $x('rare_3', $f('rare_3', 1.0)),
+            $seed <= 5  => $x('rare_5', $f('rare_5', 1.0)),
+            default     => $x('', 1.0),
+        },
+        'loyal' => match (true) {
+            $seedtime >= 15552000 => $x('loyal_180', $f('loyal_180', 1.0)),
+            $seedtime >= 7776000  => $x('loyal_90', $f('loyal_90', 1.0)),
+            $seedtime >= 2592000  => $x('loyal_30', $f('loyal_30', 1.0)),
+            default               => $x('', 1.0),
+        },
+        'age' => match (true) {
+            $age > 15552000 => $x('age_old', $f('age_old', 1.5)),
+            $age > 5184000  => $x('age_medium', $f('age_medium', 1.3)),
+            default         => $x('', 1.0),
+        },
+        'promo' => $x('promo', 1.0
+            + (($t['free'] ?? 'no') === 'yes' ? $f('promo_free', 0.7) : 0.0)
+            + (($t['silver'] ?? 'no') === 'yes' ? $f('promo_silver', 0.5) : 0.0)
+            + (($t['doubleupload'] ?? 'no') === 'yes' ? $f('promo_double', 0.5) : 0.0)),
+    ];
+}
+
+/** Произведение множителей sbe_factors() */
+function sbe_factors_mul(array $factors): float
+{
+    $mul = 1.0;
+    foreach ($factors as $x) {
+        $mul *= $x['mul'];
+    }
+    return $mul;
+}
+
+/**
  * Оценка BP в час за эту раздачу для пользователя $uid.
  * null — бонусы выключены или раздача не даёт бонус (скрыта, забанена, nuked).
  *
@@ -104,78 +171,10 @@ function sbe_estimate(array $t, int $uid): ?array
         $seedtime = (int)$r['st'];
     }
 
-    $size     = (float)$t['size'];
-    $leechers = (int)$t['leechers'];
-    $seeders  = (int)$t['seeders'] + ($seeding ? 0 : 1);   // он станет ещё одним сидом
-    $age      = TIMENOW - (int)$t['added'];
-
-    $factors = [];
-    $add = static function (string $key, float $mul) use (&$factors): void {
-        $factors[] = ['key' => $key, 'mul' => $mul];
-    };
-
-    $add(match (true) {
-        $leechers === 0 => 'leech_none',
-        $leechers <= 2  => 'leech_few',
-        default         => 'leech_many',
-    }, match (true) {
-        $leechers === 0 => $f('leech_none', 1.2),
-        $leechers <= 2  => $f('leech_few', 1.5),
-        default         => $f('leech_many', 1.8),
-    });
-
-    [$sk, $sm] = match (true) {
-        $size < 536870912   => ['size_small',  $f('size_small', 1.0)],
-        $size < 2147483648  => ['size_medium', $f('size_medium', 1.2)],
-        $size < 8589934592  => ['size_large',  $f('size_large', 1.5)],
-        $size < 21474836480 => ['size_xlarge', $f('size_xlarge', 1.8)],
-        default             => ['size_huge',   $f('size_huge', 2.0)],
-    };
-    $add($sk, $sm);
-
-    [$rk, $rm] = match (true) {
-        $seeders > 100 => ['seeders_many',   $f('seeders_many', 0.9)],
-        $seeders > 50  => ['seeders_medium', $f('seeders_medium', 0.95)],
-        $seeders <= 1  => ['rare_1',         $f('rare_1', 1.0)],
-        $seeders <= 3  => ['rare_3',         $f('rare_3', 1.0)],
-        $seeders <= 5  => ['rare_5',         $f('rare_5', 1.0)],
-        default        => ['', 1.0],
-    };
-    if ($rk !== '') {
-        $add($rk, $rm);
-    }
-
-    [$lk, $lm] = match (true) {
-        $seedtime >= 15552000 => ['loyal_180', $f('loyal_180', 1.0)],
-        $seedtime >= 7776000  => ['loyal_90',  $f('loyal_90', 1.0)],
-        $seedtime >= 2592000  => ['loyal_30',  $f('loyal_30', 1.0)],
-        default               => ['', 1.0],
-    };
-    if ($lk !== '') {
-        $add($lk, $lm);
-    }
-
-    [$ak, $am] = match (true) {
-        $age > 15552000 => ['age_old',    $f('age_old', 1.5)],
-        $age > 5184000  => ['age_medium', $f('age_medium', 1.3)],
-        default         => ['', 1.0],
-    };
-    if ($ak !== '') {
-        $add($ak, $am);
-    }
-
-    $promo = 1.0
-        + (($t['free'] ?? 'no') === 'yes' ? $f('promo_free', 0.7) : 0.0)
-        + (($t['silver'] ?? 'no') === 'yes' ? $f('promo_silver', 0.5) : 0.0)
-        + (($t['doubleupload'] ?? 'no') === 'yes' ? $f('promo_double', 0.5) : 0.0);
-    if ($promo != 1.0) {
-        $add('promo', $promo);
-    }
-
-    $mul = 1.0;
-    foreach ($factors as $x) {
-        $mul *= $x['mul'];
-    }
+    // Он станет ещё одним сидом, если ещё не сидирует
+    $fx  = sbe_factors(['seeders' => (int)$t['seeders'] + ($seeding ? 0 : 1)] + $t, $seedtime, $cfg);
+    $mul = sbe_factors_mul($fx);
+    $factors = array_values($fx);
 
     // Множитель количества раздач — как в кроне
     $n = $count + ($seeding ? 0 : 1);
@@ -263,6 +262,36 @@ function sbe_render(array $est): string
 }
 
 /**
+ * Раздачи, которые пользователь сидирует прямо сейчас (активный пир за 45 мин),
+ * с множителями f_leech … f_promo и их произведением mul. Для mybonus.php и профиля.
+ */
+function sbe_user_seeding(int $uid, ?array $cfg = null): array
+{
+    global $db;
+    $cfg ??= sbe_settings();
+
+    $res = $db->sql_query_prepared(
+        "SELECT t.id, t.name, t.size, t.seeders, t.leechers, t.added, t.free, t.silver, t.doubleupload,
+                COALESCE((SELECT MAX(s.seedtime) FROM snatched s WHERE s.userid = ? AND s.torrentid = t.id), 0) AS seedtime
+           FROM torrents t
+          WHERE t.id IN (SELECT p.torrent FROM peers p
+                          WHERE p.userid = ? AND p.seeder = 'yes' AND p.last_action >= UNIX_TIMESTAMP() - 2700)
+            AND t.visible = 'yes' AND t.banned = 'no' AND t.isnuked = 'no'",
+        [$uid, $uid]
+    );
+    $rows = [];
+    while ($res && ($r = $db->fetch_array($res))) {
+        $fx = sbe_factors($r, (int)$r['seedtime'], $cfg);
+        foreach ($fx as $k => $x) {
+            $r['f_' . $k] = $x['mul'];
+        }
+        $r['mul'] = sbe_factors_mul($fx);
+        $rows[]   = $r;
+    }
+    return $rows;
+}
+
+/**
  * Сколько пользователь зарабатывает сейчас, BP в час — по всем раздачам, которые
  * он сидирует (та же формула, что в кроне: сумма множителей раздач × base_bonus ×
  * множитель количества, не больше hour_cap, плюс эвристика).
@@ -272,75 +301,18 @@ function sbe_render(array $est): string
  */
 function sbe_user_hourly(int $uid): ?array
 {
-    global $db;
-
     $cfg = sbe_settings();
     if (empty($cfg['enabled']) || $uid <= 0) {
         return null;
     }
     $f = static fn(string $k, float $d): float => max(0.0, (float)($cfg[$k] ?? $d));
 
-    $res = $db->sql_query_prepared(
-        "SELECT t.id, t.size, t.added, t.seeders, t.leechers, t.free, t.silver, t.doubleupload,
-                (SELECT MAX(s.seedtime) FROM snatched s WHERE s.userid = ? AND s.torrentid = t.id) AS seedtime
-           FROM torrents t
-          WHERE t.id IN (SELECT DISTINCT p.torrent FROM peers p
-                          WHERE p.userid = ? AND p.seeder = 'yes' AND p.last_action >= UNIX_TIMESTAMP() - 2700)
-            AND t.visible = 'yes' AND t.banned = 'no' AND t.isnuked = 'no'",
-        [$uid, $uid]
-    );
-
-    $raw = 0.0;
-    $n   = 0;
-    while ($res && ($t = $db->fetch_array($res))) {
-        $n++;
-        $leech = (int)$t['leechers'];
-        $seed  = (int)$t['seeders'];
-        $size  = (float)$t['size'];
-        $st    = (int)$t['seedtime'];
-        $age   = TIMENOW - (int)$t['added'];
-
-        $mul = match (true) {
-            $leech === 0 => $f('leech_none', 1.2),
-            $leech <= 2  => $f('leech_few', 1.5),
-            default      => $f('leech_many', 1.8),
-        };
-        $mul *= match (true) {
-            $size < 536870912   => $f('size_small', 1.0),
-            $size < 2147483648  => $f('size_medium', 1.2),
-            $size < 8589934592  => $f('size_large', 1.5),
-            $size < 21474836480 => $f('size_xlarge', 1.8),
-            default             => $f('size_huge', 2.0),
-        };
-        $mul *= match (true) {
-            $seed > 100 => $f('seeders_many', 0.9),
-            $seed > 50  => $f('seeders_medium', 0.95),
-            $seed <= 1  => $f('rare_1', 1.0),
-            $seed <= 3  => $f('rare_3', 1.0),
-            $seed <= 5  => $f('rare_5', 1.0),
-            default     => 1.0,
-        };
-        $mul *= match (true) {
-            $st >= 15552000 => $f('loyal_180', 1.0),
-            $st >= 7776000  => $f('loyal_90', 1.0),
-            $st >= 2592000  => $f('loyal_30', 1.0),
-            default         => 1.0,
-        };
-        $mul *= match (true) {
-            $age > 15552000 => $f('age_old', 1.5),
-            $age > 5184000  => $f('age_medium', 1.3),
-            default         => 1.0,
-        };
-        $mul *= 1.0
-            + (($t['free'] ?? 'no') === 'yes' ? $f('promo_free', 0.7) : 0.0)
-            + (($t['silver'] ?? 'no') === 'yes' ? $f('promo_silver', 0.5) : 0.0)
-            + (($t['doubleupload'] ?? 'no') === 'yes' ? $f('promo_double', 0.5) : 0.0);
-        $raw += $mul;
-    }
-
+    $rows = sbe_user_seeding($uid, $cfg);
+    $n    = count($rows);
     if ($n === 0) {
         return ['hourly' => 0.0, 'daily' => 0.0, 'torrents' => 0, 'capped' => false];
     }
+    $raw = array_sum(array_column($rows, 'mul'));
 
     $capMul = sbe_count_multiplier($n, (string)($cfg['torrent_multiplier_type'] ?? 'penalty'), (float)($cfg['flat_multiplier'] ?? 1.0));
     $cap    = $f('hour_cap', 500.0);

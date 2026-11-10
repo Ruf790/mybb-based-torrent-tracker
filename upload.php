@@ -2652,10 +2652,38 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
     </button>
 
     <div class="fw-semibold small mb-2"><i class="fas fa-closed-captioning me-1 text-primary"></i><?= $mu('lbl_mi_subs', 'Subtitles') ?></div>
-    <input type="text" class="form-control form-control-sm" data-mi="subs" placeholder="<?= $mu('ph_mib_subs', 'Russian (Forced, Full), English (SDH)') ?>">
+    <div id="miSubRows"></div>
+    <template id="miSubTpl">
+      <div class="row g-2 mb-2 align-items-center" data-mi-sub>
+        <div class="col-6 col-md-3">
+          <select class="form-select form-select-sm" data-mi-s="lang" aria-label="<?= $mu('lbl_mib_lang', 'Language') ?>">
+            <?= $mi_opts(['Russian', 'English', 'Ukrainian', 'Japanese', 'Korean', 'Chinese', 'French', 'German', 'Spanish', 'Italian', 'Polish', 'Portuguese', 'Turkish', 'Bulgarian']) ?>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select class="form-select form-select-sm" data-mi-s="format" aria-label="<?= $mu('lbl_mib_format', 'Format') ?>">
+            <?= $mi_opts(['SRT', 'ASS', 'PGS', 'VobSub']) ?>
+          </select>
+        </div>
+        <div class="col-10 col-md-6">
+          <?php foreach (['Forced', 'Full', 'SDH'] as $flag): ?>
+            <label class="form-check form-check-inline small mb-0">
+              <input class="form-check-input" type="checkbox" data-mi-flag value="<?= $flag ?>">
+              <span class="form-check-label"><?= $flag ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+        <div class="col-2 col-md-1 text-end">
+          <button type="button" class="btn btn-sm btn-outline-danger" data-mi-del title="<?= $mu('btn_mib_remove', 'Remove') ?>"><i class="fas fa-xmark"></i></button>
+        </div>
+      </div>
+    </template>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="miSubAdd">
+      <i class="fas fa-plus me-1"></i><?= $mu('btn_mib_add_sub', 'Add subtitles') ?>
+    </button>
   </div>
 </div>
-<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=1" defer></script>
+<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=2" defer></script>
 
 <!-- Category Picker -->
 <div class="mb-4">

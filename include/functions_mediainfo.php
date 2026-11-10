@@ -355,10 +355,19 @@ function mi_sum_data(array $rows): array
                 if ($sub === '') {
                     continue;
                 }
+                // Формат (SRT, PGS…) из скобок — отдельно, остальное (Forced, Full, SDH) — пометки
+                $flags = preg_match('/\((.*)\)$/u', $sub, $m) ? array_map('trim', explode(',', $m[1])) : [];
+                $fmt   = '';
+                foreach ($flags as $k => $f) {
+                    if (preg_match('/^(srt|ass|ssa|pgs|sup|vobsub|subrip|webvtt|vtt|dvb)$/i', $f)) {
+                        $fmt = strtoupper($f) === 'VOBSUB' ? 'VobSub' : strtoupper($f);
+                        unset($flags[$k]);
+                    }
+                }
                 $d['text'][] = [
                     'lang'   => trim(preg_replace('/\s*\(.*\)$/u', '', $sub)),
-                    'format' => '',
-                    'title'  => preg_match('/\((.*)\)$/u', $sub, $m) ? $m[1] : '',
+                    'format' => $fmt,
+                    'title'  => implode(', ', array_filter($flags, static fn(string $f): bool => $f !== '')),
                     'forced' => (bool)preg_match('/forced|форс/iu', $sub),
                 ];
             }
@@ -585,7 +594,10 @@ function mi_render(array $d, string $raw): string
     foreach ($d['text'] as $t) {
         $subs .= '<span class="dt-mi__sub" title="' . $e(implode(' · ', array_filter([$t['format'], $t['title']]))) . '">'
                . $e($t['lang'] !== '' ? $t['lang'] : ($t['title'] !== '' ? $t['title'] : $t['format']))
-               . ($t['forced'] ? ' <small>' . $L('lbl_mi_forced', 'forced') . '</small>' : '')
+               . ($t['lang'] !== '' && $t['title'] !== ''
+                    ? ' <small>' . $e($t['title']) . '</small>'
+                    : ($t['forced'] ? ' <small>' . $L('lbl_mi_forced', 'forced') . '</small>' : ''))
+               . ($t['format'] !== '' && $t['lang'] !== '' ? ' <small>' . $e($t['format']) . '</small>' : '')
                . '</span>';
     }
 

@@ -5,7 +5,7 @@
      Container: MKV
      Video: HEVC, 3840x2160 (16:9), 23.976 fps, 24.3 Mbps, 10 bit, DV / HDR10
      Audio Rus: AC3, 5.1, 384 kbps | Dub
-     Subtitles: Russian (Forced, Full), English
+     Subtitles: Russian (Forced, SRT), English (Full, SDH, PGS)
 */
 (function () {
     'use strict';
@@ -15,8 +15,10 @@
     const area   = document.getElementById('mediainfo');
     if (!box || !toggle || !area) return;
 
-    const rows = document.getElementById('miAudioRows');
-    const tpl  = document.getElementById('miAudioTpl');
+    const rows    = document.getElementById('miAudioRows');
+    const tpl     = document.getElementById('miAudioTpl');
+    const subRows = document.getElementById('miSubRows');
+    const subTpl  = document.getElementById('miSubTpl');
     const L    = (k, d) => (typeof AGS_LANG !== 'undefined' && AGS_LANG[k]) ? AGS_LANG[k] : d;
 
     let lastGenerated = null;   // text we wrote ourselves — safe to overwrite
@@ -27,6 +29,12 @@
     function addAudio() {
         const node = tpl.content.firstElementChild.cloneNode(true);
         rows.appendChild(node);
+        return node;
+    }
+
+    function addSub() {
+        const node = subTpl.content.firstElementChild.cloneNode(true);
+        subRows.appendChild(node);
         return node;
     }
 
@@ -70,8 +78,16 @@
             out.push('Audio' + (g('lang') ? ' ' + g('lang') : '') + ': ' + parts.join(', ') + (title ? ' | ' + title : ''));
         });
 
-        const subs = clean(val('[data-mi="subs"]'));
-        if (subs) out.push('Subtitles: ' + subs);
+        const subs = [];
+        subRows.querySelectorAll('[data-mi-sub]').forEach(r => {
+            const lang = r.querySelector('[data-mi-s="lang"]')?.value || '';
+            if (!lang) return;
+            const extra = [...r.querySelectorAll('[data-mi-flag]:checked')].map(c => c.value);
+            const fmt   = r.querySelector('[data-mi-s="format"]')?.value || '';
+            if (fmt) extra.push(fmt);
+            subs.push(lang + (extra.length ? ' (' + extra.join(', ') + ')' : ''));
+        });
+        if (subs.length) out.push('Subtitles: ' + subs.join(', '));
 
         return out.join('\n');
     }
@@ -97,7 +113,20 @@
             if (key === 'Container') set('[data-mi="container"]', v);
             if (key === 'Duration')  set('[data-mi="duration"]', v);
             if (key === 'Size')      set('[data-mi="size"]', v);
-            if (key === 'Subtitles') set('[data-mi="subs"]', v);
+            if (key === 'Subtitles') {
+                v.split(/,\s*(?![^()]*\))/).forEach(p => {
+                    const r = p.trim().match(/^([^(]+?)\s*(?:\((.*)\))?$/);
+                    if (!r) return;
+                    const row = addSub();
+                    const sel = row.querySelector('[data-mi-s="lang"]');
+                    if (sel) sel.value = r[1];
+                    (r[2] || '').split(',').map(x => x.trim()).forEach(f => {
+                        const fs = row.querySelector('[data-mi-s="format"]');
+                        if (fs && [...fs.options].some(o => o.value === f)) { fs.value = f; return; }
+                        row.querySelectorAll('[data-mi-flag]').forEach(cb => { if (cb.value === f) cb.checked = true; });
+                    });
+                });
+            }
             if (key === 'Video') {
                 v.split(/,\s+(?![^()]*\))/).forEach(p => {
                     let r;
@@ -152,10 +181,12 @@
 
     document.getElementById('miAudioAdd')?.addEventListener('click', () => { addAudio(); });
 
-    rows.addEventListener('click', (e) => {
+    document.getElementById('miSubAdd')?.addEventListener('click', () => { addSub(); });
+
+    box.addEventListener('click', (e) => {
         const del = e.target.closest('[data-mi-del]');
         if (!del) return;
-        del.closest('[data-mi-audio]')?.remove();
+        del.closest('[data-mi-audio], [data-mi-sub]')?.remove();
         sync();
     });
 

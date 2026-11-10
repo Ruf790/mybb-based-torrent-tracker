@@ -1054,6 +1054,29 @@ elseif ($entry_type === 'admin') {
 
         // Маппинг бейджей
         $badge_map = [
+        // ── write_log() из админки: точные фразы выше общих ('moved', 'copied' …) ──
+        'Lifted ban of'                 => ['success',   'badge_unban',             'fa-unlock'],
+        'Edited ban of'                 => ['warning',   'badge_ban_edit',          'fa-user-pen'],
+        'Added ban filter'              => ['danger',    'badge_ban_filter_add',    'fa-filter'],
+        'Removed ban filter'            => ['success',   'badge_ban_filter_del',    'fa-filter-circle-xmark'],
+        'Pruned all content of'         => ['danger',    'badge_prune_user',        'fa-broom'],
+        'Awaiting activation: deleted'  => ['danger',    'badge_pending_deleted',   'fa-user-xmark'],
+        'Awaiting activation: activated'=> ['success',   'badge_pending_activated', 'fa-user-check'],
+        'Deleted usergroup'             => ['danger',    'badge_group_deleted',     'fa-users-slash'],
+        'Edited permissions of group'   => ['warning',   'badge_permissions',       'fa-key'],
+        'Copied forum'                  => ['primary',   'badge_forum_copy',        'fa-copy'],
+        'display order'                 => ['secondary', 'badge_order',             'fa-arrow-down-1-9'],
+        'Reloaded settings cache'       => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Reloaded cache'                => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Rebuilt all caches'            => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Created database backup'       => ['success',   'badge_backup_created',    'fa-database'],
+        'Downloaded database backup'    => ['info',      'badge_backup_downloaded', 'fa-download'],
+        'Deleted database backup'       => ['danger',    'badge_backup_deleted',    'fa-trash'],
+        'Deleted draft attachment'      => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'Deleted comment attachment'    => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'comment file'                  => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'Banned '                       => ['danger',    'badge_ban',               'fa-ban'],
+
         // ── Пользователи / баны ──────────────────────────────
         'Banned User'          => ['danger',  'badge_ban',        'fa-ban'],
         'Lifted User Ban'      => ['success', 'badge_unban',      'fa-unlock'],
@@ -1170,7 +1193,7 @@ elseif ($entry_type === 'admin') {
                 break;
             }
         }
-        $badge = $L[$badge_key];
+        $badge = $L[$badge_key] ?? $L['badge_log'];
 		
 		
 		

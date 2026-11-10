@@ -2592,7 +2592,7 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
       </div>
       <div class="col-4 col-md-2">
         <label class="form-label small mb-1"><?= $mu('lbl_mib_aspect', 'Aspect') ?></label>
-        <select class="form-select form-select-sm" data-mi="vaspect"><?= $mi_opts(['16:9', '2.39:1', '2.40:1', '1.85:1', '4:3', '21:9']) ?></select>
+        <select class="form-select form-select-sm" data-mi="vaspect" data-auto-label="<?= $mu('opt_mib_auto', 'Auto') ?>"><?= str_replace('<option value=""></option>', '<option value="">' . $mu('opt_mib_auto', 'Auto') . '</option>', $mi_opts(['4:3', '16:9', '1.85:1', '2.00:1', '2.20:1', '2.39:1', '2.40:1', '21:9'])) ?></select>
       </div>
       <div class="col-4 col-md-2">
         <label class="form-label small mb-1">FPS</label>
@@ -2688,7 +2688,7 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
     </button>
   </div>
 </div>
-<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=3" defer></script>
+<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=4" defer></script>
 
 <!-- Category Picker -->
 <div class="mb-4">

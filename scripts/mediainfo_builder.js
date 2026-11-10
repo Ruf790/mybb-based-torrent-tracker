@@ -26,6 +26,27 @@
     const val   = (sel) => (box.querySelector(sel)?.value || '').trim();
     const clean = (s) => s.replace(/[|\r\n]+/g, ' ').trim();
 
+    // 3840x1608 → «2.39:1»; 1920x1080 → «16:9»
+    function autoAspect(res) {
+        const m = res.match(/^(\d{3,4})x(\d{3,4})$/);
+        // DVD 720x576 / 720x480 — анаморф, по пикселям соотношение не угадать
+        if (!m || +m[1] <= 720) return '';
+        const r = +m[1] / +m[2];
+        const known = [[4 / 3, '4:3'], [16 / 9, '16:9'], [1.85, '1.85:1'], [2.0, '2.00:1'], [2.2, '2.20:1'], [2.39, '2.39:1']];
+        for (const [k, label] of known) {
+            if (Math.abs(r - k) < 0.025) return label;
+        }
+        return r.toFixed(2) + ':1';
+    }
+
+    function syncAutoLabel(res) {
+        const sel = box.querySelector('[data-mi="vaspect"]');
+        const opt = sel?.querySelector('option[value=""]');
+        if (!opt) return;
+        const a = autoAspect(res);
+        opt.textContent = (sel.dataset.autoLabel || 'Auto') + (a ? ' (' + a + ')' : '');
+    }
+
     function addAudio() {
         const node = tpl.content.firstElementChild.cloneNode(true);
         rows.appendChild(node);
@@ -53,7 +74,8 @@
         const v = [];
         const codec = val('[data-mi="vcodec"]');
         const res   = clean(val('[data-mi="vres"]')).replace(/\s*[x×х]\s*/i, 'x');
-        const asp   = val('[data-mi="vaspect"]');
+        const asp   = val('[data-mi="vaspect"]') || autoAspect(res);   // вручную или авто
+        syncAutoLabel(res);
         const fps   = val('[data-mi="vfps"]');
         const br    = val('[data-mi="vbitrate"]').replace(',', '.').replace(/[^\d.]/g, '');
         const depth = val('[data-mi="vdepth"]');
@@ -135,7 +157,11 @@
             if (key === 'Video') {
                 v.split(/,\s+(?![^()]*\))/).forEach(p => {
                     let r;
-                    if ((r = p.match(/^(\d{3,4}x\d{3,4})(?:\s*\(([^)]+)\))?$/))) { set('[data-mi="vres"]', r[1]); if (r[2]) set('[data-mi="vaspect"]', r[2]); }
+                    if ((r = p.match(/^(\d{3,4}x\d{3,4})(?:\s*\(([^)]+)\))?$/))) {
+                        set('[data-mi="vres"]', r[1]);
+                        // Совпадает с авто — оставляем «Авто», иначе это ручной выбор
+                        if (r[2] && r[2] !== autoAspect(r[1])) set('[data-mi="vaspect"]', r[2]);
+                    }
                     else if ((r = p.match(/^([\d.]+) fps$/)))  set('[data-mi="vfps"]', r[1]);
                     else if ((r = p.match(/^([\d.]+) Mbps$/))) set('[data-mi="vbitrate"]', r[1]);
                     else if (/^\d+ bit$/.test(p))              set('[data-mi="vdepth"]', p);

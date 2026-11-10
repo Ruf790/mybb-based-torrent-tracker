@@ -77,6 +77,17 @@ $session->init();
 $mybb->session = $session;
 enforce_account_status();
 
+// Язык профиля = язык, на котором человек реально видит сайт.
+// ЛС и уведомления другим людям (закрытый запрос и т.п.) пишутся на языке из users.language,
+// а сайт показывается по cookie ts_language. Если человек выбрал язык до входа или с другого
+// устройства, в профиле оставался старый — и ЛС приходили не на его языке. Синхронизируем
+// при заходе; запись в БД только когда значения различаются.
+if (!empty($CURUSER['id']) && array_key_exists('language', $CURUSER)
+    && ($lang->language ?? '') !== '' && $CURUSER['language'] !== $lang->language) {
+    $db->sql_query_prepared('UPDATE users SET language = ? WHERE id = ?', [$lang->language, (int)$CURUSER['id']]);
+    $CURUSER['language'] = $lang->language;
+}
+
 // --- Generate post key ---
 $mybb->post_code = generate_post_check();
 

@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=38">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=39">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -940,7 +940,8 @@ if (!empty($Torrent['t_link'])) {
                 <a href="#" class="btn btn-sm btn-outline-secondary st-pill" onclick="TS_IMDB(' . $id . '); return false;"><i class="fa-solid fa-rotate me-1"></i>' . $refresh . '</a>
             </div>' : '') . '
         </div>
-        <div class="st-card__body"><div id="imdbdetails">' . ($imdb_data !== null ? imdb_card_render($imdb_data) : $Torrent['t_link']) . '</div></div>
+        <div class="st-card__body"><div id="imdbdetails">' . ($imdb_data !== null ? imdb_card_render($imdb_data) : $Torrent['t_link']) . '</div>'
+            . ($imdb_data !== null ? imdb_card_others((string)$imdb_data['url'], (int)$id) : '') . '</div>
     </section>';
 }
 

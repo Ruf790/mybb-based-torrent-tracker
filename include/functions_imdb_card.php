@@ -169,6 +169,32 @@ function imdb_card_render(array $d): string
     $row_html = static fn(array $r): string =>
         '<div class="dt-imdb__fact"><span>' . htmlspecialchars($r['label'], ENT_QUOTES, 'UTF-8') . '</span><div>' . $r['value'] . '</div></div>';
 
+    // Теги/ключевые слова — не простынёй текста, а чипами: первые 8 видны, остальные по «+N»
+    $tags_html = '';
+    foreach ($extra as $section => $rows) {
+        foreach ($rows as $i => $r) {
+            if (!in_array(strtolower($r['label']), ['tags', 'keywords', 'plot keywords'], true)) {
+                continue;
+            }
+            $list  = array_values(array_filter(array_map('trim', explode(',', html_entity_decode(strip_tags($r['value']), ENT_QUOTES, 'UTF-8')))));
+            $shown = 8;
+            $tags_html .= '<div class="dt-imdb__tags">';
+            foreach ($list as $n => $t) {
+                $tags_html .= '<span class="dt-imdb__tag' . ($n >= $shown ? ' d-none' : '') . '">' . $e($t) . '</span>';
+            }
+            if (count($list) > $shown) {
+                $tags_html .= '<button type="button" class="dt-imdb__tag dt-imdb__tag--more" '
+                            . 'onclick="this.parentNode.querySelectorAll(\'.d-none\').forEach(function(x){x.classList.remove(\'d-none\')});this.remove()">+'
+                            . (count($list) - $shown) . '</button>';
+            }
+            $tags_html .= '</div>';
+            unset($extra[$section][$i]);
+            if (!$extra[$section]) {
+                unset($extra[$section]);
+            }
+        }
+    }
+
     $chips = '';
     foreach ($d['certs'] as $c) {
         $chips .= '<span class="dt-chip">' . $e($c) . '</span>';
@@ -177,7 +203,16 @@ function imdb_card_render(array $d): string
         $chips .= '<span class="dt-chip">' . $e($g) . '</span>';
     }
 
-    $more = '';
+    // Синопсис часто совпадает с описанием сверху — второй раз не показываем
+    $norm = static fn(string $h): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($h), ENT_QUOTES, 'UTF-8'))));
+    if ($d['plot'] === '' && $d['synopsis'] !== '') {
+        $d['plot'] = $d['synopsis'];
+    }
+    if ($d['synopsis'] !== '' && $norm($d['synopsis']) === $norm($d['plot'])) {
+        $d['synopsis'] = '';
+    }
+
+    $more = $tags_html !== '' ? '<div class="dt-imdb__sec">' . $tags_html . '</div>' : '';
     if ($d['synopsis'] !== '') {
         $more .= '<div class="dt-imdb__sec"><p class="mb-0">' . $d['synopsis'] . '</p></div>';
     }
@@ -187,6 +222,10 @@ function imdb_card_render(array $d): string
                . '<div class="dt-imdb__facts">' . implode('', array_map($row_html, $rows)) . '</div>'
                . '</div>';
     }
+
+    // Цвет оценки: 7.5+ зелёный, 6–7.5 жёлтый, ниже красный
+    $score = (float)str_replace(',', '.', $d['rating']);
+    $tone  = $score >= 7.5 ? 'hi' : ($score >= 6 ? 'mid' : 'lo');
 
     $more_label = htmlspecialchars($lang->details['btn_imdb_more'] ?? 'More details', ENT_QUOTES, 'UTF-8');
 
@@ -199,7 +238,7 @@ function imdb_card_render(array $d): string
          .     ($d['year'] !== '' ? ' <span>' . $e($d['year']) . '</span>' : '') . '</h3>'
          .   ($d['tagline'] !== '' ? '<div class="dt-imdb__tagline">' . $e($d['tagline']) . '</div>' : '')
          .   ($d['rating'] !== ''
-              ? '<div class="dt-imdb__score"><span class="dt-imdb__num">' . $e($d['rating']) . '<small>/ 10</small></span>'
+              ? '<div class="dt-imdb__score"><span class="dt-imdb__num dt-imdb__num--' . $tone . '">' . $e($d['rating']) . '<small>/ 10</small></span>'
                 . '<span class="dt-chip dt-chip--imdb">IMDb</span>'
                 . ($d['votes'] !== '' ? '<span class="dt-imdb__votes"><i class="fa-solid fa-user-group"></i>' . $e($d['votes']) . '</span>' : '')
                 . '</div>'
@@ -213,6 +252,62 @@ function imdb_card_render(array $d): string
          . '</div>'
          . '</div>'
          . ($more !== '' ? '<div class="collapse" id="dtImdbMore">' . $more . '</div>' : '');
+}
+
+/** ID вида tt1234567 из ссылки IMDb */
+function imdb_card_id(string $url): string
+{
+    return preg_match('#/title/(tt\d{5,10})#i', $url, $m) ? strtolower($m[1]) : '';
+}
+
+/**
+ * Другие раздачи того же фильма/сериала (тот же IMDb ID в t_link).
+ * Пустая строка — других нет.
+ */
+function imdb_card_others(string $imdbUrl, int $excludeId, int $limit = 10): string
+{
+    global $db, $lang;
+
+    $tt = imdb_card_id($imdbUrl);
+    if ($tt === '') {
+        return '';
+    }
+
+    $res = $db->sql_query_prepared(
+        "SELECT id, name, size, seeders, leechers, added, free, silver, doubleupload
+           FROM torrents
+          WHERE t_link LIKE ? AND id <> ? AND visible = 'yes' AND banned = 'no'
+          ORDER BY seeders DESC, added DESC
+          LIMIT " . max(1, $limit),
+        ['%/title/' . $tt . '/%', $excludeId]
+    );
+
+    $e    = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+    $rows = '';
+    $n    = 0;
+    while ($res && ($t = $db->fetch_array($res))) {
+        $n++;
+        $promo = ($t['free'] ?? '') === 'yes' ? '<span class="dt-imdb__oth-promo is-free">FREE</span>'
+               : (($t['silver'] ?? '') === 'yes' ? '<span class="dt-imdb__oth-promo is-silver">50%</span>'
+               : (($t['doubleupload'] ?? '') === 'yes' ? '<span class="dt-imdb__oth-promo is-x2">x2</span>' : ''));
+        $rows .= '<a class="dt-imdb__oth" href="' . $e(get_torrent_link((int)$t['id'])) . '">'
+               .   '<span class="dt-imdb__oth-name">' . $e((string)$t['name']) . $promo . '</span>'
+               .   '<span class="dt-imdb__oth-meta">'
+               .     '<span><i class="fa-solid fa-hard-drive"></i>' . $e(mksize((float)$t['size'])) . '</span>'
+               .     '<span class="is-up"><i class="fa-solid fa-arrow-up"></i>' . (int)$t['seeders'] . '</span>'
+               .     '<span class="is-down"><i class="fa-solid fa-arrow-down"></i>' . (int)$t['leechers'] . '</span>'
+               .   '</span>'
+               . '</a>';
+    }
+    if ($n === 0) {
+        return '';
+    }
+
+    $title = (string)($lang->details['lbl_imdb_others'] ?? 'Other releases of this title');
+    return '<div class="dt-imdb__others">'
+         .   '<div class="dt-imdb__sec-title"><i class="fa-solid fa-layer-group me-2"></i>' . $e($title) . ' <span class="dt-imdb__oth-count">' . $n . '</span></div>'
+         .   '<div class="dt-imdb__oth-list">' . $rows . '</div>'
+         . '</div>';
 }
 
 /** Готовый HTML для вывода: новая карточка или исходный текст */

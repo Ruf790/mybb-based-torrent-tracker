@@ -732,12 +732,9 @@ if ($info_hash != $check_info_hash) {
 
 
 
-// Optional NFO
-$nfoFilename = null;
-if (!empty($_FILES['nfoFile']['tmp_name'])) 
-{
-    $nfoFilename = saveFile($_FILES['nfoFile'], $nfoDir, ['text/plain']);
-}
+// NFO: текст уже прочитан в $nfoContentRaw и сохраняется в torrents_nfo ниже.
+// Раньше файл ещё и копировался в uploads/ со случайным именем — эта копия нигде не
+// использовалась и не удалялась вместе с торрентом, поэтому больше её не создаём.
 
 
 

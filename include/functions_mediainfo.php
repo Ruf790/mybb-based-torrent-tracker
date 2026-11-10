@@ -149,7 +149,8 @@ const MI_SUM_KEYS = [
     'container' => ['контейнер', 'container', 'формат', 'format'],
     'duration'  => ['продолжительность', 'длительность', 'duration', 'runtime'],
     'size'      => ['размер', 'size'],
-    'other'     => ['тип релиза', 'release type', 'release', 'качество', 'quality', 'перевод', 'translation'],
+    'quality'   => ['качество', 'quality', 'тип релиза', 'release type', 'release', 'источник', 'source'],
+    'other'     => ['перевод', 'translation'],
 ];
 
 /** «[b]Аудио 2:[/b] …» / «Аудио Rus: …» → ['audio', '…', 'Rus'] или null */
@@ -260,7 +261,9 @@ function mi_sum_data(array $rows): array
     foreach ($rows as [$type, $value, $klang]) {
         $parts = mi_sum_parts($value);
 
-        if ($type === 'container') {
+        if ($type === 'quality') {
+            $d['general']['quality'] = $value;
+        } elseif ($type === 'container') {
             $d['general']['format'] = $parts[0] ?? '';
         } elseif ($type === 'duration') {
             $d['general']['duration'] = $parts[0] ?? '';
@@ -531,6 +534,7 @@ function mi_render(array $d, string $raw): string
     // Общее: контейнер · длительность · размер · поток
     $meta = '';
     foreach ([
+        ['fa-compact-disc',  $d['general']['quality']  ?? ''],
         ['fa-box',           $d['general']['format']   ?? ''],
         ['fa-clock',         $d['general']['duration'] ?? ''],
         ['fa-hard-drive',    $d['general']['size']     ?? ''],

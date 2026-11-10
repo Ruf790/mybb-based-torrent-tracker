@@ -287,7 +287,7 @@ function handleCacheRebuild(): void
     if ($title === 'settings') {
         rebuild_settings();
         $plugins->run_hooks("admin_tools_cache_rebuild_commit");
-        log_admin_action($title);
+        write_log('Reloaded settings cache by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
         flash_message($lang->cache2['flash_settings_reloaded'], 'success');
         admin_redirect("index.php?act=cache");
     }
@@ -300,7 +300,7 @@ function handleCacheRebuild(): void
     call_user_func($method[1]);
 
     $plugins->run_hooks("admin_tools_cache_rebuild_commit");
-    log_admin_action($title);
+    write_log(($method[0] === 'rebuild' ? 'Rebuilt' : 'Reloaded') . " cache '{$title}'" . ' by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
     flash_message(ags_fmt($method[0] === 'rebuild' ? $lang->cache2['flash_cache_rebuilt'] : $lang->cache2['flash_cache_reloaded'], $title), 'success');
     admin_redirect("index.php?act=cache");
 }
@@ -327,7 +327,7 @@ function handleCacheRebuildAll(): void
     rebuild_settings();
 
     $plugins->run_hooks("admin_tools_cache_rebuild_all_commit");
-    log_admin_action();
+    write_log('Rebuilt all caches (' . ($done + 1) . ') by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
     flash_message(ags_fmt($lang->cache2['flash_all_rebuilt'], $done + 1), 'success');
     admin_redirect("index.php?act=cache");
 }

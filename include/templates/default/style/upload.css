@@ -6,7 +6,7 @@
    ============================================================================ */
 
 /* ── Цвета разделов: у каждой карточки свой --c (style в upload.php) ── */
-.up-page .up-sec { --c: var(--bs-primary); border-top: 3px solid var(--c); }
+.up-page .up-sec { --c: var(--bs-primary); }
 .up-page .up-sec > .st-card__head {
   background: linear-gradient(90deg, color-mix(in srgb, var(--c) 9%, transparent), transparent 70%);
   border-bottom-color: color-mix(in srgb, var(--c) 22%, var(--bs-border-color));

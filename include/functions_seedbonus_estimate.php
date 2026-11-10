@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /* =============================================================================
-   «Сколько бонусов за сидирование» для details.php.
+   «Сколько бонусов за сидирование» для details.php и общие функции для mybonus.php.
    Та же формула, что в include/cron/seedbonus.php и mybonus.php:
      в час = min(множитель_раздачи × base_bonus × множитель_кол-ва, hour_cap)
    Множитель раздачи — с точки зрения смотрящего: если он ещё не сидирует,
@@ -35,6 +35,32 @@ function sbe_settings(): array
         };
     }
     return $cfg;
+}
+
+/** Множитель за количество сидируемых раздач (как sbc_torrentMultiplier в кроне) */
+function sbe_count_multiplier(int $n, string $type, float $flat = 1.0): float
+{
+    return match ($type) {
+        'penalty' => match (true) { $n <= 20 => 1.0, $n <= 50 => 0.9, $n <= 100 => 0.8, default => 0.7 },
+        'neutral' => $n <= 100 ? 1.0 : 0.9,
+        'reward'  => match (true) { $n >= 100 => 1.2, $n >= 50 => 1.1, $n >= 20 => 1.0, default => 0.9 },
+        'flat'    => max(0.0, $flat),
+        default   => 1.0,
+    };
+}
+
+/** Часы эвристики по количеству раздач (как sbc_getHeuristicHours в кроне) */
+function sbe_heuristic_hours(int $n, array $cfg): float
+{
+    return (float)match (true) {
+        $n >= 50 => $cfg['heuristic_50'] ?? 24,
+        $n >= 40 => $cfg['heuristic_40'] ?? 20,
+        $n >= 30 => $cfg['heuristic_30'] ?? 16,
+        $n >= 20 => $cfg['heuristic_20'] ?? 12,
+        $n >= 10 => $cfg['heuristic_10'] ?? 8,
+        $n >= 5  => $cfg['heuristic_5'] ?? 4,
+        default  => $cfg['heuristic_1'] ?? 2,
+    };
 }
 
 /**
@@ -153,13 +179,7 @@ function sbe_estimate(array $t, int $uid): ?array
 
     // Множитель количества раздач — как в кроне
     $n = $count + ($seeding ? 0 : 1);
-    $capMul = match ((string)($cfg['torrent_multiplier_type'] ?? 'penalty')) {
-        'penalty' => match (true) { $n <= 20 => 1.0, $n <= 50 => 0.9, $n <= 100 => 0.8, default => 0.7 },
-        'neutral' => $n <= 100 ? 1.0 : 0.9,
-        'reward'  => match (true) { $n >= 100 => 1.2, $n >= 50 => 1.1, $n >= 20 => 1.0, default => 0.9 },
-        'flat'    => $f('flat_multiplier', 1.0),
-        default   => 1.0,
-    };
+    $capMul = sbe_count_multiplier($n, (string)($cfg['torrent_multiplier_type'] ?? 'penalty'), (float)($cfg['flat_multiplier'] ?? 1.0));
 
     $base    = $f('base_bonus', 10.0);
     $cap     = $f('hour_cap', 500.0);
@@ -168,15 +188,7 @@ function sbe_estimate(array $t, int $uid): ?array
 
     // Эвристика крона: при многих раздачах начисляет за большее время, чем интервал
     if (!empty($cfg['enable_heuristic'])) {
-        $h = (float)match (true) {
-            $n >= 50 => $cfg['heuristic_50'] ?? 24,
-            $n >= 40 => $cfg['heuristic_40'] ?? 20,
-            $n >= 30 => $cfg['heuristic_30'] ?? 16,
-            $n >= 20 => $cfg['heuristic_20'] ?? 12,
-            $n >= 10 => $cfg['heuristic_10'] ?? 8,
-            $n >= 5  => $cfg['heuristic_5'] ?? 4,
-            default  => $cfg['heuristic_1'] ?? 2,
-        };
+        $h = sbe_heuristic_hours($n, $cfg);
         $hourly *= max(1.0, $h / 24);
     }
 

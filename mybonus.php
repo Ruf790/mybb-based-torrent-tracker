@@ -44,27 +44,10 @@ if (($bonus === 'disable' || $bonus === 'disablesave') && !$is_mod) {
 
 
 
-// ── Загрузка настроек из БД ───────────────────────────────
-function loadSeedbonusSettings(): array
-{
-    global $db;
+// Настройки и общие множители — одни на mybonus.php и details.php
+require_once INC_PATH . '/functions_seedbonus_estimate.php';
 
-    $res = $db->sql_query_prepared('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
-    $cfg = [];
-
-    while ($row = $db->fetch_array($res)) {
-        $cfg[$row['setting_key']] = match($row['setting_type']) {
-            'boolean' => in_array($row['setting_value'], ['yes','true','1','on'], true),
-            'integer' => (int)$row['setting_value'],
-            'float'   => (float)$row['setting_value'],
-            'array'   => json_decode($row['setting_value'], true) ?? [],
-            default   => (string)$row['setting_value'],
-        };
-    }
-    return $cfg;
-}
-
-$cfg = loadSeedbonusSettings();
+$cfg = sbe_settings();
 
 // Короткие алиасы для часто используемых значений
 $BASE_BONUS            = (float)($cfg['base_bonus']            ?? 10.0);
@@ -87,40 +70,6 @@ if (isset($_GET['purchased'])) {
 }
 
 // ── Вспомогательные функции ───────────────────────────────
-
-function getTorrentMultiplier(int $count, string $type, float $flat = 1.0): float
-{
-    return match($type) {
-        'penalty' => match(true) {
-            $count <= 20  => 1.0,
-            $count <= 50  => 0.9,
-            $count <= 100 => 0.8,
-            default       => 0.7,
-        },
-        'neutral' => $count <= 100 ? 1.0 : 0.9,
-        'reward'  => match(true) {
-            $count >= 100 => 1.2,
-            $count >= 50  => 1.1,
-            $count >= 20  => 1.0,
-            default       => 0.9,
-        },
-        'flat'    => $flat,
-        default   => 1.0,
-    };
-}
-
-function getHeuristicHours(int $count, array $cfg): float
-{
-    return match(true) {
-        $count >= 50 => (float)($cfg['heuristic_50'] ?? 24),
-        $count >= 40 => (float)($cfg['heuristic_40'] ?? 20),
-        $count >= 30 => (float)($cfg['heuristic_30'] ?? 16),
-        $count >= 20 => (float)($cfg['heuristic_20'] ?? 12),
-        $count >= 10 => (float)($cfg['heuristic_10'] ?? 8),
-        $count >= 5  => (float)($cfg['heuristic_5']  ?? 4),
-        default      => (float)($cfg['heuristic_1']  ?? 2),
-    };
-}
 
 function progressColor(float $pct): string
 {
@@ -573,12 +522,12 @@ function calcUserBonus(array $stats, array $cfg): array
     $torrents  = (int)$stats['torrents_count'];
     $avgHours  = (float)$stats['avg_hours_seeded'];
     $rawBonus  = (float)$stats['raw_bonus_sum'];
-    $capMul    = getTorrentMultiplier($torrents, $TORRENT_MUL_TYPE, $FLAT_MULTIPLIER);
+    $capMul    = sbe_count_multiplier($torrents, $TORRENT_MUL_TYPE, $FLAT_MULTIPLIER);
     $hourlyTh  = round($rawBonus * $BASE_BONUS * $capMul, 1);
     $hourlyCap = min($hourlyTh, $HOUR_CAP);
 
     if ($ENABLE_HEURISTIC) {
-        $hHours   = getHeuristicHours($torrents, $cfg) * ($CRON_INTERVAL_HOURS / 24);
+        $hHours   = sbe_heuristic_hours($torrents, $cfg) * ($CRON_INTERVAL_HOURS / 24);
         $avgHours = max($avgHours, $hHours);
     }
 

@@ -268,7 +268,13 @@ function mi_sum_data(array $rows): array
         } elseif ($type === 'duration') {
             $d['general']['duration'] = $parts[0] ?? '';
         } elseif ($type === 'size') {
-            $d['general']['size'] = $parts[0] ?? '';
+            $sz = $parts[0] ?? '';
+            // «22gb» / «18,4 гб» → «22 GB» / «18,4 GB»
+            if (preg_match('/^([\d.,]+)\s*(kb|mb|gb|tb|kib|mib|gib|tib|кб|мб|гб|тб)$/iu', $sz, $m)) {
+                $u  = strtr(mb_strtolower($m[2]), ['кб' => 'kb', 'мб' => 'mb', 'гб' => 'gb', 'тб' => 'tb']);
+                $sz = $m[1] . ' ' . (str_contains($u, 'i') ? ucfirst(strtoupper($u[0])) . 'iB' : strtoupper($u));
+            }
+            $d['general']['size'] = $sz;
         } elseif ($type === 'video') {
             $v = ['res' => '', 'size' => '', 'format' => '', 'codec' => '', 'hevc' => false, 'bitrate' => '', 'fps' => '', 'depth' => '', 'hdr' => '', 'aspect' => ''];
             $hdr = [];

@@ -46,7 +46,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
     <link rel="stylesheet" href="<?php echo $BASEURL; ?>/include/templates/default/style/sweetalert2.min.css">
     <script src="<?php echo $BASEURL; ?>/scripts/sweetalert2.min.js"></script>
 <?php endif; ?>
-    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js?ver=3233"></script>
+    <script src="<?php echo $BASEURL; ?>/scripts/bbcode_tools.js?ver=5"></script>
 
     <!-- BBCode Toolbar -->
     <div class="mb-2 d-flex flex-wrap gap-1">

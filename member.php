@@ -2150,12 +2150,12 @@ $modoptions = '<section class="st-card mb-3">'
 
     $profile = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=3">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=4">
 <script src="' . $BASEURL . '/scripts/toast.js"></script>
 ' . $ags_lang_script . '
 <script src="' . $BASEURL . '/scripts/report_user.js?ver=3"></script>
 
-<div class="container-md st-page pf-page py-3">
+<div class="container-md st-page pf-page py-3" style="--pf-c:' . hsafe($pf_color) . '">
 
   <!-- Header -->
   <header class="st-card st-head pf-head mb-3" style="--pf-c:' . hsafe($pf_color) . '">

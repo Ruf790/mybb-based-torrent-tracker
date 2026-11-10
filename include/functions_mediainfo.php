@@ -220,7 +220,10 @@ function mi_find_summary(string $descr): ?array
                 $rows[] = $r;
             }
         }
-        if (!in_array('audio', array_column($rows, 0), true)) {
+        // Без аудио принимаем, только если весь текст — это сводка (шаблон из upload.php)
+        $whole = trim(implode('', array_slice($lines, 0, $first))) === ''
+              && trim(implode('', array_slice($lines, $last + 1))) === '';
+        if (!$whole && !in_array('audio', array_column($rows, 0), true)) {
             continue;
         }
 
@@ -291,7 +294,7 @@ function mi_sum_data(array $rows): array
                     $v['format'] = trim($v['format'] . ' ' . $p);
                 } elseif (preg_match('/dolby\s*vision|^dv$|hdr10\+|hdr10|^hdr$|hlg/i', $p)) {
                     $hdr[] = $p;
-                } elseif ($v['codec'] === '' && preg_match('/hevc|h\.?265|x265|avc|h\.?264|x264|av1|vp9|mpeg-?4|xvid|divx/i', $p)) {
+                } elseif ($v['codec'] === '' && preg_match('/hevc|h\.?265|x265|avc|h\.?264|x264|av1|vp9|mpeg-?[124]|xvid|divx/i', $p)) {
                     $v['codec'] = match (true) {
                         (bool)preg_match('/x265/i', $p)          => 'x265',
                         (bool)preg_match('/x264/i', $p)          => 'x264',
@@ -322,7 +325,7 @@ function mi_sum_data(array $rows): array
                     };
                 } elseif (preg_match('/^[\d.,\s]+\s*(?:kbps|kb\/s|кбит)/iu', $p)) {
                     $a['bitrate'] = $p;
-                } elseif ($codec === '' && preg_match('/^(e-?ac-?3|ac-?3|aac|dts(?:-hd)?(?:\s*ma)?|truehd|flac|opus|mp3|pcm|lpcm|ddp?)$/i', $p)) {
+                } elseif ($codec === '' && preg_match('/^(e-?ac-?3|ac-?3|aac|dts(?:-hd)?(?:\s*ma)?|dts:?x|truehd|flac|opus|mp3|pcm|lpcm|ddp?)(?:\s*atmos)?$/i', $p)) {
                     $codec = $p;
                 } elseif (preg_match('/^(dolby|dts)/i', $p)) {
                     $commercial = $p;

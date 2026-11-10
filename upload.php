@@ -2531,7 +2531,131 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
             style="font-size:.8rem"
             placeholder="General&#10;Format                                   : Matroska&#10;..."><?= htmlspecialchars($torrent_mediainfo ?? '') ?></textarea>
   <div class="form-text"><?= htmlspecialchars($lang->upload['mediainfo_hint'] ?? 'Optional: paste the MediaInfo text report (View → Text). It is shown as a neat card on the torrent page.') ?></div>
+<?php
+    $mu = static fn(string $k, string $d): string => htmlspecialchars((string)($lang->upload[$k] ?? $d));
+    $mi_opts = static function (array $list): string {
+        $o = '<option value=""></option>';
+        foreach ($list as $v) {
+            $o .= '<option>' . htmlspecialchars($v) . '</option>';
+        }
+        return $o;
+    };
+?>
+  <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="miBuilderToggle" aria-expanded="false" aria-controls="miBuilder">
+    <i class="fas fa-wand-magic-sparkles me-1"></i><?= $mu('btn_mi_builder', 'Fill in by template') ?>
+  </button>
+
+  <div class="border rounded-3 p-3 mt-2 bg-body-tertiary d-none" id="miBuilder">
+    <div class="small text-muted mb-3"><?= $mu('mi_builder_hint', 'Fill in the fields — the text above is generated automatically and is always shown as a card.') ?></div>
+
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_quality', 'Quality') ?></label>
+        <input type="text" class="form-control form-control-sm" data-mi="quality" list="miQualityList" placeholder="WEB-DL 1080p">
+        <datalist id="miQualityList">
+          <option value="WEB-DL 2160p"><option value="WEB-DL 1080p"><option value="WEBRip 1080p"><option value="BDRip 1080p">
+          <option value="BDRemux 1080p"><option value="UHD BDRemux 2160p"><option value="HDTV 1080p"><option value="DVDRip">
+        </datalist>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_container', 'Container') ?></label>
+        <select class="form-select form-select-sm" data-mi="container"><?= $mi_opts(['MKV', 'MP4', 'AVI', 'TS', 'M2TS', 'ISO']) ?></select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_duration', 'Duration') ?></label>
+        <input type="text" class="form-control form-control-sm" data-mi="duration" placeholder="02:11:45">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_size', 'Size') ?></label>
+        <input type="text" class="form-control form-control-sm" data-mi="size" placeholder="18.4 GB">
+      </div>
+    </div>
+
+    <div class="fw-semibold small mb-2"><i class="fas fa-film me-1 text-primary"></i><?= $mu('lbl_mi_video', 'Video') ?></div>
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_codec', 'Codec') ?></label>
+        <select class="form-select form-select-sm" data-mi="vcodec"><?= $mi_opts(['HEVC', 'AVC', 'x265', 'x264', 'AV1', 'VP9', 'MPEG-2', 'XviD']) ?></select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_resolution', 'Resolution') ?></label>
+        <input type="text" class="form-control form-control-sm" data-mi="vres" list="miResList" placeholder="1920x1080">
+        <datalist id="miResList">
+          <option value="3840x2160"><option value="3840x1608"><option value="1920x1080"><option value="1920x800">
+          <option value="1280x720"><option value="720x576"><option value="720x480">
+        </datalist>
+      </div>
+      <div class="col-4 col-md-2">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_aspect', 'Aspect') ?></label>
+        <select class="form-select form-select-sm" data-mi="vaspect"><?= $mi_opts(['16:9', '2.39:1', '2.40:1', '1.85:1', '4:3', '21:9']) ?></select>
+      </div>
+      <div class="col-4 col-md-2">
+        <label class="form-label small mb-1">FPS</label>
+        <select class="form-select form-select-sm" data-mi="vfps"><?= $mi_opts(['23.976', '24', '25', '29.970', '30', '50', '59.940', '60']) ?></select>
+      </div>
+      <div class="col-4 col-md-2">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_bitrate', 'Bitrate') ?></label>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" data-mi="vbitrate" inputmode="decimal" placeholder="24.3">
+          <span class="input-group-text">Mbps</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1"><?= $mu('lbl_mib_depth', 'Bit depth') ?></label>
+        <select class="form-select form-select-sm" data-mi="vdepth"><?= $mi_opts(['8 bit', '10 bit', '12 bit']) ?></select>
+      </div>
+      <div class="col-12">
+        <span class="small text-muted me-2">HDR:</span>
+        <?php foreach (['DV', 'HDR10+', 'HDR10', 'HLG'] as $hdr): ?>
+          <div class="form-check form-check-inline small mb-0">
+            <input class="form-check-input" type="checkbox" data-mi-hdr value="<?= $hdr ?>" id="miHdr<?= md5($hdr) ?>">
+            <label class="form-check-label" for="miHdr<?= md5($hdr) ?>"><?= $hdr ?></label>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
+    <div class="fw-semibold small mb-2"><i class="fas fa-volume-high me-1 text-primary"></i><?= $mu('lbl_mi_audio', 'Audio') ?></div>
+    <div id="miAudioRows"></div>
+    <template id="miAudioTpl">
+      <div class="row g-2 mb-2 align-items-end" data-mi-audio>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1"><?= $mu('lbl_mib_lang', 'Language') ?></label>
+          <select class="form-select form-select-sm" data-mi-a="lang"><?= $mi_opts(['Rus', 'Eng', 'Ukr', 'Jpn', 'Kor', 'Chi', 'Fre', 'Ger', 'Spa', 'Ita']) ?></select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1"><?= $mu('lbl_mib_codec', 'Codec') ?></label>
+          <select class="form-select form-select-sm" data-mi-a="codec"><?= $mi_opts(['AC3', 'E-AC3', 'E-AC3 Atmos', 'TrueHD', 'TrueHD Atmos', 'DTS', 'DTS-HD MA', 'DTS:X', 'AAC', 'FLAC', 'Opus', 'MP3', 'PCM']) ?></select>
+        </div>
+        <div class="col-4 col-md-2">
+          <label class="form-label small mb-1"><?= $mu('lbl_mib_channels', 'Channels') ?></label>
+          <select class="form-select form-select-sm" data-mi-a="ch"><?= $mi_opts(['1.0', '2.0', '5.1', '7.1']) ?></select>
+        </div>
+        <div class="col-8 col-md-2">
+          <label class="form-label small mb-1"><?= $mu('lbl_mib_bitrate', 'Bitrate') ?></label>
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control" data-mi-a="bitrate" inputmode="numeric" placeholder="384">
+            <span class="input-group-text">kbps</span>
+          </div>
+        </div>
+        <div class="col-10 col-md-3">
+          <label class="form-label small mb-1"><?= $mu('lbl_mib_voice', 'Voice-over / title') ?></label>
+          <input type="text" class="form-control form-control-sm" data-mi-a="title" placeholder="<?= $mu('ph_mib_voice', 'e.g. Dub, Original') ?>">
+        </div>
+        <div class="col-2 col-md-1 text-end">
+          <button type="button" class="btn btn-sm btn-outline-danger" data-mi-del title="<?= $mu('btn_mib_remove', 'Remove') ?>"><i class="fas fa-xmark"></i></button>
+        </div>
+      </div>
+    </template>
+    <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="miAudioAdd">
+      <i class="fas fa-plus me-1"></i><?= $mu('btn_mib_add_audio', 'Add audio track') ?>
+    </button>
+
+    <div class="fw-semibold small mb-2"><i class="fas fa-closed-captioning me-1 text-primary"></i><?= $mu('lbl_mi_subs', 'Subtitles') ?></div>
+    <input type="text" class="form-control form-control-sm" data-mi="subs" placeholder="<?= $mu('ph_mib_subs', 'Russian (Forced, Full), English (SDH)') ?>">
+  </div>
 </div>
+<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=1" defer></script>
 
 <!-- Category Picker -->
 <div class="mb-4">

@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=8">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=9">
 
 <div class="container-md st-page up-page">
 
@@ -2709,29 +2709,51 @@ https://example.com/screen3.webp"></textarea>
         </div>
     </div>
 
-    <!-- Upload progress -->
+    <!-- Upload progress (старая: градиентная шапка, спиннер со свечением, точки) -->
     <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-cloud-arrow-up"></i></span>
-                    <h5 class="modal-title" id="uploadModalLabel"><?= $lang->upload['upload_processing'] ?></h5>
-                </div>
-                <div class="modal-body text-center py-4">
-                    <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden"><?= $lang->upload['js_ut_loading'] ?></span></div>
-                    <div class="fw-semibold mb-1"><?= $lang->upload['upload_wait'] ?></div>
-                    <p class="st-meta mb-3"><?= $lang->upload['upload_wait_sub'] ?></p>
-                    <span class="st-badge st-soft-muted"><i class="fa-solid fa-clock"></i><span id="uploadTimer">0</span> <?= $lang->upload['upload_timer'] ?></span>
-                    <div class="progress up-progress mt-3">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-gradient-primary text-white border-0">
+                    <div class="d-flex align-items-center w-100">
+                        <i class="fa-solid fa-cloud-arrow-up fa-2x me-3"></i>
+                        <h5 class="modal-title mb-0" id="uploadModalLabel"><?= $lang->upload['upload_processing'] ?></h5>
                     </div>
-                    <div class="d-flex justify-content-between mt-1">
-                        <small class="st-meta" id="uploadStatusText"><?= $lang->upload['upload_init'] ?></small>
-                        <small class="fw-semibold" id="progressPercentage">0%</small>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+                </div>
+                <div class="modal-body text-center py-5">
+                    <div class="upload-spinner mb-4">
+                        <div class="spinner-border text-primary" style="width: 4rem; height: 4rem;" role="status">
+                            <span class="visually-hidden"><?= $lang->upload['js_ut_loading'] ?></span>
+                        </div>
+                        <div class="spinner-glow"></div>
+                    </div>
+
+                    <h6 class="text-primary mb-2"><?= $lang->upload['upload_wait'] ?></h6>
+                    <p class="text-muted mb-3"><?= $lang->upload['upload_wait_sub'] ?></p>
+
+                    <div class="loading-dots mb-3">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+
+                    <div class="timer-display mb-3">
+                        <span class="badge bg-body-tertiary text-body fs-6">
+                            <i class="fa-solid fa-clock me-2"></i><span id="uploadTimer">0</span> <?= $lang->upload['upload_timer'] ?>
+                        </span>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress mt-3 up-upl-progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" role="progressbar"
+                                 style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="progress-text mt-2">
+                            <small class="text-muted" id="uploadStatusText"><?= $lang->upload['upload_init'] ?></small>
+                            <small class="text-primary fw-bold" id="progressPercentage">0%</small>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <small class="st-meta"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['upload_size_note'] ?></small>
+                <div class="modal-footer border-0 justify-content-center pb-4">
+                    <small class="text-muted"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['upload_size_note'] ?></small>
                 </div>
             </div>
         </div>

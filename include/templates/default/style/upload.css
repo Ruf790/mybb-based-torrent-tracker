@@ -260,6 +260,43 @@
 .up-page .up-done .btn-outline-secondary:hover,
 .up-page .up-done .btn-outline-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(108, 117, 125, .2); }
 
+/* Окно «Обработка загрузки» — как в старом аплоаде */
+.up-page #uploadModal .modal-content {
+  border-radius: 20px; overflow: hidden;
+  background: linear-gradient(135deg, var(--bs-body-bg) 0%, var(--bs-tertiary-bg) 100%);
+}
+.up-page #uploadModal .bg-gradient-primary { background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%) !important; }
+.up-page #uploadModal .modal-header { padding: 1.5rem 2rem; }
+.up-page #uploadModal .modal-body { padding: 2.5rem 2rem; }
+.up-page #uploadModal .modal-footer { padding: 1rem 2rem; }
+.up-page #uploadModal .timer-display { animation: up-fade-in .5s ease-in; }
+@keyframes up-fade-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.up-page #uploadModal .progress-container { position: relative; }
+.up-page #uploadModal .progress-text { display: flex; justify-content: space-between; align-items: center; }
+.up-page #uploadModal .up-upl-progress { height: 8px; border-radius: 10px; }
+.up-page #uploadModal .up-upl-progress .progress-bar { background: linear-gradient(90deg, #0d6efd, #0dcaf0); }
+.up-page #uploadModal .upload-spinner { position: relative; display: inline-block; }
+.up-page #uploadModal .spinner-glow {
+  position: absolute; inset: -10px; border-radius: 50%;
+  background: rgba(13, 110, 253, .1); animation: up-pulse 2s infinite;
+}
+@keyframes up-pulse {
+  0%   { transform: scale(.8); opacity: .7; }
+  50%  { transform: scale(1.1); opacity: .3; }
+  100% { transform: scale(.8); opacity: .7; }
+}
+.up-page #uploadModal .loading-dots { display: inline-flex; gap: 4px; }
+.up-page #uploadModal .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #0d6efd;
+  animation: up-dot 1.4s infinite ease-in-out both;
+}
+.up-page #uploadModal .dot:nth-child(1) { animation-delay: -.32s; }
+.up-page #uploadModal .dot:nth-child(2) { animation-delay: -.16s; }
+@keyframes up-dot {
+  0%, 80%, 100% { transform: scale(.6); opacity: .5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
 /* Модалки */
 .up-page .up-modal-head { gap: .7rem; }
 .up-page .up-modal-head .modal-title {

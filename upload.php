@@ -2471,9 +2471,9 @@ if ($isEdit) {
 
                         <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
                             <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByUrl<?= $slot ?>" value="url" checked>
-                            <label class="btn btn-outline-secondary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
+                            <label class="btn btn-outline-primary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
                             <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByFile<?= $slot ?>" value="file">
-                            <label class="btn btn-outline-secondary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
+                            <label class="btn btn-outline-primary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
                         </div>
 
                         <div id="uploadUrlGroup<?= $slot ?>">
@@ -2568,9 +2568,9 @@ if ($isEdit) {
         <div class="st-card__body">
             <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
                 <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
-                <label class="btn btn-outline-secondary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
+                <label class="btn btn-outline-primary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
                 <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
-                <label class="btn btn-outline-secondary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
+                <label class="btn btn-outline-primary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
             </div>
 
             <div id="screenshotFileGroup">

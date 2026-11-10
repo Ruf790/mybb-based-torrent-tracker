@@ -185,16 +185,25 @@ $renderMenu = static function (array $m, string $profileHref) use ($iconColors):
     <link rel="stylesheet" href="<?= $url('include/templates/default/style/all.min.css') ?>">
 
     <style>
-        /* Шапка в обычном потоке страницы: раньше была прибита к верху экрана (fixed)
-           и при прокрутке закрывала комментарии и якоря */
-        .header-fixed {
-            position: relative;
-            z-index: 1020;
-            max-width: 1100px;
+        header.sticky-top {
+            position: fixed;
+            top: 0;
             width: 100%;
-            margin: 0 auto 1.25rem;
+            z-index: 1020;
+        }
+        .header-fixed {
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+            left: 50%;
+            transform: translateX(-50%);
             padding: 0 15px;
         }
+        /* Прячется при прокрутке вниз, выезжает при прокрутке вверх (скрипт ниже) */
+        .header-fixed { transition: transform .25s ease; will-change: transform; }
+        html.hdr-hidden .header-fixed { transform: translate(-50%, -110%); }
+        /* Переход по якорю (#pid…) останавливается ниже шапки, а не под ней */
+        html { scroll-padding-top: calc(var(--hdr-h, 0px) + .75rem); }
         .nav-link.dropdown-toggle::after { display: none; }
 
         /* Russian labels are longer: tighter menu items on desktop so the language
@@ -301,6 +310,36 @@ $renderMenu = static function (array $m, string $profileHref) use ($iconColors):
             }, {passive: true});
         })();
 
+        // Шапка: прячем при прокрутке вниз, показываем при прокрутке вверх.
+        // Состояние — класс hdr-hidden на <html>: его же читает липкая полоска на details.php.
+        (function () {
+            var root = document.documentElement, lastY = 0, ticking = false, hdr = null;
+            function headerBusy() {
+                // Открыто меню/поиск/свёрнутая навигация на телефоне — не прячем
+                return !!(hdr && hdr.querySelector('.dropdown-menu.show, .navbar-collapse.show, .navbar-collapse.collapsing'));
+            }
+            function update() {
+                ticking = false;
+                hdr = hdr || document.querySelector('header.header-fixed');
+                var y = window.scrollY || root.scrollTop;
+                var h = hdr ? hdr.offsetHeight : 0;
+                root.style.setProperty('--hdr-h', h + 'px');
+                if (y <= h || headerBusy()) {
+                    root.classList.remove('hdr-hidden');
+                } else if (y > lastY + 6) {
+                    root.classList.add('hdr-hidden');
+                } else if (y < lastY - 6) {
+                    root.classList.remove('hdr-hidden');
+                }
+                if (Math.abs(y - lastY) > 6) lastY = y;
+            }
+            window.addEventListener('scroll', function () {
+                if (!ticking) { ticking = true; requestAnimationFrame(update); }
+            }, {passive: true});
+            window.addEventListener('resize', update);
+            document.addEventListener('DOMContentLoaded', update);
+        })();
+
         document.addEventListener('DOMContentLoaded', function () {
             // Theme switch
             var sw = document.getElementById('darkModeSwitch');
@@ -397,13 +436,15 @@ if ($seedtorrentscount > 0) {
     $seederOrLeecher = '<span class="badge bg-secondary"><i class="fas fa-minus me-1"></i> ' . $hl('hdr_idle', 'Idle') . '</span>';
 }
 
+echo '<br><br>';
+
 if ($isLoggedIn):
     $ratioRaw  = (string)($ratio ?? '0.00');
     // $ratio may already contain trusted markup (<font>/<span>) — print as is, escape otherwise
     $ratioHtml = (str_contains($ratioRaw, '<font') || str_contains($ratioRaw, '<span')) ? $ratioRaw : $e($ratioRaw);
 ?>
 <!-- Header with card-style navbar -->
-<header class="header-fixed">
+<header class="sticky-top header-fixed">
     <div class="container-fluid py-1 bg-light border-bottom">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-3">
             <!-- Profile with avatar -->
@@ -514,6 +555,8 @@ if ($isLoggedIn):
     </nav>
 </header>
 
+<br><br>
+
 <!-- Modal Logout -->
 <div class="modal fade" id="logoutModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -539,8 +582,9 @@ if ($isLoggedIn):
     </div>
 </div>
 
+<br><br><br>
+
 <?php else: ?>
-<br><br>
 <!-- Guest navigation -->
 <nav class="navbar navbar-expand-lg bg-white shadow-sm border-bottom py-3">
     <div class="container">

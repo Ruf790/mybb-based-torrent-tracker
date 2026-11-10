@@ -732,12 +732,9 @@ if ($info_hash != $check_info_hash) {
 
 
 
-// Optional NFO
-$nfoFilename = null;
-if (!empty($_FILES['nfoFile']['tmp_name'])) 
-{
-    $nfoFilename = saveFile($_FILES['nfoFile'], $nfoDir, ['text/plain']);
-}
+// NFO: текст уже прочитан в $nfoContentRaw и сохраняется в torrents_nfo ниже.
+// Раньше файл ещё и копировался в uploads/ со случайным именем — эта копия нигде не
+// использовалась и не удалялась вместе с торрентом, поэтому больше её не создаём.
 
 
 
@@ -816,6 +813,16 @@ if (empty($description))
 {
     http_response_code(400);
     echo json_encode(["success" => false, "error" => $ue('description_required', 'Description is required.')]);
+    exit;
+}
+
+// MediaInfo (необязательно): отдельная таблица torrents_mediainfo, карточка на details.php
+$mediainfoPosted = isset($_POST['mediainfo']);
+$mediainfo       = trim(str_replace("\r\n", "\n", (string)($_POST['mediainfo'] ?? '')));
+// Формат у всех разный: сохраняем любой текст. Разобрали — карточка, нет — показываем как есть.
+if (mb_strlen($mediainfo) > 200000) {
+    http_response_code(400);
+    echo json_encode(["success" => false, "error" => $ue('mediainfo_too_long', 'MediaInfo text is too long.')]);
     exit;
 }
 
@@ -1648,6 +1655,24 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
 
 
 
+// MediaInfo — сохраняем в БД (пустое поле при редактировании = удалить)
+if ($mediainfoPosted) {
+    if ($mediainfo !== '') {
+        $db->sql_query_prepared(
+            "INSERT INTO torrents_mediainfo (`torrent_id`,`mediainfo`,`updated_at`) VALUES (?,?,?)
+             ON DUPLICATE KEY UPDATE `mediainfo` = VALUES(`mediainfo`), `updated_at` = VALUES(`updated_at`)",
+            [(int)$NewTID, $mediainfo, TIMENOW]
+        );
+    } elseif ($isEdit) {
+        $db->sql_query_prepared("DELETE FROM torrents_mediainfo WHERE torrent_id = ?", [(int)$NewTID]);
+    }
+}
+
+// NFO: «Удалить NFO» при редактировании (если новый файл не выбран — иначе он просто заменит старый)
+if ($isEdit && ($_POST['delete_nfo'] ?? '0') === '1' && $nfoContentRaw === null) {
+    $db->sql_query_prepared("DELETE FROM torrents_nfo WHERE torrent_id = ?", [(int)$NewTID]);
+}
+
 // NFO файл — сохраняем в БД
 if ($nfoContentRaw !== null && strlen($nfoContentRaw) > 0) {
     // Пробуем определить кодировку только из поддерживаемых
@@ -1783,6 +1808,13 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
 	
 	
 	
+	// MediaInfo для формы редактирования
+    $torrent_mediainfo = '';
+    $miRes = $db->sql_query_prepared("SELECT mediainfo FROM torrents_mediainfo WHERE torrent_id = ?", [$EditTorrentID]);
+    if ($miRes && ($miRow = $db->fetch_array($miRes))) {
+        $torrent_mediainfo = (string)$miRow['mediainfo'];
+    }
+
 	// Получить все скрины торрента
     $screenshots = [];
     $res = $db->sql_query_prepared("SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY sort_order ASC, id ASC", [$EditTorrentID]);
@@ -1852,7 +1884,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=2">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=14">
 
 <div class="container-md st-page up-page">
 
@@ -1926,9 +1958,9 @@ if ($isEdit) {
     <div class="d-flex flex-column gap-3">
 
     <!-- Torrent -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnet"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-magnet"></i></span>
             <?= $lang->upload['torrent_info'] ?>
         </div>
         <div class="st-card__body">
@@ -1960,7 +1992,7 @@ if ($isEdit) {
 
                 <div id="torrentDropZone" class="up-drop">
                     <div id="torrentDropContent">
-                        <span class="st-ico st-soft-muted up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                        <span class="st-ico up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
                         <div class="fw-semibold mb-1"><?= $lang->upload['torrent_drop_title'] ?></div>
                         <div class="st-meta mb-2"><?= $lang->upload['torrent_drop_sub'] ?></div>
                         <button type="button" class="btn btn-sm btn-outline-secondary st-pill">
@@ -2050,19 +2082,46 @@ if ($isEdit) {
                     $existingNfoQ = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ?", [$EditTorrentID]);
                     $existingNfoRow = $existingNfoQ ? $db->fetch_array($existingNfoQ) : null;
                     if ($existingNfoRow): ?>
-                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+                        <input type="hidden" name="delete_nfo" id="deleteNfo" value="0">
+                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2" id="nfoExisting">
                             <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $lang->upload['nfofile_uploaded'] ?></span>
                             <small class="st-meta"><?= $lang->upload['nfofile_replace'] ?></small>
+                            <button type="button" class="btn btn-sm btn-outline-danger st-pill ms-auto" id="nfoDeleteBtn">
+                                <i class="fa-solid fa-trash-can me-1"></i><?= htmlspecialchars($lang->upload['nfofile_delete'] ?? 'Delete NFO') ?>
+                            </button>
                         </div>
+                        <div class="mt-2 d-none align-items-center gap-2 flex-wrap" id="nfoDeleted">
+                            <span class="st-badge st-soft-danger"><i class="fa-solid fa-trash-can"></i><?= htmlspecialchars($lang->upload['nfofile_will_delete'] ?? 'NFO will be deleted when you save') ?></span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" id="nfoUndoBtn">
+                                <i class="fa-solid fa-rotate-left me-1"></i><?= htmlspecialchars($lang->upload['nfofile_undo'] ?? 'Undo') ?>
+                            </button>
+                        </div>
+                        <script>
+                        // Удаление NFO: помечаем, сама запись удаляется при сохранении формы
+                        (function () {
+                            const flag = document.getElementById('deleteNfo');
+                            const has  = document.getElementById('nfoExisting');
+                            const del  = document.getElementById('nfoDeleted');
+                            const set  = (on) => {
+                                flag.value = on ? '1' : '0';
+                                has.classList.toggle('d-none', on);
+                                has.classList.toggle('d-flex', !on);
+                                del.classList.toggle('d-none', !on);
+                                del.classList.toggle('d-flex', on);
+                            };
+                            document.getElementById('nfoDeleteBtn').addEventListener('click', () => set(true));
+                            document.getElementById('nfoUndoBtn').addEventListener('click', () => set(false));
+                        })();
+                        </script>
                 <?php endif; endif; ?>
             </div>
         </div>
     </section>
 
     <!-- Description -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-align-left"></i></span>
             <?= $lang->upload['description'] ?> <span class="text-danger">*</span>
         </div>
         <div class="st-card__body">
@@ -2074,10 +2133,181 @@ if ($isEdit) {
         </div>
     </section>
 
-    <!-- Category -->
-    <section class="st-card">
+    <!-- MediaInfo (необязательно) -->
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-table-cells-large"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-circle-info"></i></span>
+            MediaInfo
+            <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
+        </div>
+        <div class="st-card__body">
+            <textarea class="form-control font-monospace up-mi-text" id="mediainfo" name="mediainfo" rows="6" spellcheck="false"
+                      placeholder="General&#10;Format                                   : Matroska&#10;..."><?= htmlspecialchars($torrent_mediainfo ?? '') ?></textarea>
+            <div class="st-meta mt-1"><?= htmlspecialchars($lang->upload['mediainfo_hint'] ?? 'Optional: paste the MediaInfo text report (View → Text). It is shown as a neat card on the torrent page.') ?></div>
+            <?php
+                $mu = static fn(string $k, string $d): string => htmlspecialchars((string)($lang->upload[$k] ?? $d));
+                $mi_opts = static function (array $list): string {
+                    $o = '<option value=""></option>';
+                    foreach ($list as $v) {
+                        $o .= '<option>' . htmlspecialchars($v) . '</option>';
+                    }
+                    return $o;
+                };
+            ?>
+              <button type="button" class="btn btn-sm btn-outline-primary st-pill mt-2" id="miBuilderToggle" aria-expanded="false" aria-controls="miBuilder">
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i><?= $mu('btn_mi_builder', 'Fill in by template') ?>
+              </button>
+
+              <div class="up-sub up-mib mt-2 d-none" id="miBuilder">
+                <div class="st-meta mb-3"><?= $mu('mi_builder_hint', 'Fill in the fields — the text above is generated automatically and is always shown as a card.') ?></div>
+
+                <div class="row g-2 mb-3">
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_quality', 'Quality') ?></label>
+                    <input type="text" class="form-control form-control-sm" data-mi="quality" list="miQualityList" placeholder="WEB-DL 1080p">
+                    <datalist id="miQualityList">
+                      <option value="WEB-DL 2160p"><option value="WEB-DL 1080p"><option value="WEBRip 1080p"><option value="BDRip 1080p">
+                      <option value="BDRemux 1080p"><option value="UHD BDRemux 2160p"><option value="HDTV 1080p"><option value="DVDRip">
+                    </datalist>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_container', 'Container') ?></label>
+                    <select class="form-select form-select-sm" data-mi="container"><?= $mi_opts(['MKV', 'MP4', 'AVI', 'TS', 'M2TS', 'ISO']) ?></select>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_duration', 'Duration') ?></label>
+                    <input type="text" class="form-control form-control-sm" data-mi="duration" placeholder="02:11:45">
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_size', 'Size') ?></label>
+                    <div class="input-group input-group-sm">
+                      <input type="text" class="form-control" data-mi="size" inputmode="decimal" placeholder="18.4">
+                      <select class="form-select flex-grow-0 w-auto" data-mi="sizeunit" aria-label="<?= $mu('lbl_mib_size', 'Size') ?>">
+                        <option>GB</option><option>MB</option><option>TB</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="fw-semibold small mb-2"><i class="fa-solid fa-film me-1 text-primary"></i><?= $mu('lbl_mi_video', 'Video') ?></div>
+                <div class="row g-2 mb-3">
+                  <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_codec', 'Codec') ?></label>
+                    <select class="form-select form-select-sm" data-mi="vcodec"><?= $mi_opts(['HEVC', 'AVC', 'x265', 'x264', 'AV1', 'VP9', 'MPEG-2', 'XviD']) ?></select>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_resolution', 'Resolution') ?></label>
+                    <input type="text" class="form-control form-control-sm" data-mi="vres" list="miResList" placeholder="1920x1080">
+                    <datalist id="miResList">
+                      <option value="3840x2160"><option value="3840x1608"><option value="1920x1080"><option value="1920x800">
+                      <option value="1280x720"><option value="720x576"><option value="720x480">
+                    </datalist>
+                  </div>
+                  <div class="col-4 col-md-2">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_aspect', 'Aspect') ?></label>
+                    <select class="form-select form-select-sm" data-mi="vaspect" data-auto-label="<?= $mu('opt_mib_auto', 'Auto') ?>"><?= str_replace('<option value=""></option>', '<option value="">' . $mu('opt_mib_auto', 'Auto') . '</option>', $mi_opts(['4:3', '16:9', '1.85:1', '2.00:1', '2.20:1', '2.39:1', '2.40:1', '21:9'])) ?></select>
+                  </div>
+                  <div class="col-4 col-md-2">
+                    <label class="form-label small mb-1">FPS</label>
+                    <select class="form-select form-select-sm" data-mi="vfps"><?= $mi_opts(['23.976', '24', '25', '29.970', '30', '50', '59.940', '60']) ?></select>
+                  </div>
+                  <div class="col-4 col-md-2">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_bitrate', 'Bitrate') ?></label>
+                    <div class="input-group input-group-sm">
+                      <input type="text" class="form-control" data-mi="vbitrate" inputmode="decimal" placeholder="24.3">
+                      <span class="input-group-text">Mbps</span>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1"><?= $mu('lbl_mib_depth', 'Bit depth') ?></label>
+                    <select class="form-select form-select-sm" data-mi="vdepth"><?= $mi_opts(['8 bit', '10 bit', '12 bit']) ?></select>
+                  </div>
+                  <div class="col-12">
+                    <span class="small text-muted me-2">HDR:</span>
+                    <?php foreach (['DV', 'HDR10+', 'HDR10', 'HLG'] as $hdr): ?>
+                      <div class="form-check form-check-inline small mb-0">
+                        <input class="form-check-input" type="checkbox" data-mi-hdr value="<?= $hdr ?>" id="miHdr<?= md5($hdr) ?>">
+                        <label class="form-check-label" for="miHdr<?= md5($hdr) ?>"><?= $hdr ?></label>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                </div>
+
+                <div class="fw-semibold small mb-2"><i class="fa-solid fa-volume-high me-1 text-primary"></i><?= $mu('lbl_mi_audio', 'Audio') ?></div>
+                <div id="miAudioRows"></div>
+                <template id="miAudioTpl">
+                  <div class="row g-2 mb-2 align-items-end" data-mi-audio>
+                    <div class="col-6 col-md-2">
+                      <label class="form-label small mb-1"><?= $mu('lbl_mib_lang', 'Language') ?></label>
+                      <select class="form-select form-select-sm" data-mi-a="lang"><?= $mi_opts(['Rus', 'Eng', 'Ukr', 'Jpn', 'Kor', 'Chi', 'Fre', 'Ger', 'Spa', 'Ita']) ?></select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <label class="form-label small mb-1"><?= $mu('lbl_mib_codec', 'Codec') ?></label>
+                      <select class="form-select form-select-sm" data-mi-a="codec"><?= $mi_opts(['AC3', 'E-AC3', 'E-AC3 Atmos', 'TrueHD', 'TrueHD Atmos', 'DTS', 'DTS-HD MA', 'DTS:X', 'AAC', 'FLAC', 'Opus', 'MP3', 'PCM']) ?></select>
+                    </div>
+                    <div class="col-4 col-md-2">
+                      <label class="form-label small mb-1"><?= $mu('lbl_mib_channels', 'Channels') ?></label>
+                      <select class="form-select form-select-sm" data-mi-a="ch"><?= $mi_opts(['1.0', '2.0', '5.1', '7.1']) ?></select>
+                    </div>
+                    <div class="col-8 col-md-2">
+                      <label class="form-label small mb-1"><?= $mu('lbl_mib_bitrate', 'Bitrate') ?></label>
+                      <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" data-mi-a="bitrate" inputmode="numeric" placeholder="384">
+                        <span class="input-group-text">kbps</span>
+                      </div>
+                    </div>
+                    <div class="col-10 col-md-3">
+                      <label class="form-label small mb-1"><?= $mu('lbl_mib_voice', 'Voice-over / title') ?></label>
+                      <input type="text" class="form-control form-control-sm" data-mi-a="title" placeholder="<?= $mu('ph_mib_voice', 'e.g. Dub, Original') ?>">
+                    </div>
+                    <div class="col-2 col-md-1 text-end">
+                      <button type="button" class="btn btn-sm btn-outline-danger" data-mi-del title="<?= $mu('btn_mib_remove', 'Remove') ?>"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                  </div>
+                </template>
+                <button type="button" class="btn btn-sm btn-outline-secondary st-pill mb-3" id="miAudioAdd">
+                  <i class="fa-solid fa-plus me-1"></i><?= $mu('btn_mib_add_audio', 'Add audio track') ?>
+                </button>
+
+                <div class="fw-semibold small mb-2"><i class="fa-solid fa-closed-captioning me-1 text-primary"></i><?= $mu('lbl_mi_subs', 'Subtitles') ?></div>
+                <div id="miSubRows"></div>
+                <template id="miSubTpl">
+                  <div class="row g-2 mb-2 align-items-center" data-mi-sub>
+                    <div class="col-6 col-md-3">
+                      <select class="form-select form-select-sm" data-mi-s="lang" aria-label="<?= $mu('lbl_mib_lang', 'Language') ?>">
+                        <?= $mi_opts(['Russian', 'English', 'Ukrainian', 'Japanese', 'Korean', 'Chinese', 'French', 'German', 'Spanish', 'Italian', 'Polish', 'Portuguese', 'Turkish', 'Bulgarian']) ?>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <select class="form-select form-select-sm" data-mi-s="format" aria-label="<?= $mu('lbl_mib_format', 'Format') ?>">
+                        <?= $mi_opts(['SRT', 'ASS', 'PGS', 'VobSub']) ?>
+                      </select>
+                    </div>
+                    <div class="col-10 col-md-6">
+                      <?php foreach (['Forced', 'Full', 'SDH'] as $flag): ?>
+                        <label class="form-check form-check-inline small mb-0">
+                          <input class="form-check-input" type="checkbox" data-mi-flag value="<?= $flag ?>">
+                          <span class="form-check-label"><?= $flag ?></span>
+                        </label>
+                      <?php endforeach; ?>
+                    </div>
+                    <div class="col-2 col-md-1 text-end">
+                      <button type="button" class="btn btn-sm btn-outline-danger" data-mi-del title="<?= $mu('btn_mib_remove', 'Remove') ?>"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                  </div>
+                </template>
+                <button type="button" class="btn btn-sm btn-outline-secondary st-pill" id="miSubAdd">
+                  <i class="fa-solid fa-plus me-1"></i><?= $mu('btn_mib_add_sub', 'Add subtitles') ?>
+                </button>
+              </div>
+
+        </div>
+    </section>
+
+    <!-- Category -->
+    <section class="st-card up-sec" style="--c: #3b82f6">
+        <div class="st-card__head">
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-table-cells-large"></i></span>
             <?= $lang->upload['category'] ?> <span class="text-danger">*</span>
         </div>
         <div class="st-card__body">
@@ -2127,9 +2357,9 @@ if ($isEdit) {
     </section>
 
     <!-- Tags -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-tags"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-tags"></i></span>
             <?= $lang->upload['tags'] ?>
             <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
         </div>
@@ -2145,37 +2375,38 @@ if ($isEdit) {
 
             <div class="d-flex flex-wrap gap-1 mb-2" id="genreButtons">
                 <?php
+                // [тег (англ.), иконка, цвет]
                 $genres = [
-                    ['Action',      'fa-bolt'],
-                    ['Adventure',   'fa-compass'],
-                    ['Animation',   'fa-film'],
-                    ['Biography',   'fa-user-graduate'],
-                    ['Comedy',      'fa-face-laugh-squint'],
-                    ['Crime',       'fa-gavel'],
-                    ['Documentary', 'fa-video'],
-                    ['Drama',       'fa-masks-theater'],
-                    ['Family',      'fa-users'],
-                    ['Fantasy',     'fa-dragon'],
-                    ['History',     'fa-landmark'],
-                    ['Horror',      'fa-ghost'],
-                    ['Music',       'fa-music'],
-                    ['Mystery',     'fa-magnifying-glass'],
-                    ['Romance',     'fa-heart'],
-                    ['Sci-Fi',      'fa-rocket'],
-                    ['Sport',       'fa-trophy'],
-                    ['Thriller',    'fa-skull'],
-                    ['War',         'fa-hand-fist'],
-                    ['Western',     'fa-horse-head'],
+                    ['Action',      'fa-bolt',              '#ff4757'],
+                    ['Adventure',   'fa-compass',           '#ffa502'],
+                    ['Animation',   'fa-film',              '#7bed9f'],
+                    ['Biography',   'fa-user-graduate',     '#70a1ff'],
+                    ['Comedy',      'fa-face-laugh-squint', '#ff6b81'],
+                    ['Crime',       'fa-gavel',             '#2f3542'],
+                    ['Documentary', 'fa-video',             '#a4b0be'],
+                    ['Drama',       'fa-masks-theater',     '#57606f'],
+                    ['Family',      'fa-users',             '#ff7f50'],
+                    ['Fantasy',     'fa-dragon',            '#dfe6e9'],
+                    ['History',     'fa-landmark',          '#cd84f1'],
+                    ['Horror',      'fa-ghost',             '#ff4d4d'],
+                    ['Music',       'fa-music',             '#1e90ff'],
+                    ['Mystery',     'fa-magnifying-glass',  '#8e44ad'],
+                    ['Romance',     'fa-heart',             '#ff6b6b'],
+                    ['Sci-Fi',      'fa-rocket',            '#00cec9'],
+                    ['Sport',       'fa-trophy',            '#fdcb6e'],
+                    ['Thriller',    'fa-skull',             '#e17055'],
+                    ['War',         'fa-hand-fist',         '#636e72'],
+                    ['Western',     'fa-horse-head',        '#f39c12'],
                 ];
 
                 $currentTags = array_map('trim', explode(',', $torrent['tags'] ?? ''));
 
-                foreach ($genres as [$label, $genreIcon]):
+                foreach ($genres as [$label, $genreIcon, $genreColor]):
                     // $label stays English (it is what goes into the tags field); $shown is the translated name
                     $shown  = $lang->upload['genre_' . strtolower(str_replace('-', '_', $label))] ?? $label;
                     $active = in_array($label, $currentTags, true) ? 'genre-active' : '';
                 ?>
-                <button type="button" class="genre-tag-btn <?= $active ?>"
+                <button type="button" class="genre-tag-btn <?= $active ?>" style="--g: <?= $genreColor ?>"
                         data-genre="<?= htmlspecialchars($label) ?>"
                         data-label="<?= htmlspecialchars($shown) ?>"
                         onclick="toggleGenreTag(this)">
@@ -2194,9 +2425,9 @@ if ($isEdit) {
     </section>
 
     <!-- Media & Images -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-images"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-images"></i></span>
             <?= $lang->upload['media_section'] ?>
         </div>
         <div class="st-card__body">
@@ -2269,9 +2500,9 @@ if ($isEdit) {
 
                         <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
                             <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByUrl<?= $slot ?>" value="url" checked>
-                            <label class="btn btn-outline-secondary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
+                            <label class="btn btn-outline-primary" for="uploadByUrl<?= $slot ?>"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['image_url_mode'] ?></label>
                             <input type="radio" class="btn-check" name="uploadType<?= $slot ?>" id="uploadByFile<?= $slot ?>" value="file">
-                            <label class="btn btn-outline-secondary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
+                            <label class="btn btn-outline-primary" for="uploadByFile<?= $slot ?>"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['image_file_mode'] ?></label>
                         </div>
 
                         <div id="uploadUrlGroup<?= $slot ?>">
@@ -2315,32 +2546,32 @@ if ($isEdit) {
     </section>
 
     <!-- Settings -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-sliders"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-sliders"></i></span>
             <?= $lang->upload['settings_section'] ?>
         </div>
         <div class="st-card__body">
             <div class="up-opts">
                 <?php
-                // [name/id, value, отмечено?, иконка, подпись, подсказка]
+                // [name/id, value, отмечено?, иконка, подпись, подсказка, цвет]
                 $upFlag = static fn(string $col): bool => ($torrent[$col] ?? '') === 'yes';
                 $upOptions = [
-                    ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint']],
-                    ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint']],
-                    ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint']],
-                    ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint']],
-                    ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint']],
-                    ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.'],
-                    ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint']],
-                    ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint']],
-                    ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint']],
+                    ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint'], '#64748b'],
+                    ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint'], '#f97316'],
+                    ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint'], '#16a34a'],
+                    ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint'], '#0ea5e9'],
+                    ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint'], '#f59e0b'],
+                    ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.', '#8b5cf6'],
+                    ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint'], '#64748b'],
+                    ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint'], '#2563eb'],
+                    ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint'], '#dc2626'],
                 ];
-                foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint]): ?>
-                    <label class="st-check form-switch" for="<?= $optName ?>">
+                foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint, $optColor]): ?>
+                    <label class="st-check form-switch up-opt" for="<?= $optName ?>" style="--o: <?= $optColor ?>">
                         <input class="form-check-input" type="checkbox" role="switch" id="<?= $optName ?>" name="<?= $optName ?>" value="<?= $optValue ?>"<?= $optOn ? ' checked' : '' ?><?= $optName === 'isnuked' ? ' onclick="ShowHideField(\'nukereason\');"' : '' ?>>
                         <span class="min-w-0">
-                            <span class="fw-semibold d-block"><i class="fa-solid <?= $optIcon ?> me-1 opacity-75"></i><?= $optLabel ?></span>
+                            <span class="fw-semibold d-block up-opt__title"><i class="fa-solid <?= $optIcon ?> me-1"></i><?= $optLabel ?></span>
                             <span class="st-meta d-block"><?= $optHint ?></span>
                         </span>
                     </label>
@@ -2358,17 +2589,17 @@ if ($isEdit) {
     </section>
 
     <!-- Screenshots -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-camera"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-camera"></i></span>
             <?= $lang->upload['screenshots'] ?>
         </div>
         <div class="st-card__body">
             <div class="btn-group btn-group-sm w-100 up-seg mb-2" role="group">
                 <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
-                <label class="btn btn-outline-secondary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
+                <label class="btn btn-outline-primary" for="screenshotByFile"><i class="fa-solid fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?></label>
                 <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
-                <label class="btn btn-outline-secondary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
+                <label class="btn btn-outline-primary" for="screenshotByUrl"><i class="fa-solid fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?></label>
             </div>
 
             <div id="screenshotFileGroup">
@@ -2452,110 +2683,183 @@ https://example.com/screen3.webp"></textarea>
 
     <!-- ═══ Модалки ═══════════════════════════════════════════════════════ -->
 
-    <!-- Error -->
+    <!-- Error (старая: красная градиентная шапка, розовый блок с моноширинным текстом) -->
     <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                    <h5 class="modal-title" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header up-err-head">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="rounded-circle p-1 up-err-head__ico">
+                            <i class="fa-solid fa-triangle-exclamation text-white" style="font-size:1.2rem;"></i>
+                        </div>
+                        <h5 class="modal-title text-white fw-semibold" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="st-meta fw-semibold mb-2"><i class="fa-solid fa-bug me-1"></i><?= $lang->upload['error_details'] ?? 'Error details' ?></div>
-                    <div id="errorModalBody" class="up-err"></div>
+                <div class="modal-body p-0">
+                    <div class="bg-body-tertiary p-3 border-bottom border-danger border-opacity-25">
+                        <div class="d-flex align-items-center gap-2 text-danger">
+                            <i class="fa-solid fa-bug"></i>
+                            <span class="small fw-semibold"><?= $lang->upload['error_details'] ?? 'Error details' ?></span>
+                        </div>
+                    </div>
+                    <div id="errorModalBody" class="up-err-old"></div>
                 </div>
-                <div class="modal-footer justify-content-between">
-                    <span class="st-meta"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['error_check_input'] ?? 'Check your input and try again' ?></span>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->upload['error_close'] ?></button>
-                        <button type="button" class="btn btn-sm btn-danger st-pill ms-1" id="copyErrorBtn"><i class="fa-solid fa-copy me-1"></i><?= $lang->upload['error_copy'] ?? 'Copy error' ?></button>
+                <div class="modal-footer border-0 bg-body-tertiary">
+                    <div class="d-flex justify-content-between align-items-center w-100">
+                        <div class="text-muted small"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['error_check_input'] ?? 'Check your input and try again' ?></div>
+                        <div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+                                <i class="fa-solid fa-xmark me-1"></i><?= $lang->upload['error_close'] ?>
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm ms-2" id="copyErrorBtn">
+                                <i class="fa-solid fa-copy me-1"></i><?= $lang->upload['error_copy'] ?? 'Copy error' ?>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Upload complete -->
+    <!-- Upload complete (зелёная, с анимацией галочки) -->
     <div class="modal fade" id="uploadCompleteModal" tabindex="-1" aria-labelledby="uploadCompleteModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-success"><i class="fa-solid fa-check"></i></span>
-                    <h5 class="modal-title" id="uploadCompleteModalLabel"><?= $lang->upload['upload_success_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content shadow-lg border-0 up-done">
+                <div class="modal-header bg-success text-white border-0">
+                    <div class="d-flex align-items-center w-100">
+                        <i class="fa-solid fa-circle-check fa-2x me-3"></i>
+                        <h5 class="modal-title mb-0" id="uploadCompleteModalLabel"><?= $lang->upload['upload_success_title'] ?></h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
                 <div class="modal-body text-center py-4">
-                    <div class="fw-semibold fs-5 mb-1"><?= $lang->upload['upload_success_congrats'] ?></div>
-                    <p class="st-meta mb-0"><?= $lang->upload['upload_success_text'] ?></p>
-                    <p class="st-meta mb-0"><?= $lang->upload['upload_success_redirect'] ?></p>
+                    <div class="success-animation mb-3">
+                        <i class="fa-solid fa-check text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <h4 class="text-success mb-2"><?= $lang->upload['upload_success_congrats'] ?></h4>
+                    <p class="text-muted mb-0"><?= $lang->upload['upload_success_text'] ?></p>
+                    <p class="text-muted"><?= $lang->upload['upload_success_redirect'] ?></p>
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->upload['upload_stay'] ?></button>
-                    <button type="button" class="btn btn-primary st-pill" onclick="redirectToTorrent()"><i class="fa-solid fa-eye me-1"></i><?= $lang->upload['upload_view'] ?></button>
+                <div class="modal-footer border-0 justify-content-center pb-4">
+                    <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-xmark me-2"></i><?= $lang->upload['upload_stay'] ?>
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="redirectToTorrent()">
+                        <i class="fa-solid fa-eye me-2"></i><?= $lang->upload['upload_view'] ?>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Upload progress -->
+    <!-- Upload progress (старая: градиентная шапка, спиннер со свечением, точки) -->
     <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-primary"><i class="fa-solid fa-cloud-arrow-up"></i></span>
-                    <h5 class="modal-title" id="uploadModalLabel"><?= $lang->upload['upload_processing'] ?></h5>
-                </div>
-                <div class="modal-body text-center py-4">
-                    <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden"><?= $lang->upload['js_ut_loading'] ?></span></div>
-                    <div class="fw-semibold mb-1"><?= $lang->upload['upload_wait'] ?></div>
-                    <p class="st-meta mb-3"><?= $lang->upload['upload_wait_sub'] ?></p>
-                    <span class="st-badge st-soft-muted"><i class="fa-solid fa-clock"></i><span id="uploadTimer">0</span> <?= $lang->upload['upload_timer'] ?></span>
-                    <div class="progress up-progress mt-3">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-gradient-primary text-white border-0">
+                    <div class="d-flex align-items-center w-100">
+                        <i class="fa-solid fa-cloud-arrow-up fa-2x me-3"></i>
+                        <h5 class="modal-title mb-0" id="uploadModalLabel"><?= $lang->upload['upload_processing'] ?></h5>
                     </div>
-                    <div class="d-flex justify-content-between mt-1">
-                        <small class="st-meta" id="uploadStatusText"><?= $lang->upload['upload_init'] ?></small>
-                        <small class="fw-semibold" id="progressPercentage">0%</small>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+                </div>
+                <div class="modal-body text-center py-5">
+                    <div class="upload-spinner mb-4">
+                        <div class="spinner-border text-primary" style="width: 4rem; height: 4rem;" role="status">
+                            <span class="visually-hidden"><?= $lang->upload['js_ut_loading'] ?></span>
+                        </div>
+                        <div class="spinner-glow"></div>
+                    </div>
+
+                    <h6 class="text-primary mb-2"><?= $lang->upload['upload_wait'] ?></h6>
+                    <p class="text-muted mb-3"><?= $lang->upload['upload_wait_sub'] ?></p>
+
+                    <div class="loading-dots mb-3">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+
+                    <div class="timer-display mb-3">
+                        <span class="badge bg-body-tertiary text-body fs-6">
+                            <i class="fa-solid fa-clock me-2"></i><span id="uploadTimer">0</span> <?= $lang->upload['upload_timer'] ?>
+                        </span>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress mt-3 up-upl-progress">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" role="progressbar"
+                                 style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="progress-text mt-2">
+                            <small class="text-muted" id="uploadStatusText"><?= $lang->upload['upload_init'] ?></small>
+                            <small class="text-primary fw-bold" id="progressPercentage">0%</small>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <small class="st-meta"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['upload_size_note'] ?></small>
+                <div class="modal-footer border-0 justify-content-center pb-4">
+                    <small class="text-muted"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['upload_size_note'] ?></small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Delete one screenshot -->
+    <!-- Delete one screenshot (старая: красная шапка, превью, карточка файла) -->
     <div class="modal fade" id="deleteScreenshotModal" tabindex="-1" aria-labelledby="deleteScreenshotModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-danger"><i class="fa-solid fa-trash-can"></i></span>
-                    <h5 class="modal-title" id="deleteScreenshotModalLabel"><?= $lang->upload['screenshots_delete_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content border-0 shadow up-del">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteScreenshotModalLabel">
+                        <i class="fa-solid fa-triangle-exclamation me-2"></i><?= $lang->upload['screenshots_delete_title'] ?>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="fw-semibold" id="deleteScreenshotTitle"><?= $lang->upload['screenshots_delete_title'] ?></div>
-                    <div class="st-meta up-break mb-2" id="deleteScreenshotFilename"></div>
 
-                    <div id="deleteScreenshotPreviewContainer" class="text-center mb-2">
-                        <img id="deleteScreenshotImage" src="" alt="" class="up-del-img" style="display:none;">
-                        <div id="noImagePreview" class="up-noprev" style="display:none;">
-                            <i class="fa-regular fa-image"></i>
-                            <span class="st-meta"><?= $lang->upload['screenshots_no_preview'] ?></span>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="fa-solid fa-trash-can text-danger fs-1"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h5 class="fw-bold mb-1" id="deleteScreenshotTitle"><?= $lang->upload['screenshots_delete_title'] ?></h5>
+                            <p class="text-muted mb-0 up-break" id="deleteScreenshotFilename"></p>
                         </div>
                     </div>
 
-                    <div class="st-meta up-break mb-2"><i class="fa-solid fa-file-image me-1"></i><span id="deleteScreenshotFileName">screenshot.jpg</span></div>
+                    <div id="deleteScreenshotPreviewContainer" class="mb-3 text-center">
+                        <div class="d-inline-block mw-100">
+                            <img id="deleteScreenshotImage" src="" alt="" class="up-del-img" style="display:none;">
+                            <div id="noImagePreview" class="flex-column align-items-center justify-content-center p-4" style="display:none; min-height:150px;">
+                                <i class="fa-solid fa-image fa-3x text-muted mb-2"></i>
+                                <span class="text-muted"><?= $lang->upload['screenshots_no_preview'] ?></span>
+                            </div>
+                        </div>
+                    </div>
 
-                    <div class="alert alert-warning small py-2 mb-0">
-                        <i class="fa-solid fa-triangle-exclamation me-1"></i><?= $lang->upload['screenshots_delete_warning'] ?>
+                    <div class="bg-body-tertiary p-3 rounded-3 mb-3">
+                        <div class="d-flex align-items-center">
+                            <i class="fa-solid fa-file-image text-primary me-3 fa-2x"></i>
+                            <div class="overflow-hidden">
+                                <div class="fw-bold up-break" id="deleteScreenshotFileName">screenshot.jpg</div>
+                                <div class="small text-muted"><i class="fa-solid fa-image me-1"></i><?= $lang->upload['screenshots_existing_one'] ?? 'Existing screenshot' ?></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-2 mb-0">
+                        <div class="d-flex">
+                            <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
+                            <div><strong><?= $lang->upload['error_title'] ?>:</strong> <?= $lang->upload['screenshots_delete_warning'] ?></div>
+                        </div>
                     </div>
                 </div>
+
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->global['cancel'] ?></button>
-                    <button type="button" class="btn btn-danger st-pill" id="confirmDeleteScreenshotBtn"><i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_confirm'] ?></button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-xmark me-1"></i><?= $lang->global['cancel'] ?>
+                    </button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">
+                        <i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_confirm'] ?>
+                    </button>
                 </div>
             </div>
         </div>
@@ -2612,8 +2916,9 @@ https://example.com/screen3.webp"></textarea>
 
 <script src="<?= $BASEURL ?>/scripts/swal-notify.js?ver=2"></script>
 <script src="<?= $BASEURL ?>/scripts/Sortable.min.js"></script>
-<script src="<?= $BASEURL ?>/scripts/upload_torrent.js?ver=74"></script>
+<script src="<?= $BASEURL ?>/scripts/upload_torrent.js?ver=75"></script>
 <script src="<?= $BASEURL ?>/scripts/tags_category.js?ver=22"></script>
+<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=4"></script>
 
 <?php
 

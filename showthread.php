@@ -840,7 +840,7 @@ const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=231"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=233"></script>';
 
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js?ver=7"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js?ver=9"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report_post.js"></script>';
 

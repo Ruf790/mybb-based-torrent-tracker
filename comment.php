@@ -115,12 +115,51 @@ match ($action) {
     'delete' => handleDeleteAction(),
     'massdelete' => handleMassDeleteAction(),
     'merge' => handleMergeAction(),
+    'pin' => handlePinAction(),
     default => stderr($lang->global['error'], $lang->global['invalidaction'])
 };
 
 exit;
 
 // Action handler functions
+/** Закрепить / открепить комментарий: на раздаче один закреплённый (torrents.pinned_comment) */
+function handlePinAction(): void
+{
+    global $db, $usergroups, $lang, $CURUSER;
+
+    if (!is_mod($usergroups)) {
+        print_no_permission();
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($_POST['my_post_key'] ?? '')) {
+        stderr($lang->global['error'] ?? 'Error', 'Invalid security token. Please refresh the page and try again.', 403, '403');
+    }
+
+    int_check($_GET['cid'] ?? 0);
+    $commentid = (int)$_GET['cid'];
+
+    $query = $db->sql_query_prepared(
+        'SELECT c.torrent, t.pinned_comment FROM comments c INNER JOIN torrents t ON t.id = c.torrent WHERE c.id = ?',
+        [$commentid]
+    );
+    $row = $query ? $db->fetch_array($query) : null;
+    if (!$row) {
+        stderr($lang->global['error'] ?? 'Error', $lang->global['invalidaction'] ?? 'Invalid action');
+    }
+
+    $torrentid = (int)$row['torrent'];
+    $pinned    = (int)$row['pinned_comment'] === $commentid ? 0 : $commentid;
+
+    $db->sql_query_prepared('UPDATE torrents SET pinned_comment = ? WHERE id = ?', [$pinned, $torrentid]);
+    write_log('Comment #' . $commentid . ' on torrent #' . $torrentid . ' ' . ($pinned ? 'pinned' : 'unpinned') . ' by ' . $CURUSER['username']);
+
+    $url = get_comment_link($commentid, $torrentid) . "#pid{$commentid}";
+	
+	redirect($url);
+    exit;
+}
+
 function handleCloseAction(): void
 {
     global $db, $usergroups, $lang;
@@ -488,7 +527,9 @@ function displayRecentComments(int $torrentid): void
             </div>
         </div>
 HTML;
+        echo '<div class="container-md">';
         commenttable($allrows);
+        echo '</div>';
     }
 }
 

@@ -5,6 +5,25 @@
    Всё под .up-page — без глобальных переопределений.
    ============================================================================ */
 
+/* ── Цвета разделов: у каждой карточки свой --c (style в upload.php) ── */
+.up-page .up-sec { --c: var(--bs-primary); border-top: 3px solid var(--c); }
+.up-page .up-sec > .st-card__head {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c) 9%, transparent), transparent 70%);
+  border-bottom-color: color-mix(in srgb, var(--c) 22%, var(--bs-border-color));
+}
+.up-page .up-sec__ico {
+  background: linear-gradient(135deg, var(--c), color-mix(in srgb, var(--c) 70%, #000));
+  color: #fff; box-shadow: 0 3px 10px color-mix(in srgb, var(--c) 35%, transparent);
+}
+.up-page .up-sec .form-label > i,
+.up-page .up-sec .form-label .fa-solid,
+.up-page .up-sec .form-label .fa-brands { color: var(--c); }
+.up-page .up-sec .form-control:focus,
+.up-page .up-sec .form-select:focus {
+  border-color: var(--c);
+  box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--c) 20%, transparent);
+}
+
 /* Серые KPI-плитки с иконкой в углу */
 .up-page .st-kpi--muted { background: var(--bs-tertiary-bg); }
 .up-page .st-kpi { position: relative; overflow: hidden; }
@@ -46,11 +65,16 @@
   min-height: 150px; display: flex; align-items: center; justify-content: center;
   padding: 1.25rem; text-align: center; cursor: pointer;
   background: var(--bs-tertiary-bg);
-  border: 2px dashed var(--bs-border-color); border-radius: .8rem;
+  border: 2px dashed color-mix(in srgb, var(--bs-primary) 45%, var(--bs-border-color)); border-radius: .8rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bs-primary) 6%, transparent), var(--bs-tertiary-bg));
   transition: background-color .15s ease, border-color .15s ease;
 }
-.up-page .up-drop:hover { border-color: var(--bs-primary); }
-.up-page .up-drop__ico { width: 2.8rem; height: 2.8rem; font-size: 1.15rem; margin: 0 auto .5rem; border-radius: .8rem; }
+.up-page .up-drop:hover { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); }
+.up-page .up-drop__ico {
+  width: 2.8rem; height: 2.8rem; font-size: 1.15rem; margin: 0 auto .5rem; border-radius: .8rem;
+  background: linear-gradient(135deg, var(--bs-primary), color-mix(in srgb, var(--bs-primary) 65%, #000)); color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--bs-primary) 35%, transparent);
+}
 .up-page .up-drop.drag-over { background: var(--bs-primary-bg-subtle); border-color: var(--bs-primary); border-style: solid; }
 .up-page .up-drop.is-ok { background: var(--bs-success-bg-subtle); border-color: var(--bs-success); }
 .up-page .up-drop.is-warn { background: var(--bs-warning-bg-subtle); border-color: var(--bs-warning); }
@@ -80,12 +104,27 @@
   border: 1px solid transparent; border-radius: .7rem;
   background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
   font-size: .72em; font-weight: 600; line-height: 1.15; text-align: center;
-  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 .up-page .cat-pick-btn span { overflow-wrap: anywhere; }
-.up-page .cat-pick-btn i { font-size: 1.3rem; }
+.up-page .cat-pick-btn i { font-size: 1.3rem; color: var(--c, var(--bs-primary)); opacity: .85; }
+.up-page .cat-pick-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, .08); }
+.up-page .cat-pick-btn.active i { opacity: 1; }
+/* Каждой категории — свой цвет по кругу */
+.up-page .cat-pick-btn:nth-child(8n+1) { --c: #3b82f6; }
+.up-page .cat-pick-btn:nth-child(8n+2) { --c: #ef4444; }
+.up-page .cat-pick-btn:nth-child(8n+3) { --c: #10b981; }
+.up-page .cat-pick-btn:nth-child(8n+4) { --c: #8b5cf6; }
+.up-page .cat-pick-btn:nth-child(8n+5) { --c: #f59e0b; }
+.up-page .cat-pick-btn:nth-child(8n+6) { --c: #06b6d4; }
+.up-page .cat-pick-btn:nth-child(8n+7) { --c: #ec4899; }
+.up-page .cat-pick-btn:nth-child(8n+8) { --c: #14b8a6; }
 .up-page .cat-pick-btn:hover { color: var(--bs-emphasis-color); border-color: var(--bs-border-color); }
-.up-page .cat-pick-btn.active { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); border-color: var(--bs-primary); }
+.up-page .cat-pick-btn.active {
+  background: color-mix(in srgb, var(--c, var(--bs-primary)) 14%, var(--bs-body-bg));
+  color: var(--bs-emphasis-color); border-color: var(--c, var(--bs-primary));
+  box-shadow: 0 0 0 .15rem color-mix(in srgb, var(--c, var(--bs-primary)) 20%, transparent);
+}
 
 /* Жанры: у каждой кнопки свой цвет в --g (style="--g: #…" в upload.php).
    Обычная — белая с цветным текстом и рамкой, выбранная — залита цветом. */
@@ -139,7 +178,7 @@
 }
 .up-page .upload-zone { background: var(--bs-tertiary-bg); }
 .up-page .upload-zone i,
-.up-page .upload-zone-sm i { display: block; font-size: 1.4rem; color: var(--bs-secondary-color); }
+.up-page .upload-zone-sm i { display: block; font-size: 1.4rem; color: var(--c, var(--bs-primary)); }
 .up-page .upload-zone:hover,
 .up-page .upload-zone-sm:hover,
 .up-page .upload-zone.dragover,
@@ -203,6 +242,21 @@
 .up-page .up-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; }
 @media (max-width: 575.98px) { .up-page .up-opts { grid-template-columns: minmax(0, 1fr); } }
 .up-page .up-opts .st-check { margin: 0; }
+
+/* Цветные переключатели настроек: свой --o у каждого */
+.up-page .up-opt {
+  --o: var(--bs-primary);
+  border: 1px solid transparent; border-left: 3px solid color-mix(in srgb, var(--o) 45%, transparent);
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.up-page .up-opt:hover { border-color: color-mix(in srgb, var(--o) 30%, transparent); border-left-color: var(--o); }
+.up-page .up-opt__title, .up-page .up-opt__title i { color: var(--o); }
+.up-page .up-opt .form-check-input:checked { background-color: var(--o); border-color: var(--o); }
+.up-page .up-opt .form-check-input:focus { border-color: var(--o); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--o) 25%, transparent); }
+.up-page .up-opt:has(.form-check-input:checked) {
+  background: color-mix(in srgb, var(--o) 12%, var(--bs-body-bg)); color: inherit;
+  border-color: color-mix(in srgb, var(--o) 35%, transparent); border-left-color: var(--o);
+}
 
 /* Модалки */
 .up-page .up-modal-head { gap: .7rem; }

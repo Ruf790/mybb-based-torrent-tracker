@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=4">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=5">
 
 <div class="container-md st-page up-page">
 
@@ -1956,9 +1956,9 @@ if ($isEdit) {
     <div class="d-flex flex-column gap-3">
 
     <!-- Torrent -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #3b82f6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-magnet"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-magnet"></i></span>
             <?= $lang->upload['torrent_info'] ?>
         </div>
         <div class="st-card__body">
@@ -1990,7 +1990,7 @@ if ($isEdit) {
 
                 <div id="torrentDropZone" class="up-drop">
                     <div id="torrentDropContent">
-                        <span class="st-ico st-soft-muted up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                        <span class="st-ico up-drop__ico"><i class="fa-solid fa-cloud-arrow-up"></i></span>
                         <div class="fw-semibold mb-1"><?= $lang->upload['torrent_drop_title'] ?></div>
                         <div class="st-meta mb-2"><?= $lang->upload['torrent_drop_sub'] ?></div>
                         <button type="button" class="btn btn-sm btn-outline-secondary st-pill">
@@ -2090,9 +2090,9 @@ if ($isEdit) {
     </section>
 
     <!-- Description -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #6366f1">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-align-left"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-align-left"></i></span>
             <?= $lang->upload['description'] ?> <span class="text-danger">*</span>
         </div>
         <div class="st-card__body">
@@ -2105,9 +2105,9 @@ if ($isEdit) {
     </section>
 
     <!-- MediaInfo (необязательно) -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #14b8a6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-info"><i class="fa-solid fa-circle-info"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-circle-info"></i></span>
             MediaInfo
             <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
         </div>
@@ -2276,9 +2276,9 @@ if ($isEdit) {
     </section>
 
     <!-- Category -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #f59e0b">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-table-cells-large"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-table-cells-large"></i></span>
             <?= $lang->upload['category'] ?> <span class="text-danger">*</span>
         </div>
         <div class="st-card__body">
@@ -2328,9 +2328,9 @@ if ($isEdit) {
     </section>
 
     <!-- Tags -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #ec4899">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-tags"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-tags"></i></span>
             <?= $lang->upload['tags'] ?>
             <span class="st-meta fw-normal"><?= htmlspecialchars($lang->upload['tags_optional'] ?? '(optional)') ?></span>
         </div>
@@ -2396,9 +2396,9 @@ if ($isEdit) {
     </section>
 
     <!-- Media & Images -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #8b5cf6">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-images"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-images"></i></span>
             <?= $lang->upload['media_section'] ?>
         </div>
         <div class="st-card__body">
@@ -2517,32 +2517,32 @@ if ($isEdit) {
     </section>
 
     <!-- Settings -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #10b981">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-sliders"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-sliders"></i></span>
             <?= $lang->upload['settings_section'] ?>
         </div>
         <div class="st-card__body">
             <div class="up-opts">
                 <?php
-                // [name/id, value, отмечено?, иконка, подпись, подсказка]
+                // [name/id, value, отмечено?, иконка, подпись, подсказка, цвет]
                 $upFlag = static fn(string $col): bool => ($torrent[$col] ?? '') === 'yes';
                 $upOptions = [
-                    ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint']],
-                    ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint']],
-                    ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint']],
-                    ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint']],
-                    ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint']],
-                    ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.'],
-                    ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint']],
-                    ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint']],
-                    ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint']],
+                    ['anonymous',     'yes', isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1), 'fa-user-secret', $lang->upload['anonymous'], $lang->upload['anonymous_hint'], '#64748b'],
+                    ['request',       'yes', $upFlag('isrequest'),     'fa-hand',          $lang->upload['request'],      $lang->upload['request_hint'], '#f97316'],
+                    ['free',          'yes', $upFlag('free'),          'fa-gift',          $lang->upload['free'],         $lang->upload['free_hint'], '#16a34a'],
+                    ['silver',        'yes', $upFlag('silver'),        'fa-star',          $lang->upload['silver'],       $lang->upload['silver_hint'], '#0ea5e9'],
+                    ['doubleupload',  'yes', $upFlag('doubleupload'),  'fa-bolt',          $lang->upload['doubleupload'], $lang->upload['doubleupload_hint'], '#f59e0b'],
+                    ['thirtypercent', 'yes', $upFlag('thirtypercent'), 'fa-percent',       $lang->upload['thirtypercent'] ?? '30% Leech', $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.', '#8b5cf6'],
+                    ['allowcomments', 'no',  ($torrent['allowcomments'] ?? '') === 'no', 'fa-comment-slash', $lang->upload['allowcomments'], $lang->upload['allowcomments_hint'], '#64748b'],
+                    ['sticky',        'yes', $upFlag('sticky'),        'fa-thumbtack',     $lang->upload['sticky'],       $lang->upload['sticky_hint'], '#2563eb'],
+                    ['isnuked',       'yes', $upFlag('isnuked'),       'fa-radiation',     $lang->upload['isnuked'],      $lang->upload['isnuked_hint'], '#dc2626'],
                 ];
-                foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint]): ?>
-                    <label class="st-check form-switch" for="<?= $optName ?>">
+                foreach ($upOptions as [$optName, $optValue, $optOn, $optIcon, $optLabel, $optHint, $optColor]): ?>
+                    <label class="st-check form-switch up-opt" for="<?= $optName ?>" style="--o: <?= $optColor ?>">
                         <input class="form-check-input" type="checkbox" role="switch" id="<?= $optName ?>" name="<?= $optName ?>" value="<?= $optValue ?>"<?= $optOn ? ' checked' : '' ?><?= $optName === 'isnuked' ? ' onclick="ShowHideField(\'nukereason\');"' : '' ?>>
                         <span class="min-w-0">
-                            <span class="fw-semibold d-block"><i class="fa-solid <?= $optIcon ?> me-1 opacity-75"></i><?= $optLabel ?></span>
+                            <span class="fw-semibold d-block up-opt__title"><i class="fa-solid <?= $optIcon ?> me-1"></i><?= $optLabel ?></span>
                             <span class="st-meta d-block"><?= $optHint ?></span>
                         </span>
                     </label>
@@ -2560,9 +2560,9 @@ if ($isEdit) {
     </section>
 
     <!-- Screenshots -->
-    <section class="st-card">
+    <section class="st-card up-sec" style="--c: #06b6d4">
         <div class="st-card__head">
-            <span class="st-ico st-soft-primary"><i class="fa-solid fa-camera"></i></span>
+            <span class="st-ico up-sec__ico"><i class="fa-solid fa-camera"></i></span>
             <?= $lang->upload['screenshots'] ?>
         </div>
         <div class="st-card__body">

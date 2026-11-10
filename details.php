@@ -482,7 +482,7 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=7">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=37">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css?ver=38">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/claim.css?ver=121">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 // Strings for page scripts: js_* keys from the lang, without the prefix
@@ -1317,6 +1317,11 @@ if ((int)$Torrent['owner'] === (int)$CURUSER['id'] || !empty($is_mod)) {
 // ── Main layout ─────────────────────────────────────────────────────────────
 $ags_health    = getHealthPercentage($Torrent['seeders'], $Torrent['leechers']);
 $ags_health_c  = getHealthColor($Torrent['seeders'], $Torrent['leechers']);
+
+// Сколько бонусов даст сидирование этой раздачи (формула крона seedbonus)
+require_once INC_PATH . '/functions_seedbonus_estimate.php';
+$dt_bp_est = !empty($CURUSER['id']) ? sbe_estimate($Torrent, (int)$CURUSER['id']) : null;
+$dt_bp     = $dt_bp_est !== null && $dt_bp_est['hourly'] > 0 ? sbe_render($dt_bp_est) : '';
 $ags_numfiles  = (int)$Torrent['numfiles'];
 $ags_files_lbl = htmlspecialchars(ags_fmt(ags_plural($ags_numfiles, $lang->details['lbl_files']), ts_nf($ags_numfiles)));
 
@@ -1561,6 +1566,7 @@ $details = '
             </div>
             <span class="dt-health__val">' . $ags_health . '%</span>
         </div>
+        ' . $dt_bp . '
     </section>
 
     <!-- KPI tiles -->

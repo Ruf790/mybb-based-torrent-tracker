@@ -132,6 +132,29 @@
 .dt-page .dt-health__bar { flex: 1 1 auto; height: .55rem; border-radius: 999px; }
 .dt-page .dt-health__val { font-weight: 700; font-size: .9em; color: var(--bs-emphasis-color); }
 
+/* Бонусы за сидирование */
+.dt-page .dt-bp {
+    display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem;
+    margin: 0 1.1rem .8rem; padding: .6rem .8rem;
+    border-radius: .8rem; background: var(--bs-warning-bg-subtle); color: var(--bs-emphasis-color);
+    font-size: .9em;
+}
+.dt-page .dt-bp__ico {
+    display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; flex: 0 0 auto;
+    border-radius: 50%; background: var(--bs-warning); color: #fff; font-size: .85rem;
+}
+.dt-page .dt-bp__txt b { color: var(--bs-warning-text-emphasis); white-space: nowrap; }
+.dt-page .dt-bp__fs { display: flex; flex-wrap: wrap; gap: .3rem; }
+.dt-page .dt-bp__f {
+    padding: .1rem .5rem; border-radius: 999px; font-size: .82em; white-space: nowrap;
+    background: var(--bs-body-bg); color: var(--bs-secondary-color);
+}
+.dt-page .dt-bp__f b { font-weight: 700; }
+.dt-page .dt-bp__f.is-up b   { color: var(--bs-success-text-emphasis); }
+.dt-page .dt-bp__f.is-down b { color: var(--bs-danger-text-emphasis); }
+.dt-page .dt-bp__more { margin-left: auto; color: var(--bs-warning-text-emphasis); opacity: .7; }
+.dt-page .dt-bp__more:hover { opacity: 1; }
+
 /* Заглушка: постер / скриншот не найден */
 .dt-page .dt-img-missing {
     display: flex; flex-direction: column; align-items: center; justify-content: center;

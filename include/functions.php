@@ -2959,8 +2959,8 @@ function write_log(string $Text, string $category = '', int $level = 0): void
     );
 }
 
-/* Admin and moderator actions live in sitelog too (category 'admin' / 'moderator').
-   Extra columns: module (admin), fid / tid / pid (moderator), data (serialized). */
+/* Moderator actions live in sitelog (category 'moderator', columns fid / tid / pid / data).
+   Admin actions are plain write_log(..., 'admin'); the module column is kept for old rows. */
 
 /** Moderator action → sitelog (one row per tid, like the old moderatorlog) */
 function sitelog_moderator_action(array $data, string $action = ''): void
@@ -2988,17 +2988,6 @@ function sitelog_moderator_action(array $data, string $action = ''): void
     );
 }
 
-/** Admin action → sitelog: txt = action, module = admin module (forum-management …) */
-function sitelog_admin_action(string $module, string $action, array $data): void
-{
-    global $db, $CURUSER, $mybb;
-
-    $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : (int)($mybb->user['id'] ?? 0);
-    $db->sql_query_prepared(
-        "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`module`,`data`) VALUES (?,?,?,?,?,?,?,?)",
-        [TIMENOW, $uid, my_inet_pton(get_ip()), $action, 'admin', 0, $module, my_serialize($data)]
-    );
-}
 
 
 

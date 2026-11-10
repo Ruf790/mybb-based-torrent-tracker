@@ -314,45 +314,6 @@ function log_moderator_action(array $data, string $action = ''): void
     sitelog_moderator_action($data, $action);   // include/functions.php
 }
 
-function log_admin_action(mixed ...$args): void
-{
-    global $db, $mybb, $CURUSER;
-
-    $data = count($args) === 1 && is_array($args[0]) ? $args[0] : $args;
-
-    $act    = $mybb->get_input('act',    MyBB::INPUT_STRING);
-    $action = $mybb->get_input('action', MyBB::INPUT_STRING);
-
-    $act_map = [
-        'management'    => 'forum-management',
-        'forums'        => 'forum-management',
-        'banning'       => 'config-banning',
-        'banning2'      => 'user-banning',
-        'liftban'       => 'user-banning',
-        'users'         => 'user-users',
-        'editprofile'   => 'user-users',
-        'deleteuser'    => 'user-users',
-        'usergroups'    => 'user-groups',
-        'groups'        => 'user-groups',
-        'editgroup'     => 'user-groups',
-        'settings'      => 'config-settings',
-        'editsettings'  => 'config-settings',
-        'plugins'       => 'config-plugins',
-        'templates'     => 'style-templates',
-        'themes'        => 'style-themes',
-        'adminlog'      => 'tools-adminlog',
-        'modlog'        => 'tools-modlog',
-        'backupdb'      => 'tools-backupdb',
-        'tasks'         => 'tools-tasks',
-        'cache'         => 'tools-cache',
-        'announcements' => 'forum-announcements',
-        'attachments'   => 'forum-attachments',
-    ];
-
-    sitelog_admin_action((string)($act_map[$act] ?? $act), $action, $data);   // include/functions.php
-}
-
-
 
 
 /**

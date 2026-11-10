@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Возвращает строки раздела $section на языке $name (с кэшем).
- * Пустой язык считается английским. Если файла нет, отдаёт строки текущего языка.
+ * Неизвестный/пустой язык → язык сайта по умолчанию; нет файла → английский.
  */
 if (!function_exists('get_lang_section')) {
     function get_lang_section(string $section, string $name): array
@@ -16,9 +16,18 @@ if (!function_exists('get_lang_section')) {
             return [];
         }
 
-        $name = str_replace(['/', '\\', '..'], '', trim($name));
-        if ($name === '') {
-            $name = 'english';
+        // Язык получателя приводим к имени папки: «English» → english, «ru»/«ru_RU» → russian.
+        // Раньше любое значение, которого нет среди папок, тихо подменялось языком того,
+        // кто отправляет (стафф закрыл запрос → ЛС пришло на языке стаффа).
+        $name  = strtolower(str_replace(['/', '\\', '..'], '', trim($name)));
+        $codes = ['en' => 'english', 'ru' => 'russian', 'bg' => 'bulgarian', 'uk' => 'ukrainian', 'de' => 'german'];
+        $short = substr($name, 0, 2);
+        if ($name !== '' && !$lang->language_exists($name) && strlen($name) <= 5 && isset($codes[$short])) {
+            $name = $codes[$short];
+        }
+        if ($name === '' || !$lang->language_exists($name)) {
+            global $defaultlanguage;
+            $name = $lang->language_exists((string)($defaultlanguage ?? '')) ? (string)$defaultlanguage : 'english';
         }
 
         // Язык получателя совпадает с текущим: берём из $lang
@@ -39,6 +48,10 @@ if (!function_exists('get_lang_section')) {
         // Сам заменяет {1} на %1$s; если языка/файла нет — вернёт [].
         $strings = $lang->get_section($section, $name);
 
+        // Нет файла на языке получателя — английский, и только потом язык отправителя
+        if (!$strings && $name !== 'english') {
+            $strings = $lang->get_section($section, 'english');
+        }
         return $cache[$key] = $strings ?: (array)($lang->$section ?? []);
     }
 }

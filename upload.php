@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=5">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=6">
 
 <div class="container-md st-page up-page">
 
@@ -2678,23 +2678,32 @@ https://example.com/screen3.webp"></textarea>
         </div>
     </div>
 
-    <!-- Upload complete -->
+    <!-- Upload complete (зелёная, с анимацией галочки) -->
     <div class="modal fade" id="uploadCompleteModal" tabindex="-1" aria-labelledby="uploadCompleteModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-success"><i class="fa-solid fa-check"></i></span>
-                    <h5 class="modal-title" id="uploadCompleteModalLabel"><?= $lang->upload['upload_success_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content shadow-lg border-0 up-done">
+                <div class="modal-header bg-success text-white border-0">
+                    <div class="d-flex align-items-center w-100">
+                        <i class="fa-solid fa-circle-check fa-2x me-3"></i>
+                        <h5 class="modal-title mb-0" id="uploadCompleteModalLabel"><?= $lang->upload['upload_success_title'] ?></h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
                 <div class="modal-body text-center py-4">
-                    <div class="fw-semibold fs-5 mb-1"><?= $lang->upload['upload_success_congrats'] ?></div>
-                    <p class="st-meta mb-0"><?= $lang->upload['upload_success_text'] ?></p>
-                    <p class="st-meta mb-0"><?= $lang->upload['upload_success_redirect'] ?></p>
+                    <div class="success-animation mb-3">
+                        <i class="fa-solid fa-check text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <h4 class="text-success mb-2"><?= $lang->upload['upload_success_congrats'] ?></h4>
+                    <p class="text-muted mb-0"><?= $lang->upload['upload_success_text'] ?></p>
+                    <p class="text-muted"><?= $lang->upload['upload_success_redirect'] ?></p>
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->upload['upload_stay'] ?></button>
-                    <button type="button" class="btn btn-primary st-pill" onclick="redirectToTorrent()"><i class="fa-solid fa-eye me-1"></i><?= $lang->upload['upload_view'] ?></button>
+                <div class="modal-footer border-0 justify-content-center pb-4">
+                    <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-xmark me-2"></i><?= $lang->upload['upload_stay'] ?>
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="redirectToTorrent()">
+                        <i class="fa-solid fa-eye me-2"></i><?= $lang->upload['upload_view'] ?>
+                    </button>
                 </div>
             </div>
         </div>
@@ -2814,7 +2823,7 @@ https://example.com/screen3.webp"></textarea>
 
 <script src="<?= $BASEURL ?>/scripts/swal-notify.js?ver=2"></script>
 <script src="<?= $BASEURL ?>/scripts/Sortable.min.js"></script>
-<script src="<?= $BASEURL ?>/scripts/upload_torrent.js?ver=74"></script>
+<script src="<?= $BASEURL ?>/scripts/upload_torrent.js?ver=75"></script>
 <script src="<?= $BASEURL ?>/scripts/tags_category.js?ver=22"></script>
 <script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=4"></script>
 

@@ -258,6 +258,23 @@
   border-color: color-mix(in srgb, var(--o) 35%, transparent); border-left-color: var(--o);
 }
 
+/* Окна «Готово» (загрузка / сохранение): зелёная шапка, галочка «выпрыгивает» */
+.up-page .up-done { border-radius: 15px; overflow: hidden; }
+.up-page .up-done .modal-header { padding: 1.5rem; }
+.up-page .up-done .modal-body { padding: 2rem; }
+.up-page .up-done .success-animation { animation: up-scale-in .5s ease-out; }
+@keyframes up-scale-in {
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.up-page .up-done #redirectCountdown { transition: transform .2s ease; }
+.up-page .up-done .modal-footer .btn { border-radius: 8px; padding: .75rem 1.5rem; font-weight: 600; transition: all .3s ease; }
+.up-page .up-done .btn-success { background: linear-gradient(135deg, #28a745, #20c997); border: none; }
+.up-page .up-done .btn-success:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(40, 167, 69, .4); }
+.up-page .up-done .btn-outline-secondary:hover,
+.up-page .up-done .btn-outline-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(108, 117, 125, .2); }
+
 /* Модалки */
 .up-page .up-modal-head { gap: .7rem; }
 .up-page .up-modal-head .modal-title {

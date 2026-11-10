@@ -6,6 +6,11 @@ $language['log'] = array (
 	// ── Page ──
 	'title_page'                 => 'Combined Logs',
 	'title_system'               => 'Combined Log System',
+	'hero_sub'                   => 'Site events, moderator and admin actions in one log',
+	'kpi_total'                  => 'Total entries',
+	'kpi_today'                  => 'Today',
+	'kpi_errors'                 => 'Errors, 24 h',
+	'kpi_staff'                  => 'Staff, 7 days',
 
 	// ── Errors ──
 	'err_no_permission'          => 'Error! You do not have permission to access this page.',

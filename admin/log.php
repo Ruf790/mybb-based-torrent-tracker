@@ -408,200 +408,7 @@ if (!empty($announcement_ids)) {
 // Пагинация
 $base_url = "index.php?act=log&action=combined_logs&" . http_build_query($filter_params);
 $multipage = $total_count > $perpage ? multipage($total_count, $perpage, $page, $base_url) : '';
-// HTML-вывод
-echo '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>' . $L['title_system'] . '</title>
-   
-   
-        <style>
-            :root {
-                --primary: #4e73df;
-                --success: #1cc88a;
-                --info: #36b9cc;
-                --warning: #f6c23e;
-                --danger: #e74a3b;
-                --dark: #5a5c69;
-                --light: #f8f9fc;
-            }
-            
-            .card-custom {
-                border-radius: 10px;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-                border: none;
-                margin-bottom: 20px;
-            }
-            
-            .card-header-custom {
-                background: linear-gradient(135deg, #fff 0%, #f8f9fc 100%);
-                border-bottom: 1px solid #e3e6f0;
-                border-radius: 10px 10px 0 0 !important;
-                padding: 15px 20px;
-                font-weight: 700;
-                color: var(--dark);
-            }
-            
-            .log-entry {
-                transition: all 0.3s ease;
-                border-left: 4px solid transparent;
-            }
-            
-            .log-entry:hover {
-                background-color: #f8f9fc;
-                transform: translateX(5px);
-            }
-            
-            .log-entry-new {
-                border-left-color: var(--success);
-                background-color: rgba(28, 200, 138, 0.05);
-            }
-            
-            .badge-log {
-                font-size: 0.75em;
-                padding: 5px 10px;
-                border-radius: 20px;
-            }
-            
-            .log-date, .log-time { white-space: nowrap; }
-            .log-date {
-                min-width: 110px;
-                font-weight: 600;
-                color: var(--dark);
-            }
-            
-            .log-time {
-                min-width: 100px;
-                color: #858796;
-            }
-            
-            .search-box {
-                position: relative;
-            }
-            
-            .search-box .form-control {
-                padding-left: 40px;
-                border-radius: 20px;
-            }
-            
-            .search-box i {
-                position: absolute;
-                left: 15px;
-                top: 12px;
-                color: #b7b9cc;
-            }
-            
-            .pagination-custom .page-item.active .page-link {
-                background-color: var(--primary);
-                border-color: var(--primary);
-            }
-            
-            .pagination-custom .page-link {
-                color: var(--primary);
-                border-radius: 5px;
-                margin: 0 3px;
-                border: none;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            }
-            
-            .btn-clear {
-                border-radius: 20px;
-                padding: 8px 20px;
-                font-weight: 600;
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            
-            .fade-in {
-                animation: fadeIn 0.5s ease forwards;
-            }
-            
-            .sticky-header {
-                position: sticky;
-                top: 0;
-                background: white;
-                z-index: 100;
-                box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
-                border-radius: 10px;
-                padding: 20px;
-                margin-bottom: 20px;
-            }
-            
-            .log-content {
-                line-height: 1.6;
-            }
-            
-            .action-buttons {
-                display: flex;
-                gap: 10px;
-            }
-            
-            .filter-row {
-                display: flex;
-                gap: 15px;
-                flex-wrap: wrap;
-                align-items: end;
-            }
-            
-            .filter-group {
-                flex: 1;
-                min-width: 200px;
-            }
-            
-            .filter-group label {
-                font-weight: 600;
-                margin-bottom: 5px;
-                color: var(--dark);
-            }
-            
-            .stats-badge {
-                background: linear-gradient(135deg, var(--primary) 0%, #2a4cb3 100%);
-                color: white;
-                padding: 8px 15px;
-                border-radius: 20px;
-                font-weight: 600;
-            }
-            
-            @media (max-width: 768px) {
-                .filter-row {
-                    flex-direction: column;
-                }
-                
-                .filter-group {
-                    min-width: 100%;
-                }
-                
-                .action-buttons {
-                    flex-wrap: wrap;
-                }
-            }
-        </style>
-   
-   
-   
-   
-   
-   
-</head>
-<body>';
-if (function_exists('stdhead')) {
-    stdhead($lang->log['title_page']);
-} else {
-    echo '<nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4">
-        <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="#">
-                <i class="fas fa-clipboard-list fa-2x me-2"></i>
-                <span class="fw-bold">TS Special Edition v.5.6 - ' . $L['title_system'] . '</span>
-            </a>
-        </div>
-    </nav>';
-}
-
+// POST (clear / delete) — before any output, so admin_redirect() can send a header
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['clear']) && $_POST['clear'] === 'yes' && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
@@ -642,6 +449,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// KPI tiles (indexed: added, category+added)
+$kpi = static function (string $sql, array $p = []) use ($db): int {
+    $r = $db->sql_query_prepared($sql, $p);
+    return $r && ($row = $db->fetch_array($r)) ? (int)array_values($row)[0] : 0;
+};
+$day0       = (int)strtotime('today');
+$kpi_total  = $kpi("SELECT COUNT(*) FROM sitelog");
+$kpi_today  = $kpi("SELECT COUNT(*) FROM sitelog WHERE added >= ?", [$day0]);
+$kpi_errors = $kpi("SELECT COUNT(*) FROM sitelog WHERE category IN ('error', 'security') AND added >= ?", [TIMENOW - 86400]);
+$kpi_staff  = $kpi("SELECT COUNT(*) FROM sitelog WHERE (category = 'moderator' OR (category = 'admin' AND module <> '')) AND added >= ?", [TIMENOW - 7 * 86400]);
+
+stdhead($lang->log['title_page']);
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/log.css?ver=1">'
+   . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/flatpickr.min.css">'
+   . '<script src="' . $BASEURL . '/admin/scripts/flatpickr.js"></script>';
+
+
 // Event filter: value (English, used in SQL) => lang key
 $event_options = [
     'Banned User'            => 'opt_event_banned_user',
@@ -662,156 +486,115 @@ foreach ($event_options as $ev_value => $ev_key) {
         . ($event_filter == $ev_value ? 'selected' : '') . '>' . $L[$ev_key] . '</option>';
 }
 
-echo '
-<div class="container">
-    <div class="sticky-header">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="stats-badge">
-                <i class="fas fa-database me-1"></i> ' . ags_fmt($L['lbl_total_logs'], $total_count) . '
-            </div>
-            <div class="action-buttons">
-                <button class="btn btn-danger btn-clear" data-bs-toggle="modal" data-bs-target="#clearModal">
-                    <i class="fas fa-trash me-1"></i> ' . $L['btn_clear_site_logs'] . '
-                </button>
-                <button class="btn btn-primary btn-clear" id="refresh-logs">
-                    <i class="fas fa-sync-alt me-1"></i> ' . $L['btn_refresh'] . '
-                </button>
-				
-				<button class="btn btn-secondary btn-clear" id="export-csv">
-                    <i class="fas fa-download me-1"></i> ' . $L['btn_export_csv'] . '
-                </button>
-				
-				
-            </div>
+$lgL = static fn(string $k, string $d): string => (string)($L[$k] ?? htmlspecialchars($d));
+
+$type_opts = [
+    'both'      => ['fa-layer-group', $L['opt_log_both']],
+    'site'      => ['fa-globe',       $L['lbl_type_site']],
+    'moderator' => ['fa-user-shield', $L['lbl_type_mod']],
+    'admin'     => ['fa-crown',       $L['lbl_type_admin']],
+];
+$type_seg = '';
+foreach ($type_opts as $val => [$ic, $lbl]) {
+    $type_seg .= '<label class="lg-seg__i"><input type="radio" name="log_type" value="' . $val . '"' . ($log_type === $val ? ' checked' : '') . '>'
+               . '<span><i class="fa-solid ' . $ic . '"></i>' . $lbl . '</span></label>';
+}
+
+$can_clear = !empty($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1';
+
+echo '<div class="container mt-3 mb-4 lg">';
+
+// Hero
+echo '<div class="lg-card mb-3"><div class="lg-head">'
+   . '<span class="lg-head__ico"><i class="fa-solid fa-clock-rotate-left"></i></span>'
+   . '<div class="min-w-0"><h1 class="lg-title">' . $L['title_system'] . '</h1>'
+   . '<div class="lg-sub">' . $lgL('hero_sub', 'Site events, moderator and admin actions in one log') . '</div></div>'
+   . '<div class="ms-auto d-flex flex-wrap gap-2">'
+   .   '<button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-logs"><i class="fa-solid fa-rotate me-1"></i>' . $L['btn_refresh'] . '</button>'
+   .   '<button type="button" class="btn btn-sm btn-outline-secondary" id="export-csv"><i class="fa-solid fa-file-csv me-1"></i>' . $L['btn_export_csv'] . '</button>'
+   .   ($can_clear ? '<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#clearModal"><i class="fa-solid fa-trash me-1"></i>' . $L['btn_clear_site_logs'] . '</button>' : '')
+   . '</div></div></div>';
+
+// KPI
+echo '<div class="row g-3 mb-3">';
+foreach ([
+    ['fa-database',             'ic-blue',   $lgL('kpi_total', 'Total entries'),   ts_nf($kpi_total)],
+    ['fa-calendar-day',         'ic-green',  $lgL('kpi_today', 'Today'),           ts_nf($kpi_today)],
+    ['fa-triangle-exclamation', $kpi_errors > 0 ? 'ic-red' : 'ic-slate', $lgL('kpi_errors', 'Errors, 24 h'), ts_nf($kpi_errors)],
+    ['fa-user-shield',          'ic-purple', $lgL('kpi_staff', 'Staff actions, 7 days'), ts_nf($kpi_staff)],
+] as [$ic, $cls, $lbl, $val]) {
+    echo '<div class="col-6 col-lg-3"><div class="lg-card lg-kpi"><span class="lg-kpi__ico ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+       . '<div class="min-w-0"><div class="lg-kpi__lbl">' . $lbl . '</div><div class="lg-kpi__val">' . $val . '</div></div></div></div>';
+}
+echo '</div>';
+
+// Filters
+echo '<form method="get" id="filter-form" class="lg-card lg-filters mb-3">
+    <input type="hidden" name="act" value="log">
+    <input type="hidden" name="action" value="combined_logs">
+    <div class="lg-seg" role="radiogroup" aria-label="' . $L['lbl_log_type'] . '">' . $type_seg . '</div>
+    <div class="lg-frow">
+        <div class="lg-field lg-field--grow">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="search" class="form-control" id="search-input" name="query" placeholder="' . $L['ph_search'] . '" value="' . htmlspecialchars($searchstr) . '" aria-label="' . $L['lbl_search'] . '">
         </div>
-        <form method="get" id="filter-form">
-            <input type="hidden" name="act" value="log">
-            <input type="hidden" name="action" value="combined_logs">
-            <div class="filter-row">
-                <div class="filter-group">
-                    <label for="search-input"><i class="fas fa-search me-1"></i>' . $L['lbl_search'] . '</label>
-                    <div class="search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" class="form-control" id="search-input" name="query"
-                               placeholder="' . $L['ph_search'] . '" value="' . htmlspecialchars($searchstr) . '">
-                    </div>
-                </div>
-                <div class="filter-group">
-                    <label for="log-type"><i class="fas fa-list me-1"></i>' . $L['lbl_log_type'] . '</label>
-                    <select class="form-select" id="log-type" name="log_type">
-                        <option value="both" ' . ($log_type == 'both' ? 'selected' : '') . '>' . $L['opt_log_both'] . '</option>
-                        <option value="site" ' . ($log_type == 'site' ? 'selected' : '') . '>' . $L['opt_log_site'] . '</option>
-                        <option value="moderator" ' . ($log_type == 'moderator' ? 'selected' : '') . '>' . $L['opt_log_moderator'] . '</option>
-						<option value="admin"     ' . ($log_type == 'admin'     ? 'selected' : '') . '>' . $L['opt_log_admin'] . '</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="event-filter"><i class="fas fa-filter me-1"></i>' . $L['lbl_event_type'] . '</label>
-                    <select class="form-select" id="event-filter" name="event_filter">
-                        ' . $event_options_html . '
-                    </select>
-                </div>
-                
-				<div class="filter-group">
-    <label for="date-filter"><i class="fas fa-calendar me-1"></i>' . $L['lbl_date'] . '</label>
-    <input type="text" class="form-control" id="date-filter" name="date_filter"
-           value="'.htmlspecialchars($date_filter).'" placeholder="' . $L['ph_date'] . '">
-</div>
+        <div class="lg-field">
+            <i class="fa-solid fa-filter"></i>
+            <select class="form-select" id="event-filter" name="event_filter" aria-label="' . $L['lbl_event_type'] . '">' . $event_options_html . '</select>
+        </div>
+        <div class="lg-field lg-field--date">
+            <i class="fa-solid fa-calendar"></i>
+            <input type="text" class="form-control" id="date-filter" name="date_filter" value="' . htmlspecialchars($date_filter) . '" placeholder="' . $L['ph_date'] . '" aria-label="' . $L['lbl_date'] . '">
+        </div>
+        <button type="submit" class="btn btn-primary px-3"><i class="fa-solid fa-filter me-1"></i>' . $L['btn_apply_filters'] . '</button>
+    </div>
+</form>';
 
-
-<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/flatpickr.min.css">
-<script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>
-				
-				
-                <div class="filter-group">
-                    <label>&nbsp;</label>
-                    <button type="submit" class="btn btn-success w-100">
-                        <i class="fas fa-filter me-1"></i> ' . $L['btn_apply_filters'] . '
-                    </button>
-                </div>
-            </div>
-        </form>
-    </div>';
-
-$active_filters = [];
-if ($searchstr !== '') $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_search'], $searchstr));
+// Active filters (type is shown by the segmented control)
+$chips = [];
+if ($searchstr !== '') $chips[] = htmlspecialchars(ags_fmt($lang->log['af_search'], $searchstr));
 if ($event_filter !== 'all') {
     $event_label = isset($event_options[$event_filter]) ? $lang->log[$event_options[$event_filter]] : $event_filter;
-    $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_event'], $event_label));
+    $chips[] = htmlspecialchars(ags_fmt($lang->log['af_event'], $event_label));
 }
-if ($date_filter !== '') $active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_date'], $date_filter));
-$active_filters[] = htmlspecialchars(ags_fmt($lang->log['af_log_type'],
-    match ($log_type) {
-        'both'  => $lang->log['af_type_both'],
-        'site'  => $lang->log['af_type_site'],
-        'admin' => $lang->log['af_type_admin'],
-        default => $lang->log['af_type_moderator'],
-    }));
-if (!empty($active_filters)) {
-    echo '<div class="alert alert-info mb-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <i class="fas fa-filter me-2"></i>
-                    <strong>' . $L['lbl_active_filters'] . '</strong> ' . implode(', ', $active_filters) . '
-                    <span class="badge bg-primary ms-2">' . ags_fmt($L['lbl_found'], $total_count) . '</span>
-                </div>
-                <a href="index.php?act=log&action=combined_logs" class="btn btn-sm btn-outline-danger">
-                    <i class="fas fa-times me-1"></i> ' . $L['btn_clear_filters'] . '
-                </a>
-            </div>
-        </div>';
+if ($date_filter !== '') $chips[] = htmlspecialchars(ags_fmt($lang->log['af_date'], $date_filter));
+if ($chips || $log_type !== 'both') {
+    echo '<div class="lg-active mb-3"><i class="fa-solid fa-filter"></i>'
+       . implode('', array_map(static fn(string $c): string => '<span class="lg-chip">' . $c . '</span>', $chips))
+       . '<span class="lg-chip lg-chip--n">' . ags_fmt($L['lbl_found'], ts_nf($total_count)) . '</span>'
+       . '<a href="index.php?act=log&action=combined_logs" class="ms-auto lg-reset"><i class="fa-solid fa-xmark me-1"></i>' . $L['btn_clear_filters'] . '</a></div>';
 }
-echo '<div id="log-container"><div class="container mt-3">';
-
-if ($total_count > $perpage) 
-{
-    echo '<div class="pagination">' . $multipage . '</div>';
-}
-
-
-
-
-
-
-
-
+echo '<div id="log-container">';
 
 if (count($logs) == 0) {
-    echo '
-    <div class="text-center py-5">
-        <i class="fas fa-list fa-4x text-muted mb-3"></i>
-        <h5 class="text-muted">' . $L['msg_no_logs'] . '</h5>
-    </div>';
-} 
-else 
+    echo '<div class="lg-card"><div class="lg-empty"><i class="fa-regular fa-folder-open"></i><div>' . $L['msg_no_logs'] . '</div></div></div>';
+}
+else
 {
     echo '<form method="post" action="index.php?act=log&action=combined_logs" id="logs-form">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-            <div class="card card-custom">
-                <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
-                    <h5 class="m-0"><i class="fas fa-history me-2"></i>' . $L['sec_event_log'] . '</h5>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="select-all">
-                        <label class="form-check-label small" for="select-all">' . $L['lbl_select_site_logs'] . '</label>
-                    </div>
+            <div class="lg-card overflow-hidden">
+                <div class="lg-sec">
+                    <span class="lg-sec__ico"><i class="fa-solid fa-list"></i></span>
+                    <h2 class="lg-sec__title">' . $L['sec_event_log'] . '</h2>
+                    <span class="lg-chip lg-chip--n">' . ts_nf($total_count) . '</span>
+                    ' . ($can_clear ? '<label class="ms-auto lg-selall"><input class="form-check-input" type="checkbox" id="select-all"><span>' . $L['lbl_select_site_logs'] . '</span></label>' : '') . '
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th style="width: 100px">' . $L['th_type'] . '</th>
-                                    <th style="width: 120px">' . $L['th_username'] . '</th>
-                                    <th style="width: 120px">' . $L['th_date'] . '</th>
-                                    <th style="width: 100px">' . $L['th_time'] . '</th>
-                                    <th>' . $L['th_action'] . '</th>
-                                    <th>' . $L['th_information'] . '</th>
-                                    <th style="width: 120px">' . $L['th_ip'] . '</th>
-                                    <th style="width: 80px" class="text-center">' . $L['th_select'] . '</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
+                <div class="table-responsive">
+                    <table class="table lg-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>' . $L['th_type'] . '</th>
+                                <th>' . $L['th_username'] . '</th>
+                                <th>' . $L['th_date'] . '</th>
+                                <th>' . $L['th_action'] . '</th>
+                                <th>' . $L['th_information'] . '</th>
+                                <th>' . $L['th_ip'] . '</th>
+                                ' . ($can_clear ? '<th class="text-center"><i class="fa-solid fa-check"></i></th>' : '') . '
+                            </tr>
+                        </thead>
+                        <tbody>';
 
     // ЦИКЛ ПО УЖЕ СОБРАННЫМ ДАННЫМ
     foreach ($logs as $arr) {
@@ -823,18 +606,18 @@ else
         $is_new = (time() - $timestamp <= 120);
         $row_class = $is_new ? 'log-entry-new' : '';
         
-		$type_badge = match($entry_type) {
-    'site'      => '<span class="badge bg-primary badge-site log-type-badge"><i class="fas fa-globe me-1"></i> ' . $L['lbl_type_site'] . '</span>',
-    'moderator' => '<span class="badge bg-success badge-moderator log-type-badge"><i class="fas fa-user-shield me-1"></i> ' . $L['lbl_type_mod'] . '</span>',
-    'admin'     => '<span class="badge bg-danger badge-log log-type-badge"><i class="fas fa-crown"></i> ' . $L['lbl_type_admin'] . '</span>',
-    default     => '<span class="log-type-pill badge-site">?</span>',
-};
+        $type_badge = match($entry_type) {
+            'site'      => '<span class="lg-type t-site"><i class="fa-solid fa-globe"></i>' . $L['lbl_type_site'] . '</span>',
+            'moderator' => '<span class="lg-type t-mod"><i class="fa-solid fa-user-shield"></i>' . $L['lbl_type_mod'] . '</span>',
+            'admin'     => '<span class="lg-type t-admin"><i class="fa-solid fa-crown"></i>' . $L['lbl_type_admin'] . '</span>',
+            default     => '<span class="lg-type">?</span>',
+        };
 		
 		
            
-        $checkbox = (is_numeric($id) && $id > 0) ?
-            '<input type="checkbox" class="form-check-input log-checkbox" name="logid[]" value="' . $id . '">' :
-            '<span class="text-muted"><i class="fas fa-lock"></i></span>';
+        $checkbox = (is_numeric($id) && $id > 0)
+            ? '<input type="checkbox" class="form-check-input log-checkbox" name="logid[]" value="' . (int)$id . '" aria-label="#' . (int)$id . '">'
+            : '<i class="fa-solid fa-lock text-body-tertiary"></i>';
 
         // Обработка содержимого в зависимости от типа лога
   
@@ -860,52 +643,43 @@ if ($entry_type === 'site') {
         }
     } else {
         // uid = 0 — автоматическая задача
-        $username = '<span class="badge bg-info badge-log log-type-badge">'
-              . '<i class="fas fa-sync-alt me-1"></i> ' . $L['lbl_cron']
-              . '</span>';
+        $username = '<span class="lg-pill tone-purple"><i class="fa-solid fa-robot"></i>' . $L['lbl_cron'] . '</span>';
     }
 
     // IP
-    $ipaddress = '<span style="color:#8a8ea8;font-size:12px">—</span>';
+    $ipaddress = '<span class="text-body-tertiary">—</span>';
     if (!empty($arr['ipaddress'])) {
         $decoded = my_inet_ntop($db->unescape_binary($arr['ipaddress']));
         if ($decoded && $decoded !== '0.0.0.0') {
             $ipaddress = $decoded;
         } else {
-            $ipaddress = '<span style="background:#f4f0fd;color:#6a3fc1;padding:2px 8px;'
-                       . 'border-radius:6px;font-size:11px;font-weight:700">'
-                       . '<i class="fas fa-robot me-1"></i>' . $L['lbl_cron']
-                       . '</span>';
+            $ipaddress = '<span class="lg-pill tone-purple"><i class="fa-solid fa-robot"></i>' . $L['lbl_cron'] . '</span>';
         }
     }
 
     // Category badge
+    // category => [tone, icon, lang key]
     $cat_badges = [
-        'general'    => ['#f0f2fa', '#6c7293', 'fa-circle-info',        'cat_general'],
-        'news'       => ['#eaf6ff', '#0a6ebd', 'fa-newspaper',          'cat_news'],
-        'screenshot' => ['#e8f4fd', '#1a7fc1', 'fa-image',              'cat_screenshot'],
-        'torrent'    => ['#e8f9f0', '#1a8a4a', 'fa-magnet',             'cat_torrent'],
-        'cron'       => ['#f4f0fd', '#6a3fc1', 'fa-robot',              'cat_cron'],
-        'error'      => ['#fdecea', '#c0392b', 'fa-triangle-exclamation', 'cat_error'],
-        'security'   => ['#fdecea', '#8e1a1a', 'fa-shield-halved',      'cat_security'],
-        'settings'   => ['#fff8e6', '#c07800', 'fa-gear',               'cat_settings'],
-        'ban'        => ['#fdecea', '#c0392b', 'fa-ban',                'cat_ban'],
-        'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'cat_deletion'],
-        'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'cat_mail'],
-        'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'cat_warning'],
-        'admin'      => ['#fdecea', '#c0392b', 'fa-crown',              'cat_admin'],
+        'general'    => ['secondary', 'fa-circle-info',           'cat_general'],
+        'news'       => ['info',      'fa-newspaper',             'cat_news'],
+        'screenshot' => ['info',      'fa-image',                 'cat_screenshot'],
+        'torrent'    => ['success',   'fa-magnet',                'cat_torrent'],
+        'cron'       => ['purple',    'fa-robot',                 'cat_cron'],
+        'error'      => ['danger',    'fa-triangle-exclamation',  'cat_error'],
+        'security'   => ['danger',    'fa-shield-halved',         'cat_security'],
+        'settings'   => ['warning',   'fa-gear',                  'cat_settings'],
+        'ban'        => ['danger',    'fa-ban',                   'cat_ban'],
+        'deletion'   => ['danger',    'fa-trash',                 'cat_deletion'],
+        'mail'       => ['info',      'fa-envelope',              'cat_mail'],
+        'warning'    => ['warning',   'fa-triangle-exclamation',  'cat_warning'],
+        'admin'      => ['danger',    'fa-crown',                 'cat_admin'],
     ];
 
     $cat = !empty($arr['category']) ? $arr['category'] : 'general';
-    [$bg, $cl, $icon, $label_key] = $cat_badges[$cat] ?? $cat_badges['general'];
+    [$tone, $icon, $label_key] = $cat_badges[$cat] ?? $cat_badges['general'];
     $label = (string)($lang->log[$label_key] ?? ucfirst($cat));
 
-    $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:3px 9px;'
-                 . 'border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;'
-                 . 'display:inline-flex;align-items:center;gap:4px">'
-                 . '<i class="fas ' . $icon . '" style="font-size:10px"></i>'
-                 . htmlspecialchars($label)
-                 . '</span>';
+    $information = '<span class="lg-pill tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i>' . htmlspecialchars($label) . '</span>';
 
     $match_action = $action; // badge matching on raw (English) log text
 }
@@ -976,10 +750,7 @@ elseif ($entry_type === 'admin') {
     $module_label_en = $module_key !== null ? (string)($admin_log_lang_en[$module_key] ?? $module_label) : $module_fallback;
 
     $module_span = static fn(string $label): string =>
-        '<span style="background:#fff0e6;color:#c0392b;padding:2px 8px;'
-        . 'border-radius:6px;font-size:11px;font-weight:700;margin-right:6px">'
-        . htmlspecialchars($label)
-        . '</span> ';
+        '<span class="lg-pill tone-danger me-1">' . htmlspecialchars($label) . '</span> ';
 
     if ($module_label) {
         $action = $module_span($module_label) . $action;
@@ -1024,23 +795,23 @@ elseif ($entry_type === 'admin') {
             // Используем предзагруженные данные вместо отдельных запросов
             if ($arr['tid'] && isset($threads_data[$arr['tid']])) {
                 $thread = $threads_data[$arr['tid']];
-                $information .= "<strong>".$L['lbl_thread']."</strong> <a href=\"../".get_thread_link($arr['tid'])."\" target=\"_blank\">".htmlspecialchars($thread['subject'])."</a><br />";
+                $information .= '<a class="lg-ref" href="../' . get_thread_link($arr['tid']) . '" target="_blank" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . htmlspecialchars($thread['subject']) . '</a>';
             }
             
             if ($arr['fid'] && isset($forums_data[$arr['fid']])) {
                 $forum = $forums_data[$arr['fid']];
-                $information .= "<strong>".$L['lbl_forum']."</strong> <a href=\"../".get_forum_link($arr['fid'])."\" target=\"_blank\">".htmlspecialchars($forum['name'])."</a><br />";
+                $information .= '<a class="lg-ref" href="../' . get_forum_link($arr['fid']) . '" target="_blank" title="' . $L['lbl_forum'] . '"><i class="fa-solid fa-folder"></i>' . htmlspecialchars($forum['name']) . '</a>';
             }
             
             if ($arr['pid'] && isset($posts_data[$arr['pid']])) {
                 $post = $posts_data[$arr['pid']];
-                $information .= "<strong>".$L['lbl_post']."</strong> <a href=\"../".get_post_link($arr['pid'])."#pid{$arr['pid']}\" target=\"_blank\">".htmlspecialchars($post['subject'])."</a>";
+                $information .= '<a class="lg-ref" href="../' . get_post_link($arr['pid']) . '#pid' . (int)$arr['pid'] . '" target="_blank" title="' . $L['lbl_post'] . '"><i class="fa-solid fa-message"></i>' . htmlspecialchars($post['subject']) . '</a>';
             }
             
             // Если в data есть информация об объявлении
             if (!$information && !empty($data['aid']) && isset($announcements_data[$data['aid']])) {
                 $announcement = $announcements_data[$data['aid']];
-                $information = "<strong>".$L['lbl_announcement']."</strong> <a href=\"../".get_announcement_link($data['aid'])."\" target=\"_blank\">".htmlspecialchars($announcement['subject'])."</a>";
+                $information = '<a class="lg-ref" href="../' . get_announcement_link($data['aid']) . '" target="_blank" title="' . $L['lbl_announcement'] . '"><i class="fa-solid fa-bullhorn"></i>' . htmlspecialchars($announcement['subject']) . '</a>';
             }
         }
 
@@ -1240,32 +1011,26 @@ elseif ($entry_type === 'admin') {
 		
 		
 
-        echo "<tr class='log-entry $row_class fade-in'>
-                <td>$type_badge</td>
-                <td>$username</td>
-                <td class='log-date'><i class='fas fa-calendar-alt me-1 text-muted'></i> $date</td>
-                <td class='log-time'><i class='fas fa-clock me-1 text-muted'></i> $time</td>
-                <td>
-                    <span class='badge bg-$color badge-log'>
-                        <i class='fas $icon me-1'></i> $badge
-                    </span>
-                    <span class='ms-2 text-$color'><b>$parsed_action</b></span>
-                </td>
-                <td>$information</td>
-                <td>$ipaddress</td>
-                <td class='text-center'>
-                    $checkbox
-                </td>
-              </tr>";
+        $ip_plain = trim(strip_tags((string)$ipaddress));
+        echo '<tr class="lg-row is-' . $entry_type . ($is_new ? ' is-new' : '') . '"'
+           . ' data-type="' . htmlspecialchars(strip_tags($type_badge)) . '" data-user="' . htmlspecialchars(trim(strip_tags((string)$username))) . '"'
+           . ' data-date="' . $date . '" data-time="' . htmlspecialchars((string)$time) . '"'
+           . ' data-action="' . htmlspecialchars(trim(preg_replace('/\s+/', ' ', strip_tags($badge . ' ' . $parsed_action)))) . '" data-ip="' . htmlspecialchars($ip_plain) . '">'
+           . '<td>' . $type_badge . '</td>'
+           . '<td class="lg-user">' . $username . '</td>'
+           . '<td class="lg-when"><span class="lg-when__d">' . $date . '</span><span class="lg-when__t">' . $time . '</span></td>'
+           . '<td class="lg-act"><span class="lg-pill tone-' . $color . '"><i class="fa-solid ' . $icon . '"></i>' . $badge . '</span>'
+           .   '<span class="lg-act__txt' . ($color === 'danger' ? ' is-danger' : '') . '">' . $parsed_action . '</span></td>'
+           . '<td class="lg-info">' . $information . '</td>'
+           . '<td class="lg-ip">' . $ipaddress . '</td>'
+           . ($can_clear ? '<td class="text-center">' . $checkbox . '</td>' : '')
+           . '</tr>';
     }
 
-    echo '</tbody></table></div></div>
-        <div class="card-footer text-end">
-            <button type="submit" class="btn btn-danger btn-sm">
-                <i class="fas fa-trash me-1"></i> ' . $L['btn_delete_selected_site'] . '
-            </button>
-        </div>
-        </div></form>';
+    echo '</tbody></table></div>'
+       . ($can_clear ? '<div class="lg-foot"><span class="lg-muted"><i class="fa-solid fa-circle-info me-1"></i>' . ags_fmt($L['lbl_total_logs'], ts_nf($total_count)) . '</span>'
+           . '<button type="submit" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash me-1"></i>' . $L['btn_delete_selected_site'] . '</button></div>' : '')
+       . '</div></form>';
 }
 
 
@@ -1276,63 +1041,40 @@ elseif ($entry_type === 'admin') {
 
 
 if ($total_count > $perpage) {
-    echo '<div class="pagination">' . $multipage . '</div>';
+    echo '<div class="lg-pages">' . $multipage . '</div>';
 }
 echo '</div></div>';
 
 
 
-$modal_confirm_html = ags_fmt($L['modal_clear_confirm'],
-    '<strong style="color:#e74a3b">' . $L['modal_clear_confirm_strong'] . '</strong>');
-$modal_note_html = $lang->log['modal_clear_note']; // HTML allowed, output as-is
+$modal_confirm_html = ags_fmt($L['modal_clear_confirm'], '<strong class="text-danger">' . $L['modal_clear_confirm_strong'] . '</strong>');
+$modal_note_html    = $lang->log['modal_clear_note']; // HTML allowed, output as-is
 
+if ($can_clear) {
 echo <<<HTML
-<div class="modal fade" id="clearModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border:none;border-radius:20px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.2)">
-
-            <!-- Шапка -->
-            <div style="background:linear-gradient(135deg,#e74a3b 0%,#c0392b 100%);padding:32px 28px 24px;text-align:center;position:relative">
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                    style="position:absolute;top:16px;right:16px;opacity:0.8"></button>
-                <div style="width:72px;height:72px;background:rgba(255,255,255,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid rgba(255,255,255,0.3)">
-                    <i class="fas fa-trash-alt" style="color:#fff;font-size:28px"></i>
-                </div>
-                <h4 style="color:#fff;margin:0;font-weight:700;font-size:20px">{$L['modal_clear_title']}</h4>
-                <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px">{$L['modal_clear_sub']}</p>
-            </div>
-
-            <!-- Тело -->
-            <div style="padding:28px;text-align:center;background:#fff">
-                <p style="color:#5a5c69;font-size:15px;margin:0 0 12px;line-height:1.6">
-                    {$modal_confirm_html}<br>{$L['modal_cannot_undo']}
-                </p>
-                <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;text-align:left">
-                    <i class="fas fa-exclamation-circle" style="color:#f6c23e;font-size:18px;flex-shrink:0"></i>
-                    <span style="color:#856404;font-size:13px">{$modal_note_html}</span>
-                </div>
-            </div>
-
-            <!-- Футер -->
-            <div style="padding:0 28px 28px;background:#fff;display:flex;gap:12px">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
-                    style="flex:1;border-radius:10px;padding:11px;font-weight:600;border:2px solid #e3e6f0;background:#fff;color:#5a5c69">
-                    <i class="fas fa-times me-1"></i> {$L['btn_cancel']}
-                </button>
-                <form method="post" action="index.php?act=log&action=combined_logs" style="flex:1;margin:0">
-                    <input type="hidden" name="clear" value="yes">
-                    <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-                    <button type="submit"
-                        style="width:100%;border-radius:10px;padding:11px;font-weight:600;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);color:#fff;cursor:pointer">
-                        <i class="fas fa-trash-alt me-1"></i> {$L['btn_clear_logs']}
-                    </button>
-                </form>
-            </div>
-
-        </div>
+<div class="modal fade lg-modal" id="clearModal" tabindex="-1" aria-labelledby="clearModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header">
+      <span class="lg-modal__ico"><i class="fa-solid fa-trash-can"></i></span>
+      <div><h5 class="modal-title fw-bold" id="clearModalTitle">{$L['modal_clear_title']}</h5><div class="lg-muted">{$L['modal_clear_sub']}</div></div>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{$L['btn_cancel']}"></button>
     </div>
+    <div class="modal-body">
+      <p class="mb-2">{$modal_confirm_html} {$L['modal_cannot_undo']}</p>
+      <div class="lg-note"><i class="fa-solid fa-triangle-exclamation"></i><span>{$modal_note_html}</span></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>{$L['btn_cancel']}</button>
+      <form method="post" action="index.php?act=log&action=combined_logs" class="d-inline">
+        <input type="hidden" name="clear" value="yes">
+        <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
+        <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>{$L['btn_clear_logs']}</button>
+      </form>
+    </div>
+  </div></div>
 </div>
 HTML;
+}
 
 // JS strings: js_* keys -> AGS_LANG without the prefix
 $ags_js_lang = [];
@@ -1345,9 +1087,7 @@ foreach ($lang->log as $k => $v) {
 <script>
 const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
-<script src="<?= $BASEURL ?>/admin/scripts/log.js?ver=1"></script>
-</body>
-</html>
+<script src="<?= $BASEURL ?>/admin/scripts/log.js?ver=2"></script>
 <?php
 
 

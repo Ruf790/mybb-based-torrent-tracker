@@ -155,6 +155,7 @@ $TT_ORPHAN_RULES = [
     ['torrent_ratings',       [['torrent_id', 'torrents', 'id'], ['user_id', 'users', 'id']]],
     ['threadratings',         [['tid', 'threads', 'tid'], ['user_id', 'users', 'id']]],
     ['torrents_nfo',          [['torrent_id', 'torrents', 'id']]],
+    ['torrents_mediainfo',    [['torrent_id', 'torrents', 'id']]],
     ['request_votes',         [['request_id', 'requests', 'id'], ['user_id', 'users', 'id']]],
     ['request_comments',      [['request_id', 'requests', 'id'], ['user_id', 'users', 'id']]],
     ['offer_votes',           [['offer_id', 'offers', 'id'], ['user_id', 'users', 'id']]],

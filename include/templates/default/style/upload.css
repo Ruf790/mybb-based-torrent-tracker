@@ -107,24 +107,9 @@
   transition: background-color .15s ease, color .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 .up-page .cat-pick-btn span { overflow-wrap: anywhere; }
-.up-page .cat-pick-btn i { font-size: 1.3rem; color: var(--c, var(--bs-primary)); opacity: .85; }
-.up-page .cat-pick-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, .08); }
-.up-page .cat-pick-btn.active i { opacity: 1; }
-/* Каждой категории — свой цвет по кругу */
-.up-page .cat-pick-btn:nth-child(8n+1) { --c: #3b82f6; }
-.up-page .cat-pick-btn:nth-child(8n+2) { --c: #ef4444; }
-.up-page .cat-pick-btn:nth-child(8n+3) { --c: #10b981; }
-.up-page .cat-pick-btn:nth-child(8n+4) { --c: #8b5cf6; }
-.up-page .cat-pick-btn:nth-child(8n+5) { --c: #f59e0b; }
-.up-page .cat-pick-btn:nth-child(8n+6) { --c: #06b6d4; }
-.up-page .cat-pick-btn:nth-child(8n+7) { --c: #ec4899; }
-.up-page .cat-pick-btn:nth-child(8n+8) { --c: #14b8a6; }
-.up-page .cat-pick-btn:hover { color: var(--bs-emphasis-color); border-color: var(--bs-border-color); }
-.up-page .cat-pick-btn.active {
-  background: color-mix(in srgb, var(--c, var(--bs-primary)) 14%, var(--bs-body-bg));
-  color: var(--bs-emphasis-color); border-color: var(--c, var(--bs-primary));
-  box-shadow: 0 0 0 .15rem color-mix(in srgb, var(--c, var(--bs-primary)) 20%, transparent);
-}
+.up-page .cat-pick-btn i { font-size: 1.3rem; }
+.up-page .cat-pick-btn:hover { color: var(--bs-emphasis-color); border-color: var(--bs-border-color); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, .08); }
+.up-page .cat-pick-btn.active { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); border-color: var(--bs-primary); }
 
 /* Жанры: у каждой кнопки свой цвет в --g (style="--g: #…" в upload.php).
    Обычная — белая с цветным текстом и рамкой, выбранная — залита цветом. */

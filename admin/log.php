@@ -609,8 +609,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit(htmlspecialchars($lang->log['err_invalid_token']));
         }
 
-        // Admin / moderator actions stay (audit trail) — clears site events only
-        $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE NOT (category = 'moderator' OR (category = 'admin' AND module <> ''))");
+        // Everything: site events, admin and moderator actions
+        $result = $db->sql_query_prepared('TRUNCATE TABLE sitelog');
         if ($result) {
             flash_message($lang->log['flash_cleared'], 'success');
         } else {

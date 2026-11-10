@@ -23,7 +23,7 @@ $language['log'] = array (
 
 	// ── Toolbar / buttons ──
 	'lbl_total_logs'             => 'Всего записей: {1}',
-	'btn_clear_site_logs'        => 'Очистить журнал сайта',
+	'btn_clear_site_logs'        => 'Очистить журнал',
 	'btn_refresh'                => 'Обновить',
 	'btn_export_csv'             => 'Экспорт в CSV',
 	'btn_apply_filters'          => 'Применить',
@@ -72,7 +72,7 @@ $language['log'] = array (
 
 	// ── Table ──
 	'sec_event_log'              => 'Сводный журнал событий',
-	'lbl_select_site_logs'       => 'Выбрать записи сайта',
+	'lbl_select_site_logs'       => 'Выбрать все',
 	'th_type'                    => 'Тип',
 	'th_username'                => 'Пользователь',
 	'th_date'                    => 'Дата',
@@ -201,13 +201,13 @@ $language['log'] = array (
 	'badge_spam'                 => 'Спам',
 
 	// ── Clear site logs modal ──
-	'modal_clear_title'          => 'Очистка журнала сайта',
+	'modal_clear_title'          => 'Очистка журнала',
 	'modal_clear_sub'            => 'Это действие необратимо',
 	'modal_clear_confirm'        => 'Вы уверены, что хотите {1}?',
-	'modal_clear_confirm_strong' => 'полностью очистить журнал сайта',
+	'modal_clear_confirm_strong' => 'полностью очистить журнал',
 	'modal_cannot_undo'          => 'Отменить это будет нельзя.',
 	// output as-is (HTML allowed)
-	'modal_clear_note'           => 'Журнал модераторов это действие <strong>не</strong> затронет.',
+	'modal_clear_note'           => 'Будут удалены <strong>все</strong> записи: сайта, администраторов и модераторов.',
 	'btn_cancel'                 => 'Отмена',
 	'btn_clear_logs'             => 'Очистить',
 

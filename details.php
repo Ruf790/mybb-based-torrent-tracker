@@ -145,18 +145,13 @@ function get_comment($pid)
 // ── pid → id trick ──────────────────────────────────────────────────────────
 // get_comment() кэширует результат — ниже тот же комментарий берётся без запроса
 if (!empty($mybb->input['pid']) && empty($mybb->input['id'])) {
-    if (isset($style['pid'], $style['id']) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
-        $mybb->input['id'] = $style['id'];
-        unset($style['id']);
-    } else {
-        $post = get_comment((int)$mybb->input['pid']);
+    $post = get_comment((int)$mybb->input['pid']);
 
-        if (!$post) {
-            stderr($lang->global['invalid_comm']);
-        }
-
-        $mybb->input['id'] = $post['torrent'];
+    if (!$post) {
+        stderr($lang->global['invalid_comm']);
     }
+
+    $mybb->input['id'] = $post['torrent'];
 }
 
 $is_mod = is_mod($usergroups);

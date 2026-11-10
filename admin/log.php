@@ -1047,31 +1047,56 @@ echo '</div></div>';
 
 
 
-$modal_confirm_html = ags_fmt($L['modal_clear_confirm'], '<strong class="text-danger">' . $L['modal_clear_confirm_strong'] . '</strong>');
-$modal_note_html    = $lang->log['modal_clear_note']; // HTML allowed, output as-is
-
 if ($can_clear) {
+$modal_confirm_html = ags_fmt($L['modal_clear_confirm'],
+    '<strong style="color:#e74a3b">' . $L['modal_clear_confirm_strong'] . '</strong>');
+$modal_note_html = $lang->log['modal_clear_note']; // HTML allowed, output as-is
+
 echo <<<HTML
-<div class="modal fade lg-modal" id="clearModal" tabindex="-1" aria-labelledby="clearModalTitle" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-    <div class="modal-header">
-      <span class="lg-modal__ico"><i class="fa-solid fa-trash-can"></i></span>
-      <div><h5 class="modal-title fw-bold" id="clearModalTitle">{$L['modal_clear_title']}</h5><div class="lg-muted">{$L['modal_clear_sub']}</div></div>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{$L['btn_cancel']}"></button>
+<div class="modal fade" id="clearModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border:none;border-radius:20px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.2)">
+
+            <!-- Шапка -->
+            <div style="background:linear-gradient(135deg,#e74a3b 0%,#c0392b 100%);padding:32px 28px 24px;text-align:center;position:relative">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    style="position:absolute;top:16px;right:16px;opacity:0.8"></button>
+                <div style="width:72px;height:72px;background:rgba(255,255,255,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid rgba(255,255,255,0.3)">
+                    <i class="fas fa-trash-alt" style="color:#fff;font-size:28px"></i>
+                </div>
+                <h4 style="color:#fff;margin:0;font-weight:700;font-size:20px">{$L['modal_clear_title']}</h4>
+                <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px">{$L['modal_clear_sub']}</p>
+            </div>
+
+            <!-- Тело -->
+            <div style="padding:28px;text-align:center;background:#fff">
+                <p style="color:#5a5c69;font-size:15px;margin:0 0 12px;line-height:1.6">
+                    {$modal_confirm_html}<br>{$L['modal_cannot_undo']}
+                </p>
+                <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;text-align:left">
+                    <i class="fas fa-exclamation-circle" style="color:#f6c23e;font-size:18px;flex-shrink:0"></i>
+                    <span style="color:#856404;font-size:13px">{$modal_note_html}</span>
+                </div>
+            </div>
+
+            <!-- Футер -->
+            <div style="padding:0 28px 28px;background:#fff;display:flex;gap:12px">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                    style="flex:1;border-radius:10px;padding:11px;font-weight:600;border:2px solid #e3e6f0;background:#fff;color:#5a5c69">
+                    <i class="fas fa-times me-1"></i> {$L['btn_cancel']}
+                </button>
+                <form method="post" action="index.php?act=log&action=combined_logs" style="flex:1;margin:0">
+                    <input type="hidden" name="clear" value="yes">
+                    <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
+                    <button type="submit"
+                        style="width:100%;border-radius:10px;padding:11px;font-weight:600;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);color:#fff;cursor:pointer">
+                        <i class="fas fa-trash-alt me-1"></i> {$L['btn_clear_logs']}
+                    </button>
+                </form>
+            </div>
+
+        </div>
     </div>
-    <div class="modal-body">
-      <p class="mb-2">{$modal_confirm_html} {$L['modal_cannot_undo']}</p>
-      <div class="lg-note"><i class="fa-solid fa-triangle-exclamation"></i><span>{$modal_note_html}</span></div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>{$L['btn_cancel']}</button>
-      <form method="post" action="index.php?act=log&action=combined_logs" class="d-inline">
-        <input type="hidden" name="clear" value="yes">
-        <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-        <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>{$L['btn_clear_logs']}</button>
-      </form>
-    </div>
-  </div></div>
 </div>
 HTML;
 }
@@ -1087,7 +1112,7 @@ foreach ($lang->log as $k => $v) {
 <script>
 const AGS_LANG = <?= json_encode($ags_js_lang, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
-<script src="<?= $BASEURL ?>/admin/scripts/log.js?ver=2"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/log.js?ver=3"></script>
 <?php
 
 

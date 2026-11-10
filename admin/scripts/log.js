@@ -100,23 +100,35 @@ function updateDeleteBtn() {
 }
 
 function showDeleteModal(count, onConfirm) {
-    document.getElementById('deleteConfirmModal')?.remove();
+    const existing = document.getElementById('deleteConfirmModal');
+    if (existing) existing.remove();
 
     const modal = document.createElement('div');
     modal.id = 'deleteConfirmModal';
-    modal.className = 'lg-dm';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeInBg 0.2s ease';
+
     modal.innerHTML =
-        '<div class="lg-dm__box">' +
-            '<span class="lg-dm__ico"><i class="fa-solid fa-trash-can"></i></span>' +
-            '<h5 class="lg-dm__title" data-role="title"></h5>' +
-            '<div class="lg-dm__txt" data-role="lead"></div>' +
-            '<div class="lg-dm__n" data-role="count"></div>' +
-            '<p class="lg-dm__txt" data-role="tail"></p>' +
-            '<div class="lg-dm__btns">' +
-                '<button type="button" class="btn btn-outline-secondary" id="modalCancel"></button>' +
-                '<button type="button" class="btn btn-danger" id="modalConfirm"><i class="fa-solid fa-trash me-1"></i></button>' +
+        '<style>' +
+        '@keyframes fadeInBg{from{opacity:0}to{opacity:1}}' +
+        '@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}' +
+        '</style>' +
+        '<div style="background:#fff;border-radius:16px;padding:0;width:420px;max-width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp 0.25s ease;overflow:hidden">' +
+            '<div style="background:linear-gradient(135deg,#e74a3b,#c0392b);padding:24px 28px 20px;text-align:center">' +
+                '<div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">' +
+                    '<i class="fas fa-trash" style="color:#fff;font-size:22px"></i>' +
+                '</div>' +
+                '<h5 data-role="title" style="color:#fff;margin:0;font-size:18px;font-weight:700"></h5>' +
+            '</div>' +
+            '<div style="padding:24px 28px;text-align:center">' +
+                '<p data-role="lead" style="color:#5a5c69;margin:0 0 6px;font-size:15px"></p>' +
+                '<p data-role="count" style="color:#e74a3b;font-size:28px;font-weight:700;margin:0 0 6px"></p>' +
+                '<p data-role="tail" style="color:#5a5c69;margin:0 0 20px;font-size:15px"></p>' +
+                '<div style="display:flex;gap:12px;justify-content:center">' +
+                    '<button id="modalCancel" style="flex:1;padding:11px;border:2px solid #e3e6f0;background:#fff;border-radius:10px;color:#5a5c69;font-size:14px;font-weight:600;cursor:pointer"></button>' +
+                    '<button id="modalConfirm" style="flex:1;padding:11px;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">' +
+                        '<i class="fas fa-trash me-1"></i>' +
+                    '</button>' +
+                '</div>' +
             '</div>' +
         '</div>';
 
@@ -128,17 +140,13 @@ function showDeleteModal(count, onConfirm) {
         tp('entries', count, 'log entry. This cannot be undone.', 'log entries. This cannot be undone.');
     modal.querySelector('#modalCancel').textContent = t('cancel', 'Cancel');
     modal.querySelector('#modalConfirm').appendChild(
-        document.createTextNode(tp('delete_n', count, 'Delete {1} log', 'Delete {1} logs')));
+        document.createTextNode(' ' + tp('delete_n', count, 'Delete {1} log', 'Delete {1} logs')));
 
     document.body.appendChild(modal);
-    const close = () => { modal.remove(); document.removeEventListener('keydown', onKey); };
-    const onKey = e => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey);
 
-    modal.querySelector('#modalCancel').onclick = close;
-    modal.querySelector('#modalConfirm').onclick = function() { close(); onConfirm(); };
-    modal.addEventListener('click', function(e) { if (e.target === modal) close(); });
-    modal.querySelector('#modalConfirm').focus();
+    document.getElementById('modalCancel').onclick = function() { modal.remove(); };
+    document.getElementById('modalConfirm').onclick = function() { modal.remove(); onConfirm(); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
 }
 
 document.addEventListener('DOMContentLoaded', function() {

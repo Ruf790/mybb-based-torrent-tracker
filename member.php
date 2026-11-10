@@ -182,7 +182,7 @@ function au_page(string $icon, string $tone, string $title, string $sub, string 
 {
     global $BASEURL;
     return '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">'
-        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/auth.css?ver=1">'
+        . '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/auth.css?ver=2">'
         . '<div class="container-md st-page au-page' . ($wide ? ' au-page--wide' : '') . ' py-4">'
         .   '<div class="st-card au-card">'
         .     '<div class="au-head">'
@@ -890,6 +890,24 @@ if ($mybb->input['action'] === 'register') {
             'js_validator_no_image_text'         => $lang->member['js_validator_no_image_text'],
             'js_validator_no_security_question'  => $lang->member['js_validator_no_security_question'],
             'js_validator_bad_password_security' => $lang->member['js_validator_bad_password_security'],
+            'js_rv_username_ok'                  => $lang->member['js_rv_username_ok'] ?? 'Username is available',
+            'js_rv_username_taken'               => $lang->member['js_rv_username_taken'] ?? 'This username is already taken',
+            'js_rv_email_ok'                     => $lang->member['js_rv_email_ok'] ?? 'Email address is valid',
+            'js_rv_email_taken'                  => $lang->member['js_rv_email_taken'] ?? 'This email is already registered',
+            'js_rv_email2_ok'                    => $lang->member['js_rv_email2_ok'] ?? 'Email addresses match',
+            'js_rv_password_ok'                  => $lang->member['js_rv_password_ok'] ?? 'Password looks good',
+            'js_rv_password2_ok'                 => $lang->member['js_rv_password2_ok'] ?? 'Passwords match',
+            'js_rv_server_error'                 => $lang->member['js_rv_server_error'] ?? 'Server error. Please try again.',
+            'js_rv_checking'                     => $lang->member['js_rv_checking'] ?? 'Checking…',
+            'js_rv_fix_errors'                   => $lang->member['js_rv_fix_errors'] ?? 'Please fix the highlighted fields',
+            'js_rv_caps'                         => $lang->member['js_rv_caps'] ?? 'Caps Lock is on',
+            'js_rv_show'                         => $lang->member['js_rv_show'] ?? 'Show password',
+            'js_rv_hide'                         => $lang->member['js_rv_hide'] ?? 'Hide password',
+            'js_rv_strength'                     => $lang->member['js_rv_strength'] ?? 'Strength',
+            'js_rv_s1'                           => $lang->member['js_rv_s1'] ?? 'weak',
+            'js_rv_s2'                           => $lang->member['js_rv_s2'] ?? 'fair',
+            'js_rv_s3'                           => $lang->member['js_rv_s3'] ?? 'good',
+            'js_rv_s4'                           => $lang->member['js_rv_s4'] ?? 'strong',
         ];
         $js_json_flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
@@ -973,7 +991,7 @@ if ($mybb->input['action'] === 'register') {
         $registration = au_page('fa-user-plus', 'success', $lang->member['welcome_register'],
                 hsafe((string)($lang->member['hint_register'] ?? 'Free account: takes a minute')), $reg_body, $reg_foot, true)
             . $validator_javascript
-            . '<script type="text/javascript" src="' . $BASEURL . '/scripts/regvalidator.js?ver=1823"></script>';
+            . '<script type="text/javascript" src="' . $BASEURL . '/scripts/regvalidator.js?ver=1824"></script>';
 
         stdhead();
         build_breadcrumb();

@@ -743,4 +743,24 @@ IP: {1}
 'bp_hour'            => "Зарабатывает ≈ {1} BP/ч",
 'bp_hour_tip'        => "Около {1} BP в сутки с {2} раздач на сиде",
 
+// Registration: live validation (scripts/regvalidator.js)
+'js_rv_username_ok'    => "Имя свободно",
+'js_rv_username_taken' => "Это имя уже занято",
+'js_rv_email_ok'       => "Адрес почты подходит",
+'js_rv_email_taken'    => "Этот адрес уже зарегистрирован",
+'js_rv_email2_ok'      => "Адреса совпадают",
+'js_rv_password_ok'    => "Пароль подходит",
+'js_rv_password2_ok'   => "Пароли совпадают",
+'js_rv_server_error'   => "Ошибка сервера. Попробуйте ещё раз.",
+'js_rv_checking'       => "Проверяем…",
+'js_rv_fix_errors'     => "Исправьте поля, отмеченные красным",
+'js_rv_caps'           => "Включён Caps Lock",
+'js_rv_show'           => "Показать пароль",
+'js_rv_hide'           => "Скрыть пароль",
+'js_rv_strength'       => "Надёжность",
+'js_rv_s1'             => "слабый",
+'js_rv_s2'             => "средний",
+'js_rv_s3'             => "хороший",
+'js_rv_s4'             => "надёжный",
+
 );

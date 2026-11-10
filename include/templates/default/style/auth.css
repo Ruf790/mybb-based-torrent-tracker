@@ -79,3 +79,69 @@
     padding: .7rem .9rem; border-radius: .75rem; font-size: .9em;
 }
 .au-page .st-notice > i { margin-top: .15rem; }
+
+/* ── Registration: live validation (scripts/regvalidator.js) ── */
+.au-page .au-input.rv-has-eye > .form-control { padding-right: 2.8rem; }
+.au-page .au-input.rv-has-eye > .form-control.is-valid,
+.au-page .au-input.rv-has-eye > .form-control.is-invalid { background-image: none; }   /* the eye sits there */
+.au-page .form-control.is-valid { border-color: var(--bs-success); }
+.au-page .form-control.is-invalid { border-color: var(--bs-danger); }
+.au-page .form-control.is-valid:focus { box-shadow: 0 0 0 .2rem rgba(var(--bs-success-rgb), .15); }
+.au-page .form-control.is-invalid:focus { box-shadow: 0 0 0 .2rem rgba(var(--bs-danger-rgb), .15); }
+.au-page .au-input:has(> .is-valid) > i:first-child { color: var(--bs-success); }
+.au-page .au-input:has(> .is-invalid) > i:first-child { color: var(--bs-danger); }
+
+/* Spinner while the server checks the value */
+.au-page .au-input.rv-busy::after {
+    content: ""; position: absolute; right: .9rem; top: 50%; z-index: 4;
+    width: 1rem; height: 1rem; margin-top: -.5rem; border-radius: 50%;
+    border: 2px solid var(--bs-border-color); border-top-color: var(--bs-primary);
+    animation: rv-spin .6s linear infinite;
+}
+.au-page .au-input.rv-has-eye.rv-busy::after { right: 2.7rem; }
+@keyframes rv-spin { to { transform: rotate(360deg); } }
+
+/* Eye button */
+.au-page .rv-eye {
+    position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); z-index: 4;
+    width: 2.1rem; height: 2.1rem; display: grid; place-items: center; padding: 0;
+    border: 0; border-radius: .55rem; background: transparent; color: var(--bs-secondary-color);
+}
+.au-page .rv-eye:hover { color: var(--bs-primary); background: var(--bs-tertiary-bg); }
+
+/* Message under a field */
+.au-page .rv-fb { display: none; align-items: flex-start; gap: .4rem; margin-top: .35rem; font-size: .8rem; line-height: 1.35; }
+.au-page .rv-fb i { margin-top: .12rem; }
+.au-page .rv-fb.is-ok  { display: flex; color: var(--bs-success-text-emphasis); animation: rv-in .2s ease-out; }
+.au-page .rv-fb.is-err { display: flex; color: var(--bs-danger-text-emphasis); animation: rv-in .2s ease-out; }
+@keyframes rv-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* Caps Lock */
+.au-page .rv-caps { display: flex; align-items: center; gap: .35rem; margin-top: .35rem; font-size: .78rem; font-weight: 600; color: var(--bs-warning-text-emphasis); }
+.au-page .rv-caps[hidden] { display: none; }
+
+/* Strength meter: 4 segments */
+.au-page .rv-meter { display: flex; align-items: center; gap: .6rem; margin-top: .45rem; }
+.au-page .rv-meter[hidden] { display: none; }
+.au-page .rv-meter__bars { flex: 1 1 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: .25rem; }
+.au-page .rv-meter__bars i { height: .3rem; border-radius: 50rem; background: var(--bs-tertiary-bg); box-shadow: inset 0 0 0 1px var(--bs-border-color-translucent); transition: background-color .25s ease; }
+.au-page .rv-meter__lbl { flex: 0 0 auto; font-size: .75rem; font-weight: 600; }
+.au-page .rv-meter[data-level="1"] i:nth-child(-n+1) { background: var(--bs-danger); box-shadow: none; }
+.au-page .rv-meter[data-level="2"] i:nth-child(-n+2) { background: var(--bs-warning); box-shadow: none; }
+.au-page .rv-meter[data-level="3"] i:nth-child(-n+3) { background: #20c997; box-shadow: none; }
+.au-page .rv-meter[data-level="4"] i { background: var(--bs-success); box-shadow: none; }
+.au-page .rv-meter[data-level="1"] .rv-meter__lbl { color: var(--bs-danger-text-emphasis); }
+.au-page .rv-meter[data-level="2"] .rv-meter__lbl { color: var(--bs-warning-text-emphasis); }
+.au-page .rv-meter[data-level="3"] .rv-meter__lbl,
+.au-page .rv-meter[data-level="4"] .rv-meter__lbl { color: var(--bs-success-text-emphasis); }
+
+/* "Fix the fields" above the submit button */
+.au-page .rv-alert {
+    display: flex; align-items: center; gap: .55rem; margin-bottom: .75rem; padding: .6rem .85rem;
+    border-radius: .75rem; font-size: .88em; font-weight: 600;
+    background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); border: 1px solid var(--bs-danger-border-subtle);
+}
+.au-page .rv-alert[hidden] { display: none; }
+
+.au-page .rv-shake { animation: rv-shake .35s ease-in-out; }
+@keyframes rv-shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }

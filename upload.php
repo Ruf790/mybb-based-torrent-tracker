@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=13">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=14">
 
 <div class="container-md st-page up-page">
 
@@ -2654,24 +2654,39 @@ https://example.com/screen3.webp"></textarea>
 
     <!-- ═══ Модалки ═══════════════════════════════════════════════════════ -->
 
-    <!-- Error -->
+    <!-- Error (старая: красная градиентная шапка, розовый блок с моноширинным текстом) -->
     <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                    <h5 class="modal-title" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header up-err-head">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="rounded-circle p-1 up-err-head__ico">
+                            <i class="fa-solid fa-triangle-exclamation text-white" style="font-size:1.2rem;"></i>
+                        </div>
+                        <h5 class="modal-title text-white fw-semibold" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="st-meta fw-semibold mb-2"><i class="fa-solid fa-bug me-1"></i><?= $lang->upload['error_details'] ?? 'Error details' ?></div>
-                    <div id="errorModalBody" class="up-err"></div>
+                <div class="modal-body p-0">
+                    <div class="bg-body-tertiary p-3 border-bottom border-danger border-opacity-25">
+                        <div class="d-flex align-items-center gap-2 text-danger">
+                            <i class="fa-solid fa-bug"></i>
+                            <span class="small fw-semibold"><?= $lang->upload['error_details'] ?? 'Error details' ?></span>
+                        </div>
+                    </div>
+                    <div id="errorModalBody" class="up-err-old"></div>
                 </div>
-                <div class="modal-footer justify-content-between">
-                    <span class="st-meta"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['error_check_input'] ?? 'Check your input and try again' ?></span>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->upload['error_close'] ?></button>
-                        <button type="button" class="btn btn-sm btn-danger st-pill ms-1" id="copyErrorBtn"><i class="fa-solid fa-copy me-1"></i><?= $lang->upload['error_copy'] ?? 'Copy error' ?></button>
+                <div class="modal-footer border-0 bg-body-tertiary">
+                    <div class="d-flex justify-content-between align-items-center w-100">
+                        <div class="text-muted small"><i class="fa-solid fa-circle-info me-1"></i><?= $lang->upload['error_check_input'] ?? 'Check your input and try again' ?></div>
+                        <div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+                                <i class="fa-solid fa-xmark me-1"></i><?= $lang->upload['error_close'] ?>
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm ms-2" id="copyErrorBtn">
+                                <i class="fa-solid fa-copy me-1"></i><?= $lang->upload['error_copy'] ?? 'Copy error' ?>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

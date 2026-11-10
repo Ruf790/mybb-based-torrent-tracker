@@ -23,6 +23,9 @@
 
 /* Выбранный комментарий (commenttable.js ставит .comment-selected на #comment-N) */
 .ct-item .pb-card { transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease; }
+/* Закреплённый */
+.ct-item--pinned .pb-card { border-color: var(--bs-warning); box-shadow: 0 0 0 .15rem rgba(var(--bs-warning-rgb), .15); }
+.ct-item--pinned .pb-card::before { border-left-color: var(--bs-warning); border-bottom-color: var(--bs-warning); }
 .comment-selected .pb-card {
   border-color: var(--bs-danger);
   background-color: rgba(var(--bs-danger-rgb), .035);

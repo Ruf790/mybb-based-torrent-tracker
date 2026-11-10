@@ -1668,6 +1668,11 @@ if ($mediainfoPosted) {
     }
 }
 
+// NFO: «Удалить NFO» при редактировании (если новый файл не выбран — иначе он просто заменит старый)
+if ($isEdit && ($_POST['delete_nfo'] ?? '0') === '1' && $nfoContentRaw === null) {
+    $db->sql_query_prepared("DELETE FROM torrents_nfo WHERE torrent_id = ?", [(int)$NewTID]);
+}
+
 // NFO файл — сохраняем в БД
 if ($nfoContentRaw !== null && strlen($nfoContentRaw) > 0) {
     // Пробуем определить кодировку только из поддерживаемых
@@ -2077,10 +2082,37 @@ if ($isEdit) {
                     $existingNfoQ = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ?", [$EditTorrentID]);
                     $existingNfoRow = $existingNfoQ ? $db->fetch_array($existingNfoQ) : null;
                     if ($existingNfoRow): ?>
-                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+                        <input type="hidden" name="delete_nfo" id="deleteNfo" value="0">
+                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2" id="nfoExisting">
                             <span class="st-badge st-soft-success"><i class="fa-solid fa-check"></i><?= $lang->upload['nfofile_uploaded'] ?></span>
                             <small class="st-meta"><?= $lang->upload['nfofile_replace'] ?></small>
+                            <button type="button" class="btn btn-sm btn-outline-danger st-pill ms-auto" id="nfoDeleteBtn">
+                                <i class="fa-solid fa-trash-can me-1"></i><?= htmlspecialchars($lang->upload['nfofile_delete'] ?? 'Delete NFO') ?>
+                            </button>
                         </div>
+                        <div class="mt-2 d-none align-items-center gap-2 flex-wrap" id="nfoDeleted">
+                            <span class="st-badge st-soft-danger"><i class="fa-solid fa-trash-can"></i><?= htmlspecialchars($lang->upload['nfofile_will_delete'] ?? 'NFO will be deleted when you save') ?></span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary st-pill" id="nfoUndoBtn">
+                                <i class="fa-solid fa-rotate-left me-1"></i><?= htmlspecialchars($lang->upload['nfofile_undo'] ?? 'Undo') ?>
+                            </button>
+                        </div>
+                        <script>
+                        // Удаление NFO: помечаем, сама запись удаляется при сохранении формы
+                        (function () {
+                            const flag = document.getElementById('deleteNfo');
+                            const has  = document.getElementById('nfoExisting');
+                            const del  = document.getElementById('nfoDeleted');
+                            const set  = (on) => {
+                                flag.value = on ? '1' : '0';
+                                has.classList.toggle('d-none', on);
+                                has.classList.toggle('d-flex', !on);
+                                del.classList.toggle('d-none', !on);
+                                del.classList.toggle('d-flex', on);
+                            };
+                            document.getElementById('nfoDeleteBtn').addEventListener('click', () => set(true));
+                            document.getElementById('nfoUndoBtn').addEventListener('click', () => set(false));
+                        })();
+                        </script>
                 <?php endif; endif; ?>
             </div>
         </div>

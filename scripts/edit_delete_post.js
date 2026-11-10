@@ -48,7 +48,7 @@ function renderPreview(pid) {
         .replace(/\[url\](.*?)\[\/url\]/gi, '<a href="$1" target="_blank">$1</a>')
         .replace(/\[url=(.*?)\](.*?)\[\/url\]/gi, '<a href="$1" target="_blank">$2</a>')
         .replace(/\[img=([1-9]\d*)x([1-9]\d*)\](.*?)\[\/img\]/gi, '<img src="$3" alt="" class="rounded" width="$1" height="$2">')
-		.replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width: 400px;">')
+		.replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width: 200px;">')
         .replace(/\[quote\](.*?)\[\/quote\]/gi, '<blockquote>$1</blockquote>')
         .replace(/\[code\](.*?)\[\/code\]/gi, '<pre>$1</pre>')
         .replace(/\[video\](.*?)\[\/video\]/gi,'<video controls style="max-width:300px; width:100%; height:auto;"><source src="$1" type="video/mp4"></video>')

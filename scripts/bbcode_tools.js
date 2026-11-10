@@ -242,7 +242,7 @@ function initViewSource(textareaId, btnId) {
         // Ссылки и изображения
         .replace(/\[url\]\s*(.*?)\s*\[\/url\]/gis, '<a href="$1" target="_blank">$1</a>')
         .replace(/\[email\]\s*(.*?)\s*\[\/email\]/gis, '<a href="mailto:$1">$1</a>')
-        .replace(/\[img\]\s*(.*?)\s*\[\/img\]/gis, '<img src="$1" class="rounded" style="max-width:400px; width:100%">')
+        .replace(/\[img\]\s*(.*?)\s*\[\/img\]/gis, '<img src="$1" class="rounded" style="max-width:200px; width:100%">')
 
 		
 		

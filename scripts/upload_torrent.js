@@ -1184,10 +1184,10 @@ function showUploadResult(data, isEdit) {
             seconds: 10,
             link:    data.link,
             buttons: `
-                <a href="${escapeHtml(data.download)}" class="btn btn-primary st-pill me-2">
+                <a href="${escapeHtml(data.download)}" class="btn btn-primary me-2">
                     <i class="fa fa-download me-2"></i>${utH('download', 'Download torrent')}
                 </a>
-                <a href="${escapeHtml(data.link)}" class="btn btn-outline-secondary st-pill">
+                <a href="${escapeHtml(data.link)}" class="btn btn-outline-primary">
                     <i class="fa fa-info-circle me-2"></i>${utH('view_details', 'View details')}
                 </a>`
         });
@@ -1204,10 +1204,10 @@ function showUploadResult(data, isEdit) {
             seconds: 3,
             link:    data.link,
             buttons: `
-                <button type="button" class="btn btn-outline-secondary st-pill me-2" data-bs-dismiss="modal">
+                <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
                     <i class="fas fa-times me-2"></i>${utH('stay', 'Stay here')}
                 </button>
-                <a href="${escapeHtml(data.link)}" class="btn btn-primary st-pill">
+                <a href="${escapeHtml(data.link)}" class="btn btn-success">
                     <i class="fas fa-eye me-2"></i>${utH('view_torrent', 'View torrent')}
                 </a>`
         });
@@ -1244,25 +1244,32 @@ function showRedirectModal(opts) {
     (document.querySelector('.up-page') || document.body).insertAdjacentHTML('beforeend', `
         <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header up-modal-head">
-                        <span class="st-ico st-soft-${tone}"><i class="fas ${opts.icon}"></i></span>
-                        <h5 class="modal-title" id="uploadSuccessModalLabel">${escapeHtml(opts.title)}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-content shadow-lg border-0 up-done">
+                    <div class="modal-header bg-${tone} text-white border-0">
+                        <div class="d-flex align-items-center w-100">
+                            <i class="fas ${opts.icon} fa-2x me-3"></i>
+                            <h5 class="modal-title mb-0" id="uploadSuccessModalLabel">${escapeHtml(opts.title)}</h5>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body text-center py-4">
-                        ${opts.heading ? `<div class="fw-semibold fs-5 mb-1">${escapeHtml(opts.heading)}</div>` : ''}
-                        <p class="st-meta mb-3">${escapeHtml(opts.text)}</p>
-                        <div class="d-flex align-items-center justify-content-center gap-2">
-                            <span class="st-meta">${utH('redirect_in', 'Redirecting in')}</span>
-                            <span id="redirectCountdown" class="st-badge st-soft-${tone}">${opts.seconds}</span>
-                            <span class="st-meta">${utH('seconds', 'seconds')}</span>
+                        <div class="success-animation mb-3">
+                            <i class="fas fa-check-circle text-${tone}" style="font-size: 3.5rem;"></i>
                         </div>
-                        <div class="progress up-progress mt-3 mx-auto" style="max-width: 200px;">
-                            <div id="redirectProgress" class="progress-bar" style="width: 0%; transition: width 1s linear;"></div>
+                        ${opts.heading ? `<h4 class="text-${tone} mb-2">${escapeHtml(opts.heading)}</h4>` : ''}
+                        <p class="mb-2">${escapeHtml(opts.text)}</p>
+                        <div class="redirect-timer mt-3">
+                            <div class="d-flex align-items-center justify-content-center gap-2">
+                                <span class="text-muted">${utH('redirect_in', 'Redirecting in')}</span>
+                                <span id="redirectCountdown" class="badge bg-${tone} fs-5 px-3 py-2 rounded-pill">${opts.seconds}</span>
+                                <span class="text-muted">${utH('seconds', 'seconds')}</span>
+                            </div>
+                            <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
+                                <div id="redirectProgress" class="progress-bar bg-${tone}" style="width: 0%; transition: width 1s linear;"></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="modal-footer justify-content-center">${opts.buttons}</div>
+                    <div class="modal-footer border-0 justify-content-center pb-4">${opts.buttons}</div>
                 </div>
             </div>
         </div>`);
@@ -1281,6 +1288,8 @@ function showRedirectModal(opts) {
             left--;
             if (countdown) {
                 countdown.textContent = Math.max(0, left);
+                countdown.style.transform = 'scale(1.1)';
+                setTimeout(() => { countdown.style.transform = 'scale(1)'; }, 200);
             }
             if (progress) progress.style.width = ((total - left) / total * 100) + '%';
             if (left <= 0) clearInterval(iv);

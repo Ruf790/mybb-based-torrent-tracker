@@ -2567,7 +2567,12 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
       </div>
       <div class="col-6 col-md-3">
         <label class="form-label small mb-1"><?= $mu('lbl_mib_size', 'Size') ?></label>
-        <input type="text" class="form-control form-control-sm" data-mi="size" placeholder="18.4 GB">
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" data-mi="size" inputmode="decimal" placeholder="18.4">
+          <select class="form-select flex-grow-0 w-auto" data-mi="sizeunit" aria-label="<?= $mu('lbl_mib_size', 'Size') ?>">
+            <option>GB</option><option>MB</option><option>TB</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -2683,7 +2688,7 @@ foreach ((array)$lang->upload as $ags_key => $ags_val) {
     </button>
   </div>
 </div>
-<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=2" defer></script>
+<script src="<?= $BASEURL ?>/scripts/mediainfo_builder.js?ver=3" defer></script>
 
 <!-- Category Picker -->
 <div class="mb-4">

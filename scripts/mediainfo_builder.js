@@ -43,7 +43,8 @@
         const q = clean(val('[data-mi="quality"]'));
         const c = val('[data-mi="container"]');
         const d = clean(val('[data-mi="duration"]'));
-        const s = clean(val('[data-mi="size"]'));
+        const sNum = val('[data-mi="size"]').replace(',', '.').replace(/[^\d.]/g, '');
+        const s    = sNum ? sNum + ' ' + (val('[data-mi="sizeunit"]') || 'GB') : '';
         if (q) out.push('Quality: ' + q);
         if (c) out.push('Container: ' + c);
         if (d) out.push('Duration: ' + d);
@@ -112,7 +113,11 @@
             if (key === 'Quality')   set('[data-mi="quality"]', v);
             if (key === 'Container') set('[data-mi="container"]', v);
             if (key === 'Duration')  set('[data-mi="duration"]', v);
-            if (key === 'Size')      set('[data-mi="size"]', v);
+            if (key === 'Size') {
+                const r = v.match(/^([\d.]+)\s*(GB|MB|TB)?$/i);
+                set('[data-mi="size"]', r ? r[1] : v);
+                if (r && r[2]) set('[data-mi="sizeunit"]', r[2].toUpperCase());
+            }
             if (key === 'Subtitles') {
                 v.split(/,\s*(?![^()]*\))/).forEach(p => {
                     const r = p.trim().match(/^([^(]+?)\s*(?:\((.*)\))?$/);

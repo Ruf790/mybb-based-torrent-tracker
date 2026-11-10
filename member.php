@@ -2150,7 +2150,7 @@ $modoptions = '<section class="st-card mb-3">'
 
     $profile = '
 <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/st-ui.css?ver=12">
-<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=2">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/profile.css?ver=3">
 <script src="' . $BASEURL . '/scripts/toast.js"></script>
 ' . $ags_lang_script . '
 <script src="' . $BASEURL . '/scripts/report_user.js?ver=3"></script>

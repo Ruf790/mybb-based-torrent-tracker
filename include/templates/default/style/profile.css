@@ -159,6 +159,10 @@
     background: linear-gradient(180deg, color-mix(in srgb, var(--pf-c) 7%, var(--bs-body-bg)) 0%, var(--bs-body-bg) 70%);
 }
 .pf-page .pf-head > :not(.pf-cover) { position: relative; z-index: 1; }
+/* Name always starts below the band, even with a group image / user title under it */
+.pf-page .pf-head { align-items: flex-start; }
+.pf-page .pf-head > .flex-grow-1 { padding-top: 2rem; }
+.pf-page .pf-head__btns { align-self: center; }
 .pf-page .pf-cover {
     position: absolute; inset: 0 0 auto 0; height: 5.2rem; z-index: 0;
     background:
@@ -180,7 +184,6 @@
 @media (max-width: 767.98px) {
     .pf-page .pf-head { padding-top: 2.6rem; }
     .pf-page .pf-cover { height: 4.2rem; }
-    .pf-page .pf-head > .flex-grow-1 { padding-top: 1.9rem; }
 }
 
 /* ── Chip: BP per hour ── */

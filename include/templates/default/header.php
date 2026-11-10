@@ -185,18 +185,14 @@ $renderMenu = static function (array $m, string $profileHref) use ($iconColors):
     <link rel="stylesheet" href="<?= $url('include/templates/default/style/all.min.css') ?>">
 
     <style>
-        header.sticky-top {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1020;
-        }
+        /* Шапка в обычном потоке страницы: раньше была прибита к верху экрана (fixed)
+           и при прокрутке закрывала комментарии и якоря */
         .header-fixed {
+            position: relative;
+            z-index: 1020;
             max-width: 1100px;
-            margin: 0 auto;
             width: 100%;
-            left: 50%;
-            transform: translateX(-50%);
+            margin: 0 auto 1.25rem;
             padding: 0 15px;
         }
         .nav-link.dropdown-toggle::after { display: none; }
@@ -401,15 +397,13 @@ if ($seedtorrentscount > 0) {
     $seederOrLeecher = '<span class="badge bg-secondary"><i class="fas fa-minus me-1"></i> ' . $hl('hdr_idle', 'Idle') . '</span>';
 }
 
-echo '<br><br>';
-
 if ($isLoggedIn):
     $ratioRaw  = (string)($ratio ?? '0.00');
     // $ratio may already contain trusted markup (<font>/<span>) — print as is, escape otherwise
     $ratioHtml = (str_contains($ratioRaw, '<font') || str_contains($ratioRaw, '<span')) ? $ratioRaw : $e($ratioRaw);
 ?>
 <!-- Header with card-style navbar -->
-<header class="sticky-top header-fixed">
+<header class="header-fixed">
     <div class="container-fluid py-1 bg-light border-bottom">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-3">
             <!-- Profile with avatar -->
@@ -520,8 +514,6 @@ if ($isLoggedIn):
     </nav>
 </header>
 
-<br><br>
-
 <!-- Modal Logout -->
 <div class="modal fade" id="logoutModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -547,9 +539,8 @@ if ($isLoggedIn):
     </div>
 </div>
 
-<br><br><br>
-
 <?php else: ?>
+<br><br>
 <!-- Guest navigation -->
 <nav class="navbar navbar-expand-lg bg-white shadow-sm border-bottom py-3">
     <div class="container">

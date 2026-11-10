@@ -201,16 +201,19 @@
 .up-page .preview-poster--empty i,
 .up-page .preview-screenshot--empty i { font-size: 1.8rem; opacity: .55; }
 
+/* Кнопки «×» на постерах и скриншотах — как в старом аплоаде: красный кружок с белой рамкой */
 .up-page .delete-btn,
 .up-page .delete-btn2 {
-  position: absolute; top: .35rem; right: .35rem; z-index: 2;
-  width: 1.7rem; height: 1.7rem; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 50%; font-size: .8rem;
-  background: rgba(0, 0, 0, .55); color: #fff;
-  transition: background-color .15s ease;
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  width: 32px; height: 32px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 2px solid #fff;
+  background: #ef4444; color: #fff; cursor: pointer;
+  opacity: .9; box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  transition: all .3s;
 }
 .up-page .delete-btn:hover,
-.up-page .delete-btn2:hover { background: var(--bs-danger); }
+.up-page .delete-btn2:hover { background: #dc2626; transform: scale(1.1); opacity: 1; }
 .up-page .screenshot-select-checkbox { top: .4rem; left: .4rem; width: 1.15rem; height: 1.15rem; margin: 0; z-index: 2; cursor: pointer; }
 .up-page .screenshot-order-badge { pointer-events: none; font-size: .65rem; }
 
@@ -312,7 +315,7 @@
 }
 .up-page .up-err .error-line { padding-left: .5rem; border-left: 3px solid transparent; }
 .up-page .up-err .error-line:hover { border-left-color: var(--bs-danger); }
-.up-page .up-del-img { max-width: 100%; max-height: 200px; border-radius: .5rem; }
+.up-page .up-del-img { max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, .15); }
 .up-page .up-noprev {
   flex-direction: column; align-items: center; justify-content: center; gap: .35rem;
   min-height: 130px; border-radius: .6rem; background: var(--bs-tertiary-bg);

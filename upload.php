@@ -1882,7 +1882,7 @@ if ($isEdit) {
 
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/st-ui.css?ver=7">
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=9">
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/upload.css?ver=10">
 
 <div class="container-md st-page up-page">
 
@@ -2759,36 +2759,63 @@ https://example.com/screen3.webp"></textarea>
         </div>
     </div>
 
-    <!-- Delete one screenshot -->
+    <!-- Delete one screenshot (старая: красная шапка, превью, карточка файла) -->
     <div class="modal fade" id="deleteScreenshotModal" tabindex="-1" aria-labelledby="deleteScreenshotModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header up-modal-head">
-                    <span class="st-ico st-soft-danger"><i class="fa-solid fa-trash-can"></i></span>
-                    <h5 class="modal-title" id="deleteScreenshotModalLabel"><?= $lang->upload['screenshots_delete_title'] ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
+            <div class="modal-content border-0 shadow up-del">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteScreenshotModalLabel">
+                        <i class="fa-solid fa-triangle-exclamation me-2"></i><?= $lang->upload['screenshots_delete_title'] ?>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->upload['error_close']) ?>"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="fw-semibold" id="deleteScreenshotTitle"><?= $lang->upload['screenshots_delete_title'] ?></div>
-                    <div class="st-meta up-break mb-2" id="deleteScreenshotFilename"></div>
 
-                    <div id="deleteScreenshotPreviewContainer" class="text-center mb-2">
-                        <img id="deleteScreenshotImage" src="" alt="" class="up-del-img" style="display:none;">
-                        <div id="noImagePreview" class="up-noprev" style="display:none;">
-                            <i class="fa-regular fa-image"></i>
-                            <span class="st-meta"><?= $lang->upload['screenshots_no_preview'] ?></span>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="fa-solid fa-trash-can text-danger fs-1"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h5 class="fw-bold mb-1" id="deleteScreenshotTitle"><?= $lang->upload['screenshots_delete_title'] ?></h5>
+                            <p class="text-muted mb-0 up-break" id="deleteScreenshotFilename"></p>
                         </div>
                     </div>
 
-                    <div class="st-meta up-break mb-2"><i class="fa-solid fa-file-image me-1"></i><span id="deleteScreenshotFileName">screenshot.jpg</span></div>
+                    <div id="deleteScreenshotPreviewContainer" class="mb-3 text-center">
+                        <div class="d-inline-block mw-100">
+                            <img id="deleteScreenshotImage" src="" alt="" class="up-del-img" style="display:none;">
+                            <div id="noImagePreview" class="flex-column align-items-center justify-content-center p-4" style="display:none; min-height:150px;">
+                                <i class="fa-solid fa-image fa-3x text-muted mb-2"></i>
+                                <span class="text-muted"><?= $lang->upload['screenshots_no_preview'] ?></span>
+                            </div>
+                        </div>
+                    </div>
 
-                    <div class="alert alert-warning small py-2 mb-0">
-                        <i class="fa-solid fa-triangle-exclamation me-1"></i><?= $lang->upload['screenshots_delete_warning'] ?>
+                    <div class="bg-body-tertiary p-3 rounded-3 mb-3">
+                        <div class="d-flex align-items-center">
+                            <i class="fa-solid fa-file-image text-primary me-3 fa-2x"></i>
+                            <div class="overflow-hidden">
+                                <div class="fw-bold up-break" id="deleteScreenshotFileName">screenshot.jpg</div>
+                                <div class="small text-muted"><i class="fa-solid fa-image me-1"></i><?= $lang->upload['screenshots_existing_one'] ?? 'Existing screenshot' ?></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-2 mb-0">
+                        <div class="d-flex">
+                            <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
+                            <div><strong><?= $lang->upload['error_title'] ?>:</strong> <?= $lang->upload['screenshots_delete_warning'] ?></div>
+                        </div>
                     </div>
                 </div>
+
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary st-pill" data-bs-dismiss="modal"><?= $lang->global['cancel'] ?></button>
-                    <button type="button" class="btn btn-danger st-pill" id="confirmDeleteScreenshotBtn"><i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_confirm'] ?></button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-xmark me-1"></i><?= $lang->global['cancel'] ?>
+                    </button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">
+                        <i class="fa-solid fa-trash-can me-1"></i><?= $lang->upload['screenshots_delete_confirm'] ?>
+                    </button>
                 </div>
             </div>
         </div>

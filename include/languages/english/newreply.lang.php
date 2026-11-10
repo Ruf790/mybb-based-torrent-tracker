@@ -12,6 +12,10 @@ if(!defined('IN_TRACKER'))
 $language['newreply'] = array 
 (
 
+'error_invalidforum' => 'Invalid forum',
+'error_empty_post_input' => 'Your request was rejected because no data was received. This usually happens when the total size of the uploaded files exceeds the server limit.',
+
+
 'moderation_user_posts' => "Please note that new posts you make must be approved by a moderator before becoming visible.",
 
 'attach_quota' => "Your allocated attachment usage quota is {1}.",

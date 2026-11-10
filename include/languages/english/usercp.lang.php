@@ -8,6 +8,7 @@ if(!defined('IN_TRACKER'))
 $language['usercp'] = array 
 (
 
+'error_invalidforum' => 'Invalid forum',
 
 'confirm_deletion'	=>	 'Confirm Delete',
 

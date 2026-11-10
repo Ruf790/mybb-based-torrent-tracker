@@ -394,7 +394,57 @@ $language['upload'] = [
 	'notify_upload_pm_message'    => "A new torrent has been uploaded in your subscribed category [b]{1}[/b]:\n\n[url={2}][b]{3}[/b][/url]\n\nManage subscriptions: [url={4}/usercp.php?action=options]User CP[/url]",
 	'notify_upload_email_subject' => 'New torrent in {1}: {3}',
 	'notify_upload_email_message' => "A new torrent has been uploaded in your subscribed category {1}:\n\n{3}\n{2}\n\nManage subscriptions: {4}/usercp.php?action=options\n\n— {5}",
+	
+'btn_mi_builder'    => 'Fill in by template',
+'mi_builder_hint'   => 'Fill in the fields — the text above is generated automatically and is always shown as a card.',
+'lbl_mib_quality'   => 'Quality',
+'lbl_mib_container' => 'Container',
+'lbl_mib_duration'  => 'Duration',
+'lbl_mib_size'      => 'Size',
+'lbl_mib_codec'     => 'Codec',
+'lbl_mib_resolution'=> 'Resolution',
+'lbl_mib_aspect'    => 'Aspect',
+'lbl_mib_bitrate'   => 'Bitrate',
+'lbl_mib_depth'     => 'Bit depth',
+'lbl_mib_lang'      => 'Language',
+'lbl_mib_channels'  => 'Channels',
+'lbl_mib_voice'     => 'Voice-over / title',
+'ph_mib_voice'      => 'e.g. Dub, Original',
+'btn_mib_remove'    => 'Remove',
+'btn_mib_add_audio' => 'Add audio track',
+'ph_mib_subs'       => 'Russian (Forced, Full), English (SDH)',
+'lbl_mi_video'      => 'Video',
+'lbl_mi_audio'      => 'Audio',
+'lbl_mi_subs'       => 'Subtitles',
+'js_mib_replace'    => 'The template will replace the current MediaInfo text. Continue?',
+'lbl_mib_format'  => 'Format',
+'btn_mib_add_sub' => 'Add subtitles',
+'opt_mib_auto' => 'Auto',
 
+
+
+
+
+
+// ── Upload page: tiles and buttons ──
+    'kpi_my_torrents'               => 'My torrents',
+    'kpi_my_size'                   => 'Total size',
+    'kpi_upload_bonus'              => 'Bonus per upload',
+    'kpi_torrent_limit'             => 'Max .torrent size',
+    'kpi_shots_limit'               => 'Screenshots limit',
+    'screenshots_select_all'        => 'Select all',
+    'screenshots_delete_selected'   => 'Delete selected',
+    'screenshots_bulk_delete_title' => 'Delete screenshots?',
+    'screenshots_confirm'           => 'Confirm',
+    'js_ut_lines'                   => '{1} lines',
+
+
+'mediainfo_hint'     => 'Optional: paste the MediaInfo text report (View → Text) or fill it in by template. It is shown as a neat card on the torrent page.',
+'mediainfo_too_long' => 'MediaInfo text is too long.',
+	
+'nfofile_delete'      => 'Delete NFO',
+'nfofile_will_delete' => 'NFO will be deleted when you save',
+'nfofile_undo'        => 'Undo',
 
 
 

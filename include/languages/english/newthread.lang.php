@@ -12,6 +12,7 @@ if(!defined('IN_TRACKER'))
 $language['newthread'] = array 
 (
 
+'error_empty_post_input' => 'Your request was rejected because no data was received. This usually happens when the total size of the uploaded files exceeds the server limit.',
 
 'view_attachments' => "[View My Attachments]",
 

@@ -324,7 +324,7 @@ foreach ($logs as $arr) {
         if ($arr['fid']) $forum_ids[$arr['fid']] = true;
         if ($arr['pid']) $post_ids[$arr['pid']] = true;
 
-        $data = my_unserialize($arr['data']);
+        $data = my_unserialize((string)($arr['data'] ?? ''));
         if (!empty($data['uid']) && empty($data['username'])) {
             $user_ids_from_data[$data['uid']] = true;
         }
@@ -935,7 +935,7 @@ elseif ($entry_type === 'admin') {
         'usergroup' => $arr['usergroup'] ?? '',
         'module'    => $arr['module'] ?? '',
         'action'    => $arr['content'] ?? '',
-        'data'      => my_unserialize($arr['data']),
+        'data'      => my_unserialize((string)($arr['data'] ?? '')),
         'dateline'  => $arr['timestamp'],
         'ipaddress' => $arr['ipaddress'],
     ];
@@ -999,7 +999,7 @@ elseif ($entry_type === 'admin') {
             // Формируем action с информацией из data
             $action = htmlspecialchars($arr['content']);
             $match_action = $action;
-            $data = my_unserialize($arr['data']);
+            $data = my_unserialize((string)($arr['data'] ?? ''));
             
             $mod_user = null;
             if (!empty($data['username'])) {

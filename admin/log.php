@@ -228,7 +228,6 @@ $filter_params = [
 ];
 
 // Everything is in sitelog now: category 'admin' / 'moderator' = admin / moderator actions
-sitelog_upgrade();
 
 $where  = [];
 $params = [];

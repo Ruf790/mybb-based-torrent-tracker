@@ -2959,75 +2959,13 @@ function write_log(string $Text, string $category = '', int $level = 0): void
     );
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   Admin and moderator actions live in sitelog too (category 'admin' / 'moderator').
-   Extra columns: module (admin), fid / tid / pid (moderator), data (serialized).
-   sitelog_upgrade() adds them once and moves the old adminlog / moderatorlog rows
-   (the old tables are renamed to *_migrated, drop them when you like).
-   ───────────────────────────────────────────────────────────────────────────── */
-
-function sitelog_upgrade(): void
-{
-    static $done = false;
-    global $db;
-    if ($done) {
-        return;
-    }
-    $done = true;
-
-    $has = static function () use ($db): bool {
-        $r = $db->sql_query_prepared("SHOW COLUMNS FROM sitelog LIKE 'module'", [], 1);
-        return $r && $db->num_rows($r) > 0;
-    };
-    if ($has()) {
-        return;
-    }
-
-    // Two requests at once: only one migrates
-    $r = $db->sql_query_prepared("SELECT GET_LOCK('sitelog_upgrade', 10) AS l", [], 1);
-    $locked = $r && ($row = $db->fetch_array($r)) && (int)$row['l'] === 1;
-    try {
-        if ($has()) {
-            return;
-        }
-        $db->sql_query_prepared(
-            "ALTER TABLE sitelog
-                ADD `module` varchar(50) NOT NULL DEFAULT '',
-                ADD `fid` int unsigned NOT NULL DEFAULT '0',
-                ADD `tid` int unsigned NOT NULL DEFAULT '0',
-                ADD `pid` int unsigned NOT NULL DEFAULT '0',
-                ADD `data` text NULL"
-        );
-        $table = static function (string $name) use ($db): bool {
-            $r = $db->sql_query_prepared("SHOW TABLES LIKE '" . $name . "'", [], 1);
-            return $r && $db->num_rows($r) > 0;
-        };
-        if ($table('adminlog')) {
-            $db->sql_query_prepared(
-                "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`module`,`data`)
-                 SELECT dateline, uid, ipaddress, action, 'admin', 0, module, data FROM adminlog ORDER BY dateline"
-            );
-            $db->sql_query_prepared("RENAME TABLE adminlog TO adminlog_migrated");
-        }
-        if ($table('moderatorlog')) {
-            $db->sql_query_prepared(
-                "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`fid`,`tid`,`pid`,`data`)
-                 SELECT dateline, uid, ipaddress, action, 'moderator', 0, fid, tid, pid, data FROM moderatorlog ORDER BY dateline"
-            );
-            $db->sql_query_prepared("RENAME TABLE moderatorlog TO moderatorlog_migrated");
-        }
-    } finally {
-        if ($locked) {
-            $db->sql_query_prepared("SELECT RELEASE_LOCK('sitelog_upgrade')", [], 1);
-        }
-    }
-}
+/* Admin and moderator actions live in sitelog too (category 'admin' / 'moderator').
+   Extra columns: module (admin), fid / tid / pid (moderator), data (serialized). */
 
 /** Moderator action → sitelog (one row per tid, like the old moderatorlog) */
 function sitelog_moderator_action(array $data, string $action = ''): void
 {
     global $db, $CURUSER;
-    sitelog_upgrade();
 
     $fid  = (int)($data['fid'] ?? 0);     unset($data['fid']);
     $tid  = (int)($data['tid'] ?? 0);     unset($data['tid']);
@@ -3054,7 +2992,6 @@ function sitelog_moderator_action(array $data, string $action = ''): void
 function sitelog_admin_action(string $module, string $action, array $data): void
 {
     global $db, $CURUSER, $mybb;
-    sitelog_upgrade();
 
     $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : (int)($mybb->user['id'] ?? 0);
     $db->sql_query_prepared(

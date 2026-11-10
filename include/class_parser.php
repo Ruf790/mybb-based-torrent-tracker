@@ -493,7 +493,7 @@ $tpl = '<img style="cursor: pointer;" src="' . $BASEURL . '/' . $pic_base_url . 
 
         if (!$text_only) {
             // Цитата без автора — та же серая плашка, что и у цитаты с автором
-            $replace          = '<blockquote class="mycode_quote ags-quote border-start border-4 border-primary bg-body-tertiary rounded-3 px-3 py-2 mx-0 mb-3">'
+            $replace          = '<blockquote class="mycode_quote ags-quote bg-body-tertiary rounded-3 px-3 py-2 mx-0 mb-3" style="border: 0; border-left: 3px solid var(--bs-primary); box-shadow: none;">'
                               . '<cite class="d-block small text-body-secondary fst-normal mb-1"><i class="fa-solid fa-quote-left text-primary me-2"></i>'
                               . htmlspecialchars((string)($GLOBALS['lang']->global['quote_plain'] ?? 'Quote'), ENT_QUOTES, 'UTF-8')
                               . '</cite>$1</blockquote>' . "\n";
@@ -567,7 +567,7 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
     // Серая плашка в стиле st-ui: синяя полоса слева, автор и время мелко сверху, ссылка на оригинал справа
     return '
-<blockquote class="mycode_quote ags-quote border-start border-4 border-primary bg-body-tertiary rounded-3 px-3 py-2 mx-0 mb-3">
+<blockquote class="mycode_quote ags-quote bg-body-tertiary rounded-3 px-3 py-2 mx-0 mb-3" style="border: 0; border-left: 3px solid var(--bs-primary); box-shadow: none;">
   <div class="d-flex align-items-center gap-2 small text-body-secondary mb-1">
     <i class="fa-solid fa-quote-left text-primary"></i>
     <span><strong class="text-body">' . htmlspecialchars($username) . '</strong> ' . $wrote . $dateTxt . '</span>

@@ -1205,6 +1205,13 @@ if($action == "add" || $action == "edit" || $action == "copy" || $action == "per
 
 $plugins->run_hooks("admin_forum_management_begin");
 
+/** Forum management → sitelog (category 'admin'), "... by <admin>" */
+function fm_log(string $text, int $level = 0): void
+{
+    global $CURUSER;
+    write_log($text . ' by ' . ($CURUSER['username'] ?? 'unknown'), 'admin', $level);
+}
+
 
 
 
@@ -1289,9 +1296,9 @@ if ($action === 'copy') {
                         array_values($p)
                     );
                 }
-                log_admin_action($from, $from_forum['name'], $to, $new_forum['name'], implode(',', $group_ids));
+                fm_log("Copied forum '{$from_forum['name']}' (FID {$from}) to '" . ($new_forum['name'] ?? $to_forum['name'] ?? '') . "' (FID {$to}), permissions of groups " . implode(', ', $group_ids));
             } else {
-                log_admin_action($from, $from_forum['name'], $to, $new_forum['name']);
+                fm_log("Copied forum '{$from_forum['name']}' (FID {$from}) to '" . ($new_forum['name'] ?? $to_forum['name'] ?? '') . "' (FID {$to})");
             }
 
             $plugins->run_hooks('admin_forum_management_copy_commit');
@@ -1577,7 +1584,7 @@ if ($action === 'permissions') {
         }
 
         $cache->update_forumpermissions();
-        log_admin_action($fid, $forum['name'] ?? '');
+        fm_log("Edited permissions of group {$gid} in forum '" . ($forum['name'] ?? '') . "' (FID {$fid})");
 
         if ($is_ajax_post) {
             // popup.js заменяет tr[data-group-id=gid] на html и вызывает QuickPermEditor.init(gid)
@@ -1922,7 +1929,7 @@ if ($action === 'add') {
             save_quick_perms($fid);
 
             $plugins->run_hooks('admin_forum_management_add_commit');
-            log_admin_action($fid, $insert['name']);
+            fm_log("Added forum '{$insert['name']}' (FID {$fid})");
             flash_message($L['flash_forum_added'], 'success');
             admin_redirect('index.php?act=management');
         }
@@ -2212,7 +2219,7 @@ if ($action === 'edit') {
             $cache->update_forums();
 
             $plugins->run_hooks('admin_forum_management_edit_commit');
-            log_admin_action($fid, $mybb->input['title']);
+            fm_log("Edited forum '{$mybb->input['title']}' (FID {$fid})");
             flash_message($L['flash_forum_updated'], 'success');
             admin_redirect("index.php?act=management&fid={$fid}");
         }
@@ -2518,7 +2525,7 @@ if ($action === 'delete')
     $cache->update_forumpermissions();
     $cache->update_forumsdisplay();
 
-    log_admin_action($fid, $forum['name']);
+    fm_log("Deleted forum '{$forum['name']}' (FID {$fid}) with its subforums", 1);
 
     // -------------------------------------------------
     // AJAX-ответ
@@ -2590,7 +2597,7 @@ if (!$action) {
             save_quick_perms($fid);
             $plugins->run_hooks('admin_forum_management_start_permissions_commit');
             $cache->update_forums();
-            log_admin_action('quickpermissions', $fid, $forum['name'] ?? '');
+            fm_log("Updated quick permissions of forum '" . ($forum['name'] ?? '') . "' (FID {$fid})");
 
             flash_message($L['flash_perms_updated'], 'success');
             admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
@@ -2607,9 +2614,9 @@ if (!$action) {
                     $cache->update_forums();
 
                     if (!empty($forum)) {
-                        log_admin_action('orders', $forum['fid'], $forum['name'] ?? '');
+                        fm_log("Changed display order in forum '" . ($forum['name'] ?? '') . "' (FID {$forum['fid']})");
                     } else {
-                        log_admin_action('orders', 0);
+                        fm_log('Changed display order of forums');
                     }
 
                     flash_message($L['flash_disporder_updated'], 'success');

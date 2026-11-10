@@ -227,17 +227,17 @@
 .up-page .screenshot-drag-active { cursor: grabbing !important; }
 
 /* Настройки */
-.up-page .up-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.up-page .up-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 @media (max-width: 575.98px) { .up-page .up-opts { grid-template-columns: minmax(0, 1fr); } }
 .up-page .up-opts .st-check { margin: 0; }
 /* Плитки настроек покрупнее — как в старом аплоаде */
 .up-page .up-opts .up-opt {
-  gap: .85rem; padding: .95rem 1.1rem; border-radius: .9rem; font-size: 1em;
+  gap: .7rem; padding: .65rem .9rem; border-radius: .8rem; font-size: .95em;
   background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
 }
-.up-page .up-opt .form-check-input { width: 2.6em; height: 1.4em; margin-top: .05rem; cursor: pointer; }
-.up-page .up-opt__title { font-size: 1.05em; margin-bottom: .2rem; }
-.up-page .up-opt .st-meta { font-size: .9em; line-height: 1.45; }
+.up-page .up-opt .form-check-input { width: 2.3em; height: 1.25em; margin-top: .05rem; cursor: pointer; }
+.up-page .up-opt__title { font-size: 1em; margin-bottom: .1rem; }
+.up-page .up-opt .st-meta { font-size: .88em; line-height: 1.4; }
 
 /* Цветные переключатели настроек: свой --o у каждого */
 .up-page .up-opt {

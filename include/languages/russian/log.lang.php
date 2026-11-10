@@ -109,6 +109,7 @@ $language['log'] = array (
 	'cat_deletion'               => 'Удаление',
 	'cat_mail'                   => 'Почта',
 	'cat_warning'                => 'Предупреждение',
+	'cat_admin'                  => 'Админ',
 
 	// ── Admin log modules ──
 	'mod_forums'                 => 'Форумы',

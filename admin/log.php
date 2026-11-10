@@ -233,7 +233,8 @@ $where  = [];
 $params = [];
 
 $where[] = match ($log_type) {
-    'site'      => "s.category NOT IN ('admin', 'moderator')",
+    // write_log(..., 'admin') rows (cleartable …) have no module: they are site events
+    'site'      => "NOT (s.category = 'moderator' OR (s.category = 'admin' AND s.module <> ''))",
     'moderator' => "s.category = 'moderator'",
     'admin'     => "s.category = 'admin'",
     default     => '1=1',
@@ -286,7 +287,9 @@ $start = max(0, ($page - 1) * $perpage);
 
 $res = $db->sql_query_prepared(
     "SELECT s.id, s.added AS timestamp, s.txt AS content,
-            CASE s.category WHEN 'admin' THEN 'admin' WHEN 'moderator' THEN 'moderator' ELSE 'site' END AS log_type,
+            CASE WHEN s.category = 'moderator' THEN 'moderator'
+                 WHEN s.category = 'admin' AND s.module <> '' THEN 'admin'
+                 ELSE 'site' END AS log_type,
             s.category, s.uid, u.username, u.usergroup,
             s.fid, s.tid, s.pid, s.ipaddress, s.data, s.module
        FROM sitelog s
@@ -462,6 +465,7 @@ echo '<!DOCTYPE html>
                 border-radius: 20px;
             }
             
+            .log-date, .log-time { white-space: nowrap; }
             .log-date {
                 min-width: 110px;
                 font-weight: 600;
@@ -606,7 +610,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Admin / moderator actions stay (audit trail) — clears site events only
-        $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE category NOT IN ('admin', 'moderator')");
+        $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE NOT (category = 'moderator' OR (category = 'admin' AND module <> ''))");
         if ($result) {
             flash_message($lang->log['flash_cleared'], 'success');
         } else {
@@ -889,11 +893,12 @@ if ($entry_type === 'site') {
         'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'cat_deletion'],
         'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'cat_mail'],
         'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'cat_warning'],
+        'admin'      => ['#fdecea', '#c0392b', 'fa-crown',              'cat_admin'],
     ];
 
     $cat = !empty($arr['category']) ? $arr['category'] : 'general';
     [$bg, $cl, $icon, $label_key] = $cat_badges[$cat] ?? $cat_badges['general'];
-    $label = $lang->log[$label_key];
+    $label = (string)($lang->log[$label_key] ?? ucfirst($cat));
 
     $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:3px 9px;'
                  . 'border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;'

@@ -144,8 +144,8 @@ function get_comment($pid)
 
 // ── pid → id trick ──────────────────────────────────────────────────────────
 // get_comment() кэширует результат — ниже тот же комментарий берётся без запроса
-if (!empty($mybb->input['pid']) && !$mybb->input['id']) {
-    if (isset($style) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
+if (!empty($mybb->input['pid']) && empty($mybb->input['id'])) {
+    if (isset($style['pid'], $style['id']) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
         $mybb->input['id'] = $style['id'];
         unset($style['id']);
     } else {

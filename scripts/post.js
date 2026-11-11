@@ -330,7 +330,9 @@ const Post = {
     },
 
     addAttachments: function() {
-        if (!this.checkAttachments()) return false;
+        // Раньше здесь вызывался checkAttachments() без события — он сразу возвращал true,
+        // и файл больше лимита уходил на сервер без проверки (а сервер отвечал не JSON)
+        if (!this.validateFiles()) return false;
 
         if (this.fileInput.files.length) {
             const common = this.getCommonFiles();
@@ -363,6 +365,13 @@ const Post = {
         
         this.ajaxRequest(formAction + '&ajax=1', 'POST', formData, true)
             .then(data => {
+                // Сервер вернул не JSON (страница ошибки, файл больше post_max_size и т.п.)
+                if (!data || typeof data !== 'object') {
+                    showToast(t('files_upload_error', 'Error uploading files'), 'error');
+                    this.fileInput.value = '';
+                    this.removeTempInputs();
+                    return;
+                }
                 if (data.errors) {
                     data.errors.forEach(message => {
                         showToast(message, 'error');
@@ -453,7 +462,12 @@ const Post = {
         
         // Только для кнопок управления файлами блокируем отправку
         e.preventDefault();
-        
+        if (this.validateFiles()) this.addAttachments();
+        return false;
+    },
+
+    // Проверки выбранных файлов: количество и общий размер (лимиты PHP)
+    validateFiles: function() {
         const file = this.fileInput;
         if (!file) {
             showToast(t('file_input_missing', 'File input not found'), 'error');
@@ -488,13 +502,13 @@ const Post = {
         }
 
         let totalSize = 0;
-        Array.from(file.files).forEach(file => {
-            totalSize += file.size;
+        Array.from(file.files).forEach(f => {
+            totalSize += f.size;
         });
 
         if (totalSize > php_max_upload_size && php_max_upload_size > 0) {
-            const php_max_upload_size_pretty = Math.round(php_max_upload_size / 1e4) / 1e2;
-            showToast(lang.attachment_too_big_upload.replace('{1}', php_max_upload_size_pretty), 'error');
+            const mb = v => Math.round(v / 1048576 * 100) / 100;   // в ланге уже «{1} MB»
+            showToast(lang.attachment_too_big_upload.replace('{1}', mb(php_max_upload_size)), 'error');
             file.value = '';
             return false;
         }
@@ -521,7 +535,8 @@ const Post = {
                         resolve(xhr.responseText);
                     }
                 } else {
-                    reject(new Error('Request failed'));
+                    // 413 (nginx client_max_body_size) и т.п. — тоже покажем ошибку
+                    reject(new Error('Request failed: ' + xhr.status));
                 }
             };
             

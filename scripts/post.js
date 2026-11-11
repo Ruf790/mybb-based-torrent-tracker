@@ -489,6 +489,56 @@ const Post = {
             return false;
         }
 
+        // Тип и размер каждого файла по лимитам из админки (attachtypes) — до отправки
+        let limits = null;
+        try { limits = JSON.parse(file.dataset.limits || 'null'); } catch (e) { limits = null; }
+        if (limits && typeof limits === 'object') {
+            const kb = v => v >= 1024 ? (Math.round(v / 1024 * 10) / 10) + ' MB' : v + ' KB';
+            const bad = [];
+            const good = [];
+            Array.from(file.files).forEach(f => {
+                const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
+                if (!(ext in limits)) {
+                    bad.push(postFmt('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
+                } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
+                    bad.push(postFmt('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
+                } else {
+                    good.push(f);
+                }
+            });
+            if (bad.length) {
+                // One toast for all rejected files (message is HTML in toast.js — escape names)
+                const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                if (bad.length === 1) {
+                    showToast(esc(bad[0]), 'error');
+                } else {
+                    const shown = bad.slice(0, 8);
+                    let html = '<div class="fw-semibold mb-1">' + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>'
+                        + '<ul class="mb-0 ps-3 small" style="max-height:12rem;overflow:auto">'
+                        + shown.map(m => '<li style="overflow-wrap:anywhere">' + esc(m) + '</li>').join('')
+                        + '</ul>';
+                    if (bad.length > shown.length) {
+                        html += '<div class="small text-muted mt-1">' + esc(postFmt('attach_rejected_more', '…and {1} more', bad.length - shown.length)) + '</div>';
+                    }
+                    showToast(html, 'error');
+                }
+                // Good files still go up: keep only them in the input
+                let kept = false;
+                if (good.length && typeof DataTransfer === 'function') {
+                    try {
+                        const dt = new DataTransfer();
+                        good.forEach(f => dt.items.add(f));
+                        file.files = dt.files;
+                        kept = file.files.length === good.length;
+                    } catch (e) { kept = false; }
+                }
+                if (!kept) {
+                    file.value = '';
+                    return false;
+                }
+            }
+        }
+
         if (mybb_max_file_uploads !== 0) {
             const common = this.getCommonFiles().length;
             const moreAllowed = (mybb_max_file_uploads - (this.getAttachments().length - common));
@@ -508,41 +558,6 @@ const Post = {
             showToast(lang.attachment_too_many_files.replace('{1}', php_max_file_uploads), 'error');
             file.value = '';
             return false;
-        }
-
-        // Тип и размер каждого файла по лимитам из админки (attachtypes) — до отправки
-        let limits = null;
-        try { limits = JSON.parse(file.dataset.limits || 'null'); } catch (e) { limits = null; }
-        if (limits && typeof limits === 'object') {
-            const kb = v => v >= 1024 ? (Math.round(v / 1024 * 10) / 10) + ' MB' : v + ' KB';
-            const bad = [];
-            Array.from(file.files).forEach(f => {
-                const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
-                if (!(ext in limits)) {
-                    bad.push(postFmt('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
-                } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
-                    bad.push(postFmt('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
-                }
-            });
-            if (bad.length) {
-                // One toast for all rejected files (message is HTML in toast.js — escape names)
-                const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                if (bad.length === 1) {
-                    showToast(esc(bad[0]), 'error');
-                } else {
-                    const shown = bad.slice(0, 8);
-                    let html = '<div class="fw-semibold mb-1">' + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>'
-                        + '<ul class="mb-0 ps-3 small" style="max-height:12rem;overflow:auto">'
-                        + shown.map(m => '<li style="overflow-wrap:anywhere">' + esc(m) + '</li>').join('')
-                        + '</ul>';
-                    if (bad.length > shown.length) {
-                        html += '<div class="small text-muted mt-1">' + esc(postFmt('attach_rejected_more', '…and {1} more', bad.length - shown.length)) + '</div>';
-                    }
-                    showToast(html, 'error');
-                }
-                file.value = '';
-                return false;
-            }
         }
 
         let totalSize = 0;

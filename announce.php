@@ -37,6 +37,30 @@ function checkconnect(string $host, int $port): string
     return 'no';
 }
 
+function send_response(string $resp, int $compact, $db): never
+{
+    global $gzipcompress;
+    ob_end_clean();
+
+    header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    // Бинарный ответ — без charset, иначе PHP портит compact peers данные
+    header('Content-Type: text/plain');
+
+    $acceptGzip = ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip';
+    if ($compact !== 1 && $acceptGzip && ($gzipcompress ?? '') === 'yes') {
+        header('Content-Encoding: gzip');
+        echo gzencode($resp, 9, FORCE_GZIP);
+    } else {
+        echo $resp;
+    }
+
+    @mysqli_close($db);
+    exit;
+}
+
 function apply_freeleech_mode(string $type, array &$Result): void
 {
     match($type) {
@@ -114,8 +138,10 @@ mysqli_set_charset($db, 'utf8mb4');
 
 // ── Загрузка торрента и пользователя ─────────────────────
 
+// Гибридный торрент (BEP 52) клиент анонсирует дважды: по v1-хешу и по v2-хешу
+// (первые 20 байт SHA-256). v2_hash хранит эти 40 hex-символов — см. sql/v2_hash.sql.
 $stmt = mysqli_prepare($db,
-    'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
+    'SELECT t.id AS tid, t.info_hash AS t_hash, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
             t.seeders, t.leechers, t.times_completed,
             u.id AS userid, u.enabled, u.uploaded, u.downloaded,
             u.usergroup, u.birthday, u.regip,
@@ -123,12 +149,12 @@ $stmt = mysqli_prepare($db,
      FROM torrents t
      INNER JOIN users      u ON u.passkey   = ?
      INNER JOIN usergroups g ON u.usergroup = g.gid
-     WHERE (t.info_hash = ? OR t.info_hash = ?)
+     WHERE (t.info_hash = ? OR t.info_hash = ? OR t.v2_hash = ?)
      LIMIT 1'
 );
 if (!$stmt) stop($l['sqlerror'] . ' TU1');
 
-mysqli_stmt_bind_param($stmt, 'sss', $passkey, $info_hash2, $info_hash);
+mysqli_stmt_bind_param($stmt, 'ssss', $passkey, $info_hash2, $info_hash, $info_hash2);
 mysqli_stmt_execute($stmt);
 $Result = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 mysqli_stmt_close($stmt);
@@ -140,6 +166,9 @@ if ((int)($Result['isbannedgroup'] ?? 0) === 1) stop($l['qerror1']);
 
 $Tid    = (int)$Result['tid'];
 $userId = (int)$Result['userid'];
+
+// Нашли торрент по v2-хешу, а не по v1: это второй анонс того же клиента
+$viaV2  = !in_array((string)($Result['t_hash'] ?? ''), [$info_hash2, $info_hash], true);
 
 // ── Проверки клиента ──────────────────────────────────────
 
@@ -212,6 +241,13 @@ if ($compact !== 1) {
 } else {
     $packed = implode('', $compactPeers);
     $resp  .= strlen($packed) . ':' . $packed . 'e';
+}
+
+// v2-анонс гибридного торрента: только список пиров. Статистика, snatched, античит и антиспам
+// уже обработаны v1-анонсом — иначе трафик и сидирование посчитались бы дважды, а частые
+// анонсы попали бы в cheat_attempts.
+if ($viaV2) {
+    send_response($resp, $compact, $db);
 }
 
 // Себя не нашли — отдельный запрос
@@ -707,21 +743,4 @@ if ($event === 'stopped' && $self) {
 
 // ── Ответ клиенту ─────────────────────────────────────────
 
-ob_end_clean();
-
-header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
-header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
-header('Cache-Control: no-cache, must-revalidate');
-header('Pragma: no-cache');
-// Бинарный ответ — без charset, иначе PHP портит compact peers данные
-header('Content-Type: text/plain');
-
-$acceptGzip = ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip';
-if ($compact !== 1 && $acceptGzip && ($gzipcompress ?? '') === 'yes') {
-    header('Content-Encoding: gzip');
-    echo gzencode($resp, 9, FORCE_GZIP);
-} else {
-    echo $resp;
-}
-
-@mysqli_close($db);
+send_response($resp, $compact, $db);

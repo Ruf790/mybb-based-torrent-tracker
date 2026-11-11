@@ -44,6 +44,8 @@ $language['post3'] = array
 'js_attach_type_not_allowed' => '{1}: такой тип файлов загружать нельзя',
 'js_attach_rejected_n' => 'Не добавлено файлов: {1}',
 'js_attach_rejected_more' => '…и ещё {1}',
+'js_attach_group_too_large' => 'Слишком большие (максимум {1}):',
+'js_attach_group_type' => 'Запрещённый тип файла:',
 'js_file_input_missing' => 'Поле выбора файлов не найдено',
 
 );

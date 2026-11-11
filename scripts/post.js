@@ -494,14 +494,18 @@ const Post = {
         try { limits = JSON.parse(file.dataset.limits || 'null'); } catch (e) { limits = null; }
         if (limits && typeof limits === 'object') {
             const kb = v => v >= 1024 ? (Math.round(v / 1024 * 10) / 10) + ' MB' : v + ' KB';
-            const bad = [];
+            const bad = [];       // single-file messages
+            const groups = {};    // reason -> [file names] (for the combined toast)
             const good = [];
+            const addGroup = (reason, f) => { (groups[reason] ||= []).push(f.name); };
             Array.from(file.files).forEach(f => {
                 const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
                 if (!(ext in limits)) {
                     bad.push(postFmt('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
+                    addGroup(postFmt('attach_group_type', 'File type not allowed:'), f);
                 } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
                     bad.push(postFmt('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
+                    addGroup(postFmt('attach_group_too_large', 'Too large (max {1}):', kb(limits[ext])), f);
                 } else {
                     good.push(f);
                 }
@@ -512,14 +516,20 @@ const Post = {
                 if (bad.length === 1) {
                     showToast('<div style="font-size:1rem;overflow-wrap:anywhere">' + esc(bad[0]) + '</div>', 'error');
                 } else {
-                    const shown = bad.slice(0, 8);
-                    let html = '<div style="font-size:1rem"><div class="fw-semibold mb-1">' + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>'
-                        + '<ul class="mb-0 ps-3" style="max-height:14rem;overflow:auto">'
-                        + shown.map(m => '<li style="overflow-wrap:anywhere">' + esc(m) + '</li>').join('')
-                        + '</ul>';
-                    if (bad.length > shown.length) {
-                        html += '<div class="text-muted mt-1">' + esc(postFmt('attach_rejected_more', '…and {1} more', bad.length - shown.length)) + '</div>';
-                    }
+                    // Grouped by reason, one line per file (long names cut with …, full name on hover)
+                    let html = '<div style="font-size:1rem"><div class="fw-semibold mb-2">'
+                        + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>';
+                    Object.entries(groups).forEach(([reason, names]) => {
+                        const shown = names.slice(0, 6);
+                        html += '<div class="text-danger-emphasis fw-semibold mb-1">' + esc(reason) + '</div>'
+                            + '<ul class="list-unstyled mb-2" style="max-height:12rem;overflow:auto">'
+                            + shown.map(n => '<li title="' + esc(n) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:19rem">'
+                                + '<i class="fa-regular fa-file me-2 text-body-tertiary"></i>' + esc(n) + '</li>').join('')
+                            + '</ul>';
+                        if (names.length > shown.length) {
+                            html += '<div class="text-muted mb-2">' + esc(postFmt('attach_rejected_more', '…and {1} more', names.length - shown.length)) + '</div>';
+                        }
+                    });
                     showToast(html + '</div>', 'error');
                 }
                 // Good files still go up: keep only them in the input

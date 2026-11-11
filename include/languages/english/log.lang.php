@@ -11,6 +11,7 @@ $language['log'] = array (
 	'kpi_today'                  => 'Today',
 	'kpi_errors'                 => 'Errors, 24 h',
 	'kpi_staff'                  => 'Staff, 7 days',
+	'lbl_more_threads'           => '+{1} more',
 
 	// ── Errors ──
 	'err_no_permission'          => 'Error! You do not have permission to access this page.',

@@ -334,6 +334,10 @@ foreach ($logs as $arr) {
         if (!empty($data['aid'])) {
             $announcement_ids[$data['aid']] = true;
         }
+        // bulk moderator action: several threads in one row
+        foreach (array_slice((array)($data['tids'] ?? []), 0, 5) as $bt) {
+            $thread_ids[(int)$bt] = true;
+        }
     }
 
     // Site логи — грузим юзера по uid
@@ -798,6 +802,20 @@ elseif ($entry_type === 'admin') {
                 $information .= '<a class="lg-ref" href="../' . get_thread_link($arr['tid']) . '" target="_blank" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . htmlspecialchars($thread['subject']) . '</a>';
             }
             
+            // Bulk action: "N threads" + first 5 links
+            if (!empty($data['tids']) && is_array($data['tids'])) {
+                $bulk = array_map('intval', $data['tids']);
+                $action       .= ' (' . count($bulk) . ')';
+                $match_action .= ' (' . count($bulk) . ')';
+                foreach (array_slice($bulk, 0, 5) as $bt) {
+                    $subj = isset($threads_data[$bt]) ? htmlspecialchars($threads_data[$bt]['subject']) : '#' . $bt;
+                    $information .= '<a class="lg-ref" href="../' . get_thread_link($bt) . '" target="_blank" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . $subj . '</a>';
+                }
+                if (count($bulk) > 5) {
+                    $information .= '<span class="lg-ref text-body-secondary"><i class="fa-solid fa-ellipsis"></i>' . ags_fmt($lgL('lbl_more_threads', '+{1} more'), count($bulk) - 5) . '</span>';
+                }
+            }
+
             if ($arr['fid'] && isset($forums_data[$arr['fid']])) {
                 $forum = $forums_data[$arr['fid']];
                 $information .= '<a class="lg-ref" href="../' . get_forum_link($arr['fid']) . '" target="_blank" title="' . $L['lbl_forum'] . '"><i class="fa-solid fa-folder"></i>' . htmlspecialchars($forum['name']) . '</a>';

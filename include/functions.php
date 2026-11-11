@@ -2972,19 +2972,21 @@ function sitelog_moderator_action(array $data, string $action = ''): void
     $pid  = (int)($data['pid'] ?? 0);     unset($data['pid']);
     $tids = (array)($data['tids'] ?? []); unset($data['tids']);
 
-    $uid  = (int)($CURUSER['id'] ?? 0);
-    $ip   = my_inet_pton(get_ip());
-    $ser  = my_serialize($data);
-
-    $rows = [];
-    $params = [];
-    foreach ($tids ?: [$tid] as $t) {
-        $rows[] = '(?,?,?,?,?,?,?,?,?,?)';
-        array_push($params, TIMENOW, $uid, $ip, $action, 'moderator', 0, $fid, (int)$t, $pid, $ser);
+    // Bulk action on several threads: ONE row, the thread ids go to data['tids']
+    // (before: one row per thread — moving 30 threads gave 30 identical lines)
+    $tids = array_values(array_unique(array_filter(array_map('intval', $tids))));
+    if (count($tids) === 1) {
+        $tid  = $tids[0];
+        $tids = [];
     }
+    if ($tids) {
+        $data['tids'] = $tids;
+        $tid = 0;
+    }
+
     $db->sql_query_prepared(
-        "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`fid`,`tid`,`pid`,`data`) VALUES " . implode(',', $rows),
-        $params
+        "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`fid`,`tid`,`pid`,`data`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [TIMENOW, (int)($CURUSER['id'] ?? 0), my_inet_pton(get_ip()), $action, 'moderator', 0, $fid, $tid, $pid, my_serialize($data)]
     );
 }
 

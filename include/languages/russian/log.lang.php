@@ -11,6 +11,7 @@ $language['log'] = array (
 	'kpi_today'                  => 'Сегодня',
 	'kpi_errors'                 => 'Ошибки за 24 ч',
 	'kpi_staff'                  => 'Стафф за 7 дней',
+	'lbl_more_threads'           => 'и ещё {1}',
 
 	// ── Errors ──
 	'err_no_permission'          => 'Ошибка! У вас нет доступа к этой странице.',

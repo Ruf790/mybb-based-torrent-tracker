@@ -40,6 +40,8 @@ $language['post3'] = array
 'js_attach_remove_error' => 'Error removing attachment',
 'js_files_uploaded' => 'Files uploaded successfully',
 'js_files_upload_error' => 'Error uploading files',
+'js_attach_too_large' => '{1}: file is too large (max {2})',
+'js_attach_type_not_allowed' => '{1}: this file type is not allowed',
 'js_file_input_missing' => 'File input not found',
 
 );

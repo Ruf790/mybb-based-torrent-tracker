@@ -501,6 +501,27 @@ const Post = {
             return false;
         }
 
+        // Тип и размер каждого файла по лимитам из админки (attachtypes) — до отправки
+        let limits = null;
+        try { limits = JSON.parse(file.dataset.limits || 'null'); } catch (e) { limits = null; }
+        if (limits && typeof limits === 'object') {
+            const kb = v => v >= 1024 ? (Math.round(v / 1024 * 10) / 10) + ' MB' : v + ' KB';
+            const bad = [];
+            Array.from(file.files).forEach(f => {
+                const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
+                if (!(ext in limits)) {
+                    bad.push(t('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
+                } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
+                    bad.push(t('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
+                }
+            });
+            if (bad.length) {
+                bad.forEach(m => showToast(m, 'error'));
+                file.value = '';
+                return false;
+            }
+        }
+
         let totalSize = 0;
         Array.from(file.files).forEach(f => {
             totalSize += f.size;

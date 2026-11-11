@@ -40,6 +40,8 @@ $language['post3'] = array
 'js_attach_remove_error' => 'Ошибка при удалении вложения',
 'js_files_uploaded' => 'Файлы успешно загружены',
 'js_files_upload_error' => 'Ошибка при загрузке файлов',
+'js_attach_too_large' => '{1}: файл слишком большой (максимум {2})',
+'js_attach_type_not_allowed' => '{1}: такой тип файлов загружать нельзя',
 'js_file_input_missing' => 'Поле выбора файлов не найдено',
 
 );

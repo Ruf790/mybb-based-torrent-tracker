@@ -783,7 +783,7 @@ $deletebox .= $modal_delete;
 				mybb_max_file_uploads = '.$maxattachments.';
 			</script>
 			<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js?ver=7"></script>
-			<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=236"></script>';	
+			<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=237"></script>';	
 	
 	
 

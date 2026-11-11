@@ -12,6 +12,15 @@ if (typeof window.t !== 'function') {
     };
 }
 
+// $lang->load() turns {1} into %1$s — fill both forms (window.t may come from another script)
+function postFmt(key, fallback, ...args) {
+    let str = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach(function (arg, i) {
+        str = str.split('{' + (i + 1) + '}').join(String(arg)).split('%' + (i + 1) + '$s').join(String(arg));
+    });
+    return str;
+}
+
 const removeattach_confirm = t('removeattach_confirm', 'Are you sure you want to delete this attachment?');
 
 // ── Модалка подтверждения удаления вложения (Bootstrap modal, в стиле manage_screenshots.php) ──
@@ -510,9 +519,9 @@ const Post = {
             Array.from(file.files).forEach(f => {
                 const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
                 if (!(ext in limits)) {
-                    bad.push(t('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
+                    bad.push(postFmt('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
                 } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
-                    bad.push(t('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
+                    bad.push(postFmt('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
                 }
             });
             if (bad.length) {

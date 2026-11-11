@@ -791,7 +791,7 @@ php_max_file_uploads = '.$php_max_file_uploads.';
 mybb_max_file_uploads = '.$maxattachments.';
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1836"></script>';
+<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1837"></script>';
 
     $plugins->run_hooks('newreply_end');
 

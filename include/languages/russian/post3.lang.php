@@ -42,6 +42,8 @@ $language['post3'] = array
 'js_files_upload_error' => 'Ошибка при загрузке файлов',
 'js_attach_too_large' => '{1}: файл слишком большой (максимум {2})',
 'js_attach_type_not_allowed' => '{1}: такой тип файлов загружать нельзя',
+'js_attach_rejected_n' => 'Не добавлено файлов: {1}',
+'js_attach_rejected_more' => '…и ещё {1}',
 'js_file_input_missing' => 'Поле выбора файлов не найдено',
 
 );

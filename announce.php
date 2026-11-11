@@ -97,6 +97,10 @@ $seeder     = ($left === 0 ? 'yes' : 'no');
 
 // ── Базовые проверки ──────────────────────────────────────
 
+if ($passkey !== 'tssespecialtorrentv1byxamsep2007' && !preg_match('/^[a-f0-9]{32}$/', $passkey)) {
+    stop($l['invalidpasskey'] ?? 'Invalid passkey! Download the .torrent file again.');
+}
+
 if (!(strlen($passkey) === 32 && strlen($info_hash) === 20 && strlen($peer_id) === 20
       && $port > 0 && $port < 65535)) {
     stop($l['error']);

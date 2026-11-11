@@ -30,7 +30,8 @@ ErrorDocument 500 /error.php?errorid=500
 #RewriteBase /
 RewriteRule ^index.html$ index.php [L,NE]
 
-RewriteRule ^[a-z0-9_]*-a-([a-f0-9]{32})$ announce.php?passkey=$1 [QSA,L]
+# any passkey goes to announce.php, so a broken one gets a "failure reason" the client shows (not a 404 page)
+RewriteRule ^[a-z0-9_]*-a-([^/]*)$ announce.php?passkey=$1 [QSA,L]
 
 
 RewriteRule ^user-([0-9]+)\.html$ member.php?action=profile&id=$1 [L,QSA]

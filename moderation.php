@@ -1029,11 +1029,12 @@ switch ($action) {
 
         if (!is_mod($usergroups)) error_no_permission();
 
+        // Log first: the log keeps the thread names, after delete_thread() they are gone
+        log_moderator_action($modlogdata, 'Threads Deleted Permanently');
+
         foreach ($threadlist as $t) {
             $moderation->delete_thread($t);
         }
-
-        log_moderator_action($modlogdata, 'Threads Deleted Permanently');
         $mybb->get_input('inlinetype') === 'search'
             ? clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search')
             : clearinline($fid, 'forum');

@@ -2984,6 +2984,19 @@ function sitelog_moderator_action(array $data, string $action = ''): void
         $tid = 0;
     }
 
+    // Thread names at the moment of the action — the log still shows them after the
+    // threads are deleted (first 20, cut to 100 chars)
+    $name_ids = $tids ? array_slice($tids, 0, 20) : ($tid ? [$tid] : []);
+    if ($name_ids && empty($data['subjects'])) {
+        $res = $db->sql_query_prepared(
+            "SELECT tid, subject FROM threads WHERE tid IN (" . implode(',', array_fill(0, count($name_ids), '?')) . ")",
+            $name_ids
+        );
+        while ($res && ($r = $db->fetch_array($res))) {
+            $data['subjects'][(int)$r['tid']] = mb_substr((string)$r['subject'], 0, 100);
+        }
+    }
+
     $db->sql_query_prepared(
         "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`fid`,`tid`,`pid`,`data`) VALUES (?,?,?,?,?,?,?,?,?,?)",
         [TIMENOW, (int)($CURUSER['id'] ?? 0), my_inet_pton(get_ip()), $action, 'moderator', 0, $fid, $tid, $pid, my_serialize($data)]

@@ -801,6 +801,10 @@ elseif ($entry_type === 'admin') {
                 $thread = $threads_data[$arr['tid']];
                 $information .= '<a class="lg-ref" href="../' . get_thread_link($arr['tid']) . '" target="_blank" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . htmlspecialchars($thread['subject']) . '</a>';
             }
+            elseif ($arr['tid'] && !empty($data['subjects'][$arr['tid']])) {
+                // thread deleted — name saved at the time of the action
+                $information .= '<span class="lg-ref" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . htmlspecialchars((string)$data['subjects'][$arr['tid']]) . ' <span class="text-body-tertiary">#' . (int)$arr['tid'] . '</span></span>';
+            }
             
             // Bulk action: "N threads" + first 5 links
             if (!empty($data['tids']) && is_array($data['tids'])) {
@@ -808,7 +812,8 @@ elseif ($entry_type === 'admin') {
                 $action       .= ' (' . count($bulk) . ')';
                 $match_action .= ' (' . count($bulk) . ')';
                 foreach (array_slice($bulk, 0, 5) as $bt) {
-                    $subj = isset($threads_data[$bt]) ? htmlspecialchars($threads_data[$bt]['subject']) : '#' . $bt;
+                    $subj = isset($threads_data[$bt]) ? htmlspecialchars($threads_data[$bt]['subject'])
+                          : (isset($data['subjects'][$bt]) ? htmlspecialchars((string)$data['subjects'][$bt]) . ' <span class="text-body-tertiary">#' . $bt . '</span>' : '#' . $bt);
                     $information .= '<a class="lg-ref" href="../' . get_thread_link($bt) . '" target="_blank" title="' . $L['lbl_thread'] . '"><i class="fa-solid fa-comments"></i>' . $subj . '</a>';
                 }
                 if (count($bulk) > 5) {

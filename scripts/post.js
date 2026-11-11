@@ -510,17 +510,17 @@ const Post = {
                 // One toast for all rejected files (message is HTML in toast.js — escape names)
                 const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 if (bad.length === 1) {
-                    showToast(esc(bad[0]), 'error');
+                    showToast('<div style="font-size:1rem;overflow-wrap:anywhere">' + esc(bad[0]) + '</div>', 'error');
                 } else {
                     const shown = bad.slice(0, 8);
-                    let html = '<div class="fw-semibold mb-1">' + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>'
-                        + '<ul class="mb-0 ps-3 small" style="max-height:12rem;overflow:auto">'
+                    let html = '<div style="font-size:1rem"><div class="fw-semibold mb-1">' + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>'
+                        + '<ul class="mb-0 ps-3" style="max-height:14rem;overflow:auto">'
                         + shown.map(m => '<li style="overflow-wrap:anywhere">' + esc(m) + '</li>').join('')
                         + '</ul>';
                     if (bad.length > shown.length) {
-                        html += '<div class="small text-muted mt-1">' + esc(postFmt('attach_rejected_more', '…and {1} more', bad.length - shown.length)) + '</div>';
+                        html += '<div class="text-muted mt-1">' + esc(postFmt('attach_rejected_more', '…and {1} more', bad.length - shown.length)) + '</div>';
                     }
-                    showToast(html, 'error');
+                    showToast(html + '</div>', 'error');
                 }
                 // Good files still go up: keep only them in the input
                 let kept = false;

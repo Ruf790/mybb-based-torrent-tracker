@@ -2299,6 +2299,9 @@ CREATE TABLE IF NOT EXISTS `2fa_pending` (
   KEY `uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	
+
+
+
 CREATE TABLE IF NOT EXISTS `announcements` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `subject` varchar(120) NOT NULL DEFAULT '',
@@ -2823,6 +2826,7 @@ CREATE TABLE IF NOT EXISTS `mailqueue` (
   `headers` text NOT NULL,
   PRIMARY KEY (`mid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 CREATE TABLE IF NOT EXISTS `news` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,

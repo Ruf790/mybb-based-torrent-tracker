@@ -156,28 +156,27 @@
 .pf-page { --pf-c: var(--bs-primary); }
 .pf-page .pf-head {
     position: relative; overflow: hidden; padding-top: 3.4rem;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--pf-c) 7%, var(--bs-body-bg)) 0%, var(--bs-body-bg) 70%);
+    background: var(--bs-body-bg);
 }
 .pf-page .pf-head > :not(.pf-cover) { position: relative; z-index: 1; }
-/* Name always starts below the band, even with a group image / user title under it */
-.pf-page .pf-head { align-items: flex-start; }
-.pf-page .pf-head > .flex-grow-1 { padding-top: 2rem; }
-.pf-page .pf-head__btns { align-self: center; }
+/* Neutral grey band with a tile grid (was: gradient in the group colour) */
 .pf-page .pf-cover {
     position: absolute; inset: 0 0 auto 0; height: 5.2rem; z-index: 0;
-    background:
-        radial-gradient(120% 140% at 100% 0%, rgba(255, 255, 255, .22) 0%, transparent 55%),
-        repeating-linear-gradient(135deg, rgba(255, 255, 255, .07) 0 2px, transparent 2px 14px),
-        linear-gradient(110deg, var(--pf-c) 0%, color-mix(in srgb, var(--pf-c) 70%, #000) 55%, color-mix(in srgb, var(--pf-c) 35%, transparent) 100%);
+    background-color: var(--bs-secondary-bg);
+    background-image:
+        linear-gradient(var(--bs-body-bg) 2px, transparent 2px),
+        linear-gradient(90deg, var(--bs-body-bg) 2px, transparent 2px);
+    background-size: 20px 20px;
+    background-position: -1px -1px;
 }
 .pf-page .pf-cover::after {
-    content: ""; position: absolute; inset: auto 0 0 0; height: 2rem;
-    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--pf-c) 7%, var(--bs-body-bg)));
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 45%, var(--bs-body-bg) 100%);
 }
 .pf-page .pf-cover__grp {
     position: absolute; top: .6rem; right: .9rem; z-index: 1;
     padding: .15rem .65rem; border-radius: 50rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-    color: #fff; background: rgba(0, 0, 0, .22); backdrop-filter: blur(4px); border: 1px solid rgba(255, 255, 255, .25);
+    color: var(--bs-secondary-color); background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
 }
 .pf-page .pf-ava img,
 .pf-page .pf-ava__none { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pf-c) 55%, transparent), 0 .4rem 1rem rgba(0, 0, 0, .12); }

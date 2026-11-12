@@ -37,6 +37,30 @@ function checkconnect(string $host, int $port): string
     return 'no';
 }
 
+function send_response(string $resp, int $compact, $db): never
+{
+    global $gzipcompress;
+    ob_end_clean();
+
+    header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    // Бинарный ответ — без charset, иначе PHP портит compact peers данные
+    header('Content-Type: text/plain');
+
+    $acceptGzip = ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip';
+    if ($compact !== 1 && $acceptGzip && ($gzipcompress ?? '') === 'yes') {
+        header('Content-Encoding: gzip');
+        echo gzencode($resp, 9, FORCE_GZIP);
+    } else {
+        echo $resp;
+    }
+
+    @mysqli_close($db);
+    exit;
+}
+
 function apply_freeleech_mode(string $type, array &$Result): void
 {
     match($type) {
@@ -46,6 +70,51 @@ function apply_freeleech_mode(string $type, array &$Result): void
         'doubleupload'        => ($Result['doubleupload'] = 'yes'),
         default               => null,
     };
+}
+
+/**
+ * Why the torrent + user lookup found nothing. Runs only on that failure path, so a normal
+ * announce still costs one query. Lets the client show the real reason instead of one
+ * generic "Invalid Torrent or User Hash!".
+ */
+function lookup_error(mysqli $db, string $passkey, string $info_hash_hex, string $info_hash, array $l): string
+{
+    $stmt = mysqli_prepare($db,
+        'SELECT u.enabled, g.gid, g.isbannedgroup
+         FROM users u
+         LEFT JOIN usergroups g ON g.gid = u.usergroup
+         WHERE u.passkey = ?
+         LIMIT 1'
+    );
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, 's', $passkey);
+        mysqli_stmt_execute($stmt);
+        $user = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
+
+        if (!$user) {
+            return $l['tu_passkey'] ?? 'Invalid passkey. Download the .torrent file from the site again.';
+        }
+        if (($user['enabled'] ?? '') !== 'yes' || (int)($user['isbannedgroup'] ?? 0) === 1) {
+            return $l['tu_disabled'] ?? 'Your account is disabled (banned). Check your messages on the site.';
+        }
+        if ($user['gid'] === null) {
+            return $l['tu_group'] ?? 'Your account has an invalid user group. Contact the staff.';
+        }
+    }
+
+    $stmt = mysqli_prepare($db, 'SELECT 1 FROM torrents WHERE info_hash = ? OR info_hash = ? OR v2_hash = ? LIMIT 1');
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, 'sss', $info_hash_hex, $info_hash, $info_hash_hex);
+        mysqli_stmt_execute($stmt);
+        $found = mysqli_stmt_get_result($stmt)->num_rows > 0;
+        mysqli_stmt_close($stmt);
+        if (!$found) {
+            return $l['tu_torrent'] ?? 'Torrent not registered on this tracker (deleted or re-uploaded).';
+        }
+    }
+
+    return $l['tuerror'];
 }
 
 // ── Конфигурация ──────────────────────────────────────────
@@ -114,32 +183,37 @@ mysqli_set_charset($db, 'utf8mb4');
 
 // ── Загрузка торрента и пользователя ─────────────────────
 
+// Гибридный торрент (BEP 52) клиент анонсирует дважды: по v1-хешу и по v2-хешу
+// (первые 20 байт SHA-256). v2_hash хранит эти 40 hex-символов — см. sql/v2_hash.sql.
 $stmt = mysqli_prepare($db,
-    'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
-            t.seeders, t.leechers, t.times_completed,
+    'SELECT t.id AS tid, t.info_hash AS t_hash, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
+            t.seeders, t.leechers, t.times_completed, t.size, t.added, t.owner,
             u.id AS userid, u.enabled, u.uploaded, u.downloaded,
             u.usergroup, u.birthday, u.regip,
             g.isbannedgroup, g.canfreeleech
      FROM torrents t
      INNER JOIN users      u ON u.passkey   = ?
      INNER JOIN usergroups g ON u.usergroup = g.gid
-     WHERE (t.info_hash = ? OR t.info_hash = ?)
+     WHERE (t.info_hash = ? OR t.info_hash = ? OR t.v2_hash = ?)
      LIMIT 1'
 );
 if (!$stmt) stop($l['sqlerror'] . ' TU1');
 
-mysqli_stmt_bind_param($stmt, 'sss', $passkey, $info_hash2, $info_hash);
+mysqli_stmt_bind_param($stmt, 'ssss', $passkey, $info_hash2, $info_hash, $info_hash2);
 mysqli_stmt_execute($stmt);
 $Result = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 mysqli_stmt_close($stmt);
 
-if (!$Result || !($Result['tid'] ?? null) || ($Result['enabled'] ?? '') !== 'yes') {
-    stop($l['tuerror']);
+if (!$Result || !($Result['tid'] ?? null) || ($Result['enabled'] ?? '') !== 'yes'
+    || (int)($Result['isbannedgroup'] ?? 0) === 1) {
+    stop(lookup_error($db, $passkey, $info_hash2, $info_hash, $l));
 }
-if ((int)($Result['isbannedgroup'] ?? 0) === 1) stop($l['qerror1']);
 
 $Tid    = (int)$Result['tid'];
 $userId = (int)$Result['userid'];
+
+// Нашли торрент по v2-хешу, а не по v1: это второй анонс того же клиента
+$viaV2  = !in_array((string)($Result['t_hash'] ?? ''), [$info_hash2, $info_hash], true);
 
 // ── Проверки клиента ──────────────────────────────────────
 
@@ -163,7 +237,7 @@ if (($bannedclientdetect ?? '') === 'yes') {
 
 $fields    = 'seeder, peer_id, ip, port, uploaded, downloaded, userid, last_action,
               (' . TIMENOW . ' - last_action) AS announcetime,
-              last_action AS ts, prev_action AS prevts, connectable';
+              last_action AS ts, prev_action AS prevts, connectable, finishedat';
 $gp_eq     = (($nc ?? '') === 'yes' ? " AND connectable = 'yes'" : '');
 $wantseeds = ($seeder === 'yes' ? " AND seeder = 'no'" : '');
 
@@ -212,6 +286,13 @@ if ($compact !== 1) {
 } else {
     $packed = implode('', $compactPeers);
     $resp  .= strlen($packed) . ':' . $packed . 'e';
+}
+
+// v2-анонс гибридного торрента: только список пиров. Статистика, snatched, античит и антиспам
+// уже обработаны v1-анонсом — иначе трафик и сидирование посчитались бы дважды, а частые
+// анонсы попали бы в cheat_attempts.
+if ($viaV2) {
+    send_response($resp, $compact, $db);
 }
 
 // Себя не нашли — отдельный запрос
@@ -290,7 +371,7 @@ if ($self) {
     $announce_time_cheat = max(1, (int)($self['announcetime'] ?? 1));
 
     // Функция записи в cheat_attempts
-    $write_cheat = function(string $reason, string $detail) use ($db, $Result, $Tid, $ip, $agent): void {
+    $write_cheat = function(string $reason, string $detail, string $severity = 'high') use ($db, $Result, $Tid, $ip, $agent): void {
         $added      = TIMENOW;
         $uid        = (int)$Result['userid'];
         $torrentid  = (int)$Tid;
@@ -298,7 +379,7 @@ if ($self) {
         $ip_str     = (string)$ip;
         $reason_str = substr($reason, 0, 64);
         $detail_str = substr($detail, 0, 512);
-        $severity   = 'high';
+        if (!in_array($severity, ['low', 'medium', 'high'], true)) $severity = 'high';
 
         // Не дублировать одинаковую причину за последние 60 секунд
         $check = mysqli_prepare($db,
@@ -337,13 +418,26 @@ if ($self) {
     }
 
     // Проверка 2: completed без реального скачивания (< 90% размера торрента)
-    // Только если знаем размер торрента
-    if ($event === 'completed' && !empty($Result['size']) && (int)$Result['size'] > 0) {
+    // $downloaded из анонса — только за текущий запуск клиента (после рестарта считается с нуля),
+    // поэтому берём всё, что трекер насчитал по этому торренту: snatched.downloaded + дельта этого анонса.
+    // medium: часть файлов могла уже лежать на диске (перехеширование, кросс-сид) — тогда это не чит.
+    if ($event === 'completed' && (int)($Result['size'] ?? 0) > 0 && ($snatchmod ?? '') === 'yes') {
         $torrentSize = (int)$Result['size'];
-        if ($downloaded < ($torrentSize * 0.90)) {
+        $snatched_dl = 0;
+        $stmt_sn = mysqli_prepare($db, 'SELECT downloaded FROM snatched WHERE torrentid = ? AND userid = ? LIMIT 1');
+        if ($stmt_sn) {
+            mysqli_stmt_bind_param($stmt_sn, 'ii', $Tid, $userId);
+            mysqli_stmt_execute($stmt_sn);
+            $row_sn = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt_sn));
+            mysqli_stmt_close($stmt_sn);
+            $snatched_dl = (int)($row_sn['downloaded'] ?? 0);
+        }
+        $total_dl = $snatched_dl + $downthis;
+        if ($total_dl < ($torrentSize * 0.90)) {
             $write_cheat(
                 'completed_without_download',
-                "downloaded={$downloaded} but torrent_size={$torrentSize} (< 90%)"
+                "downloaded_total={$total_dl} (snatched={$snatched_dl} + this={$downthis}) but torrent_size={$torrentSize} (< 90%)",
+                'medium'
             );
         }
     }
@@ -396,14 +490,20 @@ if ($self) {
     }
 
     // Проверка 8: невозможный ratio на новом торренте
-    if ($downthis > 0 && $realupload > 0 && !empty($Result['added'])) {
-        $torrent_age = TIMENOW - (int)strtotime((string)$Result['added']);
-        $ratio       = $realupload / $downthis;
+    // torrents.added — unix-время (int). Считаем только при заметном скачивании за интервал (>= 50 MiB):
+    // на крошечной дельте (последний кусок) отношение отдачи к скачиванию бывает огромным у честного личера.
+    // Автора раздачи не проверяем — он отдаёт, ничего не скачивая.
+    $min_down_for_ratio = 50 * 1024 * 1024;
+    if ($downthis >= $min_down_for_ratio && $realupload > 0 && (int)($Result['added'] ?? 0) > 0
+        && (int)($Result['owner'] ?? 0) !== $userId) {
+        $torrent_age = TIMENOW - (int)$Result['added'];
+        $ratio       = round($realupload / $downthis, 2);
 
-        if ($torrent_age < 3600 && $ratio > 3) {
+        if ($torrent_age >= 0 && $torrent_age < 3600 && $ratio > 3) {
             $write_cheat(
                 'impossible_ratio_new_torrent',
-                "ratio={$ratio} on torrent {$torrent_age}s old"
+                "ratio={$ratio} (up={$realupload} down={$downthis}) on torrent {$torrent_age}s old",
+                'medium'
             );
         }
 
@@ -707,21 +807,4 @@ if ($event === 'stopped' && $self) {
 
 // ── Ответ клиенту ─────────────────────────────────────────
 
-ob_end_clean();
-
-header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
-header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
-header('Cache-Control: no-cache, must-revalidate');
-header('Pragma: no-cache');
-// Бинарный ответ — без charset, иначе PHP портит compact peers данные
-header('Content-Type: text/plain');
-
-$acceptGzip = ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip';
-if ($compact !== 1 && $acceptGzip && ($gzipcompress ?? '') === 'yes') {
-    header('Content-Encoding: gzip');
-    echo gzencode($resp, 9, FORCE_GZIP);
-} else {
-    echo $resp;
-}
-
-@mysqli_close($db);
+send_response($resp, $compact, $db);

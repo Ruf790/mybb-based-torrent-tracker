@@ -22,11 +22,21 @@ const BANNED_PORTS = [
 
 function stop(string $msg): never
 {
-    ob_end_clean();
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     header('Content-Type: text/plain');
     header('Pragma: no-cache');
     exit('d14:failure reason' . strlen($msg) . ':' . $msg . 'e');
 }
+
+// Any uncaught error (e.g. mysqli_sql_exception: PHP 8.1+ throws on SQL errors) must still give
+// the client a bencoded answer — otherwise the PHP error text goes out and the client only sees
+// "expected value (list, dict, int or string) in bencoded string".
+set_exception_handler(static function (\Throwable $e): void {
+    error_log('announce.php: ' . get_class($e) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+    stop('Tracker internal error, try again later');
+});
 
 function checkconnect(string $host, int $port): string
 {
@@ -116,6 +126,7 @@ mysqli_set_charset($db, 'utf8mb4');
 
 $stmt = mysqli_prepare($db,
     'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
+            t.size, t.added,
             t.seeders, t.leechers, t.times_completed,
             u.id AS userid, u.enabled, u.uploaded, u.downloaded,
             u.usergroup, u.birthday, u.regip,
@@ -208,7 +219,7 @@ if ($stmt_peers) {
 }
 
 if ($compact !== 1) {
-    $resp .= 'e';
+    $resp .= 'ee';        // end of the peers list + end of the response dict
 } else {
     $packed = implode('', $compactPeers);
     $resp  .= strlen($packed) . ':' . $packed . 'e';
@@ -294,37 +305,44 @@ if ($self) {
         $added      = TIMENOW;
         $uid        = (int)$Result['userid'];
         $torrentid  = (int)$Tid;
-        $agent_str  = (string)$agent;
-        $ip_str     = (string)$ip;
+        // sized for the columns (agent CHAR(32); ip was CHAR(15) — too short for IPv6, now
+        // VARCHAR(45) in install.php); a too-long value must never kill the announce
+        $agent_str  = substr((string)$agent, 0, 32);
+        $ip_str     = substr((string)$ip, 0, 45);
         $reason_str = substr($reason, 0, 64);
         $detail_str = substr($detail, 0, 512);
         $severity   = 'high';
 
-        // Не дублировать одинаковую причину за последние 60 секунд
-        $check = mysqli_prepare($db,
-            'SELECT id FROM cheat_attempts WHERE uid=? AND torrentid=? AND reason=? AND added>? LIMIT 1'
-        );
-        if ($check) {
-            $since = TIMENOW - 60;
-            mysqli_stmt_bind_param($check, 'iisi', $uid, $torrentid, $reason_str, $since);
-            mysqli_stmt_execute($check);
-            $exists = mysqli_stmt_get_result($check)->num_rows > 0;
-            mysqli_stmt_close($check);
-            if ($exists) return;
-        }
-
-        $stmt = mysqli_prepare($db,
-            'INSERT INTO cheat_attempts
-             (added, uid, agent, ip, torrentid, reason, detail, severity)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-        if ($stmt) {
-            mysqli_stmt_bind_param($stmt, 'isssssss',
-                $added, $uid, $agent_str, $ip_str,
-                $torrentid, $reason_str, $detail_str, $severity
+        try {
+            // Не дублировать одинаковую причину за последние 60 секунд
+            $check = mysqli_prepare($db,
+                'SELECT id FROM cheat_attempts WHERE uid=? AND torrentid=? AND reason=? AND added>? LIMIT 1'
             );
-            mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
+            if ($check) {
+                $since = TIMENOW - 60;
+                mysqli_stmt_bind_param($check, 'iisi', $uid, $torrentid, $reason_str, $since);
+                mysqli_stmt_execute($check);
+                $exists = mysqli_stmt_get_result($check)->num_rows > 0;
+                mysqli_stmt_close($check);
+                if ($exists) return;
+            }
+
+            $stmt = mysqli_prepare($db,
+                'INSERT INTO cheat_attempts
+                 (added, uid, agent, ip, torrentid, reason, detail, severity)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            if ($stmt) {
+                mysqli_stmt_bind_param($stmt, 'isssssss',
+                    $added, $uid, $agent_str, $ip_str,
+                    $torrentid, $reason_str, $detail_str, $severity
+                );
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+            }
+        } catch (\Throwable $e) {
+            // logging a suspicion is never worth failing the announce
+            error_log('announce.php cheat log: ' . $e->getMessage());
         }
     };
 
@@ -397,7 +415,7 @@ if ($self) {
 
     // Проверка 8: невозможный ratio на новом торренте
     if ($downthis > 0 && $realupload > 0 && !empty($Result['added'])) {
-        $torrent_age = TIMENOW - (int)strtotime((string)$Result['added']);
+        $torrent_age = TIMENOW - (int)$Result['added'];      // torrents.added is a unix timestamp
         $ratio       = $realupload / $downthis;
 
         if ($torrent_age < 3600 && $ratio > 3) {

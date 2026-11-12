@@ -2529,7 +2529,7 @@ CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `beforeup` bigint unsigned NOT NULL DEFAULT '0',
   `upthis` bigint unsigned NOT NULL DEFAULT '0',
   `timediff` int unsigned NOT NULL DEFAULT '0',
-  `ip` char(15) NOT NULL DEFAULT '',
+  `ip` varchar(45) NOT NULL DEFAULT '',
   `reason` varchar(64) NOT NULL DEFAULT '',
   `detail` varchar(512) NOT NULL DEFAULT '',
   `severity` enum('low','medium','high') NOT NULL DEFAULT 'medium',

@@ -155,5 +155,10 @@ $language['bonuspoints'] = array (
 	'js_no_change'         => 'No change',
 	'js_diff_points'       => '{1} points',
 	'js_diff_vs_now'       => '{1} compared to now',
+	// ── Russian item text ──
+	'lbl_name_ru' => 'Name (Russian)',
+	'lbl_description_ru' => 'Description (Russian)',
+	'hint_ru' => 'Russian text is optional. Empty = the built-in translation for this item type is used (or the English text).',
+
 );
 ?>

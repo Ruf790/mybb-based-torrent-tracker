@@ -3560,6 +3560,8 @@ CREATE TABLE IF NOT EXISTS `bonus` (
   `description` tinytext NOT NULL,
   `art` char(10) NOT NULL DEFAULT 'traffic',
   `menge` bigint unsigned NOT NULL DEFAULT '0',
+  `bonusname_ru` varchar(100) NOT NULL DEFAULT '',
+  `description_ru` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

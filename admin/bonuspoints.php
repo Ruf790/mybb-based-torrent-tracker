@@ -92,6 +92,12 @@ final class BonusPointsManager
         global $lang;
         return ags_fmt($lang->bonuspoints[$key], ...$args);
     }
+    /** Same as t(), with an English fallback for keys missing in an older lang file */
+    private function tf(string $key, string $fallback, string|int|float ...$args): string
+    {
+        global $lang;
+        return ags_fmt((string)($lang->bonuspoints[$key] ?? $fallback), ...$args);
+    }
     private function url(string $action = '', array $q = []): string
     {
         $u = $this->script . '?act=bonuspoints' . ($action !== '' ? '&amp;action=' . $action : '');
@@ -139,6 +145,15 @@ final class BonusPointsManager
             return (int)round(max(0.0, (float)$_POST['menge_value']) * $mul);
         }
         return max(0, (int)($_POST['menge'] ?? 0));
+    }
+
+    /** [bonusname_ru, description_ru] from the form, trimmed to the column sizes */
+    private function ruFromPost(): array
+    {
+        return [
+            mb_substr(trim((string)($_POST['bonusname_ru'] ?? '')), 0, 100),
+            mb_substr(trim((string)($_POST['description_ru'] ?? '')), 0, 255),
+        ];
     }
 
     private function stats(): array
@@ -252,6 +267,7 @@ final class BonusPointsManager
             $rows .= '<tr>'
                 . '<td><div class="d-flex align-items-center gap-3"><span class="bp-ico ' . ($traffic ? 'ic-teal' : 'ic-purple') . '"><i class="fa-solid ' . ($traffic ? 'fa-cloud-arrow-up' : 'fa-gift') . '"></i></span>'
                 . '<div class="bp-minw0"><div class="fw-bold">' . $this->e($b['bonusname']) . '</div>'
+                . (($b['bonusname_ru'] ?? '') !== '' ? '<div class="bp-comment"><span class="bp-tag t-other me-1">RU</span>' . $this->e($b['bonusname_ru']) . '</div>' : '')
                 . '<div class="bp-comment">' . $this->e($b['description'] ?? '') . '</div></div></div></td>'
                 . '<td class="text-nowrap"><span class="bp-tag ' . ($traffic ? 't-traffic' : 't-other') . '">' . $this->e($b['art'] ?? '—') . '</span></td>'
                 // раньше количество не показывалось вовсе (или было бы голым числом байт)
@@ -325,6 +341,15 @@ final class BonusPointsManager
                         <label class="form-label" for="description"><i class="fa-solid fa-align-left"></i>' . $this->t('lbl_description') . ' <span class="text-danger">*</span></label>
                         <textarea class="form-control" id="description" name="description" rows="3" required placeholder="' . $this->e($this->t('ph_description')) . '">' . $this->e($data['description'] ?? '') . '</textarea>
                     </div>
+                    <div class="col-12"><div class="form-text mt-0"><i class="fa-solid fa-language me-1"></i>' . $this->tf('hint_ru', 'Russian text is optional. Empty = the built-in translation for this item type is used (or the English text).') . '</div></div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="bonusname_ru"><i class="fa-solid fa-tag"></i>' . $this->tf('lbl_name_ru', 'Name (Russian)') . '</label>
+                        <input type="text" class="form-control" id="bonusname_ru" name="bonusname_ru" maxlength="100" value="' . $this->e($data['bonusname_ru'] ?? '') . '">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="description_ru"><i class="fa-solid fa-align-left"></i>' . $this->tf('lbl_description_ru', 'Description (Russian)') . '</label>
+                        <textarea class="form-control" id="description_ru" name="description_ru" rows="3" maxlength="255">' . $this->e($data['description_ru'] ?? '') . '</textarea>
+                    </div>
                     <div class="col-md-8">
                         <label class="form-label" for="menge_value"><i class="fa-solid fa-hard-drive"></i>' . $this->t('lbl_traffic') . '</label>
                         <div class="input-group">
@@ -368,8 +393,8 @@ final class BonusPointsManager
         if ($name === '') { $this->result(false, $this->t('res_not_saved'), $this->t('res_need_name'), 'add'); return; }
 
         $ok = $this->db->sql_query_prepared(
-            "INSERT INTO bonus (bonusname, points, description, menge, art) VALUES (?, ?, ?, ?, 'traffic')",
-            [$name, (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost()]
+            "INSERT INTO bonus (bonusname, points, description, menge, art, bonusname_ru, description_ru) VALUES (?, ?, ?, ?, 'traffic', ?, ?)",
+            [$name, (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost(), ...$this->ruFromPost()]
         );
         if ($ok && function_exists('write_log')) write_log("Bonus shop item \"{$name}\" added by " . ($CURUSER['username'] ?? 'System'));
         $this->result((bool)$ok, $ok ? $this->t('res_added') : $this->t('res_add_failed'), $ok ? $this->t('res_added_text', $this->e($name)) : $this->t('res_db_error'), 'add');
@@ -407,8 +432,8 @@ final class BonusPointsManager
         }
 
         $ok = $this->db->sql_query_prepared(
-            "UPDATE bonus SET bonusname = ?, points = ?, description = ?, menge = ? WHERE id = ?",
-            [trim((string)($_POST['bonusname'] ?? '')), (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost(), $id]
+            "UPDATE bonus SET bonusname = ?, points = ?, description = ?, menge = ?, bonusname_ru = ?, description_ru = ? WHERE id = ?",
+            [trim((string)($_POST['bonusname'] ?? '')), (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost(), ...$this->ruFromPost(), $id]
         );
         $this->result((bool)$ok, $ok ? $this->t('res_saved') : $this->t('res_save_failed'), $ok ? $this->t('res_saved_text', $this->e($_POST['bonusname'] ?? '')) : $this->t('res_db_error'));
     }

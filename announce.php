@@ -161,7 +161,7 @@ mysqli_set_charset($db, 'utf8mb4');
 
 $stmt = mysqli_prepare($db,
     'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
-            t.seeders, t.leechers, t.times_completed,
+            t.seeders, t.leechers, t.times_completed, t.size, t.added, t.owner,
             u.id AS userid, u.enabled, u.uploaded, u.downloaded,
             u.usergroup, u.birthday, u.regip,
             g.isbannedgroup, g.canfreeleech
@@ -208,7 +208,7 @@ if (($bannedclientdetect ?? '') === 'yes') {
 
 $fields    = 'seeder, peer_id, ip, port, uploaded, downloaded, userid, last_action,
               (' . TIMENOW . ' - last_action) AS announcetime,
-              last_action AS ts, prev_action AS prevts, connectable';
+              last_action AS ts, prev_action AS prevts, connectable, finishedat';
 $gp_eq     = (($nc ?? '') === 'yes' ? " AND connectable = 'yes'" : '');
 $wantseeds = ($seeder === 'yes' ? " AND seeder = 'no'" : '');
 
@@ -335,7 +335,7 @@ if ($self) {
     $announce_time_cheat = max(1, (int)($self['announcetime'] ?? 1));
 
     // Функция записи в cheat_attempts
-    $write_cheat = function(string $reason, string $detail) use ($db, $Result, $Tid, $ip, $agent): void {
+    $write_cheat = function(string $reason, string $detail, string $severity = 'high') use ($db, $Result, $Tid, $ip, $agent): void {
         $added      = TIMENOW;
         $uid        = (int)$Result['userid'];
         $torrentid  = (int)$Tid;
@@ -343,7 +343,7 @@ if ($self) {
         $ip_str     = (string)$ip;
         $reason_str = substr($reason, 0, 64);
         $detail_str = substr($detail, 0, 512);
-        $severity   = 'high';
+        if (!in_array($severity, ['low', 'medium', 'high'], true)) $severity = 'high';
 
         // Не дублировать одинаковую причину за последние 60 секунд
         $check = mysqli_prepare($db,
@@ -382,13 +382,26 @@ if ($self) {
     }
 
     // Проверка 2: completed без реального скачивания (< 90% размера торрента)
-    // Только если знаем размер торрента
-    if ($event === 'completed' && !empty($Result['size']) && (int)$Result['size'] > 0) {
+    // $downloaded из анонса — только за текущий запуск клиента (после рестарта считается с нуля),
+    // поэтому берём всё, что трекер насчитал по этому торренту: snatched.downloaded + дельта этого анонса.
+    // medium: часть файлов могла уже лежать на диске (перехеширование, кросс-сид) — тогда это не чит.
+    if ($event === 'completed' && (int)($Result['size'] ?? 0) > 0 && ($snatchmod ?? '') === 'yes') {
         $torrentSize = (int)$Result['size'];
-        if ($downloaded < ($torrentSize * 0.90)) {
+        $snatched_dl = 0;
+        $stmt_sn = mysqli_prepare($db, 'SELECT downloaded FROM snatched WHERE torrentid = ? AND userid = ? LIMIT 1');
+        if ($stmt_sn) {
+            mysqli_stmt_bind_param($stmt_sn, 'ii', $Tid, $userId);
+            mysqli_stmt_execute($stmt_sn);
+            $row_sn = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt_sn));
+            mysqli_stmt_close($stmt_sn);
+            $snatched_dl = (int)($row_sn['downloaded'] ?? 0);
+        }
+        $total_dl = $snatched_dl + $downthis;
+        if ($total_dl < ($torrentSize * 0.90)) {
             $write_cheat(
                 'completed_without_download',
-                "downloaded={$downloaded} but torrent_size={$torrentSize} (< 90%)"
+                "downloaded_total={$total_dl} (snatched={$snatched_dl} + this={$downthis}) but torrent_size={$torrentSize} (< 90%)",
+                'medium'
             );
         }
     }
@@ -441,14 +454,20 @@ if ($self) {
     }
 
     // Проверка 8: невозможный ratio на новом торренте
-    if ($downthis > 0 && $realupload > 0 && !empty($Result['added'])) {
-        $torrent_age = TIMENOW - (int)strtotime((string)$Result['added']);
-        $ratio       = $realupload / $downthis;
+    // torrents.added — unix-время (int). Считаем только при заметном скачивании за интервал (>= 50 MiB):
+    // на крошечной дельте (последний кусок) отношение отдачи к скачиванию бывает огромным у честного личера.
+    // Автора раздачи не проверяем — он отдаёт, ничего не скачивая.
+    $min_down_for_ratio = 50 * 1024 * 1024;
+    if ($downthis >= $min_down_for_ratio && $realupload > 0 && (int)($Result['added'] ?? 0) > 0
+        && (int)($Result['owner'] ?? 0) !== $userId) {
+        $torrent_age = TIMENOW - (int)$Result['added'];
+        $ratio       = round($realupload / $downthis, 2);
 
-        if ($torrent_age < 3600 && $ratio > 3) {
+        if ($torrent_age >= 0 && $torrent_age < 3600 && $ratio > 3) {
             $write_cheat(
                 'impossible_ratio_new_torrent',
-                "ratio={$ratio} on torrent {$torrent_age}s old"
+                "ratio={$ratio} (up={$realupload} down={$downthis}) on torrent {$torrent_age}s old",
+                'medium'
             );
         }
 

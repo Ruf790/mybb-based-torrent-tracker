@@ -48,6 +48,51 @@ function apply_freeleech_mode(string $type, array &$Result): void
     };
 }
 
+/**
+ * Why the torrent + user lookup found nothing. Runs only on that failure path, so a normal
+ * announce still costs one query. Lets the client show the real reason instead of one
+ * generic "Invalid Torrent or User Hash!".
+ */
+function lookup_error(mysqli $db, string $passkey, string $info_hash_hex, string $info_hash, array $l): string
+{
+    $stmt = mysqli_prepare($db,
+        'SELECT u.enabled, g.gid, g.isbannedgroup
+         FROM users u
+         LEFT JOIN usergroups g ON g.gid = u.usergroup
+         WHERE u.passkey = ?
+         LIMIT 1'
+    );
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, 's', $passkey);
+        mysqli_stmt_execute($stmt);
+        $user = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
+
+        if (!$user) {
+            return $l['tu_passkey'] ?? 'Invalid passkey. Download the .torrent file from the site again.';
+        }
+        if (($user['enabled'] ?? '') !== 'yes' || (int)($user['isbannedgroup'] ?? 0) === 1) {
+            return $l['tu_disabled'] ?? 'Your account is disabled (banned). Check your messages on the site.';
+        }
+        if ($user['gid'] === null) {
+            return $l['tu_group'] ?? 'Your account has an invalid user group. Contact the staff.';
+        }
+    }
+
+    $stmt = mysqli_prepare($db, 'SELECT 1 FROM torrents WHERE info_hash = ? OR info_hash = ? LIMIT 1');
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, 'ss', $info_hash_hex, $info_hash);
+        mysqli_stmt_execute($stmt);
+        $found = mysqli_stmt_get_result($stmt)->num_rows > 0;
+        mysqli_stmt_close($stmt);
+        if (!$found) {
+            return $l['tu_torrent'] ?? 'Torrent not registered on this tracker (deleted or re-uploaded).';
+        }
+    }
+
+    return $l['tuerror'];
+}
+
 // ── Конфигурация ──────────────────────────────────────────
 
 require TSDIR . '/include/config_announce.php';
@@ -133,10 +178,10 @@ mysqli_stmt_execute($stmt);
 $Result = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 mysqli_stmt_close($stmt);
 
-if (!$Result || !($Result['tid'] ?? null) || ($Result['enabled'] ?? '') !== 'yes') {
-    stop($l['tuerror']);
+if (!$Result || !($Result['tid'] ?? null) || ($Result['enabled'] ?? '') !== 'yes'
+    || (int)($Result['isbannedgroup'] ?? 0) === 1) {
+    stop(lookup_error($db, $passkey, $info_hash2, $info_hash, $l));
 }
-if ((int)($Result['isbannedgroup'] ?? 0) === 1) stop($l['qerror1']);
 
 $Tid    = (int)$Result['tid'];
 $userId = (int)$Result['userid'];

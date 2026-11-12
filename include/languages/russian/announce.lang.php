@@ -24,4 +24,8 @@ $l['invalidport']		=	 'Change your port and try again. Banned Ports: 21, 22, 411
 $l['invalidip']			= 'Invalid User IP!';
 $l['dlerror'] =	 'You have no permission to download this torrent!';
 $l['qerror1'] = 'Invalid User Account!'; // Added in v6.1
+$l['tu_passkey']		=	 'Invalid passkey. Download the .torrent file from the site again.';
+$l['tu_disabled']		=	 'Your account is disabled (banned). Check your messages on the site.';
+$l['tu_group']		=	 'Your account has an invalid user group. Contact the staff.';
+$l['tu_torrent']		=	 'Torrent not registered on this tracker (deleted or re-uploaded).';
 ?>

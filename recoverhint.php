@@ -327,7 +327,7 @@ if ($act === 3) {
         );
 
         // ── Log + notify account owner ─────────────────────────────────────
-        require_once INC_PATH . '/function_loginattemptcheck.php';
+        require_once INC_PATH . '/functions_loginattemptcheck.php';
         log_login((int)$row['userid'], 'success', 'recover');
 
         $reset_ip   = get_ip();

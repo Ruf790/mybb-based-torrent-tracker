@@ -40,31 +40,10 @@ if (($bonus === 'disable' || $bonus === 'disablesave') && !$is_mod) {
     stderr($lang->global['error'], $lang->mybonus['disabled']);
 }
 
+// Настройки и общие множители — одни на mybonus.php и details.php
+require_once INC_PATH . '/functions_seedbonus_estimate.php';
 
-
-
-
-// ── Загрузка настроек из БД ───────────────────────────────
-function loadSeedbonusSettings(): array
-{
-    global $db;
-
-    $res = $db->sql_query_prepared('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
-    $cfg = [];
-
-    while ($row = $db->fetch_array($res)) {
-        $cfg[$row['setting_key']] = match($row['setting_type']) {
-            'boolean' => in_array($row['setting_value'], ['yes','true','1','on'], true),
-            'integer' => (int)$row['setting_value'],
-            'float'   => (float)$row['setting_value'],
-            'array'   => json_decode($row['setting_value'], true) ?? [],
-            default   => (string)$row['setting_value'],
-        };
-    }
-    return $cfg;
-}
-
-$cfg = loadSeedbonusSettings();
+$cfg = sbe_settings();
 
 // Короткие алиасы для часто используемых значений
 $BASE_BONUS            = (float)($cfg['base_bonus']            ?? 10.0);
@@ -87,40 +66,6 @@ if (isset($_GET['purchased'])) {
 }
 
 // ── Вспомогательные функции ───────────────────────────────
-
-function getTorrentMultiplier(int $count, string $type, float $flat = 1.0): float
-{
-    return match($type) {
-        'penalty' => match(true) {
-            $count <= 20  => 1.0,
-            $count <= 50  => 0.9,
-            $count <= 100 => 0.8,
-            default       => 0.7,
-        },
-        'neutral' => $count <= 100 ? 1.0 : 0.9,
-        'reward'  => match(true) {
-            $count >= 100 => 1.2,
-            $count >= 50  => 1.1,
-            $count >= 20  => 1.0,
-            default       => 0.9,
-        },
-        'flat'    => $flat,
-        default   => 1.0,
-    };
-}
-
-function getHeuristicHours(int $count, array $cfg): float
-{
-    return match(true) {
-        $count >= 50 => (float)($cfg['heuristic_50'] ?? 24),
-        $count >= 40 => (float)($cfg['heuristic_40'] ?? 20),
-        $count >= 30 => (float)($cfg['heuristic_30'] ?? 16),
-        $count >= 20 => (float)($cfg['heuristic_20'] ?? 12),
-        $count >= 10 => (float)($cfg['heuristic_10'] ?? 8),
-        $count >= 5  => (float)($cfg['heuristic_5']  ?? 4),
-        default      => (float)($cfg['heuristic_1']  ?? 2),
-    };
-}
 
 function progressColor(float $pct): string
 {
@@ -469,82 +414,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Расчёт бонуса пользователя ────────────────────────────
 
-/**
- * Every torrent the user is seeding right now, with each multiplier as its own column.
- * The total (raw_bonus_sum) is summed in PHP from these rows, so the per-torrent table
- * and the totals above it always agree. Same formula as before, one query.
- */
-function getUserSeeding(int $uid, array $cfg): array
-{
-    global $db;
-
-    $f = static fn(string $k, float $d): float => (float)($cfg[$k] ?? $d);
-
-    $leechNone   = $f('leech_none', 1.2);   $leechFew   = $f('leech_few', 1.5);    $leechMany  = $f('leech_many', 1.8);
-    $sizeSmall   = $f('size_small', 1.0);   $sizeMedium = $f('size_medium', 1.2);  $sizeLarge  = $f('size_large', 1.5);
-    $sizeXlarge  = $f('size_xlarge', 1.8);  $sizeHuge   = $f('size_huge', 2.0);
-    $seedersMany = $f('seeders_many', 0.9); $seedersMed = $f('seeders_medium', 0.95);
-    $rare1       = $f('rare_1', 1.0);       $rare3      = $f('rare_3', 1.0);       $rare5      = $f('rare_5', 1.0);
-    $loyal30     = $f('loyal_30', 1.0);     $loyal90    = $f('loyal_90', 1.0);     $loyal180   = $f('loyal_180', 1.0);
-    $ageOld      = $f('age_old', 1.5);      $ageMed     = $f('age_medium', 1.3);
-    $promoFree   = $f('promo_free', 0.7);   $promoSilver = $f('promo_silver', 0.5); $promoDouble = $f('promo_double', 0.5);
-
-    $sql = "
-        SELECT
-            t.id, t.name, t.size, t.seeders, t.leechers, t.added,
-            t.free, t.silver, t.doubleupload,
-            COALESCE(st.seedtime, 0) AS seedtime,
-            CASE WHEN t.leechers = 0 THEN {$leechNone}
-                 WHEN t.leechers <= 2 THEN {$leechFew}
-                 ELSE {$leechMany} END AS f_leech,
-            CASE WHEN t.size < 536870912   THEN {$sizeSmall}
-                 WHEN t.size < 2147483648  THEN {$sizeMedium}
-                 WHEN t.size < 8589934592  THEN {$sizeLarge}
-                 WHEN t.size < 21474836480 THEN {$sizeXlarge}
-                 ELSE {$sizeHuge} END AS f_size,
-            CASE WHEN t.seeders > 100 THEN {$seedersMany}
-                 WHEN t.seeders > 50  THEN {$seedersMed}
-                 WHEN t.seeders <= 1  THEN {$rare1}
-                 WHEN t.seeders <= 3  THEN {$rare3}
-                 WHEN t.seeders <= 5  THEN {$rare5}
-                 ELSE 1.0 END AS f_seed,
-            CASE WHEN COALESCE(st.seedtime, 0) >= 15552000 THEN {$loyal180}
-                 WHEN COALESCE(st.seedtime, 0) >= 7776000  THEN {$loyal90}
-                 WHEN COALESCE(st.seedtime, 0) >= 2592000  THEN {$loyal30}
-                 ELSE 1.0 END AS f_loyal,
-            CASE WHEN (UNIX_TIMESTAMP() - t.added) > 15552000 THEN {$ageOld}
-                 WHEN (UNIX_TIMESTAMP() - t.added) > 5184000  THEN {$ageMed}
-                 ELSE 1.0 END AS f_age,
-            (1.0 + (t.free = 'yes') * {$promoFree}
-                 + (t.silver = 'yes') * {$promoSilver}
-                 + (t.doubleupload = 'yes') * {$promoDouble}) AS f_promo
-        FROM peers p
-        INNER JOIN torrents t ON t.id = p.torrent
-        LEFT JOIN LATERAL (
-            SELECT MAX(s.seedtime) AS seedtime FROM snatched s
-            WHERE s.userid = p.userid AND s.torrentid = p.torrent
-        ) st ON TRUE
-        WHERE p.seeder     = 'yes'
-          AND p.userid     = ?
-          AND t.visible    = 'yes'
-          AND t.banned     = 'no'
-          AND t.isnuked    = 'no'
-          AND p.last_action >= UNIX_TIMESTAMP() - 2700";
-
-    $res  = $db->sql_query_prepared($sql, [$uid]);
-    $rows = [];
-    while ($res && ($r = $db->fetch_array($res))) {
-        $tid = (int)$r['id'];
-        if (isset($rows[$tid])) {
-            continue;   // same torrent from two clients: counted once
-        }
-        $r['mul'] = (float)$r['f_leech'] * (float)$r['f_size'] * (float)$r['f_seed']
-                  * (float)$r['f_loyal'] * (float)$r['f_age'] * (float)$r['f_promo'];
-        $rows[$tid] = $r;
-    }
-    return array_values($rows);
-}
-
 /** Totals in the shape calcUserBonus() expects. */
 function getUserStats(array $seeding, array $cfg): array
 {
@@ -573,12 +442,12 @@ function calcUserBonus(array $stats, array $cfg): array
     $torrents  = (int)$stats['torrents_count'];
     $avgHours  = (float)$stats['avg_hours_seeded'];
     $rawBonus  = (float)$stats['raw_bonus_sum'];
-    $capMul    = getTorrentMultiplier($torrents, $TORRENT_MUL_TYPE, $FLAT_MULTIPLIER);
+    $capMul    = sbe_count_multiplier($torrents, $TORRENT_MUL_TYPE, $FLAT_MULTIPLIER);
     $hourlyTh  = round($rawBonus * $BASE_BONUS * $capMul, 1);
     $hourlyCap = min($hourlyTh, $HOUR_CAP);
 
     if ($ENABLE_HEURISTIC) {
-        $hHours   = getHeuristicHours($torrents, $cfg) * ($CRON_INTERVAL_HOURS / 24);
+        $hHours   = sbe_heuristic_hours($torrents, $cfg) * ($CRON_INTERVAL_HOURS / 24);
         $avgHours = max($avgHours, $hHours);
     }
 
@@ -597,7 +466,8 @@ function calcUserBonus(array $stats, array $cfg): array
     ];
 }
 
-$seeding   = getUserSeeding($userid, $cfg);
+// Раздачи на сиде с множителями f_leech … f_promo и mul — functions_seedbonus_estimate.php
+$seeding   = sbe_user_seeding($userid, $cfg);
 $userStats = getUserStats($seeding, $cfg);
 $ub        = calcUserBonus($userStats, $cfg);  // $ub = userBonus
 
@@ -706,26 +576,22 @@ HTML;
 function renderTorrentMultiplierTable(string $type, int $userTorrents, float $flatMul): string
 {
     global $lang;
-    $ranges = match($type) {
-        'penalty' => [
-            ['1–20',   '1.0', 'success', $userTorrents >= 1  && $userTorrents <= 20],
-            ['21–50',  '0.9', 'warning', $userTorrents >= 21 && $userTorrents <= 50],
-            ['51–100', '0.8', 'warning', $userTorrents >= 51 && $userTorrents <= 100],
-            ['100+',   '0.7', 'secondary', $userTorrents > 100],
-        ],
-        'reward'  => [
-            ['1–19',   '0.9', 'secondary', $userTorrents >= 1  && $userTorrents <= 19],
-            ['20–49',  '1.0', 'success',   $userTorrents >= 20 && $userTorrents <= 49],
-            ['50–99',  '1.1', 'warning',   $userTorrents >= 50 && $userTorrents <= 99],
-            ['100+',   '1.2', 'danger',    $userTorrents >= 100],
-        ],
-        'neutral' => [
-            ['1–100', '1.0', 'success',  $userTorrents >= 1 && $userTorrents <= 100],
-            ['101+',  '0.9', 'warning',  $userTorrents > 100],
-        ],
-        'flat'    => [],
+    // Границы диапазонов и цвет; сами множители — из sbe_count_multiplier(), как в кроне
+    $bounds = match($type) {
+        'penalty' => [[1, 20, 'success'], [21, 50, 'warning'], [51, 100, 'warning'], [101, null, 'secondary']],
+        'reward'  => [[1, 19, 'secondary'], [20, 49, 'success'], [50, 99, 'warning'], [100, null, 'danger']],
+        'neutral' => [[1, 100, 'success'], [101, null, 'warning']],
         default   => [],
     };
+    $ranges = [];
+    foreach ($bounds as [$lo, $hi, $color]) {
+        $ranges[] = [
+            $hi === null ? $lo . '+' : $lo . '–' . $hi,
+            number_format(sbe_count_multiplier($lo, $type, $flatMul), 1),
+            $color,
+            $userTorrents >= $lo && ($hi === null || $userTorrents <= $hi),
+        ];
+    }
 
     if ($type === 'flat') {
         return '<div class="bn-note mt-2"><i class="fa-solid fa-circle-info"></i><div>' . ags_fmt($lang->mybonus['lbl_fixed_multiplier'], number_format($flatMul, 1)) . '</div></div>';

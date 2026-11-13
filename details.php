@@ -144,19 +144,14 @@ function get_comment($pid)
 
 // ── pid → id trick ──────────────────────────────────────────────────────────
 // get_comment() кэширует результат — ниже тот же комментарий берётся без запроса
-if (!empty($mybb->input['pid']) && !$mybb->input['id']) {
-    if (isset($style) && $style['pid'] == $mybb->input['pid'] && $style['id']) {
-        $mybb->input['id'] = $style['id'];
-        unset($style['id']);
-    } else {
-        $post = get_comment((int)$mybb->input['pid']);
+if (!empty($mybb->input['pid']) && empty($mybb->input['id'])) {
+    $post = get_comment((int)$mybb->input['pid']);
 
-        if (!$post) {
-            stderr($lang->global['invalid_comm']);
-        }
-
-        $mybb->input['id'] = $post['torrent'];
+    if (!$post) {
+        stderr($lang->global['invalid_comm']);
     }
+
+    $mybb->input['id'] = $post['torrent'];
 }
 
 $is_mod = is_mod($usergroups);
@@ -498,7 +493,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js?ver=
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js?ver=21"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=9"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/details.js?ver=10"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/report.js?ver=2"></script>';
 
 require_once INC_PATH . '/modals.php';
@@ -867,7 +862,7 @@ $showcommenttable .= '
     </div>
     <div class="st-card__body">
     ' . (!empty($cerror) ? '<div class="alert alert-danger py-2">' . $cerror . '</div>' : '') . '
-    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=72"></script>' : '') . '
+    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js?ver=88"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">
@@ -1713,7 +1708,7 @@ $details = '
         ' . $showcommenttable . '
     </div>
 
-    <!-- Липкая полоска: появляется, когда шапка ушла за экран (details.js) -->
+    <!-- Липкая полоска: видна, когда шапка раздачи ушла за экран и пользователь листает вверх (details.js) -->
     <div class="dt-sticky" id="dtSticky" aria-hidden="true">
         <div class="container-md dt-sticky__in">
             ' . $dt_sticky_poster . '

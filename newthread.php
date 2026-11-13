@@ -124,7 +124,15 @@ if (!$mybb->get_input('posthash') && !$pid) {
 }
 
 if (empty($_POST) && empty($_FILES) && $mybb->get_input('processed', MyBB::INPUT_INT) == 1) {
-    stderr($lang->newthread['error_empty_post_input'] ?? 'Your request was rejected because no data was received. This usually happens when the total size of the uploaded files exceeds the server limit.');
+    $empty_msg = $lang->newthread['error_empty_post_input'] ?? 'Your request was rejected because no data was received. This usually happens when the total size of the uploaded files exceeds the server limit.';
+    // AJAX upload (post.js): PHP dropped the whole request (post_max_size) — answer in JSON,
+    // otherwise the script gets an HTML error page and shows nothing
+    if ((int)($_GET['ajax'] ?? 0) === 1) {
+        header("Content-type: application/json; charset={$charset}");
+        echo json_encode(['errors' => [$empty_msg]], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    stderr($empty_msg);
 }
 
 $errors = [];
@@ -650,7 +658,7 @@ php_max_file_uploads = '.$php_max_file_uploads.';
 mybb_max_file_uploads = '.$maxattachments.';
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1833"></script>';
+<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=2400"></script>';
 
     $plugins->run_hooks('newthread_end');
 

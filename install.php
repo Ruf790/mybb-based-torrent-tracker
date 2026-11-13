@@ -2299,16 +2299,7 @@ CREATE TABLE IF NOT EXISTS `2fa_pending` (
   KEY `uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	
-CREATE TABLE IF NOT EXISTS `adminlog` (
-  `uid` int unsigned NOT NULL DEFAULT '0',
-  `ipaddress` varbinary(16) NOT NULL DEFAULT '',
-  `dateline` int unsigned NOT NULL DEFAULT '0',
-  `module` varchar(50) NOT NULL DEFAULT '',
-  `action` varchar(50) NOT NULL DEFAULT '',
-  `data` text NOT NULL,
-  KEY `module` (`module`,`action`),
-  KEY `uid` (`uid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 
 CREATE TABLE IF NOT EXISTS `announcements` (
@@ -2836,19 +2827,6 @@ CREATE TABLE IF NOT EXISTS `mailqueue` (
   PRIMARY KEY (`mid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `moderatorlog` (
-  `uid` int unsigned NOT NULL DEFAULT '0',
-  `dateline` int unsigned NOT NULL DEFAULT '0',
-  `fid` smallint unsigned NOT NULL DEFAULT '0',
-  `tid` int unsigned NOT NULL DEFAULT '0',
-  `pid` int unsigned NOT NULL DEFAULT '0',
-  `action` text NOT NULL,
-  `data` text NOT NULL,
-  `ipaddress` varbinary(16) NOT NULL DEFAULT '',
-  KEY `uid` (`uid`),
-  KEY `fid` (`fid`),
-  KEY `tid` (`tid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `news` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -3058,10 +3036,16 @@ CREATE TABLE IF NOT EXISTS `sitelog` (
   `txt` text,
   `category` varchar(50) NOT NULL DEFAULT '',
   `level` tinyint unsigned NOT NULL DEFAULT '0',
+  `module` varchar(50) NOT NULL DEFAULT '',
+  `fid` int unsigned NOT NULL DEFAULT '0',
+  `tid` int unsigned NOT NULL DEFAULT '0',
+  `pid` int unsigned NOT NULL DEFAULT '0',
+  `data` text NULL,
   PRIMARY KEY (`id`),
   KEY `uid` (`uid`),
-  KEY `category` (`category`),
-  KEY `added` (`added`)
+  KEY `category` (`category`,`added`),
+  KEY `added` (`added`),
+  KEY `tid` (`tid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `smilies` (

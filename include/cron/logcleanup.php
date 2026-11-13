@@ -9,16 +9,12 @@ if (!defined('IN_CRON')) {
 // Days to keep each log (0 = never prune).
 // Values from $config['log_pruning'] take precedence when set.
 $log_pruning = array_merge([
-    'admin_logs'     => 365,
-    'mod_logs'       => 365,
     'mail_logs'      => 180,
     'user_mail_logs' => 180,
 ], array_map('intval', (array)($config['log_pruning'] ?? [])));
 
 // log key => table
 $log_tables = [
-    'admin_logs'     => 'adminlog',
-    'mod_logs'       => 'moderatorlog',
     'mail_logs'      => 'mailerrors',
     'user_mail_logs' => 'maillogs',
 ];

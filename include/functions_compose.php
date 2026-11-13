@@ -132,6 +132,22 @@ function compose_attach_item(string $aid, string $icon, string $filename, string
 }
 
 /** Блок вложений целиком: квота, зона перетаскивания / поле файла, кнопки, список */
+/**
+ * Лимиты типов вложений для post.js: {"jpg":2048,"zip":0,...} (KB, 0 = без лимита),
+ * в атрибуте data-limits. Скрипт проверяет файлы ДО отправки — не надо ждать загрузку.
+ */
+function compose_attach_limits(): string
+{
+    global $cache;
+    $map = [];
+    foreach ((array)$cache->read('attachtypes') as $ext => $t) {
+        if (!empty($t['enabled'])) {
+            $map[strtolower((string)$ext)] = (int)($t['maxsize'] ?? 0);
+        }
+    }
+    return htmlspecialchars((string)json_encode($map), ENT_QUOTES);
+}
+
 function compose_attachbox(string $quota, string $usage_link, string $file_label, string $buttons, string $items): string
 {
     $upload = '';
@@ -144,7 +160,7 @@ function compose_attachbox(string $quota, string $usage_link, string $file_label
                 . '</div></div>'
                 . '<div class="cp-fileblock"><div class="cp-file">'
                 . '<label class="form-label small" for="cp_attach_input">' . $file_label . '</label>'
-                . '<input type="file" name="attachments[]" id="cp_attach_input" class="form-control" multiple="multiple" />'
+                . '<input type="file" name="attachments[]" id="cp_attach_input" class="form-control" multiple="multiple" data-limits="' . compose_attach_limits() . '" />'
                 . '</div></div>'
                 . '<div class="cp-attbtns">' . $buttons . '</div>';
     }

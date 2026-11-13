@@ -56,65 +56,15 @@ if (!function_exists('ags_plural')) {
 }
 
 // ============================================================
-//  PEER-ID STYLE HELPERS
-// ============================================================
-
-function parse_azureus_peer_id(string $peer_id): ?array
-{
-    if (preg_match('/^-([A-Za-z]{2})(\d{4})-/', $peer_id, $m)) {
-        $raw   = $m[2];
-        $major = (int)$raw[0];
-        $minor = (int)$raw[1];
-        $patch = (int)substr($raw, 2);
-        return [
-            'code'    => $m[1],
-            'version' => "{$major}.{$minor}.{$patch}",
-        ];
-    }
-    return null;
-}
-
-function azureus_code_to_client(string $code): array
-{
-    static $map = [
-        'qB' => ['name' => 'qBittorrent',          'icon' => '⚡',  'category' => 'modern'],
-        'UT' => ['name' => 'µTorrent',              'icon' => '⛏️', 'category' => 'classic'],
-        'TR' => ['name' => 'Transmission',          'icon' => '🔄',  'category' => 'lightweight'],
-        'DE' => ['name' => 'Deluge',                'icon' => '🌊',  'category' => 'modular'],
-        'AZ' => ['name' => 'Vuze',                  'icon' => '💎',  'category' => 'feature-rich'],
-        'BC' => ['name' => 'BitComet',              'icon' => '☄️',  'category' => 'windows'],
-        'TX' => ['name' => 'Tixati',                'icon' => '🌐',  'category' => 'privacy'],
-        'BL' => ['name' => 'BiglyBT',               'icon' => '🦋',  'category' => 'opensource'],
-        'BT' => ['name' => 'BitTorrent',            'icon' => '🧲',  'category' => 'original'],
-        'RT' => ['name' => 'rTorrent',              'icon' => '🐧',  'category' => 'terminal'],
-        'lt' => ['name' => 'libtorrent',            'icon' => '🐧',  'category' => 'terminal'],
-        'LT' => ['name' => 'libtorrent',            'icon' => '🐧',  'category' => 'terminal'],
-        'A2' => ['name' => 'Aria2',                 'icon' => '🛠️', 'category' => 'lightweight'],
-        'KT' => ['name' => 'KTorrent',              'icon' => '🐧',  'category' => 'linux'],
-        'WD' => ['name' => 'WebTorrent',            'icon' => '🌐',  'category' => 'webbased'],
-        'RM' => ['name' => 'Ratio Master',          'icon' => '⚠️',  'category' => 'cheat'],
-        'BS' => ['name' => 'BitSpirit',             'icon' => '👻',  'category' => 'windows'],
-        'XL' => ['name' => 'Xunlei',               'icon' => '⚡',  'category' => 'chinese'],
-        'FD' => ['name' => 'Free Download Manager', 'icon' => '📥',  'category' => 'download'],
-        'FL' => ['name' => 'Flud',                  'icon' => '💧',  'category' => 'android'],
-        'TT' => ['name' => 'tTorrent',              'icon' => '📱',  'category' => 'android'],
-        'LR' => ['name' => 'LibreTorrent',          'icon' => '📚',  'category' => 'android'],
-        'PO' => ['name' => 'Popcorn Time',          'icon' => '🍿',  'category' => 'streaming'],
-        'SD' => ['name' => 'Thunder',               'icon' => '⚡',  'category' => 'chinese'],
-    ];
-    return $map[$code] ?? ['name' => "Unknown ({$code})", 'icon' => '❓', 'category' => 'unknown'];
-}
-
-// ============================================================
 //  CLIENT DATABASE
+//  Order matters: the first matching pattern wins, cheat clients go last.
 // ============================================================
 
 function get_client_db(): array
 {
-    static $db = null;
-    if ($db !== null) return $db;
-
-    $db = [
+    static $db = [
+        // Own client first: its User-Agent "ArtCore/x.y.z libtorrent/…" would otherwise match rTorrent's /libtorrent/
+        'artcore'       => ['patterns' => ['/ArtCore/i'],                            'name' => 'ArtCore Client',       'icon' => '🅰️', 'category' => 'windows'],
         'qbittorrent'   => ['patterns' => ['/qBittorrent/i', '/qB\/\d+/'],          'name' => 'qBittorrent',          'icon' => '⚡',  'category' => 'modern'],
         'utorrent'      => ['patterns' => ['/[µuÂµ]Torrent/iu', '/UT\d/'],          'name' => 'µTorrent',             'icon' => '⛏️', 'category' => 'classic'],
         'transmission'  => ['patterns' => ['/Transmission/i'],                       'name' => 'Transmission',         'icon' => '🔄',  'category' => 'lightweight'],
@@ -159,8 +109,46 @@ function get_client_db(): array
         'mratio'        => ['patterns' => ['/mRator/i'],                             'name' => 'mRator',               'icon' => '⚠️',  'category' => 'cheat'],
         'shumod'        => ['patterns' => ['/shuMod/i'],                             'name' => 'shuMod',               'icon' => '⚠️',  'category' => 'cheat'],
     ];
-
     return $db;
+}
+
+// ============================================================
+//  PEER-ID STYLE HELPERS
+// ============================================================
+
+// -qB4650- → qB, 4.6.5   |   -TR4060- → TR, 4.0.6   |   -DE2110- → DE, 2.1.1
+function parse_azureus_peer_id(string $peer_id): ?array
+{
+    if (!preg_match('/^-([A-Za-z]{2})(\d)(\d)(\d)(\d)-/', $peer_id, $m)) {
+        return null;
+    }
+    $version = "{$m[2]}.{$m[3]}.{$m[4]}" . ($m[5] !== '0' ? ".{$m[5]}" : '');
+    return ['code' => $m[1], 'version' => $version];
+}
+
+// Azureus code → key in get_client_db(), or [key, name override].
+function azureus_code_to_client(string $code): array
+{
+    static $map = [
+        'Ag' => 'artcore',
+        'qB' => 'qbittorrent',  'UT' => 'utorrent',     'TR' => 'transmission', 'DE' => 'deluge',
+        'AZ' => 'vuze',         'BC' => 'bitcomet',     'TX' => 'tixati',       'BL' => 'biglybt',
+        'BT' => 'bittorrent',   'RT' => 'rtorrent',     'A2' => 'aria2',        'KT' => 'ktorrent',
+        'WD' => 'webtorrent',   'RM' => 'ratio_master', 'BS' => 'bitspirit',    'XL' => 'xunlei',
+        'FD' => 'fdm',          'FL' => 'flud',         'TT' => 'ttorrent',     'LR' => 'libretorrent',
+        'PO' => 'popcorntime',
+        'lt' => ['rtorrent', 'libtorrent'],
+        'LT' => ['rtorrent', 'libtorrent'],
+        'SD' => ['xunlei',   'Thunder'],
+    ];
+
+    if (!isset($map[$code])) {
+        return ['name' => "Unknown ({$code})", 'icon' => '❓', 'category' => 'unknown'];
+    }
+
+    [$key, $name] = is_array($map[$code]) ? $map[$code] : [$map[$code], null];
+    $c = get_client_db()[$key];
+    return ['name' => $name ?? $c['name'], 'icon' => $c['icon'], 'category' => $c['category']];
 }
 
 // ============================================================
@@ -201,75 +189,95 @@ function get_category_meta(string $category): array
 
 // ============================================================
 //  MAIN DETECTION
+//  One pass over the client DB per unique (agent, peer_id) pair per request;
+//  getagent(), get_agent_info(), get_agent_html() and dltable() all read
+//  the cached result.
 // ============================================================
 
-// $show_cheat = false: a cheat client is shown as a neutral "Unknown" client
-// (no name, version, ⚠️ icon or CHEAT badge). Used for non-staff viewers.
-function getagent(?string $httpagent = '', ?string $peer_id = '', bool $show_cheat = true): string
+function ags_client_detect(string $httpagent, string $peer_id): array
 {
-    global $lang;
+    static $cache = [];
 
-    $httpagent = (string)($httpagent ?? '');
-    $peer_id   = (string)($peer_id   ?? '');
-
-    if ($httpagent === '' && $peer_id === '') {
-        return $lang->global['unknown'] ?? 'Unknown';
+    $key = $httpagent . "\0" . $peer_id;
+    if (isset($cache[$key])) {
+        return $cache[$key];
     }
 
-    $agent_source     = $httpagent !== '' ? $httpagent : $peer_id;
-    $db               = get_client_db();
-    $matched_name     = null;
-    $matched_icon     = '❓';
-    $matched_category = 'unknown';
-    $version          = '';
+    $source  = $httpagent !== '' ? $httpagent : $peer_id;
+    $client  = null;
+    $version = '';
 
-    foreach ($db as $client) {
-        foreach ($client['patterns'] as $pattern) {
-            if (preg_match($pattern, $agent_source)) {
-                $matched_name     = $client['name'];
-                $matched_icon     = $client['icon'];
-                $matched_category = $client['category'];
-                break 2;
+    if ($source !== '') {
+        foreach (get_client_db() as $c) {
+            foreach ($c['patterns'] as $pattern) {
+                if (preg_match($pattern, $source)) {
+                    $client = $c;
+                    break 2;
+                }
             }
         }
     }
 
-    // Fallback: Azureus peer_id
-    if ($matched_name === null && $peer_id !== '') {
-        $parsed = parse_azureus_peer_id($peer_id);
-        if ($parsed !== null) {
-            $info             = azureus_code_to_client($parsed['code']);
-            $matched_name     = $info['name'];
-            $matched_icon     = $info['icon'];
-            $matched_category = $info['category'];
-            $version          = $parsed['version'];
+    // Fallback: Azureus-style peer_id
+    if ($client === null && $peer_id !== '' && ($parsed = parse_azureus_peer_id($peer_id)) !== null) {
+        $client  = azureus_code_to_client($parsed['code']);
+        $version = $parsed['version'];
+    }
+
+    $category = $client['category'] ?? 'unknown';
+    $meta     = get_category_meta($category);
+
+    $html = '';
+    if ($client !== null) {
+        if ($version === '' && preg_match('/(\d+\.\d+(?:\.\d+){0,2})/', $source, $vm)) {
+            $version = $vm[1];
         }
+
+        $badge = '';
+        if ($meta['badge_label'] !== '') {
+            $bc    = $meta['badge_class'];
+            $badge = ' <span class="badge bg-' . $bc . ' bg-opacity-10 text-' . $bc
+                   . ' border border-' . $bc . ' border-opacity-25" style="font-size:.6em">'
+                   . htmlspecialchars($meta['badge_label']) . '</span>';
+        }
+        $html = $client['icon'] . ' ' . $client['name'] . ($version !== '' ? " {$version}" : '') . $badge;
     }
 
-    if ($matched_name === null) {
-        return clean_agent_string($agent_source);
+    return $cache[$key] = [
+        'matched'   => $client !== null,
+        'source'    => $source,
+        'html'      => $html,
+        'category'  => $category,
+        'platform'  => $meta['platform'],
+        'is_mobile' => in_array($meta['platform'], ['android', 'ios', 'mobile'], true),
+        'is_cheat'  => $category === 'cheat',
+    ];
+}
+
+// Display string (HTML) for a detected client.
+// $show_cheat = false: a cheat client is shown as a neutral "Unknown" client
+// (no name, version, ⚠️ icon or CHEAT badge). Used for non-staff viewers.
+function ags_client_label(array $c, bool $show_cheat = true): string
+{
+    global $lang;
+
+    if (!$c['matched']) {
+        return $c['source'] === ''
+            ? ($lang->global['unknown'] ?? 'Unknown')
+            : htmlspecialchars(clean_agent_string($c['source']));   // raw client string → escape
     }
 
-    if ($version === '' && preg_match('/(\d+\.\d+(?:\.\d+){0,2})/', $agent_source, $vm)) {
-        $version = $vm[1];
-    }
-
-    if (!$show_cheat && $matched_category === 'cheat') {
+    if (!$show_cheat && $c['is_cheat']) {
         ags_peers_lang();
         return '💻 ' . htmlspecialchars($lang->details['unknown']);
     }
 
-    $meta  = get_category_meta($matched_category);
-    $badge = '';
-    if ($meta['badge_label'] !== '') {
-        $bc    = $meta['badge_class'];
-        $badge = ' <span class="badge bg-' . $bc . ' bg-opacity-10 text-' . $bc
-               . ' border border-' . $bc . ' border-opacity-25" style="font-size:.6em">'
-               . htmlspecialchars($meta['badge_label']) . '</span>';
-    }
+    return $c['html'];
+}
 
-    $version_str = $version !== '' ? " {$version}" : '';
-    return "{$matched_icon} {$matched_name}{$version_str}{$badge}";
+function getagent(?string $httpagent = '', ?string $peer_id = '', bool $show_cheat = true): string
+{
+    return ags_client_label(ags_client_detect((string)$httpagent, (string)$peer_id), $show_cheat);
 }
 
 // ============================================================
@@ -284,58 +292,35 @@ function clean_agent_string(string $s): string
 
 function get_agent_info(?string $httpagent = '', ?string $peer_id = ''): array
 {
-    $httpagent = (string)($httpagent ?? '');
-    $peer_id   = (string)($peer_id   ?? '');
-    $db        = get_client_db();
-
-    $agent_source     = $httpagent !== '' ? $httpagent : $peer_id;
-    $matched_category = 'unknown';
-    $is_cheat         = false;
-
-    foreach ($db as $client) {
-        foreach ($client['patterns'] as $pattern) {
-            if (preg_match($pattern, $agent_source)) {
-                $matched_category = $client['category'];
-                $is_cheat         = ($client['category'] === 'cheat');
-                break 2;
-            }
-        }
-    }
-
-    if ($matched_category === 'unknown' && $peer_id !== '') {
-        $parsed = parse_azureus_peer_id($peer_id);
-        if ($parsed !== null) {
-            $info             = azureus_code_to_client($parsed['code']);
-            $matched_category = $info['category'];
-            $is_cheat         = ($info['category'] === 'cheat');
-        }
-    }
-
-    $meta = get_category_meta($matched_category);
+    $c = ags_client_detect((string)$httpagent, (string)$peer_id);
 
     return [
-        'display_name'  => getagent($httpagent, $peer_id),
-        'category'      => $matched_category,
-        'platform'      => $meta['platform'],
-        'is_mobile'     => in_array($meta['platform'], ['android', 'ios', 'mobile'], true),
-        'is_suspicious' => $is_cheat,
-        'is_cheat'      => $is_cheat,
+        'display_name'  => ags_client_label($c),
+        'category'      => $c['category'],
+        'platform'      => $c['platform'],
+        'is_mobile'     => $c['is_mobile'],
+        'is_suspicious' => $c['is_cheat'],
+        'is_cheat'      => $c['is_cheat'],
     ];
+}
+
+// Client cell HTML. $staff = false hides every cheat marker.
+function ags_client_html(array $c, bool $staff = true): string
+{
+    global $lang;
+
+    if ($staff && $c['is_cheat']) {
+        ags_peers_lang();
+        return '<span class="text-danger fw-bold" title="' . htmlspecialchars($lang->details['pl_cheat_client_tip'], ENT_QUOTES) . '">'
+             . ags_client_label($c) . '</span>';
+    }
+
+    return '<span class="torrent-client">' . ags_client_label($c, $staff) . '</span>';
 }
 
 function get_agent_html(?string $httpagent = '', ?string $peer_id = '', bool $show_details = false): string
 {
-    global $lang;
-
-    $info = get_agent_info($httpagent, $peer_id);
-    $name = $info['display_name'];
-
-    if ($info['is_cheat']) {
-        ags_peers_lang();
-        return '<span class="text-danger fw-bold" title="' . htmlspecialchars($lang->details['pl_cheat_client_tip'], ENT_QUOTES) . '">' . $name . '</span>';
-    }
-
-    return '<span class="torrent-client">' . $name . '</span>';
+    return ags_client_html(ags_client_detect((string)$httpagent, (string)$peer_id));
 }
 
 // ============================================================
@@ -604,50 +589,48 @@ JS;
 
 function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = false): string
 {
-    global $CURUSER, $lang, $is_mod, $BASEURL;
+    global $lang, $is_mod;
 
     ags_peers_lang();
 
-    $peers = is_array($arr) ? $arr : [];
+    $staff = !empty($is_mod);
+    $now   = TIMENOW;
 
+    // ── One pass: client detection, cheat flags, totals ──────
     // Peers with a cheat client are visible to staff only: for everyone else they
     // are left out of the list, the peer count and the total speeds.
-    if (!$is_mod) {
-        $peers = array_values(array_filter(
-            $peers,
-            static fn(array $e): bool => !get_agent_info($e['agent'] ?? '', $e['peer_id'] ?? '')['is_cheat']
-        ));
-    }
-
-    $totalcount = count($peers);
-    $now        = TIMENOW;
-
-    $type_label = htmlspecialchars($is_seeders ? $lang->details['pl_type_seeding'] : $lang->details['pl_type_leeching']);
-    $type_class = $is_seeders ? 'success'  : 'danger';
-
-    // ── Aggregate stats ───────────────────────────────────────
+    $rows        = [];
     $total_up    = 0;
     $total_down  = 0;
     $cheat_count = 0;
 
-    foreach ($peers as $e) {
-        $secs        = max(1, ($now - ($e['st'] ?? $now)) - ($now - ($e['la'] ?? $now)));
+    foreach ($arr ?? [] as $e) {
+        $client = ags_client_detect((string)($e['agent'] ?? ''), (string)($e['peer_id'] ?? ''));
+        if (!$staff && $client['is_cheat']) {
+            continue;
+        }
+
+        // Behavioural flags feed the staff-only alert and card, skip for everyone else
+        $flags = $staff ? detect_ratio_cheat($e, $torrent) : [];
+        if ($staff && ($client['is_cheat'] || cheat_flags_max_severity($flags) === 'high')) {
+            $cheat_count++;
+        }
+
+        $secs        = max(1, ($e['la'] ?? $now) - ($e['st'] ?? $now));
         $total_up   += ($e['uploaded']   - ($e['uploadoffset']   ?? 0)) / $secs;
         $total_down += ($e['downloaded'] - ($e['downloadoffset'] ?? 0)) / $secs;
 
-        // Cheat count feeds the staff-only alert, so skip the detection for everyone else
-        if ($is_mod) {
-            $ai = get_agent_info($e['agent'] ?? '', $e['peer_id'] ?? '');
-            $bf = detect_ratio_cheat($e, $torrent);
-            if ($ai['is_cheat'] || cheat_flags_max_severity($bf) === 'high') {
-                $cheat_count++;
-            }
-        }
+        $rows[] = [$e, $client, $flags];
     }
 
-    // ── Cheat alert (mod only) ────────────────────────────────
+    $totalcount = count($rows);
+
+    $type_label = htmlspecialchars($is_seeders ? $lang->details['pl_type_seeding'] : $lang->details['pl_type_leeching']);
+    $type_class = $is_seeders ? 'success' : 'danger';
+
+    // ── Cheat alert (staff only) ──────────────────────────────
     $cheat_alert = '';
-    if ($cheat_count > 0 && $is_mod) {
+    if ($cheat_count > 0) {
         $cheat_alert = '<div class="alert alert-danger alert-sm d-flex align-items-center gap-2 py-2 mb-3 rounded-0 border-0 border-start border-danger border-3">'
                      . '<i class="bi bi-shield-exclamation fs-5"></i>'
                      . '<span>' . ags_fmt(
@@ -704,8 +687,8 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
     include_once(INC_PATH . '/functions_ratio.php');
 
     $cards = '';
-    foreach ($peers as $e) {
-        $cards .= render_peer_card($e, $torrent, $is_seeders, $now);
+    foreach ($rows as [$e, $client, $flags]) {
+        $cards .= render_peer_card($e, $torrent, $is_seeders, $now, $client, $flags);
     }
 
     // CSS + filterPeers() are needed once per page, not once per list
@@ -725,29 +708,34 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
 
 // ============================================================
 //  SINGLE PEER CARD
+//  $client / $flags come precomputed from dltable(); other callers may omit them.
 // ============================================================
 
-function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now): string
+function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now, ?array $client = null, ?array $flags = null): string
 {
     global $CURUSER, $is_mod, $lang;
 
     ags_peers_lang();
 
+    $staff     = !empty($is_mod);
     $progress  = min(100.0, max(0.0, 100.0 * (1.0 - ($e['to_go'] / max(1, $torrent['size'])))));
     $bar_class = $is_seeders ? 'success' : 'info';
 
     // Invisible peer
-    $is_invisible = (($e['invisible'] ?? '0') === '1');
-    if ($is_invisible && !$is_mod && ($CURUSER['id'] ?? 0) != ($e['id'] ?? -1)) {
+    if (($e['invisible'] ?? '0') === '1' && !$staff && ($CURUSER['id'] ?? 0) != ($e['id'] ?? -1)) {
         return render_invisible_peer_card($e, $now, $progress, $bar_class);
     }
 
+    $client ??= ags_client_detect((string)($e['agent'] ?? ''), (string)($e['peer_id'] ?? ''));
+    $flags  ??= $staff ? detect_ratio_cheat($e, $torrent) : [];
+
     // ── Speeds ────────────────────────────────────────────────
-    $secs       = max(1, ($now - $e['st']) - ($now - $e['la']));
-    $up_speed   = ($e['uploaded']   - ($e['uploadoffset']   ?? 0)) / $secs;
-    $down_speed = ($e['seeder'] === 'no')
-        ? ($e['downloaded'] - ($e['downloadoffset'] ?? 0)) / $secs
-        : ($e['downloaded'] - ($e['downloadoffset'] ?? 0)) / max(1, ($e['finishedat'] ?? $now) - $e['st']);
+    $secs       = max(1, $e['la'] - $e['st']);
+    $dl_delta   = $e['downloaded'] - ($e['downloadoffset'] ?? 0);
+    $up_speed   = ($e['uploaded'] - ($e['uploadoffset'] ?? 0)) / $secs;
+    $down_speed = $e['seeder'] === 'no'
+        ? $dl_delta / $secs
+        : $dl_delta / max(1, ($e['finishedat'] ?? $now) - $e['st']);
 
     $up_badge   = '<span class="badge bg-success bg-opacity-75 text-white"><i class="bi bi-speedometer me-1"></i>'  . mksize((int)$up_speed)   . '/s</span>';
     $down_badge = '<span class="badge bg-danger  bg-opacity-75 text-white"><i class="bi bi-speedometer2 me-1"></i>' . mksize((int)$down_speed) . '/s</span>';
@@ -765,86 +753,59 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
         $ratio_html = '<span class="text-muted">---</span>';
     }
 
-    // ── Agent ─────────────────────────────────────────────────
-    $agent       = (string)($e['agent']   ?? '');
-    $peer_id     = (string)($e['peer_id'] ?? '');
-    $agent_info  = get_agent_info($agent, $peer_id);
-    // Cheat markers (red name + tooltip, CHEAT badge, red border) are staff-only
-    $client_html = $is_mod
-        ? get_agent_html($agent, $peer_id)
-        : '<span class="torrent-client">' . getagent($agent, $peer_id, false) . '</span>';
-
-    // ── Cheat detection ───────────────────────────────────────
-    $cheat_flags      = $is_mod ? detect_ratio_cheat($e, $torrent) : [];
-    $cheat_severity   = cheat_flags_max_severity($cheat_flags);
-    $cheat_flags_html = render_cheat_flags_html($cheat_flags);
-    $is_any_cheat     = $is_mod && ($agent_info['is_cheat'] || $cheat_severity === 'high');
-    $cheat_border     = $is_any_cheat ? ' border-danger' : '';
-
-    $cheat_badge = ($is_mod && $agent_info['is_cheat'])
+    // ── Client + cheat markers (staff only) ───────────────────
+    $client_html  = ags_client_html($client, $staff);
+    $is_any_cheat = $staff && ($client['is_cheat'] || cheat_flags_max_severity($flags) === 'high');
+    $cheat_border = $is_any_cheat ? ' border-danger' : '';
+    $cheat_badge  = ($staff && $client['is_cheat'])
         ? ' <span class="badge bg-danger rounded-0 ms-1"><i class="bi bi-shield-x me-1"></i>' . htmlspecialchars($lang->details['pl_cheat_badge']) . '</span>'
         : '';
 
-    // ── Age badge ─────────────────────────────────────────────
-    $age_badge = get_peer_age_badge((int)($e['st'] ?? TIMENOW));
-
-    // ── Avatar ────────────────────────────────────────────────
+    // ── Identity / avatar ─────────────────────────────────────
     $show_identity = !empty($e['username'])
-        && ($is_mod || ($torrent['anonymous'] ?? '') !== 'yes' || ($e['id'] ?? 0) != ($torrent['owner'] ?? -1));
+        && ($staff || ($torrent['anonymous'] ?? '') !== 'yes' || ($e['id'] ?? 0) != ($torrent['owner'] ?? -1));
 
-    $avatar_html = '';
+    $avatar_html = '<div class="avatar-placeholder-custom"><i class="bi bi-person"></i></div>';
     if ($show_identity) {
-        $ua = format_avatar($e['avatar'] ?? '', $e['avatardimensions'] ?? '', '50x50');
-        if (str_starts_with((string)($ua['image'] ?? ''), '<')) {
-            $avatar_html = str_replace('avatar-ring2', 'avatar-ring2 avatar-placeholder-custom', $ua['image'] ?? '');
-        } else {
-            $avatar_html = '<img class="avatar-image-custom rounded" src="' . ($ua['image'] ?? '') . '" alt="" '
+        $ua  = format_avatar($e['avatar'] ?? '', $e['avatardimensions'] ?? '', '50x50');
+        $img = (string)($ua['image'] ?? '');
+        if (str_starts_with($img, '<')) {
+            $avatar_html = str_replace('avatar-ring2', 'avatar-ring2 avatar-placeholder-custom', $img);
+        } elseif ($img !== '') {
+            $avatar_html = '<img class="avatar-image-custom rounded" src="' . $img . '" alt="" '
                          . ($ua['width_height'] ?? 'width="50" height="50"') . '>';
         }
     }
-    $avatar_html = $avatar_html ?: '<div class="avatar-placeholder-custom"><i class="bi bi-person"></i></div>';
-
-    // ── IP block ──────────────────────────────────────────────
-    $ip_raw    = htmlspecialchars_uni($e['ip'] ?? '');
-    $ip_masked = preg_replace('/\.\d+\.\d+$/', '.***', $ip_raw);
-    $port      = (int)($e['port'] ?? 0);
-    $ul_sz     = mksize($e['uploaded']   ?? 0);
-    $dl_sz     = mksize($e['downloaded'] ?? 0);
-
-    $ip_block = $is_mod
-        ? '<div class="mt-1"><small class="badge bg-dark bg-opacity-25 text-dark"><i class="bi bi-globe me-1"></i>' . $ip_raw . ':' . $port . '</small>'
-        . ' <span><i class="bi bi-arrow-up text-success"></i> ' . $ul_sz . '</span>'
-        . ' <span><i class="bi bi-arrow-down text-info"></i> '  . $dl_sz . '</span></div>'
-        : '<div class="mt-1"><small class="badge bg-light text-muted"><i class="bi bi-eye me-1"></i>' . $ip_masked . ':' . $port . '</small>'
-        . ' <span><i class="bi bi-arrow-up text-success"></i> ' . $ul_sz . '</span>'
-        . ' <span><i class="bi bi-arrow-down text-info"></i> '  . $dl_sz . '</span></div>';
 
     // ── User block ────────────────────────────────────────────
     if (!$show_identity) {
         $user_html = '<span class="text-muted"><i class="bi bi-incognito me-2"></i>' . htmlspecialchars($lang->details['pl_anonymous']) . '</span>';
-    } elseif (empty($e['username'])) {
-        $user_html = '<span class="text-muted"><i class="bi bi-question-circle me-2"></i>' . htmlspecialchars($lang->details['unknown']) . '</span>';
     } else {
+        $ip_raw  = htmlspecialchars_uni($e['ip'] ?? '');
+        $ip_show = $staff ? $ip_raw : preg_replace('/\.\d+\.\d+$/', '.***', $ip_raw);
+        $ip_cls  = $staff ? 'bg-dark bg-opacity-25 text-dark' : 'bg-light text-muted';
+        $ip_icon = $staff ? 'bi-globe' : 'bi-eye';
+
         $user_html = '<div class="d-flex align-items-center flex-wrap gap-1">'
                    . '<a href="' . get_profile_link($e['userid'] ?? 0) . '" class="text-decoration-none fw-bold text-dark">'
-                   . format_name($e['username'], $e['usergroup'] ?? '')
+                   . format_name(htmlspecialchars_uni($e['username']), $e['usergroup'] ?? '')
                    . '</a>'
-                   . $age_badge
+                   . get_peer_age_badge((int)($e['st'] ?? TIMENOW))
                    . '</div>'
-                   . $ip_block
-                   . $cheat_flags_html;
+                   . '<div class="mt-1"><small class="badge ' . $ip_cls . '"><i class="bi ' . $ip_icon . ' me-1"></i>' . $ip_show . ':' . (int)($e['port'] ?? 0) . '</small>'
+                   . ' <span><i class="bi bi-arrow-up text-success"></i> ' . mksize($e['uploaded']   ?? 0) . '</span>'
+                   . ' <span><i class="bi bi-arrow-down text-info"></i> '  . mksize($e['downloaded'] ?? 0) . '</span></div>'
+                   . render_cheat_flags_html($flags);
     }
 
     // ── Card classes ──────────────────────────────────────────
     $is_current = (($CURUSER['id'] ?? -1) == ($e['id'] ?? -2));
-    $card_class = $is_current
-        ? 'border-primary shadow current-user-card'
-        : 'border-light' . $cheat_border;
+    $card_class = $is_current ? 'border-primary shadow current-user-card' : 'border-light' . $cheat_border;
     $you_badge  = $is_current ? '<span class="current-user-badge">' . htmlspecialchars($lang->details['pl_you']) . '</span>' : '';
 
-    $connectable_badge = '<span class="badge ' . ($e['connectable'] === 'yes' ? 'bg-success' : 'bg-danger')
-                       . ' rounded-0 px-3 py-2">'
-                       . htmlspecialchars($e['connectable'] === 'yes' ? $lang->details['pl_connectable'] : $lang->details['pl_firewalled'])
+    $conn = $e['connectable'] === 'yes';
+    $connectable_badge = '<span class="badge ' . ($conn ? 'bg-success' : 'bg-danger') . ' rounded-0 px-3 py-2">'
+                       . htmlspecialchars($conn ? $lang->details['pl_connectable'] : $lang->details['pl_firewalled'])
                        . '</span>'
                        . $cheat_badge;
 

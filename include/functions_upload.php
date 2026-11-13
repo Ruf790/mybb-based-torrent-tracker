@@ -366,6 +366,22 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         }
     }
 
+    // Размер и квота — ДО перекодирования картинок: recode большого PNG/JPEG занимает
+    // секунды, и раньше слишком большой файл сначала перекодировался, а уже потом отклонялся
+    $too_large = static fn(int $size): bool => $attachtype['maxsize'] !== '' && (int)$attachtype['maxsize'] > 0
+        && $size > (int)$attachtype['maxsize'] * 1024;
+    if ($too_large((int)$attachment['size'])) {
+        return ['error' => sprintf($ul['err_file_too_large'], htmlspecialchars_uni($attachment['name']), (string)$attachtype['maxsize'])];
+    }
+    $quota_left = null;
+    if ($usergroups['attachquota'] > 0) {
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
+        $quota_left = (int)$usergroups['attachquota'] * 1024 - ($query ? (int)$db->fetch_array($query)['ausage'] : 0);
+        if ((int)$attachment['size'] > $quota_left) {
+            return ['error' => sprintf($ul['err_quota'], mksize($usergroups['attachquota'] * 1024))];
+        }
+    }
+
     $imageExts = ['gif', 'png', 'jpg', 'jpeg', 'jpe', 'webp', 'bmp'];
     if (in_array($ext, $imageExts, true)) {
         if (@getimagesize($attachment['tmp_name']) === false) {
@@ -388,18 +404,12 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         return ['error' => sprintf($ul['err_filename_too_long'], htmlspecialchars_uni($attachment['name']))];
     }
 
-    // Размер файла
-    if ($attachtype['maxsize'] !== '' && $attachment['size'] > (int)$attachtype['maxsize'] * 1024) {
+    // Ещё раз после перекодирования: PNG после recode бывает больше исходного
+    if ($too_large((int)$attachment['size'])) {
         return ['error' => sprintf($ul['err_file_too_large'], htmlspecialchars_uni($attachment['name']), (string)$attachtype['maxsize'])];
     }
-
-    // Квота пользователя
-    if ($usergroups['attachquota'] > 0) {
-        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
-        $usage = ($query ? (int)$db->fetch_array($query)['ausage'] : 0) + $attachment['size'];
-        if ($usage > $usergroups['attachquota'] * 1024) {
-            return ['error' => sprintf($ul['err_quota'], mksize($usergroups['attachquota'] * 1024))];
-        }
+    if ($quota_left !== null && (int)$attachment['size'] > $quota_left) {
+        return ['error' => sprintf($ul['err_quota'], mksize($usergroups['attachquota'] * 1024))];
     }
 
     // Уже существующий аттачмент с таким именем

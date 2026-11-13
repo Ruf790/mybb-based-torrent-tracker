@@ -456,37 +456,38 @@ function get_child_list(int $fid): array
 }
 
 
+/** Moderator action → sitelog (one row per tid, like the old moderatorlog) */
+function sitelog_moderator_action(array $data, string $action = ''): void
+{
+    global $db, $CURUSER;
+    
+
+    $fid  = (int)($data['fid'] ?? 0);     unset($data['fid']);
+    $tid  = (int)($data['tid'] ?? 0);     unset($data['tid']);
+    $pid  = (int)($data['pid'] ?? 0);     unset($data['pid']);
+    $tids = (array)($data['tids'] ?? []); unset($data['tids']);
+
+    $uid  = (int)($CURUSER['id'] ?? 0);
+    $ip   = my_inet_pton(get_ip());
+    $ser  = my_serialize($data);
+
+    $rows = [];
+    $params = [];
+    foreach ($tids ?: [$tid] as $t) {
+        $rows[] = '(?,?,?,?,?,?,?,?,?,?)';
+        array_push($params, TIMENOW, $uid, $ip, $action, 'moderator', 0, $fid, (int)$t, $pid, $ser);
+    }
+    $db->sql_query_prepared(
+        "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`,`fid`,`tid`,`pid`,`data`) VALUES " . implode(',', $rows),
+        $params
+    );
+}
+
+
 // ── log_moderator_action ──────────────────────────────────────────────────────
 function log_moderator_action(array $data, string $action = ''): void
 {
-    global $db, $CURUSER, $session;
-
-    $fid  = (int)($data['fid'] ?? 0);  unset($data['fid']);
-    $tid  = (int)($data['tid'] ?? 0);  unset($data['tid']);
-    $pid  = (int)($data['pid'] ?? 0);  unset($data['pid']);
-    $tids = (array)($data['tids'] ?? []); unset($data['tids']);
-
-    $serialized = is_array($data) ? my_serialize($data) : $data;
-
-    $uid       = (int)$CURUSER['id'];
-    $dateline  = TIMENOW;
-    $ipaddress = $session->packedip;
-
-    // Один или несколько tid — строим общий multi-row INSERT через prepared statement
-    $tid_list = $tids ?: [$tid];
-
-    $placeholders = [];
-    $params       = [];
-
-    foreach ($tid_list as $t) {
-        $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?)';
-        array_push($params, $uid, $dateline, $fid, (int)$t, $pid, $action, $serialized, $ipaddress);
-    }
-
-    $sql = "INSERT INTO moderatorlog (`uid`,`dateline`,`fid`,`tid`,`pid`,`action`,`data`,`ipaddress`)
-            VALUES " . implode(', ', $placeholders);
-
-    $db->sql_query_prepared($sql, $params);
+    sitelog_moderator_action($data, $action);   // include/functions.php
 }
 
 

@@ -211,8 +211,7 @@ if($mybb->input['action'] == "dlbackup")
     {
         $plugins->run_hooks("admin_tools_backupdb_dlbackup_commit");
 
-        // Log admin action
-        log_admin_action($file);
+        write_log("Downloaded database backup {$file} by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
 
         header('Content-Disposition: attachment; filename="'.$file.'"');
         // Раньше Content-type был просто «gz» / «sql» — не MIME-тип
@@ -267,8 +266,7 @@ if($mybb->input['action'] == "delete")
         {
             $plugins->run_hooks("admin_tools_backupdb_delete_commit");
 
-            // Log admin action
-            log_admin_action($file);
+            write_log("Deleted database backup {$file} by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
 
             flash_message($lang->backupdb['flash_deleted'], 'success');
             admin_redirect($_this_script_);
@@ -498,8 +496,7 @@ if($mybb->input['action'] == "backup")
 
             $plugins->run_hooks("admin_tools_backupdb_backup_disk_commit");
 
-            // Log admin action
-            log_admin_action("disk", $file.$ext);
+            write_log('Created database backup on server: ' . basename($file) . $ext . ' (' . count($mybb->input['tables']) . ' tables) by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
 
             
 			
@@ -541,8 +538,7 @@ flash_message('
         {
             $plugins->run_hooks("admin_tools_backupdb_backup_download_commit");
 
-            // Log admin action
-            log_admin_action("download");
+            write_log('Created database backup for download (' . count($mybb->input['tables']) . ' tables) by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
 
             if($mybb->input['filetype'] == 'gzip')
             {

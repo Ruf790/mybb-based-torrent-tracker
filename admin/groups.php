@@ -303,7 +303,7 @@ if (($mybb->input['action'] ?? '') === 'add') {
 
             $cache->update_usergroups();
             $cache->update_forumpermissions();
-            log_admin_action($gid, $mybb->input['title']);
+            write_log("Added usergroup '{$mybb->input['title']}' (GID {$gid}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
 
             flash_message($lang->groups['flash_created'], 'success');
             admin_redirect("index.php?act=groups&action=edit&gid={$gid}");
@@ -446,7 +446,7 @@ if (($mybb->input['action'] ?? '') === 'edit') {
             $db->sql_query_prepared("UPDATE usergroups SET {$set} WHERE gid = ?", $params);
             $cache->update_usergroups();
             $cache->update_forumpermissions();
-            log_admin_action($usergroup['gid'], $mybb->input['title']);
+            write_log("Edited usergroup '{$mybb->input['title']}' (GID {$usergroup['gid']}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
 
             flash_message($lang->groups['flash_updated'], 'success');
             admin_redirect('index.php?act=groups');
@@ -646,7 +646,7 @@ if (($mybb->input['action'] ?? '') === 'delete') {
 
     $cache->update_usergroups();
     $cache->update_forumpermissions();
-    log_admin_action($usergroup['gid'], $usergroup['title']);
+    write_log("Deleted usergroup '{$usergroup['title']}' (GID {$usergroup['gid']}), members moved to GID {$newGroup} by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
 
     echo $lang->groups['msg_deleted'];
     exit;
@@ -669,7 +669,7 @@ if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 
             $db->sql_query_prepared("UPDATE usergroups SET disporder = ? WHERE gid = ?", [$order, $gid]);
         }
     }
-    log_admin_action();
+    write_log('Changed usergroup display order by ' . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin');
     $plugins->run_hooks('admin_user_groups_disporder_commit');
     flash_message($lang->groups['flash_order_updated'], 'success');
     admin_redirect('index.php?act=groups');

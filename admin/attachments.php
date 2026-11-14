@@ -3,6 +3,11 @@
 
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    die('Direct initialization of this file is not allowed.');
+}
+
+
 
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_icons.php';
@@ -191,15 +196,15 @@ while ($query && ($attachment = $db->fetch_array($query))) {
             delete_uploaded_file($uploadDir . $attachment['thumbnail']);
         }
         $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [(int)$attachment['aid']]);
-        log_admin_action($attachment['aid'], $attachment['filename']);
+        write_log("Deleted comment attachment '{$attachment['filename']}' (AID {$attachment['aid']}, comment {$attachment['comment_id']}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
     } elseif (!(int)$attachment['pid']) {
         // Форум — черновик
         remove_attachment(0, $attachment['posthash'], (int)$attachment['aid']);
-        log_admin_action($attachment['aid'], $attachment['filename']);
+        write_log("Deleted draft attachment '{$attachment['filename']}' (AID {$attachment['aid']}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
     } else {
         // Форум — с постом
         remove_attachment((int)$attachment['pid'], '', (int)$attachment['aid']);
-        log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
+        write_log("Deleted attachment '{$attachment['filename']}' (AID {$attachment['aid']}) from post {$attachment['pid']} by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
     }
 }
         }
@@ -213,7 +218,7 @@ while ($query && ($attachment = $db->fetch_array($query))) {
                     @unlink($file['file_path']);
                 }
                 $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [(int)$file['id']]);
-                log_admin_action($file['id'], $file['file_name']);
+                write_log("Deleted comment file '{$file['file_name']}' (ID {$file['id']}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
             }
         }
 
@@ -362,7 +367,7 @@ if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "po
                 @unlink($file['file_path']);
             }
             $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [(int)$file['id']]);
-            log_admin_action($file['id'], $file['file_name']);
+            write_log("Deleted orphaned comment file '{$file['file_name']}' (ID {$file['id']}) by " . ($GLOBALS['CURUSER']['username'] ?? 'unknown'), 'admin', 1);
             $success_count++;
         }
     }

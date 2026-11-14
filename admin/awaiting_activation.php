@@ -121,7 +121,7 @@ function process_user_deletion(array $user_ids): void
     $plugins->run_hooks('admin_user_awaiting_activation_activate_delete_commit');
 
     $num_deleted = count($users_to_delete);
-    log_admin_action('deleted', $num_deleted);
+    
     write_log('Awaiting activation: deleted ' . $num_deleted . ' pending account(s): ' . implode(', ', $names));
 
     flash_message($lang->user_awaiting_activation['flash_users_deleted'], 'success');
@@ -158,7 +158,7 @@ function process_user_activation_flow(array $user_ids): void
     $plugins->run_hooks('admin_user_awaiting_activation_activate_commit');
 
     $num_activated = count($activated);
-    log_admin_action('activated', $num_activated);
+   
     write_log('Awaiting activation: activated ' . $num_activated . ' account(s): ' . implode(', ', $activated));
 
     flash_message($lang->user_awaiting_activation['flash_users_activated'], 'success');

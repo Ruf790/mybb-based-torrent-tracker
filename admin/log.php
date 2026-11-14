@@ -227,194 +227,78 @@ $filter_params = [
     'log_type' => $log_type
 ];
 
-$where_conditions_sitelog = [];
-$where_conditions_modlog = [];
-$where_params_sitelog = [];
-$where_params_modlog = [];
+// Everything is in sitelog now: category 'admin' / 'moderator' = admin / moderator actions
 
+$where  = [];
+$params = [];
 
-$where_conditions_adminlog = [];
-$where_params_adminlog = [];
+$where[] = match ($log_type) {
+    // write_log(..., 'admin') rows (cleartable …) have no module: they are site events
+    'site'      => "NOT (s.category = 'moderator' OR (s.category = 'admin' AND s.module <> ''))",
+    'moderator' => "s.category = 'moderator'",
+    'admin'     => "s.category = 'admin'",
+    default     => '1=1',
+};
+
 if ($searchstr !== '') {
     $search_like = "%{$searchstr}%";
-    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ? OR a.data LIKE ?)";
-    array_push($where_params_adminlog, $search_like, $search_like, $search_like);
+    $where[] = "(s.txt LIKE ? OR s.module LIKE ? OR s.data LIKE ?)";
+    array_push($params, $search_like, $search_like, $search_like);
 }
+
 if ($event_filter !== 'all') {
-    $event_like = "%{$event_filter}%";
-    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ?)";
-    array_push($where_params_adminlog, $event_like, $event_like);
-}
-if ($date_filter !== '') {
-    $where_conditions_adminlog[] = "DATE(FROM_UNIXTIME(a.dateline)) = ?";
-    $where_params_adminlog[] = $date_filter;
-}
-$where_adminlog = !empty($where_conditions_adminlog) 
-    ? "WHERE " . implode(" AND ", $where_conditions_adminlog) 
-    : "";
-
-
-
-
-
-if ($searchstr !== '') 
-{
-    $search_like = "%{$searchstr}%";
-    $where_conditions_sitelog[] = "s.txt LIKE ?";
-    $where_params_sitelog[] = $search_like;
-    $where_conditions_modlog[] = "(m.action LIKE ? OR m.data LIKE ?)";
-    array_push($where_params_modlog, $search_like, $search_like);
-}
-
-
-
-
-
-
-
-
-if ($event_filter !== 'all') 
-{
-    if ($event_filter === 'Screenshot') 
-	{
-        $where_conditions_sitelog[] = "(s.txt LIKE '%Screenshot uploaded:%' OR s.txt LIKE '%Screenshot deleted:%' OR s.txt LIKE '%Screenshot updated:%' OR s.txt LIKE '%Screenshot error%')";
-        $where_conditions_modlog[] = "(m.action LIKE '%Screenshot%' OR m.data LIKE '%Screenshot%')";
-    } 
-	
-	elseif ($event_filter === 'Delete Comment') 
-    {
-        $where_conditions_sitelog[] = "(
-        s.txt LIKE '%Comment Delete%' 
-        OR s.txt LIKE '%Mass Comment Delete%' 
-        OR s.txt LIKE '%deleted a comment%' 
-        OR s.txt LIKE '%deleted comments%' 
-        OR s.txt LIKE '%User % deleted a comment (CID%' 
-        )";
-    
-        $where_conditions_modlog[] = "(
-        m.action LIKE '%Comment Delete%' 
-        OR m.action LIKE '%Mass Comment Delete%' 
-        OR m.action LIKE '%deleted a comment%' 
-        OR m.action LIKE '%deleted comments%' 
-        OR m.action LIKE '%User % deleted a comment (CID%' 
-        )";
-    }
-	
-	elseif ($event_filter === 'Torrent Upload') 
-	{
-        $where_conditions_sitelog[] = "(s.txt LIKE '%has been uploaded%' OR s.txt LIKE '%torrent uploaded%')";
-        $where_conditions_modlog[] = "(m.action LIKE '%has been uploaded%' OR m.action LIKE '%torrent uploaded%')";
-    } 
-	else 
-	{
-        $event_like = "%{$event_filter}%";
-        $where_conditions_sitelog[] = "s.txt LIKE ?";
-        $where_params_sitelog[] = $event_like;
-        $where_conditions_modlog[] = "m.action LIKE ?";
-        $where_params_modlog[] = $event_like;
+    if ($event_filter === 'Screenshot') {
+        $where[] = "(s.txt LIKE '%Screenshot uploaded:%' OR s.txt LIKE '%Screenshot deleted:%' OR s.txt LIKE '%Screenshot updated:%' OR s.txt LIKE '%Screenshot error%' OR s.data LIKE '%Screenshot%')";
+    } elseif ($event_filter === 'Delete Comment') {
+        $where[] = "(s.txt LIKE '%Comment Delete%' OR s.txt LIKE '%deleted a comment%' OR s.txt LIKE '%deleted comments%')";
+    } elseif ($event_filter === 'Torrent Upload') {
+        $where[] = "(s.txt LIKE '%has been uploaded%' OR s.txt LIKE '%torrent uploaded%')";
+    } else {
+        $where[] = "(s.txt LIKE ? OR s.module LIKE ?)";
+        array_push($params, "%{$event_filter}%", "%{$event_filter}%");
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 if ($date_filter !== '') {
-    $where_conditions_sitelog[] = "DATE(FROM_UNIXTIME(s.added)) = ?";
-    $where_params_sitelog[] = $date_filter;
-    $where_conditions_modlog[] = "DATE(FROM_UNIXTIME(m.dateline)) = ?";
-    $where_params_modlog[] = $date_filter;
+    // index-friendly range instead of DATE(FROM_UNIXTIME(...))
+    $day0 = strtotime($date_filter . ' 00:00:00');
+    if ($day0 !== false) {
+        $where[] = "s.added >= ? AND s.added < ?";
+        array_push($params, $day0, $day0 + 86400);
+    }
 }
-$where_sitelog = !empty($where_conditions_sitelog) ? "WHERE " . implode(" AND ", $where_conditions_sitelog) : "";
-$where_modlog = !empty($where_conditions_modlog) ? "WHERE " . implode(" AND ", $where_conditions_modlog) : "";
 
-// Считаем общее количество записей
-$count_union = [];
-$union_params = [];
-if ($log_type === 'both' || $log_type === 'site') {
-    $count_union[] = "SELECT COUNT(*) as count FROM sitelog s $where_sitelog";
-    array_push($union_params, ...$where_params_sitelog);
-}
-if ($log_type === 'both' || $log_type === 'moderator') {
-    $count_union[] = "SELECT COUNT(*) as count FROM moderatorlog m $where_modlog";
-    array_push($union_params, ...$where_params_modlog);
-}
-if ($log_type === 'both' || $log_type === 'admin') {
-    $count_union[] = "SELECT COUNT(*) as count FROM adminlog a $where_adminlog";
-    array_push($union_params, ...$where_params_adminlog);
-}
-$count_sql = "SELECT SUM(count) as total FROM (" . implode(" UNION ALL ", $count_union) . ") as counts";
-$result = $db->sql_query_prepared($count_sql, $union_params);
+$where_sql = 'WHERE ' . implode(' AND ', $where);
+
+$result = $db->sql_query_prepared("SELECT COUNT(*) AS total FROM sitelog s $where_sql", $params);
 if (!$result) {
     die(ags_fmt($lang->log['err_count_query'], (string)$db->error()));
 }
 $row = $db->fetch_array($result);
 $total_count = (int)$row['total'];
 
-
 // Пагинация
 $perpage = 50;
-$pages = $total_count > 0 ? ceil($total_count / $perpage) : 1;
+$pages = $total_count > 0 ? (int)ceil($total_count / $perpage) : 1;
 if ($page > $pages && $pages > 0) {
     $page = $pages;
 }
 $start = max(0, ($page - 1) * $perpage);
 
-
-
-
-// Формируем UNION запрос
-$union_queries = [];
-if ($log_type === 'both' || $log_type === 'site') {
-    $union_queries[] = "SELECT s.id, s.added as timestamp, s.txt as content,
-                        'site' as log_type, s.uid, u.username, u.usergroup,
-                        NULL as fid, NULL as tid, NULL as pid,
-                        s.ipaddress, NULL as data, NULL as module
-                        FROM sitelog s
-                        LEFT JOIN users u ON (s.uid = u.id)
-                        $where_sitelog";
-}
-if ($log_type === 'both' || $log_type === 'moderator') {
-    $union_queries[] = "SELECT NULL as id, m.dateline as timestamp, m.action as content,
-                        'moderator' as log_type, m.uid, u.username, u.usergroup,
-                        m.fid, m.tid, m.pid, m.ipaddress, m.data, NULL as module
-                        FROM moderatorlog m
-                        LEFT JOIN users u ON (m.uid = u.id)
-                        $where_modlog";
-}
-if ($log_type === 'both' || $log_type === 'admin') {
-    $union_queries[] = "SELECT NULL as id, a.dateline as timestamp, a.action as content,
-                        'admin' as log_type, a.uid, u.username, u.usergroup,
-                        NULL as fid, NULL as tid, NULL as pid,
-                        a.ipaddress, a.data, a.module
-                        FROM adminlog a
-                        LEFT JOIN users u ON (a.uid = u.id)
-                        $where_adminlog";
-}
-if (empty($union_queries)) {
-    $union_queries[] = "SELECT '0' as id, 0 as timestamp, 'No logs selected' as content,
-                        'none' as log_type, NULL as uid, NULL as username, NULL as usergroup,
-                        NULL as fid, NULL as tid, NULL as pid, NULL as ipaddress,
-                        NULL as data, NULL as module
-                        WHERE 1=0";
-}
-$main_query = "(" . implode(") UNION ALL (", $union_queries) . ") ORDER BY timestamp DESC";
-$main_params = $union_params;
-if ($total_count > 0) {
-    $main_query .= " LIMIT ?, ?";
-    $main_params[] = $start;
-    $main_params[] = $perpage;
-}
-
-
-//error_log("Main query: $main_query"); // Логируем запрос для отладки
-$res = $db->sql_query_prepared($main_query, $main_params);
+$res = $db->sql_query_prepared(
+    "SELECT s.id, s.added AS timestamp, s.txt AS content,
+            CASE WHEN s.category = 'moderator' THEN 'moderator'
+                 WHEN s.category = 'admin' AND s.module <> '' THEN 'admin'
+                 ELSE 'site' END AS log_type,
+            s.category, s.uid, u.username, u.usergroup,
+            s.fid, s.tid, s.pid, s.ipaddress, s.data, s.module
+       FROM sitelog s
+       LEFT JOIN users u ON (s.uid = u.id)
+     $where_sql
+     ORDER BY s.added DESC, s.id DESC
+     LIMIT ?, ?",
+    array_merge($params, [$start, $perpage])
+);
 if (!$res) {
     die(ags_fmt($lang->log['err_main_query'], (string)$db->error()));
 }
@@ -443,7 +327,7 @@ foreach ($logs as $arr) {
         if ($arr['fid']) $forum_ids[$arr['fid']] = true;
         if ($arr['pid']) $post_ids[$arr['pid']] = true;
 
-        $data = my_unserialize($arr['data']);
+        $data = my_unserialize((string)($arr['data'] ?? ''));
         if (!empty($data['uid']) && empty($data['username'])) {
             $user_ids_from_data[$data['uid']] = true;
         }
@@ -581,6 +465,7 @@ echo '<!DOCTYPE html>
                 border-radius: 20px;
             }
             
+            .log-date, .log-time { white-space: nowrap; }
             .log-date {
                 min-width: 110px;
                 font-weight: 600;
@@ -724,6 +609,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit(htmlspecialchars($lang->log['err_invalid_token']));
         }
 
+        // Everything: site events, admin and moderator actions
         $result = $db->sql_query_prepared('TRUNCATE TABLE sitelog');
         if ($result) {
             flash_message($lang->log['flash_cleared'], 'success');
@@ -1007,11 +893,12 @@ if ($entry_type === 'site') {
         'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'cat_deletion'],
         'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'cat_mail'],
         'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'cat_warning'],
+        'admin'      => ['#fdecea', '#c0392b', 'fa-crown',              'cat_admin'],
     ];
 
     $cat = !empty($arr['category']) ? $arr['category'] : 'general';
     [$bg, $cl, $icon, $label_key] = $cat_badges[$cat] ?? $cat_badges['general'];
-    $label = $lang->log[$label_key];
+    $label = (string)($lang->log[$label_key] ?? ucfirst($cat));
 
     $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:3px 9px;'
                  . 'border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;'
@@ -1053,7 +940,7 @@ elseif ($entry_type === 'admin') {
         'usergroup' => $arr['usergroup'] ?? '',
         'module'    => $arr['module'] ?? '',
         'action'    => $arr['content'] ?? '',
-        'data'      => my_unserialize($arr['data']),
+        'data'      => my_unserialize((string)($arr['data'] ?? '')),
         'dateline'  => $arr['timestamp'],
         'ipaddress' => $arr['ipaddress'],
     ];
@@ -1117,7 +1004,7 @@ elseif ($entry_type === 'admin') {
             // Формируем action с информацией из data
             $action = htmlspecialchars($arr['content']);
             $match_action = $action;
-            $data = my_unserialize($arr['data']);
+            $data = my_unserialize((string)($arr['data'] ?? ''));
             
             $mod_user = null;
             if (!empty($data['username'])) {
@@ -1167,6 +1054,62 @@ elseif ($entry_type === 'admin') {
 
         // Маппинг бейджей
         $badge_map = [
+        // ── Модерация форума (moderation.php, modcp, usersearch) ──
+        'Thread Deleted Permanently'    => ['danger',    'badge_thread_deleted',    'fa-trash'],
+        'Threads Deleted Permanently'   => ['danger',    'badge_threads_del',       'fa-trash'],
+        'Deleted threads'               => ['danger',    'badge_threads_del',       'fa-trash'],
+        'Deleted posts'                 => ['danger',    'badge_del_posts',         'fa-object-group'],
+        'Thread Unapproved'             => ['warning',   'badge_unapproved',        'fa-eye-slash'],
+        'Threads Unapproved'            => ['warning',   'badge_unapproved',        'fa-eye-slash'],
+        'Posts Unapproved'              => ['warning',   'badge_unapproved',        'fa-eye-slash'],
+        'Thread Approved'               => ['success',   'badge_approved',          'fa-check'],
+        'Threads Approved'              => ['success',   'badge_approved',          'fa-check'],
+        'Posts Approved'                => ['success',   'badge_approved',          'fa-check'],
+        'Thread Opened'                 => ['success',   'badge_thread_open',       'fa-lock-open'],
+        'Threads Opened'                => ['success',   'badge_thread_open',       'fa-lock-open'],
+        'Thread Closed'                 => ['secondary', 'badge_close_thread',      'fa-lock'],
+        'Threads Closed'                => ['secondary', 'badge_close_thread',      'fa-lock'],
+        'Thread Unstuck'                => ['secondary', 'badge_thread_unstuck',    'fa-thumbtack'],
+        'Threads Unstuck'               => ['secondary', 'badge_thread_unstuck',    'fa-thumbtack'],
+        'Thread Stuck'                  => ['info',      'badge_thread_stuck',      'fa-thumbtack'],
+        'Threads Stuck'                 => ['info',      'badge_thread_stuck',      'fa-thumbtack'],
+        'Thread Copied'                 => ['primary',   'badge_thread_copied',     'fa-copy'],
+        'Thread Moved'                  => ['warning',   'badge_move_thread',       'fa-exchange-alt'],
+        'Threads Moved / Copied'        => ['warning',   'badge_move_thread',       'fa-exchange-alt'],
+        'Threads Merged'                => ['primary',   'badge_threads_merged',    'fa-code-merge'],
+        'Split posts'                   => ['primary',   'badge_split_posts',       'fa-scissors'],
+        'Moved posts'                   => ['warning',   'badge_posts_moved',       'fa-right-left'],
+        'Poll Deleted'                  => ['danger',    'badge_poll_deleted',      'fa-square-poll-vertical'],
+        'Thread Redirects Removed'      => ['secondary', 'badge_redirects_removed', 'fa-link-slash'],
+        'Removed All Subscriptions'     => ['secondary', 'badge_subs_removed',      'fa-bell-slash'],
+        'Bulk PM sent to'               => ['info',      'badge_bulk_pm',           'fa-envelope'],
+        'Bulk changed group to'         => ['warning',   'badge_group_change',      'fa-users-gear'],
+        'Bulk deleted'                  => ['danger',    'badge_bulk_delete',       'fa-user-xmark'],
+        'Lifted User Ban (bulk)'        => ['success',   'badge_unban',             'fa-unlock'],
+
+        // ── write_log() из админки: точные фразы выше общих ('moved', 'copied' …) ──
+        'Lifted ban of'                 => ['success',   'badge_unban',             'fa-unlock'],
+        'Edited ban of'                 => ['warning',   'badge_ban_edit',          'fa-user-pen'],
+        'Added ban filter'              => ['danger',    'badge_ban_filter_add',    'fa-filter'],
+        'Removed ban filter'            => ['success',   'badge_ban_filter_del',    'fa-filter-circle-xmark'],
+        'Pruned all content of'         => ['danger',    'badge_prune_user',        'fa-broom'],
+        'Awaiting activation: deleted'  => ['danger',    'badge_pending_deleted',   'fa-user-xmark'],
+        'Awaiting activation: activated'=> ['success',   'badge_pending_activated', 'fa-user-check'],
+        'Deleted usergroup'             => ['danger',    'badge_group_deleted',     'fa-users-slash'],
+        'Edited permissions of group'   => ['warning',   'badge_permissions',       'fa-key'],
+        'Copied forum'                  => ['primary',   'badge_forum_copy',        'fa-copy'],
+        'display order'                 => ['secondary', 'badge_order',             'fa-arrow-down-1-9'],
+        'Reloaded settings cache'       => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Reloaded cache'                => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Rebuilt all caches'            => ['success',   'badge_cache_rebuild',     'fa-arrows-rotate'],
+        'Created database backup'       => ['success',   'badge_backup_created',    'fa-database'],
+        'Downloaded database backup'    => ['info',      'badge_backup_downloaded', 'fa-download'],
+        'Deleted database backup'       => ['danger',    'badge_backup_deleted',    'fa-trash'],
+        'Deleted draft attachment'      => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'Deleted comment attachment'    => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'comment file'                  => ['danger',    'badge_attachment_deleted','fa-trash-alt'],
+        'Banned '                       => ['danger',    'badge_ban',               'fa-ban'],
+
         // ── Пользователи / баны ──────────────────────────────
         'Banned User'          => ['danger',  'badge_ban',        'fa-ban'],
         'Lifted User Ban'      => ['success', 'badge_unban',      'fa-unlock'],
@@ -1283,7 +1226,7 @@ elseif ($entry_type === 'admin') {
                 break;
             }
         }
-        $badge = $L[$badge_key];
+        $badge = $L[$badge_key] ?? $L['badge_log'];
 		
 		
 		

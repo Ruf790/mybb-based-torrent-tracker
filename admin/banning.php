@@ -411,7 +411,7 @@ class BanManager
             $this->db->sql_query_prepared("DELETE FROM banfilters WHERE fid = ?", [$filter['fid']]);
             $this->plugins->run_hooks('admin_config_banning_delete_commit');
             $this->updateCaches((int)$filter['type']);
-            log_admin_action((int)$filter['fid'], $filter['filter'], (int)$filter['type']);
+          
             write_log("Removed ban filter '{$filter['filter']}' (type {$filter['type']}) by " . $GLOBALS['CURUSER']['username']);
             flash_message($lang->banning['flash_ban_deleted'], 'success');
             admin_redirect('index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']));
@@ -488,7 +488,7 @@ class BanManager
         $fid = $this->db->insert_id();
         $this->plugins->run_hooks('admin_config_banning_add_commit');
         $this->updateCaches($type);
-        log_admin_action((int)$fid, $filter, $type);
+       
         write_log("Added ban filter '{$filter}' (type {$type}) by " . $GLOBALS['CURUSER']['username']);
     }
 
@@ -827,7 +827,7 @@ class BannedAccountsManager
             while ($q && ($r = $this->db->fetch_array($q))) $mod->delete_post($r['pid']);
             $this->plugins->run_hooks('admin_user_banning_prune_commit');
 
-            log_admin_action((int)$user['id'], $user['username']);
+          
             write_log("Pruned all content of {$user['username']} (UID {$user['id']}) by " . $GLOBALS['CURUSER']['username']);
             flash_message($l['flash_pruned'], 'success');
             admin_redirect('index.php?act=banning&type=users');
@@ -889,7 +889,7 @@ class BannedAccountsManager
                 [$ban['oldgroup'], $ban['uid']]
             );
             $this->plugins->run_hooks('admin_user_banning_lift_commit');
-            log_admin_action($ban['uid'], $user['username']);
+           
             write_log("Lifted ban of {$user['username']} (UID {$ban['uid']}) by " . $GLOBALS['CURUSER']['username'] . ($badRatio ? ' [stats reset: bad ratio]' : ''));
             flash_message($l['flash_lifted'], 'success');
             admin_redirect('index.php?act=banning&type=users');
@@ -952,7 +952,7 @@ class BannedAccountsManager
                 );
 
                 $this->plugins->run_hooks('admin_user_banning_edit_commit');
-                log_admin_action($ban['uid'], $user['username']);
+              
                 write_log("Edited ban of {$user['username']} (UID {$ban['uid']}): {$bantime} by " . $GLOBALS['CURUSER']['username']);
                 flash_message($l['flash_ban_updated'], 'success');
                 admin_redirect('index.php?act=banning&type=users');
@@ -1086,7 +1086,7 @@ class BannedAccountsManager
             $this->db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [$uid]);
 
             $this->plugins->run_hooks('admin_user_banning_start_commit');
-            log_admin_action($uid, $user['username'], $lifted);
+          
             write_log("Banned {$user['username']} (UID {$uid}) for {$bantime} by " . $GLOBALS['CURUSER']['username']);
             flash_message($l['flash_user_banned'], 'success');
             admin_redirect('index.php?act=banning&type=users');

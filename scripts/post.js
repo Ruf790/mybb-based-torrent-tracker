@@ -12,6 +12,15 @@ if (typeof window.t !== 'function') {
     };
 }
 
+// $lang->load() turns {1} into %1$s — fill both forms (window.t may come from another script)
+function postFmt(key, fallback, ...args) {
+    let str = (typeof AGS_LANG !== 'undefined' && AGS_LANG && typeof AGS_LANG[key] === 'string') ? AGS_LANG[key] : fallback;
+    args.forEach(function (arg, i) {
+        str = str.split('{' + (i + 1) + '}').join(String(arg)).split('%' + (i + 1) + '$s').join(String(arg));
+    });
+    return str;
+}
+
 const removeattach_confirm = t('removeattach_confirm', 'Are you sure you want to delete this attachment?');
 
 // ── Модалка подтверждения удаления вложения (Bootstrap modal, в стиле manage_screenshots.php) ──
@@ -330,7 +339,9 @@ const Post = {
     },
 
     addAttachments: function() {
-        if (!this.checkAttachments()) return false;
+        // Раньше здесь вызывался checkAttachments() без события — он сразу возвращал true,
+        // и файл больше лимита уходил на сервер без проверки (а сервер отвечал не JSON)
+        if (!this.validateFiles()) return false;
 
         if (this.fileInput.files.length) {
             const common = this.getCommonFiles();
@@ -363,6 +374,13 @@ const Post = {
         
         this.ajaxRequest(formAction + '&ajax=1', 'POST', formData, true)
             .then(data => {
+                // Сервер вернул не JSON (страница ошибки, файл больше post_max_size и т.п.)
+                if (!data || typeof data !== 'object') {
+                    showToast(t('files_upload_error', 'Error uploading files'), 'error');
+                    this.fileInput.value = '';
+                    this.removeTempInputs();
+                    return;
+                }
                 if (data.errors) {
                     data.errors.forEach(message => {
                         showToast(message, 'error');
@@ -453,7 +471,12 @@ const Post = {
         
         // Только для кнопок управления файлами блокируем отправку
         e.preventDefault();
-        
+        if (this.validateFiles()) this.addAttachments();
+        return false;
+    },
+
+    // Проверки выбранных файлов: количество и общий размер (лимиты PHP)
+    validateFiles: function() {
         const file = this.fileInput;
         if (!file) {
             showToast(t('file_input_missing', 'File input not found'), 'error');
@@ -464,6 +487,66 @@ const Post = {
         if (!file.files.length) {
             showToast(lang.attachment_missing, 'error');
             return false;
+        }
+
+        // Тип и размер каждого файла по лимитам из админки (attachtypes) — до отправки
+        let limits = null;
+        try { limits = JSON.parse(file.dataset.limits || 'null'); } catch (e) { limits = null; }
+        if (limits && typeof limits === 'object') {
+            const kb = v => v >= 1024 ? (Math.round(v / 1024 * 10) / 10) + ' MB' : v + ' KB';
+            const bad = [];       // single-file messages
+            const groups = {};    // reason -> [file names] (for the combined toast)
+            const good = [];
+            const addGroup = (reason, f) => { (groups[reason] ||= []).push(f.name); };
+            Array.from(file.files).forEach(f => {
+                const ext = (f.name.split('.').length > 1 ? f.name.split('.').pop() : '').toLowerCase();
+                if (!(ext in limits)) {
+                    bad.push(postFmt('attach_type_not_allowed', '{1}: this file type is not allowed', f.name));
+                    addGroup(postFmt('attach_group_type', 'File type not allowed:'), f);
+                } else if (limits[ext] > 0 && f.size > limits[ext] * 1024) {
+                    bad.push(postFmt('attach_too_large', '{1}: file is too large (max {2})', f.name, kb(limits[ext])));
+                    addGroup(postFmt('attach_group_too_large', 'Too large (max {1}):', kb(limits[ext])), f);
+                } else {
+                    good.push(f);
+                }
+            });
+            if (bad.length) {
+                // One toast for all rejected files (message is HTML in toast.js — escape names)
+                const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                if (bad.length === 1) {
+                    showToast('<div style="font-size:1rem;overflow-wrap:anywhere">' + esc(bad[0]) + '</div>', 'error');
+                } else {
+                    // Grouped by reason, one line per file (long names cut with …, full name on hover)
+                    let html = '<div style="font-size:1rem"><div class="fw-semibold mb-2">'
+                        + esc(postFmt('attach_rejected_n', 'Files not added: {1}', bad.length)) + '</div>';
+                    Object.entries(groups).forEach(([reason, names]) => {
+                        const shown = names.slice(0, 6);
+                        html += '<div class="text-danger-emphasis fw-semibold mb-1">' + esc(reason) + '</div>'
+                            + '<ul class="list-unstyled mb-2" style="max-height:12rem;overflow:auto">'
+                            + shown.map(n => '<li title="' + esc(n) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:19rem">'
+                                + '<i class="fa-regular fa-file me-2 text-body-tertiary"></i>' + esc(n) + '</li>').join('')
+                            + '</ul>';
+                        if (names.length > shown.length) {
+                            html += '<div class="text-muted mb-2">' + esc(postFmt('attach_rejected_more', '…and {1} more', names.length - shown.length)) + '</div>';
+                        }
+                    });
+                    showToast(html + '</div>', 'error');
+                }
+                // Good files still go up: keep only them in the input
+                let kept = false;
+                if (good.length && typeof DataTransfer === 'function') {
+                    try {
+                        const dt = new DataTransfer();
+                        good.forEach(f => dt.items.add(f));
+                        file.files = dt.files;
+                        kept = file.files.length === good.length;
+                    } catch (e) { kept = false; }
+                }
+                if (!kept) {
+                    file.value = '';
+                    return false;
+                }
+            }
         }
 
         if (mybb_max_file_uploads !== 0) {
@@ -488,13 +571,13 @@ const Post = {
         }
 
         let totalSize = 0;
-        Array.from(file.files).forEach(file => {
-            totalSize += file.size;
+        Array.from(file.files).forEach(f => {
+            totalSize += f.size;
         });
 
         if (totalSize > php_max_upload_size && php_max_upload_size > 0) {
-            const php_max_upload_size_pretty = Math.round(php_max_upload_size / 1e4) / 1e2;
-            showToast(lang.attachment_too_big_upload.replace('{1}', php_max_upload_size_pretty), 'error');
+            const mb = v => Math.round(v / 1048576 * 100) / 100;   // в ланге уже «{1} MB»
+            showToast(lang.attachment_too_big_upload.replace('{1}', mb(php_max_upload_size)), 'error');
             file.value = '';
             return false;
         }
@@ -521,7 +604,8 @@ const Post = {
                         resolve(xhr.responseText);
                     }
                 } else {
-                    reject(new Error('Request failed'));
+                    // 413 (nginx client_max_body_size) и т.п. — тоже покажем ошибку
+                    reject(new Error('Request failed: ' + xhr.status));
                 }
             };
             

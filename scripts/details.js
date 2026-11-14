@@ -633,19 +633,23 @@ function dtFilterFiles(input) {
     empty.classList.toggle('d-none', found > 0 || !q);
 }
 
-// ===== Липкая полоска: показываем, когда шапка раздачи скрылась под шапкой сайта =====
+// ===== Липкая полоска: шапка раздачи ушла за экран И пользователь листает вверх =====
+// Вместе с шапкой сайта: прячется при прокрутке вниз (не закрывает комментарии),
+// выезжает под шапкой при прокрутке вверх. Состояние — класс hdr-hidden на <html> (header.php).
 document.addEventListener('DOMContentLoaded', function () {
     const bar  = document.getElementById('dtSticky');
     const head = document.querySelector('.dt-head');
     if (!bar || !head) return;
 
+    const root       = document.documentElement;
     const siteHeader = document.querySelector('header.sticky-top');
     let ticking = false;
 
     const update = function () {
         ticking = false;
-        const top = siteHeader ? Math.max(0, siteHeader.getBoundingClientRect().bottom) : 0;
-        const on  = head.getBoundingClientRect().bottom < top;
+        const hidden = root.classList.contains('hdr-hidden');
+        const top = siteHeader && !hidden ? Math.max(0, siteHeader.getBoundingClientRect().bottom) : 0;
+        const on  = !hidden && head.getBoundingClientRect().bottom < (siteHeader ? siteHeader.offsetHeight : 0);
         bar.style.top = top + 'px';
         if (siteHeader) {
             // Ширина как у шапки сайта: шире неё полоска торчала бы за колонку страницы
@@ -666,6 +670,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.addEventListener('scroll', request, { passive: true });
     window.addEventListener('resize', request);
+    // Шапка спряталась/показалась — сразу следом и полоска
+    new MutationObserver(request).observe(root, { attributes: true, attributeFilter: ['class'] });
     update();
 
     // Звезда в полоске: нажимает основную закладку и повторяет её вид

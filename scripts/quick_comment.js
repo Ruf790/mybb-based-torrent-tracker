@@ -50,30 +50,42 @@ function urlencode(str) {
     return encodeURIComponent(str.toString()).replace(/%20/g, '+');
 }
 
+
+
+
 function showModalError(message) {
-    if (!document.querySelector('link[href*="animate.min.css"]')) {
-        let animateCSS = document.createElement('link');
-        animateCSS.rel = 'stylesheet';
-        animateCSS.href = 'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css';
-        document.head.appendChild(animateCSS);
+    // Свои анимации вместо animate.css (добавляются на страницу один раз)
+    if (!document.getElementById('qcModalAnim')) {
+        const st = document.createElement('style');
+        st.id = 'qcModalAnim';
+        st.textContent =
+            '@keyframes qcZoomIn{from{opacity:0;transform:scale3d(.3,.3,.3)}50%{opacity:1}}' +
+            '@keyframes qcFadeOut{from{opacity:1}to{opacity:0}}' +
+            '.qc-zoom-in{animation:qcZoomIn .5s both}' +
+            '.qc-fade-out{animation:qcFadeOut .8s both}';
+        document.head.appendChild(st);
     }
 
-    var modalHTML = `
+    // Если прошлое окно ошибки ещё открыто — убираем, чтобы не было двух #errorModal
+    const old = document.getElementById('errorModal');
+    if (old) old.remove();
+
+    const modalHTML = `
         <div class="modal fade" id="errorModal" tabindex="-1">
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
-                <div class="modal-content border-0 shadow-lg animate__animated animate__zoomIn">
+                <div class="modal-content border-0 shadow-lg qc-zoom-in">
                     <div class="modal-header bg-danger text-white">
                         <h5 class="modal-title">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>${agsEsc(t('qc_error_title', 'Error'))}
+                            <i class="fa-solid fa-triangle-exclamation me-2"></i>${agsEsc(t('qc_error_title', 'Error'))}
                         </h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="${agsEsc(t('qc_close', 'Close'))}"></button>
                     </div>
-                    <div class="modal-body bg-light">
+                    <div class="modal-body bg-body-tertiary">
                         <p class="mb-0 text-danger fw-bold">${message}</p>
                     </div>
-                    <div class="modal-footer bg-light">
+                    <div class="modal-footer bg-body-tertiary">
                         <button type="button" class="btn btn-danger" data-bs-dismiss="modal">
-                            <i class="bi bi-x-circle me-1"></i>${agsEsc(t('qc_close', 'Close'))}
+                            <i class="fa-solid fa-circle-xmark me-1"></i>${agsEsc(t('qc_close', 'Close'))}
                         </button>
                     </div>
                 </div>
@@ -82,23 +94,31 @@ function showModalError(message) {
 
     document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-    var modalElement = document.getElementById('errorModal');
-    var modalContent = modalElement.querySelector('.modal-content');
-    var modalInstance = new bootstrap.Modal(modalElement);
+    const modalElement  = document.getElementById('errorModal');
+    const modalContent  = modalElement.querySelector('.modal-content');
+    const modalInstance = new bootstrap.Modal(modalElement);
     modalInstance.show();
 
-    setTimeout(function () {
-        modalContent.classList.remove('animate__zoomIn');
-        modalContent.classList.add('animate__fadeOut');
-        setTimeout(function () {
-            modalInstance.hide();
-        }, 800);
+    // Через 5 с плавно гасим и закрываем; если закрыли раньше — таймеры отменяются
+    let hideTimer;
+    const fadeTimer = setTimeout(function () {
+        modalContent.classList.remove('qc-zoom-in');
+        modalContent.classList.add('qc-fade-out');
+        hideTimer = setTimeout(function () { modalInstance.hide(); }, 800);
     }, 5000);
 
     modalElement.addEventListener('hidden.bs.modal', function () {
+        clearTimeout(fadeTimer);
+        clearTimeout(hideTimer);
         this.remove();
     });
 }
+
+
+
+
+
+
 
 function TSajaxquickcomment(TorrentID) {
     var messageElement = document.getElementById('message');

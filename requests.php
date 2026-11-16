@@ -218,7 +218,11 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
     // Закрыть может владелец раздачи или стафф; награда, ЛС и колокольчик — в req_fill()
     $res = req_fill($rid, $torrent_id, (int)$CURUSER['id'], $is_mod);
     if (!$res['ok']) {
-        $msg = $lang->requests[$res['error']] ?? ($res['error'] === 'err_fill_not_owner' ? 'You can only fill a request with your own torrent.' : $res['error']);
+        $msg = $lang->requests[$res['error']] ?? match ($res['error']) {
+            'err_fill_not_owner' => 'You can only fill a request with your own torrent.',
+            'err_fill_own'       => 'You cannot fill your own request. Cancel it instead — the bounties go back to the voters.',
+            default              => $res['error'],
+        };
         $_SESSION['flash'] = ['msg' => ags_fmt($msg, ...($res['args'] ?? [])), 'type' => 'danger'];
         header('Location: requests.php?action=view&rid=' . $rid);
         exit();
@@ -235,7 +239,17 @@ if ($action === 'cancel' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->requests['err_post_key']);
     $req = $db->fetch_array($db->sql_query_prepared("SELECT user_id, status FROM requests WHERE id = ?", [$rid]));
     if (!$req || ($req['user_id'] != $CURUSER['id'] && !$is_mod)) stderr($lang->requests['err_no_permission']);
-    $db->sql_query_prepared("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ['cancelled', TIMENOW, $rid]);
+    // Only an open request can be cancelled, once (AND status = 'open': a double click doesn't refund twice)
+    $db->sql_query_prepared("UPDATE requests SET status = ?, updated_at = ? WHERE id = ? AND status = 'open'", ['cancelled', TIMENOW, $rid]);
+    if ((int)$db->affected_rows() === 1) {
+        // Everyone gets their bounty back (before, a cancelled request kept the points)
+        $votes_q = $db->sql_query_prepared("SELECT user_id, bounty FROM request_votes WHERE request_id = ? AND bounty > 0", [$rid]);
+        while ($v = $db->fetch_array($votes_q)) {
+            $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$v['bounty'], (int)$v['user_id']]);
+            bonus_log((int)$v['user_id'], (float)$v['bounty'], 'request', "Bounty refund: request #{$rid} cancelled", $rid, (int)$CURUSER['id']);
+        }
+        $db->sql_query_prepared("UPDATE requests SET bounty = 0 WHERE id = ?", [$rid]);
+    }
     $_SESSION['flash'] = ['msg' => $lang->requests['flash_cancelled'], 'type' => 'info'];
     header('Location: requests.php');
     exit();
@@ -432,9 +446,11 @@ if ($action === 'view' && $rid) {
                 <?php endif; ?>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2">
+                <?php if (!$isOwner): ?>
                 <button type="button" class="btn btn-sm btn-primary st-pill" data-bs-toggle="modal" data-bs-target="#fillModal">
                     <i class="fa-solid fa-upload me-1"></i><?= $h($lang->requests['btn_fill']) ?>
                 </button>
+                <?php endif; ?>
                 <?php if ($isOwner || $is_mod): ?>
                     <form method="post" action="requests.php?action=cancel&amp;rid=<?= $rid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->requests['conf_cancel']) ?>">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">

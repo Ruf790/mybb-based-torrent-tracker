@@ -215,7 +215,7 @@ function handleRateTorrent(): void
 
     header("Content-Type: application/json; charset={$charset}");
 
-    if (!$CURUSER) {
+    if ((int)($CURUSER['id'] ?? 0) <= 0) {
         echo json_encode(['success' => false]);
         exit;
     }
@@ -286,7 +286,7 @@ function handleRateThread(): void
 
     header("Content-Type: application/json; charset={$charset}");
 
-    if (!$CURUSER) {
+    if ((int)($CURUSER['id'] ?? 0) <= 0) {
         echo json_encode(['success' => false, 'error' => $lang->xmlhttp['err_not_logged_in']]);
         exit;
     }
@@ -462,10 +462,15 @@ function handleGetUsers(): void
  */
 function handleGetMultiquoted(): void
 {
-    global $mybb, $db, $charset, $plugins;
-    
+    global $mybb, $db, $charset, $plugins, $CURUSER;
+
     // ВСЕГДА устанавливаем JSON заголовок в начале
     header("Content-type: application/json; charset={$charset}");
+
+    if ((int)($CURUSER['id'] ?? 0) <= 0) {
+        echo json_encode(["message" => ""]);
+        exit;
+    }
     
     // Проверяем куки multiquote
     if (!isset($mybb->cookies['multiquote']) || empty(trim($mybb->cookies['multiquote']))) {
@@ -531,8 +536,8 @@ function handleGetMultiquoted(): void
         
         $found_posts = 0;
         while ($quoted_post = $db->fetch_array($query)) {
-            // Пропускаем невидимые посты
-            if ($quoted_post['visible'] != 1) {
+            // Пропускаем невидимые посты и посты из разделов, которые пользователю не видны
+            if ($quoted_post['visible'] != 1 || !xmlhttp_can_view_forum((int)$quoted_post['fid'])) {
                 continue;
             }
             
@@ -567,12 +572,57 @@ function handleGetMultiquoted(): void
 }
 
 /**
+ * Logged-in user only (a guest has $CURUSER too — with id 0, so `!$CURUSER` never stops one).
+ */
+function xmlhttp_require_login(): void
+{
+    global $CURUSER, $lang;
+    if ((int)($CURUSER['id'] ?? 0) <= 0) {
+        xmlhttp_error($lang->xmlhttp['err_not_logged_in']);
+    }
+}
+
+/**
+ * May the current user see posts of this forum at all.
+ */
+function xmlhttp_can_view_forum(int $fid): bool
+{
+    $perms = forum_permissions($fid);
+    return !empty($perms['canview']) && !empty($perms['canviewthreads']);
+}
+
+/**
+ * Same rule as the Edit button under a post (functions_post.php): staff, or the author
+ * with caneditposts in a forum that is open and a thread that is not closed.
+ */
+function xmlhttp_can_edit_post(array $post, array $thread, array $forum): bool
+{
+    global $CURUSER, $usergroups;
+
+    $uid = (int)($CURUSER['id'] ?? 0);
+    if ($uid <= 0 || !xmlhttp_can_view_forum((int)$forum['fid'])) {
+        return false;
+    }
+    if (is_mod($usergroups)) {
+        return true;
+    }
+    $perms = forum_permissions((int)$forum['fid']);
+    return (int)($perms['caneditposts'] ?? 0) === 1
+        && (int)$post['uid'] === $uid
+        && (int)$thread['closed'] !== 1
+        && (int)($forum['open'] ?? 1) !== 0
+        && (int)$post['visible'] !== -1;
+}
+
+/**
  * Handle edit_post action
  */
 function handleEditPost(): void
 {
-    global $mybb, $db, $charset, $plugins, $CURUSER, $lang, $enableattachments;
-    
+    global $mybb, $db, $charset, $plugins, $CURUSER, $lang, $enableattachments, $usergroups;
+
+    xmlhttp_require_login();
+
     $post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
 
     if (!$post || $post['visible'] == -1) {
@@ -584,6 +634,11 @@ function handleEditPost(): void
 
     if (!$thread || !$forum || $forum['type'] != "f") {
         xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
+    }
+
+    // Both reading the raw text (for the edit box) and saving need the right to edit this post
+    if (!xmlhttp_can_edit_post($post, $thread, $forum)) {
+        xmlhttp_error($lang->xmlhttp['no_permission_edit_post']);
     }
 
     $plugins->run_hooks("xmlhttp_edit_post_start");
@@ -637,7 +692,7 @@ function handleEditPost(): void
             $postinfo = $posthandler->update_post();
             $visible = $postinfo['visible'];
             
-            if ($visible == 0 && !is_moderator($post['fid'], "canviewunapprove")) {
+            if ($visible == 0 && !is_mod($usergroups)) {
                 if ($thread['firstpost'] == $post['pid']) {
                     echo json_encode(["moderation_thread" => $lang->xmlhttp['thread_moderation'], 'url' => $mybb->settings['bburl'].'/'.get_forum_link($thread['fid']), "message" => $post['message']]);
                     exit;
@@ -713,11 +768,13 @@ function handleEditPost(): void
  */
 function handleEditSubject(): void
 {
-    global $mybb, $db, $charset, $plugins, $CURUSER, $lang;
-    
+    global $mybb, $db, $charset, $plugins, $CURUSER, $lang, $usergroups;
+
     if ($mybb->request_method != "post") {
         exit;
     }
+
+    xmlhttp_require_login();
 
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         xmlhttp_error($lang->xmlhttp['err_invalid_post_code']);
@@ -729,7 +786,7 @@ function handleEditSubject(): void
             xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
         }
 
-        $query = $db->sql_query_prepared("SELECT pid,uid,dateline FROM posts WHERE tid = ? ORDER BY dateline, pid", [$thread['tid']]);
+        $query = $db->sql_query_prepared("SELECT pid,uid,dateline,visible FROM posts WHERE tid = ? ORDER BY dateline, pid", [$thread['tid']]);
         $post = $query ? $db->fetch_array($query) : null;
     } else {
         exit;
@@ -738,6 +795,11 @@ function handleEditSubject(): void
     $forum = get_forum($thread['fid']);
     if (!$forum || $forum['type'] != "f") {
         xmlhttp_error($lang->xmlhttp['thread_doesnt_exist']);
+    }
+
+    // The subject belongs to the thread's first post: its author (with the right to edit) or staff
+    if (!$post || !xmlhttp_can_edit_post(array_merge($post, ['visible' => 1]), $thread, $forum)) {
+        xmlhttp_error($lang->xmlhttp['no_permission_edit_subject']);
     }
 
     $plugins->run_hooks("xmlhttp_edit_subject_start");
@@ -774,11 +836,13 @@ function handleEditSubject(): void
             xmlhttp_error($post_errors);
         } else {
             $posthandler->update_post();
-            $modlogdata = [
-                "tid" => $thread['tid'],
-                "fid" => $forum['fid']
-            ];
-            log_moderator_action($modlogdata, 'Edited Post');
+            if (is_mod($usergroups) && (int)$post['uid'] !== (int)$CURUSER['id']) {
+                $modlogdata = [
+                    "tid" => $thread['tid'],
+                    "fid" => $forum['fid']
+                ];
+                log_moderator_action($modlogdata, 'Edited Post');
+            }
         }
     }
 
@@ -908,7 +972,9 @@ function handleEmailAvailability(): void
 function handleSearchTorrents(): void
 {
     global $db, $charset, $BASEURL;
-    
+
+    xmlhttp_require_login();
+
     $input = $_GET['input'] ?? '';
     $input = trim($input);
 
@@ -957,7 +1023,14 @@ function handleSearchTorrents(): void
  */
 function handleGetTorrentsByIds(): void
 {
-    global $db, $charset, $BASEURL;
+    global $db, $charset, $BASEURL, $usergroups;
+
+    if (!is_mod($usergroups)) {
+        http_response_code(403);
+        header("Content-Type: application/json; charset={$charset}");
+        echo json_encode([]);
+        exit;
+    }
 
     $raw = $_GET['ids'] ?? '';
     $ids = array_filter(array_map('intval', explode(',', $raw)), fn($id) => $id > 0);
@@ -1145,6 +1218,11 @@ function handleSelectAllFiltered(): void
 function handleQuickComment(): void
 {
     global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage, $kpscomment;
+
+	// Guests have $CURUSER with id 0 — they must not post comments
+	if ((int)($CURUSER['id'] ?? 0) <= 0) {
+        show_msg($lang->xmlhttp['err_not_logged_in']);
+    }
 
 	// true = return false instead of printing MyBB's HTML error page (the JS expects <error>…</error>)
 	if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {

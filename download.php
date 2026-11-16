@@ -131,6 +131,10 @@ if ($action_type === 'rss') {
     unset($rss_user, $rss_group, $usergroupscache);
 
 } else {
+    // Guests have $CURUSER too (id 0): without this they got any .torrent with an empty passkey
+    if ((int)($CURUSER['id'] ?? 0) <= 0) {
+        download_error();
+    }
     maxsysop();
 }
 

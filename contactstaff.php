@@ -98,9 +98,23 @@ if (($_GET['subject'] ?? '') === 'invalid_link') {
 }
 
 // ── returnto ─────────────────────────────────────────────────────────────────
-$returnto = isset($_GET['returnto'])
-    ? fix_url($_GET['returnto'])
-    : fix_url($_SERVER['HTTP_REFERER'] ?? '');
+// Only back to our own site: a path ("/details.php?id=1") or a full URL on $BASEURL.
+// Anything else ("javascript:…", "//evil.tld", other hosts) is dropped — it went into href="…".
+$stf_safe_back = static function (string $url) use ($BASEURL): string {
+    $url = trim($url);
+    if ($url === '' || preg_match('/[\x00-\x1f]/', $url)) {
+        return '';
+    }
+    $base = rtrim((string)$BASEURL, '/');
+    if ($base !== '' && ($url === $base || str_starts_with($url, $base . '/'))) {
+        return $url;
+    }
+    if ($url[0] === '/' && !str_starts_with($url, '//') && !str_starts_with($url, '/\\')) {
+        return $url;
+    }
+    return '';
+};
+$returnto = $stf_safe_back((string)($_GET['returnto'] ?? ($_SERVER['HTTP_REFERER'] ?? '')));
 
 // ── JS strings ───────────────────────────────────────────────────────────────
 $jsLang = [];

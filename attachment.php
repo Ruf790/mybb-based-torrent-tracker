@@ -55,20 +55,34 @@ $attachtype = $attachtypes[$ext];
 $pid        = (int)$attachment['pid'];
 
 // ── Проверка доступа ──────────────────────────────────────────────────────────
-if ($pid || $attachment['uid'] != $CURUSER['id']) {
+// Только для вошедших (у гостя тоже есть $CURUSER, но с id 0)
+$viewer_uid = (int)($CURUSER['id'] ?? 0);
+if ($viewer_uid <= 0) {
+    print_no_permission();
+}
+
+$is_mod = is_mod($usergroups);
+
+if ($pid || (int)$attachment['uid'] !== $viewer_uid) {
     $post = get_post($pid);
     if (!$post) {
         stderr($lang->misc['error_invalidthread'] ?? 'Invalid post.', '', 404, '404');
     }
 
-    if ((int)$post['visible'] !== -2) {
-        $thread = get_thread($post['tid']);
-        if (!$thread && !$isThumbnail) {
-            stderr($lang->misc['error_invalidthread'] ?? 'Invalid thread.', '', 404, '404');
-        }
+    $thread = get_thread($post['tid']);
+    if (!$thread) {
+        stderr($lang->misc['error_invalidthread'] ?? 'Invalid thread.', '', 404, '404');
+    }
 
-        $forum = get_forum($thread['fid'] ?? 0);
-        // Разрешения можно включить здесь при необходимости
+    // Раздел форума должен быть виден пользователю (иначе вложения staff-разделов качал кто угодно)
+    $forumperms = forum_permissions((int)$thread['fid']);
+    if (empty($forumperms['canview']) || empty($forumperms['canviewthreads'])) {
+        print_no_permission();
+    }
+
+    // Неодобренные / удалённые посты — только staff и автор
+    if ((int)$post['visible'] !== 1 && !$is_mod && (int)$post['uid'] !== $viewer_uid) {
+        print_no_permission();
     }
 }
 

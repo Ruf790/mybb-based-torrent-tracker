@@ -41,8 +41,8 @@ function json_out(bool $ok, array $data = []): never {
 
 header('Content-Type: application/json');
 
-// Только залогиненные
-if (!$CURUSER || !isset($CURUSER['id'])) {
+// Только залогиненные (у гостя $CURUSER тоже есть — с id 0)
+if ((int)($CURUSER['id'] ?? 0) <= 0) {
     echo json_encode(['error' => $UL['err_login_required']]);
     exit;
 }

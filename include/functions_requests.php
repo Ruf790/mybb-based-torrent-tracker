@@ -218,6 +218,12 @@ function req_fill(int $rid, int $torrentId, int $actorUid, bool $actorIsMod): ar
     }
     $filler = $owner > 0 ? $owner : $actorUid;
 
+    // The requester can't fill their own request: the bounty (others' points too) would go back to them.
+    // Staff can't do it with the requester's torrent either — such a request is cancelled instead (bounties refunded).
+    if ($filler === (int)$req['user_id']) {
+        return ['ok' => false, 'error' => 'err_fill_own'];
+    }
+
     // Атомарно: двойной клик / два человека одновременно не получат награду дважды
     $db->sql_query_prepared(
         "UPDATE requests SET status = 'filled', filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ?

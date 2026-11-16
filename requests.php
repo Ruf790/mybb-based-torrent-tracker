@@ -83,31 +83,30 @@ if ($action === 'vote' && $mybb->request_method === 'post') {
     if (!$req) { echo json_encode(['success' => false, 'error' => $lang->requests['err_not_found']]); exit(); }
     if ($req['status'] !== 'open') { echo json_encode(['success' => false, 'error' => $lang->requests['err_closed']]); exit(); }
     if ($req['user_id'] == $uid) { echo json_encode(['success' => false, 'error' => $lang->requests['err_own_vote']]); exit(); }
-    if ($db->fetch_array($db->sql_query_prepared("SELECT id FROM request_votes WHERE request_id = ? AND user_id = ?", [$rid, $uid]))) {
+    // The vote row goes in first: the UNIQUE (request_id, user_id) key lets only one of
+    // several simultaneous clicks through. Then the bounty is taken in one guarded query,
+    // so two parallel requests can't spend the same points twice (balance going negative).
+    $db->sql_query_prepared(
+        "INSERT IGNORE INTO request_votes (request_id, user_id, bounty, created_at) VALUES (?, ?, ?, ?)",
+        [$rid, $uid, $bounty, TIMENOW]
+    );
+    if ((int)$db->insert_id() <= 0) {
         echo json_encode(['success' => false, 'error' => $lang->requests['err_already_voted']]);
         exit();
     }
     if ($bounty > 0) {
-        if ((float)$CURUSER['seedbonus'] < $bounty) {
+        $db->sql_query_prepared(
+            "UPDATE users SET seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?",
+            [$bounty, $uid, $bounty]
+        );
+        if ((int)$db->affected_rows() !== 1) {
+            $db->sql_query_prepared("DELETE FROM request_votes WHERE request_id = ? AND user_id = ?", [$rid, $uid]);
             echo json_encode(['success' => false, 'error' => $lang->requests['err_no_bonus']]);
             exit();
         }
-        $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, $uid]);
         $db->sql_query_prepared("UPDATE requests SET bounty = bounty + ? WHERE id = ?", [$bounty, $rid]);
         bonus_log($uid, -$bounty, 'request', "Bounty added to request #{$rid}", $rid);
     }
-    $vote_data = [
-        'request_id' => $rid,
-        'user_id'    => $uid,
-        'bounty'     => $bounty,
-        'created_at' => TIMENOW,
-    ];
-    $columns      = array_keys($vote_data);
-    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-    $db->sql_query_prepared(
-        "INSERT INTO request_votes (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
-        array_values($vote_data)
-    );
     $db->sql_query_prepared("UPDATE requests SET votes = votes + 1, updated_at = ? WHERE id = ?", [TIMENOW, $rid]);
     $new_votes = (int)$db->fetch_field($db->sql_query_prepared("SELECT votes FROM requests WHERE id = ?", [$rid]), 'votes');
     echo json_encode(['success' => true, 'votes' => $new_votes]);
@@ -178,10 +177,15 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
     if (strlen($title) < 3) $errors[] = $lang->requests['err_title_short'];
     if (strlen($title) > 255) $errors[] = $lang->requests['err_title_long'];
     if ($bounty > 0 && (float)$CURUSER['seedbonus'] < $bounty) $errors[] = $lang->requests['err_no_bonus'];
+    if (empty($errors) && $bounty > 0) {
+        // Check and take in one query (two parallel submits could otherwise both pass the check above)
+        $db->sql_query_prepared(
+            "UPDATE users SET seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?",
+            [$bounty, (int)$CURUSER['id'], $bounty]
+        );
+        if ((int)$db->affected_rows() !== 1) $errors[] = $lang->requests['err_no_bonus'];
+    }
     if (empty($errors)) {
-        if ($bounty > 0) {
-            $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, (int)$CURUSER['id']]);
-        }
         $logBounty = $bounty;
         $db->sql_query_prepared(
             "INSERT INTO requests (user_id, title, description, category_id, year, imdb_id, status, votes, bounty, created_at, updated_at)
@@ -214,7 +218,11 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
     // Закрыть может владелец раздачи или стафф; награда, ЛС и колокольчик — в req_fill()
     $res = req_fill($rid, $torrent_id, (int)$CURUSER['id'], $is_mod);
     if (!$res['ok']) {
-        $msg = $lang->requests[$res['error']] ?? ($res['error'] === 'err_fill_not_owner' ? 'You can only fill a request with your own torrent.' : $res['error']);
+        $msg = $lang->requests[$res['error']] ?? match ($res['error']) {
+            'err_fill_not_owner' => 'You can only fill a request with your own torrent.',
+            'err_fill_own'       => 'You cannot fill your own request. Cancel it instead — the bounties go back to the voters.',
+            default              => $res['error'],
+        };
         $_SESSION['flash'] = ['msg' => ags_fmt($msg, ...($res['args'] ?? [])), 'type' => 'danger'];
         header('Location: requests.php?action=view&rid=' . $rid);
         exit();
@@ -231,7 +239,17 @@ if ($action === 'cancel' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr($lang->requests['err_post_key']);
     $req = $db->fetch_array($db->sql_query_prepared("SELECT user_id, status FROM requests WHERE id = ?", [$rid]));
     if (!$req || ($req['user_id'] != $CURUSER['id'] && !$is_mod)) stderr($lang->requests['err_no_permission']);
-    $db->sql_query_prepared("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ['cancelled', TIMENOW, $rid]);
+    // Only an open request can be cancelled, once (AND status = 'open': a double click doesn't refund twice)
+    $db->sql_query_prepared("UPDATE requests SET status = ?, updated_at = ? WHERE id = ? AND status = 'open'", ['cancelled', TIMENOW, $rid]);
+    if ((int)$db->affected_rows() === 1) {
+        // Everyone gets their bounty back (before, a cancelled request kept the points)
+        $votes_q = $db->sql_query_prepared("SELECT user_id, bounty FROM request_votes WHERE request_id = ? AND bounty > 0", [$rid]);
+        while ($v = $db->fetch_array($votes_q)) {
+            $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$v['bounty'], (int)$v['user_id']]);
+            bonus_log((int)$v['user_id'], (float)$v['bounty'], 'request', "Bounty refund: request #{$rid} cancelled", $rid, (int)$CURUSER['id']);
+        }
+        $db->sql_query_prepared("UPDATE requests SET bounty = 0 WHERE id = ?", [$rid]);
+    }
     $_SESSION['flash'] = ['msg' => $lang->requests['flash_cancelled'], 'type' => 'info'];
     header('Location: requests.php');
     exit();
@@ -428,9 +446,11 @@ if ($action === 'view' && $rid) {
                 <?php endif; ?>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2">
+                <?php if (!$isOwner): ?>
                 <button type="button" class="btn btn-sm btn-primary st-pill" data-bs-toggle="modal" data-bs-target="#fillModal">
                     <i class="fa-solid fa-upload me-1"></i><?= $h($lang->requests['btn_fill']) ?>
                 </button>
+                <?php endif; ?>
                 <?php if ($isOwner || $is_mod): ?>
                     <form method="post" action="requests.php?action=cancel&amp;rid=<?= $rid ?>" class="d-inline" data-rq-confirm="<?= $h($lang->requests['conf_cancel']) ?>">
                         <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">

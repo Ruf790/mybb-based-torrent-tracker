@@ -205,6 +205,19 @@ $is_ajax  = ($mybb->get_input('ajax') == 1);
 $is_post  = ($mybb->request_method === 'post');
 $is_staff = is_mod($usergroups ?? []);
 
+// Polls: adding one needs a logged-in user who started the thread (or staff);
+// editing a poll (question, options, vote counts) is staff only, as in MyBB.
+$poll_uid = (int)($CURUSER['id'] ?? 0);
+$poll_can_add = static function (array $thread) use ($poll_uid, $is_staff): bool {
+    return $poll_uid > 0 && ($is_staff || (int)$thread['uid'] === $poll_uid);
+};
+if (in_array($action, ['newpoll', 'do_newpoll', 'editpoll', 'do_editpoll'], true) && $poll_uid <= 0) {
+    print_no_permission();
+}
+if (in_array($action, ['editpoll', 'do_editpoll'], true) && !$is_staff) {
+    print_no_permission();
+}
+
 // ─── ACTION: newpoll (show form) ──────────────────────────────────────────────
 
 if ($action === 'newpoll') {
@@ -227,6 +240,9 @@ if ($action === 'newpoll') {
     }
     if ($thread['poll']) {
         stderr($lang->polls['err_poll_exists']);
+    }
+    if (!$poll_can_add($thread)) {
+        print_no_permission();
     }
 
     $polltimelimit  = 12;
@@ -267,6 +283,9 @@ if ($action === 'do_newpoll' && $is_post) {
     }
     if ($thread['poll']) {
         poll_error($is_ajax, $lang->polls['err_poll_exists']);
+    }
+    if (!$poll_can_add($thread)) {
+        poll_error($is_ajax, $lang->global['error_nopermission_title'] ?? 'Access denied');
     }
 
     $question = trim($mybb->get_input('question'));

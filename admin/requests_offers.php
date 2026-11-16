@@ -24,6 +24,27 @@ function ro_redirect(string $url, string $msg, string $type = 'success'): never
 }
 
 /**
+ * Requests closed or removed here without a torrent: every voter gets their bounty back
+ * (once — the request's bounty is zeroed). A filled request has already paid out.
+ */
+function ro_refund_request(int $rid, string $why): void
+{
+    global $db, $CURUSER;
+    require_once INC_PATH . '/functions_bonuslog.php';
+
+    $db->sql_query_prepared("UPDATE requests SET bounty = 0 WHERE id = ? AND bounty > 0 AND status <> 'filled'", [$rid]);
+    if ((int)$db->affected_rows() !== 1) {
+        return;
+    }
+    $q = $db->sql_query_prepared("SELECT user_id, bounty FROM request_votes WHERE request_id = ? AND bounty > 0", [$rid]);
+    while ($v = $db->fetch_array($q)) {
+        $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$v['bounty'], (int)$v['user_id']]);
+        bonus_log((int)$v['user_id'], (float)$v['bounty'], 'request', "Bounty refund: request #{$rid} {$why}", $rid, (int)$CURUSER['id']);
+    }
+    $db->sql_query_prepared("UPDATE request_votes SET bounty = 0 WHERE request_id = ?", [$rid]);
+}
+
+/**
  * Мягкая цветовая пара из Bootstrap 5.3 (bg-subtle / text-emphasis),
  * автоматически работает и в тёмной теме. $c — только из конфига ниже.
  */
@@ -193,10 +214,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
     }
 
     if ($tab === 'requests') {
-        $db->sql_query_prepared(
-            "UPDATE requests SET status = ?, filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ? WHERE id = ?",
-            ['filled', (int)$CURUSER['id'], $torrent_id, TIMENOW, TIMENOW, $cid]
-        );
+        // Same as Fill on the site: the bounty goes to the torrent's uploader, the requester gets a PM
+        require_once INC_PATH . '/functions_requests.php';
+        $res = req_fill($cid, $torrent_id, (int)$CURUSER['id'], true);
+        if (!$res['ok']) {
+            $lang->load('requests');
+            $msg = $lang->requests[$res['error']] ?? match ($res['error']) {
+                'err_fill_own' => 'The torrent belongs to the request\'s author: cancel the request instead (bounties are refunded).',
+                default        => $res['error'],
+            };
+            ro_redirect($admin_base, ags_fmt((string)$msg, ...($res['args'] ?? [])), 'danger');
+        }
         write_log("Marked request #{$cid} as filled (torrent #{$torrent_id}) by " . $CURUSER['username']);
     } else {
         $db->sql_query_prepared(
@@ -223,6 +251,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_do'])) {
     }
 
     if ($do === 'delete') {
+        if ($tab === 'requests') {
+            ro_refund_request($row_id, 'deleted');
+        }
         $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id = ?", [$row_id]);
         $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = ?", [$row_id]);
         $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = ?", [$row_id]);
@@ -232,6 +263,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_do'])) {
 
     $status = (string)($_POST['status'] ?? '');
     if ($do === 'setstatus' && array_key_exists($status, $cfg['statuses'])) {
+        // Closing a request without a torrent (cancelled, or "filled" by hand): bounties go back
+        if ($tab === 'requests' && $status !== 'open') {
+            ro_refund_request($row_id, $status);
+        }
         $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id = ?", [$status, TIMENOW, $row_id]);
         write_log("Set status '{$status}' on {$tab} #{$row_id} by " . $CURUSER['username']);
         ro_redirect($admin_base, ags_fmt($txt['flash_status'], $row_id, $cfg['statuses'][$status]));
@@ -259,6 +294,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
     $n_noun       = ro_plural($n_ids, $cfg['noun'], $locale);
 
     if ($do === 'delete') {
+        if ($tab === 'requests') {
+            foreach ($ids as $one) {
+                ro_refund_request((int)$one, 'deleted');
+            }
+        }
         $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id IN ({$placeholders})", $ids);
         $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} IN ({$placeholders})", $ids);
         $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} IN ({$placeholders})", $ids);
@@ -267,6 +307,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
     }
 
     if (array_key_exists($do, $cfg['statuses'])) {
+        if ($tab === 'requests' && $do !== 'open') {
+            foreach ($ids as $one) {
+                ro_refund_request((int)$one, $do);
+            }
+        }
         $params = array_merge([$do, TIMENOW], $ids);
         $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id IN ({$placeholders})", $params);
         write_log("Bulk set status '{$do}' on " . count($ids) . " {$tab} (IDs: {$ids_sql}) by " . $CURUSER['username']);

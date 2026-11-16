@@ -138,6 +138,26 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     }
 }
 
+// Everything except deleting is editing (the form, preview, do_editpost, attachments):
+// staff, or the author with caneditposts in a thread that is not closed.
+// (MyBB did this with is_moderator(); when that was removed the check went with it.)
+if ($mybb->input['action'] !== "deletepost" && $mybb->input['action'] !== "do_deletepost") {
+    if (empty($forumpermissions['canview']) || empty($forumpermissions['canviewthreads'])) {
+        print_no_permission();
+    }
+    if (!$is_mod) {
+        if ((int)$thread['closed'] === 1) {
+            stderr($lang->editpost['flash_thread_closed']);
+        }
+        if ((int)($forumpermissions['caneditposts'] ?? 0) !== 1 || (int)$post['uid'] !== (int)$CURUSER['id']) {
+            print_no_permission();
+        }
+        if ((int)$post['visible'] === 0 && !($showownunapproved && (int)$post['uid'] === (int)$CURUSER['id'])) {
+            print_no_permission();
+        }
+    }
+}
+
 // Check if this forum is password protected and we have a valid password
 check_forum_password($forum['fid']);
 

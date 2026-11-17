@@ -1913,10 +1913,11 @@ if ($mybb->input['action'] === 'profile') {
 
     // Stats
   
-	$zaza = $cache->read("stats");
+	$st = $cache->read("stats");
 	
-    $stats = $zaza['numposts'];
-    $stats22 = $zaza['numthreads'];
+    $stats   = (int)($st['numposts']   ?? 0);
+    $stats22 = (int)($st['numthreads'] ?? 0);
+	
     $daysreg = max(1, (TIMENOW - $memprofile['added']) / 86400);
 
     $ppd = round(min($memprofile['postnum'], $memprofile['postnum'] / $daysreg), 2);

@@ -3558,7 +3558,7 @@ if (!$mybb->input['action']) {
 if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
     verify_post_check($mybb->get_input('my_post_key'));
     require_once INC_PATH . '/functions_2fa.php';
-    require_once INC_PATH . '/function_loginattemptcheck.php';
+    require_once INC_PATH . '/functions_loginattemptcheck.php';
 
     $uid  = (int)$CURUSER['id'];
     $mode = $mybb->get_input('mode'); // 'enable' | 'disable' | 'confirm'

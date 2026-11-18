@@ -140,5 +140,7 @@ $language['requests'] = array
     'lbl_filled_by'         => 'Filled by {1}',
     'js_yes'                => 'Yes',
     'js_no'                 => 'No',
+	
+	 'err_fill_own'          => 'You cannot fill your own request. Cancel it instead — the bounties go back to the voters.',
 );
 ?>

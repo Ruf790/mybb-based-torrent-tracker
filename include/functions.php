@@ -3173,10 +3173,10 @@ function is_valid_id(mixed $id): bool
 // ── inline_error ──────────────────────────────────────────────────────────────
 function inline_error(array|string $errors, string $title = '', array $json_data = []): string
 {
-    global $mybb, $charset;
+    global $mybb, $charset, $lang;
 
     if (empty($title)) {
-        $title = 'Please correct the following errors:';
+        $title = $lang->global['correct_errors'];
     }
 
     if (!is_array($errors)) {
@@ -3250,14 +3250,14 @@ function inline_error(array|string $errors, string $title = '', array $json_data
                 <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
                 <div>
                     <h2 class="mb-0 fw-bold" style="color:white;">{$title_escaped}</h2>
-                    <p class="mb-0 opacity-75">Please review and fix the issues below</p>
+                    <p class="mb-0 opacity-75">{$lang->global['please_review']}</p>
                 </div>
             </div>
             <div class="card-body p-4">
                 <div class="mb-3">
                     <div class="d-flex align-items-center gap-2 mb-3">
                         <i class="bi bi-list-check fs-4" style="color:#dc3545;"></i>
-                        <h5 class="mb-0 fw-semibold">Issues Found ({$count})</h5>
+                        <h5 class="mb-0 fw-semibold">{$lang->global['is_found']} ({$count})</h5>
                     </div>
                     {$error_items}
                 </div>

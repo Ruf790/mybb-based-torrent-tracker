@@ -5,6 +5,10 @@ if(!defined('IN_TRACKER'))
 
 $language['global'] = array(
 
+'quote_plain'      => 'Цитата',
+'quote_go_post'    => 'Перейти к сообщению',
+'quote_go_comment' => 'Перейти к комментарию',
+
 'error_invalidforum' => 'Неверный форум',
 
 

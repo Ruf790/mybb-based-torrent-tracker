@@ -23,7 +23,7 @@ $language['log'] = array (
 
 	// ── Toolbar / buttons ──
 	'lbl_total_logs'             => 'Всего записей: {1}',
-	'btn_clear_site_logs'        => 'Очистить журнал сайта',
+	'btn_clear_site_logs'        => 'Очистить журнал',
 	'btn_refresh'                => 'Обновить',
 	'btn_export_csv'             => 'Экспорт в CSV',
 	'btn_apply_filters'          => 'Применить',
@@ -72,7 +72,7 @@ $language['log'] = array (
 
 	// ── Table ──
 	'sec_event_log'              => 'Сводный журнал событий',
-	'lbl_select_site_logs'       => 'Выбрать записи сайта',
+	'lbl_select_site_logs'       => 'Выбрать все',
 	'th_type'                    => 'Тип',
 	'th_username'                => 'Пользователь',
 	'th_date'                    => 'Дата',
@@ -109,6 +109,7 @@ $language['log'] = array (
 	'cat_deletion'               => 'Удаление',
 	'cat_mail'                   => 'Почта',
 	'cat_warning'                => 'Предупреждение',
+	'cat_admin'                  => 'Админ',
 
 	// ── Admin log modules ──
 	'mod_forums'                 => 'Форумы',
@@ -189,6 +190,33 @@ $language['log'] = array (
 	'badge_cache_rebuild'        => 'Пересборка кэша',
 	'badge_backup_completed'     => 'Бэкап БД завершён',
 	'badge_backup_created'       => 'Бэкап БД создан',
+	'badge_ban_edit'             => 'Бан изменён',
+	'badge_ban_filter_add'       => 'Фильтр бана добавлен',
+	'badge_ban_filter_del'       => 'Фильтр бана удалён',
+	'badge_prune_user'           => 'Контент удалён',
+	'badge_pending_deleted'      => 'Ожидающие удалены',
+	'badge_pending_activated'    => 'Активирован',
+	'badge_group_deleted'        => 'Группа удалена',
+	'badge_order'                => 'Порядок',
+	'badge_forum_copy'           => 'Форум скопирован',
+	'badge_backup_downloaded'    => 'Бэкап скачан',
+	'badge_backup_deleted'       => 'Бэкап удалён',
+	'badge_thread_deleted'       => 'Тема удалена',
+	'badge_unapproved'           => 'Скрыто',
+	'badge_approved'             => 'Одобрено',
+	'badge_thread_open'          => 'Тема открыта',
+	'badge_thread_stuck'         => 'Закреплено',
+	'badge_thread_unstuck'       => 'Откреплено',
+	'badge_thread_copied'        => 'Тема скопирована',
+	'badge_threads_merged'       => 'Темы объединены',
+	'badge_split_posts'          => 'Посты разделены',
+	'badge_posts_moved'          => 'Посты перенесены',
+	'badge_poll_deleted'         => 'Опрос удалён',
+	'badge_redirects_removed'    => 'Редиректы удалены',
+	'badge_subs_removed'         => 'Подписки удалены',
+	'badge_bulk_pm'              => 'Массовое ЛС',
+	'badge_group_change'         => 'Группа изменена',
+	'badge_bulk_delete'          => 'Массовое удаление',
 	'badge_db_optimized'         => 'БД оптимизирована',
 	'badge_table_truncated'      => 'Таблица очищена',
 	'badge_truncate_failed'      => 'Ошибка очистки таблицы',
@@ -200,13 +228,13 @@ $language['log'] = array (
 	'badge_spam'                 => 'Спам',
 
 	// ── Clear site logs modal ──
-	'modal_clear_title'          => 'Очистка журнала сайта',
+	'modal_clear_title'          => 'Очистка журнала',
 	'modal_clear_sub'            => 'Это действие необратимо',
 	'modal_clear_confirm'        => 'Вы уверены, что хотите {1}?',
-	'modal_clear_confirm_strong' => 'полностью очистить журнал сайта',
+	'modal_clear_confirm_strong' => 'полностью очистить журнал',
 	'modal_cannot_undo'          => 'Отменить это будет нельзя.',
 	// output as-is (HTML allowed)
-	'modal_clear_note'           => 'Журнал модераторов это действие <strong>не</strong> затронет.',
+	'modal_clear_note'           => 'Будут удалены <strong>все</strong> записи: сайта, администраторов и модераторов.',
 	'btn_cancel'                 => 'Отмена',
 	'btn_clear_logs'             => 'Очистить',
 

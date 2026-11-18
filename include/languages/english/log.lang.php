@@ -23,7 +23,7 @@ $language['log'] = array (
 
 	// ── Toolbar / buttons ──
 	'lbl_total_logs'             => 'Total Logs: {1}',
-	'btn_clear_site_logs'        => 'Clear Site Logs',
+	'btn_clear_site_logs'        => 'Clear Logs',
 	'btn_refresh'                => 'Refresh',
 	'btn_export_csv'             => 'Export CSV',
 	'btn_apply_filters'          => 'Apply Filters',
@@ -72,7 +72,7 @@ $language['log'] = array (
 
 	// ── Table ──
 	'sec_event_log'              => 'Combined Event Log',
-	'lbl_select_site_logs'       => 'Select Site Logs',
+	'lbl_select_site_logs'       => 'Select All',
 	'th_type'                    => 'Type',
 	'th_username'                => 'Username',
 	'th_date'                    => 'Date',
@@ -109,6 +109,7 @@ $language['log'] = array (
 	'cat_deletion'               => 'Deletion',
 	'cat_mail'                   => 'Mail',
 	'cat_warning'                => 'Warning',
+	'cat_admin'                  => 'Admin',
 
 	// ── Admin log modules ──
 	'mod_forums'                 => 'Forums',
@@ -189,6 +190,33 @@ $language['log'] = array (
 	'badge_cache_rebuild'        => 'Cache Rebuild',
 	'badge_backup_completed'     => 'Database Backup Completed',
 	'badge_backup_created'       => 'Database Backup Created',
+	'badge_ban_edit'             => 'Ban edited',
+	'badge_ban_filter_add'       => 'Ban filter added',
+	'badge_ban_filter_del'       => 'Ban filter removed',
+	'badge_prune_user'           => 'Content pruned',
+	'badge_pending_deleted'      => 'Pending deleted',
+	'badge_pending_activated'    => 'Activated',
+	'badge_group_deleted'        => 'Group deleted',
+	'badge_order'                => 'Order',
+	'badge_forum_copy'           => 'Forum copied',
+	'badge_backup_downloaded'    => 'Backup downloaded',
+	'badge_backup_deleted'       => 'Backup deleted',
+	'badge_thread_deleted'       => 'Thread deleted',
+	'badge_unapproved'           => 'Unapproved',
+	'badge_approved'             => 'Approved',
+	'badge_thread_open'          => 'Thread opened',
+	'badge_thread_stuck'         => 'Pinned',
+	'badge_thread_unstuck'       => 'Unpinned',
+	'badge_thread_copied'        => 'Thread copied',
+	'badge_threads_merged'       => 'Threads merged',
+	'badge_split_posts'          => 'Posts split',
+	'badge_posts_moved'          => 'Posts moved',
+	'badge_poll_deleted'         => 'Poll deleted',
+	'badge_redirects_removed'    => 'Redirects removed',
+	'badge_subs_removed'         => 'Subscriptions removed',
+	'badge_bulk_pm'              => 'Bulk PM',
+	'badge_group_change'         => 'Group changed',
+	'badge_bulk_delete'          => 'Bulk delete',
 	'badge_db_optimized'         => 'DB Optimized',
 	'badge_table_truncated'      => 'Table Truncated',
 	'badge_truncate_failed'      => 'Truncate Failed',
@@ -200,13 +228,13 @@ $language['log'] = array (
 	'badge_spam'                 => 'Spam',
 
 	// ── Clear site logs modal ──
-	'modal_clear_title'          => 'Clear Site Logs',
+	'modal_clear_title'          => 'Clear Logs',
 	'modal_clear_sub'            => 'This action is permanent',
 	'modal_clear_confirm'        => 'Are you sure you want to {1}?',
-	'modal_clear_confirm_strong' => 'clear all site logs',
+	'modal_clear_confirm_strong' => 'clear the whole log',
 	'modal_cannot_undo'          => 'This cannot be undone.',
 	// output as-is (HTML allowed)
-	'modal_clear_note'           => 'Moderator logs will <strong>not</strong> be affected by this action.',
+	'modal_clear_note'           => '<strong>All</strong> entries will be deleted: site, admin and moderator.',
 	'btn_cancel'                 => 'Cancel',
 	'btn_clear_logs'             => 'Clear Logs',
 

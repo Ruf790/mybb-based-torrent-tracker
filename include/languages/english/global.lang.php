@@ -9,6 +9,10 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+'quote_plain'      => 'Quote',
+'quote_go_post'    => 'Go to post',
+'quote_go_comment' => 'Go to comment',
+
 
 'img_unavailable'   => 'Image unavailable',
 'img_open_original' => 'Open original',

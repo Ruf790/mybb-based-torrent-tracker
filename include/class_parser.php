@@ -778,7 +778,7 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
         // Раздача удалена или ID не существует — карточка-заглушка вместо сырого [torrent=ID]
         if (!$torrent) {
-            return '<span class="mycode_torrent_card mycode_torrent_missing card d-inline-flex flex-row align-items-center gap-3 my-2 px-3 py-3 bg-body-tertiary text-body-secondary" style="max-width:420px;width:100%;border-style:dashed;">'
+            return '<span class="mycode_torrent_card mycode_torrent_missing card d-inline-flex flex-row align-items-center gap-3 my-2 px-3 py-3 bg-body-tertiary text-body-secondary" style="max-width:440px;width:100%;border-style:dashed;border-radius:.6rem;">'
                  . '<i class="fa-solid fa-ban fa-2x opacity-50"></i>'
                  . '<span class="d-flex flex-column">'
                  . '<span class="fw-semibold">Torrent unavailable</span>'
@@ -790,37 +790,38 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
         $link = htmlspecialchars(get_torrent_link((int)$torrent['id']), ENT_QUOTES, 'UTF-8');
         $size = function_exists('mksize') ? mksize((int)$torrent['size']) : (int)$torrent['size'] . ' B';
 
-        // Постер: заглушка всегда лежит снизу, картинка сверху её закрывает.
+        // Компактная карточка, как в чате: маленький постер слева, название и данные справа.
+        // Заглушка всегда лежит снизу, картинка сверху её закрывает.
         // Нет t_image — видна заглушка; файл удалён/битый — onerror убирает <img>.
         $posterUrl = trim((string)($torrent['t_image'] ?? ''));
 
-        $placeholder = '<span class="mycode_torrent_noposter position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center text-white-50">'
-                     . '<i class="fa-solid fa-film fa-3x mb-2 opacity-75"></i>'
-                     . '<span class="small text-uppercase fw-semibold" style="letter-spacing:.08em;">No poster</span>'
+        $placeholder = '<span class="mycode_torrent_noposter position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center text-white-50">'
+                     . '<i class="fa-solid fa-film fa-xl opacity-75"></i>'
                      . '</span>';
 
         $img = $posterUrl !== ''
             ? '<img src="' . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . '"'
-              . ' class="position-absolute top-0 start-0 w-100 h-100" style="object-fit:cover;"'
+              . ' class="position-absolute top-0 start-0 w-100 h-100" style="object-fit:cover;max-width:none;max-height:none;margin:0;border-radius:0;"'
               . ' loading="lazy" alt="" onerror="this.remove()" />'
             : '';
 
-        $poster = '<span class="mycode_torrent_poster d-block position-relative overflow-hidden rounded-top"'
-                . ' style="height:420px;background:linear-gradient(135deg,#2b3240 0%,#151a23 100%);">'
+        $poster = '<span class="mycode_torrent_poster d-block position-relative overflow-hidden flex-shrink-0"'
+                . ' style="width:64px;min-height:90px;background:linear-gradient(135deg,#2b3240 0%,#151a23 100%);">'
                 . $placeholder
                 . $img
                 . '</span>';
 
-        return '<a href="' . $link . '" class="mycode_torrent_card card d-inline-block text-decoration-none my-2" style="max-width:420px;width:100%;">'
+        return '<a href="' . $link . '" class="mycode_torrent_card card d-flex flex-row align-items-stretch overflow-hidden text-decoration-none text-body my-2"'
+             . ' style="max-width:440px;width:100%;border-radius:.6rem;">'
              . $poster
-             . '<div class="card-body py-2 px-3">'
-             . '<div class="fw-bold text-truncate"><i class="fa-solid fa-magnet me-1"></i>' . htmlspecialchars($torrent['name'], ENT_QUOTES, 'UTF-8') . '</div>'
-             . '<div class="text-muted small">'
+             . '<span class="card-body d-flex flex-column justify-content-center py-2 px-3" style="min-width:0;gap:.15rem;">'
+             . '<span class="fw-bold text-truncate"><i class="fa-solid fa-magnet me-1"></i>' . htmlspecialchars($torrent['name'], ENT_QUOTES, 'UTF-8') . '</span>'
+             . '<span class="text-muted small">'
              . htmlspecialchars($torrent['catname'] ?? '', ENT_QUOTES, 'UTF-8') . ' &#183; ' . $size
              . ' &#183; <span class="text-success">' . (int)$torrent['seeders'] . ' seeders</span>'
              . ' &#183; <span class="text-danger">' . (int)$torrent['leechers'] . ' leechers</span>'
-             . '</div>'
-             . '</div>'
+             . '</span>'
+             . '</span>'
              . '</a>';
     }
 

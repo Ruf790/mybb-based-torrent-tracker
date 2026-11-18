@@ -135,9 +135,6 @@ define('INSTALL_RUN_FILE', __DIR__ . '/install.running');
 const INSTALL_RUN_TTL = 300;
 // Версия схемы БД, записываемая в settings.schema_version (используется upgrade.php).
 const INSTALLER_SCHEMA_VERSION = '1';
-// Закрывать ли torrents/ от прямых HTTP-запросов (.torrent отдаются через PHP с passkey).
-// Если ваш трекер отдаёт файлы из torrents/ напрямую — поставьте false.
-const PROTECT_TORRENTS_DIR = true;
 
 // Доверенные обратные прокси (IP или CIDR). Только от них принимаются заголовки
 // X-Forwarded-Proto / X-Forwarded-For: так HTTPS за прокси определяется верно
@@ -413,7 +410,6 @@ function i18n_ru(): array
         'sql/ and install_error.log are closed from the web (checked).' => 'Папка sql/ и файл install_error.log закрыты от доступа из интернета (проверено).',
         'Still accessible from the web: {urls}. Block them in the web server config (see below).' => 'Всё ещё доступно из интернета: {urls}. Закройте доступ в настройках веб-сервера (примеры ниже).',
         'Could not verify automatically that sql/ and install_error.log are closed. Open {url} in your browser — it should give 403 or 404.' => 'Не удалось автоматически проверить, закрыты ли sql/ и install_error.log. Откройте {url} в браузере — должна быть ошибка 403 или 404.',
-        'Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).' => 'Не удалось записать .htaccess автоматически ({files}). Создайте его вручную или закройте доступ в настройках веб-сервера (примеры ниже).',
         'Server config examples' => 'Примеры настроек веб-сервера',
         'Confirm server access' => 'Подтвердите доступ к серверу',
         'To make sure that only the server owner can run the installer, create an empty file with this exact name in the site root (next to install.php) via FTP/SSH/file manager:' => 'Чтобы убедиться, что установщик запускает владелец сервера, создайте через FTP/SSH/файловый менеджер пустой файл с точно таким именем в корне сайта (рядом с install.php):',
@@ -699,60 +695,17 @@ function probe_public(string $url, string $needle): string
 }
 
 /**
- * Добавляет в .htaccess блок правил между маркерами BEGIN/END (один раз) и не
- * трогает уже существующее содержимое файла.
- */
-function installer_append_block(string $file, string $block, string $id = 'installer-protect'): bool
-{
-    $begin    = '# BEGIN ' . $id;
-    $existing = is_file($file) ? @file_get_contents($file) : '';
-    if ($existing === false) return false;
-    if (strpos($existing, $begin) !== false) return true;
-    $prefix = ($existing !== '' && substr($existing, -1) !== "\n") ? "\n" : '';
-    return @file_put_contents($file, $prefix . "\n" . $begin . "\n" . $block . '# END ' . $id . "\n", FILE_APPEND | LOCK_EX) !== false;
-}
-
-/**
- * Закрывает от веба служебные файлы и каталоги:
- *  - sql/.htaccess — запрет всей папки (в ней схема и начальные данные);
- *  - блок в корневом .htaccess — запрет install_error.log и install.lock;
- *  - uploads/ — запрет исполнения PHP и других скриптов (загрузки пользователей);
- *  - torrents/ и cache/ — запрет прямого доступа (.torrent отдаются через PHP с
- *    passkey; сначала проверьте PROTECT_TORRENTS_DIR, если у вас иначе);
- *  - include/ — запрет config.php, settings.php, config_announce.php.
- * Существующие .htaccess только дополняются, правила не перезаписываются.
- * Затем самопроверка HTTP-запросом: .htaccess не работает на nginx и при
- * AllowOverride None, поэтому результат проверяем, а не верим.
+ * Самопроверка доступности служебных файлов из веба (файлы .htaccess установщик
+ * не создаёт и не правит — защита настраивается вручную):
+ *  - sql/faq.sql и install_error.log — открываются ли по прямой ссылке;
+ *  - uploads/ — исполняется ли PHP;
+ *  - torrents/ — можно ли скачать файл напрямую.
+ * Результат проверяем HTTP-запросом, а не верим конфигурации.
  */
 function protect_installer_files(string $siteUrl): array
 {
-    $res = ['failed' => [], 'sql' => 'unknown', 'log' => 'unknown', 'uploads' => 'unknown', 'torrents' => 'unknown'];
+    $res = ['sql' => 'unknown', 'log' => 'unknown', 'uploads' => 'unknown', 'torrents' => 'unknown'];
 
-    $deny = "# Apache 2.4+\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
-          . "# Apache 2.2\n<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n";
-    $noExec = '<FilesMatch "(?i)\.(php[0-9]?|phtml|phar|pht|phps|cgi|pl|py|sh)$">' . "\n" . $deny . "</FilesMatch>\n";
-    $cfgDeny = '<FilesMatch "^(config|settings|config_announce)\.php$">' . "\n" . $deny . "</FilesMatch>\n";
-
-    if (is_dir(__DIR__ . '/sql')) {
-        if (@file_put_contents(__DIR__ . '/sql/.htaccess', "# Created by installer: SQL files must not be public.\n" . $deny) === false) {
-            $res['failed'][] = 'sql/.htaccess';
-        }
-    }
-
-    $root = __DIR__ . '/.htaccess';
-    $rootBlock = '<FilesMatch "^(install_error\.log|install\.lock|(install|upgrade)-[0-9a-f]{32}\.key)$">' . "\n" . $deny . "</FilesMatch>\n";
-    if (!installer_append_block($root, $rootBlock)) {
-        $res['failed'][] = '.htaccess';
-    }
-
-    $dirs = ['uploads' => $noExec, 'cache' => $deny, 'include' => $cfgDeny];
-    if (PROTECT_TORRENTS_DIR) $dirs['torrents'] = $deny;
-    foreach ($dirs as $d => $block) {
-        if (!is_dir(__DIR__ . '/' . $d)) continue;
-        if (!installer_append_block(__DIR__ . '/' . $d . '/.htaccess', $block)) {
-            $res['failed'][] = $d . '/.htaccess';
-        }
-    }
     // Пустой index.html — чтобы веб-сервер не показывал листинг каталога.
     foreach (['uploads', 'uploads/avatars', 'torrents', 'cache'] as $d) {
         $p = __DIR__ . '/' . $d;
@@ -5107,7 +5060,6 @@ function __(key, vars) {
                         $pr       = $_SESSION['protect'] ?? null;
                         $prSql    = is_array($pr) ? ($pr['sql'] ?? 'unknown') : 'unknown';
                         $prLog    = is_array($pr) ? ($pr['log'] ?? 'unknown') : 'unknown';
-                        $prFailed = is_array($pr) ? (array)($pr['failed'] ?? []) : [];
                         $prBase   = rtrim($siteUrl, '/');
                         $prOpen   = [];
                         if ($prSql === 'open') $prOpen[] = $prBase . '/sql/faq.sql';
@@ -5132,9 +5084,6 @@ function __(key, vars) {
                             <span class="text-danger fw-semibold"><i class="fas fa-triangle-exclamation me-1"></i><?= t('Still accessible from the web: {urls}. Block them in the web server config (see below).', ['urls' => '<code>' . htmlspecialchars(implode(', ', $prOpen)) . '</code>']) ?></span>
                             <?php else: ?>
                             <?= t('Could not verify automatically that sql/ and install_error.log are closed. Open {url} in your browser — it should give 403 or 404.', ['url' => '<code>' . htmlspecialchars($prBase . '/sql/faq.sql') . '</code>']) ?>
-                            <?php endif; ?>
-                            <?php if ($prFailed): ?>
-                            <div class="text-danger mt-1"><?= t('Could not write .htaccess automatically ({files}). Create it manually or block access in the web server config (see below).', ['files' => '<code>' . htmlspecialchars(implode(', ', $prFailed)) . '</code>']) ?></div>
                             <?php endif; ?>
                             <?php if (!$prAllClosed || $prUploads === 'open' || $prTorrents === 'open' || installer_webserver() === 'nginx'): ?>
                             <details class="mt-1">

@@ -9,6 +9,17 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
+'correct_errors' => 'Please correct the following errors:',
+
+'please_review' => 'Please review and fix the issues below',
+
+'is_found' => 'Issues Found',
+
+
+
+
+
+
 'quote_plain'      => 'Quote',
 'quote_go_post'    => 'Go to post',
 'quote_go_comment' => 'Go to comment',

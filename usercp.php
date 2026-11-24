@@ -2491,7 +2491,7 @@ if ($mybb->input['action'] === 'do_editlists') {
             $field = in_array($db->type, ['mysql', 'mysqli'], true) ? 'username' : 'LOWER(username)';
             $lowered_users = array_map('strtolower', $users);
             $placeholders  = implode(',', array_fill(0, count($lowered_users), '?'));
-            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
+            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm,language FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
 
             while ($q && ($user = $db->fetch_array($q))) {
                 $found_users++;

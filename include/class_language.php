@@ -192,6 +192,8 @@ class trackerlanguage
 	
 	public $requests;
 	
+	public $uploadadd;
+	
 	
 	
 	

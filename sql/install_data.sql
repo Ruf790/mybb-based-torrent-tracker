@@ -417,11 +417,11 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (122, 'modcp', 'Threads and Posts Awaiting Moderation', 'modcp.php', '[6],[7],[8]'),
 (123, 'manage_polls', 'Manage Polls', 'manage_polls.php', '[6],[7],[8]'),
 (124, 'requests_offers', 'Manage Requests &amp; Offers', 'requests_offers.php', '[6],[7],[8]'),
-(125, 'fastdelete', 'Fast Delete Torrent', 'fastdelete.php', '[6],[7],[8]'),
 (127, 'convert_innodb', 'Convert DB Tables to InnoDB', 'convert_innodb.php', '[8]'),
 (128, 'useractivity', 'Daily active users chart with time stats and exports.', 'useractivity.php', '[8]'),
 (129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]'),
 (130, 'exams', 'Ecams Test', 'exams.php', '[8]'),
 (132, 'langcheck', 'Checks language files: missing, unused and mismatched keys', 'langcheck.php', '[8]'),
 (133, 'check_update', 'Update check (GitHub)', 'check_update.php', '[8]'),
-(136, 'claims', 'Claims: keepers and monthly norm', 'claims.php', '[6],[7],[8]');
+(136, 'claims', 'Claims: keepers and monthly norm', 'claims.php', '[6],[7],[8]'),
+(137, 'torrent_edit', 'Edit torrent files', 'torrent_edit.php', '[8]');
